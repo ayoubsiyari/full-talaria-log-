@@ -683,6 +683,38 @@ show the same moment in time — only their data ownership/viewport decouples); 
 aggregate-fetch blowup. Kill-switch. Risk = same-pair ownership (ESC-006 territory) → design-first
 in report, Manager review before deploy.
 
+## 6y. D-018 pre-dispatch gate cleared — tree attribution + B8 contract adopted (2026-07-05)
+
+Director (D-018) approved DIAG-B8b as the B8 implementation contract, gated on resolving the
+"tree contamination" the design worker disclosed (both `chart.js` copies appeared modified during
+a read-only design task) BEFORE dispatching the impl worker. Manager verification:
+
+- **Working tree clean vs HEAD.** `git status --porcelain` / `git diff --numstat` / `--cached`
+  are all empty for both `chart v 1.4/chart/chart.js` and `homepage/public/chart/chart.js`. The
+  edits the worker saw uncommitted have since been committed by the PO (`a38d299d "layout
+  dignoosti"`, Sun Jul 5 17:20:10 2026, author siyari ayoub). Both files tracked, not ignored.
+- **Both copies byte-identical:** SHA-256 `bfbe1f623028452cc7d2946927d077b5769c9aa5722b7a94690704f4e4c85116`
+  for both (I4 satisfied).
+- **Attribution:** all signed-off task signatures present in the committed file — `_ensureMcDiag`
+  (diagnostics), `__TALARIA_MC_ENABLE_VIEWPORT_FIRST` (B-FIX-ROLLBACK), `displayTfMasterHost`
+  (6a), `_lazyReplayMasterDisabled` + `_getReplayPanFetchTimeframe` (6b), `_highLimitBulkHistoryDisabled`
+  (6c). No unattributable engine content: the "contamination" is the 6c (signed-off) edits landing
+  in the shared working tree during the parallel read-only B8-design task — explained, not rogue.
+  **Gate CLEARED; B8 impl may be dispatched.**
+
+- **Ownership table adopted** into `INVARIANTS.md` as the I1 clarification (D-018 directive), so the
+  impl worker inherits it as an invariant with the exact bounded-fetch caps.
+
+Still outstanding before the B8 build SHIPS (not before dispatch):
+- **6b replay smoke test (BLOCKING, D-017/D-018 #4)** — PO to run live on the current build.
+- PO audit clear (once, this week): `Sources Handoff/TalariaV16.jsx` and
+  `journal-backend/routes/journal/live_accounts.py` (non-chart, standing audit hygiene per D-018).
+
+B8 impl conditions (D-018, all binding on the impl task): (1) fetch caps land EXACTLY as written
+in DIAG-B8b §2; (2) new diag counters `ownerFetches`, `ownerBars`, `boundedMisses`, `handovers`
+per owner panel; (3) owner-flip rides host COMMIT events (generation-tagged), never in-flight
+state; (4) 6b smoke test blocks ship; (5) kill-switch restoring today's shared-master coupling.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

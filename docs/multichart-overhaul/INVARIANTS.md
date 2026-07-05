@@ -11,6 +11,25 @@ chart when it displays that file; otherwise the panel that first loaded it. All 
 instances obtain bars ONLY by contiguous copy from the owner. Never add a new fetch call
 site in panel-reachable code.
 
+### I1 clarification — ownership by layout relationship (adopted D-018, from DIAG-B8b §1)
+
+This table is the binding ownership contract, not a suggestion. The B8 impl worker
+inherits it as an invariant.
+
+| Layout relationship | Data owner | Fetches expected | Follows host master? | Follows replay playhead? |
+|---|---|---|---|---|
+| Same-pair same-TF | Host | Panel fetches `0`; panel mirrors host committed data via `_multichartMirrorHostTfSwitchIfReady()` / replay-frame mirroring. | Yes. | Yes — seek to shared timestamp. |
+| Same-pair coarser-than-host | Host (host master cadence fine enough to downsample) | Panel fetches `0` when host master covers the panel window; otherwise bounded panel fetch only after host cannot cover. | Yes, if host master is same/finer cadence than panel TF. | Yes — consumes shared playhead, renders from downsampled host-owned bars. |
+| Same-pair finer-than-host | Panel (owner for its finer native window) | Bounded owner fetches: auto acquisition capped at 2 requests × max `5000` bars = `10000` bars per acquisition. | No — must NOT ask host to grow a finer master for this panel. | Yes — playhead shared, only data ownership splits. |
+| Independent-symbol | Panel | Existing independent-panel bounded fetch behavior; not host-owned. | No. | Yes — syncs to playhead using its own data. |
+
+Bounded fetch caps (DIAG-B8b §2, contract terms — exact numbers are non-negotiable):
+initial owner acquisition ≤ 2 requests, ≤ `5000` bars/request, ≤ `10000` bars/acquisition;
+subsequent pan-edge ≤ 1 × `5000`-bar request; active replay catch-up keeps the stricter
+`2000`-bar cap. Owner panels MUST NOT delegate history fill to
+`host.checkViewportLoadMore()` (the exact DIAG-B8 host-`1m`-growth path). Owner↔mirror
+flips ride the host's committed native TF (generation-tagged), never in-flight state.
+
 ## I2 — Contiguity (the seam rule)
 A bar array (`rawData`, `data`, `replaySystem.fullRawData`, `_panelFullRawData`) may only
 grow from its exact loaded edge: prepend bars strictly older than the current first bar

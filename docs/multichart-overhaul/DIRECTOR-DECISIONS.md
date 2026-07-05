@@ -804,3 +804,63 @@ must be demonstrably gone (PO scenario from §6x re-run).
 Order from here: 6b replay smoke test (blocking) → B8 design doc → Director review →
 B8 build. 6c (high-limit /smart) may proceed in parallel with B8 design if worker
 capacity allows — it is orthogonal plumbing with its own kill-switch.
+
+---
+
+## D-018 — B8 design (DIAG-B8b) APPROVED as implementation contract, with conditions (2026-07-05)
+
+Read directly (not only the manager summary). All five D-017 questions are answered
+with code evidence, and the ESC-006 lesson is structural, not cosmetic: the cap is
+numeric (2×5000 per acquisition, +5000 per pan-edge, 2000 replay catch-up; 30k bars
+worst-case in a 4-layout vs ~116k today), the handover is generation-tagged and
+atomic, and the design explicitly forbids the exact DIAG-B8 path (delegating history
+fill to `host.checkViewportLoadMore()`). **Approved as the B8 implementation
+contract.** The ownership table in §1 is adopted — manager: copy it into
+`INVARIANTS.md` as the I1 clarification now, so the impl worker inherits it as an
+invariant, not a suggestion.
+
+### Conditions (all binding on the impl task)
+
+1. **Fetch caps land exactly as written** — the numbers in §2 are contract terms,
+   not guidance. Any deviation (even "5000 → 6000 because the helper rounds") is a
+   report-rejection item.
+2. **New diag counters required** so acceptance is measurable, per owner panel:
+   `ownerFetches`, `ownerBars`, `boundedMisses` (playhead outside owned window),
+   `handovers` (mirror→owner and owner→mirror counts). Without these the cap and
+   the handover claims are unverifiable live.
+3. **Owner-flip decisions ride host COMMIT events, not polls.** The mirror↔owner
+   classification must be evaluated against the host's committed native TF after a
+   switch (generation-tagged), never against in-flight state — this is where a race
+   would reintroduce ESC-006-style behavior. The design implies this (§5); the impl
+   must make it explicit.
+4. **6b replay smoke test remains BLOCKING** (D-017) — must pass live before the
+   B8 build ships. No change.
+5. **Kill-switch** per §6x, restoring today's shared-master coupling exactly.
+
+### TREE CONTAMINATION — resolve BEFORE dispatching the impl worker
+
+The report's own Verification section discloses that post-task `git status` showed
+`chart v 1.4/chart/chart.js` AND `homepage/public/chart/chart.js` modified, while the
+pre-task status did not list them. A read-only design task is zero-diff by
+definition (D-013/D-014 hygiene). The worker disclaims authorship; that may well be
+true (e.g. 6a-2/6b work landing in the same tree), but "probably fine" is not the
+standard. **Manager, before B8 impl dispatch:** diff both files, attribute every
+hunk to a signed-off task (6a/6a-2/6b/rollback), record the attribution in FINDINGS,
+and confirm both copies are byte-identical. If any hunk cannot be attributed, STOP
+and escalate. The impl worker starts from a clean, attributed tree or not at all.
+
+Also still dangling since §6k: PO confirmation on `Sources Handoff/TalariaV16.jsx`
+(it appears again in this report's pre-task status, now joined by
+`journal-backend/routes/journal/live_accounts.py`). Neither touches the chart, but
+unexplained modifications in the working tree during a disciplined overhaul are a
+standing audit risk — PO to clear both, once, this week.
+
+### Acceptance for the B8 build (inherits D-017 + standing criteria)
+
+- Same-TF panels: fetches = 0 (unchanged, non-negotiable).
+- §6x PO scenario re-run: drift with all-sync-off GONE; group-by-group GONE.
+- Owner panels: ownerBars ≤ cap in every capture; boundedMisses observed only with
+  the documented clamp behavior (no blank frames, no console errors).
+- Aggregate bars across the 2×2 mixed-TF capture strictly below the ~116k baseline.
+- Both handover directions exercised live (host TF switch across the panel's TF in
+  both directions) — no refetch storm, no blank frame, playhead stays shared.
