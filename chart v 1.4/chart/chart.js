@@ -22266,6 +22266,22 @@ class Chart {
                     }
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
+                    if (direction === 'backward'
+                        && typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DEBUG_B10
+                        && ((typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel())
+                            || (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()))) {
+                        const b10Id = typeof this._getMultichartPanelId === 'function'
+                            ? (this._getMultichartPanelId() || 'chart')
+                            : 'chart';
+                        const b10IsHost = typeof this._isMultichartHostPanel === 'function'
+                            && this._isMultichartHostPanel();
+                        console.log('[B10] hostLoad id=' + b10Id
+                            + ' prepended=' + uniqueNew.length
+                            + ' newLen=' + merged.length
+                            + ' isHost=' + b10IsHost
+                            + ' offsetX=' + this.offsetX);
+                    }
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
                     this._mcDiagCheckJoinRegion(this.replaySystem.fullRawData, mcDiagPrevEdgeTs, {
@@ -25087,6 +25103,39 @@ class Chart {
             this.ctx.textAlign = 'center';
             this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
             return;
+        }
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_MC_DEBUG_B10
+            && typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel()) {
+            const b10FullLen = Array.isArray(this.replaySystem?.fullRawData)
+                ? this.replaySystem.fullRawData.length
+                : null;
+            const b10OffsetX = this.offsetX;
+            const b10Prev = this._b10LastRender || {};
+            if (b10Prev.offsetX !== b10OffsetX || b10Prev.fullLen !== b10FullLen) {
+                const b10Spacing = typeof this.getCandleSpacing === 'function'
+                    ? this.getCandleSpacing()
+                    : 0;
+                let b10FirstVisTs = null;
+                if (b10Spacing > 0 && Array.isArray(this.data) && this.data.length) {
+                    const b10FirstIdx = Math.max(0, Math.min(
+                        this.data.length - 1,
+                        Math.floor(-this.offsetX / b10Spacing),
+                    ));
+                    b10FirstVisTs = this.data[b10FirstIdx]?.t ?? null;
+                }
+                const b10Id = typeof this._getMultichartPanelId === 'function'
+                    ? (this._getMultichartPanelId() || 'embed')
+                    : 'embed';
+                console.log('[B10] render id=' + b10Id
+                    + ' embed=true'
+                    + ' offsetX=' + b10OffsetX
+                    + ' firstVisTs=' + b10FirstVisTs
+                    + ' rawLen=' + (Array.isArray(this.rawData) ? this.rawData.length : null)
+                    + ' fullLen=' + b10FullLen);
+                this._b10LastRender = { offsetX: b10OffsetX, fullLen: b10FullLen };
+            }
         }
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
