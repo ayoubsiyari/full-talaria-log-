@@ -242,9 +242,13 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
 
 
 def _name_conflict(user_id: int, name: str, *, exclude_profile_id: int | None = None) -> bool:
-    q = Profile.query.filter_by(user_id=user_id, name=name)
+    """True when another active live journal already uses this name."""
+    normalized = str(name or "").strip()
+    if not normalized:
+        return False
+    q = LiveJournalAccount.query.filter_by(user_id=user_id, status="active", name=normalized)
     if exclude_profile_id is not None:
-        q = q.filter(Profile.id != exclude_profile_id)
+        q = q.filter(LiveJournalAccount.profile_id != exclude_profile_id)
     return q.first() is not None
 
 

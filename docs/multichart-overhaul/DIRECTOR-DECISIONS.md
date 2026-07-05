@@ -742,3 +742,65 @@ is contractual.** The diagnosis must answer, with file:line evidence:
 - The S6-b/S6-c captures on b604 are the canonical "before" for B.
 
 ESC-007 CLOSED by this ruling; next artifact expected: B-DIAG-6 report.
+
+---
+
+## D-017 — §6t–§6x review: staging ratified; expanded B8 gets a design gate (2026-07-05)
+
+### Ratifications (manager decisions within the D-016 mandate — all correct calls)
+
+1. **B-FIX-6 staging (6a browsing / 6b lazy-1m / 6c high-limit)** — ratified. Each
+   stage kill-switched and independently measurable is exactly the shape D-016 wanted.
+2. **6a result accepted:** host 91→23–25 fetches, 178k→40–43k bars, panels
+   `fetchedBars = 0` with empty probes only — I1 intact. The ~70% tax cut is the first
+   direct hit on the user's original complaint. Renders-high stays RC2, deferred.
+3. **6a-2 accepted:** correct root (idempotency early-return swallowing the host
+   fanout after a narrow commit), correct fix choice (re-mirror on material extent
+   change, not re-widening the host), and the extent-actually-differs gate shows the
+   ESC-006 lesson is being applied. PO confirm ("same same candles") closes it.
+4. **Sequencing 6b before B8** — ratified; B8 depends on where 6b draws the
+   "host may hold a fine master" boundary. Doing B8 first invited rework.
+5. **6b isolation in §6x is clean method:** flag made no difference → 6b not the
+   cause. 6b stays signed off. **However: the deferred 6b replay smoke test is now a
+   BLOCKING precondition for the B8 build** (see below) — B8 is being designed
+   against 6b's boundary, so that boundary must be proven live first, not assumed.
+
+### Ruling on expanded B8 (§6x): approved in direction, GATED on a design review
+
+The expanded scope is right — both symptoms (group-by-group loading AND drift with
+all sync off) are one root: same-pair coupling that ignores the user's sync toggles.
+But be clear about what this is: **not a perf fix — a semantic change to the sync
+contract.** Panels sharing the host replay master regardless of toggles was a design
+decision; B8 revokes it for finer-TF panels. That is ESC-006 territory (same-pair
+ownership) and the manager's design-first instinct is confirmed and hardened:
+
+**The B8 design doc must be escalated to the Director before any build** (not just
+manager review), and must answer:
+1. **The new ownership contract, stated as a table** — for same-pair panels:
+   same-TF ⇒ mirror (fetches 0, unchanged); finer-TF ⇒ independent owner
+   (own master, own viewport); independent symbol ⇒ unchanged. Sync toggles govern
+   viewport/crosshair/interval only; data ownership follows the TF relationship.
+   This table goes into INVARIANTS as an I1 clarification once approved.
+2. **Bounded fetch, defined numerically.** A finer panel owns a VIEWPORT-SIZED
+   window plus replay-playhead coverage — never full session history. State the cap
+   (bars per fetch, max chunks per switch) and the acceptance numbers. "Independent
+   owner" without a bound is how ESC-006's aggregate blowup happened.
+3. **Replay semantics for an independent finer panel:** who computes its forming
+   candle and playhead position (it no longer reads the host master); confirm
+   playhead-moment sharing survives (panels show the same time, own data);
+   what happens when the playhead advances past the panel's loaded window
+   (lazy extend via its own master — which is 6b's pattern, panel-side).
+4. **Memory statement:** N finer panels = N independent masters; give the expected
+   worst-case bars-in-memory for a 4-layout and confirm it is acceptable.
+5. **Migration/interaction:** what happens live when the host switches TF such that
+   a panel flips between same-TF (mirror) and finer-TF (owner) — the handover in
+   both directions, without refetch storms.
+
+Acceptance for the eventual B8 build inherits the standing criteria (same-TF panels
+fetches = 0; seams 0 everywhere) plus: aggregate fetches across the 2×2 must be LOWER
+than the §6w mixed-TF capture (~116k bars through the host), and drift-with-sync-off
+must be demonstrably gone (PO scenario from §6x re-run).
+
+Order from here: 6b replay smoke test (blocking) → B8 design doc → Director review →
+B8 build. 6c (high-limit /smart) may proceed in parallel with B8 design if worker
+capacity allows — it is orthogonal plumbing with its own kill-switch.

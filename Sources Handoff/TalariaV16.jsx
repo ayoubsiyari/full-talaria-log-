@@ -15006,7 +15006,7 @@ const TalariaV8b = () => {
                                   ["Mode",getSessionRowModeLabel(hov.sess),hov.col],
                                   ["Strategy",hov.sess.strategyName||"—",c.ts],
                                   ["Progress",`${hov.sess.progress}%`,c.ts],
-                                  ["Starting Balance",`$${(hov.sess.capital||0).toLocaleString()}`,c.ts],
+                                  ["Balance",`$${(hov.sess.capital||0).toLocaleString()}`,c.ts],
                                   ["Net P&L",(()=>{const d=formatSessionNetPnlDisplay(hov.sess.pnl,c);return d.text;})(),(()=>formatSessionNetPnlDisplay(hov.sess.pnl,c).color)()],
                                   ["Win Rate",hov.sess.winRate!=null?`${hov.sess.winRate}%`:"—",hov.sess.winRate!=null?(hov.sess.winRate>=50?c.gn:c.rd):c.tm],
                                   ["Avg R:R",hov.sess.avgRR!=null?`1:${hov.sess.avgRR.toFixed(1)}`:"—",c.ts],
@@ -15287,7 +15287,7 @@ const TalariaV8b = () => {
                 <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:`0 ${V16_PAGE_GUTTER_X}px`,width:"fit-content",minWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
                   <div style={{position:"absolute",bottom:0,left:V16_PAGE_GUTTER_X,right:V16_PAGE_GUTTER_X,height:1,background:c.brH,pointerEvents:"none"}}/>
                   <div style={{width:96,flexShrink:0}}></div>
-                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Market",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Duration",68,"duration"],["Options",102,null],["Starting Bal.",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
+                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Market",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Duration",68,"duration"],["Options",102,null],["Balance",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
                     const isActive=sk&&sessSortBy===sk;
                     const isHov=hov===("ch_"+label);
                     return(
@@ -15598,7 +15598,7 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Account size */}
-                        {colCell("Starting Bal.",sess.isJournalSession?(sess.capital!=null?Number(sess.capital).toLocaleString():"—"):`$${(sess.capital||0).toLocaleString()}`,88)}
+                        {colCell("Balance",sess.isJournalSession?(sess.capital!=null?Number(sess.capital).toLocaleString():"—"):`$${(sess.capital||0).toLocaleString()}`,88)}
 
                         {/* Net P&L */}
                         {colCell("Net P&L",pnlVal,80,pnlCol)}
@@ -15680,11 +15680,11 @@ const TalariaV8b = () => {
                       if(!journalAccount?.liveAccountId) return;
                       const liveId = journalAccount.liveAccountId;
                       openAppConfirm({
-                        title: profileLang === "arabic" ? "أرشفة اليومية" : "Archive journal",
+                        title: profileLang === "arabic" ? "حذف اليومية" : "Delete journal",
                         message: profileLang === "arabic"
-                          ? "أرشفة هذه اليومية؟ ستُزال من قائمتك لكن الصفقات المحفوظة تبقى."
-                          : "Archive this journal? It will be removed from your list but existing trades stay saved.",
-                        confirmLabel: profileLang === "arabic" ? "أرشفة" : "Archive",
+                          ? "حذف هذه اليومية؟ ستُزال من قائمتك لكن الصفقات المحفوظة تبقى."
+                          : "Delete this journal? It will be removed from your list but existing trades stay saved.",
+                        confirmLabel: profileLang === "arabic" ? "حذف" : "Delete",
                         danger: true,
                         onConfirm: () => {
                           void deleteLiveJournalAccount(liveId).then((ok) => {

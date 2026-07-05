@@ -1882,7 +1882,8 @@ class Chart {
             const savedReplayTs = this._pendingReplayRestore?.replayTimestamp ?? null;
 
             let result = null;
-            if (sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m') {
+            const highLimitBulkHistory = this._shouldUseHighLimitBulkHistory(replayRawTf);
+            if (!highLimitBulkHistory && sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m') {
                 try {
                     result = await this._fetchReplaySeekBuffer(
                         fileId,
@@ -1896,8 +1897,12 @@ class Chart {
             }
             if (!result) {
                 const initialRange = Number.isFinite(savedReplayTs)
-                    ? this._getBacktestReplayFetchRange(replayRawTf, session, savedReplayTs)
-                    : this._getBacktestInitialFetchRange(replayRawTf, session);
+                    ? (highLimitBulkHistory
+                        ? this._getBacktestBulkHistoryFetchRange(replayRawTf, session, savedReplayTs)
+                        : this._getBacktestReplayFetchRange(replayRawTf, session, savedReplayTs))
+                    : (highLimitBulkHistory
+                        ? this._getBacktestBulkHistoryFetchRange(replayRawTf, session, sessionStartTs)
+                        : this._getBacktestInitialFetchRange(replayRawTf, session));
                 result = await this._fetchSmartWindow(
                     fileId,
                     replayRawTf,
@@ -1906,7 +1911,11 @@ class Chart {
                     initialRange || historyRange,
                     {
                         skipSessionDates: true,
-                        limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                        limit: highLimitBulkHistory
+                            ? this._highLimitBulkHistorySmartLimit()
+                            : this._backtestFetchLimitForTimeframe(replayRawTf),
+                        allowHighLimit: highLimitBulkHistory,
+                        skipBars: highLimitBulkHistory,
                     },
                 );
             }
@@ -1920,6 +1929,11 @@ class Chart {
                 );
                 result = await this._fetchSmartWindow(fileId, replayRawTf, session, 'end', null, {
                     skipSessionDates: true,
+                    limit: highLimitBulkHistory
+                        ? this._highLimitBulkHistorySmartLimit()
+                        : undefined,
+                    allowHighLimit: highLimitBulkHistory,
+                    skipBars: highLimitBulkHistory,
                 });
             }
 
@@ -5233,6 +5247,72 @@ class Chart {
             }
         } catch (_e) { /* ignore */ }
         return fallback;
+    }
+
+    _highLimitBulkHistoryDisabled() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _highLimitBulkHistorySmartLimit() {
+        const fallback = 100000;
+        try {
+            const w = Number(window.__TALARIA_MC_HIGH_LIMIT_BULK_LIMIT);
+            if (Number.isFinite(w) && w > 0) {
+                return Math.max(2000, Math.min(100000, Math.floor(w)));
+            }
+        } catch (_e) { /* ignore */ }
+        return fallback;
+    }
+
+    _shouldUseHighLimitBulkHistory(timeframe) {
+        if (this._highLimitBulkHistoryDisabled()) return false;
+        if (!this.isBacktestMode) return false;
+        if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) return false;
+        const tf = this._normalizeBacktestTimeframe(timeframe) || this.currentTimeframe || '1m';
+        const tfMs = this.parseTimeframe(tf);
+        return Number.isFinite(tfMs) && tfMs > 0;
+    }
+
+    _getBacktestBulkHistoryFetchRange(timeframe, session, playheadMs = null) {
+        const limit = this._highLimitBulkHistorySmartLimit();
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        let sessionStartMs = null;
+        try {
+            const rawStart = session && (session.startDate || session.start_date);
+            if (rawStart) {
+                const t = new Date(rawStart).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+
+        const anchor = Number.isFinite(playheadMs)
+            ? Number(playheadMs)
+            : (Number.isFinite(sessionStartMs) ? sessionStartMs : sessionEndMs);
+        if (!Number.isFinite(anchor)) {
+            return this._getBacktestSessionEndFetchRange(sessionEndMs);
+        }
+
+        if (Number.isFinite(sessionStartMs) && anchor <= sessionStartMs + tfMs * 10) {
+            const startTs = sessionStartMs;
+            let endTs = startTs + Math.max(1, limit - 1) * tfMs;
+            if (Number.isFinite(sessionEndMs)) endTs = Math.min(sessionEndMs, endTs);
+            return { startTs: Math.floor(startTs), endTs: Math.floor(endTs) };
+        }
+
+        const forwardBars = Math.min(4000, Math.max(120, Math.floor(limit * 0.08)));
+        const backwardBars = Math.max(1, limit - forwardBars);
+        let startTs = anchor - backwardBars * tfMs;
+        let endTs = anchor + forwardBars * tfMs;
+        if (Number.isFinite(sessionStartMs)) startTs = Math.max(sessionStartMs, startTs);
+        if (Number.isFinite(sessionEndMs)) endTs = Math.min(sessionEndMs, endTs);
+        if (endTs < anchor) endTs = anchor;
+        return { startTs: Math.floor(startTs), endTs: Math.floor(endTs) };
     }
 
     _getLazyReplayMasterFetchRange(timeframe, session, playheadMs) {
@@ -21136,15 +21216,22 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
-            ? (this._getBacktestInitialFetchRange(timeframe, session)
-                || this._getBacktestSessionEndFetchRange(sessionEndMs))
-            : (Number.isFinite(playheadMs)
-                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
-                : this._getBacktestSessionEndFetchRange(sessionEndMs));
+        const highLimitBulkHistory = this._shouldUseHighLimitBulkHistory(timeframe);
+        const historyRange = highLimitBulkHistory
+            ? this._getBacktestBulkHistoryFetchRange(timeframe, session, playheadMs)
+            : (Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
+                ? (this._getBacktestInitialFetchRange(timeframe, session)
+                    || this._getBacktestSessionEndFetchRange(sessionEndMs))
+                : (Number.isFinite(playheadMs)
+                    ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
+                    : this._getBacktestSessionEndFetchRange(sessionEndMs)));
         const fetchOpts = {
             skipSessionDates: true,
-            limit: this._backtestFetchLimitForTimeframe(timeframe),
+            limit: highLimitBulkHistory
+                ? this._highLimitBulkHistorySmartLimit()
+                : this._backtestFetchLimitForTimeframe(timeframe),
+            allowHighLimit: highLimitBulkHistory,
+            skipBars: highLimitBulkHistory,
         };
 
         let result;
@@ -21169,7 +21256,12 @@ class Chart {
                     session,
                     'end',
                     wider,
-                    { skipSessionDates: true, limit: 2000 }
+                    {
+                        skipSessionDates: true,
+                        limit: highLimitBulkHistory ? this._highLimitBulkHistorySmartLimit() : 2000,
+                        allowHighLimit: highLimitBulkHistory,
+                        skipBars: highLimitBulkHistory,
+                    }
                 );
             }
         } catch (e) {

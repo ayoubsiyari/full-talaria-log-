@@ -662,11 +662,31 @@ lets a finer *browse* panel self-fetch outside that boundary. Doing B8 first ris
 the Director warned of. User has a clean workaround meanwhile: keep panels on the host's TF
 (fast + aligned, proven). User is mostly-replay, so 6b is also their highest-value win.
 
-## 6s. CROSSROADS — B-FIX-3c direction (see ESC-007)
+## 6x. 6b cleared of drift; B8 scope expands to cover mixed-TF DRIFT (2026-07-05, build b9)
 
-The rollback build is a GOOD production state for the core scenario: same-pair same-TF 2×2
-switches are now fast (host 4 fetches, panels 0, renders 23–32) with no seams. The two
-remaining pains are (1) deep-history / 1d host switches load "candle by candle" (host builds
-high TFs by resampling a huge 1m master — S6-a: 91 fetches / 178k bars), and (2) cross-TF
-same-pair panels self-fetch (§6c). B-FIX-3 (viewport-first) was the attempt at (1) and it
-regressed ownership. Decision needed from Director before drafting 3c — escalated as ESC-007.
+PO on b9, 4-layout, backtest (armed), **all sync OFF**, host 1m→4h, panels on a DIFFERENT TF:
+"loads a little faster but still group-by-group, AND B/C/D move/drift even with all sync off."
+Isolation: setting `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER = true` made **no difference** →
+**6b is NOT the cause** (6b remains signed off; replay smoke test still outstanding, deferred).
+
+Both symptoms are the mixed-TF same-pair coupling (pain #2):
+1. **Drift w/ sync off:** same-pair backtest panels share the host replay master independent of
+   the sync toggles (`_multichartSamePairDataShareActive` true under replay regardless of
+   viewport/interval sync — DIAG-B8 §Panel-Feed). Host TF switch mutates that shared master →
+   panels shift. User expects sync-off ⇒ independent; engine couples them.
+2. **Group-by-group:** finer panels pull 1m history through the host / self-fetch in chunks.
+
+→ **B8 scope now covers BOTH**: make same-pair panels whose TF is FINER than the host own their
+own data (independent master), so they (a) don't drift when the host switches TF, (b) don't drag
+the host to 1m. MUST preserve: same-TF `fetches=0` mirror; replay PLAYHEAD sharing (panels still
+show the same moment in time — only their data ownership/viewport decouples); no ESC-006-style
+aggregate-fetch blowup. Kill-switch. Risk = same-pair ownership (ESC-006 territory) → design-first
+in report, Manager review before deploy.
+
+## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
+
+**SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
+lazy display-TF/1m hydration), NOT the "B-FIX-3c re-enable viewport-first" path this section
+proposed. Viewport-first stays default-OFF permanently (D-013/D-015). Kept as a stub only so
+prior section references resolve; the live plan is §6t→§6x. (Note: this section sits out of
+numeric order at file end for the same reason — do not append below it; append after §6x.)
