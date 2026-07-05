@@ -273,3 +273,64 @@ replay-master path in both handover directions). The lazy-defer + kill-switch ca
 (Option C's cheap capture) remains a sensible pre-ship check but no longer gates the worker
 prompt. **ESC-008 CLOSED.**
 
+---
+
+## ESC-009 — B8 does not fire in the PO's canonical repro (1m panels over a 1m backtest master) (2026-07-05, build b15)
+
+### What happened
+B8-IMPL is code-correct and signed off (FINDINGS §6aa). PO ran the §6x scenario on b15
+(host displaying 4h, three same-pair panels on 1m, backtest armed, all sync OFF) and reports
+**no change**: dragging the host (chart A) into empty space to load old candles still makes the
+1m panels drift/shift backward each time.
+
+### Root cause (code evidence, not yet PO-diag-confirmed)
+B8's self-own gate `_multichartFinerSamePairPanelSelfOwns()` fires only when
+`panelMs < hostMs * 0.92`, where `hostMs` is the host's **committed native TF**. That native TF is
+emitted by `_emitMultichartHostDataCommit()` as
+`replaySystem.isActive ? replaySystem.rawTimeframe : _nativeRawFetchTf`. In a backtest the host's
+replay master is **1m**, so the host commits nativeTf = **1m**. The PO's panels are **1m** →
+`1m < 1m*0.92` is false → **panels never self-own** → they remain same-native-TF mirror panels
+coupled to the host's shared 1m master. When the host pan-loads older 1m candles, the shared
+master grows and the mirror panels shift → the observed drift.
+
+**B8 keyed "finer-than-host" on the host's NATIVE master (1m); the PO's scenario is host
+DISPLAYING 4h over a 1m master with 1m panels — identical native granularity, so B8 cannot
+fire.** B8 was built to spec; the spec's axis does not cover this repro. The drift is a
+mirror-coupling / viewport-stability issue on host master growth, not a finer-owner case.
+
+### PO confirmation pending
+Reproduce → `__mcDiagReport()`; expect the 1m panels to show `fetches 0` AND `ownerFetches 0`
+(mirroring, B8 not engaged). This distinguishes "B8 didn't engage" (this diagnosis) from "B8
+engaged but drifts anyway."
+
+### The decision needed
+How do we kill the drift for same-native-TF mirror panels when the host master grows on backward
+pan-load — and do we also want to decouple their loading?
+
+### Options
+- **A — Viewport-stability fix (lowest risk, keeps zero-fetch mirror).** When the shared host
+  master prepends older bars (host backward pan-load), mirror panels compensate `offsetX` so the
+  visible candles stay anchored (I3: viewport channel only, no data-ownership change). Kills the
+  drift while preserving the same-pair `fetches=0` win. Does NOT reduce host-side "group-by-group"
+  loading — that stays a separate host-loading concern.
+- **B — Re-key "finer-than-host" to the host's DISPLAY TF, not native.** Then 1m panels ARE finer
+  than a 4h *display* → they self-own bounded 1m windows and decouple entirely (no drift, no
+  group-by-group dependency on the host). Matches the user's mental model. Higher risk: it re-opens
+  the same-pair ownership axis (ESC-006 territory), doubles 1m storage (host + panel both hold 1m),
+  and must still preserve replay playhead sharing.
+- **C — A now, B later.** Ship the cheap viewport-stability fix to stop the drift immediately;
+  evaluate B (loading decoupling) as a separate gated task if group-by-group loading remains a
+  complaint after A + 6c.
+
+### Manager recommendation
+**Read-only DIAG first, then most likely C.** The confirmed part (B8 can't fire here) is solid,
+but the *exact* drift mechanism (offsetX-not-compensated-on-prepend vs. panel re-anchoring to the
+new extent) should be named by a read-only diagnosis before any code, so the fix targets the real
+line. Then A is the safe, high-value immediate win (kills the drift, keeps zero-fetch); B is a
+larger ownership change to consider only if loading smoothness is still unacceptable after A.
+Rationale: the drift is the user's sharpest pain and A addresses it without re-entering ESC-006
+risk; B changes what the render path owns and should not be bundled with a drift fix.
+
+### Director ruling
+_(pending)_
+

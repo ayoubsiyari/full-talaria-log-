@@ -5831,8 +5831,9 @@ function sanitizeScreenshotMap(map) {
   };
 }
 
-function compressCoverImage(file, maxW, maxH, quality) {
-  maxW = maxW||1200; maxH = maxH||630; quality = quality||0.82;
+function compressCoverImage(file, maxEdge, quality) {
+  maxEdge = maxEdge || 1920;
+  quality = quality || 0.92;
   return new Promise(function(resolve, reject) {
     const check = validateStrategyImageFile(file);
     if (!check.ok) { reject(new Error(check.error)); return; }
@@ -5842,14 +5843,27 @@ function compressCoverImage(file, maxW, maxH, quality) {
       var img = new Image();
       img.onerror = function() { reject(new Error('Failed to decode image')); };
       img.onload = function() {
-        var r = Math.min(1, maxW/img.naturalWidth, maxH/img.naturalHeight);
-        var w = Math.round(img.naturalWidth*r), h = Math.round(img.naturalHeight*r);
-        var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
-        cv.getContext('2d').drawImage(img,0,0,w,h);
-        var out = cv.toDataURL('image/jpeg', quality);
+        var nw = img.naturalWidth, nh = img.naturalHeight;
+        if (!nw || !nh) { reject(new Error('Invalid image dimensions')); return; }
+        var longest = Math.max(nw, nh);
+        var r = longest > maxEdge ? (maxEdge / longest) : 1;
+        var w = Math.round(nw * r), h = Math.round(nh * r);
+        var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        var ctx = cv.getContext('2d');
+        if (!ctx) { reject(new Error('Could not process image')); return; }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
+        var preferPng = mime === 'image/png' || mime === 'image/gif';
         var q = quality;
-        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && q > 0.42) {
-          q -= 0.06;
+        var out = preferPng ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', q);
+        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && preferPng) {
+          preferPng = false;
+          out = cv.toDataURL('image/jpeg', q);
+        }
+        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && q > 0.5) {
+          q -= 0.04;
           out = cv.toDataURL('image/jpeg', q);
         }
         if (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
@@ -6955,7 +6969,7 @@ function GeneralInfoStepContent({ c, F,
                 style={{position:'relative',width:100,height:70,flexShrink:0}}
                 onMouseEnter={()=>setImgHovIdx(i)}
                 onMouseLeave={()=>setImgHovIdx(null)}>
-                <img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover',border:'1px solid '+c.brH}}/>
+                <img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover',border:'1px solid '+c.brH,imageRendering:'auto'}}/>
                 {imgHovIdx===i&&(
                   <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1}}>
                     <div onClick={()=>setImgPreview(src)}
