@@ -38,6 +38,9 @@ RUN npm ci
 # Homepage app sources
 COPY homepage/ ./
 
+# Site-wide limits (imported by src/lib/imageUploadLimits.ts)
+COPY shared/constants.json /app/shared/constants.json
+
 # Fresh chart bundle (overwrites committed homepage/public/chart/*)
 COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9
 COPY --from=chart_assets /build/chart/modules ./public/chart/modules
