@@ -1963,6 +1963,7 @@ export default function MultichartGrid({
                     }
                 },
             });
+            try { window.__mcManager = manager; } catch (_) {}
             managerRef.current = manager;
             // Apply current sync mode immediately so the very first
             // initial-sync-to-host (fired when the first iframe goes ready)

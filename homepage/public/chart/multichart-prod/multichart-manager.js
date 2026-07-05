@@ -1050,21 +1050,30 @@
         }
 
         const t = msg.type;
+        const b10FanOutLog = (status) => {
+            if (global.__TALARIA_MC_DEBUG_B10) {
+                console.log('[B10] fanOut type=' + t
+                    + ' vr=' + !!this.syncMode.visibleRange
+                    + ' ts=' + !!this.syncMode.timeSync
+                    + ' ' + status);
+            }
+        };
 
         // Sync-mode gate — when Date/Time range sync is OFF, do not forward
         // visibleRange at all (no "same-symbol exception": that caused iframe
         // pans to move the host while host pans did nothing when host state.symbol
         // lagged iframes).
         if (t === 'crosshair' || t === 'crosshair-clear') {
-            if (!this.syncMode.crosshair) return;
+            if (!this.syncMode.crosshair) { b10FanOutLog('blocked'); return; }
         } else if (t === 'visibleRange') {
-            if (!this.syncMode.visibleRange && !this.syncMode.timeSync) return;
+            if (!this.syncMode.visibleRange && !this.syncMode.timeSync) { b10FanOutLog('blocked'); return; }
         } else if (t === 'symbol') {
-            if (!this.syncMode.symbol) return;
+            if (!this.syncMode.symbol) { b10FanOutLog('blocked'); return; }
         } else if (t === 'drawing-add' || t === 'drawing-update'
                 || t === 'drawing-remove' || t === 'drawing-clear') {
-            if (!this.syncMode.drawings) return;
+            if (!this.syncMode.drawings) { b10FanOutLog('blocked'); return; }
         }
+        b10FanOutLog('forwarded');
 
         this.counters.outFromUser++;
 

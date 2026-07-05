@@ -5446,6 +5446,7 @@ class Chart {
                 this.totalCandles = parent.totalCandles;
             }
 
+            const b10OffsetBefore = this.offsetX;
             if (earlier.length > 0 && Number.isFinite(prevReplayIndex)) {
                 replay.currentIndex = Math.min(
                     Math.max(prevReplayIndex + earlier.length, 0),
@@ -5474,6 +5475,13 @@ class Chart {
                 if (Number.isFinite(Number(prs.replayTimestamp))) {
                     replay.replayTimestamp = Number(prs.replayTimestamp);
                 }
+            }
+            if (typeof window !== 'undefined' && window.__TALARIA_MC_DEBUG_B10) {
+                console.log('[B10] extend earlier=' + earlier.length
+                    + ' prevIdx=' + prevReplayIndex
+                    + ' offsetBefore=' + b10OffsetBefore
+                    + ' offsetAfter=' + this.offsetX
+                    + ' pendingResample=' + !!this._multichartPendingMasterResample);
             }
 
             if (typeof replay.updateChartData === 'function') {
