@@ -1329,36 +1329,36 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                               {/* Row 1: session name */}
                               <div>
                                 {lbl("Session name *")}
-                                <input value={newSessName} onChange={e=>setNewSessName(sanitizeSessionNameInput(e.target.value))} maxLength={SESSION_NAME_MAX} placeholder="e.g. EURUSD Test" style={{...inp()}}/>
+                                <input value={newSessName} onChange={e=>setNewSessName(sanitizeSessionNameInput(e.target.value))} maxLength={SESSION_NAME_MAX} placeholder="e.g. EURUSD Test" title={newSessName||undefined} style={{...inp(),overflow:"hidden",textOverflow:"ellipsis"}}/>
                               </div>
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>
                                 {lbl("Strategy")}
                                 <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
-                                  <span style={{flex:1,color:playbookDisplay?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                  <span style={{flex:1,color:playbookDisplay?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}} title={playbookDisplay||undefined}>
                                     {playbookDisplay||"— None —"}
                                   </span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessStratDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 </div>
                                 {newSessStratDropOpen&&ddAnchor&&(
-                                  <><div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>{setNewSessStratDropOpen(false);setDdAnchor(null);}}/><div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,width:ddAnchor.width,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:200}}>
+                                  <><div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>{setNewSessStratDropOpen(false);setDdAnchor(null);}}/><div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,width:ddAnchor.width,maxWidth:ddAnchor.width,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:200,overflow:"hidden",boxSizing:"border-box"}}>
                                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                                     {(()=>{const isAct=newSessPlaybook==="";const isH=newSessStratHov==="__none";return(
                                       <div onClick={()=>{setNewSessPlaybook("");setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov("__none")} onMouseLeave={()=>setNewSessStratHov(null)}
-                                        style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
+                                        style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s",minWidth:0,overflow:"hidden"}}>
                                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                        <span style={{fontSize:11,fontWeight:isAct?700:400,color:isAct?c.acL:isH?c.tx:c.tm,fontFamily:F,fontStyle:"italic"}}>— None —</span>
+                                        <span style={{fontSize:11,fontWeight:isAct?700:400,color:isAct?c.acL:isH?c.tx:c.tm,fontFamily:F,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>— None —</span>
                                       </div>
                                     );})()}
                                     {stratItems.length ? (
-                                      <div>
+                                      <div style={{minWidth:0,overflow:"hidden"}}>
                                         <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>My Strategies</div>
                                         {stratItems.map(s=>{const pbVal=s.id!=null?`strategy:${s.id}`:String(s.name||"");const isAct=newSessPlaybook===pbVal;const isH=newSessStratHov===pbVal;return(
                                           <div key={String(s.id ?? s.name)} onClick={()=>{setNewSessPlaybook(pbVal);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(pbVal)} onMouseLeave={()=>setNewSessStratHov(null)}
-                                            style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
+                                            style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s",minWidth:0,overflow:"hidden"}}>
                                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.name}</span>
+                                            <span title={s.name} style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,flex:1}}>{s.name}</span>
                                           </div>
                                         );})}
                                       </div>
