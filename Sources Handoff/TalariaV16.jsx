@@ -45,6 +45,15 @@ const strategyRowKey = (row) => {
   if (localId) return `local:${localId}`;
   return null;
 };
+const sessionBacktestStrategyKey = (sess) => {
+  if (!sess) return null;
+  const cfg = sess?.config && typeof sess.config === "object" ? sess.config : {};
+  for (const hint of [sess.strategyId, cfg.strategy_id, cfg.strategyId, cfg.playbook_id, cfg.playbookId]) {
+    const key = strategyRowKey({ id: hint });
+    if (key) return key;
+  }
+  return null;
+};
 const sameStrategyRowId = (a, b) => {
   const keyA = strategyRowKey(typeof a === "object" && a !== null ? a : { id: a });
   const keyB = strategyRowKey(typeof b === "object" && b !== null ? b : { id: b });
@@ -267,9 +276,10 @@ const formatSessionNetPnlDisplay = (pnl, theme) => {
   if (pnl == null) return { text: "—", color: theme.tm };
   const n = Number(pnl);
   if (!Number.isFinite(n)) return { text: "—", color: theme.tm };
-  if (sessionNetPnlIsZero(n)) return { text: "$0", color: theme.ts };
-  if (n > 0) return { text: `+$${n.toLocaleString()}`, color: theme.gn };
-  return { text: `-$${Math.abs(n).toLocaleString()}`, color: theme.rd };
+  const fmt = (abs) => abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (sessionNetPnlIsZero(n)) return { text: "$0.00", color: theme.ts };
+  if (n > 0) return { text: `+$${fmt(n)}`, color: theme.gn };
+  return { text: `-$${fmt(Math.abs(n))}`, color: theme.rd };
 };
 const estimateActionMenuHeight = (actions, { rowH = 30, dividerH = 5, accentH = 2 } = {}) =>
   accentH + (actions || []).reduce((sum, action) => sum + (action?.label === "divider" ? dividerH : rowH), 0);
@@ -2263,7 +2273,7 @@ const SepOverlay = ({ topY, botY, onInsert }) => {
 const ConditionCard = ({ id, data, selected }) => {
   const [editingTitle, setEditingTitle] = React.useState(false);
   const [titleDraft, setTitleDraft] = React.useState('');
-  const [taH, setTaH] = React.useState('auto');
+  const [taH, setTaH] = React.useState(`${COND_TITLE_MIN_HEIGHT_PX}px`);
   const [hDel, setHDel] = React.useState(false);
   const [hDesc, setHDesc] = React.useState(false);
   const [hMand, setHMand] = React.useState(false);
@@ -2377,16 +2387,21 @@ const ConditionCard = ({ id, data, selected }) => {
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure); };
   }, [descOpen, descDraft]);
 
-  React.useEffect(() => {
-    if (editingTitle && titleRef.current) {
-      titleRef.current.focus();
-      titleRef.current.select();
-      titleRef.current.style.height = '1px';
-      const sh = titleRef.current.scrollHeight;
-      titleRef.current.style.height = sh + 'px';
-      setTaH(sh + 'px');
-    }
-  }, [editingTitle]);
+  const syncTitleHeight = React.useCallback(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const sh = Math.max(COND_TITLE_MIN_HEIGHT_PX, el.scrollHeight);
+    el.style.height = `${sh}px`;
+    setTaH(`${sh}px`);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!editingTitle || !titleRef.current) return;
+    titleRef.current.focus();
+    titleRef.current.select();
+    syncTitleHeight();
+  }, [editingTitle, titleDraft, syncTitleHeight]);
 
   const startTitleEdit = () => {
     setTitleDraft(strategyFlowEditLabel(data.label, 'condition'));
@@ -2394,11 +2409,14 @@ const ConditionCard = ({ id, data, selected }) => {
   };
 
   const commitTitle = () => {
-    const t = titleDraft.trim();
+    const t = titleDraft.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
     const finalLabel = t || DEFAULT_CONDITION_LABEL;
     _cvCb.updateCondition?.(id, { label: finalLabel });
     setEditingTitle(false);
+    setTaH(`${COND_TITLE_MIN_HEIGHT_PX}px`);
   };
+
+  const displayTitle = normalizeConditionTitleLabel(data.label);
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
   const handleFileChange = async (e) => {
@@ -2680,30 +2698,32 @@ const ConditionCard = ({ id, data, selected }) => {
       <div
           onMouseEnter={()=>setHTitle(true)}
           onMouseLeave={()=>setHTitle(false)}
-          style={{flex:1, minHeight:0, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 12px 10px'}}>
-          <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, width:'100%'}}>
+          style={{flex:1, minHeight:0, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 12px 28px', position:'relative'}}>
             {editingTitle ? (
               <textarea ref={titleRef} value={titleDraft}
                 maxLength={70}
-                onChange={e=>setTitleDraft(e.target.value)}
+                rows={1}
+                onChange={e=>setTitleDraft(e.target.value.replace(/[\r\n]+/g, ' '))}
                 onBlur={commitTitle}
                 onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();commitTitle();} if(e.key==='Escape')setEditingTitle(false); e.stopPropagation(); }}
                 className="tlc-edit"
-                style={{width:'100%', height:taH, fontSize:22, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid rgba(255,255,255,0.45)', outline:'none', color:'#fff', padding:'2px 0', fontFamily:'inherit', lineHeight:1.3, textAlign:'center', resize:'none', caretColor:'#fff', overflow:'hidden'}}
+                style={{width:'100%', height:taH, minHeight:COND_TITLE_MIN_HEIGHT_PX, fontSize:COND_TITLE_FONT_SIZE, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid rgba(255,255,255,0.45)', outline:'none', color:'#fff', padding:'2px 0', fontFamily:'inherit', lineHeight:COND_TITLE_LINE_HEIGHT, textAlign:'center', resize:'none', caretColor:'#fff', overflow:'hidden'}}
               />
             ) : (
               <div data-nodrag="1" onDoubleClick={e=>{ e.stopPropagation(); startTitleEdit(); }}
-                style={{fontSize:22, fontWeight:700, color:'rgba(255,255,255,0.95)', lineHeight:1.35, cursor:'default', wordBreak:'break-word', textAlign:'center', userSelect:'none', width:'100%'}}>
-                {data.label||DEFAULT_CONDITION_LABEL}
+                title={displayTitle}
+                style={{fontSize:COND_TITLE_FONT_SIZE, fontWeight:700, color:'rgba(255,255,255,0.95)', lineHeight:COND_TITLE_LINE_HEIGHT, cursor:'default', wordBreak:'break-word', overflowWrap:'break-word', textAlign:'center', userSelect:'none', width:'100%', display:'-webkit-box', WebkitLineClamp:COND_TITLE_MAX_LINES, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
+                {displayTitle}
               </div>
             )}
             <div
               data-nodrag="1"
               onMouseDown={e=>{ e.preventDefault(); }}
               onClick={e=>{ e.stopPropagation(); if(editingTitle){ commitTitle(); } else { startTitleEdit(); } }}
-              style={{display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:4, cursor:'default', transition:'background 0.12s',
+              style={{position:'absolute', bottom:6, left:'50%', transform:'translateX(-50%)', display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:4, cursor:'default', transition:'background 0.12s, opacity 0.12s',
                 background: editingTitle ? 'rgba(255,255,255,0.18)' : hTitle ? 'rgba(255,255,255,0.14)' : 'transparent',
-                visibility: (editingTitle||hTitle) ? 'visible' : 'hidden'}}
+                opacity: (editingTitle||hTitle) ? 1 : 0,
+                pointerEvents: (editingTitle||hTitle) ? 'auto' : 'none'}}
               onMouseEnter={e=>{ e.currentTarget.style.background= editingTitle ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.22)'; }}
               onMouseLeave={e=>{ e.currentTarget.style.background= editingTitle ? 'rgba(255,255,255,0.18)' : hTitle ? 'rgba(255,255,255,0.14)' : 'transparent'; }}
             >
@@ -2718,7 +2738,6 @@ const ConditionCard = ({ id, data, selected }) => {
                 </svg>
               )}
             </div>
-          </div>
         </div>
 
       {/* Screenshot viewer window */}
@@ -2893,6 +2912,14 @@ const COND_W = 220, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
 const DEFAULT_GROUP_LABEL = 'NEW GROUP';
 const DEFAULT_CONDITION_LABEL = 'New condition';
+const COND_TITLE_FONT_SIZE = 22;
+const COND_TITLE_LINE_HEIGHT = 1.35;
+const COND_TITLE_MAX_LINES = 4;
+const COND_TITLE_MIN_HEIGHT_PX = COND_TITLE_FONT_SIZE * COND_TITLE_LINE_HEIGHT;
+const normalizeConditionTitleLabel = (label) => {
+  const v = String(label || DEFAULT_CONDITION_LABEL).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return v || DEFAULT_CONDITION_LABEL;
+};
 const isDefaultStrategyFlowGroupLabel = (label) => {
   const v = String(label || '').trim();
   return !v || /^new group$/i.test(v) || /^group$/i.test(v);
@@ -2946,6 +2973,23 @@ function restackAll(nds) {
     y += SEC_H + SEC_GAP;
   }
   return [...nds.filter(n => n.type !== 'section' && n.type !== 'condition'), ...result];
+}
+
+function computeFlowContentBottomGraph(sections = []) {
+  if (!sections.length) return SEC_GAP;
+  const sorted = [...sections].sort((a, b) => a.position.y - b.position.y);
+  const last = sorted[sorted.length - 1];
+  const h = last.height ?? last.style?.height ?? SEC_H;
+  return last.position.y + h + SEC_GAP;
+}
+
+function clampStrategyFlowViewport(rf, canvasH, contentBotGraph) {
+  if (!rf || !canvasH) return;
+  const { x, y, zoom } = rf.getViewport();
+  const maxY = SEC_GAP * zoom;
+  const minY = canvasH - contentBotGraph * zoom;
+  const newY = minY >= maxY ? maxY : Math.min(maxY, Math.max(minY, y));
+  if (Math.abs(newY - y) > 0.5) rf.setViewport({ x, y: newY, zoom });
 }
 
 function normalizeCanvasFlowNodes(nds) {
@@ -4116,30 +4160,39 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [setCanvasNodes]);
 
   const addSection = useCallback(() => {
+    setSliding(true);
     setCanvasNodes(nds => {
       const sections = nds.filter(n => n.type === 'section');
       if (sections.length >= 10) return nds;
-      const maxY = sections.length > 0
-        ? Math.max(...sections.map(s => s.position.y + (s.style?.height ?? SEC_H))) + SEC_GAP
-        : 0;
       const colorScheme = SECTION_COLOR_CYCLE[sections.length % SECTION_COLOR_CYCLE.length];
       const id = `sec_${Date.now()}`;
-      setTimeout(() => {
-        if (rfRef.current) {
-          const { zoom } = rfRef.current.getViewport();
-          rfRef.current.setCenter(SEC_W / 2, maxY + getSectionHeight(0) / 2, { zoom, duration: 250 });
-        }
-      }, 50);
-      return [...nds, {
+      const maxSortY = sections.length
+        ? Math.max(...sections.map(s => s.position.y)) + 1
+        : 0;
+      return restackAll([...nds, {
         id, type: 'section',
-        position: { x: SEC_X, y: maxY },
+        position: { x: SEC_X, y: maxSortY },
         style: { width: SEC_W, height: getSectionHeight(0) },
         width: SEC_W, height: getSectionHeight(0),
         draggable: false, selectable: false, focusable: false,
         data: { ...colorScheme, sectionId: id, label: 'NEW GROUP', condCount: 0 },
         zIndex: -1,
-      }];
+      }]);
     });
+    setTimeout(() => {
+      setSliding(false);
+      const rf = rfRef.current;
+      const ch = canvasContainerRef.current?.clientHeight || 0;
+      if (!rf || !ch) return;
+      const secs = canvasNodesRef.current.filter(n => n.type === 'section');
+      const cbg = computeFlowContentBottomGraph(secs);
+      clampStrategyFlowViewport(rf, ch, cbg);
+      const last = [...secs].sort((a, b) => a.position.y - b.position.y).at(-1);
+      if (last) {
+        const { zoom } = rf.getViewport();
+        rf.setCenter(SEC_W / 2, last.position.y + SEC_H / 2, { zoom, duration: 250 });
+      }
+    }, 350);
   }, [setCanvasNodes]);
 
   const insertSectionAtStart = useCallback(() => {
@@ -4149,18 +4202,14 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         if (nds.filter(n => n.type === 'section').length >= 10) return nds;
         const id = `sec_${Date.now()}`;
         const newH = getSectionHeight(0);
-        const shift = newH + SEC_GAP;
         const colorScheme = SECTION_COLOR_CYCLE[nds.filter(n=>n.type==='section').length % SECTION_COLOR_CYCLE.length];
-        const shifted = nds.map(n =>
-          (n.type === 'section' || n.type === 'condition')
-            ? { ...n, position: { ...n.position, y: n.position.y + shift } }
-            : n
-        );
-        return [{ id, type:'section', position:{x:0,y:0}, style:{width:SEC_W,height:newH},
+        return restackAll([...nds, {
+          id, type:'section', position:{ x: SEC_X, y: -1 },
+          style:{ width:SEC_W, height:newH },
           width:SEC_W, height:newH,
           draggable:false, selectable:false, focusable:false,
           data:{ ...colorScheme, sectionId:id, label:'NEW GROUP', condCount:0 }, zIndex:-1,
-        }, ...shifted];
+        }]);
       });
       setTimeout(() => setSliding(false), 350);
     });
@@ -4174,28 +4223,17 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     }
     setSliding(true);
     requestAnimationFrame(() => {
-      setCanvasNodes(nds => {
-        const secs = nds.filter(n => n.type === 'section').sort((a, b) => a.position.y - b.position.y);
-        const idx = secs.findIndex(s => s.id === sectionId);
-        const deletedH = idx >= 0 ? (secs[idx].style?.height ?? SEC_H) : SEC_H;
-        const shift = deletedH + SEC_GAP;
-        const shiftedSecIds = idx >= 0 ? new Set(secs.slice(idx + 1).map(s => s.id)) : new Set();
-        return nds.map(n => {
-          if (n.id === sectionId) return { ...n, data: { ...n.data, deleting: true } };
-          if (n.type === 'section' && shiftedSecIds.has(n.id))
-            return { ...n, position: { ...n.position, y: n.position.y - shift } };
-          if (n.type === 'condition' && shiftedSecIds.has(n.data?.sectionId))
-            return { ...n, position: { ...n.position, y: n.position.y - shift } };
-          return n;
-        });
-      });
+      setCanvasNodes(nds => nds.map(n =>
+        n.id === sectionId ? { ...n, data: { ...n.data, deleting: true } } : n
+      ));
       setTimeout(() => {
-        setSliding(false);
         setCanvasNodes(nds => {
           const condIds = nds.filter(n => n.type === 'condition' && n.data?.sectionId === sectionId).map(n => n.id);
           setCanvasEdges(eds => eds.filter(e => !condIds.includes(e.source) && !condIds.includes(e.target)));
-          return nds.filter(n => n.id !== sectionId && n.data?.sectionId !== sectionId);
+          const filtered = nds.filter(n => n.id !== sectionId && n.data?.sectionId !== sectionId);
+          return restackAll(filtered);
         });
+        setSliding(false);
       }, 320);
     });
   }, [setCanvasNodes, setCanvasEdges, showOutlineImageError]);
@@ -4211,25 +4249,16 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         const colorScheme = SECTION_COLOR_CYCLE[secs.length % SECTION_COLOR_CYCLE.length];
         const id = `sec_${Date.now()}`;
         const newH = getSectionHeight(0);
-        const insertY = secs[afterIdx].position.y + (secs[afterIdx].style?.height ?? SEC_H) + SEC_GAP;
-        const shift = newH + SEC_GAP;
-        const shiftedSecIds = new Set(secs.slice(afterIdx + 1).map(s => s.id));
-        const updated = nds.map(n => {
-          if (n.type === 'section' && shiftedSecIds.has(n.id))
-            return { ...n, position: { ...n.position, y: n.position.y + shift } };
-          if (n.type === 'condition' && shiftedSecIds.has(n.data?.sectionId))
-            return { ...n, position: { ...n.position, y: n.position.y + shift } };
-          return n;
-        });
-        return [...updated, {
+        const insertSortY = secs[afterIdx].position.y + 0.01;
+        return restackAll([...nds, {
           id, type: 'section',
-          position: { x: SEC_X, y: insertY },
+          position: { x: SEC_X, y: insertSortY },
           style: { width: SEC_W, height: newH },
           width: SEC_W, height: newH,
           draggable: false, selectable: false, focusable: false,
-          data: { sectionId: id, label: 'NEW GROUP', condCount: 0 },
+          data: { ...colorScheme, sectionId: id, label: 'NEW GROUP', condCount: 0 },
           zIndex: -1,
-        }];
+        }]);
       });
       setTimeout(() => setSliding(false), 350);
     });
@@ -4700,6 +4729,17 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   // Keep scroll values ref current so the wheel handler never has stale closures
   scrollValuesRef.current = { canvasH, contentBotGraph };
 
+  // Reset scroll when content shrinks (e.g. after deleting groups while scrolled down)
+  useEffect(() => {
+    if (flowViewMode !== 'board' || isDraggingRef.current || sliding) return;
+    const rf = rfRef.current;
+    if (!rf || !canvasH) return;
+    const id = requestAnimationFrame(() => {
+      clampStrategyFlowViewport(rf, canvasH, contentBotGraph);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [flowViewMode, canvasH, contentBotGraph, canvasNodes, sliding]);
+
   // Non-passive wheel handler: intercepts all scroll, applies vertical clamp
   useEffect(() => {
     if (flowViewMode !== 'board') return;
@@ -4712,7 +4752,10 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       const { x, y, zoom } = rfRef.current.getViewport();
       const minY = ch - cbg * zoom;
       const maxY = SEC_GAP * zoom;
-      if (minY >= maxY) return; // all content fits, no scroll needed
+      if (minY >= maxY) {
+        if (Math.abs(y - maxY) > 0.5) rfRef.current.setViewport({ x, y: maxY, zoom });
+        return;
+      }
       const newY = Math.min(maxY, Math.max(minY, y - e.deltaY * 0.8));
       rfRef.current.setViewport({ x, y: newY, zoom });
     };
@@ -5536,6 +5579,22 @@ const dropPos = (ref, w, minBelow, flipMaxH, center=true) => {
   const left=center?Math.max(8,Math.min(rl+rw/2-w/2,safeW-w-8)):Math.min(rl,safeW-w-8);
   return {top,left,maxH};
 };
+/** Viewport coords for menus portaled to document.body (Strategy Builder scroll panes). */
+const dropPosViewport = (ref, w, minBelow, flipMaxH, center = true) => {
+  const r = ref.current?.getBoundingClientRect();
+  if (!r) return null;
+  const safeH = window.innerHeight - 16;
+  const safeW = window.innerWidth - 16;
+  const below = safeH - r.bottom;
+  const above = r.top - 10;
+  const flip = below < minBelow && above > below;
+  const top = flip ? Math.max(8, r.top - Math.min(flipMaxH, above) - 4) : r.bottom + 4;
+  const maxH = flip ? Math.min(flipMaxH, above) : Math.max(80, below - 8);
+  const left = center
+    ? Math.max(8, Math.min(r.left + r.width / 2 - w / 2, safeW - w))
+    : Math.max(8, Math.min(r.left, safeW - w));
+  return { top, left, maxH };
+};
 
 const getInstFlags = id => {
   if (id==='6e') return {base:'EUR',quote:'USD'};
@@ -5755,6 +5814,7 @@ function GeneralInfoStepContent({ c, F,
 }) {
   const tags = stratBTags || [];
   const MAX_TAGS = 10;
+  const tagAtMax = tags.length >= MAX_TAGS;
   const [tagInput, setTagInput] = React.useState('');
   const [tagHov, setTagHov] = React.useState(null);
   const [tagDropOpen, setTagDropOpen] = React.useState(false);
@@ -5816,8 +5876,12 @@ function GeneralInfoStepContent({ c, F,
   const [supPickHov, setSupPickHov]   = React.useState(null);
   const [supPickCat, setSupPickCat]   = React.useState(null);
   const mktWrapRef = React.useRef(null);
+  const mktMenuRef = React.useRef(null);
   const trdWrapRef = React.useRef(null);
+  const trdMenuRef = React.useRef(null);
   const supWrapRef = React.useRef(null);
+  const supMenuRef = React.useRef(null);
+  const generalInfoScrollRef = React.useRef(null);
   const [tfPickOpen, setTfPickOpen] = React.useState(false);
   const [tfPickPos, setTfPickPos]   = React.useState({top:0,left:0,maxH:360});
   const [tfPickHov, setTfPickHov]   = React.useState(null);
@@ -6200,15 +6264,15 @@ function GeneralInfoStepContent({ c, F,
                     })}
                   </div>
                   <div style={{flexShrink:0,borderTop:`1px solid ${c.brH}`,padding:'8px 10px',display:'flex',alignItems:'center',gap:6}}>
-                    <div style={{flex:1,display:'flex',alignItems:'center',border:`1px solid ${tagInputFocus?c.acB:c.brH}`,background:c.el,height:24,padding:'0 8px',transition:'border-color 0.12s'}}>
-                      <input value={tagInput} onChange={e=>setTagInput(e.target.value)}
+                    <div style={{flex:1,display:'flex',alignItems:'center',border:`1px solid ${tagInputFocus?c.acB:c.brH}`,background:c.el,height:24,padding:'0 8px',transition:'border-color 0.12s',opacity:tagAtMax?0.45:1}}>
+                      <input value={tagInput} onChange={e=>setTagInput(e.target.value)} disabled={tagAtMax}
                         onFocus={()=>setTagInputFocus(true)} onBlur={()=>setTagInputFocus(false)}
-                        onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addTag(tagInput);setTagInput('');}}}
-                        placeholder="Create custom tag…"
+                        onKeyDown={e=>{if(e.key==='Enter'&&tagInput.trim()&&!tagAtMax){e.preventDefault();addTag(tagInput);setTagInput('');}}}
+                        placeholder={tagAtMax?'10 tags max':'Create custom tag…'}
                         style={{flex:1,background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontFamily:F,minWidth:0}}/>
                     </div>
-                    <div onClick={()=>{if(tagInput.trim()){addTag(tagInput);setTagInput('');}}}
-                      style={{display:'inline-flex',alignItems:'center',gap:3,padding:'0 10px',height:24,background:tagInput.trim()?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',border:`1px solid ${tagInput.trim()?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,fontSize:9,fontWeight:700,color:tagInput.trim()?'#fff':c.tm,letterSpacing:'0.04em',cursor:'default',opacity:tagInput.trim()?1:0.55,transition:'background 0.12s',textTransform:'uppercase'}}>
+                    <div onClick={()=>{if(tagInput.trim()&&!tagAtMax){addTag(tagInput);setTagInput('');}}}
+                      style={{display:'inline-flex',alignItems:'center',gap:3,padding:'0 10px',height:24,background:tagInput.trim()&&!tagAtMax?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',border:`1px solid ${tagInput.trim()&&!tagAtMax?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,fontSize:9,fontWeight:700,color:tagInput.trim()&&!tagAtMax?'#fff':c.tm,letterSpacing:'0.04em',cursor:'default',opacity:tagInput.trim()&&!tagAtMax?1:0.55,transition:'background 0.12s',textTransform:'uppercase'}}>
                       <svg width={9} height={9} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
                       Add
                     </div>
@@ -10296,38 +10360,42 @@ const TalariaV8b = () => {
     ];
   }, [sessions]);
   const strategyBacktestSessionsIndex = useMemo(() => {
-    const index = new Map();
-    (strategyReviewSessions || []).forEach((sess) => {
-      const key = normalizeStrategyBankNameKey(sess.strategyName);
+    const byName = new Map();
+    const byStrategyKey = new Map();
+    const pushTo = (map, key, sess) => {
       if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(sess);
+    };
+    (strategyReviewSessions || []).forEach((sess) => {
       const hasBeenUsed =
         (sess.progress || 0) > 0 ||
         (sess.trades || 0) > 0 ||
         sess.pnl != null ||
         sess.winRate != null;
       if (!hasBeenUsed) return;
-      if (!index.has(key)) index.set(key, []);
-      index.get(key).push(sess);
+      pushTo(byName, normalizeStrategyBankNameKey(sess.strategyName), sess);
+      pushTo(byStrategyKey, sessionBacktestStrategyKey(sess), sess);
     });
-    for (const arr of index.values()) {
+    const sortSessions = (arr) =>
       arr.sort((a, b) => new Date(b.createdAt || b.endDate || 0) - new Date(a.createdAt || a.endDate || 0));
-    }
-    return index;
+    for (const arr of byName.values()) sortSessions(arr);
+    for (const arr of byStrategyKey.values()) sortSessions(arr);
+    return { byName, byStrategyKey };
   }, [strategyReviewSessions]);
   const sessionsForStrategyBankName = useCallback((name) => {
     const key = normalizeStrategyBankNameKey(name);
     if (!key) return [];
-    const direct = strategyBacktestSessionsIndex.get(key);
-    if (direct?.length) return direct;
-    const matched = [];
-    for (const [sessKey, arr] of strategyBacktestSessionsIndex) {
-      if (sessKey === key || sessKey.includes(key) || key.includes(sessKey)) matched.push(...arr);
-    }
-    if (!matched.length) return [];
-    return matched.sort(
-      (a, b) => new Date(b.createdAt || b.endDate || 0) - new Date(a.createdAt || a.endDate || 0)
-    );
+    return strategyBacktestSessionsIndex.byName.get(key) || [];
   }, [strategyBacktestSessionsIndex]);
+  const sessionsForStrategyBankRow = useCallback((row) => {
+    const stratKey = strategyRowKey(row);
+    if (stratKey) {
+      const byId = strategyBacktestSessionsIndex.byStrategyKey.get(stratKey);
+      if (byId?.length) return byId;
+    }
+    return sessionsForStrategyBankName(row?.name);
+  }, [strategyBacktestSessionsIndex, sessionsForStrategyBankName]);
   const [newSessName, setNewSessName] = useState("");
   const [newSessSymbol, setNewSessSymbol] = useState("NQ");
   const [newSessTf, setNewSessTf] = useState("1H");
@@ -44832,6 +44900,7 @@ const TalariaV8b = () => {
 
           const normalizeStrategyBankName = normalizeStrategyBankNameKey;
           const sessionsForStrategyName = sessionsForStrategyBankName;
+          const sessionsForStrategyRow = sessionsForStrategyBankRow;
 
           const templatePreviewStrategies = STRATEGY_TEMPLATES.filter(tpl=>!hiddenTemplateIds.has(tpl.id)).map((tpl, idx) => {
             const conditions = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).length,0);
@@ -44879,7 +44948,7 @@ const TalariaV8b = () => {
           const communityDataLoading = stratLiveMode && (dashBootLoading || communityFetchLoading);
           const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
           const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
-          const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
+          const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyRow(s))}));
           const mineSource = stratLiveMode
             ? userStrategySource
             : [...userStrategySource, ...templatePreviewStrategies];
@@ -45251,7 +45320,7 @@ const TalariaV8b = () => {
                         <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
                       </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"flex-start",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box"}}>
+                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box"}}>
                       <div title={strat.name} style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>

@@ -248,7 +248,188 @@ exact §6b layout and reports, per panel, symbol + `fileId`. If B is a different
 there is no RC1 bug to fix. If B is same-symbol but different fileId, B-FIX-2 = inherit
 host fileId at boot (Phase 1 Task 1.3).
 
-## 7. Manager recommendation
+## 6g. REPRO-B verdict + B-FIX-2 closing (2026-07-05)
+
+`DIAG-REPRO-B-boot-file-loads.md` accepted and verified. The boot `file 22/27/29 bar
+loads via: tiles` come from `_scheduleSmartPrefetchOthers()` (chart.js:5175, scheduled
+at :1954 after the active backtest file loads) → `getSymbolSwitcherEntries()` →
+`_fetchSmartWindowViaBars` → `_fetchBarsWindow`. This is the **backtest symbol-switcher
+prefetch** (cache-warming for instant pair-switches), NOT a panel booting on a wrong
+fileId.
+
+**B-FIX-2 disposition — CLOSED as NOT-A-BUG** (maps to D-004 pre-authorized outcome #2),
+on objective evidence:
+- §6f: same-symbol 2×2, B `fileId = 25`, B `fetches = 0` → same-symbol ownership works.
+- REPRO-B: boot non-host loads are legitimate prefetch, not transient wrong-file boot.
+
+REPRO-A CONFIRMED (2026-07-05): B set to a different instrument reported `fileId = 22`
+(host/C/D = 25); logs show `file 22 pan loads via: candles` → B self-fetches its OWN
+file. Different-symbol self-fetch is correct owner behavior, confirming §6b was a
+different-symbol case. (Capture note: the report table showed `fetches = 0` only because
+of a `reset → pan → reset → report` ordering artifact; the pan logs are the evidence.
+Correct order is `reset → act → report`.)
+
+Two REPRO-A side observations (flagged, not yet acted on):
+- `No candles drawn! All 99 ... Skipped: 99` reappeared during B's PAN on the
+  independent-symbol panel. B-FIX-1 fixed the replay-follow desync; this is the pan-time
+  desync on an independent panel (different path). Seen once — needs a clean repro to
+  confirm whether it is a real residual or a transient mid-load frame.
+- `Drawings synced to cloud (0 drawings)` succeeded with no 403 flood → consistent with
+  S-403-2 effective.
+
+**Next queue (D-002 "queued behind"):** render budget RC2/RC4 — Phase 2 Task 2.1
+(throttled mid-drag flush), Task 2.2 (notification-driven extends), Phase 3 Task 3.1
+(follower half-rate paints). Residual target: `renders ≈ 1000/panel`,
+`resamples ≈ 782/panel` per replay minute.
+
+## 6h. NEW issue — independent-symbol panel pan desync (build b586, 2026-07-05)
+
+Clean capture (`reset → pan B → report`), B = different symbol on `fileId 27`, host/C/D on
+25:
+
+| panel | fileId | tf      | fetches | fetchedBars | resamples | renders    |
+|-------|--------|---------|---------|-------------|-----------|------------|
+| HOST  | 25     | 4h      | 0       | 0           | 0         | 35 → 58    |
+| B     | 27     | 1d → 1m | 12 → 16 | 4000 → 6000 | 17 → 21   | 793 → 1626 |
+| C     | 25     | 4h      | 0       | 0           | 0         | 2          |
+| D     | 25     | 4h      | 0       | 0           | 0         | 2          |
+
+Three real problems on the actively-panned independent panel B:
+1. **`No candles drawn ... Skipped: 79` ×3 during pan** — viewport off data; candles don't
+   paint. Same CLASS as B-FIX-1 but on the independent-panel PAN path (untouched by
+   B-FIX-1).
+2. **Render thrash** — B rendered 793 then 1626× vs C/D = 2, host 35–58, with only ~20
+   resamples. ~1000 wasted repaints per gesture.
+3. **TF instability** — B `tf` flipped `1d → 1m` between reports (possible "wrong-TF data"
+   class); needs PO confirmation whether user changed it or it drifted.
+
+B's self-fetch (file 27) is CORRECT (different instrument). The defect is paint/render/TF
+stability during the independent panel's pan — user-visible.
+
+**PO real-world clarification (2026-07-05):** panning B (independent panel) to load old
+data is **fast and visually perfect**, including on daily TF. So the `Skipped: 79`
+warnings are **cosmetic/transient, NOT a user-visible break** — downgrade #1 from
+correctness bug to cosmetic. The `tf 1d→1m` (#3) was the PO manually trying daily TF, not
+drift — NOT a bug. #2 (render thrash ~1626 repaints/gesture) remains as perf-only debt.
+
+**Reframed target (PO felt pain):** changing the HOST to another pair AND changing its
+timeframe shows a visible LOADING delay. This is the original "fast like TradingView"
+goal — host pair-switch + TF-switch load latency. This, not the independent-panel pan,
+is the next priority.
+
+**Escalation to Director:** propose retargeting the queue to diagnose host
+**pair-switch + TF-switch load latency** (measure fetch vs resample vs render split via
+diagnostics) before generic Phase 2 render-budget work. Independent-panel-pan cosmetic
+non-paint is logged as low-priority follow-up. Awaiting Director call.
+
+## 6i. Host pair+TF switch load latency — measured (build b586, 2026-07-05)
+
+HOST switched pair to `fileId 27` @ `4h`; B/C/D idle on 25/1m.
+
+| metric (HOST) | report 1 | report 2 |
+|---------------|----------|----------|
+| fetches       | 49       | 57       |
+| fetchedBars   | 90000    | 106000   |
+| resamples     | 97       | 113      |
+| renders       | 1187     | 1301     |
+| lastFetchMs   | 1217     | 904      |
+
+Root cause (measured, not guessed): pair+TF switch **eagerly pages ~90–106k bars in ~50
+sequential ~2000-bar fetches** (~1s each) and **re-renders ~1200×** (once per chunk). A
+4h viewport needs only a few hundred bars. This eager full-history load + render-per-chunk
+IS the loading delay. Idle panels B/C/D also repaint 171–196× from host fan-out (0 fetch).
+
+Fix direction (for the eventual gated task): **viewport-first fetch** on pair/TF switch
+(small window → instant first paint), defer history to on-demand pan-load; **coalesce
+renders** during multi-chunk loads; consider damping idle-panel fan-out repaints. Primary
+cost = network round trips (fetches), secondary = render thrash.
+
+This is the concrete evidence behind the §6h retarget proposal. Recommend Director approve
+a read-only diagnosis (B-DIAG-4) of the pair/TF-switch fetch strategy next.
+
+## 6j. CRITICAL scoping — §6i latency is MULTICHART-ONLY (PO, 2026-07-05)
+
+PO reports: the host pair+TF switch is **fast/perfect when the main chart is ALONE**, and
+only exhibits the §6i eager-load behavior (~90–106k bars / ~50 fetches / ~1200 renders)
+**when the same host is inside a multichart/multi-panel layout.**
+
+**This contradicts D-006's stated constraint** that the switch paths are "NOT panel-gated
+(single chart shares them)." Evidence says the opposite: single-chart switch is already
+optimal; a **multichart-specific condition forces the host into eager full-history load.**
+
+Implications:
+- The fix is likely **multichart-gated** after all → I7 is easier (single-chart path is
+  already good and must stay byte-identical).
+- B-DIAG-4 must be re-centered on the **single-chart-fast vs multichart-slow DELTA**: what
+  multichart condition (session-master/replay-armed mode? mirror priming? sibling
+  data-share? forced 1m session master for panel feeding?) switches the host from
+  viewport-first (single) to full-session paging (multi).
+- The BLOCKING baseline S1/S6/S11 (single chart) now doubles as the **"good/fast"
+  reference numbers** to compare the multichart-slow switch against.
+
+**Escalation to Director:** D-006's non-panel-gated premise is contradicted by PO
+evidence. Recommend B-DIAG-4 deliverable #1/#2 be re-scoped to a single-vs-multichart diff
+(find the branch that diverges), and note the fix will most likely be multichart-gated.
+Awaiting acknowledgement; proceeding to dispatch the re-scoped B-DIAG-4 unless countermanded.
+
+## 6k. B-DIAG-4 sign-off (2026-07-05) — root cause pinned
+
+`DIAG-B4-switch-latency.md` accepted; both load-bearing claims verified in code:
+- `loadMultichartPanelFromHost()` hard-sets `masterTf = '1m'` (chart.js:3563) → a 4h host
+  inside multichart is forced onto a 1m session master (single-chart path uses display TF).
+- `_fillViewportHistoryAfterTfSwitch()` (chart.js:28278, scheduled :28269) self-retries
+  (`attempt+1` :28367) calling `checkViewportLoadMore('backward', true)` repeatedly →
+  the ~50 sequential 1m backward chunks measured in §6i.
+
+Root cause: multichart forces host onto 1m master, then FOREGROUND-hydrates full left
+history via a retrying backward-chunk loop. Eventual 1m master is contractual (replay/panel
+feed); the SYNCHRONOUS full hydration before first paint is the waste.
+
+Latency feasibility (verified in report, server route UNVERIFIED live): client caps `/bars`
++ `/smart`-via-bars at 2000; server `/smart` accepts limit up to 100000 → a 90–100k window
+could come in 1–3 requests instead of ~50 if the client uses high-limit `/smart` directly.
+
+Fix = D-007 direction #1 **viewport-first, master-later (multichart-gated)**, kill-switch
+`__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH`; then hydration render-coalescing; then
+round-trip reduction; then idle-panel damping. **GATE: baseline S1/S6/S11 must be captured
+on b586 before the first fix task ships (D-006/D-007).**
+
+Hygiene note: worker reported `M "Sources Handoff/TalariaV16.jsx"` in the tree — flagged as
+pre-existing/unrelated; PO to confirm it is not an accidental edit.
+
+## 6l. Baseline gate CLEARED — B-FIX-3 released (2026-07-05)
+
+D-008 blocking precondition satisfied: S1, S6, S11 captured on b586 and recorded in
+`BASELINE-RESULTS.md`. Reference numbers:
+- S1 single drag: 3 fetches / 6000 bars.
+- Single-chart TF-switch ref: 4 fetches / 4000 bars (first-paint target).
+- S6 multichart 2×2 TF switch: 87–91 fetches / 170–178k bars, renders → 1152 (the "before";
+  panels B/C/D copy correctly: fetches 0, extendsFromParent 85–89, seams 0).
+- S11 return-to-single drag: 10 fetches / 8000 bars (regression PASS — single sheds the
+  1m-master eager load).
+
+B-FIX-3 (viewport-first, master-later, multichart-gated,
+`__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH`) released to a worker per D-008 spec.
+
+## 6m. B-FIX-3 code sign-off (2026-07-05) — live acceptance pending
+
+Implementation verified vs spec. Multichart-host-gated viewport-first load + cancellable,
+generation-tagged background 1m hydration. Key checks:
+- I7: `_multichartViewportFirstSwitchEnabled` (chart.js:4035) requires `_isMultichartHostPanel()`
+  + backtest + kill-switch off; single chart never enters the branch.
+- Kill-switch `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH` bypasses branch AND cancels
+  in-flight hydration (checked at 4038 + 4069).
+- Cancellation: `_mcViewportFirstHydrationSeq` + `_multichartViewportFirstHydrationStillCurrent`
+  re-checked at every await boundary; cancel on pair switch (3591).
+- Both copies byte-identical `54CAA53B3BF48DDBA59C23ECC3CF82F546CFFAE876EC6BCC69EB79AEC3F241BD`;
+  node --check clean; pre-start git status shows chart.js clean before task (report valid).
+
+Status: CODE SIGNED OFF. D-009 live acceptance checklist (first-paint ≤2 fetches, hydration
+completes/seams 0, un-hydrated scrub, mid-hydration cancellation, kill-switch flip,
+single-chart S1/S6-ref/S11 unchanged) requires build + PO run. Build authorized.
+Open: PO confirm `Sources Handoff/TalariaV16.jsx` provenance.
+
+## Appendix — early Phase-0 recommendation (superseded)
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the
 wrong root cause for *these* symptoms. RC1 remains worth fixing later, but the

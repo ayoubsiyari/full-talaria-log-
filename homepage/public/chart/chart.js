@@ -754,6 +754,11 @@ class Chart {
         this._symbolLoadSeq = 0;
         /** Multichart iframe pair load — supersede stale in-flight fetches when user picks another symbol. */
         this._multichartPanelLoadSeq = 0;
+        /** Multichart host viewport-first switch: supersede stale 1m background hydration. */
+        this._mcViewportFirstHydrationSeq = 0;
+        this._mcViewportFirstHydrationTimer = null;
+        this._mcViewportFirstMasterHydrating = false;
+        this._mcViewportFirstMasterReady = false;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -3361,6 +3366,10 @@ class Chart {
                 ? prs.fullRawData
                 : null;
             if (!masterRaw || masterRaw.length === 0) return null;
+            if (parent._mcViewportFirstMasterHydrating) {
+                const parentNativeTf = String(prs?.rawTimeframe || parent._nativeRawFetchTf || '').toLowerCase().trim();
+                if (parentNativeTf !== '1m') return null;
+            }
 
             this._panelFullRawData = masterRaw;
             const pc = parent._serverCursors || {};
@@ -3579,6 +3588,9 @@ class Chart {
             && (replayTs == null || aligned)) {
             return;
         }
+        if (switchingPair && typeof this._cancelMultichartViewportFirstHydration === 'function') {
+            this._cancelMultichartViewportFirstHydration();
+        }
 
         const loadSeq = ++this._multichartPanelLoadSeq;
         let pairLoadUiActive = false;
@@ -3651,8 +3663,10 @@ class Chart {
                 const independentPair = switchingPair
                     && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
+                const viewportFirstHost = this._multichartViewportFirstSwitchEnabled(displayTf, switchingPair);
 
                 let result = null;
+                let loadedViewportFirstHost = false;
 
                 // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
                 if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
@@ -3678,6 +3692,33 @@ class Chart {
                         );
                     } catch (_hy) {
                         console.warn('loadMultichartPanelFromHost: hybrid init failed', _hy);
+                    }
+                }
+
+                // Host tile A in a multichart grid: paint the display-TF viewport first.
+                // The 1m replay master hydrates after first paint so the old eager path
+                // remains available via __TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH.
+                if (!result && viewportFirstHost) {
+                    try {
+                        const viewportRange = Number.isFinite(replayTs)
+                            ? this._getBacktestReplayFetchRange(displayTf, session, replayTs)
+                            : this._getBacktestInitialFetchRange(displayTf, session);
+                        result = await this._fetchSmartWindow(
+                            fileId,
+                            displayTf,
+                            session,
+                            'end',
+                            viewportRange,
+                            {
+                                skipSessionDates: true,
+                                limit: this._backtestFetchLimitForTimeframe(displayTf),
+                            },
+                        );
+                        loadedViewportFirstHost = this._smartResponseHasPayload(result);
+                    } catch (e) {
+                        console.warn('loadMultichartPanelFromHost: viewport-first host fetch failed', e);
+                        result = null;
+                        loadedViewportFirstHost = false;
                     }
                 }
 
@@ -3751,7 +3792,10 @@ class Chart {
                 }
 
                 this.currentFileId = fileId;
-                this._nativeRawFetchTf = masterTf;
+                const loadedNativeTf = loadedViewportFirstHost
+                    ? displayTf
+                    : (result.nativeRawFetchTf || masterTf);
+                this._nativeRawFetchTf = loadedNativeTf;
                 this._ingestSmartWindowResult(result, {
                     skipIndicators: true,
                     skipFitToView: true,
@@ -3804,7 +3848,7 @@ class Chart {
                     this._serverCursors.hasMoreLeft = true;
                     if (sessionStartTs != null && Array.isArray(this.rawData) && this.rawData.length > 0) {
                         const firstT = Number(this.rawData[0]?.t);
-                        const masterMs = this.parseTimeframe(masterTf) || 60_000;
+                        const masterMs = this.parseTimeframe(loadedNativeTf) || 60_000;
                         if (Number.isFinite(firstT) && firstT <= sessionStartTs + masterMs * 2) {
                             this._serverCursors.hasMoreLeft = false;
                         }
@@ -3843,7 +3887,7 @@ class Chart {
                     if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                         this._reseedReplayFullRawFromLoadedData();
                     }
-                    replay.rawTimeframe = masterTf;
+                    replay.rawTimeframe = loadedNativeTf;
                     if (Number.isFinite(restoreTs)) {
                         if (independentPair
                             && typeof this._applyIndependentPanelReplaySlice === 'function') {
@@ -3903,6 +3947,9 @@ class Chart {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
                     }));
                 } catch (_ev) { /* ignore */ }
+                if (loadedViewportFirstHost) {
+                    this._startMultichartViewportFirstMasterHydration(fileId, session, displayTf, replayTs);
+                }
                 const selfMc = this;
                 const fidMc = fileId;
                 const samePairEmbed = !this._isIndependentMultichartPair();
@@ -3980,6 +4027,214 @@ class Chart {
         this._trimFileIdCacheLru(this._btTfDataCache);
         this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
         this._ensureReplayDataInflight = null;
+        if (typeof this._cancelMultichartViewportFirstHydration === 'function') {
+            this._cancelMultichartViewportFirstHydration();
+        }
+    }
+
+    _multichartViewportFirstSwitchEnabled(displayTf, switchingPair) {
+        try {
+            if (!switchingPair) return false;
+            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH) {
+                return false;
+            }
+            if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+                return false;
+            }
+            if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+                return false;
+            }
+            if (!this.isBacktestMode && !this.backtestingSession) return false;
+            const tf = String(displayTf || this.currentTimeframe || '').toLowerCase().trim();
+            return !!tf && tf !== '1m';
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _cancelMultichartViewportFirstHydration() {
+        this._mcViewportFirstHydrationSeq = (this._mcViewportFirstHydrationSeq || 0) + 1;
+        this._mcViewportFirstMasterHydrating = false;
+        this._mcViewportFirstMasterReady = false;
+        this._mcViewportFirstHydrationFileId = null;
+        this._mcViewportFirstHydrationTicks = 0;
+        if (this._mcViewportFirstHydrationTimer != null) {
+            try { clearTimeout(this._mcViewportFirstHydrationTimer); } catch (_e) { /* ignore */ }
+            this._mcViewportFirstHydrationTimer = null;
+        }
+    }
+
+    _multichartViewportFirstHydrationStillCurrent(seq, fileId) {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH) {
+                return false;
+            }
+            if (seq !== this._mcViewportFirstHydrationSeq) return false;
+            if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+                return false;
+            }
+            if (fileId != null && String(this.currentFileId || '') !== String(fileId)) {
+                return false;
+            }
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _finishMultichartViewportFirstHydration(seq, complete) {
+        if (seq !== this._mcViewportFirstHydrationSeq) return;
+        this._mcViewportFirstMasterHydrating = false;
+        this._mcViewportFirstMasterReady = !!complete;
+        this._mcViewportFirstHydrationTimer = null;
+    }
+
+    _startMultichartViewportFirstMasterHydration(fileId, session, displayTf, replayTs) {
+        if (!this._multichartViewportFirstSwitchEnabled(displayTf, true)) return;
+        const seq = ++this._mcViewportFirstHydrationSeq;
+        this._mcViewportFirstMasterHydrating = true;
+        this._mcViewportFirstMasterReady = false;
+        this._mcViewportFirstHydrationFileId = String(fileId);
+        this._mcViewportFirstHydrationTicks = 0;
+        if (this._mcViewportFirstHydrationTimer != null) {
+            try { clearTimeout(this._mcViewportFirstHydrationTimer); } catch (_e) { /* ignore */ }
+        }
+        this._mcViewportFirstHydrationTimer = setTimeout(() => {
+            this._mcViewportFirstHydrationTimer = null;
+            this._hydrateMultichartViewportFirstMaster(seq, fileId, session, displayTf, replayTs)
+                .catch((e) => {
+                    if (this._multichartViewportFirstHydrationStillCurrent(seq, fileId)) {
+                        console.warn('[multichart] viewport-first background hydration failed', e);
+                        this._finishMultichartViewportFirstHydration(seq, false);
+                    }
+                });
+        }, 0);
+    }
+
+    async _hydrateMultichartViewportFirstMaster(seq, fileId, session, displayTf, replayTs) {
+        if (!this._multichartViewportFirstHydrationStillCurrent(seq, fileId)) {
+            this._finishMultichartViewportFirstHydration(seq, false);
+            return;
+        }
+        const tf = String(displayTf || this.currentTimeframe || '1m').toLowerCase().trim();
+        const playheadTs = Number.isFinite(Number(replayTs))
+            ? Number(replayTs)
+            : this._captureReplayPlayheadMs(this.replaySystem);
+        const range = Number.isFinite(playheadTs)
+            ? this._getBacktestReplayFetchRange('1m', session, playheadTs)
+            : this._getBacktestInitialFetchRange('1m', session);
+        const result = await this._fetchSmartWindow(
+            fileId,
+            '1m',
+            session,
+            'end',
+            range,
+            {
+                skipSessionDates: true,
+                limit: this._backtestFetchLimitForTimeframe('1m'),
+            },
+        );
+        if (!this._multichartViewportFirstHydrationStillCurrent(seq, fileId)) {
+            this._finishMultichartViewportFirstHydration(seq, false);
+            return;
+        }
+        if (!this._smartResponseHasPayload(result)) {
+            this._finishMultichartViewportFirstHydration(seq, false);
+            return;
+        }
+
+        this.currentTimeframe = tf;
+        this._nativeRawFetchTf = '1m';
+        this._ingestSmartWindowResult(result, {
+            skipIndicators: true,
+            skipFitToView: true,
+            skipTimeframePrefetch: true,
+            skipChartDataLoadedEvent: true,
+        });
+        this.currentTimeframe = tf;
+        this.loadedRanges.set(0, result.returned);
+        this._serverCursors = {
+            firstTs: result.first_cursor,
+            lastTs: result.last_cursor,
+            hasMoreLeft: result.has_more_left !== false,
+            hasMoreRight: result.has_more_right !== false,
+        };
+        if (this.isBacktestMode) {
+            this._serverCursors.hasMoreLeft = true;
+            if (typeof this._hasLoadedThroughBacktestSessionEnd === 'function'
+                && this._hasLoadedThroughBacktestSessionEnd(session)) {
+                this._serverCursors.hasMoreRight = false;
+            } else {
+                this._serverCursors.hasMoreRight = true;
+            }
+        }
+
+        if (!this.replaySystem && typeof this.initReplaySystem === 'function') {
+            try { this.initReplaySystem(); } catch (_e) { /* ignore */ }
+        }
+        const replay = this.replaySystem;
+        if (replay && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            if (!replay.isActive && typeof replay.enterReplayMode === 'function') {
+                replay.enterReplayMode({
+                    preservePlayhead: Number.isFinite(playheadTs),
+                    initialReplayTimestamp: Number.isFinite(playheadTs) ? playheadTs : undefined,
+                    suppressInitialUpdateChartData: Number.isFinite(playheadTs),
+                });
+            }
+            replay.fullRawData = [...this.rawData];
+            replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+            replay.rawTimeframe = '1m';
+            replay._fullRawDataMatchesTF = false;
+            replay.tickPathCache = {};
+            replay.tickPathCacheBuilt = false;
+            if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
+                this._syncReplayPanCursorsFromFullRaw();
+            }
+            if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
+                replay.goToReplayTimestamp(playheadTs, { preserveVisibleWindow: true });
+            } else if (typeof replay.updateChartData === 'function') {
+                replay.updateChartData(false);
+            }
+        }
+        this._mcViewportFirstMasterReady = true;
+        this._scheduleMultichartViewportFirstHydrationPump(seq, fileId);
+    }
+
+    _scheduleMultichartViewportFirstHydrationPump(seq, fileId) {
+        if (!this._multichartViewportFirstHydrationStillCurrent(seq, fileId)) {
+            this._finishMultichartViewportFirstHydration(seq, false);
+            return;
+        }
+        if (this._mcViewportFirstHydrationTimer != null) return;
+        this._mcViewportFirstHydrationTimer = setTimeout(() => {
+            this._mcViewportFirstHydrationTimer = null;
+            if (!this._multichartViewportFirstHydrationStillCurrent(seq, fileId)) {
+                this._finishMultichartViewportFirstHydration(seq, false);
+                return;
+            }
+            const replay = this.replaySystem;
+            if (!replay?.isActive || String(replay.rawTimeframe || '').toLowerCase().trim() !== '1m') {
+                this._finishMultichartViewportFirstHydration(seq, false);
+                return;
+            }
+            this._mcViewportFirstHydrationTicks = (this._mcViewportFirstHydrationTicks || 0) + 1;
+            if (this._mcViewportFirstHydrationTicks > 240) {
+                this._finishMultichartViewportFirstHydration(seq, false);
+                return;
+            }
+            const needsLeft = typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
+                && this._backtestReplayHasUnloadHistoryLeft();
+            const needsRight = typeof this._hasLoadedThroughBacktestSessionEnd === 'function'
+                && !this._hasLoadedThroughBacktestSessionEnd(this.backtestingSession || {});
+            if (!needsLeft && !needsRight) {
+                this._finishMultichartViewportFirstHydration(seq, true);
+                return;
+            }
+            if (!this._panLoading && typeof this.checkViewportLoadMore === 'function') {
+                try { this.checkViewportLoadMore(needsLeft ? 'backward' : 'forward', true); } catch (_e) { /* ignore */ }
+            }
+            this._scheduleMultichartViewportFirstHydrationPump(seq, fileId);
+        }, this._panLoading ? 140 : 80);
     }
 
     /**
@@ -4906,6 +5161,10 @@ class Chart {
         try {
             if (typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed')) {
+                replayRawTf = '1m';
+            } else if (this._mcViewportFirstMasterHydrating
+                && typeof this._isMultichartHostPanel === 'function'
+                && this._isMultichartHostPanel()) {
                 replayRawTf = '1m';
             }
         } catch (_e) { /* ignore */ }
@@ -5980,6 +6239,12 @@ class Chart {
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
         if (this._usesMultichartReplayMaster()) {
+            if (this._mcViewportFirstMasterHydrating
+                && typeof this._isMultichartHostPanel === 'function'
+                && this._isMultichartHostPanel()) {
+                const rawTf = String(this.replaySystem?.rawTimeframe || this.currentTimeframe || '1m').toLowerCase().trim();
+                if (rawTf && rawTf !== '1m') return rawTf;
+            }
             return '1m';
         }
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
@@ -28276,6 +28541,12 @@ class Chart {
      * Retries while data keeps arriving and a left gap remains.
      */
     _fillViewportHistoryAfterTfSwitch(attempt = 0) {
+        if (this._mcViewportFirstMasterHydrating
+            && typeof this._isMultichartHostPanel === 'function'
+            && this._isMultichartHostPanel()
+            && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH)) {
+            return;
+        }
         // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
         // so allow more iterations than a single coarse-TF fetch would need.
         if (attempt > 28) return;

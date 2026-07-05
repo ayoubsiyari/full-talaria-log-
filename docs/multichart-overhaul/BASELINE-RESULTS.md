@@ -4,8 +4,8 @@ This is the permanent regression matrix. Phases 1-4 all measure against these ex
 
 ## Capture Header
 
-- Deployed build id: TODO
-- Baseline capture date: TODO
+- Deployed build id: 20260627b586
+- Baseline capture date: 2026-07-05 (D-008 gate scenarios S1, S6, S11 COMPLETE; S2–S5, S7–S10 still TODO)
 - Diagnostic fields exposed by `window.__mcDiagReport()`: `panelId`, `fetches`, `fetchedBars`, `extendsFromParent`, `resamples`, `renders`, `seams`, `lastFetchMs`
 
 ## How to run
@@ -48,10 +48,12 @@ For each scenario:
 
 | panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
 |---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
-| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| HOST | 3 | 6000 | 0 | 6 | 899 | 0 | 674 |
 
-- Console errors: TODO
-- Smoothness 1-5: TODO
+- Console errors: flagcdn.com flag-image CORS/ERR_FAILED (external asset, pre-existing; unrelated to engine)
+- Smoothness 1-5: (PO reports single-chart pan fast/perfect)
+- Build: 20260627b586. Capture: `reset → drag → report`.
+- Supplementary single-chart reference (1d drag, same build): HOST fetches 5, fetchedBars 4359, extendsFromParent 0, resamples 11, renders 800, seams 0, lastFetchMs 98.
 
 ## S2 - 2×2 Same-Pair Sync ON, Drag Tile A
 
@@ -155,16 +157,21 @@ For each scenario:
 - Pair configuration: all panels same pair/fileId.
 - Replay state: not constrained by the scenario matrix.
 
+Captured build 20260627b586. PO did switches to 1d → 1h → 1m; table below = final (1m)
+report. Per-step HOST fetches/fetchedBars: 1d = 87 / 170000, 1h = 90 / 176000,
+1m = 91 / 178000.
+
 | panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
 |---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
-| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
-| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| HOST | 91 | 178000 | 0 | 210 | 1152 | 0 | 199 |
+| B | 0 | 0 | 89 | 216 | 638 | 0 | 0 |
+| C | 0 | 0 | 89 | 218 | 614 | 0 | 0 |
+| D | 0 | 0 | 89 | 218 | 686 | 0 | 0 |
 
-- Switch duration feel: TODO
-- Console errors: TODO
-- Smoothness 1-5: TODO
+- Switch duration feel: PO reports "loads candle by candle slow" on 1d.
+- Console errors: `No candles drawn ... Skipped: 6` (minor); flagcdn CORS (external).
+- Smoothness 1-5: (slow — this is the target of B-FIX-3)
+- Single-chart TF-switch reference (same build, 1h): HOST fetches 4, fetchedBars 4000, resamples 20, renders 530, seams 0, lastFetchMs 204. → delta ≈ 22× fetches / 44× bars vs multichart.
 
 ## S7 - 2×2 Panel B Only TF Switch
 
@@ -273,8 +280,9 @@ For each scenario:
 
 | panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
 |---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
-| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| HOST | 10 | 8000 | 0 | 33 | 1541 | 0 | 232 |
 
-- Single-chart comparison to S1: TODO
-- Console errors: TODO
-- Smoothness 1-5: TODO
+- Single-chart comparison to S1: PASS — single-chart magnitude (10 fetches / 8000 bars) vs multichart S6 (90 fetches / 178000 bars). Returning to single sheds the 1m-master eager load.
+- Console errors: none notable (flagcdn CORS external).
+- Smoothness 1-5: (single-chart fast)
+- Build 20260627b586, tf 4h, `reset → drag → report`.
