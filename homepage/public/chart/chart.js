@@ -4035,6 +4035,7 @@ class Chart {
 
     _multichartViewportFirstSwitchEnabled(displayTf, switchingPair) {
         try {
+            if (!(typeof window !== 'undefined' && window.__TALARIA_MC_ENABLE_VIEWPORT_FIRST === true)) return false;
             if (!switchingPair) return false;
             if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH) {
                 return false;
@@ -4249,6 +4250,7 @@ class Chart {
 
     _multichartViewportFirstTfSwitchEnabled() {
         try {
+            if (!(typeof window !== 'undefined' && window.__TALARIA_MC_ENABLE_VIEWPORT_FIRST === true)) return false;
             if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH) {
                 return false;
             }

@@ -502,13 +502,34 @@ Mitigation: kill-switch (D-010 rollback policy). Escalated as ESC-006 → ruled 
 | flag state | HOST fetches | B/C/D fetches | B/C/D extendsFromParent | panels-copy restored? |
 |------------|--------------|---------------|-------------------------|-----------------------|
 | TF flag ON only (`__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH=true`) | 76–77 | 47 / 63 / 102 | 1–6 | **NO** — still self-fetch |
-| both flags ON | TODO (PO step 1.2) | TODO | TODO | TODO |
+| both flags ON | 43 / 52000 | 0 / 0 / 0 | 0 | **YES** — panels fetches 0 |
 
-Reading: TF-flag-alone did NOT restore panels-copy → regression is NOT solely B-FIX-3b.
-Likely source is B-FIX-3 (pair-load) deferring the host master at 2×2 setup, so panels
-never have a complete master to clone. seams 0 in all states (no corruption). Next: PO
-flips BOTH flags; if that restores S6 panel behavior → viewport-first family confirmed as
-source (both stay off until B-FIX-3c). If NOT → misattributed, stop + escalate (D-013 1.2).
+Reading: TF-flag-alone did NOT restore panels-copy; **both-off DID** (B/C/D fetches 0).
+→ regression source CONFIRMED as the viewport-first family; the essential culprit is
+B-FIX-3 (pair-load) deferring the host master at 2×2 setup so panels can't clone.
+seams 0 in all states (no corruption). **Rollback = both flags off.** ESC-006 step 1 done.
+
+CAVEAT (durability): kill-switches are runtime `window` flags that reset on reload — this
+mitigates for the tester but is NOT a durable production rollback. Until B-FIX-3c ships,
+either (a) ship a build defaulting viewport-first OFF, or (b) fast-track 3c. Raised to
+Director. Proceeding to B-DIAG-5.
+
+## 6q. B-DIAG-5 sign-off (2026-07-05) — self-fetch fallback pinned
+
+`DIAG-B5-panel-selffetch-fallback.md` accepted; cited lines verified:
+- chart.js:4963 `_tryExtendReplayMasterFromParent`: `if (!earlier.length && !later.length)
+  return false;` — host master doesn't extend beyond panel local master → "nothing to copy".
+- chart.js:21117 `checkViewportLoadMore`: falls through to panel's own fetch
+  (`_fetchCandlesCursor` ~21246) after the extend miss.
+- Boot has an 8s host-master poll; TF/pan fallback BYPASSES it → panel self-fetches.
+
+B-FIX-3c target (specced): before the 21117 fall-through, same-pair embed panels must
+consult host hydration state (`_mcViewportFirstHydrationSeq` / `_mcViewportFirstMasterReady`)
+and WAIT/POLL while host hydration is in progress, then extend from host — never self-fetch.
+Self-fetch stays legal only for independent-symbol panels (I1).
+
+Sequence (D-015): default-OFF build (W1, dispatched) → PO S6 re-capture (fresh 3c before) →
+B-DIAG-5 (DONE) → B-FIX-3c spec.
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the
 wrong root cause for *these* symptoms. RC1 remains worth fixing later, but the

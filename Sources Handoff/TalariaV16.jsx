@@ -5531,7 +5531,15 @@ const strategyBankScopeItems = (strat) => {
     ...(Array.isArray(strat?.supportInst) ? strat.supportInst : []),
   ];
   const normalized = [...new Set(instIds.map(x => String(x ?? "").trim().toLowerCase()).filter(Boolean))];
-  if (normalized.length) return normalized.map(strategyInstrumentLabel);
+  if (normalized.length) {
+    // Show the market (asset class) first, then the specific symbols, so it is
+    // clearer to the user which market each strategy trades.
+    const marketIds = (strat?.markets || []).length
+      ? strat.markets
+      : deriveStrategyMarketsFromInstruments(instIds);
+    const marketLabels = marketIds.map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
+    return [...marketLabels, ...normalized.map(strategyInstrumentLabel)];
+  }
   return (strat?.markets || []).map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
 };
 
@@ -6356,7 +6364,7 @@ function GeneralInfoStepContent({ c, F,
                 const label=sel.length===0
                   ?'All symbols'
                   :marketsAutoDerived
-                    ?`Auto: ${sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ')}`
+                    ?sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ')
                     :sel.length===MKT_CAT_OPTS.length
                       ?'All markets'
                       :sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
@@ -11454,6 +11462,7 @@ const TalariaV8b = () => {
   const [stratShareStrat, setStratShareStrat] = useState(null);
   const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
+  const [stratDescHov, setStratDescHov] = useState(null);
   const clearDashAddTradeStepperHold = () => {
     const hold = dashAddTradeStepperHoldRef.current;
     if (!hold) return;
@@ -45010,6 +45019,13 @@ const TalariaV8b = () => {
             .filter(s=>{
               const q=normalizeSearchQuery(stratSearch);
               return !q||s.name.toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
+            })
+            .sort((a,b)=>{
+              let av=communitySortValue(a, stratSort), bv=communitySortValue(b, stratSort);
+              if(stratSort==="name"||stratSort==="author"){av=String(av).toLowerCase();bv=String(bv).toLowerCase();}
+              if(av<bv) return stratSortDir==="asc"?-1:1;
+              if(av>bv) return stratSortDir==="asc"?1:-1;
+              return 0;
             });
           const filteredSavedCommunity = savedCommunityStrats.filter(s=>{
             const q=normalizeSearchQuery(stratSearch);
@@ -45377,7 +45393,9 @@ const TalariaV8b = () => {
                     <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box"}}>
                       <div title={strat.name} style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
+                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}
+                      onMouseEnter={e=>{if(!strat.desc)return;const r=e.currentTarget.getBoundingClientRect();setStratDescHov({id:strat.id,text:strat.desc,x:r.left/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
+                      onMouseLeave={()=>setStratDescHov(p=>p?.id===strat.id?null:p)}>
                       <div style={{fontSize:10.5,fontWeight:560,color:c.ts,fontFamily:F,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
                         {strat.desc||"No description added."}
                       </div>
@@ -45817,6 +45835,36 @@ const TalariaV8b = () => {
                         );
                       })}
                     </div>
+                    {/* sort dropdown (My Strategies — left aligned) */}
+                    {stratTab==="mine"&&(
+                      <div style={{position:"relative",flexShrink:0,marginLeft:4}}>
+                        <div onClick={e=>{e.stopPropagation();setSessSortOpen(p=>!p);}}
+                          style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
+                          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M3 6h18M6 12h12M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                          <span style={{fontSize:9,fontWeight:600,color:c.ts}}>{SORT_OPTIONS.find(o=>o.k===stratSort)?.l||"Sort"}</span>
+                          <svg width={8} height={8} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                        </div>
+                        {sessSortOpen&&(
+                          <>
+                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setSessSortOpen(false)}/>
+                            <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:99991,width:160,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
+                              {SORT_OPTIONS.map(o=>{
+                                const isA=stratSort===o.k;
+                                return(
+                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setSessSortOpen(false);}}
+                                    style={{padding:"8px 12px",fontSize:10,fontWeight:isA?700:500,color:isA?c.tx:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"space-between",borderLeft:isA?`2px solid ${c.acL}`:"2px solid transparent",transition:"background 0.1s",fontFamily:F}}
+                                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
+                                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    {o.l}
+                                    {isA&&<span style={{fontSize:9,color:c.acL}}>{stratSortDir==="asc"?"↑":"↓"}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                     <div style={{flex:1}}/>
                     <div style={{display:"flex",gap:4,flexShrink:0}}>
                       {[
@@ -46105,6 +46153,27 @@ const TalariaV8b = () => {
                     })}
                   </div>
                 </>);
+              })()}
+
+              {stratDescHov&&(()=>{
+                const panelW=340;
+                const gap=8;
+                const vpW=window.innerWidth/uiZ;
+                const vpH=window.innerHeight/uiZ;
+                let left=Math.max(8,Math.min(stratDescHov.x,vpW-panelW-8));
+                const belowTop=(stratDescHov.anchorBottom??stratDescHov.y??0)+gap;
+                const estH=Math.min(280,60+stratDescHov.text.length*0.4);
+                const flipAbove=belowTop+estH>vpH-8&&(stratDescHov.anchorTop??0)-gap-estH>=8;
+                const top=flipAbove?Math.max(8,(stratDescHov.anchorTop??0)-gap-estH):belowTop;
+                return(
+                  <div style={{position:"fixed",top,left,zIndex:100001,width:panelW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F,pointerEvents:"none"}}>
+                    <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                    <div style={{padding:"7px 11px 4px",fontSize:8.5,fontWeight:800,letterSpacing:"0.08em",color:c.tm,textTransform:"uppercase"}}>Description</div>
+                    <div className="tlr-scroll" style={{padding:"0 11px 11px",maxHeight:250,overflowY:"auto",fontSize:11,fontWeight:520,lineHeight:1.55,color:c.ts,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                      {stratDescHov.text}
+                    </div>
+                  </div>
+                );
               })()}
 
               {/* ─ Pre-builder Template Picker ─ */}

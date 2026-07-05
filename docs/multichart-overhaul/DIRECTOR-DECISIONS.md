@@ -648,3 +648,44 @@ load-bearing under every matrix outcome. Do not wait for the matrix to finish.
 Standing note: whatever B-FIX-3c does, the 2×2 SETUP path (entering multichart) is now
 in scope alongside pair/TF switches — the incomplete-master window exists from layout
 creation, not just from switches.
+
+---
+
+## D-015 — Matrix complete: source confirmed; durable rollback ruling (2026-07-05)
+
+Step-1 matrix accepted as conclusive: both-flags-off restores panels-copy (B/C/D
+fetches 0), TF-flag-alone does not → the viewport-first family is confirmed as the
+regression source, with B-FIX-3 (pair-load at 2×2 setup) as the essential culprit,
+exactly as D-014 anticipated. ESC-006 step 1 CLOSED.
+
+### Durability ruling: option (a) — ship a default-OFF build now
+
+The manager's caveat is correct and (a) is the ruling: runtime `window` flags reset on
+reload and protect only a tester who knows to set them. Authorize immediately a
+minimal, one-worker change: **default both viewport-first behaviors OFF in code**
+(initialize the enable-state so the gate functions return false unless an explicit
+opt-in flag is set — e.g. invert to `__TALARIA_MC_ENABLE_VIEWPORT_FIRST*` opt-ins, or
+a hardcoded `const VIEWPORT_FIRST_DEFAULT = false`). Constraints:
+- Do NOT delete or refactor the viewport-first code — 3c will re-enable it; this is a
+  default flip only, smallest possible diff, both copies byte-identical.
+- Verification: fresh reload with no console flags → 2×2 TF switch → panels fetches 0,
+  host behaves like S6 baseline. Opt-in flag set → viewport-first engages (proves the
+  code path is preserved).
+- (b) fast-tracking 3c under time pressure is REJECTED — that is patch-on-patch with a
+  live regression as the clock; 3c proceeds at normal rigor behind B-DIAG-5.
+
+### One anomaly to close before B-FIX-3c is specced (manager: small follow-up)
+
+In the both-flags-off row the panels show `extendsFromParent = 0` — but the S6
+baseline for the same host TF switch showed extends 85–89, and the host numbers are
+also smaller (43 fetches / 52k bars vs 91 / 178k). Panels fetches 0 satisfies the
+ownership criterion, but 0 extends raises the question of how panels obtained the
+new-TF data at all in that capture (initial boot clone covering the window? capture
+taken too early? different pair with shorter history?). Not blocking the default-OFF
+build; DO answer it before 3c's acceptance numbers are set, otherwise 3c will be
+measured against an inconsistent \"restored baseline.\" One PO re-capture on the
+default-OFF build (full S6 procedure, same pair as the original baseline) should
+settle it and simultaneously serve as the fresh \"before\" for 3c.
+
+Sequence from here: default-OFF build ships → PO re-capture (S6 procedure) →
+B-DIAG-5 report (already dispatched per D-014) → B-FIX-3c spec.

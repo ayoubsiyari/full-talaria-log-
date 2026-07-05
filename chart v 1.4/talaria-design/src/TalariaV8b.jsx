@@ -557,7 +557,9 @@ const TalariaV8b = () => {
   const [tfCat, setTfCat] = useState(null);
   const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
   const [tfCustomVal, setTfCustomVal] = useState("");
+  const [tfCustomErr, setTfCustomErr] = useState("");
   const [tfEditMode, setTfEditMode] = useState(false);
+  const tfCustomMax = { m: 60, H: 24, D: 366, W: 260, M: 120 };
 
   const tfDefaults = {
     minutes: ["1m","5m","15m","30m"],
@@ -9104,14 +9106,21 @@ const TalariaV8b = () => {
               {hov==="tf-more" && !tfOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
             </button>
             {(tfOpen||closing.has("tf")) && (()=>{
+              const unitNames = { m: "minutes", H: "hours", D: "days", W: "weeks", M: "months" };
               const addCustomTf = () => {
                 const val = parseInt(tfCustomVal);
                 if (!val || val <= 0) return;
+                const max = tfCustomMax[tfCustomUnit];
+                if (max && val > max) {
+                  setTfCustomErr(`Maximum for ${unitNames[tfCustomUnit]} is ${max}.`);
+                  return;
+                }
                 const key = `${val}${tfCustomUnit}`;
                 const allDefaults = Object.values(tfDefaults).flat();
                 if (tfCustomItems.includes(key) || allDefaults.includes(key)) return;
                 setTfCustomItems(prev => [...prev, key]);
                 setTfCustomVal("");
+                setTfCustomErr("");
               };
               return (
               <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
@@ -9170,7 +9179,7 @@ const TalariaV8b = () => {
                 <div style={{padding:"7px 10px 8px",display:"flex",alignItems:"center",gap:4}}>
                   <div style={{position:"relative",width:34,height:22,flexShrink:0}}>
                     <input type="text" inputMode="numeric" value={tfCustomVal}
-                      onChange={e=>setTfCustomVal(e.target.value.replace(/[^0-9]/g,""))}
+                      onChange={e=>{setTfCustomVal(e.target.value.replace(/[^0-9]/g,""));setTfCustomErr("");}}
                       onKeyDown={e=>{if(e.key==="Enter")addCustomTf();}}
                       className="tlr-nospinner"
                       style={{width:34,height:22,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",
@@ -9207,7 +9216,7 @@ const TalariaV8b = () => {
                             return (
                               <div key={u}
                                 onMouseEnter={()=>setSwHov(`tf-unit-${u}`)} onMouseLeave={()=>setSwHov(null)}
-                                onClick={()=>{setTfCustomUnit(u);setTfUnitOpen(false);}}
+                                onClick={()=>{setTfCustomUnit(u);setTfUnitOpen(false);setTfCustomErr("");}}
                                 style={{padding:"4px 8px",cursor:"default",fontSize:11,fontFamily:F,
                                   position:"relative",
                                   color:isU?c.acL:isHU?c.tx:c.ts,
@@ -9240,6 +9249,16 @@ const TalariaV8b = () => {
                     </svg>
                   </button>
                 </div>
+                {tfCustomErr && (
+                  <div style={{padding:"0 10px 8px",display:"flex",alignItems:"center",gap:5,color:c.rd,fontSize:10,fontFamily:F,lineHeight:1.3}}>
+                    <svg width={11} height={11} viewBox="0 0 12 12" fill="none" style={{flexShrink:0}}>
+                      <circle cx={6} cy={6} r={5} stroke={c.rd} strokeWidth={1.2}/>
+                      <line x1={6} y1={3.2} x2={6} y2={6.6} stroke={c.rd} strokeWidth={1.2} strokeLinecap="round"/>
+                      <circle cx={6} cy={8.6} r={0.7} fill={c.rd}/>
+                    </svg>
+                    <span>{tfCustomErr}</span>
+                  </div>
+                )}
               </div>
               );
             })()}

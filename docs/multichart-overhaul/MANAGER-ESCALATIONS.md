@@ -112,3 +112,10 @@ then B-FIX-3c (panels WAIT-AND-MIRROR host hydration, own kill-switch, re-enable
 3/3b in the same build). New standing acceptance criterion: same-pair panel `fetches = 0`
 in every 2×2 capture. Status → resolved by D-013 pending Step-1 matrix.
 
+**Update (D-014/D-015):** Step-1 matrix run — TF-flag-alone did NOT restore panels-copy;
+both-flags-off DID (B/C/D fetches 0). D-015 accepted matrix CONCLUSIVE: viewport-first
+family = source, B-FIX-3 pair-load the essential culprit. **ESC-006 step 1 CLOSED.**
+Durability ruling = option (a): ship minimal default-OFF build. Remaining fix work under
+D-015 sequence: default-OFF build → PO S6 re-capture (settles extendsFromParent=0 anomaly
++ fresh 3c "before") → B-DIAG-5 → B-FIX-3c. **ESC-006 RESOLVED.**
+
