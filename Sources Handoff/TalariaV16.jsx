@@ -11474,7 +11474,6 @@ const TalariaV8b = () => {
   const [canvasPaletteCollapsed, setCanvasPaletteCollapsed] = useState(false);
   const [canvasInspectorCollapsed, setCanvasInspectorCollapsed] = useState(false);
   const [stratShareStrat, setStratShareStrat] = useState(null);
-  const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
   const [stratDescHov, setStratDescHov] = useState(null);
   const clearDashAddTradeStepperHold = () => {
@@ -13046,6 +13045,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover,.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):active{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover::before,.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):active::before{display:none!important;content:none!important;background:transparent!important;box-shadow:none!important}.tlr-library-content-row.tlr-library-child-source-row:not(.tlr-library-content-row-active):not(.tlr-library-immediate-active):not(.tlr-library-immediate-checked):not([aria-pressed="true"]):hover .tlr-library-content-title{color:${c.tx}!important}`;
       style.textContent += `.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"]{background:rgba(7,9,18,0.92)!important;border-color:rgba(255,255,255,0.045)!important;box-shadow:none!important;transform:none!important}.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active::before,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active::before,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"]::before{display:none!important}.tlr-library-content-row.tlr-library-child-source-row.tlr-library-immediate-active .tlr-library-content-title,.tlr-library-content-row.tlr-library-child-source-row.tlr-library-content-row-active .tlr-library-content-title,.tlr-library-content-row.tlr-library-child-source-row[aria-pressed="true"] .tlr-library-content-title{color:${c.tx}!important}`;
       style.textContent += `.tlr-resource-card,.tlr-resource-row,.tlr-resource-tree-row,.tlr-resource-chip,.tlr-resource-link,.tlr-resource-helpful,.tlr-resource-search-row{transition:none!important;touch-action:manipulation}.tlr-resource-card:hover{border-color:rgba(74,106,255,0.48)!important;box-shadow:0 0 12px rgba(74,106,255,0.22),inset 0 1px 0 rgba(255,255,255,0.04)!important}.tlr-resource-card:active,.tlr-resource-row:active,.tlr-resource-tree-row:active,.tlr-resource-chip:active,.tlr-resource-link:active,.tlr-resource-search-row:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-resource-row:hover,.tlr-resource-tree-row:not(.tlr-resource-tree-row-active):hover,.tlr-resource-search-row:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-tree-row-active{background:${c.acD}!important;color:${c.acL}!important}.tlr-resource-tree-row-active::after,.tlr-resource-chip-active::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.78);pointer-events:none}.tlr-resource-chip:hover,.tlr-resource-link:hover,.tlr-resource-helpful:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-resource-deeplink:hover{background:#536fff!important;box-shadow:0 0 13px rgba(74,106,255,0.46)!important}.tlr-resource-deeplink:active{background:#3f5df6!important;transform:translateY(1px)!important}.tlr-resource-gloss:hover{color:#C9A84C!important}.tlr-resource-gloss:hover .tlr-resource-gloss-tip{opacity:1!important;visibility:visible!important}.tlr-resource-lang-active::after{content:"";position:absolute;left:4px;right:4px;bottom:-2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.78)}.tlr-resource-card:focus-visible,.tlr-resource-row:focus-visible,.tlr-resource-tree-row:focus-visible,.tlr-resource-chip:focus-visible,.tlr-resource-link:focus-visible,.tlr-resource-search-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
+      style.textContent += `.tlr-strat-bank-row{transition:background 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}.tlr-strat-bank-row:hover{background:rgba(140,160,255,0.045)!important;border-top-color:rgba(38,67,247,0.22)!important;border-right-color:rgba(38,67,247,0.22)!important;border-bottom-color:rgba(38,67,247,0.22)!important;box-shadow:0 0 0 1px rgba(38,67,247,0.22),0 4px 24px rgba(0,0,0,0.6),0 0 18px rgba(38,67,247,0.15)!important}.tlr-strat-bank-row:hover .tlr-strat-bank-row-icon{border-color:rgba(38,67,247,0.22)!important}.tlr-strat-bank-card{transition:background 0.14s ease,border-color 0.14s ease,box-shadow 0.14s ease}.tlr-strat-bank-card:hover{background:rgba(140,160,255,0.045)!important;border-color:${c.brH}!important;box-shadow:0 8px 22px rgba(0,0,0,0.32)!important}.tlr-strat-bank-card:hover .tlr-strat-bank-row-icon{border-color:rgba(38,67,247,0.22)!important}`;
     }
   }, [darkMode]);
 
@@ -14798,7 +14798,7 @@ const TalariaV8b = () => {
         const sessionsPageRows = getSessionsPageRows();
         const uiZ = v16EmbeddedRoot ? 1 : Z;
         return (
-          <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
+          <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
             {/* Header */}
             <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
               {/* Logo slot — aligns with nav panel */}
@@ -44944,6 +44944,7 @@ const TalariaV8b = () => {
         /* ── VIEW: STRATEGY BANK ── */
         if (sessView === "stratbank") {
           const uiZ = v16EmbeddedRoot ? 1 : Z;
+          const stratPageGutterX = dashIsPhone ? 16 : dashIsNarrow ? 28 : 48;
           const STYLES = ["All","Trend Following","Mean Reversion","Scalping","Breakout","Price Action","Swing","Algorithmic","News Trading","Other"];
           const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
           const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
@@ -45100,7 +45101,7 @@ const TalariaV8b = () => {
           );
           const stratEmptyStateStyle = {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,minHeight:0,gap:14};
           const StratRowsSkeleton = () => (
-            <div style={{width:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
               <StratRowsHeader/>
               <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",display:"flex",flexDirection:"column",gap:6}}>
               {Array.from({length:4}).map((_,idx)=>(
@@ -45123,8 +45124,7 @@ const TalariaV8b = () => {
             </div>
           );
 
-          const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => {
-            const isH=stratCardHov===strat.id;
+          const renderStratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => {
             const cardIcon = strat.icon || strat.template?.icon || "◎";
             const marketItems = strategyBankScopeItems(strat);
             const cardIsSaved = typeof isSaved === "function" ? isSaved(strat.id) : !!isSaved;
@@ -45161,13 +45161,13 @@ const TalariaV8b = () => {
               </div>
             );
             return (
-              <div onMouseEnter={()=>setStratCardHov(strat.id)} onMouseLeave={()=>setStratCardHov(null)}
+              <div className="tlr-strat-bank-card"
                 onDoubleClick={openEditableStrategy}
-                style={{position:"relative",width:"100%",minWidth:0,height:342,minHeight:342,maxHeight:342,padding:0,overflow:"hidden",background:isH?"rgba(140,160,255,0.045)":c.sf,border:`1px solid ${isH?c.brH:c.br}`,cursor:"default",userSelect:"none",boxShadow:isH?"0 8px 22px rgba(0,0,0,0.32)":"none",transition:"background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
+                style={{position:"relative",width:"100%",minWidth:0,height:342,minHeight:342,maxHeight:342,padding:0,overflow:"hidden",background:c.sf,border:`1px solid ${c.br}`,cursor:"default",userSelect:"none",boxShadow:"none",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
                 <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`,flexShrink:0}}/>
                 <div style={{padding:"12px 14px 12px",flex:1,display:"flex",flexDirection:"column",gap:9}}>
                   <div style={{display:"grid",gridTemplateColumns:"26px minmax(0,1fr) 32px",alignItems:"start",gap:9}}>
-                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,color:c.acL,boxSizing:"border-box",transition:"border-color 0.14s ease, background 0.14s ease"}}>
+                    <div className="tlr-strat-bank-row-icon" style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${c.brH}`,color:c.acL,boxSizing:"border-box",transition:"border-color 0.14s ease, background 0.14s ease"}}>
                       <span style={{fontSize:18,lineHeight:1,filter:"saturate(1.08)"}}>{cardIcon}</span>
                     </div>
                     <div style={{minWidth:0}}>
@@ -45377,12 +45377,11 @@ const TalariaV8b = () => {
               </div>
             );
           };
-          const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => (
-            <div style={{width:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
+          const renderStrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => (
+            <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
               <StratRowsHeader/>
-              <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px"}}>
+              <div className="tlr-scroll tlr-strat-bank-rows-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",overflowAnchor:"none"}}>
               {items.map((strat,idx)=>{
-                const isH=stratCardHov===strat.id;
                 const icon = strat.icon || strat.template?.icon || "◎";
                 const markets = stratMarkets(strat);
                 const tfs = strat.timeframes||[];
@@ -45395,12 +45394,11 @@ const TalariaV8b = () => {
                 };
                 return (
                   <div key={strategyRowKey(strat)||strat.id}
-                    onMouseEnter={()=>setStratCardHov(strat.id)}
-                    onMouseLeave={()=>setStratCardHov(null)}
+                    className="tlr-strat-bank-row"
                     onDoubleClick={openEditableStrategy}
-                    style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${isH?c.acB:c.brH}`,borderRight:`1px solid ${isH?c.acB:c.brH}`,borderBottom:`1px solid ${isH?c.acB:c.brH}`,borderLeft:`3px solid ${c.acL}`,background:isH?"rgba(140,160,255,0.045)":c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease",boxShadow:isH?`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
+                    style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,borderTop:`1px solid ${c.brH}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`3px solid ${c.acL}`,background:c.sf,cursor:"default",boxShadow:"0 3px 12px rgba(0,0,0,0.5)",marginTop:idx===0?0:6,overflow:"hidden",boxSizing:"border-box"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
-                      <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,boxSizing:"border-box"}}>
+                      <div className="tlr-strat-bank-row-icon" style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${c.brH}`,boxSizing:"border-box",transition:"border-color 0.15s ease"}}>
                         <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
                       </div>
                     </div>
@@ -45801,7 +45799,7 @@ const TalariaV8b = () => {
           const SORT_OPTIONS=[{k:"name",l:"Name"},{k:"winRate",l:"Win Rate"},{k:"rr",l:"Avg R:R"},{k:"saves",l:"Most Saved"},{k:"pnl",l:"Net P&L"}];
 
           return (
-            <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
+            <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
               {/* ─ Header ─ */}
               <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
                 <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -45810,7 +45808,7 @@ const TalariaV8b = () => {
                 <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
                   <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
                   <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14}}/>
-                  <div style={{fontSize:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F}}>Strategy Bank</div>
+                  <div style={{fontSize:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2}}>Strategy Bank</div>
                 </div>
                 <div style={{flex:1}}/>
                 {/* Build Strategy button */}
@@ -45823,12 +45821,12 @@ const TalariaV8b = () => {
               </div>
 
               {/* ─ Body ─ */}
-              <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+              <div className={`tlr-dash-body-stack${dashIsPhone ? " tlr-dash-body-stack--phone" : ""}`} style={{flex:1,display:"flex",overflow:"hidden",flexDirection:dashIsPhone?"column":"row"}}>
                 {navPanel}
-                <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
+                <div className="tlr-dash-main-content" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0,order:dashIsPhone?1:undefined}}>
                 {/* ─ Filter/search bar ─ */}
-                <div style={{flexShrink:0,background:c.bg,padding:`0 ${V16_PAGE_GUTTER_X}px`,zIndex:3}}>
-                  <div style={{width:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
+                <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
+                  <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
                       {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length}].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
@@ -45957,7 +45955,7 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{
                   flex:1,minHeight:0,display:"flex",flexDirection:"column",
-                  padding:`24px ${V16_PAGE_GUTTER_X}px`,
+                  padding:`24px ${stratPageGutterX}px`,
                   overflow:stratLayoutMode==="rows"?"hidden":"auto",
                 }} className={stratLayoutMode==="rows"?undefined:"tlr-scroll"}>
 
@@ -45967,7 +45965,7 @@ const TalariaV8b = () => {
                       stratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`strat-skel-${i}`}/>)}
                         </div>
                       )
@@ -45990,21 +45988,23 @@ const TalariaV8b = () => {
                       </div>
                     ):(
                       stratLayoutMode==="rows"?(
-                        <StrategyRows items={filteredMine} isMine={!minePreviewMode} metricsLoading={stratDataLoading}
-                          onEdit={s=>openBuilder(s)}
-                          onDelete={s=>deleteStrategyFromBank(s)}
-                          onDuplicate={s=>copyStrategyIntoBank(s)}
-                          onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
-                          onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
+                        renderStrategyRows({items:filteredMine,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
+                          onEdit:s=>openBuilder(s),
+                          onDelete:s=>deleteStrategyFromBank(s),
+                          onDuplicate:s=>copyStrategyIntoBank(s),
+                          onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
+                          onUseTemplate:tpl=>applyTemplateToBuilder(tpl)})
                       ):(
-                        <div style={{width:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {filteredMine.map(strat=>(
-                            <StratCard key={strategyRowKey(strat)||strat.id} strat={strat} isMine={!minePreviewMode} metricsLoading={stratDataLoading}
-                              onEdit={s=>openBuilder(s)}
-                              onDelete={s=>deleteStrategyFromBank(s)}
-                              onDuplicate={s=>copyStrategyIntoBank(s)}
-                              onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
-                              onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
+                            <React.Fragment key={strategyRowKey(strat)||strat.id}>
+                              {renderStratCard({strat,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
+                                onEdit:s=>openBuilder(s),
+                                onDelete:s=>deleteStrategyFromBank(s),
+                                onDuplicate:s=>copyStrategyIntoBank(s),
+                                onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
+                                onUseTemplate:tpl=>applyTemplateToBuilder(tpl)})}
+                            </React.Fragment>
                           ))}
                         </div>
                       )
@@ -46035,13 +46035,15 @@ const TalariaV8b = () => {
                       </div>
                     ):(
                       stratLayoutMode==="rows"?(
-                        <StrategyRows items={filteredSavedCommunity} isMine={false} inSavedTab={true}
-                          onRemove={s=>saveCommunity(s)}/>
+                        renderStrategyRows({items:filteredSavedCommunity,isMine:false,inSavedTab:true,
+                          onRemove:s=>saveCommunity(s)})
                       ):(
-                        <div style={{width:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {filteredSavedCommunity.map(strat=>(
-                            <StratCard key={strat.id} strat={strat} isMine={false} inSavedTab={true}
-                              onRemove={s=>saveCommunity(s)}/>
+                            <React.Fragment key={strat.id}>
+                              {renderStratCard({strat,isMine:false,inSavedTab:true,
+                                onRemove:s=>saveCommunity(s)})}
+                            </React.Fragment>
                           ))}
                         </div>
                       )
@@ -46054,7 +46056,7 @@ const TalariaV8b = () => {
                       stratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`comm-skel-${i}`}/>)}
                         </div>
                       )
@@ -46066,19 +46068,21 @@ const TalariaV8b = () => {
                       </div>
                     ):(
                       stratLayoutMode==="rows"?(
-                        <StrategyRows items={filteredCommunity} isMine={false}
-                          isSaved={id=>savedCommunityIds.has(id)}
-                          onSave={s=>saveCommunity(s)}
-                          onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}
-                          onDuplicate={s=>copyCommunityStrategyIntoBank(s)}/>
+                        renderStrategyRows({items:filteredCommunity,isMine:false,
+                          isSaved:id=>savedCommunityIds.has(id),
+                          onSave:s=>saveCommunity(s),
+                          onUseTemplate:tpl=>applyTemplateToBuilder(tpl),
+                          onDuplicate:s=>copyCommunityStrategyIntoBank(s)})
                       ):(
-                        <div style={{width:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {filteredCommunity.map(strat=>(
-                            <StratCard key={strategyRowKey(strat)||strat.id} strat={strat} isMine={false}
-                              isSaved={savedCommunityIds.has(strat.id)}
-                              onSave={s=>saveCommunity(s)}
-                              onDuplicate={s=>copyCommunityStrategyIntoBank(s)}
-                              onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
+                            <React.Fragment key={strategyRowKey(strat)||strat.id}>
+                              {renderStratCard({strat,isMine:false,
+                                isSaved:savedCommunityIds.has(strat.id),
+                                onSave:s=>saveCommunity(s),
+                                onDuplicate:s=>copyCommunityStrategyIntoBank(s),
+                                onUseTemplate:tpl=>applyTemplateToBuilder(tpl)})}
+                            </React.Fragment>
                           ))}
                         </div>
                       )
@@ -46318,7 +46322,7 @@ const TalariaV8b = () => {
         /* ── VIEW: PROFILE (live account settings inside V16 shell) ── */
         if (sessView === "profile") {
           return (
-            <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
+            <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
               <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
                 {navPanel}
                 <div id="talaria-v16-profile-mount" style={{flex:1,minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}} />
@@ -47015,7 +47019,7 @@ const TalariaV8b = () => {
             </div>
           ) : null;
           return (
-            <div dir={resAr?"rtl":"ltr"} style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:resFont,display:"flex",flexDirection:"column"}}>
+            <div dir={resAr?"rtl":"ltr"} style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:resFont,display:"flex",flexDirection:"column"}}>
               {Header}
               {resourcesTutorialMode&&<div style={{height:28,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:c.acD,borderBottom:`1px solid ${c.brH}`,color:c.acL,fontSize:11,fontWeight:900,letterSpacing:"0.05em"}}>
                 {tx("Tutorial Mode active - click any element to learn about it.","وضع التعليم مفعل - اضغط أي عنصر لتتعلم عنه.")}

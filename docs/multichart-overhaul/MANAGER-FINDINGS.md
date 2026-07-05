@@ -596,6 +596,48 @@ Split into 3 gated stages, each kill-switched and independently measurable:
 - **B-FIX-6c (high-limit /smart):** raise the client clamp so lazy 1m arrives in 1-3 requests,
   not ~50. Own kill-switch. Folds in old Follow-up #2.
 
+## 6u. B-FIX-6a live result (2026-07-05, build 20260705b4) — win + boot-window defect
+
+S6-a re-run (2×2 same-pair, all 1m, host 1m→1d→1h→1m), viewport-first OFF, 6a ON:
+
+| panel | fetches | fetchedBars | resamples | renders | seams |
+|-------|---------|-------------|-----------|---------|-------|
+| HOST  | 23–25   | 40–43k      | 49–453    | 967–1596| 0     |
+| B/C/D | 2       | **0**       | 86–492    | 143–755 | 0     |
+
+- **Tax reduced ~70%:** host fetches 91→23–25, bars 178k→40–43k vs S6-a baseline. Switch no
+  longer "candle by candle." Panels `fetchedBars = 0` (the `fetches=2` are empty probes, not
+  data ownership — I1 intact). seams 0.
+- Renders still high (host ~1600) = RC2, deferred.
+
+**DEFECT (new, 6a-introduced): host/panel window-extent mismatch at boot/browse.** PO (mostly
+-replay) reports: same TF, host shows fewer candles / a different range than panels until
+replay runs, then they align. Mechanism: pre-6a, a 1d switch accumulated a wide 1m master, so
+returning to 1m left the host wide (matching panels). With 6a the host loads a narrow display-TF
+window and, on return to 1m, refetches only a narrow 1m window while panels retain their wider
+seed → same-TF extent mismatch. Replay re-anchors to the shared 1m master → self-heals. No
+corruption. → B-DIAG-7 (read-only) to name the exact seed/window site, then a targeted fix so
+same-TF panels and the display-TF host share one window. 6a stays ON (default) meanwhile; win
+is real and mismatch is non-corrupting.
+
+## 6v. B-DIAG-7 sign-off + B-FIX-6a-2 spec (2026-07-05)
+
+`DIAG-B7-host-panel-window-mismatch.md` accepted. Root confirmed (Manager spot-check): the
+iframe `setTimeframe` idempotency guard returns early when the panel already holds the TF with
+matching cadence (`panel-cmd-bridge.js:1577-1582`), so a host-fanout `setTimeframe(1m)` after
+the host commits its new narrow 1m window does NOT re-run `_multichartMirrorHostTfSwitchIfReady`
+— panel keeps its wider seed → same-TF extent mismatch during browsing. Replay heals via the
+frame mirror path (`panel-cmd-bridge.js:537-596` / `forceSamePairParentDataMirror`).
+
+Chosen fix = DIAG-7 Option B (panels follow host's lean window; zero added fetches; preserves
+6a win + S6-b `fetches=0`). **B-FIX-6a-2 (dispatched):** in the setTimeframe idempotency block,
+when `__fromHostFanout` + same-pair + parent committed a materially different extent (first/last
+ts or length differ), re-mirror via `_multichartMirrorHostTfSwitchIfReady(tf)` instead of the
+early return. Gate on extent-actually-differs to avoid re-render thrashing (the prior
+"panels re-render each host switch" regression). Kill-switch
+`__TALARIA_MC_DISABLE_SAMETF_REMIRROR`. Not-Option-A (host reloads wide window) — that re-spends
+the tax 6a removed.
+
 ## 6s. CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 The rollback build is a GOOD production state for the core scenario: same-pair same-TF 2×2

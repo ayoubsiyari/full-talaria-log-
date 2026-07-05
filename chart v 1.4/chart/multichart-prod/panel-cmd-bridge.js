@@ -1539,6 +1539,36 @@
         return hit;
     }
 
+    function seriesExtent(series) {
+        if (!Array.isArray(series) || series.length === 0) return null;
+        var first = Number(series[0] && series[0].t);
+        var last = Number(series[series.length - 1] && series[series.length - 1].t);
+        if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+        return { first: first, last: last, length: series.length };
+    }
+
+    function sameTfHostWindowExtentDiffers(ch, tf) {
+        try {
+            if (!ch || typeof ch._isMultichartEmbedPanel !== 'function' || !ch._isMultichartEmbedPanel()) {
+                return false;
+            }
+            var pc = (global.parent && global.parent !== global) ? global.parent.chart : null;
+            if (!pc) return false;
+            var hostFid = pc.currentFileId != null ? String(pc.currentFileId) : '';
+            var panelFid = ch.currentFileId != null ? String(ch.currentFileId) : '';
+            if (!hostFid || !panelFid || hostFid !== panelFid) return false;
+            if (String(pc.currentTimeframe || '').toLowerCase().trim() !== tf) return false;
+            var host = seriesExtent(pc.rawData);
+            var panel = seriesExtent(ch.rawData);
+            if (!host || !panel) return false;
+            return host.first !== panel.first
+                || host.last !== panel.last
+                || Math.abs(host.length - panel.length) > 2;
+        } catch (_) {
+            return false;
+        }
+    }
+
     // Apply a single command. Returns a promise that resolves on success
     // or rejects on failure (we surface either via reportResult).
     function applyCommand(cmd, args) {
@@ -1578,7 +1608,23 @@
                         && Array.isArray(ch.data) && ch.data.length > 0
                         && !ch._timeframeSwitching
                         && barsMatchTf) {
-                        return;
+                        var shouldRemirrorSameTf = args.__fromHostFanout === true
+                            && !global.__TALARIA_MC_DISABLE_SAMETF_REMIRROR
+                            && typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
+                            && sameTfHostWindowExtentDiffers(ch, tf);
+                        if (shouldRemirrorSameTf) {
+                            try {
+                                if (ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                                    setTimeout(function () {
+                                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                    }, 0);
+                                    return;
+                                }
+                            } catch (_) {}
+                        } else {
+                            return;
+                        }
+                        // Host extent changed but the mirror declined; fall through to normal handling.
                     }
                     // Multichart backtest: refetch window must anchor on host A's
                     // replay playhead (same as panel A's _refetchBacktestTimeframe).
