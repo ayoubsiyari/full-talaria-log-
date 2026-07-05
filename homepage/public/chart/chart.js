@@ -373,6 +373,10 @@ const MC_DIAG_COUNTER_FIELDS = [
     'resamples',
     'renders',
     'seams',
+    'ownerFetches',
+    'ownerBars',
+    'boundedMisses',
+    'handovers',
     'lastFetchMs',
 ];
 
@@ -760,6 +764,15 @@ class Chart {
         this._mcViewportFirstMasterHydrating = false;
         this._mcViewportFirstMasterReady = false;
         this._mcViewportFirstHydrationMode = null;
+        this._mcCommittedNativeRawFetchTf = null;
+        this._mcCommittedTimeframe = null;
+        this._mcCommitGeneration = 0;
+        this._mcFinerPanelSelfOwner = false;
+        this._mcFinerPanelHostCommitGeneration = 0;
+        this._mcFinerPanelOwnerFetchSeq = 0;
+        this._mcFinerPanelHostCommitListenerInstalled = false;
+        this._mcFinerPanelHostCommitHandler = null;
+        this._installFinerPanelSelfOwnerHostCommitListener();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -1966,6 +1979,7 @@ class Chart {
             // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
             this._nativeRawFetchTf = replayRawTf;
             this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true, skipTimeframePrefetch: true });
+            this._emitMultichartHostDataCommit();
             this.loadedRanges.set(0, result.returned);
             this._saveBtTfDataCacheFromChart(this.currentFileId, replayRawTf);
             // Defer prefetch of other session instruments until after replay + layout settle —
@@ -2034,6 +2048,10 @@ class Chart {
             resamples: 0,
             renders: 0,
             seams: 0,
+            ownerFetches: 0,
+            ownerBars: 0,
+            boundedMisses: 0,
+            handovers: 0,
             lastFetchMs: 0,
         };
         _talariaInstallMcDiagReporter();
@@ -2671,6 +2689,7 @@ class Chart {
     /** Copy host tile A's 1m master into this iframe when showing the same pair. */
     _multichartSeedPanelMasterFromParent() {
         if (!this._isMultichartEmbedPanel()) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns()) return false;
         let parent = null;
         try {
             if (!window.parent || window.parent === window) return false;
@@ -2714,6 +2733,7 @@ class Chart {
      */
     _multichartSamePairTimeframeResampleFromParent(normalizedTf) {
         if (this._isIndependentMultichartPair()) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns({ panelTimeframe: normalizedTf })) return false;
         const prevTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const prevMs = this.parseTimeframe(prevTf);
         const newMs = this.parseTimeframe(normalizedTf);
@@ -2741,6 +2761,7 @@ class Chart {
             && this._isIndependentMultichartPair()) {
             return false;
         }
+        if (this._multichartFinerSamePairPanelSelfOwns({ panelTimeframe: normalizedTf })) return false;
         const parent = this._multichartGetHostChart();
         if (!parent) return false;
         if (parent._timeframeSwitching || parent._pairSwitchLoading) return false;
@@ -2866,6 +2887,303 @@ class Chart {
         }
     }
 
+    _finerPanelSelfOwnDisabled() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__TALARIA_MC_DISABLE_FINER_PANEL_SELFOWN;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _readCommittedHostStateForFinerOwner(detail = null) {
+        const d = detail && typeof detail === 'object' ? detail : {};
+        const host = this._multichartGetHostChart();
+        if (!host) return null;
+        const generation = Number(d.generation ?? host._mcCommitGeneration);
+        const nativeTf = String(
+            d.nativeRawFetchTf
+            || host._mcCommittedNativeRawFetchTf
+            || ''
+        ).toLowerCase().trim();
+        const timeframe = String(
+            d.timeframe
+            || host._mcCommittedTimeframe
+            || host.currentTimeframe
+            || ''
+        ).toLowerCase().trim();
+        const fileId = d.fileId != null ? String(d.fileId) : String(host.currentFileId || '');
+        if (!nativeTf && (host._timeframeSwitching || host._pairSwitchLoading)) return null;
+        const fallbackNative = nativeTf || String(
+            (host.replaySystem?.isActive ? host.replaySystem?.rawTimeframe : null)
+            || host._nativeRawFetchTf
+            || host.currentTimeframe
+            || ''
+        ).toLowerCase().trim();
+        return {
+            generation: Number.isFinite(generation) ? generation : 0,
+            fileId,
+            timeframe,
+            nativeRawFetchTf: fallbackNative,
+            replayTimestamp: Number(d.replayTimestamp ?? host.replaySystem?.replayTimestamp),
+        };
+    }
+
+    _multichartFinerSamePairPanelSelfOwns(detail = null) {
+        if (this._finerPanelSelfOwnDisabled()) return false;
+        if (!this._isMultichartEmbedPanel()) return false;
+        const targetFileId = detail && detail.fileId != null ? detail.fileId : this.currentFileId;
+        if (!this._multichartSamePairAsHost(targetFileId)) return false;
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
+        const panelTf = String(
+            (detail && detail.panelTimeframe)
+            || this.currentTimeframe
+            || ''
+        ).toLowerCase().trim();
+        const panelMs = this.parseTimeframe(panelTf);
+        if (!Number.isFinite(panelMs) || panelMs <= 0) return false;
+        const hostState = this._readCommittedHostStateForFinerOwner(detail);
+        const hostNativeTf = String(hostState?.nativeRawFetchTf || '').toLowerCase().trim();
+        const hostMs = this.parseTimeframe(hostNativeTf);
+        if (!Number.isFinite(hostMs) || hostMs <= 0) return false;
+        return panelMs < hostMs * 0.92;
+    }
+
+    _setFinerPanelSelfOwnerMode(enabled) {
+        const next = !!enabled;
+        if (this._mcFinerPanelSelfOwner === next) return;
+        this._mcFinerPanelSelfOwner = next;
+        if (this._mcDiag) this._mcDiag.handovers++;
+    }
+
+    _finerPanelOwnerFetchRange(timeframe, session, playheadMs, limit) {
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const capped = Math.max(100, Math.min(5000, Math.floor(Number(limit) || 5000)));
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        let sessionStartMs = null;
+        try {
+            const raw = session && (session.startDate || session.start_date);
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+        const anchor = Number.isFinite(playheadMs)
+            ? Number(playheadMs)
+            : (Number.isFinite(sessionEndMs) ? sessionEndMs : sessionStartMs);
+        if (!Number.isFinite(anchor)) return null;
+        const forwardBars = Math.min(Math.max(24, Math.floor(capped * 0.08)), Math.floor(capped / 2));
+        const backwardBars = Math.max(1, capped - forwardBars);
+        let startTs = anchor - backwardBars * tfMs;
+        let endTs = anchor + forwardBars * tfMs;
+        if (Number.isFinite(sessionStartMs)) startTs = Math.max(sessionStartMs - 20 * tfMs, startTs);
+        if (Number.isFinite(sessionEndMs)) endTs = Math.min(sessionEndMs, endTs);
+        if (endTs < anchor) endTs = anchor;
+        return {
+            startTs: Math.floor(startTs),
+            endTs: Math.floor(endTs),
+        };
+    }
+
+    _recordFinerPanelOwnerFetch(result) {
+        if (!this._mcDiag) return;
+        const returned = Number(result?.returned);
+        const bars = Array.isArray(result?.candles)
+            ? result.candles.length
+            : (Number.isFinite(returned) ? returned : 0);
+        this._mcDiag.ownerFetches++;
+        this._mcDiag.ownerBars += Math.max(0, bars);
+    }
+
+    async _fetchFinerPanelOwnerWindow(fileId, session, timeframe, playheadMs, options = {}) {
+        if (!this._multichartFinerSamePairPanelSelfOwns({
+            fileId,
+            panelTimeframe: timeframe,
+        })) {
+            return null;
+        }
+        const seq = ++this._mcFinerPanelOwnerFetchSeq;
+        const tf = this._normalizeBacktestTimeframe(timeframe) || timeframe || '1m';
+        const activeCatchUp = !!(options && options.activeReplayCatchUp);
+        const limit = activeCatchUp ? 2000 : 5000;
+        const range = this._finerPanelOwnerFetchRange(tf, session, playheadMs, limit);
+        const result = await this._fetchSmartWindow(
+            fileId,
+            tf,
+            session,
+            'end',
+            range,
+            {
+                skipSessionDates: true,
+                limit,
+                allowHighLimit: limit > 2000,
+                skipBars: true,
+            },
+        );
+        if (seq !== this._mcFinerPanelOwnerFetchSeq) return null;
+        if (this._smartResponseHasPayload(result)) {
+            result.nativeRawFetchTf = tf;
+            this._recordFinerPanelOwnerFetch(result);
+        }
+        return result;
+    }
+
+    _finerPanelOwnedWindowCovers(ts) {
+        const target = Number(ts);
+        if (!Number.isFinite(target)) return true;
+        const series = Array.isArray(this.replaySystem?.fullRawData) && this.replaySystem.fullRawData.length
+            ? this.replaySystem.fullRawData
+            : (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length
+                ? this._panelFullRawData
+                : this.rawData);
+        if (!Array.isArray(series) || !series.length) return false;
+        const first = Number(series[0]?.t);
+        const last = Number(series[series.length - 1]?.t);
+        const tfMs = this.parseTimeframe(this.currentTimeframe) || 60_000;
+        return Number.isFinite(first) && Number.isFinite(last)
+            && target >= first - tfMs
+            && target <= last + tfMs;
+    }
+
+    async _ensureFinerPanelOwnerCoversPlayhead(ts, options = {}) {
+        if (!this._multichartFinerSamePairPanelSelfOwns()) return false;
+        this._setFinerPanelSelfOwnerMode(true);
+        const target = Number(ts);
+        if (this._finerPanelOwnedWindowCovers(target)) return true;
+        if (this._mcDiag) this._mcDiag.boundedMisses++;
+        const fileId = String(this.currentFileId || '').trim();
+        if (!fileId) return false;
+        const session = this.backtestingSession || {};
+        const tf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+        let result = null;
+        try {
+            result = await this._fetchFinerPanelOwnerWindow(
+                fileId,
+                session,
+                tf,
+                target,
+                { activeReplayCatchUp: !!(options && options.activeReplayCatchUp) },
+            );
+        } catch (e) {
+            console.warn('[multichart] finer owner bounded fetch failed', e);
+            return false;
+        }
+        if (!this._smartResponseHasPayload(result)) return false;
+        if (!this._multichartFinerSamePairPanelSelfOwns()) return false;
+        this._nativeRawFetchTf = result.nativeRawFetchTf || tf;
+        this._ingestSmartWindowResult(result, {
+            skipIndicators: true,
+            skipFitToView: true,
+            skipTimeframePrefetch: true,
+        });
+        this._panelFullRawData = Array.isArray(this.rawData) ? this.rawData.slice() : null;
+        this._serverCursors = {
+            firstTs: result.first_cursor,
+            lastTs: result.last_cursor,
+            hasMoreLeft: result.has_more_left !== false,
+            hasMoreRight: result.has_more_right !== false,
+        };
+        if (this.replaySystem?.isActive) {
+            this.replaySystem.fullRawData = Array.isArray(this._panelFullRawData)
+                ? this._panelFullRawData
+                : this.rawData;
+            this.replaySystem.rawTimeframe = this._nativeRawFetchTf;
+            if (typeof this.replaySystem.goToReplayTimestamp === 'function' && Number.isFinite(target)) {
+                this.replaySystem.goToReplayTimestamp(target, { centerOnCandle: false });
+            } else if (typeof this.replaySystem.updateChartData === 'function') {
+                this.replaySystem.updateChartData(false);
+            }
+        }
+        if (typeof this.render === 'function') this.render();
+        return this._finerPanelOwnedWindowCovers(target);
+    }
+
+    _installFinerPanelSelfOwnerHostCommitListener() {
+        if (this._mcFinerPanelHostCommitListenerInstalled) return;
+        if (typeof window === 'undefined') return;
+        if (!this._isMultichartEmbedPanel()) return;
+        try {
+            if (!window.parent || window.parent === window) return;
+            const parentWin = window.parent;
+            const self = this;
+            this._mcFinerPanelHostCommitHandler = function finerPanelHostCommit(ev) {
+                const detail = ev && ev.detail ? ev.detail : {};
+                const gen = Number(detail.generation);
+                if (Number.isFinite(gen) && gen <= self._mcFinerPanelHostCommitGeneration) return;
+                if (Number.isFinite(gen)) self._mcFinerPanelHostCommitGeneration = gen;
+                self._applyFinerPanelHostCommit(detail);
+            };
+            parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
+            this._mcFinerPanelHostCommitListenerInstalled = true;
+        } catch (_e) { /* ignore */ }
+    }
+
+    _applyFinerPanelHostCommit(detail = {}) {
+        if (!this._isMultichartEmbedPanel()) return;
+        if (detail.fileId != null && this.currentFileId != null
+            && String(detail.fileId) !== String(this.currentFileId)) {
+            return;
+        }
+        const shouldOwn = this._multichartFinerSamePairPanelSelfOwns(detail);
+        if (shouldOwn) {
+            this._setFinerPanelSelfOwnerMode(true);
+            const ts = Number(detail.replayTimestamp);
+            if (Number.isFinite(ts) && !this._finerPanelOwnedWindowCovers(ts)) {
+                this._ensureFinerPanelOwnerCoversPlayhead(ts, {
+                    activeReplayCatchUp: !!this.replaySystem?.isPlaying,
+                });
+            }
+            return;
+        }
+        if (!this._mcFinerPanelSelfOwner) return;
+        const tf = String(this.currentTimeframe || '').toLowerCase().trim();
+        this._setFinerPanelSelfOwnerMode(false);
+        if (tf && typeof this._multichartMirrorHostTfSwitchIfReady === 'function'
+            && this._multichartMirrorHostTfSwitchIfReady(tf)) {
+            return;
+        }
+        if (typeof this._takeParentMemorySmartWindow === 'function') {
+            const result = this._takeParentMemorySmartWindow(this.currentFileId, tf);
+            if (this._smartResponseHasPayload(result)) {
+                this._nativeRawFetchTf = result.nativeRawFetchTf || tf;
+                this._ingestSmartWindowResult(result, {
+                    skipIndicators: true,
+                    skipFitToView: true,
+                    skipTimeframePrefetch: true,
+                });
+            }
+        }
+    }
+
+    _emitMultichartHostDataCommit() {
+        try {
+            if (this._isMultichartEmbedPanel()) return;
+            if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return;
+            if (!Array.isArray(this.rawData) || this.rawData.length === 0) return;
+            const nativeTf = String(
+                (this.replaySystem?.isActive ? this.replaySystem?.rawTimeframe : null)
+                || this._nativeRawFetchTf
+                || this.currentTimeframe
+                || ''
+            ).toLowerCase().trim();
+            this._mcCommittedNativeRawFetchTf = nativeTf;
+            this._mcCommittedTimeframe = String(this.currentTimeframe || '').toLowerCase().trim();
+            this._mcCommitGeneration = (this._mcCommitGeneration || 0) + 1;
+            window.dispatchEvent(new CustomEvent('talariaMcHostDataCommit', {
+                detail: {
+                    generation: this._mcCommitGeneration,
+                    fileId: this.currentFileId != null ? String(this.currentFileId) : '',
+                    timeframe: this._mcCommittedTimeframe,
+                    nativeRawFetchTf: this._mcCommittedNativeRawFetchTf,
+                    replayTimestamp: Number(this.replaySystem?.replayTimestamp),
+                },
+            }));
+        } catch (_e) { /* ignore */ }
+    }
+
     /** Date-range sync ON + same symbol as tile A (not an independent pair). */
     _multichartSamePairSyncActive() {
         if (!this._multichartVisibleRangeSyncOn) return false;
@@ -2893,6 +3211,7 @@ class Chart {
      */
     _multichartSamePairDataShareActive() {
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns()) return false;
         if (typeof this._isIndependentMultichartPair === 'function'
             && this._isIndependentMultichartPair()) {
             return false;
@@ -2954,6 +3273,7 @@ class Chart {
      */
     _delegateSamePairPanLoadToHost(force) {
         if (!this._multichartSamePairDataShareActive()) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns()) return false;
         const host = this._multichartGetHostChart();
         if (!host) return false;
         if (typeof this._tryExtendReplayMasterFromParent === 'function') {
@@ -3375,6 +3695,7 @@ class Chart {
     _takeParentNativeMasterSmartWindow(targetFileId) {
         try {
             if (!this._multichartSamePairAsHost(targetFileId)) return null;
+            if (this._multichartFinerSamePairPanelSelfOwns({ fileId: targetFileId })) return null;
             const parent = (typeof window !== 'undefined' && window.parent && window.parent !== window)
                 ? window.parent.chart
                 : null;
@@ -3685,6 +4006,11 @@ class Chart {
                 const independentPair = switchingPair
                     && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
+                const finerPanelSelfOwner = samePairAsHost
+                    && this._multichartFinerSamePairPanelSelfOwns({
+                        fileId,
+                        panelTimeframe: displayTf,
+                    });
                 const viewportFirstHost = this._multichartViewportFirstSwitchEnabled(displayTf, switchingPair);
                 const displayTfHostFetch = viewportFirstHost || displayTfMasterHost;
 
@@ -3693,15 +4019,26 @@ class Chart {
                 let loadedDisplayTfMasterHost = false;
 
                 // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
-                if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                if (samePairAsHost && !finerPanelSelfOwner && typeof this._warmBtTfCacheFromParent === 'function') {
                     try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
                 }
-                if (samePairAsHost && !independentPair
+                if (samePairAsHost && !finerPanelSelfOwner && !independentPair
                     && typeof this._pollTakeParentNativeMasterSmartWindow === 'function') {
                     result = await this._pollTakeParentNativeMasterSmartWindow(fileId, loadSeq);
-                } else if (samePairAsHost && !independentPair
+                } else if (samePairAsHost && !finerPanelSelfOwner && !independentPair
                     && typeof this._takeParentNativeMasterSmartWindow === 'function') {
                     result = this._takeParentNativeMasterSmartWindow(fileId);
+                }
+
+                if (!result && finerPanelSelfOwner) {
+                    this._setFinerPanelSelfOwnerMode(true);
+                    result = await this._fetchFinerPanelOwnerWindow(
+                        fileId,
+                        session,
+                        displayTf,
+                        replayTs,
+                        { activeReplayCatchUp: false },
+                    );
                 }
 
                 // Independent pair on a high TF: HYBRID master — native bars for fast
@@ -3780,7 +4117,7 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    if (samePairAsHost && !independentPair) {
+                    if (samePairAsHost && !finerPanelSelfOwner && !independentPair) {
                         throw new Error(
                             'loadMultichartPanelFromHost: same-pair host master clone failed after retry'
                         );
@@ -3841,7 +4178,8 @@ class Chart {
                             this._panelFullRawData = Array.isArray(this.rawData)
                                 ? [...this.rawData]
                                 : null;
-                        } else if (typeof this._multichartSeedPanelMasterFromParent === 'function') {
+                        } else if (!finerPanelSelfOwner
+                            && typeof this._multichartSeedPanelMasterFromParent === 'function') {
                             this._multichartSeedPanelMasterFromParent();
                         }
                     }
@@ -3927,10 +4265,17 @@ class Chart {
                     if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                         this._syncReplayPanCursorsFromFullRaw();
                     }
+                    if (finerPanelSelfOwner) {
+                        this._panelFullRawData = Array.isArray(this.rawData) ? this.rawData.slice() : null;
+                        replay.fullRawData = Array.isArray(this._panelFullRawData)
+                            ? this._panelFullRawData
+                            : replay.fullRawData;
+                        replay.rawTimeframe = loadedNativeTf;
+                    }
                 }
 
                 this.resize();
-                const samePairEmbedMc = samePairAsHost && !independentPair
+                const samePairEmbedMc = samePairAsHost && !finerPanelSelfOwner && !independentPair
                     && typeof this._isMultichartEmbedPanel === 'function'
                     && this._isMultichartEmbedPanel();
                 let mirroredHostViewport = false;
@@ -3973,12 +4318,13 @@ class Chart {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
                     }));
                 } catch (_ev) { /* ignore */ }
+                this._emitMultichartHostDataCommit();
                 if (loadedViewportFirstHost) {
                     this._startMultichartViewportFirstMasterHydration(fileId, session, displayTf, replayTs);
                 }
                 const selfMc = this;
                 const fidMc = fileId;
-                const samePairEmbed = !this._isIndependentMultichartPair();
+                const samePairEmbed = !finerPanelSelfOwner && !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
                     if (selfMc._multichartBootViewportPositioned) return;
@@ -4958,6 +5304,7 @@ class Chart {
         // replay-active guards below are sufficient; it only prepends/anchors data
         // and never mirrors the host's viewport position.
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns()) return false;
         const lite = !!(opts && opts.lite);
         const replay = this.replaySystem;
         if (!replay?.isActive) return false;
@@ -5114,6 +5461,12 @@ class Chart {
      */
     _syncReplayMasterFromParentIfCovers(targetTs) {
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (this._multichartFinerSamePairPanelSelfOwns()) {
+            this._ensureFinerPanelOwnerCoversPlayhead(targetTs, {
+                activeReplayCatchUp: !!this.replaySystem?.isPlaying,
+            });
+            return false;
+        }
         const ts = Number(targetTs);
         if (!Number.isFinite(ts)) return false;
         try {
@@ -5442,6 +5795,11 @@ class Chart {
             }
             return true;
         }
+        if (!forceLazyFineMaster && this._multichartFinerSamePairPanelSelfOwns()) {
+            return this._ensureFinerPanelOwnerCoversPlayhead(ts, {
+                activeReplayCatchUp: !!(this.replaySystem?.isPlaying || this._mcFinerOwnerActiveReplayCatchUp),
+            });
+        }
         if (this._syncReplayMasterFromParentIfCovers(ts)) {
             return true;
         }
@@ -5464,6 +5822,8 @@ class Chart {
         try {
             if (forceLazyFineMaster) {
                 replayRawTf = '1m';
+            } else if (this._multichartFinerSamePairPanelSelfOwns()) {
+                replayRawTf = displayTf;
             } else if (typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed')) {
                 replayRawTf = '1m';
@@ -6054,6 +6414,10 @@ class Chart {
                     source: result.source || 'candles',
                 };
                 this._mcDiag && (this._mcDiag.fetchedBars += bars.length);
+                if (this._multichartFinerSamePairPanelSelfOwns()) {
+                    this._mcDiag && (this._mcDiag.ownerFetches++);
+                    this._mcDiag && (this._mcDiag.ownerBars += bars.length);
+                }
                 this._mcDiag && (this._mcDiag.lastFetchMs = Date.now() - mcDiagFetchStartMs);
                 const src = String(payload.source);
                 if (this._lastBarsSourceLogFileId !== String(fileId) || this._lastBarsSourceLog !== src) {
@@ -6552,6 +6916,9 @@ class Chart {
 
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
+        if (this._multichartFinerSamePairPanelSelfOwns()) {
+            return String(this.currentTimeframe || '1m').toLowerCase().trim();
+        }
         if (this._usesMultichartReplayMaster()) {
             if (!this._lazyReplayMasterDisabled()
                 && typeof this._isMultichartHostPanel === 'function'
@@ -8152,9 +8519,15 @@ class Chart {
             // instead of a network fetch (including during replay when both
             // panels show the same instrument).
             const samePairAsHost = this._multichartSamePairAsHost(targetFileId);
+            const finerPanelSelfOwner = samePairAsHost
+                && this._multichartFinerSamePairPanelSelfOwns({
+                    fileId: targetFileId,
+                    panelTimeframe: this.currentTimeframe,
+                });
             const canUseParentMemory = !anchorToHostPlayhead
-                && (!fetchReplayAnchored || samePairAsHost);
-            if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                && (!fetchReplayAnchored || samePairAsHost)
+                && !finerPanelSelfOwner;
+            if (samePairAsHost && !finerPanelSelfOwner && typeof this._warmBtTfCacheFromParent === 'function') {
                 this._warmBtTfCacheFromParent();
             }
             let result = null;
@@ -8176,8 +8549,18 @@ class Chart {
             }
             if (!result) {
                 if (isBacktestSession) {
+                    if (finerPanelSelfOwner) {
+                        this._setFinerPanelSelfOwnerMode(true);
+                        result = await this._fetchFinerPanelOwnerWindow(
+                            targetFileId,
+                            session,
+                            this.currentTimeframe || requestTimeframe,
+                            replayTargetTs,
+                            { activeReplayCatchUp: false },
+                        );
+                    }
                     // Independent iframe: session-spanning 1m master (not playhead seek buffer).
-                    if (anchorToHostPlayhead) {
+                    if (!result && anchorToHostPlayhead) {
                         try {
                             const initRange = this._getBacktestInitialFetchRange('1m', session);
                             result = await this._fetchSmartWindow(
@@ -8323,8 +8706,11 @@ class Chart {
                     const hostFid = pch && pch.currentFileId;
                     if (hostFid != null && String(hostFid) !== String(targetFileId)) {
                         this._panelFullRawData = Array.isArray(this.rawData) ? [...this.rawData] : null;
-                    } else if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) {
+                    } else if (!finerPanelSelfOwner
+                        && (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length)) {
                         this._multichartSeedPanelMasterFromParent();
+                    } else if (finerPanelSelfOwner) {
+                        this._panelFullRawData = Array.isArray(this.rawData) ? [...this.rawData] : null;
                     }
                 }
             } catch (_mcePfrd) { /* ignore */ }
@@ -20337,6 +20723,7 @@ class Chart {
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
         try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
+        this._emitMultichartHostDataCommit();
         // Compare legend / loading state: keep in sync once main data is committed so
         // compare OHLC does not drop before the main 3-dot indicator hides.
         if (this.compareOverlay && typeof this.compareOverlay.onMainChartTimeframeReady === 'function') {
@@ -21341,6 +21728,7 @@ class Chart {
                 timeframe: this.currentTimeframe
             }
         }));
+        this._emitMultichartHostDataCommit();
     }
 
     /** Notify hosts (e.g. V9 React toolbar) when `currentTimeframe` has been applied. */

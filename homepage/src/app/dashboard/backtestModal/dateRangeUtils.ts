@@ -1,14 +1,70 @@
 export type DateRangeFile = { id: string; ticker: string; from: string; to: string };
 
+const MIN_MARKET_YEAR = 1900;
+const MAX_MARKET_YEAR = 2100;
+
+/** Parse YYYY-MM-DD to UTC midnight ms; returns null when invalid or out of market range. */
+export function isoDayToUtcMs(iso: string): number | null {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || y < MIN_MARKET_YEAR || y > MAX_MARKET_YEAR) return null;
+  if (mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+  const ms = Date.UTC(y, mo, d);
+  const check = new Date(ms);
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo || check.getUTCDate() !== d) return null;
+  return ms;
+}
+
+export function isPlausibleMarketIsoDay(iso: string): boolean {
+  return isoDayToUtcMs(iso) != null;
+}
+
+export function compareIsoDays(a: string, b: string): number {
+  const ams = isoDayToUtcMs(a);
+  const bms = isoDayToUtcMs(b);
+  if (ams == null && bms == null) return 0;
+  if (ams == null) return -1;
+  if (bms == null) return 1;
+  return ams - bms;
+}
+
+export function isIsoInRange(iso: string, minIso: string, maxIso: string): boolean {
+  if (!isPlausibleMarketIsoDay(iso)) return false;
+  if (minIso && isPlausibleMarketIsoDay(minIso) && compareIsoDays(iso, minIso) < 0) return false;
+  if (maxIso && isPlausibleMarketIsoDay(maxIso) && compareIsoDays(iso, maxIso) > 0) return false;
+  return true;
+}
+
+/** Normalize stored candle timestamps to UTC epoch ms (seconds or ms); mirrors chart api_server. */
+export function normalizeEpochMs(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const x = typeof v === "string" ? Number(v) : Number(v);
+  if (!Number.isFinite(x)) return null;
+  const xi = Math.trunc(x);
+  if (xi === 0) return null;
+  let ms: number;
+  if (Math.abs(xi) >= 1e12) ms = xi;
+  else if (Math.abs(xi) >= 1e9) ms = xi * 1000;
+  else return null;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  if (y < MIN_MARKET_YEAR || y > MAX_MARKET_YEAR) return null;
+  return ms;
+}
+
 /** Intersection of [from, to] across files (latest start, earliest end). */
 export function computeOverlapRange(files: DateRangeFile[]) {
-  const withRange = files.filter(f => f.from && f.to);
+  const withRange = files.filter((f) => f.from && f.to && isPlausibleMarketIsoDay(f.from) && isPlausibleMarketIsoDay(f.to));
   if (!withRange.length) {
     return { start: "", end: "", hasOverlap: false, conflict: false };
   }
-  const start = withRange.map(f => f.from).sort().slice(-1)[0] || "";
-  const end = withRange.map(f => f.to).sort()[0] || "";
-  if (!start || !end || start > end) {
+  const start = withRange.map((f) => f.from).sort(compareIsoDays).slice(-1)[0] || "";
+  const end = withRange.map((f) => f.to).sort(compareIsoDays)[0] || "";
+  if (!start || !end || compareIsoDays(start, end) > 0) {
     return { start: "", end: "", hasOverlap: false, conflict: true };
   }
   return { start, end, hasOverlap: true, conflict: false };
@@ -21,9 +77,9 @@ export function isoToDisplay(iso: string, monthNames: string[]) {
 }
 
 export function clampIso(iso: string, minIso: string, maxIso: string) {
-  if (!iso) return iso;
-  if (minIso && iso < minIso) return minIso;
-  if (maxIso && iso > maxIso) return maxIso;
+  if (!iso || !isPlausibleMarketIsoDay(iso)) return iso;
+  if (minIso && isPlausibleMarketIsoDay(minIso) && compareIsoDays(iso, minIso) < 0) return minIso;
+  if (maxIso && isPlausibleMarketIsoDay(maxIso) && compareIsoDays(iso, maxIso) > 0) return maxIso;
   return iso;
 }
 
@@ -73,10 +129,9 @@ export function randomRangeUnitMax(spanDays: number): Record<keyof typeof RAND_R
 }
 
 export function isoDayFromEpochMs(ms: number | string | null | undefined): string {
-  if (ms == null || ms === "") return "";
-  const n = typeof ms === "string" ? Number(ms) : ms;
-  if (!Number.isFinite(n) || n <= 0) return "";
-  const d = new Date(n);
+  const normalized = normalizeEpochMs(ms);
+  if (normalized == null) return "";
+  const d = new Date(normalized);
   if (Number.isNaN(d.getTime())) return "";
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
@@ -87,19 +142,38 @@ export function isoDayFromApiText(s: string | null | undefined): string {
   return m ? m[1] : "";
 }
 
+function spanPairFromIsoText(fromRaw: string, toRaw: string): { from: string; to: string } | null {
+  const from = isoDayFromApiText(fromRaw);
+  const to = isoDayFromApiText(toRaw);
+  if (!from || !to || !isPlausibleMarketIsoDay(from) || !isPlausibleMarketIsoDay(to)) return null;
+  if (compareIsoDays(from, to) > 0) return null;
+  return { from, to };
+}
+
 /** YYYY-MM-DD span from `/api/files?session_ready=1` row. */
 export function spanFromApiFile(f: Record<string, unknown> | null | undefined): { from: string; to: string } | null {
   if (!f) return null;
+  const fromIsoText = String(f.start_iso || "");
+  const toIsoText = String(f.end_iso || "");
+  const isoSpan = spanPairFromIsoText(fromIsoText, toIsoText);
+
   const fromMs = isoDayFromEpochMs(f.start_ts_ms as number);
   const toMs = isoDayFromEpochMs(f.end_ts_ms as number);
-  if (fromMs && toMs) return { from: fromMs, to: toMs };
+  if (fromMs && toMs && compareIsoDays(fromMs, toMs) <= 0) {
+    if (!isoSpan || (fromMs === isoSpan.from && toMs === isoSpan.to)) return { from: fromMs, to: toMs };
+    // Prefer ISO text when epoch fields disagree (corrupt seconds/ms on some datasets).
+    if (isoSpan) return isoSpan;
+    return { from: fromMs, to: toMs };
+  }
+
   if (f.start_ts != null && f.end_ts != null) {
     const from = isoDayFromEpochMs(f.start_ts as number);
     const to = isoDayFromEpochMs(f.end_ts as number);
-    if (from && to) return { from, to };
+    if (from && to && compareIsoDays(from, to) <= 0) {
+      if (isoSpan) return isoSpan;
+      return { from, to };
+    }
   }
-  const fromIso = isoDayFromApiText(String(f.start_iso || ""));
-  const toIso = isoDayFromApiText(String(f.end_iso || ""));
-  if (fromIso && toIso) return { from: fromIso, to: toIso };
-  return null;
+
+  return isoSpan;
 }

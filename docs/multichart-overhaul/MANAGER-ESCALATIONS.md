@@ -195,3 +195,81 @@ cleanup after B lands). Fallback to Option A only via a new escalation with DIAG
 Follow-up #2 (high-limit `/smart`) folds into B. S6-b/S6-c on b604 = canonical "before".
 **ESC-007 CLOSED.**
 
+---
+
+## ESC-008 — Is the 6b replay smoke test still a hard pre-B8 gate? (2026-07-05, build b14)
+
+### Context
+D-018 approved DIAG-B8b as the B8 implementation contract; the pre-dispatch tree-attribution
+gate is CLEARED (working tree clean vs HEAD, both `chart.js` byte-identical `bfbe1f62…`, every
+hunk attributed to a signed-off task — see FINDINGS §6y). The one remaining blocker per
+D-017/D-018 #4 is the **6b replay smoke test** ("prove 6b's finer-than-display boundary live
+before B8 builds on it"). PO ran a smoke pass on b14 and asked the Manager to escalate the
+next call to the Director rather than iterate on test configs.
+
+### Live evidence (b14, `__mcDiagReport()`, seams column = contiguity)
+- **Same-TF 2×2 (host 1m, panels 1m):** HOST/B/C/D all `fetches 0, fetchedBars 0, seams 0`;
+  resamples ~384, renders ~437–580. No flood, no freeze reported. (Same-TF mirror is clean.)
+- **Boot single host 1m:** `fetches 6, fetchedBars 0, seams 0` (served from cache).
+- **4-layout 1m:** HOST `fetches 12`, B/C/D `fetches 0, seams 0`.
+- **Mixed-TF (host 4h, panels 1m) — the PO pain config:** HOST `fetches 29 / fetchedBars 32000 /
+  lastFetchMs 665`; B/C/D (1m, finer than host) `fetches 0 / bars 0 / seams 0`. PO qualitative:
+  host 4h "loads too slow", panels B/C/D "drift/move even with all sync off".
+
+### Key interpretation
+1. The mixed-TF slowness + drift is the **known B8 pathology** (host hauls a fine master to feed
+   finer same-pair panels; panels stay coupled → drift). It is NOT a 6b regression and NOT caused
+   by any Manager change this session (docs-only). §6x already isolated it: toggling the 6b
+   kill-switch made **no difference** to the drift → **6b is not the cause**.
+2. The PO's A/B/C runs landed on **host = 1m (same-TF)**, which structurally **cannot exercise
+   6b** — 6b only engages when replay steps *finer than the host display TF*. So those runs prove
+   same-TF mirroring is clean (valuable) but do **not** prove 6b's boundary.
+3. The only 6b-relevant capture (host 4h) is a static snapshot: it cannot distinguish
+   lazy-hydrate-on-step (6b working) from eager-at-boot, and has no kill-switch comparison.
+
+### The decision needed
+Given (a) §6x already cleared 6b as the drift cause, (b) live same-TF captures show no flood /
+no freeze / seams 0, and (c) B8 re-touches the exact replay-master ownership path and ships with
+its own kill-switch + owner counters — **is the full standalone 6b replay smoke test still a hard
+precondition for the B8 build, or can its proof be reduced / folded into B8 acceptance?**
+
+### Options
+- **A — Hold the line (D-018 #4 as written).** PO runs the corrected host-4h backtest replay
+  smoke (boot-bars capture → play → lazy-vs-eager kill-switch comparison) before B8 dispatch.
+  Pro: proves 6b's boundary independently before B8 builds on it; cleanest audit trail. Con:
+  another PO test cycle on a fiddly config; PO fatigue; B8 acceptance re-verifies the same path
+  anyway.
+- **B — Fold 6b smoke into B8 acceptance.** Dispatch B8 impl now; B8's live acceptance already
+  exercises host-TF-switch across the panel TF in both directions + replay playhead sharing +
+  owner counters, which subsumes the 6b replay proof. Keep `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER`
+  as the revert. Pro: one test cycle instead of two; proves the shared path once, at the layer
+  that changes it. Con: departs from D-018 #4; a latent 6b replay bug would surface entangled
+  with B8 (though both share a kill-switch to isolate).
+- **C — Minimal residual proof (Manager recommendation).** Accept the same-TF live evidence as
+  partial 6b closure now (no flood, no freeze, seams 0). Require only ONE cheap capture before
+  B8 dispatch: host 4h backtest, `__mcDiagReport()` at boot with the lazy flag OFF (default) vs
+  `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER = true` — proving HOST boot `fetchedBars` is small
+  when lazy (deferred) and large when eager (kill-switch reverts). No long replay-play session
+  required; the replay-correctness risk is already covered by the clean same-TF captures + §6x.
+
+### Risk if we choose wrong / do nothing
+All paths keep the 6b kill-switch as the safety net, and B8 keeps its own. Choosing A costs only
+PO time. Choosing B risks entangling a (so-far-unobserved) 6b replay bug with B8 diagnosis.
+Choosing C leaves the long replay-play path formally unproven standalone but relies on B8
+acceptance to cover it — acceptable because B8 owns that path next.
+
+### Manager recommendation
+**C.** It honors the *intent* of the D-018 #4 gate (prove the lazy-defer + kill-switch revert)
+at minimal PO cost, and lets B8 acceptance carry the replay-correctness proof for the code it is
+about to rewrite anyway. Fall back to **A** if the Director wants the boundary proven fully
+independent of B8; **B** only if the Director judges the two-test overhead not worth it.
+
+### Director ruling
+**Resolved by D-019 (2026-07-05).** D-019 did not pick A/B/C by letter but ruled the operative
+question directly: **B8 impl dispatch is authorized now; the 6b replay smoke test blocks B8
+*ship*, not *dispatch*.** That is effectively Option B — dispatch proceeds, and the 6b boundary
+proof lands before ship (and is carried by B8's own live acceptance, which re-exercises the
+replay-master path in both handover directions). The lazy-defer + kill-switch causality
+(Option C's cheap capture) remains a sensible pre-ship check but no longer gates the worker
+prompt. **ESC-008 CLOSED.**
+

@@ -864,3 +864,35 @@ standing audit risk — PO to clear both, once, this week.
 - Aggregate bars across the 2×2 mixed-TF capture strictly below the ~116k baseline.
 - Both handover directions exercised live (host TF switch across the panel's TF in
   both directions) — no refetch storm, no blank frame, playhead stays shared.
+
+---
+
+## D-019 — Pre-dispatch gate accepted; 6c ledger gap + baseline refresh (2026-07-05)
+
+§6y accepted: the attribution was done the right way — tree clean vs HEAD, both
+copies byte-identical (I4), every engine signature tied to a signed-off task, the
+"contamination" explained as parallel-task edits landing in a shared working tree
+(plus the PO's own commit `a38d299d`). **B8 impl dispatch stands authorized.**
+Ownership-table adoption into INVARIANTS confirmed.
+
+Two corrections before the B8 build is measured:
+
+1. **6c has no sign-off entry in the ledger.** §6y's attribution calls the 6c edits
+   (`_highLimitBulkHistoryDisabled`) "signed-off", but FINDINGS has no §6 entry
+   recording a 6c code sign-off — no review, no hashes, no kill-switch check. D-017
+   allowed 6c to proceed in parallel; it did not exempt it from the process. Manager:
+   write the 6c sign-off entry (code review vs its spec, kill-switch verified, copies
+   byte-identical — the hash in §6y likely already covers this) before any B8
+   measurement is taken. Unrecorded-but-shipped is exactly the pattern this overhaul
+   exists to eliminate.
+2. **The B8 "before" must be re-captured on the current build.** The ~116k-bars /
+   ~58-chunk mixed-TF baseline (§6w) was captured before 6c changed the fetch chunk
+   shape. B8's acceptance is stated in bars, so the headline criterion survives, but
+   chunk counts and any fetch-count comparisons do not. One PO capture of the §6x
+   mixed-TF scenario on the current build (6a+6a-2+6b+6c live, B8 not yet) becomes
+   the canonical B8 "before". Cheap, and it prevents an apples-to-oranges dispute at
+   B8 acceptance time.
+
+Unchanged: 6b replay smoke test blocks B8 ship (not dispatch); PO audit of the two
+non-chart files stays due this week. Good marker discipline on the §6s stub note —
+append future entries after §6y.

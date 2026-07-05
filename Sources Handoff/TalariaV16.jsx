@@ -254,6 +254,61 @@ const parseStartingBalanceInput = (raw) => {
   const value = Number(digits);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
+const sanitizePropPctInput = (raw) => {
+  const cleaned = String(raw ?? "").replace(/[^\d.]/g, "");
+  const dot = cleaned.indexOf(".");
+  const normalized = dot === -1 ? cleaned : `${cleaned.slice(0, dot)}.${cleaned.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
+  return normalized.slice(0, 6);
+};
+const parsePropPctInput = (raw, fallback = 0) => {
+  const n = Number.parseFloat(sanitizePropPctInput(raw));
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+};
+const sanitizePropAmtInput = (raw) => String(raw ?? "").replace(/\D/g, "").slice(0, 9);
+const applySessionPropRulesToForm = (raw, setters) => {
+  if (!raw || typeof raw !== "object") return;
+  const pct = (v, fb) => {
+    const block = v && typeof v === "object" ? v : {};
+    return {
+      dl: sanitizePropPctInput(block.dl) || fb,
+      dd: sanitizePropPctInput(block.dd) || fb,
+      pt: sanitizePropPctInput(block.pt) || fb,
+    };
+  };
+  const p1Pct = pct(raw.p1Pct, "5");
+  const p2Pct = pct(raw.p2Pct, "5");
+  const p1Amt = {
+    dl: sanitizePropAmtInput(raw.p1Amt?.dl) || "1000",
+    dd: sanitizePropAmtInput(raw.p1Amt?.dd) || "2000",
+    pt: sanitizePropAmtInput(raw.p1Amt?.pt) || "3000",
+  };
+  const p2Amt = {
+    dl: sanitizePropAmtInput(raw.p2Amt?.dl) || "1000",
+    dd: sanitizePropAmtInput(raw.p2Amt?.dd) || "2000",
+    pt: sanitizePropAmtInput(raw.p2Amt?.pt) || "2000",
+  };
+  setters.setSessNumPhases(Number(raw.numPhases) === 2 ? 2 : 1);
+  if (raw.challengeType) setters.setSessChallengeType(String(raw.challengeType));
+  setters.setSessP1DailyLossPct(p1Pct.dl);
+  setters.setSessP1TotalDDPct(p1Pct.dd);
+  setters.setSessP1ProfitTargetPct(p1Pct.pt);
+  setters.setSessP2DailyLossPct(p2Pct.dl);
+  setters.setSessP2TotalDDPct(p2Pct.dd);
+  setters.setSessP2ProfitTargetPct(p2Pct.pt);
+  setters.setSessP1DailyLossAmt(p1Amt.dl);
+  setters.setSessP1MaxDDAmt(p1Amt.dd);
+  setters.setSessP1ProfitTargetAmt(p1Amt.pt);
+  setters.setSessP2DailyLossAmt(p2Amt.dl);
+  setters.setSessP2MaxDDAmt(p2Amt.dd);
+  setters.setSessP2ProfitTargetAmt(p2Amt.pt);
+  if (raw.minTradingDaysEnabled != null) setters.setSessP1MinDaysEnabled(!!raw.minTradingDaysEnabled);
+  if (raw.minTradingDays != null) setters.setSessP1MinDays(sanitizePropAmtInput(raw.minTradingDays) || "4");
+  if (raw.consistencyEnabled != null) setters.setSessConsistencyRule(!!raw.consistencyEnabled);
+  if (raw.consistencyPct != null) setters.setSessConsistencyPct(sanitizePropPctInput(raw.consistencyPct) || "30");
+  if (raw.trailingDrawdown != null) setters.setSessTrailingDrawdown(!!raw.trailingDrawdown);
+  if (raw.dailyLossEnabled != null) setters.setSessDailyLossEnabled(!!raw.dailyLossEnabled);
+  if (raw.weekendHold != null) setters.setSessWeekendHold(!!raw.weekendHold);
+};
 const sanitizeNonNegativeNumericInput = (raw) => {
   const s = String(raw ?? "").trim().replace(/-/g, "");
   if (!s || s === ".") return s;
@@ -14374,6 +14429,19 @@ const TalariaV8b = () => {
     setSessRiskMode(sess.riskMode || "pct");
     setSessReplayMode((sess.replayMode || "candle").toLowerCase());
     setSessReplaySpeed(sess.replaySpeed || 30);
+    const cfg = sess.config && typeof sess.config === "object" ? sess.config : {};
+    if ((sess.tradingMode || "standard") === "prop" && cfg.prop_rules) {
+      applySessionPropRulesToForm(cfg.prop_rules, {
+        setSessNumPhases, setSessChallengeType,
+        setSessP1DailyLossPct, setSessP1TotalDDPct, setSessP1ProfitTargetPct,
+        setSessP2DailyLossPct, setSessP2TotalDDPct, setSessP2ProfitTargetPct,
+        setSessP1DailyLossAmt, setSessP1MaxDDAmt, setSessP1ProfitTargetAmt,
+        setSessP2DailyLossAmt, setSessP2MaxDDAmt, setSessP2ProfitTargetAmt,
+        setSessP1MinDaysEnabled, setSessP1MinDays,
+        setSessConsistencyRule, setSessConsistencyPct,
+        setSessTrailingDrawdown, setSessDailyLossEnabled, setSessWeekendHold,
+      });
+    }
     setNewSessOpen(true);
   };
 
@@ -15287,7 +15355,7 @@ const TalariaV8b = () => {
                 <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:`0 ${V16_PAGE_GUTTER_X}px`,width:"fit-content",minWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
                   <div style={{position:"absolute",bottom:0,left:V16_PAGE_GUTTER_X,right:V16_PAGE_GUTTER_X,height:1,background:c.brH,pointerEvents:"none"}}/>
                   <div style={{width:96,flexShrink:0}}></div>
-                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Market",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Duration",68,"duration"],["Options",102,null],["Balance",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
+                  {[["Name",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Market",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Duration",68,"duration"],["Options",102,null],["Balance",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
                     const isActive=sk&&sessSortBy===sk;
                     const isHov=hov===("ch_"+label);
                     return(
@@ -17189,7 +17257,7 @@ const TalariaV8b = () => {
                         const fieldLbl=(text)=><div style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,marginBottom:3}}>{text}</div>;
                         const pctArrows=(val,setter,step=0.1)=>(
                           <div style={{position:"absolute",right:0,top:0,bottom:0,width:14,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                            {[[()=>setter(v=>String(Math.min(100,Math.round(((parseFloat(v)||0)+step)*10)/10))),"▲"],[()=>setter(v=>String(Math.max(0,Math.round(((parseFloat(v)||0)-step)*10)/10))),"▼"]].map(([fn,ch],ii)=>(
+                            {[[()=>setter(v=>String(Math.min(100,Math.round((parsePropPctInput(v)+step)*10)/10))),"▲"],[()=>setter(v=>String(Math.max(0,Math.round((parsePropPctInput(v)-step)*10)/10))),"▼"]].map(([fn,ch],ii)=>(
                               <button key={ii} onClick={fn}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.gold} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{flex:1,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
@@ -17199,14 +17267,15 @@ const TalariaV8b = () => {
                           </div>
                         );
                         const mkPctCell=(val,setter,color,cap2)=>{
-                          const amt=Math.round(cap2*(parseFloat(val)||0)/100);
+                          const displayVal=sanitizePropPctInput(val);
+                          const amt=Math.round(cap2*parsePropPctInput(displayVal)/100);
                           return(
                             <div style={{display:"flex",alignItems:"center",gap:5}}>
-                              <div style={{position:"relative",width:60,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
-                                <input type="number" min={0} max={100} step={0.5} value={val} onChange={e=>setter(e.target.value)} className="tlr-nospinner"
-                                  style={{position:"absolute",left:0,top:0,bottom:0,width:"calc(100% - 14px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:"0 0 0 4px",boxSizing:"border-box"}}/>
+                              <div style={{position:"relative",width:72,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
+                                <input type="text" inputMode="decimal" value={displayVal} onChange={e=>setter(sanitizePropPctInput(e.target.value))} className="tlr-nospinner"
+                                  style={{position:"absolute",left:0,top:0,bottom:0,width:"calc(100% - 14px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:"0 18px 0 4px",boxSizing:"border-box"}}/>
                                 <span style={{position:"absolute",right:16,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:600,color:c.tm,fontFamily:F,pointerEvents:"none"}}>%</span>
-                                {pctArrows(val,setter)}
+                                {pctArrows(displayVal,setter)}
                               </div>
                               <span style={{fontSize:8,color:c.tm,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>≈ ${amt.toLocaleString()}</span>
                             </div>
@@ -17296,7 +17365,7 @@ const TalariaV8b = () => {
                           const mkAmtCell=(val,setter,color)=>(
                             <div style={{position:"relative",width:100,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
                               <span style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:600,color:c.tm,fontFamily:F,pointerEvents:"none"}}>$</span>
-                              <input type="number" min={0} step={100} value={val} onChange={e=>setter(e.target.value)} className="tlr-nospinner"
+                              <input type="text" inputMode="numeric" value={sanitizePropAmtInput(val)} onChange={e=>setter(sanitizePropAmtInput(e.target.value))} className="tlr-nospinner"
                                 style={{position:"absolute",left:14,top:0,bottom:0,width:"calc(100% - 32px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:0,boxSizing:"border-box"}}/>
                               <div style={{position:"absolute",right:0,top:0,bottom:0,width:18,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                                 {[[()=>setter(v=>String(Math.max(0,parseInt(v||0)+100))),"▲"],[()=>setter(v=>String(Math.max(0,parseInt(v||0)-100))),"▼"]].map(([fn,ch],ii)=>(

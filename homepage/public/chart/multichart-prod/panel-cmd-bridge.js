@@ -566,6 +566,13 @@
             // playhead timestamp, applied via applyMultichartMirrorFrame on its
             // OWN bars (handled by the earlier mirror path / dedup).
             if (hostTf && panelTf && hostTf !== panelTf) {
+                try {
+                    if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
+                        && ch._multichartFinerSamePairPanelSelfOwns()) {
+                        ch._mcFinerOwnerActiveReplayCatchUp = !!args.isPlaying;
+                        forceReplaySeek(ch, ts, false);
+                    }
+                } catch (_) {}
                 return;
             }
             // SAME symbol + SAME TF idle dedup. Once this panel's TF matches the

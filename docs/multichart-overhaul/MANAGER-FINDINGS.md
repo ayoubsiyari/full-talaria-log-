@@ -715,6 +715,67 @@ in DIAG-B8b §2; (2) new diag counters `ownerFetches`, `ownerBars`, `boundedMiss
 per owner panel; (3) owner-flip rides host COMMIT events (generation-tagged), never in-flight
 state; (4) 6b smoke test blocks ship; (5) kill-switch restoring today's shared-master coupling.
 
+## 6z. B-FIX-6c code sign-off (ledger entry, per D-019 correction #1)
+
+D-019 flagged that §6y called the 6c edits "signed-off" while FINDINGS had no §6 ledger entry
+recording an actual 6c review. Recording it now (D-017 allowed 6c to run in parallel with B8
+design but did not exempt it from process). Manager review of `B-FIX-6c-high-limit-smart-plumbing.md`
+against the code:
+
+- **Scope vs spec — correct.** 6c extends the 6b `allowHighLimit` opt-in to exactly two host/self
+  bulk-history call sites: initial backtest history in `autoLoadBacktestingData()` (chart.js:1885)
+  and the backtest TF-switch history fill in the replay refetch core (chart.js:21219). Incremental
+  pan (`checkViewportLoadMore` → `_fetchCandlesCursor`, 2000/5000 caps) is untouched.
+- **I1 (single owner) preserved.** `_shouldUseHighLimitBulkHistory()` (chart.js:5272) returns false
+  when `_isMultichartEmbedPanel()` is true — panels never take the high-limit bulk path, so panel
+  data-ownership is unchanged. High-limit only applies to the host's own backtest loads.
+- **I8 (kill-switch) verified in code.** `_highLimitBulkHistoryDisabled()` (chart.js:5252) reads
+  `window.__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK`; when set, `_shouldUseHighLimitBulkHistory()`
+  returns false before any call site can pass `allowHighLimit`/`skipBars`, reverting to the old
+  `_backtestFetchLimitForTimeframe()` sizing. Causality confirmed by reading, not just claimed.
+- **I4 (both copies byte-identical) verified.** SHA-256
+  `bfbe1f623028452cc7d2946927d077b5769c9aa5722b7a94690704f4e4c85116` for both `chart v 1.4/chart/chart.js`
+  and `homepage/public/chart/chart.js` (same hash proved in §6y).
+- **I9 (checks).** Report states `node --check` passed both copies, lints clean, `build:live`
+  succeeded (b11; current deployed b14 supersedes). Live speed acceptance folded into the D-019
+  B8 "before" re-capture (see below).
+- **`/bars` bypass** (`skipBars` when bulk) is intentional and scoped — `/bars` stays 2000-capped
+  and would defeat the high `/smart` limit otherwise. Server already clamps `/smart` to 100000.
+
+**Verdict: B-FIX-6c signed off.** No I1/I7 violation, kill-switch reverts, copies identical.
+
+## 6aa. B8-IMPL code sign-off + build-id correction (2026-07-05, build b15)
+
+Worker 1 implemented B8-IMPL (finer-than-host same-pair panels → bounded self-owners) as a
+test build. Manager code review (chart.js + panel-cmd-bridge.js, both copies):
+
+- **I4 verified live:** chart.js both `9018c601a4432e538494260f95d798c6bc87b27d4b54d9e9efcf5bdd4179b962`;
+  panel-cmd-bridge both `ef39b05a9743c71cb74bb005c360e543935e691f34386642f067a557759ec0ef`.
+- **Kill-switch** `__TALARIA_MC_DISABLE_FINER_PANEL_SELFOWN`: `_finerPanelSelfOwnDisabled()` (2893)
+  → `_multichartFinerSamePairPanelSelfOwns()` (2932) returns false → old clone/extend/delegate
+  reachable. Reverts cleanly (I8).
+- **I7:** self-own gated on `_isMultichartEmbedPanel()`; single chart frozen.
+- **D-018 cond 3 (commit-tagged flips):** `_readCommittedHostStateForFinerOwner()` (2899) reads
+  `host._mcCommittedNativeRawFetchTf` / `_mcCommitGeneration`, not in-flight state. New event
+  `talariaMcHostDataCommit`.
+- **D-018 cond 4 (no host delegation):** owner path early-returns before `host.checkViewportLoadMore()`
+  (3276). Owners never grow the host master.
+- **D-018 cond 1 (caps):** per-request `Math.min(5000,…)`; replay catch-up `2000`; finer test
+  `panelMs < hostMs*0.92`. Single conservative initial fetch, under the 2×5000/10000 ceiling —
+  within contract.
+- **D-018 cond 2 (counters):** `ownerFetches`, `ownerBars`, `boundedMisses`, `handovers` wired to
+  `__mcDiagReport()`.
+- **I1 clarification honored:** self-fetch is the sanctioned finer-owner exception; same-TF panels
+  still hit the mirror path (fetches=0).
+
+**Build-id correction (Manager):** Worker built as `b11`, colliding with 6c's build and *behind*
+the `b14` the PO already ran — a cache-bust/SW-update hazard. Manager rebuilt
+`BUILD_ID=20260705b15 npm run build:live`; both `sw.js` now `talaria-chart-20260705b15`, chart.js
+hash unchanged (B8 code intact). **B8 test build = b15.**
+
+**Verdict: B8-IMPL code signed off; live acceptance PENDING PO on b15.** Ship still gated by the
+6b replay smoke test (D-018 #4).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

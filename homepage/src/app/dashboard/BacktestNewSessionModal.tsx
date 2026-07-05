@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso, overlapSpanDays, filterPresetsForSpanDays, SESSION_DATE_PRESETS, randomRangeUnitMax } from "./backtestModal/dateRangeUtils";
+import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso, overlapSpanDays, filterPresetsForSpanDays, SESSION_DATE_PRESETS, randomRangeUnitMax, isIsoInRange, isPlausibleMarketIsoDay } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import {
   displaySessionSymbol,
@@ -17,6 +17,7 @@ import {
 } from "./backtestModal/symbolMatch";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
 import { apiStrategyToBankRow, extractStrategyVariablesFromDefinition } from "./strategies/strategyLabV9Mappers";
+import { parseLiveJournalPropRules } from "@/lib/liveJournalPropRules";
 
 import { type SessionLimitGateData } from "./sessionLimitGate";
 
@@ -42,6 +43,23 @@ function parseStartingBalanceInput(raw: string): number | null {
   if (!digits) return null;
   const value = Number(digits);
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function sanitizePropPctInput(raw: string): string {
+  const cleaned = String(raw ?? "").replace(/[^\d.]/g, "");
+  const dot = cleaned.indexOf(".");
+  const normalized =
+    dot === -1 ? cleaned : `${cleaned.slice(0, dot)}.${cleaned.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
+  return normalized.slice(0, 6);
+}
+
+function parsePropPctInput(raw: string, fallback = 0): number {
+  const n = Number.parseFloat(sanitizePropPctInput(raw));
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+}
+
+function sanitizePropAmtInput(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "").slice(0, 9);
 }
 
 function sanitizeNonNegativeNumericInput(raw: string): string {
@@ -482,6 +500,27 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       Stocks: { commission: "0.02", leverage: "1:5" },
       Crypto: { commission: "0.05", leverage: "1:20" },
     });
+    setSessNumPhases(1);
+    setSessChallengeType("Evaluation");
+    setSessP1DailyLossPct("5");
+    setSessP1TotalDDPct("10");
+    setSessP1ProfitTargetPct("10");
+    setSessP1MinDays("4");
+    setSessP1MinDaysEnabled(true);
+    setSessP2DailyLossPct("5");
+    setSessP2TotalDDPct("10");
+    setSessP2ProfitTargetPct("5");
+    setSessP1DailyLossAmt("1000");
+    setSessP1MaxDDAmt("2000");
+    setSessP1ProfitTargetAmt("3000");
+    setSessP2DailyLossAmt("1000");
+    setSessP2MaxDDAmt("2000");
+    setSessP2ProfitTargetAmt("2000");
+    setSessConsistencyRule(false);
+    setSessConsistencyPct("30");
+    setSessTrailingDrawdown(true);
+    setSessDailyLossEnabled(true);
+    setSessWeekendHold(false);
   }, []);
 
   const maxTickersCap = userLimits.isAdmin ? 100 : Math.max(1, userLimits.maxTickers || 5);
@@ -529,8 +568,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessTf(tf);
     setNewSessStart(startDate);
     setNewSessEnd(endDate);
-    setNewSessStartInput(startDate);
-    setNewSessEndInput(endDate);
+    setNewSessStartInput(startDate ? isoToDisplay(startDate, ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]) : "");
+    setNewSessEndInput(endDate ? isoToDisplay(endDate, ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]) : "");
     setNewSessCapital(sanitizeStartingBalanceInput(capital));
     setNewSessCurrency(String(cfg.account_currency || cfg.currency || "USD"));
     setNewSessAssetClass(String(cfg.asset_class || cfg.assetClass || "Forex"));
@@ -541,6 +580,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setSessReplayMode(String(sess.replayMode || cfg.replayMode || cfg.replay_mode || "candle").toLowerCase());
     setSessReplaySpeed(Number(sess.replaySpeed ?? cfg.replaySpeed ?? cfg.replay_speed ?? 30) || 30);
     setNewSessRollback(!!(sess.rollbackAllowed ?? cfg.allowBackNavigation ?? cfg.rollback_allowed));
+    setNewSessAdvancedOrder(!!cfg.advanced_order);
     setNewSessTradingCostsEnabled(
       !!(cfg.trading_costs_enabled ?? (cfg.commission && cfg.commission !== "None"))
     );
@@ -582,6 +622,32 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     if (Array.isArray(cfg.supporting_tickers)) {
       setNewSessSupportTickers(cfg.supporting_tickers as string[]);
       setNewSessSupportEnabled((cfg.supporting_tickers as string[]).length > 0);
+    }
+    if (isProp) {
+      const rules = parseLiveJournalPropRules(cfg.prop_rules);
+      if (rules) {
+        setSessNumPhases(rules.numPhases);
+        setSessChallengeType(rules.challengeType);
+        setSessP1DailyLossPct(sanitizePropPctInput(rules.p1Pct.dl) || "5");
+        setSessP1TotalDDPct(sanitizePropPctInput(rules.p1Pct.dd) || "10");
+        setSessP1ProfitTargetPct(sanitizePropPctInput(rules.p1Pct.pt) || "10");
+        setSessP2DailyLossPct(sanitizePropPctInput(rules.p2Pct.dl) || "5");
+        setSessP2TotalDDPct(sanitizePropPctInput(rules.p2Pct.dd) || "10");
+        setSessP2ProfitTargetPct(sanitizePropPctInput(rules.p2Pct.pt) || "5");
+        setSessP1DailyLossAmt(sanitizePropAmtInput(rules.p1Amt.dl) || "1000");
+        setSessP1MaxDDAmt(sanitizePropAmtInput(rules.p1Amt.dd) || "2000");
+        setSessP1ProfitTargetAmt(sanitizePropAmtInput(rules.p1Amt.pt) || "3000");
+        setSessP2DailyLossAmt(sanitizePropAmtInput(rules.p2Amt.dl) || "1000");
+        setSessP2MaxDDAmt(sanitizePropAmtInput(rules.p2Amt.dd) || "2000");
+        setSessP2ProfitTargetAmt(sanitizePropAmtInput(rules.p2Amt.pt) || "2000");
+        setSessP1MinDaysEnabled(rules.minTradingDaysEnabled);
+        setSessP1MinDays(sanitizePropAmtInput(rules.minTradingDays) || "4");
+        setSessConsistencyRule(rules.consistencyEnabled);
+        setSessConsistencyPct(sanitizePropPctInput(rules.consistencyPct) || "30");
+        setSessTrailingDrawdown(rules.trailingDrawdown);
+        setSessDailyLossEnabled(rules.dailyLossEnabled);
+        setSessWeekendHold(rules.weekendHold);
+      }
     }
   }, []);
 
@@ -1030,10 +1096,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       prop_rules: sessTradingMode === "prop" ? {
         numPhases: sessNumPhases,
         challengeType: sessChallengeType,
-        p1Pct: { dl: sessP1DailyLossPct, dd: sessP1TotalDDPct, pt: sessP1ProfitTargetPct },
-        p2Pct: { dl: sessP2DailyLossPct, dd: sessP2TotalDDPct, pt: sessP2ProfitTargetPct },
-        p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
-        p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
+        p1Pct: { dl: sanitizePropPctInput(sessP1DailyLossPct) || "5", dd: sanitizePropPctInput(sessP1TotalDDPct) || "10", pt: sanitizePropPctInput(sessP1ProfitTargetPct) || "10" },
+        p2Pct: { dl: sanitizePropPctInput(sessP2DailyLossPct) || "5", dd: sanitizePropPctInput(sessP2TotalDDPct) || "10", pt: sanitizePropPctInput(sessP2ProfitTargetPct) || "5" },
+        p1Amt: { dl: sanitizePropAmtInput(sessP1DailyLossAmt) || "1000", dd: sanitizePropAmtInput(sessP1MaxDDAmt) || "2000", pt: sanitizePropAmtInput(sessP1ProfitTargetAmt) || "3000" },
+        p2Amt: { dl: sanitizePropAmtInput(sessP2DailyLossAmt) || "1000", dd: sanitizePropAmtInput(sessP2MaxDDAmt) || "2000", pt: sanitizePropAmtInput(sessP2ProfitTargetAmt) || "2000" },
       } : null,
     };
   }
@@ -1131,7 +1197,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const name = f ? String(f.original_name || f.name || "") : "";
     if (name) {
       const m4 = name.match(/(\d{4})[-_](\d{4})/);
-      if (m4) return { from: `${m4[1]}-01-01`, to: `${m4[2]}-12-31` };
+      if (m4) {
+        const from = `${m4[1]}-01-01`;
+        const to = `${m4[2]}-12-31`;
+        if (isPlausibleMarketIsoDay(from) && isPlausibleMarketIsoDay(to)) {
+          return { from, to };
+        }
+      }
     }
     const mock = availFiles.find(a => normSessionSym(a.ticker) === normSessionSym(sym));
     return mock ? { from: mock.from, to: mock.to } : null;
@@ -1180,11 +1252,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   useEffect(() => {
     if (!sessDateOverlap.hasOverlap) return;
     const { start, end } = sessDateOverlap;
-    if (newSessStart && (newSessStart < start || newSessStart > end)) {
+    if (newSessStart && !isIsoInRange(newSessStart, start, end)) {
       setNewSessStart("");
       setNewSessStartInput("");
     }
-    if (newSessEnd && (newSessEnd < start || newSessEnd > end || (newSessStart && newSessEnd < newSessStart))) {
+    if (newSessEnd && !isIsoInRange(newSessEnd, start, end)) {
+      setNewSessEnd("");
+      setNewSessEndInput("");
+    } else if (newSessEnd && newSessStart && !isIsoInRange(newSessEnd, newSessStart, end)) {
       setNewSessEnd("");
       setNewSessEndInput("");
     }
@@ -1430,13 +1505,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           const clamp=(iso:string)=>clampIso(iso,minIso,maxIso);
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
-                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3],10),dy=Math.min(parseInt(m1[1],10),new Date(y,moIdx+1,0).getDate());if(y<1900||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // YYYY-MM-DD
                           const m2=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-                          if(m2){const y=parseInt(m2[1]),mo=parseInt(m2[2])-1,dy=Math.min(parseInt(m2[3]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m2){const y=parseInt(m2[1],10),mo=parseInt(m2[2],10)-1,dy=Math.min(parseInt(m2[3],10),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1900||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // MM/DD/YYYY
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                          if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m3){const y=parseInt(m3[3],10),mo=parseInt(m3[1],10)-1,dy=Math.min(parseInt(m3[2],10),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1900||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                         };
                         const openCal=(e,target,currentIso)=>{e.stopPropagation();const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):(sessDateOverlap.hasOverlap?new Date(sessDateOverlap.start+"T00:00:00"):new Date(2020,0,1));setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
@@ -2281,7 +2356,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                         const fieldLbl=(text)=><div style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,marginBottom:3}}>{text}</div>;
                         const pctArrows=(val,setter,step=0.1)=>(
                           <div style={{position:"absolute",right:0,top:0,bottom:0,width:14,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                            {[[()=>setter(v=>String(Math.min(100,Math.round(((parseFloat(v)||0)+step)*10)/10))),"▲"],[()=>setter(v=>String(Math.max(0,Math.round(((parseFloat(v)||0)-step)*10)/10))),"▼"]].map(([fn,ch],ii)=>(
+                            {[[()=>setter(v=>String(Math.min(100,Math.round((parsePropPctInput(v)+step)*10)/10))),"▲"],[()=>setter(v=>String(Math.max(0,Math.round((parsePropPctInput(v)-step)*10)/10))),"▼"]].map(([fn,ch],ii)=>(
                               <button key={ii} onClick={fn}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.gold} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{flex:1,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
@@ -2291,14 +2366,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           </div>
                         );
                         const mkPctCell=(val,setter,color,cap2)=>{
-                          const amt=Math.round(cap2*(parseFloat(val)||0)/100);
+                          const displayVal=sanitizePropPctInput(val);
+                          const amt=Math.round(cap2*(parsePropPctInput(displayVal))/100);
                           return(
                             <div style={{display:"flex",alignItems:"center",gap:5}}>
-                              <div style={{position:"relative",width:60,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
-                                <input type="number" min={0} max={100} step={0.5} value={val} onChange={e=>setter(e.target.value)} className="tlr-nospinner"
-                                  style={{position:"absolute",left:0,top:0,bottom:0,width:"calc(100% - 14px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:"0 0 0 4px",boxSizing:"border-box"}}/>
+                              <div style={{position:"relative",width:72,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
+                                <input type="text" inputMode="decimal" value={displayVal} onChange={e=>setter(sanitizePropPctInput(e.target.value))} className="tlr-nospinner"
+                                  style={{position:"absolute",left:0,top:0,bottom:0,width:"calc(100% - 14px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:"0 18px 0 4px",boxSizing:"border-box"}}/>
                                 <span style={{position:"absolute",right:16,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:600,color:c.tm,fontFamily:F,pointerEvents:"none"}}>%</span>
-                                {pctArrows(val,setter)}
+                                {pctArrows(displayVal,setter)}
                               </div>
                               <span style={{fontSize:8,color:c.tm,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>≈ ${amt.toLocaleString()}</span>
                             </div>
@@ -2388,7 +2464,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           const mkAmtCell=(val,setter,color)=>(
                             <div style={{position:"relative",width:100,height:27,background:c.el,border:`1px solid ${c.brH}`,flexShrink:0}}>
                               <span style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:600,color:c.tm,fontFamily:F,pointerEvents:"none"}}>$</span>
-                              <input type="number" min={0} step={100} value={val} onChange={e=>setter(e.target.value)} className="tlr-nospinner"
+                              <input type="text" inputMode="numeric" value={sanitizePropAmtInput(val)} onChange={e=>setter(sanitizePropAmtInput(e.target.value))} className="tlr-nospinner"
                                 style={{position:"absolute",left:14,top:0,bottom:0,width:"calc(100% - 32px)",background:"transparent",border:"none",outline:"none",color,fontSize:11,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"left",padding:0,boxSizing:"border-box"}}/>
                               <div style={{position:"absolute",right:0,top:0,bottom:0,width:18,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                                 {[[()=>setter(v=>String(Math.max(0,parseInt(v||0)+100))),"▲"],[()=>setter(v=>String(Math.max(0,parseInt(v||0)-100))),"▼"]].map(([fn,ch],ii)=>(
