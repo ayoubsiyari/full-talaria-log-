@@ -163,6 +163,62 @@ universal symptom; RC1 is a real additional pan-time cost with inconsistent owne
 capture *why B takes the fetch path while C/D take the copy path*, since we have it
 reproduced here.
 
+## 6c. B-FIX-1 outcome (2026-07-05) — CLOSED
+
+Fix shipped in build `20260627b583`: in `_finishMultichartMirrorRender`
+(`replay-system.js`), when `_syncIndependentPanelViewportIfNeeded` declines recovery
+(vetoed by `_multichartVisibleRangeSyncOn`), fall through to the already-computed
+replay auto-scroll `st.offsetX`. Kill-switch:
+`window.__TALARIA_MC_DISABLE_REPLAY_FOLLOW_FALLBACK`.
+
+Live verification (2×2, Date-Range sync ON, replay playing):
+
+| panel | fetches | fetchedBars | extendsFromParent | resamples | renders | seams |
+|-------|---------|-------------|-------------------|-----------|---------|-------|
+| HOST  | 15      | 828         | 0                 | 790       | 1038    | 0     |
+| B     | 0       | 0           | 0                 | 782       | 1106    | 0     |
+| C     | 0       | 0           | 0                 | 782       | 1103    | 0     |
+| D     | 0       | 0           | 0                 | 782       | 1101    | 0     |
+
+Result: the `No candles drawn! ... outside viewport` flood (was climbing 45→99 at
+baseline) is **gone**; `seams = 0` on all panels. Followers track the playhead as data
+advances. **B-FIX-1 CLOSED (pass).**
+
+Residual observation (not a regression, future work): `renders` ~1000/panel and
+`resamples` ~782/panel during replay remain high — RC2/RC4 render-budget territory,
+not addressed by this fix.
+
+**PENDING debt (per D-001, next session, Product Owner):** kill-switch causality check —
+set `window.__TALARIA_MC_DISABLE_REPLAY_FOLLOW_FALLBACK = true`, replay 2×2, confirm the
+`outside viewport` flood RETURNS, then unset. This proves the kill-switch actually reverts
+behavior (production safety net). Record the one-line result here when done.
+
+## 6d. B-DIAG-2 sign-off (2026-07-05) — mechanism verified, trigger pending
+
+`DIAG-B2-pan-fetch-ownership.md` accepted. Code-trace verdict verified: routing to
+self-fetch happens when `B.currentFileId !== host.currentFileId`
+(`_multichartSamePairDataShareActive` → `_isIndependentMultichartPair` →
+`_shouldAnchorPairSwitchToHostPlayhead`; then `checkViewportLoadMore` falls through to
+`_fetchCandlesCursor`). **Open decisive fact:** whether B actually boots on a different
+fileId than the host is NOT yet captured live. B-FIX-2 branch selection depends on it:
+- different fileId at boot → Phase 1 Task 1.3 (boot through owner / inherit host fileId).
+- same fileId but share-detection declines → fix the detection condition only.
+Gate: capture per-panel `currentFileId` before choosing the fix.
+
+## 6e. S-403 sign-off (2026-07-05) — diagnosis complete
+
+`DIAG-S403-drawings-retry.md` accepted. Verified: 403 gate is a class `static`
+(`_drawingsCloudSubscriptionBlocked`, drawing-tools-manager.js:1316) → per-iframe-realm,
+not shared across panels; replay-maintenance re-issuer is `scheduleRefreshAfterTimeframe()`
+→ `saveDrawings()`. Server 403 is likely correct (I6 — untouched). Ready for a gated,
+kill-switchable client fix (`__TALARIA_MC_DISABLE_DRAWINGS_403_RETRY_GUARD`).
+
+**S-403-2 fix signed off (code) 2026-07-05:** both `drawing-tools-manager.js` copies
+(SHA-256 `FC7ED1470F39F98579A84DBC8DD479D0ADEEBDB4C74AAF094792EE7A57B7D722`), node --check
+clean. Session-wide 403 gate via `sessionStorage` marker shared across same-origin iframe
+panels; keepalive honors it; server check untouched (I6). Live flood-count UNVERIFIED —
+pending build. **Build batched with B-DIAG-2b to save a deploy cycle.**
+
 ## 7. Manager recommendation
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the

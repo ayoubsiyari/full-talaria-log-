@@ -1302,6 +1302,10 @@ class DrawingToolsManager {
         return 600;
     }
 
+    static get DRAWINGS_403_SESSION_STORAGE_KEY() {
+        return 'talaria.drawingsCloudSubscriptionBlockedToken';
+    }
+
     /** After 401, skip cloud drawings API until a new token appears (avoids console spam). */
     static _drawingsCloudAuthBlocked = false;
     static _drawingsCloudAuthLastToken = null;
@@ -1316,6 +1320,36 @@ class DrawingToolsManager {
     static _drawingsCloudSubscriptionBlocked = false;
     static _drawingsSubscriptionNoticeShown = false;
 
+    _isDrawings403RetryGuardDisabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_DRAWINGS_403_RETRY_GUARD === true;
+    }
+
+    _readDrawingsCloudSubscriptionBlockedToken() {
+        if (this._isDrawings403RetryGuardDisabled()) return null;
+        try {
+            if (typeof sessionStorage === 'undefined') return null;
+            return sessionStorage.getItem(DrawingToolsManager.DRAWINGS_403_SESSION_STORAGE_KEY);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeDrawingsCloudSubscriptionBlockedToken(token) {
+        if (this._isDrawings403RetryGuardDisabled()) return;
+        try {
+            if (typeof sessionStorage === 'undefined') return;
+            sessionStorage.setItem(DrawingToolsManager.DRAWINGS_403_SESSION_STORAGE_KEY, String(token || ''));
+        } catch (_) { /* ignore */ }
+    }
+
+    _clearDrawingsCloudSubscriptionBlockedToken() {
+        try {
+            if (typeof sessionStorage === 'undefined') return;
+            sessionStorage.removeItem(DrawingToolsManager.DRAWINGS_403_SESSION_STORAGE_KEY);
+        } catch (_) { /* ignore */ }
+    }
+
     _canUseDrawingsCloudApi() {
         if (typeof localStorage === 'undefined') return false;
         const token = localStorage.getItem('token');
@@ -1324,12 +1358,22 @@ class DrawingToolsManager {
             DrawingToolsManager._drawingsCloudAuthLastToken = null;
             return false;
         }
-        if (token !== DrawingToolsManager._drawingsCloudAuthLastToken) {
+        const previousToken = DrawingToolsManager._drawingsCloudAuthLastToken;
+        if (token !== previousToken) {
             DrawingToolsManager._drawingsCloudAuthLastToken = token;
             DrawingToolsManager._drawingsCloudAuthBlocked = false;
             // New token → possibly a new subscription; give cloud sync another try.
             DrawingToolsManager._drawingsCloudSubscriptionBlocked = false;
             DrawingToolsManager._drawingsSubscriptionNoticeShown = false;
+            if (previousToken && previousToken !== token) {
+                this._clearDrawingsCloudSubscriptionBlockedToken();
+            }
+        }
+        const blockedToken = this._readDrawingsCloudSubscriptionBlockedToken();
+        if (blockedToken && blockedToken === token) {
+            DrawingToolsManager._drawingsCloudSubscriptionBlocked = true;
+        } else if (blockedToken && blockedToken !== token) {
+            this._clearDrawingsCloudSubscriptionBlockedToken();
         }
         if (DrawingToolsManager._drawingsCloudSubscriptionBlocked) return false;
         return !DrawingToolsManager._drawingsCloudAuthBlocked;
@@ -1376,6 +1420,11 @@ class DrawingToolsManager {
      * request + error toast on every drawing action. Shows one gentle notice.
      */
     _onDrawingsApiSubscriptionBlocked() {
+        let token = null;
+        try {
+            token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+        } catch (_) { token = null; }
+        if (token) this._writeDrawingsCloudSubscriptionBlockedToken(token);
         DrawingToolsManager._drawingsCloudSubscriptionBlocked = true;
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);

@@ -392,8 +392,15 @@ function _talariaMcDiagZeroCounters(diag) {
     }
 }
 
-function _talariaMcDiagSnapshot(diag) {
-    const row = { panelId: diag?.panelId || 'unknown' };
+function _talariaMcDiagSnapshot(chart) {
+    const diag = chart?._mcDiag;
+    const fileId = chart?.currentFileId;
+    const tf = chart?.currentTimeframe;
+    const row = {
+        panelId: diag?.panelId || 'unknown',
+        fileId: fileId != null ? String(fileId) : '',
+        tf: tf != null ? String(tf) : '',
+    };
     for (const field of MC_DIAG_COUNTER_FIELDS) {
         row[field] = Number(diag?.[field]) || 0;
     }
@@ -437,7 +444,7 @@ function _talariaInstallMcDiagReporter() {
     target.__mcDiagReport = function __mcDiagReport() {
         const charts = [];
         _talariaMcDiagCollectCharts(target, charts, new Set());
-        const rows = charts.map((chart) => _talariaMcDiagSnapshot(chart._mcDiag));
+        const rows = charts.map((chart) => _talariaMcDiagSnapshot(chart));
         if (target.console && typeof target.console.table === 'function') {
             target.console.table(rows);
         } else if (target.console && typeof target.console.log === 'function') {

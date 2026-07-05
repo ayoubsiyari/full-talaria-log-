@@ -44960,6 +44960,7 @@ const TalariaV8b = () => {
               </div>
             </div>
           );
+          const stratEmptyStateStyle = {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,minHeight:0,gap:14};
           const StratRowsSkeleton = () => (
             <div style={{width:1288,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
               <StratRowsHeader/>
@@ -45779,7 +45780,7 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{
                   flex:1,minHeight:0,display:"flex",flexDirection:"column",
-                  padding:stratLayoutMode==="rows"?"0 32px 24px":"24px 32px",
+                  padding:"24px 32px",
                   overflow:stratLayoutMode==="rows"?"hidden":"auto",
                 }} className={stratLayoutMode==="rows"?undefined:"tlr-scroll"}>
 
@@ -45794,7 +45795,7 @@ const TalariaV8b = () => {
                         </div>
                       )
                     ) : filteredMine.length===0?(
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
+                      <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                         <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No strategies yet"}</div>
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
@@ -45836,7 +45837,7 @@ const TalariaV8b = () => {
                   {/* SAVED FROM COMMUNITY */}
                   {stratTab==="saved"&&(
                     savedCommunityStrats.length===0?(
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
+                      <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.2"/></svg>
                         <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No saved strategies yet</div>
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>Browse the Community tab and save strategies you want to reference later.</div>
@@ -45850,7 +45851,7 @@ const TalariaV8b = () => {
                         </div>
                       </div>
                     ):filteredSavedCommunity.length===0?(
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,height:340}}>
+                      <div style={{...stratEmptyStateStyle,gap:12}}>
                         <svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                         <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No results</div>
                         <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Try adjusting your search.</div>
@@ -45881,7 +45882,7 @@ const TalariaV8b = () => {
                         </div>
                       )
                     ) : filteredCommunity.length===0?(
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
+                      <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                         <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No community strategies yet"}</div>
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:360}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Published strategies from other traders will appear here once shared to the community."}</div>
