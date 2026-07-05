@@ -219,6 +219,35 @@ clean. Session-wide 403 gate via `sessionStorage` marker shared across same-orig
 panels; keepalive honors it; server check untouched (I6). Live flood-count UNVERIFIED —
 pending build. **Build batched with B-DIAG-2b to save a deploy cycle.**
 
+## 6f. B-DIAG-2b live capture (build b586) — RC1 did NOT reproduce
+
+Fresh build `b586`, `fileId`/`tf` columns present (canary passed). Same-symbol 2×2:
+
+| panel | fileId | tf  | fetches (post-pan) | seams |
+|-------|--------|-----|--------------------|-------|
+| HOST  | 25     | 1d  | 14                 | 0     |
+| B     | 25     | 1d  | 0                  | 0     |
+| C     | 25     | 1d  | 0                  | 0     |
+| D     | 25     | 1d  | 0                  | 0     |
+
+Findings:
+- **All panels share fileId 25** → the Director's prime suspect (B boots on a different
+  fileId) does NOT hold in this run.
+- **B fetches 0** post-pan → B copied from host correctly; **RC1 did not reproduce.**
+- "Outside viewport" now only `All 1 ... Skipped: 1` a few times (was 45→99) → B-FIX-1
+  holding.
+- No `drawings 403` flood visible → S-403-2 appears effective (pending explicit confirm).
+- Anomaly to watch: top logs show `file 22 / 27 / 29 bar loads via: tiles` while diag
+  reports all panels on 25 — other files touched at boot (consistent with a transient
+  boot-fileId window).
+
+**Consequence for B-FIX-2 — HOLD.** The §6b "B fetched 58,000" was either (1) B on a
+*different symbol* than host (self-fetch is CORRECT — no bug), or (2) a transient
+boot-time fileId mismatch not hit here. Do not build B-FIX-2 until the PO reproduces the
+exact §6b layout and reports, per panel, symbol + `fileId`. If B is a different symbol,
+there is no RC1 bug to fix. If B is same-symbol but different fileId, B-FIX-2 = inherit
+host fileId at boot (Phase 1 Task 1.3).
+
 ## 7. Manager recommendation
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the

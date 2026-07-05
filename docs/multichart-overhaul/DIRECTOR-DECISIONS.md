@@ -89,3 +89,46 @@ because ownership fixes change what the render path has to do.
   correction in MANAGER-FINDINGS and escalate — never silently re-plan.
 - Kill-switch names keep the `__TALARIA_MC_DISABLE_*` pattern and get listed in
   MANAGER-FINDINGS when shipped.
+
+---
+
+## D-004 — B-FIX-2 disposition: held pending objective repro, not memory (2026-07-05)
+
+**Context:** B-DIAG-2b (build b586, fileId/tf diag columns) shows ownership working
+correctly in a clean same-symbol 2×2 (B fetches = 0, copies from host). The §6b
+"B fetched 58,000 bars" capture is now ambiguous: legitimate independent symbol vs
+transient boot fileId mismatch. Manager asks which.
+
+**Decision: do NOT answer this from anyone's memory of §6b.** The old capture predates
+the fileId diag column, so any recollection is unverifiable. We answer it by
+construction, with two cheap read-only captures on the current build:
+
+1. **REPRO-A (different symbol):** 2×2, panel B deliberately set to a different
+   instrument, sustained pan-back on B. Expected: B self-fetches (correct owner of its
+   own file), batches ≈ 2000–5000 bars each, C/D copy, seams 0. If observed → this
+   matches §6b and B-FIX-2 is CLOSED AS NOT-A-BUG.
+   - While there: sanity-check B's fetch VOLUME. §6b showed 33 fetches / 58k bars in one
+     gesture. If B is on a coarse display TF, confirm the hybrid native-TF backfill
+     (`_indepNativeBack`) is engaging (fetch tf == display tf in the diag), not pulling
+     1m for a 1h panel. Volume finding goes in the report either way.
+2. **REPRO-B (boot mismatch hunt):** the §6f anomaly is the live lead — server logs show
+   bar loads for files 22/27/29 during 2×2 boot while all panels report fileId 25.
+   Something loads OTHER files at boot. Read-only task: instrument/trace which code path
+   issues those requests (candidates: default-file fallback when the iframe URL lacks
+   `fileId` — the known handoff-doc §3 issue; a prefetch/favorites/compare path; stale
+   session restore). Deliverable: the call site + trigger condition.
+
+**Pre-authorized outcomes:**
+- REPRO-B finds a panel transiently booting on a wrong fileId (even if later corrected)
+  → **B-FIX-2 = Phase 1 Task 1.3** (panel inherits host fileId at boot; never a server
+  default; wait bounded for host readiness). The transient window also explains wasted
+  boot bandwidth and "random loading" feel — fixing boot ownership closes both.
+- REPRO-B shows the 22/27/29 loads come from a legitimate non-panel feature (e.g.
+  compare overlay, watchlist prefetch) → record it in MANAGER-FINDINGS as explained
+  noise, close B-FIX-2 as not-a-bug, and proceed to the render-budget queue (D-002
+  "queued behind" section).
+- Anything else → escalate with the evidence.
+
+**Also ratified in this decision:** B-FIX-1 holding (flood reduced to occasional
+`Skipped: 1`), S-403-2 effective, B-DIAG-2b deployed. Good discipline on refusing to
+build a fix for an unconfirmed bug — that refusal is the process working.

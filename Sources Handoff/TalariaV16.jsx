@@ -1984,40 +1984,28 @@ const SectionNode = ({ id, data }) => {
             ? data.connectors
             : Array(COND_COLS - 1).fill('AND');
           const btnW = 76, btnH = 38;
+          const connTransform = (pressed) => `translateX(-50%)${pressed ? ' scale(0.96)' : ''}`;
           return slots.slice(0, -1).map((p, i) => {
-            const centerX = p.x + COND_W + COND_COL_GAP / 2;
             const isHov = hConnIdx === i;
             const label = connectors[i] || 'AND';
             const isPress = pConnIdx === i;
             const neighborsFilled = filled.has(i) && filled.has(i+1);
+            if (!neighborsFilled) return null;
             const isOff = label === 'OFF';
             const baseStyle = {
               position:'absolute',
-              left: centerX - STRIP_W - btnW/2,
+              left: p.x + COND_W + COND_COL_GAP / 2 - STRIP_W,
               top: p.y + COND_H/2 - btnH/2,
               width: btnW, height: btnH,
+              zIndex: 5,
               display:'flex', alignItems:'center', justifyContent:'center', boxSizing:'border-box',
               fontFamily:"'Exo 2',sans-serif",
               fontSize:16, fontWeight:700, letterSpacing:'0.04em',
               userSelect:'none', WebkitFontSmoothing:'antialiased',
+              transform: connTransform(isPress),
+              transformOrigin:'center center',
               transition:'background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease, color 0.12s ease, opacity 0.12s ease',
             };
-            if (!neighborsFilled) {
-              return (
-                <div key={`conn_${i}`}
-                  style={{
-                    ...baseStyle,
-                    background:'rgba(255,255,255,0.04)',
-                    border:'1px solid rgba(255,255,255,0.08)',
-                    color:'rgba(255,255,255,0.30)',
-                    opacity:0.55,
-                    pointerEvents:'none',
-                    cursor:'default',
-                  }}>
-                  —
-                </div>
-              );
-            }
             if (isOff) {
               return (
                 <button key={`conn_${i}`}
@@ -2032,7 +2020,6 @@ const SectionNode = ({ id, data }) => {
                     border:`1px solid ${isHov||isPress?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.10)'}`,
                     color:'rgba(255,255,255,0.40)',
                     cursor:'default',
-                    transform: isPress ? 'scale(0.96)' : 'scale(1)',
                   }}>
                   —
                 </button>
@@ -2057,7 +2044,6 @@ const SectionNode = ({ id, data }) => {
                   boxShadow: label==='OR'
                     ? (isHov ? '0 1px 6px rgba(219,39,119,0.20)' : '0 1px 3px rgba(219,39,119,0.10)')
                     : (isHov ? '0 1px 6px rgba(16,185,129,0.20)' : '0 1px 3px rgba(16,185,129,0.10)'),
-                  transform: isPress ? 'scale(0.96)' : 'scale(1)',
                   cursor:'default',
                 }}>
                 {label}
@@ -2923,7 +2909,7 @@ const strategyFlowEditLabel = (label, kind) => {
 };
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
-const COND_COL_GAP = 96;
+const COND_COL_GAP = 108;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getSectionHeight() {
   return SEC_H;
@@ -6614,13 +6600,12 @@ function GeneralInfoStepContent({ c, F,
                   </div>
                   <div style={{height:1,background:`linear-gradient(90deg,transparent,${c.brH},transparent)`,flexShrink:0}}/>
                   <div style={{padding:'7px 10px 8px',display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
-                    <div style={{position:'relative',width:34,height:22,flexShrink:0}}>
+                    <div style={{width:34,height:22,flexShrink:0}}>
                       <input type="text" inputMode="numeric" value={tfCustomVal}
                         onChange={e=>setTfCustomVal(sanitizeStrategyCustomTfInput(e.target.value, tfCustomUnit))}
                         onKeyDown={e=>{if(e.key==='Enter'&&customTfReady&&!tfAtMax)addCustomTf();}}
                         className="tlr-nospinner"
-                        style={{width:34,height:22,background:c.hv,border:'1px solid rgba(140,160,255,0.22)',color:c.tx,fontSize:11,fontFamily:F,padding:'0 4px',outline:'none',textAlign:'center',boxSizing:'border-box',transition:'border-color 0.14s',caretColor:'transparent',position:'relative',zIndex:1}}/>
-                      <div style={{position:'absolute',top:4,bottom:4,left:`calc(50% + ${tfCustomVal.length*3.3}px)`,width:1,background:'rgba(160,160,170,0.75)',animation:'tlrBlink 1.1s step-end infinite',zIndex:2,pointerEvents:'none'}}/>
+                        style={{width:34,height:22,background:c.hv,border:'1px solid rgba(140,160,255,0.22)',color:c.tx,fontSize:11,fontFamily:F,padding:'0 4px',outline:'none',textAlign:'center',boxSizing:'border-box',transition:'border-color 0.14s',caretColor:c.acL}}/>
                     </div>
                     {(()=>{
                       const unitLabels={m:'Minutes',H:'Hours',D:'Days',W:'Weeks',M:'Months'};
@@ -53931,19 +53916,14 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{height:1,background:`linear-gradient(90deg,transparent,${c.brH},transparent)`}}/>
                 <div style={{padding:"7px 10px 8px",display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{position:"relative",width:34,height:22,flexShrink:0}}>
+                  <div style={{width:34,height:22,flexShrink:0}}>
                     <input type="text" inputMode="numeric" value={tfCustomVal}
                       onChange={e=>setTfCustomVal(e.target.value.replace(/[^0-9]/g,""))}
                       onKeyDown={e=>{if(e.key==="Enter")addCustomTf();}}
                       className="tlr-nospinner"
                       style={{width:34,height:22,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",
                         color:c.tx,fontSize:11,fontFamily:F,padding:"0 4px",outline:"none",textAlign:"center",
-                        boxSizing:"border-box",transition:"border-color 0.14s",caretColor:"transparent",position:"relative",zIndex:1}}/>
-                    <div style={{position:"absolute",top:4,bottom:4,
-                      left:`calc(50% + ${tfCustomVal.length*3.3}px)`,
-                      width:1,background:"rgba(160,160,170,0.75)",
-                      animation:"tlrBlink 1.1s step-end infinite",
-                      zIndex:2,pointerEvents:"none"}}/>
+                        boxSizing:"border-box",transition:"border-color 0.14s",caretColor:c.acL}}/>
                   </div>
                   {(()=>{
                     const unitLabels={m:"Minutes",H:"Hours",D:"Days",W:"Weeks",M:"Months"};
