@@ -558,3 +558,93 @@ Rollback = kill-switch first, evidence captured, no patch-on-patch (D-010 policy
 as the new baseline in `BASELINE-RESULTS.md` (it becomes the "before" for follow-up
 #2); manager dispatches follow-up #2 (high-limit `/smart`), server-side verification
 first. **Fail ⇒** kill-switch, read-only diagnosis.
+
+---
+
+## D-013 — ESC-006 ruling: Option A. Kill-switch now, panel-feed fix next (2026-07-05)
+
+**Ruling: Option A**, exactly as the manager recommends. B is rejected on policy: we do
+not leave a known ownership regression live while a fix is authored (D-010 rollback
+policy exists for precisely this). Note what the counters bought us: `seams = 0`
+everywhere means no data corruption — the invariant machinery contained the blast
+radius to wasted fetches and re-renders. This is the process working, not failing.
+
+### Step 1 — kill-switch isolation (PO, no deploy, do first)
+
+Flip flags in this order, repeating the 2×2 host TF-switch capture after each state:
+1. `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH = true` only (pair flag off).
+   The §6p capture was a TF switch, so this alone should restore B/C/D to
+   fetches 0 / extendsFromParent rising. Also do one PAIR switch in this state —
+   if panels self-fetch on pair switch too, the regression spans both halves.
+2. If panels still self-fetch: both flags true → must fully restore S6-baseline
+   panel behavior. If it does NOT, the regression is not viewport-first and §6p
+   is misattributed — stop and escalate.
+Record the matrix in FINDINGS. Leave the minimal set of flags disabled that restores
+panels-copy; keep the other half of the win live if isolation shows it is safe.
+
+### Step 2 — B-DIAG-5 (read-only, before any fix)
+
+The fix target must be named by line, not by theory. The worker answers ONE question:
+**which exact check makes a same-pair panel fall back to self-fetch when the host
+master is incomplete?** Suspects to check first: the coverage/completeness test in
+`_tryExtendReplayMasterFromParent` (or its caller) whose failure falls through to
+`checkViewportLoadMore` self-fetch, and any "host not ready" boot-wait path that is
+bypassed on TF switch. Deliverable: file:line of the fallback decision, plus what
+signal the panel WOULD need to keep waiting (e.g. "host hydration in progress" flag).
+
+### Step 3 — B-FIX-3c spec (panel-feed, gated, after B-DIAG-5)
+
+Direction, subject to B-DIAG-5 confirmation: same-pair panels must treat "host
+hydration in progress" as WAIT-AND-MIRROR, never self-fetch. Concretely: the host
+already exposes its hydration state (`_mcViewportFirstHydrationSeq` /
+`_mcViewportFirstMasterReady`); panels mirror the host's viewport-first window
+immediately (small copy — same UX as host), then consume background extends exactly
+as they did in the S6 baseline (extendsFromParent rising). Self-fetch remains legal
+ONLY for independent-symbol panels (I1). Own kill-switch; re-enable 3/3b flags only
+together with 3c in the same build.
+
+**Acceptance adds one NON-NEGOTIABLE item to every future multichart report:
+same-pair panel `fetches` MUST be 0 in the 2×2 capture.** That column was in the S6
+baseline and in §6p's diagnosis, but it was not an explicit pass/fail line in the
+D-012 live checklist — that is the process gap that let this ship. It is now a
+standing acceptance criterion alongside seams = 0.
+
+ESC-006 remains open until Step 1 matrix is recorded; close it citing this decision
+plus the B-FIX-3c live pass.
+
+---
+
+## D-014 — Step-1 matrix row 1 read; METHOD CORRECTION for row 2 (2026-07-05)
+
+§6p Step-1 row 1 acknowledged: TF flag alone did not restore panels-copy. The manager's
+interpretation (source includes B-FIX-3 pair-load at 2×2 setup) is plausible — entering
+multichart routes through `loadMultichartPanelFromHost`, i.e. the B-FIX-3 path, so the
+host master is deferred from the moment the layout is created, before any TF switch.
+
+**Method correction (binding for row 2 and any re-run of row 1):** the kill-switches
+must be set BEFORE the session loads, not flipped mid-session. Two reasons:
+1. The flags gate FUTURE switches only. If the host master was already left incomplete
+   by an earlier viewport-first load in the same session, flipping a flag afterwards
+   does not retroactively hydrate it — panels still see an incomplete master and
+   self-fetch. A mid-session flip therefore cannot distinguish "flag doesn't fix it"
+   from "state was already contaminated."
+2. Worse: per §6m the kill-switch also CANCELS in-flight hydration — flipping it
+   mid-session can freeze the master permanently incomplete, which is precisely the
+   self-fetch trigger. A mid-session flip can manufacture the very symptom being
+   measured.
+
+**Row-1 result is therefore INCONCLUSIVE if it was captured after a mid-session flip**
+(the report does not say). Required procedure for each matrix state: set flag(s) via
+console → full reload → enter multichart fresh → host TF switch → capture. Re-run
+row 1 this way, then row 2 (both flags). Persist flags across the reload (set them in
+an early inline console snippet or localStorage-backed bootstrap if the flags are read
+at engine init — worker/PO to confirm how the flags are read; if they are only read
+live, set them in the console immediately after load, BEFORE entering multichart).
+
+**B-DIAG-5 dispatch is authorized NOW, in parallel** — it is read-only and its question
+(which exact check makes a same-pair panel self-fetch on incomplete host master) is
+load-bearing under every matrix outcome. Do not wait for the matrix to finish.
+
+Standing note: whatever B-FIX-3c does, the 2×2 SETUP path (entering multichart) is now
+in scope alongside pair/TF switches — the incomplete-master window exists from layout
+creation, not just from switches.

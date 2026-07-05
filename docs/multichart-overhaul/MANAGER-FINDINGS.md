@@ -474,7 +474,41 @@ D-011/D-012 live acceptance (S6 TF switch ≤2 fetches / 0 if covered; seams 0; 
 S6-ref UNCHANGED = highest-risk; boot-race switch has no dead zone; both kill-switches;
 mid-hydration cancel; un-hydrated scrub) requires PO run.
 
-## Appendix — early Phase-0 recommendation (superseded)
+## 6p. REGRESSION — viewport-first broke same-pair panel copy (2026-07-05, build b601)
+
+PO: "single chart still good, but multichart — when I change TF on host A, the other
+panels re-render each time." Diagnostic (2×2, host TF switch):
+
+| panel | fetches | fetchedBars | extendsFromParent | (S6 baseline was) |
+|-------|---------|-------------|-------------------|-------------------|
+| HOST  | 65→76   | 88k→112k    | 0                 | 91 / 178k / 0     |
+| B     | 60→63   | 120k→126k   | 1                 | 0 / 0 / 88        |
+| C     | 47      | 94k         | 1                 | 0 / 0 / 89        |
+| D     | 58→77   | 114k→150k   | 2                 | 0 / 0 / 89        |
+
+Regression: same-pair panels B/C/D were COPYING from host (fetches 0, extendsFromParent
+85–89). After viewport-first (B-FIX-3/3b), they SELF-FETCH ~100k+ bars each
+(extendsFromParent 1–3) and re-render on every host TF switch. Aggregate fetches went
+UP (host + N panels each paging) — violates I1 (single data owner).
+
+Mechanism: viewport-first defers the host's full 1m master to background; same-pair panels
+need a COMPLETE host master to clone. Finding it incomplete, they fall back to self-fetch
+instead of waiting/mirroring the host's viewport-first window. seams still 0 (no
+corruption) — but ownership contract broken. Single chart unaffected.
+
+Mitigation: kill-switch (D-010 rollback policy). Escalated as ESC-006 → ruled D-013 (Option A).
+
+### D-013 Step-1 isolation matrix (build b601)
+| flag state | HOST fetches | B/C/D fetches | B/C/D extendsFromParent | panels-copy restored? |
+|------------|--------------|---------------|-------------------------|-----------------------|
+| TF flag ON only (`__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH=true`) | 76–77 | 47 / 63 / 102 | 1–6 | **NO** — still self-fetch |
+| both flags ON | TODO (PO step 1.2) | TODO | TODO | TODO |
+
+Reading: TF-flag-alone did NOT restore panels-copy → regression is NOT solely B-FIX-3b.
+Likely source is B-FIX-3 (pair-load) deferring the host master at 2×2 setup, so panels
+never have a complete master to clone. seams 0 in all states (no corruption). Next: PO
+flips BOTH flags; if that restores S6 panel behavior → viewport-first family confirmed as
+source (both stay off until B-FIX-3c). If NOT → misattributed, stop + escalate (D-013 1.2).
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the
 wrong root cause for *these* symptoms. RC1 remains worth fixing later, but the
