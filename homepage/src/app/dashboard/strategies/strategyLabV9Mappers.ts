@@ -175,6 +175,7 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     canvasNodes: Array.isArray(v9.canvasNodes) ? sanitizeCanvasNodesForApi(v9.canvasNodes) : [],
     canvasEdges: Array.isArray(v9.canvasEdges) ? v9.canvasEdges : [],
     createdAt: s.created_at || s.updated_at || new Date().toISOString(),
+    updatedAt: s.updated_at || s.created_at || null,
   };
 }
 

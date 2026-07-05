@@ -638,6 +638,30 @@ early return. Gate on extent-actually-differs to avoid re-render thrashing (the 
 `__TALARIA_MC_DISABLE_SAMETF_REMIRROR`. Not-Option-A (host reloads wide window) — that re-spends
 the tax 6a removed.
 
+## 6w. B-FIX-6a-2 live confirm + B-DIAG-8 sign-off + sequencing (2026-07-05, build 20260705b8)
+
+- **6a-2 CONFIRMED live:** PO reports "same same candles" — host/panel boot-alignment gap
+  closed. 6a + 6a-2 complete for same-TF.
+- **New pain (browse, intentional mixed-TF host 4h + panel 1m):** host loads ~116k 1m bars
+  "group by group." `DIAG-B8-host-fine-master-for-finer-panel.md` signed off. Root (verified):
+  in a backtest session `replaySystem.isActive` is TRUE even when NOT playing (armed at boot),
+  so the finer panel's `_fillViewportHistoryAfterTfSwitch` delegates history-fill to
+  `host.checkViewportLoadMore('backward', true)` (chart.js:28661-28680), and the host's
+  replay-master pan-load forces `tf='1m'` via `_getReplayPanFetchTimeframe` (6299-6309) →
+  ~58 chunks (2000-clamp at 5377-5405). This is the deferred **pain #2** surfacing as
+  host-pays-tax, NOT a 6a bypass (6a's `masterTf=displayTf` still holds at 3572-3577).
+- **Chosen fix:** Option A — same-pair panel whose TF is FINER than the host's native/display
+  master self-fetches instead of delegating to the host; host stays lean. Must preserve same-TF
+  `fetches=0` mirror (only split `panelTf` finer-than-host).
+
+### Sequencing decision (Manager, within D-016; no Director hop)
+Per DIAG-B8 §"Interaction with 6b" + Director's original deferral rationale: **B-FIX-6b first,
+then B8.** Both decide "when may the host hold a fine master." 6b defines that boundary (host
+holds fine master only when replay stepping/forming-candle needs finer-than-display); B8 then
+lets a finer *browse* panel self-fetch outside that boundary. Doing B8 first risks the rework
+the Director warned of. User has a clean workaround meanwhile: keep panels on the host's TF
+(fast + aligned, proven). User is mostly-replay, so 6b is also their highest-value win.
+
 ## 6s. CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 The rollback build is a GOOD production state for the core scenario: same-pair same-TF 2×2

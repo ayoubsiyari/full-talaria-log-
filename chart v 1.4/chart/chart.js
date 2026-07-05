@@ -1821,7 +1821,10 @@ class Chart {
         
         try {
             this.isBacktestMode = true;
-            const replayRawTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+            const bootDisplayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+            const replayRawTf = this._shouldDeferInitialMultichartReplayMaster(bootDisplayTf)
+                ? bootDisplayTf
+                : (this._shouldForceEagerMultichartReplayMaster(bootDisplayTf) ? '1m' : bootDisplayTf);
             this.currentTimeframe = replayRawTf;
             if (this._tfDataCache) this._tfDataCache.clear();
             if (this._btTfDataCache) this._btTfDataCache.clear();
@@ -2033,6 +2036,7 @@ class Chart {
             return originalUpdateChartData.apply(this, args);
         };
         replay._mcDiagUpdateChartDataWrapped = true;
+        this._installLazyReplayMasterGuards();
     }
 
     _mcDiagIsFullArrayResample(data) {
@@ -5152,6 +5156,161 @@ class Chart {
         }
     }
 
+    _lazyReplayMasterDisabled() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _shouldDeferInitialMultichartReplayMaster(displayTf) {
+        if (this._lazyReplayMasterDisabled()) return false;
+        if (!this.isBacktestMode) return false;
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return false;
+        const tf = this._normalizeBacktestTimeframe(displayTf) || '1m';
+        const tfMs = this.parseTimeframe(tf) || 60_000;
+        return tf && tf !== '1m' && tfMs > 60_000;
+    }
+
+    _shouldForceEagerMultichartReplayMaster(displayTf) {
+        if (!this._lazyReplayMasterDisabled()) return false;
+        if (!this.isBacktestMode) return false;
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return false;
+        const tf = this._normalizeBacktestTimeframe(displayTf) || '1m';
+        const tfMs = this.parseTimeframe(tf) || 60_000;
+        return tf !== '1m' && tfMs > 60_000;
+    }
+
+    _measureReplayMasterStepMs(replay = this.replaySystem) {
+        if (replay && typeof replay._getRawBarPeriodMs === 'function') {
+            const ms = Number(replay._getRawBarPeriodMs());
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        const series = replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length >= 2
+            ? replay.fullRawData
+            : this.rawData;
+        if (typeof this._measureRawDataStepMs === 'function') {
+            const measured = this._measureRawDataStepMs(series);
+            if (Number.isFinite(measured) && measured > 0) return measured;
+        }
+        const nativeTf = (replay && replay.rawTimeframe) || this._nativeRawFetchTf || this.currentTimeframe || '1m';
+        return this.parseTimeframe(nativeTf) || 60_000;
+    }
+
+    _resolveReplayStepMs(replay = this.replaySystem) {
+        if (replay && typeof replay._resolveReplayStepTimeframeMs === 'function') {
+            const ms = Number(replay._resolveReplayStepTimeframeMs());
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        if (replay && typeof replay._resolveReplayStepTimeframe === 'function') {
+            const tf = replay._resolveReplayStepTimeframe();
+            const ms = this.parseTimeframe(tf);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        return this.parseTimeframe(this.currentTimeframe || '1m') || 60_000;
+    }
+
+    _multichartReplayNeedsFineMaster(replay = this.replaySystem) {
+        if (this._lazyReplayMasterDisabled()) return false;
+        if (!this.isBacktestMode || !replay || !replay.isActive) return false;
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return false;
+        const rawMs = this._measureReplayMasterStepMs(replay);
+        const stepMs = this._resolveReplayStepMs(replay);
+        if (!Number.isFinite(rawMs) || !Number.isFinite(stepMs) || rawMs <= 0 || stepMs <= 0) {
+            return false;
+        }
+        return stepMs < rawMs * 0.92;
+    }
+
+    _lazyReplayMasterSmartLimit() {
+        const fallback = 100000;
+        try {
+            const w = Number(window.__TALARIA_MC_LAZY_REPLAY_MASTER_LIMIT);
+            if (Number.isFinite(w) && w > 0) {
+                return Math.max(2000, Math.min(100000, Math.floor(w)));
+            }
+        } catch (_e) { /* ignore */ }
+        return fallback;
+    }
+
+    _getLazyReplayMasterFetchRange(timeframe, session, playheadMs) {
+        const limit = this._lazyReplayMasterSmartLimit();
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const anchor = Number.isFinite(playheadMs) ? playheadMs : this._getBacktestSessionEndMs(session);
+        if (!Number.isFinite(anchor)) return this._getBacktestSessionEndFetchRange(this._getBacktestSessionEndMs(session));
+
+        let sessionStartMs = null;
+        try {
+            const rawStart = session && (session.startDate || session.start_date);
+            if (rawStart) {
+                const t = new Date(rawStart).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        if (Number.isFinite(sessionStartMs) && anchor <= sessionStartMs + tfMs * 10) {
+            const startTs = sessionStartMs;
+            let endTs = startTs + Math.max(1, limit - 1) * tfMs;
+            if (Number.isFinite(sessionEndMs)) endTs = Math.min(sessionEndMs, endTs);
+            return { startTs: Math.floor(startTs), endTs: Math.floor(endTs) };
+        }
+
+        const forwardBars = Math.min(4000, Math.max(120, Math.floor(limit * 0.08)));
+        const backwardBars = Math.max(1, limit - forwardBars);
+        let startTs = anchor - backwardBars * tfMs;
+        let endTs = anchor + forwardBars * tfMs;
+        if (Number.isFinite(sessionStartMs)) startTs = Math.max(sessionStartMs, startTs);
+        if (Number.isFinite(sessionEndMs)) endTs = Math.min(sessionEndMs, endTs);
+        if (endTs < anchor) endTs = anchor;
+        return { startTs: Math.floor(startTs), endTs: Math.floor(endTs) };
+    }
+
+    async _ensureLazyReplayMasterBeforeStep(replay = this.replaySystem) {
+        if (!this._multichartReplayNeedsFineMaster(replay)) return true;
+        const ts = this._captureReplayPlayheadMs(replay);
+        if (!Number.isFinite(ts)) return false;
+        return this.ensureReplayDataCoversTimestamp(ts, { forceFineMaster: true });
+    }
+
+    _installLazyReplayMasterGuards() {
+        const replay = this.replaySystem;
+        if (!replay || replay._lazyReplayMasterGuardsInstalled) return;
+        const chart = this;
+        const wrapAsyncPreflight = (methodName) => {
+            const original = replay[methodName];
+            if (typeof original !== 'function') return;
+            replay[methodName] = function lazyReplayMasterGuardWrapper(...args) {
+                if (!chart._multichartReplayNeedsFineMaster(this)) {
+                    return original.apply(this, args);
+                }
+                if (this._lazyReplayMasterPreflight) return this._lazyReplayMasterPreflight;
+                this._lazyReplayMasterPreflight = Promise.resolve()
+                    .then(() => chart._ensureLazyReplayMasterBeforeStep(this))
+                    .then((ok) => {
+                        if (!ok || !chart._multichartReplayNeedsFineMaster(this)) {
+                            return original.apply(this, args);
+                        }
+                        return false;
+                    })
+                    .catch((err) => {
+                        console.warn('[multichart] lazy replay master hydration failed', err);
+                        return false;
+                    })
+                    .finally(() => {
+                        this._lazyReplayMasterPreflight = null;
+                    });
+                return this._lazyReplayMasterPreflight;
+            };
+        };
+        wrapAsyncPreflight('play');
+        wrapAsyncPreflight('requestStepForward');
+        wrapAsyncPreflight('stepForward');
+        replay._lazyReplayMasterGuardsInstalled = true;
+    }
+
     /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
@@ -5160,9 +5319,12 @@ class Chart {
      * @param {number} targetTs
      * @returns {Promise<boolean>}
      */
-    async ensureReplayDataCoversTimestamp(targetTs) {
+    async ensureReplayDataCoversTimestamp(targetTs, opts = {}) {
         const ts = Number(targetTs);
         if (!Number.isFinite(ts)) return false;
+        const ensureOpts = opts && typeof opts === 'object' ? opts : {};
+        const forceLazyFineMaster = !!ensureOpts.forceFineMaster
+            && this._multichartReplayNeedsFineMaster(this.replaySystem);
 
         const tfMs = this.parseTimeframe(this.currentTimeframe) || 60_000;
         const margin = Math.max(tfMs * 40, 60_000);
@@ -5177,9 +5339,10 @@ class Chart {
 
         const hasWallClockPrefix = (raw) => covers(raw) && this._replayRawHasWallClockPrefix(raw, ts);
 
-        if (hasWallClockPrefix(this.rawData)) return true;
+        if (!forceLazyFineMaster && hasWallClockPrefix(this.rawData)) return true;
         const replayForCover = this.replaySystem;
-        if (replayForCover?.isActive
+        if (!forceLazyFineMaster
+            && replayForCover?.isActive
             && Array.isArray(replayForCover.fullRawData)
             && replayForCover.fullRawData.length
             && hasWallClockPrefix(replayForCover.fullRawData)) {
@@ -5219,7 +5382,9 @@ class Chart {
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
         let replayRawTf = displayTf;
         try {
-            if (typeof document !== 'undefined'
+            if (forceLazyFineMaster) {
+                replayRawTf = '1m';
+            } else if (typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed')) {
                 replayRawTf = '1m';
             } else if (this._mcViewportFirstMasterHydrating
@@ -5261,11 +5426,13 @@ class Chart {
                     const playheadForRange = Number.isFinite(ts)
                         ? ts
                         : this._captureReplayPlayheadMs(replay);
-                    const range = this._getBacktestReplayFetchRange(
-                        replayRawTf,
-                        session,
-                        playheadForRange,
-                    );
+                    const range = forceLazyFineMaster
+                        ? this._getLazyReplayMasterFetchRange(replayRawTf, session, playheadForRange)
+                        : this._getBacktestReplayFetchRange(
+                            replayRawTf,
+                            session,
+                            playheadForRange,
+                        );
                     result = await this._fetchSmartWindow(
                         fileId,
                         replayRawTf,
@@ -5274,7 +5441,11 @@ class Chart {
                         range,
                         {
                             skipSessionDates: true,
-                            limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                            limit: forceLazyFineMaster
+                                ? this._lazyReplayMasterSmartLimit()
+                                : this._backtestFetchLimitForTimeframe(replayRawTf),
+                            allowHighLimit: forceLazyFineMaster,
+                            skipBars: forceLazyFineMaster,
                         },
                     );
                 }
@@ -5393,10 +5564,12 @@ class Chart {
         if (Number.isFinite(optLimit) && optLimit > 0) {
             backtestBatch = optLimit;
         }
+        const highLimitAllowed = opts.allowHighLimit === true;
+        const maxSmartLimit = highLimitAllowed ? 100000 : 2000;
         const limit = isBacktest
-            ? String(Math.max(100, Math.min(2000, backtestBatch)))
+            ? String(Math.max(100, Math.min(maxSmartLimit, backtestBatch)))
             : (Number.isFinite(optLimit) && optLimit > 0
-                ? String(Math.max(100, Math.min(2000, Math.floor(optLimit))))
+                ? String(Math.max(100, Math.min(maxSmartLimit, Math.floor(optLimit))))
                 : '2000');
         const params = new URLSearchParams({
             timeframe: timeframe,
@@ -5666,7 +5839,8 @@ class Chart {
     async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
         this._mcDiag && this._mcDiag.fetches++;
         const sessionObj = session || this.backtestingSession || {};
-        if (fileId) {
+        const opts = smartOpts && typeof smartOpts === 'object' ? smartOpts : {};
+        if (fileId && opts.skipBars !== true) {
             try {
                 const viaBars = await this._fetchSmartWindowViaBars(
                     fileId, timeframe, sessionObj, anchor, windowRange, smartOpts
@@ -6299,6 +6473,14 @@ class Chart {
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
         if (this._usesMultichartReplayMaster()) {
+            if (!this._lazyReplayMasterDisabled()
+                && typeof this._isMultichartHostPanel === 'function'
+                && this._isMultichartHostPanel()) {
+                const rawTf = String(this.replaySystem?.rawTimeframe || this._nativeRawFetchTf || this.currentTimeframe || '1m').toLowerCase().trim();
+                if (rawTf && rawTf !== '1m' && !this._multichartReplayNeedsFineMaster(this.replaySystem)) {
+                    return rawTf;
+                }
+            }
             if (this._mcViewportFirstMasterHydrating
                 && typeof this._isMultichartHostPanel === 'function'
                 && this._isMultichartHostPanel()) {
@@ -10244,6 +10426,7 @@ class Chart {
             if (typeof replaySystemCtor === 'function') {
                 this.replaySystem = new replaySystemCtor(this);
                 this._mcDiagWrapReplaySystem();
+                this._installLazyReplayMasterGuards();
                 
                 // Initialize Order Manager for backtesting
                 this.initOrderManager();

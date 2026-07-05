@@ -345,7 +345,6 @@ const readStoredStratLayoutMode = () => {
 };
 const normalizeStrategyBankNameKey = (value) =>
   String(value || "")
-    .replace(/\s*\((my version|copy)\)\s*/gi, " ")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -5621,6 +5620,77 @@ const IMAGE_UPLOAD_MAX_MB = 5;
 const IMAGE_UPLOAD_MAX_BYTES = IMAGE_UPLOAD_MAX_MB * 1024 * 1024;
 const IMAGE_UPLOAD_MAX_DATA_URL_LEN = 2_800_000;
 
+/** Table sort cycle: inactive → asc → desc → inactive. */
+const cycleTableSort = (currentKey, currentDir, nextKey, defaultDir = "asc") => {
+  if (currentKey !== nextKey) return { key: nextKey, dir: defaultDir };
+  if (currentDir === "asc") return { key: nextKey, dir: "desc" };
+  return { key: null, dir: null };
+};
+
+const TABLE_SORT_GLYPH_STYLE = { fontSize: 8.5, fontWeight: 900, lineHeight: 1, display: "inline-flex", alignItems: "center", flexShrink: 0, fontFamily: "'Exo 2', sans-serif" };
+
+function TableSortGlyphs({ active, dir, hover, accent = "#4A6AFF", muted = "rgba(255,255,255,0.28)" }) {
+  if (active && dir === "asc") return <span style={{ ...TABLE_SORT_GLYPH_STYLE, color: accent }} aria-hidden="true">▲</span>;
+  if (active && dir === "desc") return <span style={{ ...TABLE_SORT_GLYPH_STYLE, color: accent }} aria-hidden="true">▼</span>;
+  if (hover) {
+    return (
+      <span style={{ ...TABLE_SORT_GLYPH_STYLE, color: muted, letterSpacing: "-0.06em", fontSize: 7.5 }} aria-hidden="true">
+        <span style={{ opacity: 0.62 }}>▲</span><span style={{ opacity: 0.62 }}>▼</span>
+      </span>
+    );
+  }
+  return null;
+}
+
+function TableSortDefaultGlyphs({ active, accent = "#4A6AFF", muted = "rgba(255,255,255,0.28)", fontSize = 8.4 }) {
+  return (
+    <span style={{ letterSpacing: "-0.06em", color: active ? accent : muted, fontSize: fontSize - 0.2, fontWeight: 950, flexShrink: 0 }} aria-hidden="true">
+      <span style={{ opacity: active ? 1 : 0.72 }}>▲</span><span style={{ opacity: active ? 1 : 0.72 }}>▼</span>
+    </span>
+  );
+}
+
+function TableSortDirButtons({ ascActive, descActive, onAsc, onDesc, accent, muted, activate, keyActivate, btnStyle = {} }) {
+  const renderBtn = (active, dir, handler) => {
+    const shared = {
+      role: "button",
+      tabIndex: 0,
+      "aria-label": dir === "asc" ? "Ascending" : "Descending",
+      "aria-pressed": active,
+      style: {
+        height: 22,
+        display: "grid",
+        placeItems: "center",
+        background: active ? "rgba(38,67,247,0.18)" : "transparent",
+        border: "none",
+        color: active ? accent : muted,
+        fontSize: 10,
+        fontWeight: 950,
+        cursor: "default",
+        ...btnStyle,
+      },
+    };
+    if (activate) {
+      return (
+        <span className="tlr-library-action tlr-add-trade-soft-action" {...shared} onPointerDown={activate(handler)} onKeyDown={keyActivate ? keyActivate(handler) : undefined}>
+          {dir === "asc" ? "▲" : "▼"}
+        </span>
+      );
+    }
+    return (
+      <span {...shared} onClick={handler}>
+        {dir === "asc" ? "▲" : "▼"}
+      </span>
+    );
+  };
+  return (
+    <span style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3 }}>
+      {renderBtn(ascActive, "asc", onAsc)}
+      {renderBtn(descActive, "desc", onDesc)}
+    </span>
+  );
+}
+
 /** Shared library page layout — keep widths aligned across Sessions, Strategy Bank, etc. */
 const V16_PAGE_GUTTER_X = 32;
 const V16_TABLE_WIDTH = 1356;
@@ -10470,6 +10540,8 @@ const TalariaV8b = () => {
       const byId = strategyBacktestSessionsIndex.byStrategyKey.get(stratKey);
       if (byId?.length) return byId;
     }
+    // Persisted strategies only inherit sessions explicitly linked by strategy id — not by name.
+    if (parseStratApiId(row?.id) != null) return [];
     return sessionsForStrategyBankName(row?.name);
   }, [strategyBacktestSessionsIndex, sessionsForStrategyBankName]);
   const [newSessName, setNewSessName] = useState("");
@@ -15107,7 +15179,8 @@ const TalariaV8b = () => {
                   {/* Sort button — cards mode only, LEFT of toggles */}
                   {sessLayoutMode==="cards"&&(()=>{
                     const sortOpts=[["name","Name"],["strategy","Strategy"],["date","Date Range"],["duration","Duration"],["capital","Balance"],["pnl","Net P&L"],["winRate","Win Rate"],["avgRR","Avg R:R"],["trades","Trades"],["progress","Progress"]];
-                    const activeLabel=sessSortBy?(sortOpts.find(([k])=>k===sessSortBy)||["",""])[1]:"Recent";
+                    const activeColLabel=sessSortBy?(sortOpts.find(([k])=>k===sessSortBy)||["",""])[1]:null;
+                    const chooseSessionSort=(key,dir)=>{setSessSortBy(key);setSessSortDir(dir??"desc");setCardSortOpen(false);};
                     const isBH=hov==="cardSortBtn";
                     return(
                       <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
@@ -15118,32 +15191,46 @@ const TalariaV8b = () => {
                             color:cardSortOpen?c.acL:isBH?c.tx:c.ts,
                             fontSize:9,fontWeight:700,fontFamily:F,transition:"background 0.12s,color 0.12s",whiteSpace:"nowrap"}}>
                           <svg width={9} height={9} viewBox="0 0 12 12" fill="none"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="5" y1="9" x2="7" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                          {activeLabel}
+                          {activeColLabel ? (
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4}}>{activeColLabel}<span style={{letterSpacing:"-0.04em",fontWeight:950}}>{sessSortDir==="asc"?"▲":"▼"}</span></span>
+                          ) : (
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><TableSortDefaultGlyphs active accent={c.acL} muted={c.ts} fontSize={9} /> Default</span>
+                          )}
                           <svg width={6} height={6} viewBox="0 0 8 8" style={{opacity:0.55,flexShrink:0}}><polygon points={cardSortOpen?"4,1 7,6 1,6":"4,7 7,2 1,2"} fill="currentColor"/></svg>
                           {cardSortOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,pointerEvents:"none"}}/>}
                           {!cardSortOpen&&isBH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)`,pointerEvents:"none"}}/>}
                         </div>
                         {cardSortOpen&&(
-                          <div style={{position:"absolute",top:"calc(100% + 5px)",left:0,background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",zIndex:300,minWidth:148,overflow:"hidden"}}>
+                          <div style={{position:"absolute",top:"calc(100% + 5px)",left:0,background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",zIndex:300,minWidth:196,overflow:"hidden"}}>
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                            {sortOpts.map(([key,label])=>{
-                              const isAct=sessSortBy===key;
-                              const isIH=hov==="csort_"+key;
-                              return(
-                                <div key={key}
-                                  onMouseEnter={()=>setHov("csort_"+key)} onMouseLeave={()=>setHov(null)}
-                                  onClick={()=>{if(sessSortBy===key){setSessSortDir(d=>d==="asc"?"desc":"asc");}else{setSessSortBy(key);setSessSortDir(defaultSessionSortDir(key));}setCardSortOpen(false);}}
-                                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 12px",cursor:"default",position:"relative",
-                                    background:isAct?c.acD:isIH?"rgba(255,255,255,0.03)":"transparent",
-                                    transition:"background 0.1s"}}>
-                                  {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`}}/>}
-                                  <span style={{fontSize:9,fontWeight:isAct?700:500,color:isAct?c.acL:isIH?c.tx:c.ts,fontFamily:F}}>{label}</span>
-                                  {isAct&&(sessSortDir==="asc"
-                                    ?<svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,0 7,7 0,7" fill={c.acL}/></svg>
-                                    :<svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,7 7,0 0,0" fill={c.acL}/></svg>)}
-                                </div>
-                              );
-                            })}
+                            <div style={{padding:"6px 8px 8px"}}>
+                              <div role="button" tabIndex={0} onClick={()=>chooseSessionSort(null,null)}
+                                style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!sessSortBy?"rgba(38,67,247,0.14)":"transparent",border:"none",color:!sessSortBy?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default"}}
+                                onMouseEnter={()=>setHov("csort_default")} onMouseLeave={()=>setHov(null)}>
+                                <span style={{display:"inline-flex",alignItems:"center",gap:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                  <TableSortDefaultGlyphs active={!sessSortBy} accent={c.acL} muted={c.tm} />
+                                  Default
+                                </span>
+                                <span />
+                              </div>
+                              {sortOpts.map(([key,label])=>{
+                                const ascActive=sessSortBy===key&&sessSortDir==="asc";
+                                const descActive=sessSortBy===key&&sessSortDir==="desc";
+                                return(
+                                  <div key={key} style={{height:30,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,borderTop:`1px solid ${c.br}`,boxSizing:"border-box"}}>
+                                    <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:8.3,fontWeight:900,color:ascActive||descActive?c.tx:c.ts,letterSpacing:"0.055em",textTransform:"uppercase",paddingLeft:8}}>{label}</span>
+                                    <TableSortDirButtons
+                                      ascActive={ascActive}
+                                      descActive={descActive}
+                                      onAsc={()=>chooseSessionSort(key,"asc")}
+                                      onDesc={()=>chooseSessionSort(key,"desc")}
+                                      accent={c.acL}
+                                      muted={c.tm}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -15204,18 +15291,12 @@ const TalariaV8b = () => {
                     const isActive=sk&&sessSortBy===sk;
                     const isHov=hov===("ch_"+label);
                     return(
-                      <div key={label||"_act"} onClick={sk?()=>{if(sessSortBy===sk){if(sessSortDir==="asc")setSessSortDir("desc");else{setSessSortBy(null);setSessSortDir("desc");}}else{setSessSortBy(sk);setSessSortDir(defaultSessionSortDir(sk));}}:undefined}
+                      <div key={label||"_act"} onClick={sk?()=>{const next=cycleTableSort(sessSortBy,sessSortDir,sk,defaultSessionSortDir(sk));setSessSortBy(next.key);setSessSortDir(next.dir??"desc");}:undefined}
                         onMouseEnter={()=>{if(sk)setHov("ch_"+label);}}
                         onMouseLeave={()=>{if(sk)setHov(null);}}
                         style={{width:w,flexShrink:0,fontSize:8,fontWeight:800,color:isActive?c.acL:isHov?c.ts:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:"center",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",gap:3,userSelect:"none",transition:"color 0.12s",background:isHov&&!isActive?"rgba(255,255,255,0.04)":"transparent"}}>
                         {label}
-                        {sk&&(isActive?(
-                          sessSortDir==="asc"
-                            ?<svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,0 7,7 0,7" fill="currentColor"/></svg>
-                            :<svg width={7} height={7} viewBox="0 0 7 7"><polygon points="3.5,7 7,0 0,0" fill="currentColor"/></svg>
-                        ):(
-                          isHov&&<svg width={7} height={10} viewBox="0 0 7 10"><polygon points="3.5,0 7,4 0,4" fill="currentColor" opacity={0.7}/><polygon points="3.5,10 7,6 0,6" fill="currentColor" opacity={0.7}/></svg>
-                        ))}
+                        {sk&&<TableSortGlyphs active={isActive} dir={isActive?sessSortDir:null} hover={isHov&&!isActive} accent={c.acL} muted={c.tm} />}
                       </div>
                     );
                   })}
@@ -24743,11 +24824,11 @@ const TalariaV8b = () => {
             const gridTemplateColumns = activeColumnKeys.map(() => "minmax(0,1fr)").join(" ");
             const setSortFor = (key) => {
               if (!columnDefs[key]?.sortable) return;
-              setDashTradesSort(prev => prev?.key !== key ? {key, dir:"asc"} : prev.dir === "asc" ? {key, dir:"desc"} : {key:null, dir:null});
+              setDashTradesSort(prev => cycleTableSort(prev?.key, prev?.dir, key, "asc"));
             };
             const sortableColumnKeys = activeColumnKeys.filter(key => columnDefs[key]?.sortable);
             const activeSortLabel = activeSort.key ? (columnDefs[activeSort.key]?.label || activeSort.key) : "Default";
-            const activeSortDirLabel = activeSort.key ? (activeSort.dir === "desc" ? "Desc" : "Asc") : "";
+            const activeSortDirLabel = activeSort.key ? (activeSort.dir === "desc" ? "▼" : "▲") : "";
             const chooseTradesSort = (key, dir) => {
               setDashTradesSort(key ? {key, dir} : {key:null, dir:null});
               setDashTradesSortOpen(false);
@@ -25266,8 +25347,12 @@ const TalariaV8b = () => {
                         )}
                         <span style={{minWidth:0,display:"grid",gridTemplateColumns:"34px minmax(0,1fr)",columnGap:6,alignItems:"baseline",overflow:"hidden"}}>
                           <span style={{fontSize:7.2,fontWeight:950,color:c.acL,letterSpacing:"0.09em",textTransform:"uppercase",lineHeight:1}}>Sort</span>
-                          <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:8.6,fontWeight:950,color:activeSort.key?c.tx:c.tm,letterSpacing:"0.03em",lineHeight:1,textTransform:"uppercase"}}>
-                            {activeSortLabel}{activeSortDirLabel ? ` ${activeSortDirLabel}` : ""}
+                          <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:8.6,fontWeight:950,color:activeSort.key?c.tx:c.tm,letterSpacing:"0.03em",lineHeight:1,textTransform:"uppercase",display:"inline-flex",alignItems:"center",gap:5}}>
+                            {activeSort.key ? (
+                              <>{activeSortLabel}<span style={{letterSpacing:"-0.04em"}}>{activeSortDirLabel}</span></>
+                            ) : (
+                              <><TableSortDefaultGlyphs active accent={c.acL} muted={c.tm} fontSize={8.6} /> Default</>
+                            )}
                           </span>
                         </span>
                         <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" style={{display:"block",color:c.tm,transform:dashTradesSortOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 120ms ease",flexShrink:0}}>
@@ -25280,8 +25365,11 @@ const TalariaV8b = () => {
                           <div className="tlr-scroll" style={{minHeight:0,overflowY:"auto",paddingRight:2}}>
                             <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={!activeSort.key} onPointerDown={libraryPointerActivate(()=>chooseTradesSort(null, null))} onKeyDown={libraryKeyActivate(()=>chooseTradesSort(null, null))}
                               style={{height:28,display:"grid",gridTemplateColumns:"minmax(0,1fr) 28px",alignItems:"center",gap:8,padding:"0 8px",marginBottom:4,background:!activeSort.key?"rgba(38,67,247,0.14)":"transparent",border:"none",color:!activeSort.key?c.acL:c.ts,fontSize:8.4,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box",cursor:"default","--tlr-add-hover-bg":"rgba(255,255,255,0.055)","--tlr-add-hover-color":c.acL}}>
-                              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Default order</span>
-                              <span style={{textAlign:"right",color:!activeSort.key?c.acL:c.tm}}>—</span>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                <TableSortDefaultGlyphs active={!activeSort.key} accent={c.acL} muted={c.tm} />
+                                Default
+                              </span>
+                              <span />
                             </div>
                             {sortableColumnKeys.map(key => {
                               const label = columnDefs[key]?.label || key;
@@ -25290,12 +25378,16 @@ const TalariaV8b = () => {
                               return (
                                 <div key={`sort-menu-${key}`} style={{height:30,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,borderTop:`1px solid ${c.br}`,boxSizing:"border-box"}}>
                                   <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:8.3,fontWeight:900,color:ascActive||descActive?c.tx:c.ts,letterSpacing:"0.055em",textTransform:"uppercase",paddingLeft:8}}>{label}</span>
-                                  <span style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:3}}>
-                                    <span className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-label={`Sort ${label} ascending`} aria-pressed={ascActive} onPointerDown={libraryPointerActivate(()=>chooseTradesSort(key, "asc"))} onKeyDown={libraryKeyActivate(()=>chooseTradesSort(key, "asc"))}
-                                      style={{height:22,display:"grid",placeItems:"center",background:ascActive?"rgba(38,67,247,0.18)":"transparent",border:"none",color:ascActive?c.acL:c.tm,fontSize:10,fontWeight:950,cursor:"default","--tlr-add-hover-bg":"rgba(255,255,255,0.055)","--tlr-add-hover-color":c.acL}}>↑</span>
-                                    <span className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-label={`Sort ${label} descending`} aria-pressed={descActive} onPointerDown={libraryPointerActivate(()=>chooseTradesSort(key, "desc"))} onKeyDown={libraryKeyActivate(()=>chooseTradesSort(key, "desc"))}
-                                      style={{height:22,display:"grid",placeItems:"center",background:descActive?"rgba(38,67,247,0.18)":"transparent",border:"none",color:descActive?c.acL:c.tm,fontSize:10,fontWeight:950,cursor:"default","--tlr-add-hover-bg":"rgba(255,255,255,0.055)","--tlr-add-hover-color":c.acL}}>↓</span>
-                                  </span>
+                                  <TableSortDirButtons
+                                    ascActive={ascActive}
+                                    descActive={descActive}
+                                    onAsc={() => chooseTradesSort(key, "asc")}
+                                    onDesc={() => chooseTradesSort(key, "desc")}
+                                    accent={c.acL}
+                                    muted={c.tm}
+                                    activate={libraryPointerActivate}
+                                    keyActivate={libraryKeyActivate}
+                                  />
                                 </div>
                               );
                             })}
@@ -25319,16 +25411,8 @@ const TalariaV8b = () => {
                           onMouseLeave={sortable?()=>setHov(null):undefined}
                           style={{minWidth:0,height:"100%",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",gap:3,color:active?c.acL:isHov?c.acL:c.tm,fontSize:8,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",cursor:sortable?"default":"inherit",fontFamily:F,textAlign:"center",userSelect:"none",boxSizing:"border-box",padding:"0 3px",background:isHov&&!active?"rgba(38,67,247,0.14)":"transparent",boxShadow:active||isHov?`inset 0 -1px 0 ${c.acL}, 0 7px 13px -14px ${c.acL}`:"none",transition:"color 0.08s, background 0.08s, box-shadow 0.08s"}}>
                           <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center",boxSizing:"border-box"}}>{columnDefs[key].label}</span>
-                          {sortable && active && (
-                            sortDir === "asc"
-                              ? <svg width={7} height={7} viewBox="0 0 7 7" aria-hidden="true" style={{display:"block",flexShrink:0}}><polygon points="3.5,0 7,7 0,7" fill="currentColor"/></svg>
-                              : <svg width={7} height={7} viewBox="0 0 7 7" aria-hidden="true" style={{display:"block",flexShrink:0}}><polygon points="3.5,7 7,0 0,0" fill="currentColor"/></svg>
-                          )}
-                          {sortable && !active && isHov && (
-                            <svg width={7} height={10} viewBox="0 0 7 10" aria-hidden="true" style={{display:"block",flexShrink:0}}>
-                              <polygon points="3.5,0 7,4 0,4" fill="currentColor" opacity={0.7}/>
-                              <polygon points="3.5,10 7,6 0,6" fill="currentColor" opacity={0.7}/>
-                            </svg>
+                          {sortable && (
+                            <TableSortGlyphs active={active} dir={sortDir} hover={isHov && !active} accent={c.acL} muted={c.tm} />
                           )}
                         </div>
                       );
@@ -45171,7 +45255,10 @@ const TalariaV8b = () => {
                       <span style={{fontSize:18,lineHeight:1,filter:"saturate(1.08)"}}>{cardIcon}</span>
                     </div>
                     <div style={{minWidth:0}}>
-                      <div title={strat.name} style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.2,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                        <div title={strat.name} style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.2,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word",minWidth:0}}>{strat.name}</div>
+                        {strategyRowWasEdited(strat) ? <StrategyEditedBadge/> : null}
+                      </div>
                     </div>
                     <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
                       onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:(r.left+r.right)/2/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
@@ -45402,8 +45489,9 @@ const TalariaV8b = () => {
                         <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
                       </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box"}}>
-                      <div title={strat.name} style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
+                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box",gap:6}}>
+                      <div title={strat.name} style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word",minWidth:0}}>{strat.name}</div>
+                      {strategyRowWasEdited(strat) ? <StrategyEditedBadge/> : null}
                     </div>
                     <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}
                       onMouseEnter={e=>{if(!strat.desc)return;const r=e.currentTarget.getBoundingClientRect();setStratDescHov({id:strat.id,text:strat.desc,x:r.left/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
@@ -45603,11 +45691,17 @@ const TalariaV8b = () => {
           };
 
           const strategyCopyName = (name, existing) => {
-            const clean = String(name||"Untitled Strategy").replace(/\s*\(copy(?:\s+\d+)?\)\s*$/i,"").trim() || "Untitled Strategy";
+            const clean = String(name||"Untitled Strategy")
+              .replace(/\s*\(copy(?:\s+\d+)?\)\s*$/i,"")
+              .replace(/\s*\(my version\)\s*$/i,"")
+              .trim() || "Untitled Strategy";
             const used = new Set((existing||[]).map(s=>String(s.name||"").toLowerCase()));
-            let next = `${clean} (copy)`;
             let n = 2;
-            while (used.has(next.toLowerCase())) next = `${clean} (copy ${n++})`;
+            let next = `${clean} (copy ${n})`;
+            while (used.has(next.toLowerCase())) {
+              n += 1;
+              next = `${clean} (copy ${n})`;
+            }
             return next;
           };
           const cloneStrategyData = value => value == null ? value : JSON.parse(JSON.stringify(value));
@@ -45737,6 +45831,7 @@ const TalariaV8b = () => {
               setStratWizardStep(1);
               return;
             }
+            const existingRow = stratEditId ? myStrategies.find(s=>sameStrategyRowId(s,{id:stratEditId})) : null;
             const strat = {
               id: stratEditId || `m${Date.now()}`,
               name: stratBName.trim()||"Untitled Strategy",
@@ -45756,7 +45851,8 @@ const TalariaV8b = () => {
               supportInst: (stratBSupportInst||[]).length ? stratBSupportInst : undefined,
               canvasNodes: canvasNodes,
               canvasEdges: canvasEdges,
-              createdAt: stratEditId ? (myStrategies.find(s=>sameStrategyRowId(s,{id:stratEditId}))?.createdAt||new Date().toISOString()) : new Date().toISOString(),
+              createdAt: existingRow?.createdAt || new Date().toISOString(),
+              ...(stratEditId ? { updatedAt: new Date().toISOString() } : {}),
             };
             const applySavedRow = (savedRow) => {
               const row = savedRow || strat;
@@ -45795,6 +45891,17 @@ const TalariaV8b = () => {
               setSavedCommunityStrats(prev=>[strat,...prev]);
             }
           };
+
+          const strategyRowWasEdited = (strat) => {
+            const created = strat?.createdAt ? Date.parse(String(strat.createdAt)) : NaN;
+            const updated = strat?.updatedAt ? Date.parse(String(strat.updatedAt)) : NaN;
+            return Number.isFinite(created) && Number.isFinite(updated) && updated - created > 1000;
+          };
+          const StrategyEditedBadge = () => (
+            <span style={{display:"inline-flex",alignItems:"center",height:16,padding:"0 6px",fontSize:7,fontWeight:850,color:c.gold,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F,border:`1px solid rgba(201,168,76,0.35)`,background:"rgba(201,168,76,0.08)",flexShrink:0,whiteSpace:"nowrap"}}>
+              Edited
+            </span>
+          );
 
           const SORT_OPTIONS=[{k:"name",l:"Name"},{k:"winRate",l:"Win Rate"},{k:"rr",l:"Avg R:R"},{k:"saves",l:"Most Saved"},{k:"pnl",l:"Net P&L"}];
 
