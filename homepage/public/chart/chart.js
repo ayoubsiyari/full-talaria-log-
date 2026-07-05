@@ -2320,6 +2320,89 @@ class Chart {
         return this._isMultichartEmbedPanel() || this._isMultichartHostPanel();
     }
 
+    _mirrorPrependCompensationDisabled() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__TALARIA_MC_DISABLE_MIRROR_PREPEND_COMPENSATION;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _captureMultichartMirrorPrependSnapshot(replay = this.replaySystem) {
+        try {
+            if (this._mirrorPrependCompensationDisabled()) return null;
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return null;
+            const raw = Array.isArray(this.rawData) ? this.rawData : null;
+            const data = Array.isArray(this.data) ? this.data : null;
+            const rawFirstTs = Number(raw && raw[0]?.t);
+            const dataFirstTs = Number(data && data[0]?.t);
+            if (!Number.isFinite(rawFirstTs) || !Number.isFinite(dataFirstTs)) return null;
+            return {
+                rawFirstTs,
+                dataFirstTs,
+                rawLength: raw.length,
+                dataLength: data.length,
+                offsetX: Number(this.offsetX),
+                replayIndex: Number(replay?.currentIndex),
+            };
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _countCleanMirrorPrependedBars(series, previousFirstTs, previousLength) {
+        if (!Array.isArray(series) || !Number.isFinite(previousFirstTs)) return 0;
+        if (Number.isFinite(previousLength) && series.length < previousLength) return 0;
+        const newFirstTs = Number(series[0]?.t);
+        if (!Number.isFinite(newFirstTs) || !(newFirstTs < previousFirstTs)) return 0;
+        const oldFirstIdx = series.findIndex((bar) => Number(bar?.t) === previousFirstTs);
+        if (oldFirstIdx <= 0) return 0;
+        const prefixLastTs = Number(series[oldFirstIdx - 1]?.t);
+        if (!Number.isFinite(prefixLastTs) || !(prefixLastTs < previousFirstTs)) return 0;
+        return oldFirstIdx;
+    }
+
+    _applyMultichartMirrorPrependCompensation(snapshot, opts = {}) {
+        try {
+            if (this._mirrorPrependCompensationDisabled()) return null;
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return null;
+            if (!snapshot || typeof snapshot !== 'object') return null;
+            const addedRawBars = this._countCleanMirrorPrependedBars(
+                this.rawData,
+                Number(snapshot.rawFirstTs),
+                Number(snapshot.rawLength),
+            );
+            const addedDisplayBars = this._countCleanMirrorPrependedBars(
+                this.data,
+                Number(snapshot.dataFirstTs),
+                Number(snapshot.dataLength),
+            );
+            if (addedRawBars <= 0 || addedDisplayBars <= 0) return null;
+            const spacing = typeof this.getCandleSpacing === 'function'
+                ? this.getCandleSpacing()
+                : ((Number(this.candleWidth) || 0) + (Number(this.candleGap) || 0));
+            const previousOffsetX = Number(snapshot.offsetX);
+            if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(previousOffsetX)) return null;
+            this.offsetX = previousOffsetX - addedDisplayBars * spacing;
+
+            const replay = (opts && opts.replay) || this.replaySystem;
+            const previousIndex = Number(snapshot.replayIndex);
+            const replaySeries = replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
+                ? replay.fullRawData
+                : this.rawData;
+            if (replay && Number.isFinite(previousIndex) && Array.isArray(replaySeries) && replaySeries.length > 0) {
+                replay.currentIndex = Math.min(
+                    Math.max(Math.floor(previousIndex + addedRawBars), 0),
+                    replaySeries.length - 1,
+                );
+            }
+            return { addedRawBars, addedDisplayBars };
+        } catch (_e) {
+            return null;
+        }
+    }
+
     /**
      * Multichart backtest replay TF change: prefer cache / client resample (same as
      * tile A), then reload 1m master at playhead only when necessary.
@@ -2788,6 +2871,7 @@ class Chart {
             try { this._warmBtTfCacheFromParent(tf); } catch (_w) { /* ignore */ }
         }
 
+        const mirrorPrependSnapshot = this._captureMultichartMirrorPrependSnapshot(this.replaySystem);
         this.rawData = parent.rawData;
         this.data = parent.data;
         if (Number.isFinite(parent.totalCandles)) this.totalCandles = parent.totalCandles;
@@ -2830,6 +2914,10 @@ class Chart {
             this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
         }
         if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+        const mirrorPrependCompensation = this._applyMultichartMirrorPrependCompensation(
+            mirrorPrependSnapshot,
+            { replay },
+        );
         this.priceZoom = parent.priceZoom;
         this.priceOffset = parent.priceOffset;
         this.autoScale = parent.autoScale;
@@ -2846,11 +2934,13 @@ class Chart {
             ? parent.getCandleSpacing()
             : parent.candleWidth;
         if (spacing > 0 && plotW > 0) {
-            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
-                ? parent.getVisibleEndIndex()
-                : parent.data.length - 1;
-            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
-            this.offsetX = plotW - (rightIdx + 1) * spacing;
+            if (!mirrorPrependCompensation) {
+                let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                    ? parent.getVisibleEndIndex()
+                    : parent.data.length - 1;
+                rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+                this.offsetX = plotW - (rightIdx + 1) * spacing;
+            }
             if (typeof this.constrainOffset === 'function') {
                 try { this.constrainOffset(); } catch (_c) { /* ignore */ }
             }

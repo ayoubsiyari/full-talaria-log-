@@ -896,3 +896,114 @@ Two corrections before the B8 build is measured:
 Unchanged: 6b replay smoke test blocks B8 ship (not dispatch); PO audit of the two
 non-chart files stays due this week. Good marker discipline on the §6s stub note —
 append future entries after §6y.
+
+---
+
+## D-020 — ESC-009 ruling: DIAG first (two questions, not one), then A; B rejected (2026-07-05)
+
+The manager's diagnosis of why B8 cannot fire is confirmed and well-evidenced (all B8
+counters zero on b18 — structurally inert, not misbehaving). Ruling follows the
+manager's shape (read-only DIAG, then the cheap fix) with one significant expansion.
+
+### The bigger finding hiding in the capture
+
+The b18 numbers show the HOST hauling a 1m master (29 fetches / 34k bars) in an
+**armed-but-not-playing** backtest. Under 6a+6b that should not happen: 6a gives the
+browsing host a display-TF master, and 6b's whole contract is "1m lazily, only when
+replay actually steps finer." An armed-not-playing session hauling 34k 1m bars means
+**6b's lazy boundary is not holding in exactly the scenario it was built for** — and
+recall this same trap (`replaySystem.isActive` true when merely armed, DIAG-B8 root)
+has now bitten twice. This was the proof the deferred 6b smoke test was meant to
+supply; ESC-008 folded it into B8 acceptance, and here is the first live evidence it
+would have failed.
+
+Connection that matters: **if the 6b boundary held** (armed-not-playing host commits
+display-TF native, e.g. 4h), then 1m panels WOULD be finer-than-native, B8's existing
+gate would fire naturally, panels would self-own bounded windows, and both the drift
+AND the group-by-group host hauling disappear — no re-keying needed. The two "dead"
+fixes may both come alive by fixing one boundary.
+
+### B-DIAG-9 (read-only, dispatch now) — answers BOTH questions
+
+1. **Drift mechanism, named by line:** when the shared host master prepends older
+   bars on backward pan-load, what do mirror panels fail to compensate?
+   The single-chart engine already solves prepend-without-jump for its own pan loads
+   (offset/index re-anchoring in the `checkViewportLoadMore` merge path) — find why
+   the mirror-commit path lacks the equivalent compensation. Suspect list: the
+   mirror clone in `_multichartMirrorHostTfSwitchIfReady` / replay-frame mirror
+   resetting `offsetX`/indices against the NEW array length without adding the
+   prepend delta.
+2. **Why is the armed-not-playing host still on a 1m master despite 6a+6b?** Trace
+   the actual commit: is `_emitMultichartHostDataCommit`'s
+   `replaySystem.isActive ? rawTimeframe : _nativeRawFetchTf` the pin (armed ⇒
+   isActive ⇒ 1m), and does 6b's gate use the same too-loose "armed" predicate?
+   Deliverable: whether tightening the predicate to "actually stepping/playing or
+   playhead requires finer" makes the host commit display-TF native when idle-armed,
+   and what replay-start then requires (the 6b lazy hydrate on first step).
+
+### Fix ruling
+
+- **Option A (viewport-stability on prepend) is pre-approved** as an immediate,
+  gated, kill-switched fix once DIAG-9 names the line — it is I3-clean (viewport
+  channel only), keeps fetches=0, and kills the user's sharpest pain regardless of
+  what happens with the boundary. Ship it first.
+- **The 6b-boundary tightening is the expected structural fix** for group-by-group
+  hauling (and B8's activation), pending DIAG-9 Q2 — it will be specced as its own
+  task (B-FIX-6b-2), NOT bundled with A.
+- **Option B (re-key finer-than-host to DISPLAY TF) is REJECTED**, not deferred:
+  it duplicates 1m storage host+panels, re-opens the ESC-006 ownership axis, and —
+  decisive — it patches around the same broken boundary that Q2 fixes properly. If
+  DIAG-9 proves the boundary cannot be tightened safely, re-open via escalation.
+- B8 itself stays shipped and inert; its counters are the proof harness for whether
+  the boundary fix activates it. Do not modify B8 in either task.
+
+---
+
+## D-021 — §6z–§6ab review: ledger closed, DIAG-B9 ratified, 6b-2 spec constraints (2026-07-05)
+
+Acknowledgments, then the constraints that matter for the next two builds.
+
+- **§6z closes D-019 correction #1 properly** — the 6c sign-off is a real review
+  (panel exclusion preserving I1, kill-switch causality read in code, `/bars` bypass
+  scoped), not a backfilled rubber stamp. Ledger is whole again.
+- **§6aa B8-IMPL sign-off accepted**; the build-id collision catch (worker built b11
+  behind the deployed b14) was exactly the kind of operational hazard the manager
+  layer exists to catch. B8 live acceptance on b15 remains pending and is now
+  partially subsumed by the ESC-009/D-020 finding — B8 cannot fire until 6b-2 lands,
+  so B8's live proof rides the 6b-2 acceptance run.
+- **DIAG-B9 ratified.** Both linchpins verified (armed ⇒ isActive ⇒ 1m pin at
+  chart.js:3911; prepend compensation exists in the owner path but is absent at the
+  three mirror-commit sites). B-FIX-A dispatch confirmed per the D-020 pre-approval.
+
+### B-FIX-A acceptance (gated, kill-switched — the PO run)
+
+PO's own repro is the test: host 4h over 1m master, panels 1m, backtest armed, all
+sync OFF, drag host into empty space to trigger backward pan-load. Pass = candles in
+B/C/D stay anchored (no backward shift), panel fetches stay 0, seams 0, kill-switch
+restores the drift, single-chart unaffected (all three sites are multichart-only
+paths). All three mirror sites must use ONE shared compensation helper — three
+hand-rolled copies of prepend math is how the next drift bug gets written.
+
+### B-FIX-6b-2 spec constraints (binding; spec after A ships)
+
+1. **Fix the master source, not the label.** DIAG-B9's nuance is adopted as a hard
+   requirement: the idle-armed host must actually LOAD/COMMIT a display-TF master;
+   merely emitting a display-TF native in the commit event makes B8 fire against a
+   phantom master. Both `loadMultichartPanelFromHost` (3911) and
+   `_emitMultichartHostDataCommit` change together, plus the second surface DIAG-B9
+   flagged (`_getReplayPanFetchTimeframe` returning 1m on armed-paused pan).
+2. **The replay-start transition is the riskiest moment — spec it explicitly.**
+   When the user actually presses play/steps, 6b hydrates 1m and the host's
+   committed native flips display-TF → 1m. At that instant: 1m panels flip
+   owner → mirror (B8 handover, generation-tagged), coarser panels re-key against
+   the new native. The 6b-2 report must describe and live-test this transition —
+   no blank frames, no refetch storm, B8 `handovers` counter increments, B-FIX-A's
+   compensation holds through the flip.
+3. **Acceptance doubles as the missing 6b boundary proof** (ESC-008's folded test):
+   idle-armed host boot shows display-TF-sized `fetchedBars` (thousands, not 34k);
+   first play hydrates 1m lazily (bounded, via 6c in 1–3 requests); kill-switch
+   comparison shows eager reverts. Plus B8 activation: with a 4h host and 1m panels,
+   `ownerFetches > 0`, `ownerBars ≤ cap`, drift stays gone.
+
+Order confirmed: B-FIX-A ships and passes the PO run FIRST; 6b-2 is specced against
+that accepted state. Nothing else rides in either build.

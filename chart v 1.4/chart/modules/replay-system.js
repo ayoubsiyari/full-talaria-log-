@@ -6244,10 +6244,16 @@ class ReplaySystem {
             const pRaw = parent.rawData;
             if (!Array.isArray(pData) || pData.length === 0) return false;
 
+            const capturePrepend = chart._captureMultichartMirrorPrependSnapshot;
+            const applyPrepend = chart._applyMultichartMirrorPrependCompensation;
+            const mirrorPrependSnapshot = typeof capturePrepend === 'function' ? capturePrepend.call(chart, this) : null;
             // Host updates these arrays in place every frame for the same replay
             // timestamp — sharing by reference is exactly what we want to paint.
             chart.rawData = pRaw;
             chart.data = pData;
+            const mirrorPrependCompensation = typeof applyPrepend === 'function'
+                ? applyPrepend.call(chart, mirrorPrependSnapshot, { replay: this })
+                : null;
 
             const preserveUntil = chart._multichartPreserveViewportUntil;
             const nowPv = (typeof performance !== 'undefined' && performance.now)
@@ -6255,7 +6261,9 @@ class ReplaySystem {
                 : Date.now();
             const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
             const passiveFollow = this.autoScrollEnabled && !this.userHasPanned && !preserveViewport;
-            if (passiveFollow) {
+            if (mirrorPrependCompensation) {
+                chart._chartViewRestored = true;
+            } else if (passiveFollow) {
                 // VIEWPORT INDEPENDENCE (single-chart parity): follow the playhead with
                 // THIS panel's own viewport math. Adopt the host zoom (candleWidth) ONLY
                 // when visible-range sync is explicitly ON; otherwise keep our own zoom.
@@ -6284,7 +6292,7 @@ class ReplaySystem {
             }
 
             const pIdx = Number(detail && detail.currentIndex);
-            if (Number.isFinite(pIdx)) {
+            if (Number.isFinite(pIdx) && !mirrorPrependCompensation) {
                 this.currentIndex = Math.max(this.sessionStartIndex || 0, pIdx);
             }
             this.replayTimestamp = ts;
@@ -6296,9 +6304,12 @@ class ReplaySystem {
             }
 
             if (hasAnim) {
+                const pathIdx = mirrorPrependCompensation && Number.isFinite(this.currentIndex)
+                    ? this.currentIndex
+                    : pIdx;
                 const pathTarget = (Array.isArray(this.fullRawData)
-                    && Number.isFinite(pIdx) && this.fullRawData[pIdx])
-                    ? this.fullRawData[pIdx]
+                    && Number.isFinite(pathIdx) && this.fullRawData[pathIdx])
+                    ? this.fullRawData[pathIdx]
                     : null;
                 this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
             } else {

@@ -1018,6 +1018,7 @@
         var prevOffsetX = ch.offsetX;
         var prevCandleWidth = ch.candleWidth;
         var prevAutoScroll = rs.autoScrollEnabled;
+        var mirrorPrependCompensation = null;
         // During active playback the panel tracks the host playhead like the main
         // chart (unless the user manually panned THIS panel). Let the mirror's own
         // follow path set + render the followed offset in a single pass — forcing
@@ -1031,6 +1032,9 @@
         } catch (_) {}
         if (!ok) {
             try {
+                var mirrorPrependSnapshot = (ch && typeof ch._captureMultichartMirrorPrependSnapshot === 'function')
+                    ? ch._captureMultichartMirrorPrependSnapshot(rs)
+                    : null;
                 ch.rawData = pc.rawData;
                 ch.data = pc.data;
                 if (prs) {
@@ -1044,7 +1048,10 @@
                     else if (Number.isFinite(Number(prs.replayTimestamp))) {
                         rs.replayTimestamp = Number(prs.replayTimestamp);
                     }
-                    if (Number.isFinite(prs.currentIndex)) {
+                    mirrorPrependCompensation = (ch && typeof ch._applyMultichartMirrorPrependCompensation === 'function')
+                        ? ch._applyMultichartMirrorPrependCompensation(mirrorPrependSnapshot, { replay: rs })
+                        : null;
+                    if (Number.isFinite(prs.currentIndex) && !mirrorPrependCompensation) {
                         rs.currentIndex = prs.currentIndex;
                     }
                     if (payload.animatedCandle && Number(payload.tickProgress) > 0) {
@@ -1068,7 +1075,9 @@
                 if (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length) {
                     ch._panelFullRawData = pc._panelFullRawData;
                 }
-                if (!rs.userHasPanned) {
+                if (mirrorPrependCompensation) {
+                    ch._chartViewRestored = true;
+                } else if (!rs.userHasPanned) {
                     // Error fallback: same independence rule as the main follow path —
                     // prefer this panel's OWN auto-scroll offset; only copy host pixels
                     // when visible-range sync is explicitly ON.
@@ -1102,7 +1111,9 @@
             var hostPlaying = !!(payload && payload.isPlaying)
                 || ch._multichartPassivePlayActive === true;
             var followPlayhead = hostPlaying && !rs.userHasPanned;
-            if (followPlayhead) {
+            if (mirrorPrependCompensation) {
+                if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+            } else if (followPlayhead) {
                 // VIEWPORT INDEPENDENCE (single-chart parity): the panel follows the
                 // host PLAYHEAD during replay, but it must do so with its OWN viewport
                 // math, not by copying host pixels. Adopt the host zoom (candleWidth)

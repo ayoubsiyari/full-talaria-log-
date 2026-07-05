@@ -298,10 +298,16 @@ DISPLAYING 4h over a 1m master with 1m panels — identical native granularity, 
 fire.** B8 was built to spec; the spec's axis does not cover this repro. The drift is a
 mirror-coupling / viewport-stability issue on host master growth, not a finer-owner case.
 
-### PO confirmation pending
-Reproduce → `__mcDiagReport()`; expect the 1m panels to show `fetches 0` AND `ownerFetches 0`
-(mirroring, B8 not engaged). This distinguishes "B8 didn't engage" (this diagnosis) from "B8
-engaged but drifts anyway."
+### PO confirmation — DONE, diagnosis CONFIRMED LIVE (build b18)
+Reproduced on the deployed b18 build (B8 counters present in `__mcDiagReport()`, so B8 is
+genuinely loaded). Host 4h, panels B/C/D on 1m, backtest, all sync OFF:
+- HOST 4h → `fetches 29 / fetchedBars 34000` (still hauling a 1m master).
+- B/C/D (1m) → `fetches 0`, **`ownerFetches 0`, `boundedMisses 0`, `handovers 0`** — every B8
+  counter is zero.
+
+This confirms the diagnosis exactly: **B8 does not engage** (panels 1m, host committed native
+TF = 1m → not finer → self-own gate false). Panels remain shared-master mirrors → drift on host
+pan-load. Not "B8 engaged but drifts anyway"; B8 structurally cannot fire in this scenario.
 
 ### The decision needed
 How do we kill the drift for same-native-TF mirror panels when the host master grows on backward
@@ -332,5 +338,17 @@ Rationale: the drift is the user's sharpest pain and A addresses it without re-e
 risk; B changes what the render path owns and should not be bundled with a drift fix.
 
 ### Director ruling
-_(pending)_
+**D-020 (2026-07-05).** Manager's diagnosis confirmed (B8 structurally inert here, counters
+zero). Ruling: **B-DIAG-9 (read-only, dispatch now) with TWO questions** — (1) the exact
+uncompensated-prepend line in the mirror path (single chart already re-anchors on its own
+pan prepends; find why the mirror clone doesn't), and (2) why the armed-not-playing host
+still hauls a 1m master (29/34k) despite 6a+6b — the `replaySystem.isActive`-when-merely-
+armed predicate is the suspect, and it is the SAME trap that rooted DIAG-B8. Key insight:
+if 6b's boundary held, the host would commit display-TF native, B8's existing gate would
+fire naturally, and BOTH drift and group-by-group would fall. **Option A pre-approved**
+(ship first, gated, kill-switched, I3-clean). **6b-boundary tightening = expected
+structural fix** (separate task B-FIX-6b-2, not bundled). **Option B REJECTED** (duplicates
+1m storage, re-opens ESC-006, patches around the boundary Q2 fixes properly; re-open only
+via escalation with DIAG-9 evidence). B8 stays shipped/inert — its counters are the proof
+harness. **ESC-009 resolved by D-020.**
 

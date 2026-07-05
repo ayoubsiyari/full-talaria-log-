@@ -776,6 +776,59 @@ hash unchanged (B8 code intact). **B8 test build = b15.**
 **Verdict: B8-IMPL code signed off; live acceptance PENDING PO on b15.** Ship still gated by the
 6b replay smoke test (D-018 #4).
 
+## 6ab. DIAG-B9 signed off; two-track fix (A now, 6b-2 next) per D-020 (2026-07-05)
+
+Worker 1 delivered `DIAG-B9-boundary-and-drift.md` (read-only, zero-diff confirmed). Manager
+independently verified both linchpin claims:
+- **Q2 pin:** `loadMultichartPanelFromHost` `displayTfMasterHost = displayTf !== '1m' && !(rs0 &&
+  rs0.isActive) && … _isMultichartHostPanel()` (chart.js:3911) → armed backtest sets replay
+  `isActive` true → `masterTf = '1m'` → `_nativeRawFetchTf`/`replay.rawTimeframe` = 1m →
+  `_emitMultichartHostDataCommit` commits 1m → B8 gate `panel 1m < host 1m*0.92` false → inert.
+  Confirmed in code.
+- **Q1 drift:** owner path compensates a backward prepend (`offsetX -= shiftBars*spacing`,
+  `currentIndex += prepended`) in `checkViewportLoadMore`; the three mirror-commit sites do NOT:
+  `_multichartMirrorHostTfSwitchIfReady`, `_tryMirrorFrameFromParentData` (replay-system.js),
+  `forceSamePairParentDataMirror` (panel-cmd-bridge.js). Confirmed the compensation primitive
+  exists and the mirror paths lack it.
+
+Key nuance from the report (matters for B-FIX-6b-2): making the commit event merely *claim* 4h is
+insufficient — the host's actual load/commit source must be display-TF, else B8 fires against a
+phantom master. Second too-loose surface flagged: `_getReplayPanFetchTimeframe()` can return '1m'
+on an armed-but-paused pan when the replay interval is 1m.
+
+**Verdict: DIAG-B9 signed off.** Per D-020 the fix is two tracks, NOT bundled:
+1. **B-FIX-A (viewport-stability on prepend)** — Director pre-approved; ship first. Add prepend-delta
+   compensation (compare prev firstTs → new firstTs, count display bars, shift `offsetX` + index)
+   at the three named mirror-commit sites. I3-clean (viewport channel only), keeps fetches=0,
+   kill-switched. Dispatch now.
+2. **B-FIX-6b-2 (boundary tightening)** — tighten the "armed ⇒ isActive ⇒ 1m" predicate in
+   `loadMultichartPanelFromHost` + `_emitMultichartHostDataCommit` (and the pan surface) so an
+   idle-armed host commits display-TF native; first real play/step still hydrates 1m via the
+   existing 6b lazy guards. This is the structural fix that also activates B8 naturally. Specced
+   as its own task after A ships. B8 itself untouched (its zero counters are the proof harness).
+
+## 6ac. B-FIX-A code sign-off (mirror prepend compensation) (2026-07-05, build b19)
+
+Worker 1 implemented B-FIX-A (D-020 Option A, pre-approved). Manager independent verification:
+- **I4:** all three touched files byte-identical across both copies —
+  chart.js `feedd66c…`, replay-system.js `10616036…`, panel-cmd-bridge.js `428408a6…`.
+- **Kill-switch** `__TALARIA_MC_DISABLE_MIRROR_PREPEND_COMPENSATION`: `_mirrorPrependCompensationDisabled()`
+  gates both `_captureMultichartMirrorPrependSnapshot` and `_applyMultichartMirrorPrependCompensation`
+  (return null → old no-delta behavior). I8 satisfied.
+- **I7:** both helpers require `_isMultichartEmbedPanel()`; single chart never enters.
+- **I2 (contiguity):** `_countCleanMirrorPrependedBars` returns 0 unless it's a genuine contiguous
+  left prepend (array grew, new firstTs strictly older, old-first located by ts match at idx>0,
+  prefix bar verified adjacent-older). No guessing on gaps/short arrays.
+- **Correct site placement:** snapshot before adopting parent arrays, apply after, before offset
+  finalize — at all three DIAG-B9 sites (`_multichartMirrorHostTfSwitchIfReady`,
+  `_tryMirrorFrameFromParentData`, `forceSamePairParentDataMirror`).
+- **Applies** `offsetX = previousOffsetX - addedDisplayBars*spacing`, `replay.currentIndex +=
+  addedRawBars` (clamped). No fetch added. **B8 gate `panelMs < hostMs*0.92` unchanged.**
+- node --check passed all 6; lints clean; build b19; both sw.js `talaria-chart-20260705b19`.
+
+**Verdict: B-FIX-A signed off.** Live acceptance pending PO on b19 (deploy: server git pull +
+docker compose up --build -d). Fixes DRIFT only; group-by-group host hauling is B-FIX-6b-2 (next).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
