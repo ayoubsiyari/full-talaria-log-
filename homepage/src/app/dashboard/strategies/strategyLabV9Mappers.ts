@@ -1,10 +1,11 @@
+import { MAX_IMAGE_DATA_URL_LEN } from "@/lib/imageUploadLimits";
 import { definitionFromDraft, draftFromApi } from "@/app/dashboard/strategies/lib/defaults";
 
 /** Stored inside `strategy_definition` JSON; backend merges unknown keys. */
 export const TALARIA_V9_PANEL_KEY = "talaria_v9";
 
-/** Align with journal-backend — max ~2 MB per image as base64 data URL. */
-const MAX_IMAGE_DATA_LEN = 2_800_000;
+/** Align with journal-backend — max stored data-URL length per image. */
+const MAX_IMAGE_DATA_LEN = MAX_IMAGE_DATA_URL_LEN;
 
 export type StrategyImageEntry = { src: string; name?: string };
 

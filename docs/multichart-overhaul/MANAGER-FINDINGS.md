@@ -536,3 +536,71 @@ wrong root cause for *these* symptoms. RC1 remains worth fixing later, but the
 baseline evidence points to a render/viewport desync as the dominant, user-visible
 failure. I recommend a read-only diagnosis task next, then a gated fix — pending the
 Director's decision and the Product Owner's answer in §6.
+
+## 6r. B-FIX-ROLLBACK sign-off + clean S6 re-capture (2026-07-05, build b604)
+
+B-FIX-ROLLBACK code verified: opt-in guard present in BOTH
+`_multichartViewportFirstSwitchEnabled` (chart.js:4038) and
+`_multichartViewportFirstTfSwitchEnabled` (chart.js:4253); both copies SHA-256
+`AC412F8B…`; node --check + lints clean. Local build id b601; PO deployed/tested b604
+(server pipeline bumped further — verified guard present in shipped source, and PO
+console `window.__TALARIA_MC_ENABLE_VIEWPORT_FIRST` = `undefined`, so viewport-first
+confirmed OFF on the tested build). **CODE SIGNED OFF.**
+
+Clean S6 re-capture (BASELINE-RESULTS §S6-b), all four panels same pair (fileId 25), all
+1m, host TF 1m→1h→1m:
+- **Rollback HELD (durable):** B/C/D `fetches = 0` (pure mirror). This is the default-OFF
+  build, not a runtime flag, so it is a real production rollback (closes the §6p CAVEAT).
+- **D-015 anomaly SETTLED:** `extendsFromParent = 0` is not a bug. It scales with host
+  master size. Fast 1m→1h→1m loads only an 8000-bar host master → nothing to extend, panels
+  resample the mirror (12→18). S6-a's 89 came from a 178k master (1d). Both = correct copy.
+- Host TF switch (1m→1h): 0 extra fetches, +36 renders. seams 0.
+
+Mixed-TF observation (BASELINE-RESULTS §S6-c): same-symbol panels on a DIFFERENT TF than the
+host (panels 4h, host 1m, shared fileId 25) still self-fetch (10/10/19). This is a genuine
+gap that survives the rollback and is DIFFERENT from the viewport-first hydration race that
+DIAG-B5 originally framed: here the host 1m viewport master (24k bars) simply does not span
+the 4h panel viewport, so there is legitimately nothing to extend. → raises ESC-007: B-FIX-3c
+scope + whether viewport-first is re-enabled at all.
+
+## 6t. B-DIAG-6 sign-off (2026-07-05) — 1m-master tax mapped
+
+`DIAG-B6-1m-master-tax.md` accepted. Two load-bearing anchors spot-verified by Manager:
+- `loadMultichartPanelFromHost` hardcodes `const masterTf = '1m'` at **chart.js:3573** (comment
+  confirms intent: "playhead always advances on 1m master bars"). This is the broadest pin.
+- `_buildSmartWindowParams` clamps `/smart` limit to `Math.min(2000, …)` at **chart.js:5390/5392**;
+  server route accepts `min(limit,100000)` (api_server.py:21572-21593). Confirms the ~50-chunk
+  behavior for a ~100k 1m hydration is client-driven.
+
+Key findings for the fix:
+- A display-TF host fetch path ALREADY EXISTS (the `loadedViewportFirstHost` branch,
+  chart.js:3667-3718 / 3795-3799) — gated behind `__TALARIA_MC_ENABLE_VIEWPORT_FIRST`. B-FIX-6
+  can reuse this plumbing WITHOUT the background-1m-hydration pump that caused the ESC-006
+  regression.
+- Replay contract: replay does NOT universally need 1m; it needs a master **at or finer than
+  the replay step**. `_getWalkForwardOhlcToPlayhead` (6852-6907) returns null if no finer
+  series exists → that's the only hard breaker. So "lazy 1m when replay step is finer than the
+  host master" is contract-safe.
+- Riskiest single site: `_getReplayPanFetchTimeframe` (6292-6302) — collapses all multichart
+  replay loading to 1m; must not force 1m during display-TF browsing.
+
+### B-FIX-6 staging (Manager decision, within D-016; no Director hop needed)
+Split into 3 gated stages, each kill-switched and independently measurable:
+- **B-FIX-6a (browsing tax — dispatched):** host fetches DISPLAY TF for first-paint + TF switch
+  when NOT in active replay. Fixes the user's #1 pain (S6-a 1d "candle by candle": host ~91
+  fetches → target single-digit). MUST NOT run any background 1m hydration during browsing
+  (that was the ESC-006 cause). Replay paths untouched. Same-TF panels stay fetches=0.
+  Kill-switch `__TALARIA_MC_DISABLE_DISPLAY_TF_MASTER`.
+- **B-FIX-6b (lazy 1m on replay):** when replay activates and its step is finer than the host
+  display-TF master, hydrate 1m lazily via `ensureReplayDataCoversTimestamp`. Own kill-switch.
+- **B-FIX-6c (high-limit /smart):** raise the client clamp so lazy 1m arrives in 1-3 requests,
+  not ~50. Own kill-switch. Folds in old Follow-up #2.
+
+## 6s. CROSSROADS — B-FIX-3c direction (see ESC-007)
+
+The rollback build is a GOOD production state for the core scenario: same-pair same-TF 2×2
+switches are now fast (host 4 fetches, panels 0, renders 23–32) with no seams. The two
+remaining pains are (1) deep-history / 1d host switches load "candle by candle" (host builds
+high TFs by resampling a huge 1m master — S6-a: 91 fetches / 178k bars), and (2) cross-TF
+same-pair panels self-fetch (§6c). B-FIX-3 (viewport-first) was the attempt at (1) and it
+regressed ownership. Decision needed from Director before drafting 3c — escalated as ESC-007.

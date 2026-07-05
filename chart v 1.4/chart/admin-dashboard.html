@@ -5007,7 +5007,7 @@ select { cursor:default; }
                   <textarea id="supportInput" placeholder="Public reply or internal note…" disabled></textarea>
                   <label class="support-file-hint">
                     <input type="file" id="supportFileInput" accept="image/jpeg,image/png,image/gif,image/webp,.txt,.log,.json,text/plain,application/json" disabled />
-                    Image or log/json (optional, max 2&nbsp;MB)
+                    Image or log/json (optional, max 5&nbsp;MB)
                   </label>
                 </div>
                 <button type="button" class="btn primary" id="supportSendBtn" disabled onclick="sendSupportReply()">Send</button>
@@ -6829,7 +6829,7 @@ async function supportSetStatus(status) {
   await selectSupportThread(selectedSupportId);
 }
 
-const SUPPORT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 async function sendSupportReply() {
   const ta = $('supportInput');
@@ -6840,7 +6840,7 @@ async function sendSupportReply() {
   const isInternal = internalCb && internalCb.checked;
   if ((!body && !file) || !selectedSupportId) return;
   if (!isInternal && file && file.size > SUPPORT_IMAGE_MAX_BYTES) {
-    toast('Image must be 2 MB or smaller', 'err');
+    toast('Image must be 5 MB or smaller', 'err');
     return;
   }
   try {

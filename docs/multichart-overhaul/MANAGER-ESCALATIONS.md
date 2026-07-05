@@ -119,3 +119,79 @@ Durability ruling = option (a): ship minimal default-OFF build. Remaining fix wo
 D-015 sequence: default-OFF build → PO S6 re-capture (settles extendsFromParent=0 anomaly
 + fresh 3c "before") → B-DIAG-5 → B-FIX-3c. **ESC-006 RESOLVED.**
 
+---
+
+## ESC-007 — B-FIX-3c direction: re-enable viewport-first, or solve host latency another way? (2026-07-05)
+**Type:** Crossroad
+**Source:** MANAGER-FINDINGS §6r/§6s; BASELINE-RESULTS §S6-b/§S6-c; DIAG-B5
+**Status:** OPEN
+
+### Context (what we know, measured — build b604, viewport-first default-OFF)
+The default-OFF rollback is confirmed durable and is a genuinely GOOD state for the core
+scenario:
+- **Same-pair, same-TF 2×2, host 1m→1h→1m (S6-b):** host 4 fetches / 8000 bars, panels B/C/D
+  `fetches = 0` (pure mirror), renders 23→32, seams 0, no errors. Fast and correct.
+- `extendsFromParent = 0` was a false alarm — it just scales with host master size (settled).
+
+Two pains survive the rollback:
+1. **Deep-history / high-TF host switch is slow ("candle by candle").** The multichart host
+   builds high TFs by resampling a huge 1m master. S6-a (1d): host 91 fetches / 178k bars /
+   1152 renders. Single-chart reference for the same TF: 4 fetches / 4000 bars. So multichart
+   host pays ~22× fetches / ~44× bars because it is forced onto a 1m master. This was the
+   original B-FIX-3 target; B-FIX-3 (viewport-first) attacked it but regressed ownership (ESC-006).
+2. **Cross-TF same-pair panels self-fetch (S6-c):** panels on 4h with a 1m host self-fetch
+   (10/19) because the host's 1m viewport master (24k bars) does not span the 4h panel
+   viewport, so there is nothing to extend (DIAG-B5 §Verdict). Note this is NOT the
+   hydration-race DIAG-B5 assumed — it happens with viewport-first OFF too.
+
+DIAG-B5's specced B-FIX-3c (panels consult `_mcViewportFirstMaster*` and wait-and-mirror
+instead of self-fetch) only has meaning **if viewport-first is re-enabled** — those host
+hydration fields are dormant when the flag is OFF.
+
+### The decision needed
+What is B-FIX-3c, given the rollback is already a good same-pair/same-TF state?
+
+### Options
+- **A — Re-enable viewport-first + ship the DIAG-B5 wait-and-mirror in the same build.**
+  Solves pain #1 (host fast-switch) and, via the panel wait-and-mirror, prevents the
+  ESC-006 ownership regression. Pro: keeps the host-latency win; matches D-013's original
+  3c intent. Con: highest risk — re-introduces the exact family that regressed; requires the
+  panel-feed contract to actually hold this time; two coupled behaviors under test at once.
+- **B — Leave viewport-first OFF permanently; solve host latency by letting the multichart
+  host fetch the display TF directly (like the single chart), instead of forcing a 1m master.**
+  Attacks pain #1 at its architectural root (the 1m-master tax) rather than hiding it behind
+  background hydration. Pro: removes the 22×/44× penalty at the source; no deferred-master
+  race, so panels never see an incomplete master. Con: larger architectural change; must
+  preserve replay frame-stepping and cross-TF panel resample, which currently rely on the 1m
+  master; needs its own DIAG.
+- **C — Ship rollback as-is for now; scope 3c only to the cross-TF panel gap (pain #2), defer
+  host-latency (pain #1).** Pro: lowest risk; locks in the good same-TF state; the cross-TF
+  fix is small (make cross-TF same-pair panels ask the host to extend its 1m master, or
+  resample from it, before self-fetching). Con: 1d "candle by candle" slowness remains
+  unsolved (the user has flagged it explicitly).
+
+### Risk if we choose wrong / do nothing
+Rollback is safe and correct today, so "do nothing" has no correctness risk — only the
+unsolved 1d slowness. Choosing A wrong = re-live ESC-006. Choosing B wrong = a larger refactor
+that could disturb replay. All paths keep the default-OFF kill-switch as the safety net.
+
+### Manager recommendation
+**B**, with a read-only DIAG first (name exactly where/why the multichart host is pinned to a
+1m master and what breaks if it fetches display-TF directly). Rationale: pain #1 is the
+user's actual complaint and B-FIX-3's viewport-first was only a way to *mask* the 1m-master
+tax; removing the tax is more durable than re-attempting the background-hydration dance that
+already regressed once. Keep viewport-first OFF. If the Director prefers to preserve the
+existing architecture, fall back to **A** with the DIAG-B5 wait-and-mirror as a hard gate.
+
+### Director ruling
+**D-016 (2026-07-05): Option B direction, gated on B-DIAG-6 (read-only, dispatch now).**
+Remove the 1m-master tax at the source rather than masking it; expected landing zone is
+a HYBRID (display-TF master for browsing/switching; 1m session master hydrated LAZILY
+only when replay needs bar-level stepping). B-DIAG-6 must name every 1m-pinning site +
+consumer (replay stepping, panel feed, cross-TF resample, indicators, playhead), rule on
+hybrid feasibility, and answer what cross-TF panels (pain #2) consume under B — pain #2's
+fix is DEFERRED until then. Viewport-first stays default-OFF permanently (superseded;
+cleanup after B lands). Fallback to Option A only via a new escalation with DIAG evidence.
+Follow-up #2 (high-limit `/smart`) folds into B. S6-b/S6-c on b604 = canonical "before".
+**ESC-007 CLOSED.**
+

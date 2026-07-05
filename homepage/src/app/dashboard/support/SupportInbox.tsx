@@ -8,6 +8,11 @@ import {
   SupportCategoryBadge,
   buildSupportContext,
 } from "./supportUi";
+import {
+  MAX_IMAGE_UPLOAD_BYTES,
+  MAX_IMAGE_UPLOAD_MB,
+  imageUploadTooLargeError,
+} from "@/lib/imageUploadLimits";
 
 type User = {
   id: number;
@@ -67,8 +72,6 @@ type Msg = {
   read_by_counterparty?: boolean;
   attachment?: Attachment | null;
 };
-
-const SUPPORT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 async function api<T>(url: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
@@ -346,8 +349,8 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
     const body = reply.trim();
     if ((!body && !replyFile) || !selectedId || selected?.status === "closed") return;
     // resolved tickets accept replies (moves to admin user-replied queue on server)
-    if (replyFile && replyFile.size > SUPPORT_IMAGE_MAX_BYTES) {
-      setUploadErr("Image must be 2 MB or smaller.");
+    if (replyFile && replyFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setUploadErr(imageUploadTooLargeError(replyFile.size));
       return;
     }
     setUploadErr(null);
@@ -377,8 +380,8 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
     const subject = newSubject.trim();
     const body = newBody.trim();
     if (!subject || (!body && !newThreadFile)) return;
-    if (newThreadFile && newThreadFile.size > SUPPORT_IMAGE_MAX_BYTES) {
-      setUploadErr("Image must be 2 MB or smaller.");
+    if (newThreadFile && newThreadFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setUploadErr(imageUploadTooLargeError(newThreadFile.size));
       return;
     }
     setUploadErr(null);
@@ -493,7 +496,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
             Support tickets
           </h1>
           <p style={{ color: "#4a4850", fontSize: 13, margin: 0 }}>
-            Open a ticket for billing, access, bugs, or general help. Attach a screenshot (max 2 MB). The team replies in
+            Open a ticket for billing, access, bugs, or general help. Attach a screenshot (max {MAX_IMAGE_UPLOAD_MB} MB). The team replies in
             real time.
           </p>
         </div>
@@ -620,7 +623,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 style={{ marginBottom: 10, resize: "vertical" }}
               />
               <label className="db-field-label" htmlFor="support-new-screenshot">
-                Screenshot or log/json (optional, max 2 MB)
+                Screenshot or log/json (optional, max {MAX_IMAGE_UPLOAD_MB} MB)
               </label>
               <SupportFileUpload
                 id="support-new-screenshot"
@@ -882,7 +885,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
               </button>
             </div>
             <label className="db-field-label" htmlFor="support-reply-screenshot">
-              Screenshot (optional, max 2 MB)
+              Screenshot (optional, max {MAX_IMAGE_UPLOAD_MB} MB)
             </label>
             <SupportFileUpload
               id="support-reply-screenshot"

@@ -157,6 +157,8 @@ For each scenario:
 - Pair configuration: all panels same pair/fileId.
 - Replay state: not constrained by the scenario matrix.
 
+### S6-a — build b586 (viewport-first era, 1m→1d→1h→1m)
+
 Captured build 20260627b586. PO did switches to 1d → 1h → 1m; table below = final (1m)
 report. Per-step HOST fetches/fetchedBars: 1d = 87 / 170000, 1h = 90 / 176000,
 1m = 91 / 178000.
@@ -172,6 +174,60 @@ report. Per-step HOST fetches/fetchedBars: 1d = 87 / 170000, 1h = 90 / 176000,
 - Console errors: `No candles drawn ... Skipped: 6` (minor); flagcdn CORS (external).
 - Smoothness 1-5: (slow — this is the target of B-FIX-3)
 - Single-chart TF-switch reference (same build, 1h): HOST fetches 4, fetchedBars 4000, resamples 20, renders 530, seams 0, lastFetchMs 204. → delta ≈ 22× fetches / 44× bars vs multichart.
+
+### S6-b — build b604 DEFAULT-OFF ROLLBACK (1m→1h→1m) — CLEAN 3c "before"
+
+Captured build 20260627b604. `window.__TALARIA_MC_ENABLE_VIEWPORT_FIRST` = `undefined`
+(viewport-first confirmed OFF). PO switched host 1m → 1h → 1m; all four panels same pair
+(fileId 25), all on 1m. Two snapshots (after reaching 1m, then after 1h):
+
+**After host on 1m (mirror state):**
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | 4 | 8000 | 0 | 12 | 372 | 0 | 201 |
+| B | 0 | 0 | 0 | 12 | 23 | 0 | 0 |
+| C | 0 | 0 | 0 | 12 | 23 | 0 | 0 |
+| D | 0 | 0 | 0 | 12 | 23 | 0 | 0 |
+
+**After host switched to 1h (panels stay 1m):**
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | 4 | 8000 | 0 | 14 | 408 | 0 | 201 |
+| B | 0 | 0 | 0 | 18 | 32 | 0 | 0 |
+| C | 0 | 0 | 0 | 18 | 32 | 0 | 0 |
+| D | 0 | 0 | 0 | 18 | 32 | 0 | 0 |
+
+- **Rollback VERDICT: HELD.** Same-pair same-TF panels B/C/D = `fetches 0` (pure mirror),
+  matching pre-viewport-first ownership. Durable (default-OFF build, not runtime flag).
+- **D-015 `extendsFromParent=0` anomaly: SETTLED (not a bug).** It is proportional to how
+  much 1m history the host loaded. Here host loaded only an 8000-bar viewport master
+  (fast 1m→1h→1m, no deep pan / no 1d), so panels had nothing beyond the mirrored window
+  to extend and just resample it (`resamples 12→18`). In S6-a the host loaded a 178k master
+  (1d switch) so panels extended 89×. Both are correct copy-from-host behavior; the counter
+  differs only because the host master size differs.
+- Host TF switch cost (1m→1h): +2 resamples, +36 renders, 0 extra fetches. Fast.
+- seams 0 everywhere; no self-fetch; no errors reported.
+
+### S6-c — build b604 DEFAULT-OFF, MIXED-TF layout (host 1m, panels 4h) — cross-TF gap
+
+Same build, but panels B/C/D carried a stale 4h TF from a saved layout (host on 1m). All
+share fileId 25.
+
+| panelId | fileId | tf | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|--------|-----|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | 25 | 1m | 15 | 24000 | 0 | 34 | 611 | 0 | 219 |
+| B | 25 | 4h | 10 | 20000 | 1 | 70 | 136 | 0 | 198 |
+| C | 25 | 4h | 10 | 20000 | 1 | 70 | 134 | 0 | 221 |
+| D | 25 | 4h | 19 | 22000 | 118 | 197 | 197 | 0 | 206 |
+
+- Same-symbol panels on a **different TF** than the host still SELF-FETCH (`fetches 10/10/19`)
+  even sharing fileId 25. Root: the host's 1m viewport master (24k bars) does not span the
+  4h panels' calendar viewport, so `_tryExtendReplayMasterFromParent` finds nothing to
+  extend and the panel falls through to `_fetchCandlesCursor` (DIAG-B5 §Verdict).
+- This is the only remaining same-pair ownership gap on the rollback build. It is the
+  scope of B-FIX-3c / ESC-007.
 
 ## S7 - 2×2 Panel B Only TF Switch
 

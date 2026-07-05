@@ -5616,13 +5616,27 @@ const getInstFlags = id => {
   return null;
 };
 
-const STRATEGY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** Site-wide image upload limits — keep in sync with `shared/constants.json`. */
+const IMAGE_UPLOAD_MAX_MB = 5;
+const IMAGE_UPLOAD_MAX_BYTES = IMAGE_UPLOAD_MAX_MB * 1024 * 1024;
+const IMAGE_UPLOAD_MAX_DATA_URL_LEN = 2_800_000;
+const STRATEGY_IMAGE_MAX_BYTES = IMAGE_UPLOAD_MAX_BYTES;
 const STRATEGY_IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp';
 const STRATEGY_IMAGE_FORMAT_HINT = 'JPEG, PNG, GIF, or WebP · max 5 MB';
-const SCREENSHOT_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
-const SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN = 2_800_000;
+const SCREENSHOT_UPLOAD_MAX_BYTES = IMAGE_UPLOAD_MAX_BYTES;
+const SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN = IMAGE_UPLOAD_MAX_DATA_URL_LEN;
 const SCREENSHOT_UPLOAD_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/*';
-const SCREENSHOT_UPLOAD_FORMAT_HINT = 'PNG or JPG · max 2 MB';
+const SCREENSHOT_UPLOAD_FORMAT_HINT = 'JPEG, PNG, GIF, or WebP · max 5 MB';
+
+function imageUploadTooLargeError(fileSizeBytes) {
+  const mb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
+  return `Image too large (${mb} MB). Maximum size is ${IMAGE_UPLOAD_MAX_MB} MB.`;
+}
+
+function imageDataUrlTooLargeError() {
+  return `Image too large. Maximum size is ${IMAGE_UPLOAD_MAX_MB} MB.`;
+}
+
 function validateStrategyImageFile(file) {
   if (!file) return { ok: false, error: 'No file selected.' };
   const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
@@ -5633,9 +5647,8 @@ function validateStrategyImageFile(file) {
   if (!allowedMime[mime] && !allowedExt[ext]) {
     return { ok: false, error: 'Unsupported format. Use JPEG, PNG, GIF, or WebP.' };
   }
-  if (file.size > STRATEGY_IMAGE_MAX_BYTES) {
-    const mb = (file.size / (1024 * 1024)).toFixed(1);
-    return { ok: false, error: `Image too large (${mb} MB). Maximum size is 5 MB.` };
+  if (file.size > IMAGE_UPLOAD_MAX_BYTES) {
+    return { ok: false, error: imageUploadTooLargeError(file.size) };
   }
   return { ok: true };
 }
@@ -5644,11 +5657,10 @@ function validateScreenshotUploadFile(file) {
   if (!file) return { ok: false, error: 'No file selected.' };
   const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
   if (mime && !mime.startsWith('image/')) {
-    return { ok: false, error: 'Unsupported format. Use PNG or JPG.' };
+    return { ok: false, error: 'Unsupported format. Use JPEG, PNG, GIF, or WebP.' };
   }
-  if (file.size > SCREENSHOT_UPLOAD_MAX_BYTES) {
-    const mb = (file.size / (1024 * 1024)).toFixed(1);
-    return { ok: false, error: `Image too large (${mb} MB). Maximum size is 2 MB.` };
+  if (file.size > IMAGE_UPLOAD_MAX_BYTES) {
+    return { ok: false, error: imageUploadTooLargeError(file.size) };
   }
   return { ok: true };
 }
@@ -5657,31 +5669,19 @@ function validateScreenshotDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
     return { ok: false, error: 'Invalid image data.' };
   }
-  if (dataUrl.length > SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN) {
-    return { ok: false, error: 'Image too large. Maximum size is 2 MB.' };
+  if (dataUrl.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
+    return { ok: false, error: imageDataUrlTooLargeError() };
   }
   return { ok: true };
 }
 
 function readScreenshotDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const check = validateScreenshotUploadFile(file);
-    if (!check.ok) {
-      reject(new Error(check.error));
-      return;
+  return compressCoverImage(file).then((dataUrl) => {
+    const urlCheck = validateScreenshotDataUrl(dataUrl);
+    if (!urlCheck.ok) {
+      throw new Error(urlCheck.error);
     }
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read image file.'));
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result;
-      const urlCheck = validateScreenshotDataUrl(dataUrl);
-      if (!urlCheck.ok) {
-        reject(new Error(urlCheck.error));
-        return;
-      }
-      resolve(String(dataUrl));
-    };
-    reader.readAsDataURL(file);
+    return dataUrl;
   });
 }
 
@@ -5717,7 +5717,16 @@ function compressCoverImage(file, maxW, maxH, quality) {
         var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
         cv.getContext('2d').drawImage(img,0,0,w,h);
         var out = cv.toDataURL('image/jpeg', quality);
-        resolve(out.length > 4*1024*1024 ? cv.toDataURL('image/jpeg', 0.6) : out);
+        var q = quality;
+        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && q > 0.42) {
+          q -= 0.06;
+          out = cv.toDataURL('image/jpeg', q);
+        }
+        if (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
+          reject(new Error(imageDataUrlTooLargeError()));
+          return;
+        }
+        resolve(out);
       };
       img.src = ev.target.result;
     };
@@ -39702,8 +39711,8 @@ const TalariaV8b = () => {
             ).find((item) => !validateScreenshotDataUrl(item.src).ok);
             if (oversizedScreenshot) {
               setDashAddTradeValidationError(dashTxt(
-                "One or more screenshots exceed the 2 MB limit. Remove them and upload smaller images.",
-                "تتجاوز إحدى الصور أو أكثر حد ٢ ميجابايت. احذفها وارفع صورا أصغر."
+                `One or more screenshots exceed the ${IMAGE_UPLOAD_MAX_MB} MB limit. Remove them and upload smaller images.`,
+                `تتجاوز إحدى الصور أو أكثر حد ${IMAGE_UPLOAD_MAX_MB} ميجابايت. احذفها وارفع صورا أصغر.`
               ));
               setDashAddTradeEditorPage("notes");
               return;

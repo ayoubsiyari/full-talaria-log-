@@ -1,9 +1,11 @@
+import { MAX_IMAGE_DATA_URL_LEN } from "@/lib/imageUploadLimits";
+
 export function compressCoverImageFile(
   file: File,
   opts: { maxWidth?: number; maxDataUrlChars?: number } = {}
 ): Promise<string> {
   const maxWidth = opts.maxWidth ?? 1280;
-  const maxDataUrlChars = opts.maxDataUrlChars ?? 750_000;
+  const maxDataUrlChars = opts.maxDataUrlChars ?? MAX_IMAGE_DATA_URL_LEN;
 
   if (!file || !file.type.startsWith("image/")) {
     return Promise.reject(new Error("Please choose an image file (JPEG, PNG, GIF, or WebP)."));

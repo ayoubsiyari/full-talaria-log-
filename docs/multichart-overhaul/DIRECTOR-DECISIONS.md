@@ -689,3 +689,56 @@ settle it and simultaneously serve as the fresh \"before\" for 3c.
 
 Sequence from here: default-OFF build ships → PO re-capture (S6 procedure) →
 B-DIAG-5 report (already dispatched per D-014) → B-FIX-3c spec.
+
+---
+
+## D-016 — ESC-007 ruling: Option B direction, gated on B-DIAG-6 (2026-07-05)
+
+First, state of the world acknowledged: the default-OFF build (b604) is a good,
+durable production state — same-pair/same-TF 2×2 is fast and correct (host 4 fetches,
+panels 0, seams 0), the extendsFromParent=0 anomaly is settled as scale-dependent and
+correct, and ESC-006 is fully closed. Ship-state pressure is off; we can pick the
+right fix, not the fast one.
+
+**Ruling: Option B is the direction — remove the 1m-master tax at the source.**
+The manager's rationale is adopted: viewport-first only ever *masked* the tax behind
+background hydration, and the mask is what regressed ownership. A 22×/44× structural
+penalty (91 fetches/178k bars vs 4/4000 for the same user action) should be removed,
+not hidden. This also converges with the overhaul's own architecture findings: the
+lightweight-charts prototype proved display-TF-first with on-demand resampling is the
+sound model.
+
+**But B is conditional on B-DIAG-6 (read-only, dispatch now), because the 1m master
+is contractual.** The diagnosis must answer, with file:line evidence:
+1. Where exactly is the multichart host pinned to a 1m master
+   (`loadMultichartPanelFromHost` masterTf='1m' per DIAG-B4 — plus ALL other sites
+   that assume it), and which consumers rely on 1m granularity: replay
+   frame-stepping/scrub, same-pair panel feed (incl. cross-TF resample), indicators,
+   playhead math.
+2. **Feasibility of the expected landing zone — a HYBRID, not deletion:** host uses a
+   display-TF master for browsing/switching (single-chart parity), and hydrates the
+   1m session master LAZILY only when replay actually needs bar-level stepping
+   (play/scrub), reusing nothing from viewport-first's deferred-hydration code unless
+   it genuinely fits. The DIAG's job is to say whether the replay/panel contracts
+   allow this and what the seams are.
+3. What cross-TF same-pair panels (pain #2, S6-c) would consume under B — if the host
+   master is display-TF, a 4h panel with a 1m host still can't extend from it; name
+   the mechanism (host extends its master on panel request? panel resamples from a
+   shared store? panel self-fetch stays legal?). **Pain #2's fix is deferred until
+   DIAG-6 answers this** — its correct shape depends on what the master becomes;
+   fixing it now against the 1m contract could be immediate rework.
+
+**Standing decisions attached to this ruling:**
+- Viewport-first stays default-OFF permanently. It is superseded as an approach; the
+  code remains in place (kill-switched) only until B lands, then a cleanup task
+  removes it (I-clean, not now).
+- Fallback: if B-DIAG-6 concludes the replay contract makes B infeasible or
+  replay-endangering, we fall back to Option A (re-enable + DIAG-B5 wait-and-mirror
+  as a hard gate) — but that requires a new escalation with the DIAG evidence, not a
+  silent pivot.
+- Follow-up #2 (high-limit `/smart` round-trips) folds INTO B's implementation if B
+  proceeds (lazy 1m hydration should arrive in 1–3 big requests, not ~50 chunks) —
+  it is no longer a separate queued task.
+- The S6-b/S6-c captures on b604 are the canonical "before" for B.
+
+ESC-007 CLOSED by this ruling; next artifact expected: B-DIAG-6 report.

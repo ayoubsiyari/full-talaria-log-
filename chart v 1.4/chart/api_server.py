@@ -1692,7 +1692,7 @@ def _get_user_from_websocket(ws: WebSocket):
 
 SUPPORT_SUBJECT_MAX = 500
 SUPPORT_BODY_MAX = 8000
-SUPPORT_IMAGE_MAX_BYTES = max(1024, int(os.getenv("SUPPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024))))
+SUPPORT_IMAGE_MAX_BYTES = max(1024, int(os.getenv("SUPPORT_IMAGE_MAX_BYTES", str(5 * 1024 * 1024))))
 SUPPORT_IMAGE_ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 SUPPORT_FILE_ALLOWED_MIME = SUPPORT_IMAGE_ALLOWED_MIME | frozenset(
     {"text/plain", "application/json", "text/json"}
@@ -12362,12 +12362,12 @@ async def _support_consume_upload_attachment(upload) -> tuple[bytes, str, str | 
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max 2 MB)",
+                detail=f"Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max {SUPPORT_IMAGE_MAX_BYTES // (1024 * 1024)} MB)",
             )
     if mime not in SUPPORT_FILE_ALLOWED_MIME:
         raise HTTPException(
             status_code=400,
-            detail="Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max 2 MB)",
+            detail=f"Allowed: JPEG, PNG, GIF, WebP, .txt, .log, or .json (max {SUPPORT_IMAGE_MAX_BYTES // (1024 * 1024)} MB)",
         )
     return data, mime, orig
 

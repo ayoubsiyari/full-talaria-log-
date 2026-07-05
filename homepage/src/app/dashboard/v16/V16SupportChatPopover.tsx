@@ -3,6 +3,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SUPPORT_CATEGORIES, buildSupportContext } from "../support/supportUi";
+import {
+  MAX_IMAGE_UPLOAD_BYTES,
+  imageUploadTooLargeError,
+} from "@/lib/imageUploadLimits";
 
 const F = "'Exo 2', sans-serif";
 const C = {
@@ -35,8 +39,6 @@ type Msg = {
   read_by_counterparty?: boolean;
   attachment?: { url?: string; mime_type?: string } | null;
 };
-
-const IMAGE_MAX = 2 * 1024 * 1024;
 
 async function supportApi<T>(url: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
@@ -210,8 +212,8 @@ export function V16SupportChatPopover() {
   const sendReply = async () => {
     const body = reply.trim();
     if ((!body && !replyFile) || !selThread) return;
-    if (replyFile && replyFile.size > IMAGE_MAX) {
-      setError("Image must be 2 MB or smaller.");
+    if (replyFile && replyFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setError(imageUploadTooLargeError(replyFile.size));
       return;
     }
     setSending(true);
@@ -244,8 +246,8 @@ export function V16SupportChatPopover() {
     const subject = newSubject.trim();
     const body = newBody.trim();
     if (!subject || (!body && !newFile)) return;
-    if (newFile && newFile.size > IMAGE_MAX) {
-      setError("File must be 2 MB or smaller.");
+    if (newFile && newFile.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setError(imageUploadTooLargeError(newFile.size));
       return;
     }
     setSending(true);

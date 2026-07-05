@@ -3568,9 +3568,13 @@ class Chart {
         this.isBacktestMode = true;
 
         const displayTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
-        // Backtest replay playhead always advances on 1m master bars (same as tile A).
-        // Display TF is resampled client-side so every panel stays candle-for-candle.
-        const masterTf = '1m';
+        const rs0 = this.replaySystem;
+        const displayTfMasterHost = displayTf !== '1m'
+            && !(rs0 && rs0.isActive)
+            && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_DISPLAY_TF_MASTER)
+            && typeof this._isMultichartHostPanel === 'function'
+            && this._isMultichartHostPanel();
+        const masterTf = displayTfMasterHost ? displayTf : '1m';
 
         const replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
@@ -3580,7 +3584,6 @@ class Chart {
         const sameFile = String(this.currentFileId || '') === fileId;
         const sameTf = String(this.currentTimeframe || '').toLowerCase() === String(displayTf).toLowerCase();
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
-        const rs0 = this.replaySystem;
         const aligned = !!(rs0 && rs0.isActive && replayTs != null
             && Math.abs(Number(rs0.replayTimestamp) - replayTs) <= tfMs * 2);
         const switchingPair = !sameFile;
@@ -3665,9 +3668,11 @@ class Chart {
                     && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
                 const viewportFirstHost = this._multichartViewportFirstSwitchEnabled(displayTf, switchingPair);
+                const displayTfHostFetch = viewportFirstHost || displayTfMasterHost;
 
                 let result = null;
                 let loadedViewportFirstHost = false;
+                let loadedDisplayTfMasterHost = false;
 
                 // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
                 if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
@@ -3696,10 +3701,9 @@ class Chart {
                     }
                 }
 
-                // Host tile A in a multichart grid: paint the display-TF viewport first.
-                // The 1m replay master hydrates after first paint so the old eager path
-                // remains available via __TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH.
-                if (!result && viewportFirstHost) {
+                // Host tile A in a multichart grid can paint directly from display-TF bars.
+                // Viewport-first opt-in still owns background hydration; 6a browsing mode does not.
+                if (!result && displayTfHostFetch) {
                     try {
                         const viewportRange = Number.isFinite(replayTs)
                             ? this._getBacktestReplayFetchRange(displayTf, session, replayTs)
@@ -3715,11 +3719,14 @@ class Chart {
                                 limit: this._backtestFetchLimitForTimeframe(displayTf),
                             },
                         );
-                        loadedViewportFirstHost = this._smartResponseHasPayload(result);
+                        const loadedDisplayTfHost = this._smartResponseHasPayload(result);
+                        loadedViewportFirstHost = viewportFirstHost && !displayTfMasterHost && loadedDisplayTfHost;
+                        loadedDisplayTfMasterHost = displayTfMasterHost && loadedDisplayTfHost;
                     } catch (e) {
                         console.warn('loadMultichartPanelFromHost: viewport-first host fetch failed', e);
                         result = null;
                         loadedViewportFirstHost = false;
+                        loadedDisplayTfMasterHost = false;
                     }
                 }
 
@@ -3793,7 +3800,7 @@ class Chart {
                 }
 
                 this.currentFileId = fileId;
-                const loadedNativeTf = loadedViewportFirstHost
+                const loadedNativeTf = (loadedViewportFirstHost || loadedDisplayTfMasterHost)
                     ? displayTf
                     : (result.nativeRawFetchTf || masterTf);
                 this._nativeRawFetchTf = loadedNativeTf;

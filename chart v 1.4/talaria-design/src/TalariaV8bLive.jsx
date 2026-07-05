@@ -4263,7 +4263,8 @@ function v9RunDrawingMoreMenuAction(actionLabel) {
 }
 
 /** Image tool: chart uses `style.imageUrl` + `style.opacity` (0–1). V9 panel uses `imageDataUrl` + opacity % (100 = fully visible). */
-const V9_IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+const V9_IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const V9_IMAGE_UPLOAD_MAX_MB = 5;
 
 function v9ImageOpacityPercentFromStyle(style) {
   const op = style && style.opacity;
@@ -13738,7 +13739,7 @@ const TalariaV8bLive = () => {
   const supportSendReply = async () => {
     const body = supportReply.trim();
     if ((!body && !supportReplyFile) || !supportSelThread) return;
-    if (supportReplyFile && supportReplyFile.size > 2 * 1024 * 1024) { setSupportError("Image must be 2 MB or smaller."); return; }
+    if (supportReplyFile && supportReplyFile.size > V9_IMAGE_UPLOAD_MAX_BYTES) { setSupportError(`Image must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller.`); return; }
     setSupportSending(true); setSupportError(null);
     try {
       if (supportReplyFile) {
@@ -13761,7 +13762,7 @@ const TalariaV8bLive = () => {
     const subject = supportNewSubject.trim();
     const body = supportNewBody.trim();
     if (!subject || (!body && !supportNewFile)) return;
-    if (supportNewFile && supportNewFile.size > 2 * 1024 * 1024) { setSupportError("File must be 2 MB or smaller."); return; }
+    if (supportNewFile && supportNewFile.size > V9_IMAGE_UPLOAD_MAX_BYTES) { setSupportError(`File must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller.`); return; }
     setSupportSending(true); setSupportError(null);
     const chartSym = typeof window !== "undefined" && window.chart?.currentSymbol ? String(window.chart.currentSymbol) : symbol;
     const ctx = {
@@ -27142,7 +27143,7 @@ const TalariaV8bLive = () => {
                       : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
                     <input type="file" accept="image/*" style={{display:"none"}}
                       onClick={e=>e.stopPropagation()}
-                      onChange={e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>V9_IMAGE_UPLOAD_MAX_BYTES){v9NotifyDrawingAction("Image must be 2 MB or smaller");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
+                      onChange={e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>V9_IMAGE_UPLOAD_MAX_BYTES){v9NotifyDrawingAction(`Image must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller`);e.target.value="";return;}const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
                   </label>
                   {/* transparency — label left, slider right-aligned and narrow */}
                   <div style={{marginBottom:16}}>

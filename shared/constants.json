@@ -105,6 +105,8 @@
   
   "limits": {
     "max_file_size_mb": 16,
+    "max_image_upload_mb": 5,
+    "max_image_data_url_chars": 2800000,
     "max_import_rows": 10000,
     "api_timeout_ms": 30000,
     "token_expiry_hours": 24,

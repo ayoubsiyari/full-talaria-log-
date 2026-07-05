@@ -716,8 +716,8 @@ function ProfilePageInner({ v16Embed = false }: { v16Embed?: boolean }) {
               <h1 className="prof-settings__title">{isArabic ? "الدعم" : "Support"}</h1>
               <p className="prof-settings__subtitle">
                 {isArabic
-                  ? "أبلغ عن مشكلة أو اطلب المساعدة. يمكنك إرفاق لقطة شاشة (حتى 2 ميجابايت)."
-                  : "Report a bug or ask for help. You can attach a screenshot (up to 2 MB)."}
+                  ? "أبلغ عن مشكلة أو اطلب المساعدة. يمكنك إرفاق لقطة شاشة (حتى 5 ميجابايت)."
+                  : "Report a bug or ask for help. You can attach a screenshot (up to 5 MB)."}
               </p>
               <SupportInbox embedded initialThreadId={threadId} />
             </>
