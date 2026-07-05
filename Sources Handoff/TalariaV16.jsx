@@ -6095,18 +6095,13 @@ function GeneralInfoStepContent({ c, F,
     if (tfUnitOpen) { setTfUnitOpen(false); return; }
     const r = tfUnitBtnRef.current?.getBoundingClientRect();
     if (r) {
-      const z = getAppZoom();
-      const rb = r.bottom / z;
-      const rt = r.top / z;
-      const rl = r.left / z;
-      const rw = r.width / z;
       const menuH = 142;
-      const below = window.innerHeight / z - rb;
+      const below = window.innerHeight - r.bottom;
       const flip = below < menuH + 12;
       setTfUnitPos({
-        top: flip ? Math.max(8, rt - menuH - 3) : rb + 3,
-        left: rl,
-        width: Math.max(rw, 108),
+        top: flip ? Math.max(8, r.top - menuH - 3) : r.bottom + 3,
+        left: r.left,
+        width: Math.max(r.width, 108),
       });
     }
     setTfUnitOpen(true);
@@ -6527,7 +6522,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={supWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=dropPos(supWrapRef,270,120,320,true);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=dropPosViewport(supWrapRef,270,120,320,true);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7A5A00,rgba(232,194,82,0.9))',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(201,168,76,0.3)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
@@ -6536,7 +6531,7 @@ function GeneralInfoStepContent({ c, F,
                   <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
-              {supPickOpen&&(()=>{
+              {supPickOpen && createPortal((()=>{
                 const cats=(stratBMarkets||[]).map(x=>x.toLowerCase());
                 const showAll=cats.length===0;
                 const sections=[
@@ -6574,7 +6569,7 @@ function GeneralInfoStepContent({ c, F,
                   );
                 };
                 return(
-                  <div style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:270,maxHeight:supPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+                  <div ref={supMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:270,maxHeight:supPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:'linear-gradient(90deg,rgba(201,168,76,0.3),rgba(232,194,82,0.8),rgba(201,168,76,0.3))',flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                       <input autoFocus value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
@@ -6636,7 +6631,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={lbl}>Timeframes to use <span style={{color:c.rd}}>*</span> <span style={{color:c.tm,fontWeight:600,letterSpacing:'0.04em'}}>· {tfs.length}/{MAX_STRATEGY_TIMEFRAMES}</span></div>
           <div style={{display:'flex',alignItems:'flex-start',gap:5,flexWrap:'wrap'}}>
             <div ref={tfPickWrapRef} style={{position:'relative',flexShrink:0}}>
-              <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPos(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
+              <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPosViewport(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
                 style={{width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
@@ -6645,8 +6640,8 @@ function GeneralInfoStepContent({ c, F,
                   <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
-              {tfPickOpen&&(
-                <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:tfPickPos.top,left:tfPickPos.left,width:200,maxHeight:tfPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 8px 32px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F,overflow:'hidden'}}>
+              {tfPickOpen && createPortal(
+                <div ref={tfPickMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:tfPickPos.top,left:tfPickPos.left,width:200,maxHeight:tfPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 8px 32px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F,overflow:'hidden'}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                   <div
                     onClick={toggleAllTfs}
@@ -6754,7 +6749,8 @@ function GeneralInfoStepContent({ c, F,
                       </svg>
                     </div>
                   </div>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
             {tfs.length===0&&<span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:'26px'}}>—</span>}
@@ -6944,7 +6940,7 @@ function GeneralInfoStepContent({ c, F,
       )}
 
       {/* Emoji picker — fixed, escapes overflow:auto clipping */}
-      {emojiOpen&&(()=>{
+      {emojiOpen && createPortal((()=>{
         const searchQ = normalizeSearchQuery(emojiSearch);
         const activeCat = EMOJI_CATS.find(ct=>ct.id===emojiCat)||EMOJI_CATS[0];
         const matchedCats = searchQ
@@ -7018,7 +7014,7 @@ function GeneralInfoStepContent({ c, F,
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
     </div>
   );
 }
@@ -15032,7 +15028,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
               <div style={{position:"sticky",top:0,zIndex:5,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1356,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5}}>
                 <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                 {(()=>{
@@ -41152,7 +41148,7 @@ const TalariaV8b = () => {
                   </div>
                 </div>
                 );
-              })(), document.body)}
+              })()}
               {dashAddTradeEditorOpen && dashAddTradeDraft && dashAddTradeEditorSource && (() => {
                 const sideColor = dashAddTradeDraft.side === "Short" ? c.rd : c.gn;
                 const calculated = calcDashAddTradeStats(dashAddTradeDraft);
@@ -44866,7 +44862,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
               {dashSubWindow && (() => {
                 const scoreWindow = dashSubWindow.id === "talaria-score";
                 return (
@@ -44893,7 +44889,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
             </div>
           );
         }
@@ -49179,7 +49175,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
             </>}
 
             {/* ── INPUT TAB (RR tool: Long/Short Position) ── */}
@@ -50735,7 +50731,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── COORDINATES TAB ── */}
               {vwapSettTab==="coordinates" && (()=>{
@@ -50779,7 +50775,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── VISIBILITY TAB ── */}
               {vwapSettTab==="visibility" && (()=>{
@@ -51112,7 +51108,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── COORDINATES TAB ── */}
               {vpSettTab==="coordinates" && (()=>{
@@ -51160,7 +51156,7 @@ const TalariaV8b = () => {
                     ))}
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── VISIBILITY TAB ── */}
               {vpSettTab==="visibility" && (()=>{
@@ -51485,7 +51481,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── COORDINATES TAB ── */}
               {avSettTab==="coordinates" && (()=>{
@@ -51529,7 +51525,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })(), document.body)}
+              })()}
 
               {/* ── VISIBILITY TAB ── */}
               {avSettTab==="visibility" && (()=>{
@@ -52946,7 +52942,7 @@ const TalariaV8b = () => {
                       style={{width:26,height:26,background:settings.gridColor,border:`1px solid ${swHov==="gridColor"||colorPicker==="gridColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="gridColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="gridColor"||colorPicker==="gridColor"?`0 0 8px ${settings.gridColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
                   </div>
                 );
-              })(), document.body)}
+              })()}
               {/* Crosshair row */}
               <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
                 {Chk(settings.crosshairOn,"crosshairOn","chkCross","Crosshair")}
@@ -52981,7 +52977,7 @@ const TalariaV8b = () => {
                       style={{width:26,height:26,background:settings.priceLineColor,border:`1px solid ${swHov==="priceLineColor"||colorPicker==="priceLineColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="priceLineColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="priceLineColor"||colorPicker==="priceLineColor"?`0 0 8px ${settings.priceLineColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
                   </div>
                 );
-              })(), document.body)}
+              })()}
             </div>
 
             {/* ── CHART ─────────────────────────────────────── */}
@@ -53813,7 +53809,7 @@ const TalariaV8b = () => {
                     <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Go to Dashboard</span>
                   </div>
                 );
-              })(), document.body)}
+              })()}
             </div>
           </div>
         </div>
