@@ -432,3 +432,36 @@ canonical before-number for B-FIX-3.** Do not evaluate the fix against §6i.
    only listed files, both engine copies byte-identical if chart.js is duplicated.
 
 Still open: PO confirmation on `Sources Handoff/TalariaV16.jsx` provenance.
+
+---
+
+## D-010 — B-FIX-3 code sign-off acknowledged; live acceptance script (2026-07-05)
+
+§6m accepted. The implementation review hit every structural requirement (multichart-
+host-only gate, kill-switch that also cancels in-flight hydration, generation checks
+at every await boundary, byte-identical copies, clean pre-task git status). Build
+authorized. What remains is the D-009 live checklist; to make the PO run repeatable
+and conclusive, run it in this exact order on the new build:
+
+**Live acceptance run (PO, one session, diag panel open, copy numbers after each step):**
+1. **Single-chart control first:** load the pair single-chart, do the same TF switch —
+   confirm S1/S6-ref/S11-class numbers unchanged and diag shows the new branch never
+   fired (hydration seq stays 0). If this step fails, STOP — kill-switch on, escalate.
+2. **The headline case:** 2×2 same-pair, switch host pair+TF. Expect: candles visible
+   after ≤ 2 fetches, wall-clock ~single-chart feel; background hydration then runs;
+   when it settles — seams 0 on all panels, panels candle-aligned, master spans session.
+3. **Un-hydrated scrub:** immediately after the switch (hydration still running), scrub
+   replay far left. Note what happens (brief load vs error). Any console error = FAIL.
+4. **Mid-hydration cancel:** switch pair again while hydration is running. Expect clean
+   restart on the new pair; no mixed-pair bars, no stale-generation console errors.
+5. **Kill-switch flip:** set `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH = true`, repeat
+   step 2 — old eager behavior returns (S6-class fetch count), no reload errors.
+
+**Rollback policy:** first response to any live failure is the kill-switch (no deploy
+needed), not a code revert. Capture the diag numbers + console before flipping it so
+the failure is diagnosable.
+
+**Pass ⇒** B-FIX-3 CLOSED; manager proceeds to follow-up #2 (round-trip reduction via
+high-limit `/smart`, per D-008 — remember half that task is live server-side
+verification before any client change). **Fail ⇒** kill-switch on, evidence to a
+read-only diagnosis worker, no patch-on-patch.

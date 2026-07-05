@@ -5891,6 +5891,7 @@ function GeneralInfoStepContent({ c, F,
   const [tfUnitOpen, setTfUnitOpen] = React.useState(false);
   const [tfUnitPos, setTfUnitPos] = React.useState({ top: 0, left: 0, width: 120 });
   const tfPickWrapRef = React.useRef(null);
+  const tfPickMenuRef = React.useRef(null);
   const tfUnitBtnRef = React.useRef(null);
   const tfUnitMenuRef = React.useRef(null);
   const [emojiOpen, setEmojiOpen]     = React.useState(false);
@@ -6014,7 +6015,11 @@ function GeneralInfoStepContent({ c, F,
   };
   React.useEffect(()=>{
     if(!mktDropOpen) return;
-    const handler = e => { if(mktWrapRef.current && !mktWrapRef.current.contains(e.target)) setMktDropOpen(false); };
+    const handler = e => {
+      if(mktWrapRef.current?.contains(e.target)) return;
+      if(mktMenuRef.current?.contains(e.target)) return;
+      setMktDropOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [mktDropOpen]);
@@ -6023,16 +6028,43 @@ function GeneralInfoStepContent({ c, F,
   }, [stratBMarkets]);
   React.useEffect(()=>{
     if(!trdPickOpen) return;
-    const handler = e => { if(trdWrapRef.current && !trdWrapRef.current.contains(e.target)) setTrdPickOpen(false); };
+    const handler = e => {
+      if(trdWrapRef.current?.contains(e.target)) return;
+      if(trdMenuRef.current?.contains(e.target)) return;
+      setTrdPickOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [trdPickOpen]);
   React.useEffect(()=>{
     if(!supPickOpen) return;
-    const handler = e => { if(supWrapRef.current && !supWrapRef.current.contains(e.target)) setSupPickOpen(false); };
+    const handler = e => {
+      if(supWrapRef.current?.contains(e.target)) return;
+      if(supMenuRef.current?.contains(e.target)) return;
+      setSupPickOpen(false);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [supPickOpen]);
+  React.useEffect(() => {
+    if (!mktDropOpen && !trdPickOpen && !supPickOpen && !tfPickOpen && !emojiOpen) return;
+    const closeMenus = () => {
+      setMktDropOpen(false);
+      setTrdPickOpen(false);
+      setSupPickOpen(false);
+      setTfPickOpen(false);
+      setTfUnitOpen(false);
+      setEmojiOpen(false);
+      setEmojiSearch('');
+    };
+    const scrollEl = generalInfoScrollRef.current;
+    scrollEl?.addEventListener('scroll', closeMenus, { passive: true });
+    window.addEventListener('scroll', closeMenus, { passive: true });
+    return () => {
+      scrollEl?.removeEventListener('scroll', closeMenus);
+      window.removeEventListener('scroll', closeMenus);
+    };
+  }, [mktDropOpen, trdPickOpen, supPickOpen, tfPickOpen, emojiOpen]);
   const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
   const tfAtMax    = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
   const toggleTf   = id => {
@@ -6110,6 +6142,7 @@ function GeneralInfoStepContent({ c, F,
     if(!tfPickOpen && !tfUnitOpen) return;
     const h=e=>{
       if(tfPickWrapRef.current?.contains(e.target)) return;
+      if(tfPickMenuRef.current?.contains(e.target)) return;
       if(tfUnitMenuRef.current?.contains(e.target)) return;
       setTfPickOpen(false);
       setTfUnitOpen(false);
@@ -6134,7 +6167,7 @@ function GeneralInfoStepContent({ c, F,
   );
 
   return (
-    <div style={{flex:1,padding:'24px 28px',overflowY:'auto',fontFamily:F}} className="tlr-scroll">
+    <div ref={generalInfoScrollRef} style={{flex:1,padding:'24px 28px',overflowY:'auto',fontFamily:F}} className="tlr-scroll">
       <div style={{maxWidth:640,margin:'0 auto'}}>
 
         {/* ── Section: Strategy Name + Description ── */}
@@ -6297,7 +6330,7 @@ function GeneralInfoStepContent({ c, F,
             <span style={{fontSize:8,fontWeight:600,color:c.tm,letterSpacing:'0.04em',textTransform:'none'}}>Optional filter — auto-set from symbols</span>
           </div>
           <div ref={mktWrapRef} style={{position:'relative',display:'inline-block'}}>
-            <div onClick={e=>{e.stopPropagation();if(mktDropOpen){setMktDropOpen(false);}else{const pos=dropPos(mktWrapRef,210,100,200,false);if(pos)setMktDropPos(pos);setMktDropOpen(true);}}}
+            <div onClick={e=>{e.stopPropagation();if(mktDropOpen){setMktDropOpen(false);}else{const pos=dropPosViewport(mktWrapRef,210,100,200,false);if(pos)setMktDropPos(pos);setMktDropOpen(true);}}}
               style={{display:'flex',alignItems:'center',border:`1px solid ${mktDropOpen?c.acB:requiredBorder('markets')}`,background:c.el,padding:'0 26px 0 10px',height:30,width:210,cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s'}}>
               {(()=>{
                 const sel=effectiveMarkets||[];
@@ -6312,8 +6345,8 @@ function GeneralInfoStepContent({ c, F,
               })()}
               <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
-            {mktDropOpen&&(
-              <div style={{position:'fixed',top:mktDropPos.top,left:mktDropPos.left,width:210,maxHeight:mktDropPos.maxH,overflowY:'auto',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+            {mktDropOpen && createPortal(
+              <div ref={mktMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:mktDropPos.top,left:mktDropPos.left,width:210,maxHeight:mktDropPos.maxH,overflowY:'auto',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 {MKT_CAT_OPTS.map(o=>{
                   const checked=(stratBMarkets||[]).includes(o.id);
@@ -6334,7 +6367,8 @@ function GeneralInfoStepContent({ c, F,
                     </div>
                   );
                 })}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         </div>
@@ -6364,7 +6398,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={trdWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=dropPos(trdWrapRef,270,120,320,true);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=dropPosViewport(trdWrapRef,270,120,320,true);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
@@ -6374,7 +6408,7 @@ function GeneralInfoStepContent({ c, F,
                   <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
-              {trdPickOpen&&(()=>{
+              {trdPickOpen && createPortal((()=>{
                 const cats=(stratBMarkets||[]).map(x=>x.toLowerCase());
                 const showAll=cats.length===0;
                 const sections=[
@@ -6412,7 +6446,7 @@ function GeneralInfoStepContent({ c, F,
                   );
                 };
                 return(
-                  <div style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:270,maxHeight:trdPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+                  <div ref={trdMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:270,maxHeight:trdPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                       <input autoFocus value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
@@ -6448,7 +6482,7 @@ function GeneralInfoStepContent({ c, F,
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </div>
             <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:4,alignContent:'start',height:48,overflow:'hidden'}}>
               {(stratBInstruments||[]).length===0&&<span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:'48px',gridColumn:'1/-1',textAlign:'center'}}>—</span>}
@@ -6577,7 +6611,7 @@ function GeneralInfoStepContent({ c, F,
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </div>
             <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:4,alignContent:'start',height:48,overflow:'hidden'}}>
               {(stratBSupportInst||[]).length===0&&<span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:'48px',gridColumn:'1/-1',textAlign:'center'}}>—</span>}
@@ -14998,7 +15032,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
               <div style={{position:"sticky",top:0,zIndex:5,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1356,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5}}>
                 <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                 {(()=>{
@@ -41118,7 +41152,7 @@ const TalariaV8b = () => {
                   </div>
                 </div>
                 );
-              })()}
+              })(), document.body)}
               {dashAddTradeEditorOpen && dashAddTradeDraft && dashAddTradeEditorSource && (() => {
                 const sideColor = dashAddTradeDraft.side === "Short" ? c.rd : c.gn;
                 const calculated = calcDashAddTradeStats(dashAddTradeDraft);
@@ -44832,7 +44866,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
               {dashSubWindow && (() => {
                 const scoreWindow = dashSubWindow.id === "talaria-score";
                 return (
@@ -44859,7 +44893,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </div>
           );
         }
@@ -49145,7 +49179,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </>}
 
             {/* ── INPUT TAB (RR tool: Long/Short Position) ── */}
@@ -50701,7 +50735,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── COORDINATES TAB ── */}
               {vwapSettTab==="coordinates" && (()=>{
@@ -50745,7 +50779,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── VISIBILITY TAB ── */}
               {vwapSettTab==="visibility" && (()=>{
@@ -51078,7 +51112,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── COORDINATES TAB ── */}
               {vpSettTab==="coordinates" && (()=>{
@@ -51126,7 +51160,7 @@ const TalariaV8b = () => {
                     ))}
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── VISIBILITY TAB ── */}
               {vpSettTab==="visibility" && (()=>{
@@ -51451,7 +51485,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── COORDINATES TAB ── */}
               {avSettTab==="coordinates" && (()=>{
@@ -51495,7 +51529,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 );
-              })()}
+              })(), document.body)}
 
               {/* ── VISIBILITY TAB ── */}
               {avSettTab==="visibility" && (()=>{
@@ -52912,7 +52946,7 @@ const TalariaV8b = () => {
                       style={{width:26,height:26,background:settings.gridColor,border:`1px solid ${swHov==="gridColor"||colorPicker==="gridColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="gridColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="gridColor"||colorPicker==="gridColor"?`0 0 8px ${settings.gridColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
                   </div>
                 );
-              })()}
+              })(), document.body)}
               {/* Crosshair row */}
               <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
                 {Chk(settings.crosshairOn,"crosshairOn","chkCross","Crosshair")}
@@ -52947,7 +52981,7 @@ const TalariaV8b = () => {
                       style={{width:26,height:26,background:settings.priceLineColor,border:`1px solid ${swHov==="priceLineColor"||colorPicker==="priceLineColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="priceLineColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="priceLineColor"||colorPicker==="priceLineColor"?`0 0 8px ${settings.priceLineColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </div>
 
             {/* ── CHART ─────────────────────────────────────── */}
@@ -53779,7 +53813,7 @@ const TalariaV8b = () => {
                     <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Go to Dashboard</span>
                   </div>
                 );
-              })()}
+              })(), document.body)}
             </div>
           </div>
         </div>
