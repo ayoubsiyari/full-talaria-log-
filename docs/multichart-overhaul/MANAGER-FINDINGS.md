@@ -829,6 +829,69 @@ Worker 1 implemented B-FIX-A (D-020 Option A, pre-approved). Manager independent
 **Verdict: B-FIX-A signed off.** Live acceptance pending PO on b19 (deploy: server git pull +
 docker compose up --build -d). Fixes DRIFT only; group-by-group host hauling is B-FIX-6b-2 (next).
 
+## 6ad. B-FIX-A is a NO-OP for the PO's real scenario — DIAG-B9 Q1 named wrong sites (2026-07-05, b22)
+
+PO on b22 (B-FIX-A live, confirmed by build tag): drift UNCHANGED in the canonical repro (2×2,
+same pair, backtest ARMED not playing, all sync OFF, drag host A to load old candles → panels
+B/C/D drift AND price scale looks wrong/compressed).
+
+Manager code trace of the ACTUAL path for that scenario:
+- Same-pair panels following a host pan-load in armed-idle+sync-off go through
+  `_tryExtendReplayMasterFromParent()` (prepends host's older bars into the panel's own
+  `replaySystem.fullRawData`; `extendsFromParent++`). This is NOT one of the three mirror-commit
+  sites B-FIX-A patched (`_multichartMirrorHostTfSwitchIfReady`, `_tryMirrorFrameFromParentData`,
+  `forceSamePairParentDataMirror`). **So B-FIX-A never executed here — it is a no-op for this repro.**
+- Worse for the theory: `_tryExtendReplayMasterFromParent()` ALREADY contains prepend compensation
+  (chart.js ~5449-5468: `replay.currentIndex += earlier.length`, `offsetX -= shiftBars*spacing`).
+  So the panel drifts DESPITE existing compensation on its real path. The true mechanism is not yet
+  understood — candidates: (a) compensation skipped because `prevReplayIndex` not finite or
+  `earlier.length===0` (panel not actually extending); (b) a downstream re-anchor overwrites
+  `offsetX` after the extend; (c) price-scale autoscale blowing out vertically (the "scale wrong"
+  symptom) as a downstream effect of a wrong horizontal window.
+
+Process note: DIAG-B9 Q1 correctly described the mirror-commit family but did not identify
+`_tryExtendReplayMasterFromParent` as the hot path for armed-idle+sync-off host pan-load. B-FIX-A
+was implemented faithfully to an incomplete diagnosis. **No more blind fixes** — dispatching a
+read-only DIAG-B10 to instrument the actual path live before any further code. B-FIX-A stays in
+(kill-switched, harmless, still correct for TF-switch/replay-frame mirror commits); do not revert.
+
+This is a plan deviation worth Director visibility: a signed-off fix that proved inert against the
+target repro because the upstream diagnosis under-scoped the path. Recorded for DIRECTOR review.
+
+## 6ae. DIAG-B10 conclusion — the "compressed candles" tell + the sync-state fork (2026-07-05)
+
+DIAG-B10 (Worker 1, read-only) relocated the mechanism to the **sync-bridge visible-range /
+pan-follow path**, not `_tryExtendReplayMasterFromParent`'s own (already-present) prepend
+compensation. That compensation runs but is then **overwritten** by host-led viewport application
+(`applyPanDragFollow` / `applyLightweightPanFollow` / `applyWallClockDateRange` set `chart.offsetX`
++ `chart.candleWidth` from the host).
+
+**Decisive tell (Answer 3):** the "compressed candles / wrong scale" symptom is produced by
+`applyWallClockDateRange()` mapping the host 4h wall-clock window onto the panel's 1m data (many
+more bars → tiny spacing). That function ONLY runs when a **visibleRange message is applied to the
+panel**. So the very fact the PO SEES compressed 1m candles is hard evidence that **the panels are
+receiving + applying host visible-range updates.**
+
+Manager cross-check of `multichart-manager.js::_fanOut()`: for `visibleRange`, if
+`!syncMode.visibleRange && !syncMode.timeSync` it returns (blocks) — the gate does NOT leak for
+ongoing pans. Bypasses that DO deliver visibleRange with sync off: the one-time `forceInitialSync`
+snapshot at iframe-add (`_send` direct, by design), and there are TWO independent range flags
+(`visibleRange` AND `timeSync`).
+
+**Therefore the fork to resolve BEFORE any fix:**
+- (A) The PO actually has one of the two range-sync flags still ON (visibleRange OR timeSync). Then
+  panels following + compressing is **EXPECTED behavior**, not a bug — remedy is clearer toggles /
+  user education, NOT engine code. Cheapest to check first.
+- (B) Both range flags are genuinely OFF but panels still apply host visible-range → real leak
+  (repeated forceInitialSync, or a panSync/release path reaching the iframe). Then the fix is in
+  `sync-bridge.js::applyVisibleRange()`: for same-pair mixed-TF panels with range sync OFF, allow
+  `_tryExtendReplayMasterFromParent()` as data-only and PRESERVE the panel's own offsetX/candleWidth
+  (do not call the pan-follow/wall-clock viewport mutators). No double-compensation risk vs B-FIX-A
+  (different sites).
+
+Disambiguation is near-zero cost: confirm the live `syncMode` (both range flags) during the repro.
+Recorded for Director; leading with the cheap check before spending another build.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
