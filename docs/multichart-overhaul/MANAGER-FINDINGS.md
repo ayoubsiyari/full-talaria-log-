@@ -1211,6 +1211,34 @@ arrives (no flash, no clear).
 Acceptance (live, host 1m→4h→1m armed, same-pair + independent panels): panels do NOT flash/reload old
 data during host switch; they settle to the correct frame once host completes; kill-switch reverts.
 
+### B-FIX-G (SHIPPED, gated, b42) — settled resync so ALL held same-pair panels re-mirror (fixes C/D)
+Symptom (b41, all panels same 1m TF as host): B-FIX-F fully fixes panel B (kill-switch proves it — off
+⇒ B flashes like C/D), but C/D still flash + show STALE old data (last candle ~1.094 vs host ~1.112),
+console `No candles drawn! All N candles are outside viewport` (chart.js:28758) → `_scheduleViewportEmptyRecovery`.
+Root (DIAG 3a75092f): NO per-panel special-case exists. B wins a race — it is the first iframe / first
+in fan-out order, so it catches the brief window where the host master momentarily brackets the playhead
+(before backward prepends resume) and clones `parent.rawData` by reference. C/D process a tick later
+(still held, or host churning again) and NEVER clone the post-switch arrays. Then two things trap them:
+(1) idle dedup at the SAME paused playhead ts (`_mcLastAppliedFrameTs`/`_mcLastSamePairMirrorTs`) blocks
+any later recovery; (2) a PAUSED host emits NO further tick broadcast after `_deferBacktestTfSwitchFollowUp`,
+so no covering frame ever arrives. `_scheduleViewportEmptyRecovery` then recenters on the panel's OWN
+stale bars → old prices + "content jumps".
+Fix (two parts, one kill-switch):
+- Host (chart.js `_deferBacktestTfSwitchFollowUp`, after `_snapReplayViewportAfterTfSwitch`, ~8007): emit
+  ONE authoritative `replay._multichartBroadcastReplayFrame()` once the switch has settled, so held
+  (esp. paused) panels receive a final COVERING frame.
+- Panel (panel-cmd-bridge.js `applyReplayFrame`): when B-FIX-F holds a panel, set `ch._mcMirrorHeldUnsettled=true`.
+  On the first frame after the hold releases (host settled), if same-symbol + same-TF, set a one-shot
+  `_mcForceSettledResync` that BYPASSES the three idle dedups (general/independent/same-pair) so the panel
+  re-mirrors + re-anchors host data, then clears the flag.
+Kill-switch: `__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC` (reverts both parts).
+Isolation: B unaffected (if it already mirrored, `rawData===parent.rawData` so the re-mirror re-clones
+identical data, no visible change); does not touch B-FIX-C/D/E math; the dedup bypass is one-shot (flag
+cleared on the settled frame) so it does NOT reintroduce paused re-render/drift. I4: both copies edited;
+build id b42.
+Acceptance (live, host 1m→4h→1m armed, all four same 1m): C AND D no longer flash / show stale ~1.094 /
+"change place"; all panels settle to the host's current frame; B stays perfect; kill-switch reverts.
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging

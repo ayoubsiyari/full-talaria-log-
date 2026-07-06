@@ -473,9 +473,34 @@
                         ? _hostRs.replayTimestamp
                         : ts;
                     if (pcSwitching._replayPlayheadOutsideMasterWindow(_hostPhTs, _hostRs)) {
+                        // B-FIX-G: remember we held this panel during the host switch so that,
+                        // once the host settles and re-broadcasts, we force a one-shot re-mirror
+                        // even though the paused playhead timestamp has not advanced.
+                        ch._mcMirrorHeldUnsettled = true;
                         return;
                     }
                 }
+            }
+        } catch (_) {}
+
+        // B-FIX-G (panel settled resync): if this same-pair, same-TF panel was HELD during the
+        // host TF-switch (flag set above), it MUST re-mirror the host's now-settled frame even
+        // though the paused playhead ts is unchanged — otherwise the idle dedups below keep it
+        // on stale pre-switch bars ("all candles outside viewport", old prices, content jumps).
+        // One-shot: we only reach here once the B-FIX-F hold gate has released (host settled),
+        // so clear the flag now and let this single frame apply. Panel B is unaffected (if it
+        // already mirrored during the race, this just re-clones the identical host data).
+        var _mcForceSettledResync = false;
+        try {
+            if (ch._mcMirrorHeldUnsettled === true
+                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC)) {
+                var _pcResync = readParentChart();
+                var _hTfRS = _pcResync ? String(_pcResync.currentTimeframe || '').toLowerCase().trim() : '';
+                var _pTfRS = String(ch.currentTimeframe || '').toLowerCase().trim();
+                if (isSameSymbolAsHost(ch) && _hTfRS && _pTfRS && _hTfRS === _pTfRS) {
+                    _mcForceSettledResync = true;
+                }
+                ch._mcMirrorHeldUnsettled = false;
             }
         } catch (_) {}
 
@@ -498,7 +523,7 @@
         // Genuine scrubs/advances change ts (or set isPlaying/anim) so they apply.
         try {
             var _animActiveG = !!(args.animatedCandle && Number(args.tickProgress) > 0);
-            if (!ch._multichartVisibleRangeSyncOn && !args.isPlaying && !_animActiveG
+            if (!_mcForceSettledResync && !ch._multichartVisibleRangeSyncOn && !args.isPlaying && !_animActiveG
                 && Number.isFinite(ch._mcLastAppliedFrameTs) && ch._mcLastAppliedFrameTs === ts) {
                 return;
             }
@@ -521,7 +546,7 @@
             var _pTf = String(ch.currentTimeframe || '').toLowerCase().trim();
             var _independentFrame = !isSameSymbolAsHost(ch) || (!!_hTf && !!_pTf && _hTf !== _pTf);
             var _animActive = !!(args.animatedCandle && Number(args.tickProgress) > 0);
-            if (_independentFrame && !args.isPlaying && !_animActive
+            if (_independentFrame && !_mcForceSettledResync && !args.isPlaying && !_animActive
                 && Number.isFinite(ch._mcLastIndepFrameTs) && ch._mcLastIndepFrameTs === ts) {
                 return;
             }
@@ -604,7 +629,7 @@
             // bypassed whenever Time/Date-range sync is on. Mirror once to align,
             // then no-op until replay actually plays or the playhead ts changes.
             var _samePairAnim = !!(args.animatedCandle && Number(args.tickProgress) > 0);
-            if (!args.isPlaying && !_samePairAnim
+            if (!_mcForceSettledResync && !args.isPlaying && !_samePairAnim
                 && Number.isFinite(ch._mcLastSamePairMirrorTs)
                 && ch._mcLastSamePairMirrorTs === ts) {
                 return;

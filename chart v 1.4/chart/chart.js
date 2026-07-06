@@ -8006,6 +8006,17 @@ class Chart {
 
             try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_r2) { /* ignore */ }
 
+            // B-FIX-G (panel settled resync): the host's post-switch reload has now settled
+            // (playhead restored inside master, viewport snapped). Emit ONE authoritative replay
+            // frame so panels that were HELD during the switch (B-FIX-F) receive a final COVERING
+            // frame and re-mirror the host. Without this, a PAUSED host never sends another tick
+            // broadcast, so held panels (C/D that missed the brief settled window) stay on stale
+            // bars — "all candles outside viewport" + old prices. Kill-switch reverts.
+            if (!(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC)
+                && typeof replay._multichartBroadcastReplayFrame === 'function') {
+                try { replay._multichartBroadcastReplayFrame(); } catch (_bcast) { /* ignore */ }
+            }
+
             if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
                 try { omTf.updatePositions(); } catch (_eOm) { /* ignore */ }
             }
