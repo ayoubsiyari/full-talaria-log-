@@ -1064,3 +1064,57 @@ plan is exactly the discipline this overhaul exists to enforce.
 - Kill-switch inventory: we now carry 8+ flags; the cleanup task must produce a
   table (flag → fix → default → can it be retired) so the flag surface doesn't
   become its own bug source.
+
+---
+
+## D-023 — 6b-2 + D/E/F ratified; G closes the thread; then CONSOLIDATE (2026-07-06)
+
+### Ratifications
+
+- **B-FIX-6b-2 ACCEPTED** (idle-armed host 4h: fetchedBars 34k → 4000). With B-FIX-C
+  (drift) this closes both halves of the ESC-009 pathology. The single-source
+  predicate `_multichartReplayFineMasterInUse()` driving all three sites is the right
+  shape — no scattered copies.
+- **B-FIX-D (fill-loop plateau guard), B-FIX-E (cache playhead-coverage guard),
+  B-FIX-F (panel mirror hold)** — all three sign-offs and live verifications
+  accepted. The chain LOOKS like symptom-chasing but is not: it is one pre-existing
+  composite pathology (the host replay-TF-switch settling path) peeled layer by
+  layer, each layer instrumented per I11, DIAG'd read-only, fixed with one gated
+  change, and live-verified before the next. The rejected-fix write-up under B-FIX-E
+  (why gating the first paint fails) is exactly the kind of negative result that
+  belongs in the ledger. This chain is hereby named the **TF-SWITCH SETTLING
+  thread** and closes as a unit when B-FIX-G passes.
+
+### B-FIX-G acceptance run — fold four checks into ONE PO session
+
+1. G acceptance as written (§6 spec): C and D no longer flash / show stale prices;
+   all four settle to the host frame; B stays perfect; kill-switch reverts.
+2. **BL-1 reconciliation:** the switch-back flicker IS this thread. If G passes,
+   the manager updates BL-1 to resolved-by-F/G (or narrows it to what remains).
+3. **§6al(b) check:** confirm the host price-scale-off-screen-until-double-click is
+   gone post-D/E (the offsetX runaway driver was removed); if it persists, it stays
+   a named backlog item, not a silent loose end.
+4. **B8 activation counters** (soft-outstanding from §6ak): during the same session,
+   one drag/play capture showing `ownerFetches>0` / `handovers` incrementing.
+   Cheap, same session, closes the last D-021 #3 box.
+
+### After G passes: STOP FIXING, CONSOLIDATE (binding order)
+
+No new fix tasks (backlog items included) until these three land:
+1. **Cleanup task** (D-022 hygiene register, now larger): strip or flag-gate `[B10]`
+   instrumentation; remove viewport-first dead code (D-016); kill-switch inventory
+   table (flag → fix → default → retire?) — we now carry 12+ flags.
+2. **Baseline re-capture** on the post-G build: S1/S6-class scenarios plus the two
+   canonical repros (armed-idle pan-load; 1m→4h→1m switch-back) recorded in
+   BASELINE-RESULTS as the new reference state. This is what future regressions get
+   measured against; without it every fix we just shipped is unprotected.
+3. **Plan re-baseline (Director + Manager):** the original Phase 1/2 root causes have
+   been substantially addressed out of order (ownership via B8+6b-2, event-driven
+   commits via `talariaMcHostDataCommit`, poll-and-mutate partially retired). The
+   phase docs no longer describe reality. One short session to mark what is DONE,
+   what remains (Phase 3 render budget: renders-high, BL-1 remnant, BL-3; BL-2
+   price-scale coupling; BL-4 playhead-centered bulk window), and in what order.
+
+Register updates: **BL-4** (bound the session-start bulk fetch to a playhead-centered
+window, from B-FIX-E's secondary note) is formally in the backlog. BL-2 remains the
+top-priority backlog item after consolidation (invariant violation, per D-022).
