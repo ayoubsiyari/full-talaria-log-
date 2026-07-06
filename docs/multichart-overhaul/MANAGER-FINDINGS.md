@@ -1586,6 +1586,75 @@ Briefs for these lived only in subagent context at dispatch (pre-directive); rec
 Independent Manager verification was performed on each fix/cleanup (hashes recomputed, grep/guard re-read,
 node --check) — not the workers' self-reports. Going forward, briefs+IDs are recorded at dispatch time.
 
+### BL-6 (OPEN, ESC-011) — panel TIME-viewport parks off-screen on host TF switch (b74)
+Surfaced in Item-2 R2 capture. PO-confirmed VISIBLE: on host TF switch, other panels' charts scroll OUT
+OF VIEW → `No candles drawn! All 77–78 candles outside viewport` (chart.js:28813), STABLE count (NOT
+BL-5's incrementing loop). Before/after fingerprint: pre-BL-5 the coarse panels re-rendered candle-by-
+candle (incrementing); post-BL-5 they no longer re-render but sit parked off-screen (stable). Suspected
+BL-5 side-effect: `shouldSkipCoarsePanelHostSwitchSeek` skips the coalesced seek (kills the resample
+storm) but that seek also recentered the panel viewport onto its playhead → skipping leaves offsetX
+parked. Competing hypotheses to rule out: B-FIX-J suppressing empty-recovery, or B-FIX-I self-heal not
+firing (playhead judged "aligned"). ESC-011 GRANTED (regression from freeze-window fix = in scope).
+I11-strict: read-only DIAG to NAME the mechanism BEFORE any fix (no BL-5-hypothesis patch — that is how H
+went inert).
+
+**DIAG-BL6 worker brief (verbatim, read-only) — agent `db6d3d80`:**
+> Read-only, very thorough. NO edits. Multi-chart trading app; files duplicated in two trees
+> (`chart v 1.4/chart/...`, `homepage/public/chart/...`). Read `docs/multichart-overhaul/MANAGER-FINDINGS.md`
+> §6ao (BL-5 fix + BL-2b) and the BL-6 entry, and `CONSOLIDATION-ITEM1-FLAG-INVENTORY.md` §2 (hold policy).
+> BUG (BL-6): on a host TF switch, a same-pair panel's TIME viewport ends up parked off-screen (all candles
+> outside viewport → `No candles drawn`, chart.js:28813), STABLE count. Prime hypothesis: BL-5's
+> `shouldSkipCoarsePanelHostSwitchSeek` (panel-cmd-bridge.js:1383) skips the coalesced seek that also
+> recentered the panel viewport onto its playhead, leaving offsetX parked. TASK: (1) Trace what sets/moves
+> a panel's offsetX after a host TF switch, and confirm/refute whether skipping `scheduleCoalescedSeek` /
+> `forceReplaySeek` removes the ONLY recenter path (vs `syncReplayViewportToPlayhead` offsetX apply,
+> `_scheduleViewportEmptyRecovery` (chart.js:17409, gated by B-FIX-J), `_mcScheduleSettledSelfHeal`
+> (panel-cmd-bridge.js:446, gated to off-screen playhead)). (2) Determine WHY the parked panel is not
+> recovered: is empty-recovery suppressed (B-FIX-J), is self-heal skipping because `isPanelReplayAligned`
+> returns true while visibly off-screen, or does BL-5's skip pre-empt all three? (3) Propose the NARROWEST
+> gated fix (own kill-switch `__TALARIA_MC_DISABLE_...`) that recenters the panel viewport after a host TF
+> switch WITHOUT reintroducing the BL-5 resample storm — e.g. allow a ONE-SHOT recenter (offsetX only, no
+> per-frame reslice) when the panel is parked off-screen, or narrow BL-5's skip so it does not suppress the
+> initial recenter. Cite exact file:line. Do NOT edit. Do NOT weaken security guards.
+
+**DIAG-BL6 RESULT (agent `db6d3d80`, read-only, static-confirmed):** BL-6 = BL-5 side-effect CONFIRMED +
+a latent self-heal bug. (1) For a coarser paused same-pair panel, `applyReplayFrame` returns at
+panel-cmd-bridge.js:700-708 (no recenter); the only routine offsetX recenter was via replayTick →
+`scheduleCoalescedSeek` → `forceReplaySeek` → `goToReplayTimestamp` → `updateChartData` auto-scroll →
+`syncReplayViewportToPlayhead` (offsetX applied at replay-system.js:2855). BL-5's skip at
+panel-cmd-bridge.js:1429 removes that path. (2) BL-2b does NOT block offsetX (2855 still applies; only Y
+reset skipped). (3) B-FIX-J only suppresses empty-recovery WHILE host switch flags set (chart.js:17405-06);
+clears post-settle — not the stable blocker. (4) DECISIVE: B-FIX-I self-heal early-returns at
+panel-cmd-bridge.js:470-482 using playhead-timestamp-∈-index-range with STALE/defaulted
+visibleStartIndex/visibleEndIndex (`_ve` defaults to `data.length`), so it judges "in view" while every
+candle is pixel-off-screen → backstop never fires. Fix: ONE-SHOT offsetX-only recenter after the BL-5 skip
+when parked (`_countVisiblePlotBars()===0 || _multichartViewportNeedsRecovery()`) via
+`syncReplayViewportToPlayhead({forceRecenter:true, resetPriceScale:false, render:true})` — no
+seek/reslice/master-adoption, so BL-5 storm cannot return. Kill-switch
+`__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER`. (Secondary, tracked separately: harden
+the B-FIX-I predicate at 470-482 to use pixel visibility not stale-index timestamps.)
+
+**FIX-BL6 worker brief (verbatim) — agent `cf13f1ec`:**
+> Implement ONE minimal, kill-switchable fix (ESC-011 GRANTED). Multi-chart app; files DUPLICATED in two
+> trees, edit BOTH `chart v 1.4/chart/...` AND `homepage/public/chart/...` byte-identical (I4). Do NOT
+> touch api_server.py/docs/security guards. Read MANAGER-FINDINGS §6ao BL-6 + DIAG-BL6 RESULT.
+> BUG (BL-6): coarser paused same-pair panel's TIME viewport parks off-screen after host TF switch because
+> BL-5's `shouldSkipCoarsePanelHostSwitchSeek` skip (panel-cmd-bridge.js:1429) removed the only offsetX
+> recenter path. FIX: in `scheduleCoalescedSeek`, when the BL-5 skip fires, do a ONE-SHOT offsetX-only
+> recenter (NOT a seek/reslice): if the panel viewport is parked (`ch._countVisiblePlotBars?.() === 0 ||
+> ch._multichartViewportNeedsRecovery?.()`), call `rs.syncReplayViewportToPlayhead(ch, {forceRecenter:true,
+> resetPriceScale:false, render:true})` then return. Make it truly one-shot per host switch (e.g.
+> `ch._mcCoarseHostSwitchRecenterDone`, cleared when host currentTimeframe changes) so it cannot loop.
+> Kill-switch `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER` (unset=fix ON; true=today's
+> BL-5-only behavior). MUST NOT call forceReplaySeek / ensureReplayDataCoversTimestamp /
+> _syncReplayMasterFromParentIfCovers / goToReplayTimestamp (those are the BL-5 storm). Do NOT change
+> BL-5's skip predicate, BL-2b, or the B-FIX-I predicate (secondary, separate task). Invariants: both
+> copies byte-identical (Get-FileHash MD5 proof), node --check + lints clean, bump build id
+> (bump-dist-v9-cache.mjs + all sw.js incl. dist-v9 + embed). Report: exact file:line both trees, diff,
+> hash proof, node --check, new build id, kill-switch revert steps, and PO live-verify steps (paused host
+> 4h→1m: coarse panels recenter onto their bars, no `No candles drawn` flood; flag on = park returns; no
+> candle-by-candle storm = BL-5 stays fixed).
+
 ### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
 Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does
 NOT cover the earlier `applyReplayFrame` hold paths (I) nor the render-side empty-recovery path (J).

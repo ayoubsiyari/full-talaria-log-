@@ -1423,10 +1423,68 @@
         try { if (ch) ch._mcHostReplayContextUntil = Date.now() + 2000; } catch (_) {}
     }
 
+    // BL-6 (viewport-park regression from the BL-5 skip): the BL-5 guard
+    // (shouldSkipCoarsePanelHostSwitchSeek) preserves a coarser paused same-pair
+    // panel's detached slice by skipping the coalesced seek — which killed the
+    // per-frame resample storm, but ALSO removed the only routine offsetX recenter
+    // path (replayTick → scheduleCoalescedSeek → forceReplaySeek → goToReplayTimestamp
+    // → updateChartData auto-scroll → syncReplayViewportToPlayhead offsetX at
+    // replay-system.js:2855). So after a host TF switch the panel's TIME viewport
+    // parks off-screen ("No candles drawn! All N candles outside viewport", stable
+    // count). This does a ONE-SHOT offsetX-only recenter when the panel is actually
+    // parked — NOT a seek/reslice/master-adoption (that IS the BL-5 storm and is
+    // explicitly avoided here). resetPriceScale:false preserves BL-2b price-axis
+    // independence; offsetX still applies at replay-system.js:2855.
+    // Kill-switch __TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER (ON
+    // = today's BL-5-only behavior, i.e. the park returns).
+    function maybeRecenterCoarsePanelAfterHostSwitch(ch) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER) {
+                return;
+            }
+            if (!ch) return;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive || typeof rs.syncReplayViewportToPlayhead !== 'function') return;
+            // Re-arm the one-shot latch whenever the host's currentTimeframe changes
+            // (a new host switch) so a subsequent switch can recenter once again.
+            var pc = readParentChart();
+            var hostTf = pc ? String(pc.currentTimeframe || '').toLowerCase().trim() : '';
+            if (hostTf && ch._mcLastHostTfForRecenter !== hostTf) {
+                ch._mcLastHostTfForRecenter = hostTf;
+                ch._mcCoarseHostSwitchRecenterDone = false;
+            }
+            // Only recenter when the viewport is actually parked off-screen.
+            var parked = (typeof ch._countVisiblePlotBars === 'function'
+                    && ch._countVisiblePlotBars() === 0)
+                || (typeof ch._multichartViewportNeedsRecovery === 'function'
+                    && ch._multichartViewportNeedsRecovery());
+            if (!parked) {
+                // Visible again → re-arm for the NEXT host switch.
+                ch._mcCoarseHostSwitchRecenterDone = false;
+                return;
+            }
+            // Truly one-shot per host switch — must NOT run every rAF.
+            if (ch._mcCoarseHostSwitchRecenterDone) return;
+            ch._mcCoarseHostSwitchRecenterDone = true;
+            rs.syncReplayViewportToPlayhead(ch, {
+                forceRecenter: true,
+                resetPriceScale: false,
+                render: true,
+            });
+        } catch (_) {}
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
         markHostReplayContext(ch);
-        if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) return;
+        if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) {
+            // BL-5 skip fired — preserve it (do NOT fall through to the seek), but
+            // first do a one-shot offsetX-only recenter so the panel doesn't park
+            // off-screen (BL-6). See maybeRecenterCoarsePanelAfterHostSwitch.
+            maybeRecenterCoarsePanelAfterHostSwitch(ch);
+            return;
+        }
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
         coalescedSeekScheduled = true;

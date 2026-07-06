@@ -354,14 +354,22 @@ capture that future regressions get measured against. Mark PASS / FAIL / STILL-N
 ## R1 — Armed-idle pan-load (fetchedBars stays low)
 **Do this:** boot multichart, arm replay (do NOT play), pan/drag. **Expect:** idle host does not eager-load
 a full 1m master; fetchedBars ≪ 34k (B-FIX-6a/6b/6c).
-- Result: __CAPTURE__ (fetches / fetchedBars per panel via `__mcDiagReport()`)
-- Verdict: PASS / FAIL / NOT-CAPTURED
+- Result (b74, all fileId=25, host 15m / panels 15m, "pan loads via: candles"):
+  HOST fetches=0 fetchedBars=0 resamples=2 renders=691 seams=0; B/C/D fetches=0 fetchedBars=0 seams=0.
+- Verdict: **PASS** — armed-idle pan does zero fetches (no eager 1m master); panels do not self-fetch.
 
 ## R2 — Host 1m → 4h → 1m switch-back (no cascade/flash)
 **Do this:** all panels same pair; switch host 1m→4h→1m. **Expect:** no host reload cascade, no panel flash,
 no stale-data repaint (B-FIX-D/E/F/G).
-- Result: __CAPTURE__
-- Verdict: PASS / FAIL / NOT-CAPTURED
+- Result (b74): host→4h fetches=2 fetchedBars=2000 (bar loads via tiles) lastFetchMs=561; host→1m
+  fetches=5 fetchedBars=4000 lastFetchMs=399; B/C/D fetches=0 fetchedBars=0 seams=0 throughout.
+- Verdict: **PASS** — bounded host fetches (2000/4000, not ~34k), panels never refetch, seams=0, and
+  PO confirms switch-back is visually smooth (no flash). Data + flash both pass.
+- ⚠ FOUND — **BL-6 (VISIBLE):** PO confirms panels' TIME viewport scrolls OUT OF VIEW on host TF switch
+  (the `No candles drawn! All 77–78 outside viewport` flood, chart.js:28813). Count STABLE (not BL-5's
+  incrementing loop). Suspected BL-5 side-effect: skipping the coalesced seek stops the resample storm
+  but also stops the viewport recenter → panel parked off-screen. Tracked as BL-6 (MANAGER-FINDINGS);
+  escalated ESC-011. Distinct from R2's data/flash PASS.
 
 ## R3 — Paused host 4h → 1m, coarse panels (no candle-by-candle)
 **Do this:** all panels 4h, replay paused, switch host 4h→1m. **Expect:** 4h panels do NOT re-render

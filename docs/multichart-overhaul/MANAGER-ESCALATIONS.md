@@ -380,3 +380,33 @@ entry BEFORE work begins. ESC-010 resolved by Director D-026.**
 **Process note going forward:** exception request → ESC entry → Director ruling → work (never
 chat-authorized, never Manager-preassigned decision numbers).
 
+---
+
+## ESC-011 — BL-6: panel time-viewport parks off-screen on host TF switch (2026-07-06)
+
+**Surfaced by:** Item-2 baseline capture (R2, b74). PO confirmed VISIBLE: when the host switches TF, other
+panels' charts scroll OUT OF VIEW (`No candles drawn! All 77–78 candles outside viewport`, chart.js:28813,
+STABLE count — not BL-5's incrementing loop).
+
+**Request:** fix-now exception to the D-026 freeze to diagnose + fix BL-6.
+
+**Why it qualifies:**
+1. **Likely a REGRESSION from a freeze-window fix** — the prime suspect is BL-5's
+   `shouldSkipCoarsePanelHostSwitchSeek`: it stops the resample storm by skipping the coalesced seek, but
+   that seek also recentered the panel viewport onto its playhead. Skipping it can leave the panel parked
+   off-screen. Fixing our own regression is not a "new feature" — it is finishing BL-5 correctly.
+2. **PO core target** — "host TF switch must not disturb other panels." A panel scrolled off-view is a
+   visible violation of that target.
+
+**Manager recommendation:** GRANT, but I11-strict. Do NOT patch from the BL-5 hypothesis alone (that is
+how B-FIX-H shipped inert). Step 1 = read-only DIAG to confirm the exact mechanism: is the panel offsetX
+left parked because the recenter seek is skipped, OR is empty-recovery (B-FIX-J) suppressing the
+correction, OR is self-heal (B-FIX-I) not firing because the playhead is judged "aligned"? Then one gated
+fix (own kill-switch) with live verification. If DIAG shows it is NOT a BL-5 side-effect, re-classify.
+
+**Director ruling:** **GRANTED (this entry).** BL-6 is a suspected regression from a fix shipped inside
+the freeze window — regressions from freeze-window work are IN SCOPE to fix, they are not new fix tasks.
+Sequence: (1) read-only DIAG names the mechanism (record brief+agent ID per D-028); (2) one gated fix,
+live-verified; (3) resume Item-2/3 consolidation. The freeze otherwise stands. ESC-011 open until BL-6
+fix live-verified.
+
