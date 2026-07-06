@@ -462,6 +462,27 @@
                     ch._mcNeedsSelfHeal = false;
                     var rs = ch.replaySystem;
                     if (!rs || !rs.isActive) return;
+                    // Only heal a panel whose playhead is actually OFF-SCREEN. A panel still showing
+                    // its playhead is fine (e.g. a cross-TF panel that correctly ignored the host
+                    // switch); force-recentering it would move offsetX and trip a needless history
+                    // refetch (the "4h panels re-fetch when host goes 1m" regression). Compare the
+                    // playhead timestamp against this panel's own visible time window.
+                    try {
+                        var _phTs = Number(rs.replayTimestamp);
+                        var _dd = Array.isArray(ch.data) ? ch.data : [];
+                        if (Number.isFinite(_phTs) && _dd.length) {
+                            var _vs = Number.isFinite(ch.visibleStartIndex) ? ch.visibleStartIndex : 0;
+                            var _ve = Number.isFinite(ch.visibleEndIndex) ? ch.visibleEndIndex : _dd.length;
+                            var _lo = Math.max(0, Math.min(_dd.length - 1, _vs));
+                            var _hi = Math.max(0, Math.min(_dd.length - 1, _ve - 1));
+                            var _firstT = Number(_dd[_lo] && _dd[_lo].t);
+                            var _lastT = Number(_dd[_hi] && _dd[_hi].t);
+                            if (Number.isFinite(_firstT) && Number.isFinite(_lastT)
+                                && _phTs >= _firstT && _phTs <= _lastT) {
+                                return; // playhead already in view — nothing to heal
+                            }
+                        }
+                    } catch (_) {}
                     if (typeof rs.syncReplayViewportToPlayhead === 'function') {
                         rs.syncReplayViewportToPlayhead(ch, { forceRecenter: true, resetPriceScale: true, render: true });
                     }
