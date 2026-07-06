@@ -80,3 +80,12 @@ If you could not verify something, say so explicitly.
 Line numbers in docs drift after every commit. Find functions with search
 (`checkViewportLoadMore`, `applyVisibleRange`, ...). If a named function does not exist,
 STOP and report — do not guess a similar-looking one.
+
+## I11 — A fix for a live-reproducible symptom requires a live-verified mechanism
+(Added D-022, 2026-07-06.) Static code tracing may SCOPE a diagnosis, but before a FIX task
+is dispatched for a symptom the PO can reproduce, the diagnosis must include an instrumented
+LIVE capture showing the faulty variable doing the faulty thing (e.g. B10b: panel `offsetX`
+constant while `firstVisTs` jumps on host prepend). "The code reads like it should do X" is
+spec input, not proof. DIAG-B9 Q1 named a plausible-but-wrong site family from static reading;
+B-FIX-A was implemented faithfully against it and was inert for the real repro. Instrument →
+capture → prove → then fix. (Formalizes the "no more blind fixes" call.)

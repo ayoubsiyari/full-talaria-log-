@@ -3253,8 +3253,12 @@ class Chart {
             if (this._isMultichartEmbedPanel()) return;
             if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return;
             if (!Array.isArray(this.rawData) || this.rawData.length === 0) return;
+            const replayNativeTf = (typeof this._multichartReplayFineMasterInUse === 'function'
+                && this._multichartReplayFineMasterInUse(this.replaySystem))
+                ? this.replaySystem?.rawTimeframe
+                : null;
             const nativeTf = String(
-                (this.replaySystem?.isActive ? this.replaySystem?.rawTimeframe : null)
+                replayNativeTf
                 || this._nativeRawFetchTf
                 || this.currentTimeframe
                 || ''
@@ -3998,8 +4002,11 @@ class Chart {
 
         const displayTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
         const rs0 = this.replaySystem;
+        const fineReplayMasterInUse = typeof this._multichartReplayFineMasterInUse === 'function'
+            ? this._multichartReplayFineMasterInUse(rs0)
+            : !!(rs0 && rs0.isActive);
         const displayTfMasterHost = displayTf !== '1m'
-            && !(rs0 && rs0.isActive)
+            && !fineReplayMasterInUse
             && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_DISPLAY_TF_MASTER)
             && typeof this._isMultichartHostPanel === 'function'
             && this._isMultichartHostPanel();
@@ -4342,6 +4349,7 @@ class Chart {
                         this._reseedReplayFullRawFromLoadedData();
                     }
                     replay.rawTimeframe = loadedNativeTf;
+                    replay._mcFineMasterHydrated = String(loadedNativeTf).toLowerCase().trim() === '1m';
                     if (Number.isFinite(restoreTs)) {
                         if (independentPair
                             && typeof this._applyIndependentPanelReplaySlice === 'function') {
@@ -4361,6 +4369,7 @@ class Chart {
                             ? this._panelFullRawData
                             : replay.fullRawData;
                         replay.rawTimeframe = loadedNativeTf;
+                        replay._mcFineMasterHydrated = String(loadedNativeTf).toLowerCase().trim() === '1m';
                     }
                 }
 
@@ -5631,6 +5640,16 @@ class Chart {
         }
     }
 
+    _multichartReplayFineMasterInUse(replay = this.replaySystem) {
+        if (this._lazyReplayMasterDisabled()) return !!(replay && replay.isActive);
+        if (!this.isBacktestMode || !replay || !replay.isActive) return false;
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) return false;
+        const nativeTf = String(replay.rawTimeframe || this._nativeRawFetchTf || '').toLowerCase().trim();
+        if (nativeTf === '1m' && replay._mcFineMasterHydrated === true) return true;
+        return !!(replay.isPlaying || replay._lazyReplayMasterPreflight)
+            && this._multichartReplayNeedsFineMaster(replay);
+    }
+
     _shouldDeferInitialMultichartReplayMaster(displayTf) {
         if (this._lazyReplayMasterDisabled()) return false;
         if (!this.isBacktestMode) return false;
@@ -6034,6 +6053,7 @@ class Chart {
                         replay.fullRawData = [...this.rawData];
                         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
                         replay.rawTimeframe = replayRawTf;
+                        replay._mcFineMasterHydrated = forceLazyFineMaster && String(replayRawTf).toLowerCase().trim() === '1m';
                         replay._fullRawDataMatchesTF = false;
                         replay.tickPathCache = {};
                         replay.tickPathCacheBuilt = false;
@@ -6057,6 +6077,12 @@ class Chart {
                         }
                         replay.sessionStartIndex = floorIdx;
                     }
+                }
+                if (forceLazyFineMaster
+                    && typeof this._isMultichartHostPanel === 'function'
+                    && this._isMultichartHostPanel()
+                    && typeof this._emitMultichartHostDataCommit === 'function') {
+                    this._emitMultichartHostDataCommit();
                 }
 
                 return hasWallClockPrefix(this.rawData);
@@ -7023,8 +7049,9 @@ class Chart {
                 && typeof this._isMultichartHostPanel === 'function'
                 && this._isMultichartHostPanel()) {
                 const rawTf = String(this.replaySystem?.rawTimeframe || this._nativeRawFetchTf || this.currentTimeframe || '1m').toLowerCase().trim();
-                if (rawTf && rawTf !== '1m' && !this._multichartReplayNeedsFineMaster(this.replaySystem)) {
-                    return rawTf;
+                if (!this._multichartReplayFineMasterInUse(this.replaySystem)) {
+                    const displayTf = String(this.currentTimeframe || rawTf || '1m').toLowerCase().trim();
+                    return rawTf && rawTf !== '1m' ? rawTf : displayTf;
                 }
             }
             if (this._mcViewportFirstMasterHydrating

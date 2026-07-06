@@ -1007,3 +1007,60 @@ hand-rolled copies of prepend math is how the next drift bug gets written.
 
 Order confirmed: B-FIX-A ships and passes the PO run FIRST; 6b-2 is specced against
 that accepted state. Nothing else rides in either build.
+
+---
+
+## D-022 — Drift thread CLOSED (B-FIX-C); new standing rule; back to plan (2026-07-06)
+
+### Closure and credit
+
+B-FIX-C accepted live ("the drifted movement is fixed") — the drift thread that ran
+B-FIX-A → DIAG-B9 → DIAG-B10 → B-INSTR-B10b → B-FIX-C is closed. The final mechanism
+(panels share the host replay master by reference; `currentIndex` was compensated on
+left-growth but `chart.offsetX` never was — host compensates its own, panels don't:
+asymmetry = drift) was proven by live logs, not argued from code. The §6af capture is
+a model artifact: four log lines that settle what two static diagnoses could not.
+
+### Standing rule (binding, add to INVARIANTS as I10)
+
+**A fix targeting a live-reproducible symptom requires a live-verified mechanism.**
+DIAG-B9 Q1 named a plausible-but-wrong site family from static reading; B-FIX-A was
+implemented faithfully against it and was inert for the actual repro. Static code
+tracing may SCOPE a diagnosis, but before a fix task is dispatched for a symptom the
+PO can reproduce, the diagnosis must include an instrumented live capture showing the
+faulty variable doing the faulty thing (as B10b did: offsetX constant while firstVisTs
+jumps). "The code reads like it should do X" is spec input, not proof. This formalizes
+the manager's own "no more blind fixes" call — correct call, now policy.
+
+B-FIX-A stays in (correct for its sites, kill-switched, harmless) — concur with the
+manager; no revert.
+
+### Backlog triage RATIFIED; PO's return-to-plan is the right call
+
+BL-1 (switch-back flicker) and BL-3 (replay render lag) fold into Phase 3 render
+budget; BL-2 (cross-panel price-scale coupling) gets its own DIAG when scheduled —
+note BL-2 is an INVARIANT violation (price-axis independence), so when Phase-3
+planning starts it outranks the cosmetic items. None block 6b-2. Chasing each new
+symptom as it appears is the old whack-a-mole loop; logging + triaging + returning to
+plan is exactly the discipline this overhaul exists to enforce.
+
+### Next step: B-FIX-6b-2, D-021 constraints unchanged, two additions
+
+1. The §6af capture independently confirmed the group-by-group hauling live
+   (`hostLoad prepended=2000` ×12, ~24k bars) — that capture is the 6b-2 "before";
+   no new baseline needed.
+2. **Interaction check for the 6b-2 report:** B-FIX-C compensates panel offsetX on
+   shared-master left-growth. After 6b-2, the idle-armed host holds a display-TF
+   master and 1m panels become B8 owners — the shared-master growth path B-FIX-C
+   compensates largely stops firing in this scenario. The report must state which
+   compensation paths are active in each mode (idle-armed browse / playing / owner
+   panels) and confirm no double-shift and no orphaned path.
+
+### Hygiene register (schedule after 6b-2 ships — one cleanup task)
+
+- `[B10]` instrumentation: keep through 6b-2 acceptance (it directly verifies the
+  before/after), then gate behind a diag flag or strip.
+- Viewport-first dead code removal (per D-016, "after B lands").
+- Kill-switch inventory: we now carry 8+ flags; the cleanup task must produce a
+  table (flag → fix → default → can it be retired) so the flag surface doesn't
+  become its own bug source.

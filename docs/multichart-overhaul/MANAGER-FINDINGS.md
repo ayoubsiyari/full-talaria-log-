@@ -954,6 +954,69 @@ the `[B10]` instrumentation, PO can VERIFY the fix directly: on host left-load, 
 should now CHANGE by the prepend delta while `firstVisTs` stays anchored (was: offsetX constant,
 firstVisTs jumping). Fixes DRIFT only; group-by-group 1m hauling remains B-FIX-6b-2.
 
+## 6ah. B-FIX-C ACCEPTED live (drift GONE) + new symptom: same-TF switch-back re-render (2026-07-06, b25)
+
+PO on b25: "the drifted movement is fixed." **B-FIX-C acceptance = PASS.** The armed-idle host
+pan-load no longer drifts same-pair panels. Root cause (panel offsetX not compensated on shared-
+master left-growth) is resolved. This closes the drift thread that spanned B-FIX-A → B9 → B10 →
+B-INSTR → B-FIX-C.
+
+**New symptom reported same session:** all panels on 1m → switch host A to 4h (panels hold, good)
+→ switch host A back to 1m → "the multichart hid like it's re-rendering" (visible blank/flicker/
+re-render on the panels when the host returns to the panels' TF).
+
+Prime suspects (unconfirmed): the same-TF re-mirror path (`_multichartMirrorHostTfSwitchIfReady` /
+6a-2 same-TF remirror) replacing panel arrays with a visible blank frame on switch-back, OR a B8
+owner→mirror handover if the 4h/1m step engaged B8 (only in live mode where host native=4h). Need
+to confirm: (a) live-browse vs backtest, (b) whether it's a regression from B-FIX-A/B-FIX-C (test
+with kill-switches) or pre-existing mirror-commit re-render. Read-only diagnosis before any fix.
+
+## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
+
+PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
+these so they are tracked, triaged, and not lost:
+
+- **BL-1: same-TF switch-back re-render/flicker.** All panels 1m → host→4h (panels hold) →
+  host→1m: panels visibly blank/re-render. Suspect: same-TF re-mirror (`_multichartMirrorHostTfSwitchIfReady`
+  / 6a-2) repainting with a blank frame. Family: Phase 3 render-budget / mirror-commit smoothness.
+- **BL-2: cross-panel price-scale coupling.** "Some timeframe controls the scale of another chart"
+  — changing one panel's TF changes another panel's PRICE (Y) scale. Violates the standing design
+  invariant "price-axis independent per panel" (MultichartGrid header). Suspect: shared autoscale /
+  shared master min-max leaking across panels. Distinct from horizontal drift; own diagnosis when
+  scheduled.
+- **BL-3 (known): single-chart replay render lag** (shared `resampleData`/render hot path) — Phase 3.
+
+Triage: BL-1 and BL-3 fold into Phase 3 (render budget). BL-2 is a targeted price-axis-independence
+bug (own DIAG when reached). None block the current plan step (B-FIX-6b-2).
+
+## 6aj. B-FIX-6b-2 code sign-off (idle-armed host holds display-TF master) (2026-07-06, b26)
+
+Worker 1 implemented B-FIX-6b-2. Manager verification:
+- **I4:** both chart.js copies byte-identical `49767de2…`.
+- **Single-source predicate `_multichartReplayFineMasterInUse()`** (chart.js:5643) drives all three
+  sites — clean, no scattered copies:
+  - `loadMultichartPanelFromHost` gate (4008): `displayTfMasterHost = displayTf!=='1m' &&
+    !fineReplayMasterInUse && …` → idle-armed host takes display-TF master (`masterTf=displayTf`),
+    genuinely LOADS it (source fixed, not label — D-021 #1).
+  - `_emitMultichartHostDataCommit` (3256): commits `replaySystem.rawTimeframe` ONLY when fine
+    master truly in use, else `_nativeRawFetchTf` (no phantom label).
+  - `_getReplayPanFetchTimeframe` (7052): returns display TF on armed-paused pan when no fine master
+    (third surface DIAG-B9 flagged).
+- **Predicate logic:** kill-switch → old `isActive` coupling; idle-armed (not playing/preflight,
+  `_mcFineMasterHydrated` false) → false → display-TF master; true only when 1m genuinely hydrated
+  or playing+needs-fine.
+- **Transition flip wired:** `_mcFineMasterHydrated` set true on real 1m load/lazy-hydrate
+  (4352/4372/6056); after hydration host emits fresh commit → B8 owner→mirror handover. Preserves
+  6b lazy guards (`_ensureLazyReplayMasterBeforeStep` → `ensureReplayDataCoversTimestamp(forceFineMaster)`).
+- **I8 kill-switch** `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER` reverts to eager; I7 host-gated;
+  interaction map provided (idle-browse/playing/owner — no B-FIX-C double-shift, no orphaned path).
+- node --check + lints clean; build b26; both sw.js `talaria-chart-20260706b26`.
+
+**Verdict: B-FIX-6b-2 signed off (code).** Per **I11**, this fixes a PO-reproducible symptom
+(group-by-group) so it REQUIRES live acceptance before "done" — PO must capture the D-021 #3
+before/after (idle boot fetchedBars ≪34k; first-play lazy 1m 1–3 reqs; kill-switch reverts; B8
+`ownerFetches>0`; drift stays gone; no blank frames on the play transition). §6af is the "before".
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
