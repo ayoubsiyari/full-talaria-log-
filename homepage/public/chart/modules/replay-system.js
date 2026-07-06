@@ -3094,19 +3094,6 @@ class ReplaySystem {
         
         // Slice rawData to current position (minimum 1 candle)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
-        if (typeof window !== 'undefined'
-            && window.__TALARIA_MC_DEBUG_B10
-            && this.chart
-            && ((typeof this.chart._isMultichartEmbedPanel === 'function' && this.chart._isMultichartEmbedPanel())
-                || (typeof this.chart._isMultichartHostPanel === 'function' && this.chart._isMultichartHostPanel()))) {
-            const b10Id = typeof this.chart._getMultichartPanelId === 'function'
-                ? (this.chart._getMultichartPanelId() || 'chart')
-                : 'chart';
-            console.log('[B10] updateChartData id=' + b10Id
-                + ' currentIndex=' + this.currentIndex
-                + ' fullLen=' + (Array.isArray(this.fullRawData) ? this.fullRawData.length : null)
-                + ' sliceEnd=' + sliceEnd);
-        }
         this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
         
         if (this.chart.rawData.length === 0) {

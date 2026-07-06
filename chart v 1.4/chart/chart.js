@@ -5534,7 +5534,6 @@ class Chart {
                 this.totalCandles = parent.totalCandles;
             }
 
-            const b10OffsetBefore = this.offsetX;
             if (earlier.length > 0 && Number.isFinite(prevReplayIndex)) {
                 replay.currentIndex = Math.min(
                     Math.max(prevReplayIndex + earlier.length, 0),
@@ -5565,13 +5564,6 @@ class Chart {
                 }
             }
             replay._mcLastMasterFirstTs = Number(merged[0]?.t);
-            if (typeof window !== 'undefined' && window.__TALARIA_MC_DEBUG_B10) {
-                console.log('[B10] extend earlier=' + earlier.length
-                    + ' prevIdx=' + prevReplayIndex
-                    + ' offsetBefore=' + b10OffsetBefore
-                    + ' offsetAfter=' + this.offsetX
-                    + ' pendingResample=' + !!this._multichartPendingMasterResample);
-            }
 
             if (typeof replay.updateChartData === 'function') {
                 const inFastPan = lite && (
@@ -22017,22 +22009,6 @@ class Chart {
      * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
     checkViewportLoadMore(direction, force = false) {
-        // B-TRACE-PANLOAD (TEMPORARY, gated by window.__TALARIA_MC_TRACE_PANLOAD): on an embed panel,
-        // name the caller that triggers a pan-load during a host TF switch (the "candle-by-candle
-        // re-render + pan loads" symptom). Behavior-neutral; strip after the driver is confirmed.
-        if (typeof window !== 'undefined' && window.__TALARIA_MC_TRACE_PANLOAD
-            && this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
-            try {
-                const _pcT = (window.parent) ? window.parent.chart : null;
-                console.warn('[PANLOAD] panel=' + ((typeof this._getMultichartPanelId === 'function') ? this._getMultichartPanelId() : '?')
-                    + ' dir=' + direction + ' force=' + force
-                    + ' panelTf=' + this.currentTimeframe
-                    + ' hostTf=' + (_pcT ? _pcT.currentTimeframe : null)
-                    + ' hostSwitching=' + (_pcT ? (_pcT._timeframeSwitching || _pcT._switchingToTimeframe || _pcT._pairSwitchLoading) : null)
-                    + ' panLoading=' + this._panLoading
-                    + ' | caller: ' + ((new Error().stack || '').split('\n').slice(2, 7).join(' | ')));
-            } catch (_) {}
-        }
         if (this._timeframeSwitching || this._pairSwitchLoading) return false;
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
@@ -22449,22 +22425,6 @@ class Chart {
                     }
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
-                    if (direction === 'backward'
-                        && typeof window !== 'undefined'
-                        && window.__TALARIA_MC_DEBUG_B10
-                        && ((typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel())
-                            || (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()))) {
-                        const b10Id = typeof this._getMultichartPanelId === 'function'
-                            ? (this._getMultichartPanelId() || 'chart')
-                            : 'chart';
-                        const b10IsHost = typeof this._isMultichartHostPanel === 'function'
-                            && this._isMultichartHostPanel();
-                        console.log('[B10] hostLoad id=' + b10Id
-                            + ' prepended=' + uniqueNew.length
-                            + ' newLen=' + merged.length
-                            + ' isHost=' + b10IsHost
-                            + ' offsetX=' + this.offsetX);
-                    }
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
                     this._mcDiagCheckJoinRegion(this.replaySystem.fullRawData, mcDiagPrevEdgeTs, {
@@ -25290,40 +25250,6 @@ class Chart {
             this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
             return;
         }
-        if (typeof window !== 'undefined'
-            && window.__TALARIA_MC_DEBUG_B10
-            && typeof this._isMultichartEmbedPanel === 'function'
-            && this._isMultichartEmbedPanel()) {
-            const b10FullLen = Array.isArray(this.replaySystem?.fullRawData)
-                ? this.replaySystem.fullRawData.length
-                : null;
-            const b10OffsetX = this.offsetX;
-            const b10Prev = this._b10LastRender || {};
-            if (b10Prev.offsetX !== b10OffsetX || b10Prev.fullLen !== b10FullLen) {
-                const b10Spacing = typeof this.getCandleSpacing === 'function'
-                    ? this.getCandleSpacing()
-                    : 0;
-                let b10FirstVisTs = null;
-                if (b10Spacing > 0 && Array.isArray(this.data) && this.data.length) {
-                    const b10FirstIdx = Math.max(0, Math.min(
-                        this.data.length - 1,
-                        Math.floor(-this.offsetX / b10Spacing),
-                    ));
-                    b10FirstVisTs = this.data[b10FirstIdx]?.t ?? null;
-                }
-                const b10Id = typeof this._getMultichartPanelId === 'function'
-                    ? (this._getMultichartPanelId() || 'embed')
-                    : 'embed';
-                console.log('[B10] render id=' + b10Id
-                    + ' embed=true'
-                    + ' offsetX=' + b10OffsetX
-                    + ' firstVisTs=' + b10FirstVisTs
-                    + ' rawLen=' + (Array.isArray(this.rawData) ? this.rawData.length : null)
-                    + ' fullLen=' + b10FullLen);
-                this._b10LastRender = { offsetX: b10OffsetX, fullLen: b10FullLen };
-            }
-        }
-
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
@@ -28885,7 +28811,6 @@ class Chart {
             if (drawn === 0 && drawSeries.length > 0) {
                 this._scheduleViewportEmptyRecovery();
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
-                this._traceEmptyRenderDriver(drawSeries.length, skipped);
             }
             return;
         }
@@ -29010,34 +28935,7 @@ class Chart {
         if (drawn === 0 && drawSeries.length > 0) {
             this._scheduleViewportEmptyRecovery();
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
-            this._traceEmptyRenderDriver(drawSeries.length, skipped);
         }
-    }
-
-    // B-TRACE-PANLOAD (TEMPORARY, gated by window.__TALARIA_MC_TRACE_PANLOAD): when an embed panel
-    // renders empty (all candles outside viewport) during a host TF switch, log data growth + offsetX
-    // + the CALL STACK so we can name the per-bar fill/replay-step loop that keeps appending bars and
-    // re-rendering (the "candle-by-candle re-render" symptom). Throttled; behavior-neutral; strip after.
-    _traceEmptyRenderDriver(seriesLen, skipped) {
-        if (!(typeof window !== 'undefined' && window.__TALARIA_MC_TRACE_PANLOAD)) return;
-        if (!(this._isMultichartEmbedPanel && this._isMultichartEmbedPanel())) return;
-        try {
-            const _now = Date.now();
-            // Log the first hit and then every ~5th within a burst so the stack is captured but not spammed.
-            this._emptyTraceCount = (this._emptyTraceCount || 0) + 1;
-            if (this._emptyTraceLast && (_now - this._emptyTraceLast) < 250 && (this._emptyTraceCount % 5 !== 0)) return;
-            this._emptyTraceLast = _now;
-            const _pcT = (window.parent) ? window.parent.chart : null;
-            const _rs = this.replaySystem || {};
-            console.warn('[EMPTYRENDER] panel=' + ((typeof this._getMultichartPanelId === 'function') ? this._getMultichartPanelId() : '?')
-                + ' seriesLen=' + seriesLen + ' skipped=' + skipped
-                + ' dataLen=' + (Array.isArray(this.data) ? this.data.length : -1)
-                + ' offsetX=' + Math.round(this.offsetX) + ' candleWidth=' + (this.candleWidth || this.getCandleSpacing && this.getCandleSpacing())
-                + ' panelTf=' + this.currentTimeframe + ' hostTf=' + (_pcT ? _pcT.currentTimeframe : null)
-                + ' hostSwitching=' + (_pcT ? (_pcT._timeframeSwitching || _pcT._switchingToTimeframe || _pcT._pairSwitchLoading) : null)
-                + ' currentIndex=' + _rs.currentIndex + ' fullRawLen=' + (Array.isArray(_rs.fullRawData) ? _rs.fullRawData.length : -1)
-                + ' | caller: ' + ((new Error().stack || '').split('\n').slice(2, 8).join(' | ')));
-        } catch (_) {}
     }
 
     /**

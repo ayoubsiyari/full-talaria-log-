@@ -210,6 +210,19 @@ def ensure_users_schema(app) -> None:
                             "default_modules TEXT"
                         )
                     )
+                    # subscription_plans entitlement columns. These are also patched
+                    # by the chart backend, but add them here so the journal service
+                    # self-heals if it boots first (public /plans breaks otherwise).
+                    for _plan_ddl in (
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_trading_sessions INTEGER",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_tickers_per_session INTEGER",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_supporting_tickers_per_session INTEGER",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_personal_live_journals INTEGER",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_prop_live_journals INTEGER",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS tier_rank INTEGER NOT NULL DEFAULT 0",
+                        "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS entitlements_json TEXT",
+                    ):
+                        conn.execute(text(_plan_ddl))
                     conn.execute(
                         text(
                             "CREATE TABLE IF NOT EXISTS mentorship_allowlist ("

@@ -352,3 +352,31 @@ structural fix** (separate task B-FIX-6b-2, not bundled). **Option B REJECTED** 
 via escalation with DIAG-9 evidence). B8 stays shipped/inert — its counters are the proof
 harness. **ESC-009 resolved by D-020.**
 
+---
+
+## ESC-010 — BL-2b fix-now exception (retroactive stub) (2026-07-06)
+
+**Filed retroactively** per Director D-026 process-note #1. During the session the BL-2b fix-now
+exception was requested and granted in chat before an ESC entry existed; this stub restores the proper
+paper trail.
+
+**Request:** fix BL-2b (sync-OFF host TF switch rescales panels B/C/D's price axis) as a fix-now
+exception to the D-024 freeze.
+
+**Justification:** price-axis-independence INVARIANT violation (D-022 top-priority) AND the PO's
+explicitly stated core target ("all sync off ⇒ host actions must have zero effect on B/C/D"). Cleared
+the D-024 escalation bar.
+
+**Manager recommendation:** grant, but I11-strict — live-instrumented DIAG to NAME the driver before any
+fix (B-FIX-H already shipped inert against a static-derived BL-2b mechanism).
+
+**Director ruling:** GRANTED (Director D-026, DIRECTOR-DECISIONS.md). Ran as: probe install (b69) →
+[BL2B_PRICE] live capture (driver = `_multichartMirrorHostTfSwitchIfReady` host price-state copy on the
+never-sync-gated replay bus; secondary host-driven `resetPriceScale`) → one gated fix B-FIX-BL2b (b70,
+kill-switch `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`) → PO live-verified ("perfect now all good").
+**This was the LAST fix-now exception; the freeze is now active — future exceptions must file an ESC
+entry BEFORE work begins. ESC-010 resolved by Director D-026.**
+
+**Process note going forward:** exception request → ESC entry → Director ruling → work (never
+chat-authorized, never Manager-preassigned decision numbers).
+

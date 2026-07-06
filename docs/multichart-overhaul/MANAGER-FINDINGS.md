@@ -1555,6 +1555,36 @@ MATCH (chart.js B8480573…, replay-system 1975A270…, panel-cmd-bridge 1DFA56A
 both trees, node --check clean, build b70. PO live: sync-off host 1m↔4h no longer rescales B/C/D; own
 scrub/playback unaffected. **BL-2b CLOSED.** Price-axis-independence invariant restored on the replay bus.
 This closes the TF-SWITCH SETTLING / price-axis thread (C→D→E→F→G→I→J→BL-5→BL-2b).
+BUILD-ID HONESTY NOTE (per Director D-026 #2): the [BL2B_PRICE] capture screenshot was labeled b72
+(a PO-side deployed label) while the probe was bumped b69 and the fix bumped b70; the repo source of
+truth (sw.js SW_VERSION) is **b70**. The DIAG capture happened BEFORE the fix (I11 order preserved),
+and BL-2b was then live-verified on the deployed fix build ("perfect now all good"). The b72 vs b69/b70
+mismatch is deploy-drift between PO's built container and the repo bump counter — it does NOT affect
+correctness, but reconciling the build-id source of truth is folded into Item-1 cleanup.
+
+### PROCESS DIRECTIVE ACK (Director, 2026-07-06) — Manager may self-dispatch workers under binding rules
+ACK: Manager may dispatch worker subagents directly. Binding: (1) every worker brief recorded VERBATIM in
+the ledger at dispatch; (2) record the agent ID; (3) acceptance = INDEPENDENT re-derivation (recompute I4
+hashes, re-read shipped guard lines, run node --check/lints, confirm kill-switch name+default) — never the
+worker's self-report; (4) fresh-context retries after a PROVEN-WRONG diagnosis go to a COLD PO-started
+worker (not a Manager-spawned child that inherits my framing); (5) all else unchanged (I1–I11, one gated
+change/task, I11 live-verify, ESC→Director ruling, ACTIVE D-026 freeze = consolidation only).
+
+### TRACEABILITY BACKFILL — this session's dispatched workers (rules 1–2, retroactive)
+Briefs for these lived only in subagent context at dispatch (pre-directive); recorded here now for audit:
+- **BL-5 fix** — agent `eb140ecf` — brief = §6ao worker-prompt block (verbatim). Output: B-FIX-BL5 (b68).
+- **BL-5 I/J retirement verdict** — agent `eb140ecf` (resume) — verdict recorded in §6ao (I & J both KEEP).
+- **BL-2b price probe install** — agent `cb22fe5d` — brief: install gated `__TALARIA_BL2B_PRICE_PROBE`
+  helpers + bus marks + mutator wrap/logs per §6ao DIAG spec, both trees, no fix. Output: probe build b69.
+- **BL-2b gated fix** — agent `5f59b4c9` — brief: enforce price-axis independence (skip host price copy in
+  `_multichartMirrorHostTfSwitchIfReady`; skip host-driven `resetPriceScale`), kill-switch
+  `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`. Output: B-FIX-BL2b (b70), live-verified.
+- **Item-1 inventory (read-only)** — agent `2832ae4d` — brief: kill-switch table + single-hold policy +
+  cleanup disposition. Output: CONSOLIDATION-ITEM1-FLAG-INVENTORY.md.
+- **Item-1 cleanup execution** — agent `f1b04f25` — brief: strip [B10]/[EMPTYRENDER]/[PANLOAD] probes (keep
+  [BL2B_PRICE]), reconcile build-id drift, do NOT touch viewport-first. Output: b71.
+Independent Manager verification was performed on each fix/cleanup (hashes recomputed, grep/guard re-read,
+node --check) — not the workers' self-reports. Going forward, briefs+IDs are recorded at dispatch time.
 
 ### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
 Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does

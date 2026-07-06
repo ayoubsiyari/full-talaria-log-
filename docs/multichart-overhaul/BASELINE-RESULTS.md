@@ -342,3 +342,46 @@ share fileId 25.
 - Console errors: none notable (flagcdn CORS external).
 - Smoothness 1-5: (single-chart fast)
 - Build 20260627b586, tf 4h, `reset → drag → report`.
+
+---
+
+# RE-BASELINE (build 20260707b71, post-consolidation — D-026 Item 2)
+
+New reference state after the TF-SWITCH SETTLING / price-axis thread (C→BL-2b) closed. Each row is the
+capture that future regressions get measured against. Mark PASS / FAIL / STILL-NOT-CAPTURED. Use
+`window.__mcDiagReset()` before and `window.__mcDiagReport()` after where counters apply.
+
+## R1 — Armed-idle pan-load (fetchedBars stays low)
+**Do this:** boot multichart, arm replay (do NOT play), pan/drag. **Expect:** idle host does not eager-load
+a full 1m master; fetchedBars ≪ 34k (B-FIX-6a/6b/6c).
+- Result: __CAPTURE__ (fetches / fetchedBars per panel via `__mcDiagReport()`)
+- Verdict: PASS / FAIL / NOT-CAPTURED
+
+## R2 — Host 1m → 4h → 1m switch-back (no cascade/flash)
+**Do this:** all panels same pair; switch host 1m→4h→1m. **Expect:** no host reload cascade, no panel flash,
+no stale-data repaint (B-FIX-D/E/F/G).
+- Result: __CAPTURE__
+- Verdict: PASS / FAIL / NOT-CAPTURED
+
+## R3 — Paused host 4h → 1m, coarse panels (no candle-by-candle)
+**Do this:** all panels 4h, replay paused, switch host 4h→1m. **Expect:** 4h panels do NOT re-render
+candle-by-candle; no `No candles drawn!` flood; no 50ms rAF (BL-5). Kill-switch
+`__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK=true` reverts.
+- Result: __CAPTURE__
+- Verdict: PASS / FAIL / NOT-CAPTURED
+
+## R4 — Sync-off host 1m ↔ 4h, price-axis independence
+**Do this:** all sync toggles OFF, 4 same-pair panels; switch host 1m↔4h. **Expect:** B/C/D price (Y) axis
+stays put (each autoscales own bars). Kill-switch `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE=true`
+reverts (coupling returns). Own scrub/playback unaffected (BL-2b).
+- Result: __CAPTURE__
+- Verdict: PASS / FAIL / NOT-CAPTURED
+
+## D-025 deferred-checks manifest (each gets PASS / FAIL / STILL-NOT-CAPTURED)
+- **M1 — BL-1 reconciliation:** is the switch-back flicker resolved by F/G, or is there a remnant? __CAPTURE__
+- **M2 — §6al host price-scale-off-screen-until-double-click:** gone post-D/E, or still present? __CAPTURE__
+- **M3 — B8 activation counters:** during one drag/play, `ownerFetches>0` / `handovers` increment? __CAPTURE__
+- **M4 — BL-2b isolation:** `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE=true` → coupling returns
+  (already observed live during BL-2b acceptance; record with evidence pointer). __CAPTURE__
+- **M5 — BL-2 sync-ON reframe:** with Date-Range/Time sync ON, does host TF switch still reframe panels?
+  (specced fix exists, held by freeze — record current state). __CAPTURE__

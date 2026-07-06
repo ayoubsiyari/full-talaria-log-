@@ -1277,7 +1277,57 @@ makes these wins durable without the PO hand-testing every future build.
 
 ---
 
-## D-026 — BL-5 CLOSED; BL-2b escalation GRANTED before the freeze; strict sequence (2026-07-06)
+## D-027 — Item-1 accepted; viewport-first deferral APPROVED as D-026 amendment (2026-07-06)
+
+### Accepted
+
+- **Process directive ACK + traceability backfill** — done properly (briefs verbatim,
+  agent IDs, independent-verification statement). The build-id honesty note resolves
+  D-026 #2: capture-before-fix order held (probe b69 → fix b70; "b72" was PO-side
+  deploy-label drift), so I11 is satisfied.
+- **Consolidation Item-1 (flag inventory + partial cleanup, b71)** — accepted. The
+  inventory is the artifact this decision log has been asking for since D-022:
+  22 behavioral flags, each with code path, default, and verdict; the four-phase
+  single-hold policy (hard hold → F → G release; BL-5 seek skip; J/I recovery
+  backstops; BL-2b price orthogonal) is a coherent model of what grew organically.
+  Two catches earn specific credit: the **in-repo sw.js drift** (`dist-v9/sw.js`
+  stuck at b36 while the mirror said b70 — a stale-serve hazard now reconciled) and
+  documenting the **un-flagged hard hold** at panel-cmd-bridge.js:516.
+
+### Ruling: the viewport-first deferral is APPROVED (amends D-026 item 1)
+
+The manager deferred viewport-first dead-code removal (and H retirement) to a
+post-baseline reviewed pass, against D-026's instruction to remove it in cleanup.
+This deviation is CORRECT and is hereby the order of operations: deleting ~700
+lines from the engine with no baseline to diff against and no regression harness
+would have been the process's own rules violated in cleanup clothing. Removal
+(viewport-first + H flag together, one reviewed task) is scheduled AFTER Item-2
+baselines exist. This also sets a precedent worth naming: dead-code removal is a
+behavior-affecting change for gating purposes, never "just cleanup."
+
+### Endorsed for the plan re-baseline (Item-3 agenda)
+
+- **CI check: all `sw.js` SW_VERSION === `__TALARIA_CHART_BUILD_ID`** — the
+  b36/b70/b72 episode shows build-id drift is a recurring hazard class (it already
+  caused the b11 collision). This belongs with the Phase-4 harness work.
+- The `[BL2B_PRICE]` probe retention until the Item-2 BL-2b isolation re-capture is
+  the right call; strip it in the post-baseline pass with viewport-first.
+
+### Next
+
+Item-2 (baseline re-capture + D-025 deferred-checks manifest) is now the only open
+work item. Then Item-3 (plan re-baseline session), then the post-baseline removal
+pass. Freeze holds throughout.
+
+---
+
+## [SUPERSEDED] D-026(mgr) — Manager pre-issued escalation grant; retroactively ratified by the Director's D-026 above (2026-07-06)
+
+> NOTE (Manager, reconciliation): this entry and D-027 below were Manager-authored before the
+> Director issued the binding **D-026 (freeze active)** above (1214). Decision numbers/escalation
+> grants are issued by the Director, not pre-assigned by the Manager (Director D-026 process-note #1).
+> Retained for history; the binding freeze decision is the Director's D-026 above. The escalation is
+> now logged properly as ESC-010 in MANAGER-ESCALATIONS.
 
 ### Ratifications
 - **BL-5 (B-FIX-BL5, b68) ACCEPTED live.** PO: "perfect it's fixed" — coarse-panel
@@ -1313,7 +1363,10 @@ consolidation lands — this is the last one.
 
 ---
 
-## D-027 — BL-2b CLOSED; TF-SWITCH SETTLING thread done; FREEZE IS NOW ACTIVE (2026-07-06)
+## [SUPERSEDED] D-027(mgr) — duplicate freeze activation; folded into the Director's D-026 above (2026-07-06)
+
+> NOTE (Manager, reconciliation): duplicate of the Director's binding **D-026 (freeze active)** above.
+> Retained for history only; the three consolidation items + sequence are governed by Director D-026.
 
 ### Ratification
 - **B-FIX-BL2b (b70) ACCEPTED live.** PO: "perfect now all good" — sync-off host 1m↔4h no longer
@@ -1345,3 +1398,34 @@ showstopper comes through ESCALATIONS with a Director ruling, not chat authoriza
 
 Sequence: 1 → 2 → 3. Item 1 is docs+cleanup (safe, no behavior change beyond removing probes). Item 2
 needs PO capture time. Item 3 is a planning session. Recommend starting with Item 1.
+
+---
+
+## D-028 — Self-dispatch directive binding; Item 1 DONE (b71); Item 2 in progress (2026-07-06)
+
+(Numbered D-028 to avoid collision with the superseded Manager-authored D-027 stub above.)
+
+### Process directive (now binding, ratified into the log)
+The Manager may dispatch worker subagents directly, under five binding rules: (1) every worker brief
+recorded VERBATIM in MANAGER-FINDINGS at dispatch; (2) agent ID recorded; (3) acceptance = INDEPENDENT
+re-derivation (recompute I4 hashes, re-read shipped guard lines, run node --check/lints, confirm
+kill-switch name+default), never the worker's self-report; (4) fresh-context retries after a
+PROVEN-WRONG diagnosis go to a COLD PO-started worker (not a Manager-spawned child that inherits the
+Manager's framing); (5) all else unchanged (I1–I11, one gated change/task, I11 live-verify, ESC→ruling,
+ACTIVE freeze). Manager ACK + traceability backfill recorded in MANAGER-FINDINGS. Compliant.
+
+### Consolidation progress
+- **Item 1 DONE (b71).** Kill-switch inventory + single-hold policy + cleanup plan in
+  CONSOLIDATION-ITEM1-FLAG-INVENTORY.md. Executed freeze-safe subset: stripped [B10]/[EMPTYRENDER]/
+  [PANLOAD] probes (both trees, 0 matches), kept [BL2B_PRICE] for Item 2, reconciled build-id drift
+  (all sw.js = b71; stale dist-v9/sw.js b36→b71). Manager independently verified (hashes, grep, node
+  --check). DEFERRED (correct call): viewport-first dead-code removal + H-flag retire → a reviewed pass
+  AFTER Item-2 baseline exists to diff against (no regression harness yet). H stays shipped/inert meanwhile.
+- **Item 2 IN PROGRESS.** BASELINE-RESULTS re-baseline scaffold added (R1–R4 canonical repros + M1–M5
+  D-025 manifest). Needs PO capture on b71. This is the sequence-blocking step.
+- **Item 3 PENDING** (plan re-baseline) — Manager may pre-draft, but it is not ratified until the Item-2
+  numbers exist to ground it.
+
+### Standing
+Freeze remains ACTIVE (consolidation only; no fix tasks; exceptions via ESC→ruling). Next action: PO
+captures Item-2 R1–R4 + M1–M5 on b71; Manager records PASS/FAIL/NOT-CAPTURED; then Item 3.

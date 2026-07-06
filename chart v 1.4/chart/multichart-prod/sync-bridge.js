@@ -513,12 +513,6 @@
         if (spacing > 0) {
             const newOffsetX = widthPx - (iR2 + 1) * spacing;
             chart.offsetX = newOffsetX;
-            if (global.__TALARIA_MC_DEBUG_B10) {
-                console.log('[B10] wallClock chartId=' + chartId
-                    + ' numBars=' + numBars
-                    + ' spacing=' + desiredSpacing
-                    + ' offsetX=' + newOffsetX);
-            }
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
@@ -1662,12 +1656,6 @@
 
         function applyInbound(msg) {
             if (!msg || typeof msg !== 'object') return;
-            if (global.__TALARIA_MC_DEBUG_B10) {
-                console.log('[B10] inbound chartId=' + chartId
-                    + ' type=' + msg.type
-                    + ' panSync=' + !!msg.panSync
-                    + ' forceInitialSync=' + !!msg.forceInitialSync);
-            }
             // Ignore messages we ourselves originated. For iframe bridges
             // this matches strictly. For the host bridge this is also the
             // mechanism that prevents the manager-to-host directDeliver of
