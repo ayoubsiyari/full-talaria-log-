@@ -457,6 +457,26 @@
                 && (pcSwitching._timeframeSwitching || pcSwitching._pairSwitchLoading)) {
                 return;
             }
+            // B-FIX-F (panel flash on host TF-switch): the host clears _timeframeSwitching
+            // BEFORE its deferred post-switch reload settles (bulk ingest / ensureGoToWindow /
+            // backward prepends). During that window the host master does NOT yet bracket the
+            // playhead and its broadcast frames are transient/regressing — mirroring them makes
+            // panels flash and paint old data (the same class of bug B-FIX-E fixed host-side,
+            // but on the panel mirror path which bypasses the cache guard). Hold this panel on
+            // its last good frame until the host playhead is back inside the host master window.
+            if (pcSwitching
+                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_MIRROR_UNSETTLED_HOST)
+                && typeof pcSwitching._replayPlayheadOutsideMasterWindow === 'function') {
+                var _hostRs = pcSwitching.replaySystem;
+                if (_hostRs && _hostRs.isActive) {
+                    var _hostPhTs = Number.isFinite(_hostRs.replayTimestamp)
+                        ? _hostRs.replayTimestamp
+                        : ts;
+                    if (pcSwitching._replayPlayheadOutsideMasterWindow(_hostPhTs, _hostRs)) {
+                        return;
+                    }
+                }
+            }
         } catch (_) {}
 
         if (!ch.rawData || ch.rawData.length === 0) {

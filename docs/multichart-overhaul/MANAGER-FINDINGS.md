@@ -1179,6 +1179,38 @@ SECONDARY (not in this build): the covering network load is ~68535 bars because 
 branch of `_getBacktestBulkHistoryFetchRange` (chart.js:5772-5776) pulls session-start→end. Consider
 bounding it to a playhead-centered window later (BL-4) — lower priority than removing the cascade.
 
+### B-FIX-E LIVE-VERIFIED (PO: "much better") — host reload cascade + flash GONE.
+Remaining: PANELS flash on host TF-switch (the analogous problem on the embed side). PO wants the
+same treatment for panels — stop the flash + old-data reload when the host switches TF.
+Next: read-only DIAG on the panel TF-switch/mirror path (panel-cmd-bridge.js
+`_multichartReplayTimeframeSwitch`, sync-bridge mirror, panel updateChartData) to find whether panels
+hit the same non-covering-window collapse (sliceEnd=1) or re-mirror the host's transient reload
+states. Then a contained, kill-switched panel fix mirroring B-FIX-E.
+
+### DIAG (read-only, agent 69ff5317) — panel flash root, verified
+Primary cause (b): panels MIRROR the host's transient post-switch reload frames. The panel's existing
+hold in `applyReplayFrame` (panel-cmd-bridge.js:454-460) only blocks while
+`parent._timeframeSwitching || _pairSwitchLoading`, but the host clears `_timeframeSwitching` at
+`_endTimeframeSwitching` (chart.js:8223) BEFORE `_deferBacktestTfSwitchFollowUp`/ensureGoToWindow/
+prepends settle. So panels repaint each transient host frame (`_syncReplayMasterFromParentIfCovers`,
+`forceSamePairParentDataMirror` → `_tryMirrorFrameFromParentData` copies parent.rawData by reference)
+= flash + old-data paint. B-FIX-E only guards the cache-APPLY path; the mirror-by-reference path
+bypasses it. Secondary (c): panel independent refetch race when `_multichartMirrorHostTfSwitchIfReady`
+misses.
+
+### B-FIX-F (SHIPPED, gated) — hold panel mirror while host master doesn't bracket playhead
+Fix: extend the `applyReplayFrame` hold (panel-cmd-bridge.js:454) — also `return` (keep last good
+frame) when the parent replay is active and `parent._replayPlayheadOutsideMasterWindow(hostPlayheadTs,
+hostReplay)` is true. This suppresses mirroring of the host's non-covering transient reload frames
+until the host settles, then resumes on the next covering broadcast. Same bracket semantics as B-FIX-E,
+applied to the parent on the mirror path.
+Kill-switch: `__TALARIA_MC_DISABLE_PANEL_MIRROR_UNSETTLED_HOST` (I8).
+Isolation: only skips transient frames; does not change B-FIX-C compensation math, B-FIX-D fill guard,
+or B-FIX-E cache guard. Worst case a paused panel shows its last-good frame until a covering frame
+arrives (no flash, no clear).
+Acceptance (live, host 1m→4h→1m armed, same-pair + independent panels): panels do NOT flash/reload old
+data during host switch; they settle to the correct frame once host completes; kill-switch reverts.
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
