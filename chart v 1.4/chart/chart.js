@@ -17320,6 +17320,22 @@ class Chart {
      */
     _scheduleViewportEmptyRecovery() {
         if (this._viewportEmptyRecoverPending) return;
+        // B-FIX-J (host-switch quiet): while the HOST is mid TF-switch, an independent embed panel
+        // can be transiently parked empty (its bars culled by a stale price scale during the host's
+        // re-broadcast churn). Recovering HERE resets the price scale = a visible mid-switch rescale/
+        // move, and then the post-settle panel self-heal re-anchors AGAIN (double motion + a pan-load
+        // refetch). Skip recovery while the host is switching; the panel holds its last good frame and
+        // the single settled self-heal (panel-cmd-bridge _mcScheduleSettledSelfHeal) performs the only
+        // re-anchor once the host is quiet. Kill-switch: window.__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET.
+        if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()
+            && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET)) {
+            try {
+                const _pcQ = (typeof window !== 'undefined' && window.parent) ? window.parent.chart : null;
+                if (_pcQ && (_pcQ._timeframeSwitching || _pcQ._switchingToTimeframe || _pcQ._pairSwitchLoading)) {
+                    return;
+                }
+            } catch (_) {}
+        }
         if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
             const until = this._multichartViewportSettleUntil;
             if (Number.isFinite(until) && performance.now() < until) {
