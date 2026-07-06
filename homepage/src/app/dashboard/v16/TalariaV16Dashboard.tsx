@@ -47,43 +47,39 @@ async function fetchPlatformSections(): Promise<{
   };
 }
 
-export default function TalariaV16Dashboard() {
-  const boot = useV16LiveBootstrap();
+function currentPlatformSection(
+  pathname: string,
+  searchParams: URLSearchParams
+): PlatformSectionKey | null {
+  const search = searchParams.toString();
+  const viewParam = searchParams.get("view");
+  const tabParam = searchParams.get("tab");
+  return (
+    platformSectionForPath(pathname, search ? `?${search}` : "") ||
+    (tabParam === "support" && viewParam === "profile" ? "support" : null) ||
+    v16ViewToPlatformSection(viewParam)
+  );
+}
+
+function TalariaV16DashboardReady({
+  platform,
+  authUser,
+}: {
+  platform: PlatformFeatures;
+  authUser: AuthUser;
+}) {
+  const boot = useV16LiveBootstrap({
+    sessionsEnabled: userHasPlatformSection(authUser, platform, "sessions"),
+  });
   const { isArabic } = useLanguage();
-  const { registerOnSaved } = useBacktestNewSession();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [platform, setPlatform] = useState<PlatformFeatures | null>(null);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-
-  useLayoutEffect(() => {
-    primeV16EmbeddedShell();
-  }, []);
-
-  useEffect(() => {
-    fetchPlatformSections()
-      .then(({ user, platform: pf }) => {
-        setAuthUser(user);
-        setPlatform(pf);
-        if (pf.sections) {
-          window.__TALARIA_PLATFORM_SECTIONS__ = pf.sections;
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    return registerOnSaved(() => {
-      window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
-    });
-  }, [registerOnSaved]);
 
   useEffect(() => {
     window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("sessionId", String(sessionId));
-      // Session dashboard URLs use sessionId only; drop ?view=sessions so the shell does not bounce back.
       params.delete("view");
       params.delete("tab");
       params.delete("thread");
@@ -147,7 +143,6 @@ export default function TalariaV16Dashboard() {
   }, [pathname, router, searchParams]);
 
   const viewParam = searchParams.get("view");
-  const tabParam = searchParams.get("tab");
   useEffect(() => {
     const view = normalizeV16DashboardView(viewParam);
     if (!view) return;
@@ -155,25 +150,17 @@ export default function TalariaV16Dashboard() {
   }, [viewParam]);
 
   useEffect(() => {
-    if (!platform || !authUser || userIsDashboardAdmin(authUser)) return;
-    const search = searchParams.toString();
-    const path = pathname || "/dashboard/";
-    const section =
-      platformSectionForPath(path, search ? `?${search}` : "") ||
-      (tabParam === "support" && viewParam === "profile" ? "support" : null) ||
-      v16ViewToPlatformSection(viewParam);
+    if (userIsDashboardAdmin(authUser)) return;
+    const section = currentPlatformSection(pathname || "/dashboard/", searchParams);
     if (!section) return;
     if (userHasPlatformSection(authUser, platform, section)) return;
     router.replace(firstAllowedPlatformDashboardPath(authUser, platform));
-  }, [authUser, platform, pathname, searchParams, viewParam, tabParam, router]);
+  }, [authUser, platform, pathname, searchParams, router]);
 
   const v16View = normalizeV16DashboardView(searchParams.get("view"));
   const profileActive = v16View === "profile";
   const supportEnabled =
-    !platform ||
-    !authUser ||
-    userIsDashboardAdmin(authUser) ||
-    userHasPlatformSection(authUser, platform, "support");
+    userIsDashboardAdmin(authUser) || userHasPlatformSection(authUser, platform, "support");
 
   return (
     <div
@@ -225,4 +212,66 @@ export default function TalariaV16Dashboard() {
       </div>
     </div>
   );
+}
+
+export default function TalariaV16Dashboard() {
+  const { registerOnSaved } = useBacktestNewSession();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [gateReady, setGateReady] = useState(false);
+  const [platform, setPlatform] = useState<PlatformFeatures | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+
+  useLayoutEffect(() => {
+    primeV16EmbeddedShell();
+  }, []);
+
+  useEffect(() => {
+    return registerOnSaved(() => {
+      window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
+    });
+  }, [registerOnSaved]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { user, platform: pf } = await fetchPlatformSections();
+        if (cancelled) return;
+
+        if (pf.sections) {
+          window.__TALARIA_PLATFORM_SECTIONS__ = pf.sections;
+        }
+
+        const section = currentPlatformSection(pathname || "/dashboard/", searchParams);
+        if (
+          section &&
+          !userIsDashboardAdmin(user) &&
+          !userHasPlatformSection(user, pf, section)
+        ) {
+          window.location.replace(firstAllowedPlatformDashboardPath(user, pf));
+          return;
+        }
+
+        setAuthUser(user);
+        setPlatform(pf);
+        setGateReady(true);
+      } catch {
+        if (!cancelled) {
+          setAuthUser({});
+          setPlatform({});
+          setGateReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, searchParams]);
+
+  if (!gateReady || !platform || !authUser) {
+    return <V16DashboardLoading />;
+  }
+
+  return <TalariaV16DashboardReady platform={platform} authUser={authUser} />;
 }

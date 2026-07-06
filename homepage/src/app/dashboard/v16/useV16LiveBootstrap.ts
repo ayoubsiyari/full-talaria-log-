@@ -134,7 +134,13 @@ function publishBoot(boot: V16LiveBoot, mergeTrades = true): void {
   window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
 }
 
-export function useV16LiveBootstrap(): BootState {
+export type V16BootstrapOptions = {
+  /** When false, skip /api/sessions (section disabled by admin). */
+  sessionsEnabled?: boolean;
+};
+
+export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
+  const sessionsEnabled = opts?.sessionsEnabled !== false;
   const searchParams = useSearchParams();
   const urlSessionId = searchParams.get("sessionId");
   const [state, setState] = useState<BootState>({ status: "loading" });
@@ -298,7 +304,9 @@ export function useV16LiveBootstrap(): BootState {
     (async () => {
       try {
         const [sessionsPayload, journalPayload] = await Promise.all([
-          fetchJson<{ sessions: Session[] }>("/api/sessions"),
+          sessionsEnabled
+            ? fetchJson<{ sessions: Session[] }>("/api/sessions")
+            : Promise.resolve({ sessions: [] as Session[] }),
           fetchJournalApiData({ includeEntries: false }).catch(() => EMPTY_JOURNAL_PAYLOAD),
         ]);
 
@@ -321,9 +329,11 @@ export function useV16LiveBootstrap(): BootState {
         void (async () => {
           try {
             const [kpisPayload, journalFull, communityStrategies] = await Promise.all([
-              fetchJson<{ kpis_by_session_id?: Record<string, SessionKpis> }>(
-                "/api/sessions/kpis"
-              ).catch(() => ({ kpis_by_session_id: {} })),
+              sessionsEnabled
+                ? fetchJson<{ kpis_by_session_id?: Record<string, SessionKpis> }>(
+                    "/api/sessions/kpis"
+                  ).catch(() => ({ kpis_by_session_id: {} }))
+                : Promise.resolve({ kpis_by_session_id: {} }),
               fetchJournalApiData({ includeEntries: true }).catch(() => EMPTY_JOURNAL_PAYLOAD),
               fetchCommunityTemplates().catch(() => [] as Record<string, unknown>[]),
             ]);
@@ -369,7 +379,7 @@ export function useV16LiveBootstrap(): BootState {
       window.__TALARIA_V16_BOOT_LOADING__ = false;
       window.__TALARIA_V16_BOOT_ENRICHING__ = false;
     };
-  }, [bootNonce]);
+  }, [bootNonce, sessionsEnabled]);
 
   /** URL session change: update selection only — no full API refetch. */
   useEffect(() => {

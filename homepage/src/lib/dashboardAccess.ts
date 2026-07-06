@@ -58,11 +58,12 @@ export function userIsDashboardAdmin(user: DashboardUser | null): boolean {
 
 /** Primary trading app entry (sessions / backtest) — used for admin default landing. */
 export function defaultAppDashboardPathForUser(
-  user: DashboardUser | null
+  user: DashboardUser | null,
+  platform?: PlatformFeatures | null
 ): string {
   if (!user) return "/pricing/?browse=1";
   if (userIsDashboardAdmin(user)) return "/dashboard/?view=sessions";
-  return defaultDashboardPathForUser(user);
+  return defaultDashboardPathForUser(user, platform);
 }
 
 export function isModuleAdminOnlyWip(module: string): boolean {

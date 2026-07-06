@@ -53,13 +53,18 @@ function LoginPageContent({
             access_expired_at?: string;
             lapsed_subscription?: { plan_name?: string; current_period_end?: string };
           };
+          platform?: import("@/lib/dashboardAccess").PlatformFeatures;
         } | null;
         const user = data?.user;
         if (!user) {
           if (alive) setSessionChecked(true);
           return;
         }
-        const url = getPostAuthRedirectUrl({ user, nextPath: nextPath ?? null });
+        const url = getPostAuthRedirectUrl({
+          user,
+          nextPath: nextPath ?? null,
+          platform: data?.platform ?? null,
+        });
         window.location.replace(url);
       } catch {
         if (alive) setSessionChecked(true);

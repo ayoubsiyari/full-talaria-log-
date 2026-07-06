@@ -15,7 +15,9 @@ import {
   userHasAnyDashboardAccess,
   userCanAccessDashboardPath,
   defaultDashboardPathForUser,
+  firstAllowedPlatformDashboardPath,
   type DashboardUser,
+  type PlatformFeatures,
 } from "@/lib/dashboardAccess";
 import {
   accessDenialTitle,
@@ -72,27 +74,31 @@ function isJournalPublicNextPath(path: string): boolean {
 export function getPostAuthRedirectUrl(opts: {
   user: DashboardUser & { access_expired_at?: string | null };
   nextPath?: string | null;
+  platform?: import("@/lib/dashboardAccess").PlatformFeatures | null;
 }): string {
   const raw = opts.nextPath;
   const safeNext = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
   const user = opts.user;
+  const platform = opts.platform ?? null;
   const isAdmin = userIsDashboardAdmin({ role: user.role });
   if (isAdmin) {
     if (safeNext) return safeNext;
     return "/dashboard/?view=sessions";
   }
   if (safeNext && isPathAdminOnlyWip(safeNext)) {
-    return "/dashboard/?view=sessions";
+    return firstAllowedPlatformDashboardPath(user, platform);
   }
-  // Full paid/manual users AND mentorship students with any granted section may
-  // enter the dashboard. Route them to the first section they can actually open.
   if (userHasAnyDashboardAccess(user)) {
-    if (safeNext && userCanAccessDashboardPath(user, safeNext)) {
-      return safeNext;
+    if (safeNext) {
+      const q = safeNext.indexOf("?");
+      const pathPart = q === -1 ? safeNext : safeNext.slice(0, q);
+      const searchPart = q === -1 ? "" : safeNext.slice(q);
+      if (userCanAccessDashboardPath(user, pathPart, platform, searchPart)) {
+        return safeNext;
+      }
     }
-    return defaultDashboardPathForUser(user);
+    return defaultDashboardPathForUser(user, platform);
   }
-  // No access at all → pricing (still allow journal public/marketing next paths).
   if (safeNext && isJournalPublicNextPath(safeNext)) {
     return safeNext;
   }
@@ -101,6 +107,7 @@ export function getPostAuthRedirectUrl(opts: {
 
 type AuthSuccessBody = {
   journal_token?: string;
+  platform?: PlatformFeatures;
   user?: {
     role?: string;
     has_journal_access?: boolean;
@@ -151,6 +158,7 @@ export async function completeAuthLogin(
       lapsed_subscription: chartUser?.lapsed_subscription as unknown as DashboardUser["lapsed_subscription"],
     },
     nextPath: safeNext,
+    platform: body?.platform ?? null,
   });
   window.location.href = url;
 }

@@ -99,8 +99,18 @@ export async function fetchJson<T = unknown>(url: string, options?: RequestInit)
     throw new Error(`Invalid JSON from ${resolved}: ${text.slice(0, 160)}`);
   }
   if (!res.ok) {
-    const detail = (body as { detail?: string })?.detail;
-    throw new Error(detail ?? `Request failed: ${res.status} (${resolved})`);
+    const detail = (body as { detail?: unknown })?.detail;
+    if (typeof detail === "string") throw new Error(detail);
+    if (detail && typeof detail === "object") {
+      const msg = (detail as { message?: string }).message;
+      if (msg) throw new Error(msg);
+      try {
+        throw new Error(JSON.stringify(detail));
+      } catch {
+        throw new Error(`Request failed: ${res.status} (${resolved})`);
+      }
+    }
+    throw new Error(`Request failed: ${res.status} (${resolved})`);
   }
   return body as T;
 }
