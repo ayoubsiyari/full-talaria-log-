@@ -1540,6 +1540,22 @@ OWN visible bars via `calculateScales` (independent, correct). Kill-switch
 finer self-own, single-chart, or real playback Y behavior. Live-verify: sync-off host 1m↔4h no longer
 rescales B/C/D; kill-switch reverts; a genuine price-sync toggle (if any) still couples.
 
+### B-FIX-BL2b (SHIPPED, gated, b70) — LIVE-VERIFIED (PO: "perfect now all good")
+Fix (per DIAG result above): PRIMARY — `_multichartMirrorHostTfSwitchIfReady` (chart.js:~2994) skips the
+host price-state copy (priceZoom/priceOffset/autoScale/priceScale.autoScale) for embed panels unless the
+kill-switch is on (no price-sync toggle exists in the codebase — crosshair/visibleRange/timeSync are the
+only sync flags and none couple price, so with all-sync-off the copy is simply skipped = the invariant).
+`priceScale.locked=false` safety kept unconditional; DATA mirror + X/time viewport untouched. SECONDARY —
+`syncReplayViewportToPlayhead` (replay-system.js:~2863) skips price reset via new
+`_shouldSkipHostDrivenPanelPriceReset` when the frame is host-originated (marked by
+`markHostReplayContext` at panel-cmd-bridge applyReplayFrame/scheduleCoalescedSeek/forceReplaySeek, 2s
+window) and NOT genuine local playback; offsetX/X recenter still applied. Kill-switch
+`__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE` (flag on = today's coupling). Manager verify: I4 hashes
+MATCH (chart.js B8480573…, replay-system 1975A270…, panel-cmd-bridge 1DFA56A2…), guards symmetric in
+both trees, node --check clean, build b70. PO live: sync-off host 1m↔4h no longer rescales B/C/D; own
+scrub/playback unaffected. **BL-2b CLOSED.** Price-axis-independence invariant restored on the replay bus.
+This closes the TF-SWITCH SETTLING / price-axis thread (C→D→E→F→G→I→J→BL-5→BL-2b).
+
 ### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
 Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does
 NOT cover the earlier `applyReplayFrame` hold paths (I) nor the render-side empty-recovery path (J).

@@ -7,6 +7,19 @@ import {
 } from "./BacktestNewSessionModal";
 import { SessionLimitModal } from "./SessionLimitModal";
 import { sessionLimitFromMeUser, type SessionLimitGateData } from "./sessionLimitGate";
+import {
+  userHasPlatformSection,
+  userIsDashboardAdmin,
+  type PlatformFeatures,
+} from "@/lib/dashboardAccess";
+
+function sessionsAllowedFromAuthMe(data: unknown): boolean {
+  const payload = data as { user?: { role?: string; is_admin?: boolean }; platform?: PlatformFeatures };
+  const user = payload.user;
+  if (!user) return false;
+  if (userIsDashboardAdmin(user)) return true;
+  return userHasPlatformSection(user, payload.platform ?? {}, "sessions");
+}
 
 export type BacktestNewSessionRegisterFn = (fn: (() => void) | null) => void;
 
@@ -47,15 +60,20 @@ export function BacktestNewSessionProvider({
       const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
+        if (!sessionsAllowedFromAuthMe(data)) return;
         const u = data?.user;
         const limit = sessionLimitFromMeUser(u);
         if (limit) {
           showSessionLimitGate(limit);
           return;
         }
+      } else if (res.status === 401) {
+        return;
+      } else {
+        return;
       }
     } catch {
-      /* still open modal if auth check fails */
+      return;
     }
     const id = opts?.strategyId;
     const playbook =
@@ -70,8 +88,21 @@ export function BacktestNewSessionProvider({
     setOpen(true);
   }, [showSessionLimitGate]);
 
-  const openEditSession = React.useCallback((sess: NonNullable<BacktestEditSessionPayload>) => {
+  const openEditSession = React.useCallback(async (sess: NonNullable<BacktestEditSessionPayload>) => {
     if (!sess?.id) return;
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (!sessionsAllowedFromAuthMe(data)) return;
+      } else if (res.status === 401) {
+        return;
+      } else {
+        return;
+      }
+    } catch {
+      return;
+    }
     setInitialState({ editSession: sess });
     setOpen(true);
   }, []);

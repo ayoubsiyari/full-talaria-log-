@@ -20,6 +20,20 @@ import {
 } from "./v16AppliedSourceStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
+/** Server-backed guard — do not trust window.__TALARIA_PLATFORM_SECTIONS__ alone for session actions. */
+const v16SessionsPlatformAllowed = () => {
+  try {
+    if (typeof window === "undefined") return true;
+    const guard = window.__TALARIA_V16_CAN_USE_VIEW__;
+    if (typeof guard === "function") return !!guard("sessions");
+    if (window.__TALARIA_V16_EMBEDDED__) return false;
+    const m = window.__TALARIA_PLATFORM_SECTIONS__;
+    if (!m || typeof m !== "object") return true;
+    return m.sessions !== false;
+  } catch (_) {
+    return true;
+  }
+};
 const isV16LiveBoot = () =>
   typeof window !== "undefined" &&
   !!window.__TALARIA_V16_LIVE__ &&
@@ -982,6 +996,7 @@ const normalizeEmbeddedV16View = (raw) => {
 /** Embedded V16 uses the dashboard BacktestNewSessionModal (API + chart redirect), not the in-file sessions form. */
 const openDashboardNewSession = (opts = {}) => {
   if (!isV16Embedded()) return false;
+  if (!v16SessionsPlatformAllowed()) return false;
   const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_NEW_SESSION__ : null;
   if (typeof fn !== "function") return false;
   fn(opts);
@@ -1018,6 +1033,7 @@ const activateLiveJournalAccount = (accountId) => {
 };
 const openDashboardEditSession = (sess) => {
   if (!isV16Embedded()) return false;
+  if (!v16SessionsPlatformAllowed()) return false;
   const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_EDIT_SESSION__ : null;
   if (typeof fn !== "function") return false;
   fn(sess);
@@ -14651,12 +14667,16 @@ const TalariaV8b = () => {
         const activeBox = {};
         const goNew = (opts = {}) => {
           if (openDashboardNewSession(opts)) return;
+          if (isV16Embedded() && !v16SessionsPlatformAllowed()) return;
           setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true);
         };
         const closeNewSessionKindPicker = () => setNewSessionKindPickerOpen(false);
         const closeNewSessionJournalKindPicker = () => setNewSessionJournalKindOpen(false);
         const closeNewSessionJournalMethodPicker = () => setNewSessionJournalMethodOpen(false);
-        const openNewSessionKindPicker = () => setNewSessionKindPickerOpen(true);
+        const openNewSessionKindPicker = () => {
+          if (!v16SessionsPlatformAllowed()) return;
+          setNewSessionKindPickerOpen(true);
+        };
         const startNewBacktestFromPicker = () => {
           closeNewSessionKindPicker();
           goNew();
@@ -18068,7 +18088,9 @@ const TalariaV8b = () => {
                       <div style={{fontSize:30,color:c.acL,marginBottom:10}}>▦</div>
                       <div style={{fontSize:18,fontWeight:900,color:c.tx,marginBottom:7}}>No backtests yet</div>
                       <div style={{fontSize:12,color:c.tm,lineHeight:1.6,marginBottom:18}}>Start your first backtest session and the dashboard will populate with analytics, charts, and prop-firm rule tracking.</div>
-                      <div onClick={()=>{ if(!openDashboardNewSession()) setSessView("sessions"); }} style={{height:36,padding:"0 20px",display:"inline-flex",alignItems:"center",gap:8,background:c.acL,color:"#fff",fontSize:12,fontWeight:900,letterSpacing:"0.05em",cursor:"default"}}>Run New Backtest</div>
+                      {v16SessionsPlatformAllowed() ? (
+                      <div onClick={()=>{ openDashboardNewSession(); }} style={{height:36,padding:"0 20px",display:"inline-flex",alignItems:"center",gap:8,background:c.acL,color:"#fff",fontSize:12,fontWeight:900,letterSpacing:"0.05em",cursor:"default"}}>Run New Backtest</div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -46333,6 +46355,7 @@ const TalariaV8b = () => {
                 const closeMenu=()=>setStratActMenu(null);
                 const run=fn=>e=>{e.stopPropagation();fn&&fn();closeMenu();};
                 const startStrategy=()=>{
+                  if(!v16SessionsPlatformAllowed()) return;
                   if(openDashboardNewSession({ strategyId: ms.id, strategyName: ms.name })) return;
                   goNew();
                   setNewSessName(`${ms.name} Backtest`);
@@ -46349,8 +46372,10 @@ const TalariaV8b = () => {
                 const duplicateStrategy=()=>copyCommunityStrategyIntoBank(ms);
                 const deleteStrategy=()=>deleteStrategyFromBank(ms);
                 const actions=[
-                  {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
-                  {label:"divider"},
+                  ...(v16SessionsPlatformAllowed()?[
+                    {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
+                    {label:"divider"},
+                  ]:[]),
                   ...(isTemplate?[
                     {label:"Edit",handler:()=>applyTemplateToBuilder(normalizeCommunityTemplateForBuilder(ms.template)),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},

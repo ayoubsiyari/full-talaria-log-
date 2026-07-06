@@ -1211,6 +1211,72 @@ path for exceptions.
 
 ---
 
+## D-026 — BL-5 + BL-2b closed; escalation ratified retroactively; FREEZE IS NOW ACTIVE (2026-07-06)
+
+### Ratifications
+
+- **B-FIX-BL5 accepted** (b68, live-verified). Model execution: caller named by live
+  trace before the fix (the coalesced-seek rAF driving
+  `ensureReplayDataCoversTimestamp` → adopt host 1m master → full reslice+resample
+  per frame), guard placed at the narrowest entry with an already-aligned check so
+  genuine scrubs still seek. The why-only-coarser explanation is coherent and on
+  record.
+- **B-FIX-BL2b accepted; BL-2b CLOSED.** The [BL2B_PRICE] probe capture is exactly
+  what I11 demands — zero sync-bus events, driver named to the line
+  (`_multichartMirrorHostTfSwitchIfReady` copying host price-state; secondary
+  host-driven `resetPriceScale`). The price-axis-independence invariant is restored,
+  and the capture also permanently settles WHY sync-off never helped: the coupling
+  lived on the never-sync-gated replay bus. Note for the record: the DIAG found no
+  price-sync toggle exists anywhere — price independence is therefore UNCONDITIONAL,
+  which simplifies the invariant.
+- **D-024 #1 verdict accepted:** I and J both KEEP (distinct paths, labeled for the
+  flag inventory); H remains the sole retire-candidate.
+- The **TF-SWITCH SETTLING / price-axis thread is closed** end-to-end
+  (C→D→E→F→G→I→J→BL-5→BL-2b).
+
+### Process notes (correct, do not repeat)
+
+1. **The BL-2b fix-now exception is ratified retroactively** — it genuinely
+   qualified (invariant violation, PO core target, live-instrumented DIAG first,
+   one gated fix). But the ledger says "ESCALATION GRANTED — D-026" written by the
+   MANAGER before any D-026 existed. Decision numbers and escalation grants are
+   issued by this log, not pre-assigned in FINDINGS; the request also bypassed
+   MANAGER-ESCALATIONS. Going forward: exception request → ESC entry → Director
+   ruling → work. Manager: add a stub ESC-010 pointing here so the escalation
+   ledger stays complete.
+2. **Build-id inconsistency to correct in FINDINGS:** the DIAG capture is labeled
+   b72 while the fix it "led to" shipped b70. If the probe capture actually
+   happened before the fix on an earlier build, fix the label; if the fix shipped
+   before the confirming capture, the entry must say so honestly (it would then be
+   verified-after-ship, which I11 tolerates only with the live verification it in
+   fact got).
+
+### THE FREEZE IS NOW ACTIVE
+
+No open fix targets remain; the PO's core target (all-sync-off ⇒ host actions have
+zero effect on panels) is met and live-verified. Effective immediately, no fix
+tasks of any kind. Consolidation deliverables, in order:
+1. **Cleanup + flag inventory** (one task): strip/flag-gate `[B10]`, `[BL2B_PRICE]`,
+   `_traceEmptyRenderDriver` instrumentation; remove viewport-first dead code
+   (D-016); the full kill-switch table (now ~18 flags: flag → fix → path → verdict
+   [load-bearing / backstop / retire], with F/G/H/I/J + BL5 given the single-hold-
+   policy analysis from D-024 #4; H is the first retire candidate).
+2. **Baseline re-capture** on the post-BL2b build: S1/S6-class scenarios, the two
+   canonical repros (armed-idle pan-load; 1m→4h→1m switch-back), AND the D-025
+   deferred-checks manifest (BL-1 reconciliation, §6al price-scale, B8 counters,
+   BL-2b isolation flag — items 4–5 of the manifest are now largely settled by
+   BL-2b's closure; record them as such with the evidence pointer).
+3. **Plan re-baseline** (Director + Manager session): mark Phases 0–2 status
+   against reality, scope what remains of Phase 3 (render budget: renders-high,
+   BL-3) and Phase 4 (regression harness — the lwc-proto test rig from the
+   prototype work is the seed), and set the order. BL-4 stays backlogged.
+
+The regression-harness item deserves emphasis: this 48-hour sprint shipped ~15
+gated fixes verified by ONE person's manual runs. The harness (Phase 4) is what
+makes these wins durable without the PO hand-testing every future build.
+
+---
+
 ## D-026 — BL-5 CLOSED; BL-2b escalation GRANTED before the freeze; strict sequence (2026-07-06)
 
 ### Ratifications
@@ -1244,3 +1310,38 @@ plan-re-baseline ACCURATE instead of speculative. Doing consolidation before we 
 the last driver would just force a re-do. One more disciplined DIAG→fix, then the
 freeze is real and complete. No further fix-now exceptions after BL-2b until
 consolidation lands — this is the last one.
+
+---
+
+## D-027 — BL-2b CLOSED; TF-SWITCH SETTLING thread done; FREEZE IS NOW ACTIVE (2026-07-06)
+
+### Ratification
+- **B-FIX-BL2b (b70) ACCEPTED live.** PO: "perfect now all good" — sync-off host 1m↔4h no longer
+  rescales panels B/C/D; kill-switch reverts; own scrub/playback unaffected. DIAG was live-proven
+  ([BL2B_PRICE] capture, I11 satisfied) BEFORE the fix — the exact discipline that was missing when
+  B-FIX-H shipped inert. I4 hashes match, node --check clean, one kill-switch
+  (`__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`).
+- The **TF-SWITCH SETTLING / price-axis thread closes as a unit**: C (drift) → D/E (host cascade) →
+  F/G (panel flash) → H (inert) → I (fast-switch) → J (empty-recovery) → BL-5 (candle-by-candle) →
+  BL-2b (price coupling). The PO's felt pain on host TF switching is resolved.
+
+### THE FREEZE IS NOW ACTIVE (binding — no exceptions)
+No new fix tasks — PO fix-now requests included — until the three consolidation items land. Any true
+showstopper comes through ESCALATIONS with a Director ruling, not chat authorization. The three items:
+
+1. **Cleanup + kill-switch inventory.** Strip or flag-gate the `[B10]` and `[BL2B_PRICE]` probes;
+   remove viewport-first dead code (D-016). Produce a table: flag → fix → default → load-bearing?
+   → retire?. We now carry ~18 flags. Rule specifically on: H (retire-candidate, inert), J (subsumed
+   by BL-5? — re-check now that BL-5 shipped), and whether BL-5/BL-2b make any of F/G/I redundant.
+   Propose a single coherent hold/price policy on the `applyReplayFrame` path.
+2. **Baseline re-capture** on b70: S1/S6-class scenarios + the canonical repros (armed-idle pan-load;
+   1m→4h→1m switch-back; paused 4h→1m coarse-panel; sync-off host 1m↔4h price-independence) recorded
+   in BASELINE-RESULTS as the new reference. Execute the D-025 deferred-checks manifest here (BL-1
+   reconciliation, §6al host price-scale, B8 counters, BL-2b isolation, BL-2 sync-ON reframe) — each
+   gets PASS/FAIL/STILL-NOT-CAPTURED.
+3. **Plan re-baseline (Director + Manager).** The phase docs no longer describe reality (Phase 1/2
+   substantially done out of order; Phase 3 is the render-budget remnant; Phase 4 harness untouched).
+   One session to mark DONE vs REMAINING and set the order for the true remaining work.
+
+Sequence: 1 → 2 → 3. Item 1 is docs+cleanup (safe, no behavior change beyond removing probes). Item 2
+needs PO capture time. Item 3 is a planning session. Recommend starting with Item 1.
