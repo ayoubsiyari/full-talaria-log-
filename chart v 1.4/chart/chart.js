@@ -21934,6 +21934,22 @@ class Chart {
      * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
     checkViewportLoadMore(direction, force = false) {
+        // B-TRACE-PANLOAD (TEMPORARY, gated by window.__TALARIA_MC_TRACE_PANLOAD): on an embed panel,
+        // name the caller that triggers a pan-load during a host TF switch (the "candle-by-candle
+        // re-render + pan loads" symptom). Behavior-neutral; strip after the driver is confirmed.
+        if (typeof window !== 'undefined' && window.__TALARIA_MC_TRACE_PANLOAD
+            && this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
+            try {
+                const _pcT = (window.parent) ? window.parent.chart : null;
+                console.warn('[PANLOAD] panel=' + ((typeof this._getMultichartPanelId === 'function') ? this._getMultichartPanelId() : '?')
+                    + ' dir=' + direction + ' force=' + force
+                    + ' panelTf=' + this.currentTimeframe
+                    + ' hostTf=' + (_pcT ? _pcT.currentTimeframe : null)
+                    + ' hostSwitching=' + (_pcT ? (_pcT._timeframeSwitching || _pcT._switchingToTimeframe || _pcT._pairSwitchLoading) : null)
+                    + ' panLoading=' + this._panLoading
+                    + ' | caller: ' + ((new Error().stack || '').split('\n').slice(2, 7).join(' | ')));
+            } catch (_) {}
+        }
         if (this._timeframeSwitching || this._pairSwitchLoading) return false;
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
