@@ -2984,17 +2984,6 @@ class ReplaySystem {
             return;
         }
 
-        // B-INSTR-BL2b (TEMPORARY, gated by window.__TALARIA_BL2B_DIAG): capture the panel viewport
-        // around every reslice so ONE reproduction names the call that pins a finer panel to
-        // session-start on a host cross-TF switch. Behavior-neutral; strip after mechanism confirmed.
-        var _bl2b = (typeof window !== 'undefined' && window.__TALARIA_BL2B_DIAG
-            && this.chart && typeof this.chart._isMultichartEmbedPanel === 'function'
-            && this.chart._isMultichartEmbedPanel()) ? {
-                offsetX: this.chart.offsetX,
-                currentIndex: this.currentIndex,
-                autoScroll: !!autoScroll,
-            } : null;
-
         // Ensure currentIndex is valid (never before backtest session floor — all paths must honor this)
         const floorIdx = this.sessionStartIndex || 0;
         if (this.currentIndex < floorIdx) this.currentIndex = floorIdx;
@@ -3142,22 +3131,6 @@ class ReplaySystem {
         if (typeof this.chart.constrainOffset === 'function'
             && !this.chart._tfSwitchAnchorLock) {
             this.chart.constrainOffset();
-        }
-        if (_bl2b) {
-            try {
-                var _pcBl2b = null; try { _pcBl2b = window.parent && window.parent.chart; } catch (_) {}
-                var _pidBl2b = (typeof this.chart._getMultichartPanelId === 'function')
-                    ? this.chart._getMultichartPanelId() : '?';
-                console.warn('[BL2b] updateChartData panel=' + _pidBl2b
-                    + ' hostTf=' + (_pcBl2b ? _pcBl2b.currentTimeframe : null)
-                    + ' panelTf=' + this.chart.currentTimeframe
-                    + ' hostSwitching=' + (_pcBl2b ? _pcBl2b._switchingToTimeframe : null)
-                    + ' autoScroll=' + _bl2b.autoScroll
-                    + ' currentIndex ' + _bl2b.currentIndex + '->' + this.currentIndex
-                    + ' offsetX ' + Math.round(_bl2b.offsetX) + '->' + Math.round(this.chart.offsetX)
-                    + ' replayTs=' + this.replayTimestamp
-                    + ' | caller: ' + ((new Error().stack || '').split('\n').slice(2, 6).join(' | ')));
-            } catch (_) {}
         }
         this._applyPlaybackViewportLock(this.chart);
         this._renderReplayChartUpdate();
