@@ -112,17 +112,38 @@ function normalizePlatformSections(
   platform?: PlatformFeatures | null
 ): Record<PlatformSectionKey, boolean> {
   const out = {} as Record<PlatformSectionKey, boolean>;
+  const hasPlatformPayload =
+    platform?.sections != null ||
+    platform?.sections_globally_enabled != null ||
+    platform?.backtest_sessions_enabled !== undefined;
+
   for (const key of PLATFORM_SECTION_KEYS) {
     const fromSections = platform?.sections?.[key];
     if (fromSections !== undefined) {
       out[key] = fromSections !== false;
-    } else if (key === "sessions" && platform?.backtest_sessions_enabled !== undefined) {
-      out[key] = platform.backtest_sessions_enabled !== false;
-    } else {
-      out[key] = true;
+      continue;
     }
+    const fromGlobal = platform?.sections_globally_enabled?.[key];
+    if (fromGlobal !== undefined) {
+      out[key] = fromGlobal !== false;
+      continue;
+    }
+    if (key === "sessions" && platform?.backtest_sessions_enabled !== undefined) {
+      out[key] = platform.backtest_sessions_enabled !== false;
+      continue;
+    }
+    // Old servers with no platform payload: keep sections enabled. When platform
+    // exists but a key is missing, treat as disabled (admin turned it off).
+    out[key] = hasPlatformPayload ? false : true;
   }
   return out;
+}
+
+/** Normalized ON/OFF map for sidebar sections (used by V16 shell + bootstrap). */
+export function platformSectionsMap(
+  platform?: PlatformFeatures | null
+): Record<PlatformSectionKey, boolean> {
+  return normalizePlatformSections(platform);
 }
 
 export function userHasPlatformSection(
@@ -430,6 +451,27 @@ export function userCanUseNavId(
   platform?: PlatformFeatures | null
 ): boolean {
   const section = navIdPlatformSection(navId);
+  if (!section) return true;
+  return userHasPlatformSection(user, platform, section);
+}
+
+export function platformSectionUnavailableTitle(isArabic?: boolean): string {
+  return isArabic
+    ? "هذا القسم غير متاح مؤقتاً"
+    : "This section is temporarily unavailable";
+}
+
+/** V16 sessView id (dashboard, sessions, stratbank, …) — uses React platform state, not window globals. */
+export function userCanUseV16EmbeddedView(
+  user: DashboardUser | null,
+  platform: PlatformFeatures | null | undefined,
+  viewId: string
+): boolean {
+  if (!user) return false;
+  if (userIsDashboardAdmin(user)) return true;
+  if (viewId === "profile") return true;
+  if (viewId === "support") return userHasPlatformSection(user, platform, "support");
+  const section = v16ViewToPlatformSection(viewId);
   if (!section) return true;
   return userHasPlatformSection(user, platform, section);
 }

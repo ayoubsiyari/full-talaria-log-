@@ -2853,7 +2853,15 @@ class ReplaySystem {
 
         var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(chartInstance);
         chartInstance.offsetX = offsetX;
-        if (opts.resetPriceScale !== false) {
+        // BL-2b (price-axis independence, SECONDARY sink): a HOST-originated replay
+        // frame/seek must not wipe an embed panel's own Y-state (autoScale/priceZoom/
+        // priceOffset/manualRange). The panel keeps autoscaling its OWN visible bars
+        // via calculateScales on render, so X/time recentering (offsetX above) is kept
+        // while the price reset is skipped. Real local playback and the panel's own
+        // scrub/seek (which never pass through the panel-cmd-bridge host handlers) still
+        // reset/scale normally. Same kill-switch as the PRIMARY fix.
+        var __mcSkipHostPriceReset = this._shouldSkipHostDrivenPanelPriceReset(chartInstance);
+        if (opts.resetPriceScale !== false && !__mcSkipHostPriceReset) {
             chartInstance.autoScale = true;
             chartInstance.priceOffset = 0;
             chartInstance.priceZoom = 1;
@@ -2874,6 +2882,34 @@ class ReplaySystem {
         }
         window.__talariaBl2bLog && window.__talariaBl2bLog('replay-system.js:syncReplayViewportToPlayhead', chartInstance, __bl2bBefore, { resetPriceScale: opts.resetPriceScale !== false });
         return true;
+    }
+
+    /**
+     * BL-2b: should this price-scale reset be skipped to preserve per-panel
+     * price-axis independence? True only when independence is enforced (kill-switch
+     * OFF), the target is a multichart embed panel, it is NOT genuine local playback,
+     * and we are inside a HOST-originated replay frame/seek context (marked by the
+     * panel-cmd-bridge host handlers via `_mcHostReplayContextUntil`). Kill-switch ON
+     * (window.__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE) fully reverts to coupling.
+     */
+    _shouldSkipHostDrivenPanelPriceReset(chartInstance) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE) {
+                return false;
+            }
+            if (this.isPlaying) return false;
+            if (!chartInstance
+                || typeof chartInstance._isMultichartEmbedPanel !== 'function'
+                || !chartInstance._isMultichartEmbedPanel()) {
+                return false;
+            }
+            const until = Number(chartInstance._mcHostReplayContextUntil);
+            if (!Number.isFinite(until)) return false;
+            return Date.now() < until;
+        } catch (_e) {
+            return false;
+        }
     }
 
     _syncCompareOverlaysForReplay() {

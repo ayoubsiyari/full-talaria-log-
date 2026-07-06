@@ -497,6 +497,7 @@
      */
     function applyReplayFrame(ch, args) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay', 'panel-cmd-bridge.js:applyReplayFrame');
+        markHostReplayContext(ch);
         if (!ch || !args || typeof args !== 'object') return;
         if (ch._multichartPairLoadInFlight) return;
         // Never block replay frames during boot settle — only viewport mirrors
@@ -1412,8 +1413,19 @@
         }
     }
 
+    // BL-2b (price-axis independence): stamp a short-lived "host-originated replay
+    // frame/seek" window on the panel so replay-system's syncReplayViewportToPlayhead
+    // knows this reset is HOST-driven (not the panel's own scrub / local playback) and
+    // skips the price reset when independence is enforced. Set from the host message
+    // entry points only; the consumer is gated by the kill-switch so this is a harmless
+    // no-op timestamp when __TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE is ON.
+    function markHostReplayContext(ch) {
+        try { if (ch) ch._mcHostReplayContextUntil = Date.now() + 2000; } catch (_) {}
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
+        markHostReplayContext(ch);
         if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) return;
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
@@ -1462,6 +1474,7 @@
      */
     function forceReplaySeek(ch, ts, isEnter, onDone) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:forceReplaySeek');
+        markHostReplayContext(ch);
         if (!Number.isFinite(ts)) {
             if (typeof onDone === 'function') onDone();
             return;

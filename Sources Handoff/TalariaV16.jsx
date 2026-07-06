@@ -11673,7 +11673,12 @@ const TalariaV8b = () => {
     if (!isV16Embedded()) return;
     const applyEmbeddedView = (view) => {
       const id = normalizeEmbeddedV16View(view);
-      if (id) setSessView(id);
+      if (!id) return;
+      try {
+        const guard = typeof window !== "undefined" ? window.__TALARIA_V16_CAN_USE_VIEW__ : null;
+        if (typeof guard === "function" && !guard(id)) return;
+      } catch (_) {}
+      setSessView(id);
     };
     const onSetView = (e) => applyEmbeddedView(e?.detail?.view);
     window.addEventListener("talaria-v16-set-view", onSetView);
@@ -14860,6 +14865,20 @@ const TalariaV8b = () => {
           } catch (_) { return true; }
         };
         const v16NavSectionKey = (navId) => (navId === "stratbank" ? "strategies" : navId);
+        const v16NavAllowed = (navId) => {
+          try {
+            const guard = typeof window !== "undefined" ? window.__TALARIA_V16_CAN_USE_VIEW__ : null;
+            if (typeof guard === "function") return !!guard(navId);
+            if (isV16Embedded()) return false;
+          } catch (_) {}
+          return v16PlatformSectionOn(v16NavSectionKey(navId));
+        };
+        const v16NavDisabledStyle = (disabled, isActive) => disabled ? {
+          opacity: 0.34,
+          color: isActive ? c.ts : c.ts,
+          cursor: "not-allowed",
+          filter: "grayscale(1)",
+        } : {};
         const navPanel = (
           <div className={`tlr-session-nav-rail${dashIsPhone ? " tlr-session-nav-rail--bottom" : ""}`} style={{width:dashIsPhone?undefined:64,flexShrink:0,alignSelf:dashIsPhone?"auto":"stretch",height:dashIsPhone?"auto":"100%",overflow:"hidden",display:"flex",flexDirection:dashIsPhone?"row":"column",alignItems:"center",padding:dashIsPhone?"0 4px":"0 0 6px",background:c.el,gap:1,boxShadow:dashIsPhone?"0 -2px 20px rgba(0,0,0,0.45)":"4px 0 20px rgba(0,0,0,0.45)",zIndex:dashIsPhone?12:1}}>
             {[
@@ -14868,29 +14887,39 @@ const TalariaV8b = () => {
               {id:"sessions",  label:"Sessions",   icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>},
               {id:"stratbank", label:"Strategies", icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M7 3.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.45"/><path d="M5 5.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.7"/><rect x="3" y="7.5" width="13.5" height="13" rx="1.2" stroke="currentColor" strokeWidth="1.45"/><circle cx="7" cy="11.2" r="1.25" fill="currentColor"/><circle cx="12.5" cy="11.2" r="1.25" fill="currentColor"/><circle cx="9.8" cy="16.6" r="1.25" fill="currentColor"/><path d="M7 11.2c0 2.8 2.8 2.7 2.8 5.4M12.5 11.2c-.7 2.2-.8 3.2-2.7 5.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/></svg>},
               {id:"resources", label:"Resources",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>},
-            ].filter(({id}) => v16PlatformSectionOn(v16NavSectionKey(id))).map(({id,label,icon})=>{
+            ].map(({id,label,icon})=>{
               const isA=sessView===id;
+              const navOff = !v16PlatformSectionOn(v16NavSectionKey(id));
               const goNavView = () => {
-                if (isA) return;
+                if (isA || navOff) return;
+                if (isV16Embedded()) {
+                  syncV16ViewUrl(id);
+                  return;
+                }
+                if (!v16NavAllowed(id)) return;
                 flushSync(() => setSessView(id));
-                if (isV16Embedded()) syncV16ViewUrl(id);
               };
               return(
-                <div key={id} className={`tlr-session-nav-item${isA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}
-                  onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goNavView();}}
+                <div key={id} className={`tlr-session-nav-item${isA ? " tlr-session-nav-item-active" : ""}${navOff ? " tlr-session-nav-item--off" : ""}`} role="button" tabIndex={navOff ? -1 : 0}
+                  title={navOff ? "This section is temporarily unavailable" : undefined}
+                  aria-disabled={navOff ? "true" : undefined}
+                  onPointerDown={e=>{if(navOff||typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goNavView();}}
                   onClick={e=>e.preventDefault()}
-                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goNavView();}}}
-                  style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isA?c.acD:"transparent",color:isA?c.acL:c.ts}}>
-                  {isA&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                  onKeyDown={e=>{if(navOff)return;if(e.key==="Enter"||e.key===" "){e.preventDefault();goNavView();}}}
+                  style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:navOff?"not-allowed":"default",position:"relative",background:isA&&!navOff?c.acD:"transparent",color:isA&&!navOff?c.acL:c.ts,...v16NavDisabledStyle(navOff,isA)}}>
+                  {isA&&!navOff&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {icon}
                   <span style={{fontSize:dashIsPhone?7:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dashIsPhone?56:undefined}}>{label}</span>
                 </div>
               );
             })}
             <div className="tlr-session-nav-spacer" style={{flex:1}}/>
-            {v16PlatformSectionOn("support") ? (()=>{
+            {(()=>{
+              const supportOff = !v16PlatformSectionOn("support");
               const isSupportA = supportNavOpen;
               const goSupportNav = () => {
+                if (supportOff) return;
+                if (!v16NavAllowed("support")) return;
                 const toggle =
                   typeof window !== "undefined"
                     ? window.__TALARIA_TOGGLE_SUPPORT__ || window.__TALARIA_CHART_TOGGLE_SUPPORT__
@@ -14900,17 +14929,19 @@ const TalariaV8b = () => {
                 }
               };
               return (
-              <div ref={supportNavBtnRef} className={`tlr-session-nav-item${isSupportA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}
-                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goSupportNav();}}
+              <div ref={supportNavBtnRef} className={`tlr-session-nav-item${isSupportA ? " tlr-session-nav-item-active" : ""}${supportOff ? " tlr-session-nav-item--off" : ""}`} role="button" tabIndex={supportOff ? -1 : 0}
+                title={supportOff ? "This section is temporarily unavailable" : undefined}
+                aria-disabled={supportOff ? "true" : undefined}
+                onPointerDown={e=>{if(supportOff||typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goSupportNav();}}
                 onClick={e=>e.preventDefault()}
-                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goSupportNav();}}}
-                style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isSupportA?c.acD:"transparent",color:isSupportA?c.acL:c.ts}}>
-                {isSupportA&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                onKeyDown={e=>{if(supportOff)return;if(e.key==="Enter"||e.key===" "){e.preventDefault();goSupportNav();}}}
+                style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:supportOff?"not-allowed":"default",position:"relative",background:isSupportA&&!supportOff?c.acD:"transparent",color:isSupportA&&!supportOff?c.acL:c.ts,...v16NavDisabledStyle(supportOff,isSupportA)}}>
+                {isSupportA&&!supportOff&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><line x1="8" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="8" y1="12.5" x2="13" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Support</span>
               </div>
               );
-            })() : null}
+            })()}
             {(()=>{
               const isProfileA = sessView === "profile";
               const goProfileNav = () => {

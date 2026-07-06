@@ -7,6 +7,8 @@ import { useLanguage } from "@/app/LanguageProvider";
 import {
   firstAllowedPlatformDashboardPath,
   platformSectionForPath,
+  platformSectionsMap,
+  userCanUseV16EmbeddedView,
   userHasPlatformSection,
   userIsDashboardAdmin,
   v16ViewToPlatformSection,
@@ -24,6 +26,8 @@ import V16DashboardLoading from "./V16DashboardLoading";
 declare global {
   interface Window {
     __TALARIA_PLATFORM_SECTIONS__?: Partial<Record<PlatformSectionKey, boolean>>;
+    /** Authoritative nav guard — closure over /api/auth/me platform flags (not user-tweakable globals). */
+    __TALARIA_V16_CAN_USE_VIEW__?: (viewId: string) => boolean;
   }
 }
 
@@ -95,8 +99,12 @@ function TalariaV16DashboardReady({
       const qs = params.toString();
       router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
     };
+    window.__TALARIA_V16_CAN_USE_VIEW__ = (viewId) =>
+      userCanUseV16EmbeddedView(authUser, platform, viewId);
+
     window.__TALARIA_V16_SYNC_VIEW_URL__ = (view) => {
       const normalized = normalizeV16DashboardView(view) || "dashboard";
+      if (!userCanUseV16EmbeddedView(authUser, platform, normalized)) return;
       const params = new URLSearchParams(searchParams.toString());
       if (normalized === "dashboard") {
         params.delete("view");
@@ -139,15 +147,17 @@ function TalariaV16DashboardReady({
       delete window.__TALARIA_V16_CLEAR_SESSION_URL__;
       delete window.__TALARIA_V16_SYNC_VIEW_URL__;
       delete window.__TALARIA_V16_OPEN_PROFILE__;
+      delete window.__TALARIA_V16_CAN_USE_VIEW__;
     };
-  }, [pathname, router, searchParams]);
+  }, [authUser, platform, pathname, router, searchParams]);
 
   const viewParam = searchParams.get("view");
   useEffect(() => {
     const view = normalizeV16DashboardView(viewParam);
     if (!view) return;
+    if (!userCanUseV16EmbeddedView(authUser, platform, view)) return;
     window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view } }));
-  }, [viewParam]);
+  }, [viewParam, authUser, platform]);
 
   useEffect(() => {
     if (userIsDashboardAdmin(authUser)) return;
@@ -239,9 +249,7 @@ export default function TalariaV16Dashboard() {
         const { user, platform: pf } = await fetchPlatformSections();
         if (cancelled) return;
 
-        if (pf.sections) {
-          window.__TALARIA_PLATFORM_SECTIONS__ = pf.sections;
-        }
+        window.__TALARIA_PLATFORM_SECTIONS__ = platformSectionsMap(pf);
 
         const section = currentPlatformSection(pathname || "/dashboard/", searchParams);
         if (

@@ -139,8 +139,47 @@ export type V16BootstrapOptions = {
   sessionsEnabled?: boolean;
 };
 
+function resolveSessionsEnabled(opts?: V16BootstrapOptions): boolean {
+  if (opts?.sessionsEnabled === false) return false;
+  if (opts?.sessionsEnabled === true) return true;
+  try {
+    const fromWindow = window.__TALARIA_PLATFORM_SECTIONS__?.sessions;
+    if (fromWindow === false) return false;
+    if (fromWindow === true) return true;
+  } catch {
+    /* ignore */
+  }
+  return opts?.sessionsEnabled !== false;
+}
+
+function bootstrapErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.trim()) return msg;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      /* ignore */
+    }
+  }
+  return "Unknown error";
+}
+
+async function fetchSessionsList(enabled: boolean): Promise<Session[]> {
+  if (!enabled) return [];
+  try {
+    const payload = await fetchJson<{ sessions: Session[] }>("/api/sessions");
+    return payload.sessions ?? [];
+  } catch (err) {
+    console.warn("[V16] sessions list unavailable (section may be disabled):", err);
+    return [];
+  }
+}
+
 export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
-  const sessionsEnabled = opts?.sessionsEnabled !== false;
+  const sessionsEnabled = resolveSessionsEnabled(opts);
   const searchParams = useSearchParams();
   const urlSessionId = searchParams.get("sessionId");
   const [state, setState] = useState<BootState>({ status: "loading" });
@@ -303,16 +342,12 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
 
     (async () => {
       try {
-        const [sessionsPayload, journalPayload] = await Promise.all([
-          sessionsEnabled
-            ? fetchJson<{ sessions: Session[] }>("/api/sessions")
-            : Promise.resolve({ sessions: [] as Session[] }),
+        const [apiSessions, journalPayload] = await Promise.all([
+          fetchSessionsList(sessionsEnabled),
           fetchJournalApiData({ includeEntries: false }).catch(() => EMPTY_JOURNAL_PAYLOAD),
         ]);
 
         if (cancelled) return;
-
-        const apiSessions = sessionsPayload.sessions ?? [];
         const boot = buildBootFromPayloads(
           apiSessions,
           {},
@@ -369,7 +404,7 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
         window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
         setState({
           status: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: bootstrapErrorMessage(e),
         });
       }
     })();

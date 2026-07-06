@@ -49,6 +49,8 @@ declare global {
     __TALARIA_V16_CLEAR_SESSION_URL__?: () => void;
     /** Update ?view= when user switches Dashboard / Trades / Backtest / Strategies in V16 nav. */
     __TALARIA_V16_SYNC_VIEW_URL__?: (view: string) => void;
+    /** Server-backed platform section guard for V16 nav (not spoofable via window globals). */
+    __TALARIA_V16_CAN_USE_VIEW__?: (viewId: string) => boolean;
     /** Open dashboard BacktestNewSessionModal from embedded V16 chrome. */
     __TALARIA_OPEN_NEW_SESSION__?: (opts?: {
       strategyId?: number;

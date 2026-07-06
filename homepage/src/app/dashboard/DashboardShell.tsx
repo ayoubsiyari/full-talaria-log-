@@ -21,7 +21,9 @@ import {
   isPathAdminOnlyWip,
   lockedModuleGateReason,
   lockedModuleNavTitle,
+  navIdPlatformSection,
   pathRequiresPlatformOrModuleGate,
+  platformSectionUnavailableTitle,
   resolveDashboardGateVariant,
   userCanAccessAdminOnlyWipPath,
   userCanAccessDashboardPath,
@@ -564,8 +566,8 @@ export default function DashboardShell({
       router.replace(defaultDashboardPathForUser(user, platform));
       return;
     }
-    if (user && !userCanUseNavId(user, id, platform)) {
-      router.replace(defaultDashboardPathForUser(user, platform));
+    const platformSection = navIdPlatformSection(id);
+    if (platformSection && user && !userIsDashboardAdmin(user) && !userCanUseNavId(user, id, platform)) {
       return;
     }
     const mod = navModuleForId(id);
@@ -635,7 +637,7 @@ export default function DashboardShell({
   const NAV_ITEMS = React.useMemo(() => {
     const items = ALL_NAV_ITEMS.filter(
       (item) => !isNavItemAdminOnlyWip(item.id) || userIsDashboardAdmin(user)
-    ).filter((item) => userCanUseNavId(user, item.id, platform));
+    );
     if (userIsDashboardAdmin(user)) {
       return [...items, ADMIN_NAV_ITEM];
     }
@@ -747,24 +749,34 @@ export default function DashboardShell({
             const navMod = navModuleForId(id);
             const navLocked =
               !!user && !!navMod && !userHasDashboardModule(user, navMod);
+            const navPlatformOff =
+              !!user &&
+              !userIsDashboardAdmin(user) &&
+              !!navIdPlatformSection(id) &&
+              !userCanUseNavId(user, id, platform);
+            const navDisabled = navLocked || navPlatformOff;
             return (
               <div
                 key={id}
                 role="button"
-                tabIndex={0}
+                tabIndex={navDisabled ? -1 : 0}
                 title={
-                  navLocked && navMod
-                    ? lockedModuleNavTitle(user, navMod, isArabic)
-                    : undefined
+                  navPlatformOff
+                    ? platformSectionUnavailableTitle(isArabic)
+                    : navLocked && navMod
+                      ? lockedModuleNavTitle(user, navMod, isArabic)
+                      : undefined
                 }
+                aria-disabled={navDisabled ? "true" : undefined}
                 onClick={() => handleNavClick(id)}
                 onKeyDown={(e) => {
+                  if (navDisabled) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     handleNavClick(id);
                   }
                 }}
-                onMouseEnter={() => setNavHoverId(id)}
+                onMouseEnter={() => !navDisabled && setNavHoverId(id)}
                 onMouseLeave={() => setNavHoverId((h) => (h === id ? null : h))}
                 style={{
                   width: "100%",
@@ -774,11 +786,12 @@ export default function DashboardShell({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 4,
-                  cursor: navLocked ? "not-allowed" : "default",
+                  cursor: navDisabled ? "not-allowed" : "default",
                   position: "relative",
                   background: bg,
                   color,
-                  opacity: navLocked ? 0.38 : 1,
+                  opacity: navDisabled ? 0.34 : 1,
+                  filter: navPlatformOff ? "grayscale(1)" : undefined,
                   transition: "background 0.12s,color 0.12s,opacity 0.12s",
                 }}
               >

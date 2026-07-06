@@ -1516,6 +1516,30 @@ sync-bridge.js:858, replay-system.js:2834, chart.js:2841/17321/22963.
 NEXT: install probe (both trees, gated, node --check), bump diag build, PO captures [BL2B_PRICE] on
 sync-off host 1m→4h→1m; the bus tag + first mutation site names the driver → then one gated fix.
 
+### DIAG BL-2b RESULT — LIVE-PROVEN (b72 [BL2B_PRICE] capture, I11 satisfied)
+PO captured [BL2B_PRICE] on sync-off host 1m↔4h (all sync toggles off, 4 same-pair panels). Decisive:
+- **ZERO `bus:'sync'` events.** Every line is `bus:null | 'replay-mirror' | 'replay-seek'`. The sync
+  bus (visibleRange/manager gate) is NOT involved → confirms why sync-off never helped. BL-2b lives
+  entirely on the NOT-sync-gated REPLAY bus. DIAG BL-2 (visibleRange) is fully eliminated for this.
+- **Final mutator is always `chart.js:calculateScales`**, driven upstream by `applyMultichartMirrorFrame`
+  (replay-mirror), `scheduleCoalescedSeek`/`forceReplaySeek` (replay-seek), and — the smoking gun —
+  **`chart.js:_multichartMirrorHostTfSwitchIfReady`** and **`replay-system.js:syncReplayViewportToPlayhead`**.
+- **ROOT price-axis coupler (direct):** `_multichartMirrorHostTfSwitchIfReady` (chart.js:2986-2994)
+  copies `this.priceZoom/priceOffset/autoScale` and `priceScale.autoScale` FROM the host when the panel
+  TF matches the host (both 4h). This runs for same-pair, non-independent, non-finer-self-own embed
+  panels — i.e. exactly B/C/D — and is on the replay bus (fires with bus='replay-seek'). Adopting host
+  Y-state on 1m→4h, dropped on switch-back (panelTf≠hostTf ⇒ func returns at 2918) = the reversible
+  rescale PO sees. This DIRECTLY violates the price-axis-independence invariant (MultichartGrid header).
+- **Secondary sink:** `syncReplayViewportToPlayhead` resets price scale when `resetPriceScale!==false`
+  (fires via replay-seek). `calculateScales` autoscale then recomputes the visible Y domain.
+FIX SHAPE (gated, per D-026 step 2): enforce price-axis independence on the HOST replay bus — do NOT
+copy host price-state onto an embed panel (skip 2986-2994) and do NOT let a host-driven replay frame
+force `resetPriceScale` on the panel, when no price/scale sync is active. Panel keeps autoscaling its
+OWN visible bars via `calculateScales` (independent, correct). Kill-switch
+`__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE` (new). No change to same-TF DATA mirror, X/time viewport,
+finer self-own, single-chart, or real playback Y behavior. Live-verify: sync-off host 1m↔4h no longer
+rescales B/C/D; kill-switch reverts; a genuine price-sync toggle (if any) still couples.
+
 ### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
 Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does
 NOT cover the earlier `applyReplayFrame` hold paths (I) nor the render-side empty-recovery path (J).

@@ -2983,13 +2983,26 @@ class Chart {
             { replay },
         );
         var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(this);
-        this.priceZoom = parent.priceZoom;
-        this.priceOffset = parent.priceOffset;
-        this.autoScale = parent.autoScale;
-        if (this.priceScale && parent.priceScale) {
-            this.priceScale.autoScale = parent.priceScale.autoScale;
-            // Never inherit host locked state on embed panels — host double-click
-            // auto-fit sets locked=true and would freeze B/C/D wheel/drag during mirror.
+        // BL-2b (price-axis independence): copying the host's Y-state onto an embed
+        // panel when panelTf == hostTf is the DIRECT invariant violation — a sync-off
+        // host TF switch rescales same-pair panels B/C/D on the (NOT sync-gated) replay
+        // bus. No multichart sync flag maps to price (only crosshair / visibleRange /
+        // timeSync exist), so with independence enforced (kill-switch OFF, the default)
+        // we SKIP the host price-state copy and let the panel keep / independently
+        // autoscale its OWN price via calculateScales. Kill-switch ON restores today's
+        // coupling. DATA mirror, X/time viewport and candleWidth (above) are untouched.
+        if (window.__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE) {
+            this.priceZoom = parent.priceZoom;
+            this.priceOffset = parent.priceOffset;
+            this.autoScale = parent.autoScale;
+            if (this.priceScale && parent.priceScale) {
+                this.priceScale.autoScale = parent.priceScale.autoScale;
+            }
+        }
+        // Never inherit host locked state on embed panels — host double-click
+        // auto-fit sets locked=true and would freeze B/C/D wheel/drag during mirror.
+        // Kept unconditionally: this is a safety unlock, not host price adoption.
+        if (this.priceScale) {
             this.priceScale.locked = false;
         }
         window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_multichartMirrorHostTfSwitchIfReady', this, __bl2bBefore);
