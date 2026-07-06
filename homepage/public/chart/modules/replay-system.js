@@ -2991,6 +2991,46 @@ class ReplaySystem {
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
         this._clampCurrentIndexToReplayTimestamp();
+        const mcCurrentMasterFirstTs = Number(this.fullRawData[0]?.t);
+        const mcPreviousMasterFirstTs = Number(this._mcLastMasterFirstTs);
+        try {
+            const mcDisablePanelMasterGrowthOffset = typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PANEL_MASTER_GROWTH_OFFSET === true;
+            const mcEmbedPanel = !!(this.chart
+                && typeof this.chart._isMultichartEmbedPanel === 'function'
+                && this.chart._isMultichartEmbedPanel());
+            if (!mcDisablePanelMasterGrowthOffset
+                && mcEmbedPanel
+                && autoScroll === false
+                && Number.isFinite(mcCurrentMasterFirstTs)
+                && Number.isFinite(mcPreviousMasterFirstTs)
+                && mcCurrentMasterFirstTs < mcPreviousMasterFirstTs) {
+                const rawAdded = this.fullRawData.findIndex((c) => Number(c?.t) === mcPreviousMasterFirstTs);
+                const spacing = typeof this.chart.getCandleSpacing === 'function'
+                    ? this.chart.getCandleSpacing()
+                    : 0;
+                if (rawAdded > 0 && spacing > 0) {
+                    const prevMaster = this.fullRawData.slice(rawAdded);
+                    const prevIndex = Number.isFinite(Number(this.currentIndex))
+                        ? Number(this.currentIndex) - rawAdded
+                        : prevMaster.length - 1;
+                    const displayBarsAdded = typeof this.chart._countReplayBackwardDisplayBarsAdded === 'function'
+                        ? this.chart._countReplayBackwardDisplayBarsAdded(
+                            prevMaster,
+                            prevIndex,
+                            this.fullRawData,
+                            this.currentIndex,
+                        )
+                        : rawAdded;
+                    const shiftBars = displayBarsAdded > 0 ? displayBarsAdded : rawAdded;
+                    this.chart.offsetX -= shiftBars * spacing;
+                }
+            }
+        } finally {
+            if (Number.isFinite(mcCurrentMasterFirstTs)) {
+                this._mcLastMasterFirstTs = mcCurrentMasterFirstTs;
+            }
+        }
 
         // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
         // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in

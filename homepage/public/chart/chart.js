@@ -5476,6 +5476,7 @@ class Chart {
                     replay.replayTimestamp = Number(prs.replayTimestamp);
                 }
             }
+            replay._mcLastMasterFirstTs = Number(merged[0]?.t);
             if (typeof window !== 'undefined' && window.__TALARIA_MC_DEBUG_B10) {
                 console.log('[B10] extend earlier=' + earlier.length
                     + ' prevIdx=' + prevReplayIndex
@@ -22326,6 +22327,7 @@ class Chart {
                             const shiftBars = displayBarsAdded > 0 ? displayBarsAdded : uniqueNew.length;
                             this.offsetX -= shiftBars * spacing;
                         }
+                        this.replaySystem._mcLastMasterFirstTs = Number(merged[0]?.t);
                     }
 
                     // Backward history must reslice/resample so the canvas shows new left bars immediately.

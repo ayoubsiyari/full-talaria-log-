@@ -892,6 +892,68 @@ snapshot at iframe-add (`_send` direct, by design), and there are TWO independen
 Disambiguation is near-zero cost: confirm the live `syncMode` (both range flags) during the repro.
 Recorded for Director; leading with the cheap check before spending another build.
 
+## 6af. ROOT CAUSE CONFIRMED (live logs, b27+B10b) — panel offsetX not compensated on shared-master left-growth (2026-07-06)
+
+After B9/B10 theories were disproven by live logs, the B-INSTR-B10b render/hostLoad/updateChartData
+logs pinned it definitively. Filtered `[B10]` capture during host-A backward pan-load (host 4h,
+panels 1m, backtest armed, sync OFF):
+
+```
+render id=B offsetX=-6059.694 firstVisTs=1574708100000 rawLen=28001 fullLen=94535
+hostLoad id=A prepended=2000 newLen=96535 isHost=true
+updateChartData id=B currentIndex=30000 fullLen=96535 sliceEnd=30001
+render id=B offsetX=-6059.694 firstVisTs=1574415000000 rawLen=30001 fullLen=96535
+```
+
+Facts proven:
+1. **Panels share the host's replay master** — panel `fullLen` tracks host exactly and instantly
+   (94535→96535→…→118535) with NO `[B10] extend`, NO inbound message. It's shared/refreshed data,
+   not a sync message (both B9 and B10 message theories are dead).
+2. **Panel `currentIndex` IS compensated** on prepend (30000→32000→…, +prepended, playhead stays
+   on the same bar).
+3. **Panel `offsetX` is NOT compensated** — constant `-6059.694` across every load while
+   `firstVisTs` jumps older and `fullLen` grows. Inserting N bars before index 0 without shifting
+   offsetX slides the visible window left by N bars each load → THE DRIFT.
+4. The **host** compensates its own offsetX (its offsetX varies per load: -131→-70→…→223), which is
+   why the host doesn't drift but the panels do. Asymmetry = the bug.
+
+Mechanism: the panel's `updateChartData` (`replay-system.js`) re-slices the grown `fullRawData`
+(`slice(0, currentIndex+1)`) and renders, and something recompensates `currentIndex` — but nothing
+compensates `chart.offsetX` for the left-prepend on the panel side. The existing offsetX
+compensation lives in the host's `checkViewportLoadMore` and in `_tryExtendReplayMasterFromParent`
+(offsetX -= shiftBars*spacing), but NEITHER runs for the panels in this scenario (panels get the
+growth via the shared-master refresh + direct updateChartData, not via extend).
+
+**FIX (B-FIX-C):** in the panel path where the grown master becomes visible (`updateChartData`,
+embed-gated), detect a left-prepend (fullRawData[0].t older than last committed first-ts) and apply
+`chart.offsetX -= prependedDisplayBars * spacing`, ONLY when not auto-scrolling. Mirrors the host's
+own compensation. Kill-switched, embed-only (I7), no double-count (the extend path isn't active
+here; guard by tracking last-first-ts so a single prepend is counted once).
+
+Separately (NOT this fix): `hostLoad prepended=2000` repeating (~24k bars over 12 loads) is the 1m
+group-by-group hauling = B-FIX-6b-2 territory. Drift fix (B-FIX-C) first.
+
+## 6ag. B-FIX-C code sign-off (panel master-growth offsetX compensation) (2026-07-06, build b25)
+
+Worker 1 implemented B-FIX-C targeting the §6af proven mechanism. Manager verification:
+- **I4:** both copies byte-identical — chart.js `1b28244d…`, replay-system.js `06171dd4…`.
+- **Site + logic:** `replay-system.js::updateChartData()` top — when embed panel, `autoScroll===false`,
+  and `fullRawData[0].t` older than stored `_mcLastMasterFirstTs` (genuine left-prepend), computes
+  display bars added (`_countReplayBackwardDisplayBarsAdded`) and applies `chart.offsetX -=
+  shiftBars*spacing`. `findIndex` of the old first-ts serves as a contiguity guard (returns -1 →
+  rawAdded not >0 → skip if not a clean prepend).
+- **Single-count:** `_mcLastMasterFirstTs` stamped every call (finally); worker also stamped it in
+  `_tryExtendReplayMasterFromParent`/owner prepend paths so exactly one site compensates per prepend
+  (no double-shift).
+- **I7 embed-only** (`_isMultichartEmbedPanel()` gate); **I8 kill-switch**
+  `__TALARIA_MC_DISABLE_PANEL_MASTER_GROWTH_OFFSET`; node --check + lints clean; build b25.
+- B-FIX-A / B8 untouched.
+
+**Verdict: B-FIX-C signed off.** Live acceptance pending PO on b25. Since the b25 build still carries
+the `[B10]` instrumentation, PO can VERIFY the fix directly: on host left-load, panel `render` offsetX
+should now CHANGE by the prepend delta while `firstVisTs` stays anchored (was: offsetX constant,
+firstVisTs jumping). Fixes DRIFT only; group-by-group 1m hauling remains B-FIX-6b-2.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
