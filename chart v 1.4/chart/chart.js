@@ -28800,6 +28800,7 @@ class Chart {
             if (drawn === 0 && drawSeries.length > 0) {
                 this._scheduleViewportEmptyRecovery();
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
+                this._traceEmptyRenderDriver(drawSeries.length, skipped);
             }
             return;
         }
@@ -28924,7 +28925,34 @@ class Chart {
         if (drawn === 0 && drawSeries.length > 0) {
             this._scheduleViewportEmptyRecovery();
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
+            this._traceEmptyRenderDriver(drawSeries.length, skipped);
         }
+    }
+
+    // B-TRACE-PANLOAD (TEMPORARY, gated by window.__TALARIA_MC_TRACE_PANLOAD): when an embed panel
+    // renders empty (all candles outside viewport) during a host TF switch, log data growth + offsetX
+    // + the CALL STACK so we can name the per-bar fill/replay-step loop that keeps appending bars and
+    // re-rendering (the "candle-by-candle re-render" symptom). Throttled; behavior-neutral; strip after.
+    _traceEmptyRenderDriver(seriesLen, skipped) {
+        if (!(typeof window !== 'undefined' && window.__TALARIA_MC_TRACE_PANLOAD)) return;
+        if (!(this._isMultichartEmbedPanel && this._isMultichartEmbedPanel())) return;
+        try {
+            const _now = Date.now();
+            // Log the first hit and then every ~5th within a burst so the stack is captured but not spammed.
+            this._emptyTraceCount = (this._emptyTraceCount || 0) + 1;
+            if (this._emptyTraceLast && (_now - this._emptyTraceLast) < 250 && (this._emptyTraceCount % 5 !== 0)) return;
+            this._emptyTraceLast = _now;
+            const _pcT = (window.parent) ? window.parent.chart : null;
+            const _rs = this.replaySystem || {};
+            console.warn('[EMPTYRENDER] panel=' + ((typeof this._getMultichartPanelId === 'function') ? this._getMultichartPanelId() : '?')
+                + ' seriesLen=' + seriesLen + ' skipped=' + skipped
+                + ' dataLen=' + (Array.isArray(this.data) ? this.data.length : -1)
+                + ' offsetX=' + Math.round(this.offsetX) + ' candleWidth=' + (this.candleWidth || this.getCandleSpacing && this.getCandleSpacing())
+                + ' panelTf=' + this.currentTimeframe + ' hostTf=' + (_pcT ? _pcT.currentTimeframe : null)
+                + ' hostSwitching=' + (_pcT ? (_pcT._timeframeSwitching || _pcT._switchingToTimeframe || _pcT._pairSwitchLoading) : null)
+                + ' currentIndex=' + _rs.currentIndex + ' fullRawLen=' + (Array.isArray(_rs.fullRawData) ? _rs.fullRawData.length : -1)
+                + ' | caller: ' + ((new Error().stack || '').split('\n').slice(2, 8).join(' | ')));
+        } catch (_) {}
     }
 
     /**
