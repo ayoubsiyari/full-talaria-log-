@@ -72,12 +72,19 @@ export type LiveJournalNewAccountModalProps = {
   journalLimits?: LiveJournalLimitsPayload | null;
 };
 
+const STARTING_BALANCE_MAX_DIGITS = 6;
+const STARTING_BALANCE_MAX = 10 ** STARTING_BALANCE_MAX_DIGITS - 1;
+
+function sanitizeBalanceInput(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
+}
+
 function parseBalanceInput(raw: string): number | null {
-  const cleaned = raw.replace(/,/g, "").trim();
-  if (!cleaned) return null;
-  const value = Number(cleaned);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return Math.round(value * 100) / 100;
+  const digits = sanitizeBalanceInput(raw);
+  if (!digits) return null;
+  const value = Number(digits);
+  if (!Number.isFinite(value) || value <= 0 || value > STARTING_BALANCE_MAX) return null;
+  return value;
 }
 
 export function LiveJournalNewAccountModal({
@@ -252,7 +259,7 @@ export function LiveJournalNewAccountModal({
       setName(edit.name || "");
       setStartingBalance(
         edit.starting_balance != null && Number.isFinite(Number(edit.starting_balance))
-          ? String(edit.starting_balance)
+          ? sanitizeBalanceInput(String(edit.starting_balance))
           : ""
       );
       setMarket(edit.market || "Forex");
@@ -334,7 +341,9 @@ export function LiveJournalNewAccountModal({
       return null;
     }
     if (stepId === "account") {
-      if (parseBalanceInput(startingBalance) == null) return "Starting balance is required and must be greater than zero.";
+      if (parseBalanceInput(startingBalance) == null) {
+        return "Starting balance is required and must be between $1 and $999,999.";
+      }
       return null;
     }
     if (stepId === "rules" || stepId === "review") return null;
@@ -400,7 +409,7 @@ export function LiveJournalNewAccountModal({
       return;
     }
     if (balance == null) {
-      setError("Starting balance is required and must be greater than zero.");
+      setError("Starting balance is required and must be between $1 and $999,999.");
       return;
     }
     setSaving(true);
@@ -692,9 +701,10 @@ export function LiveJournalNewAccountModal({
               </span>
               <input
                 type="text"
-                inputMode="decimal"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={startingBalance}
-                onChange={(e) => setStartingBalance(e.target.value.replace(/[^\d.,]/g, "").slice(0, 16))}
+                onChange={(e) => setStartingBalance(sanitizeBalanceInput(e.target.value))}
                 className="tlr-nospinner"
                 style={inp({ fontSize: 11, fontWeight: 800, paddingLeft: 26, fontVariantNumeric: "tabular-nums" })}
               />

@@ -109,6 +109,9 @@ def _parse_balance(raw) -> Decimal | None:
         return None
     if value <= 0:
         return None
+    max_balance = Decimal("999999")
+    if value > max_balance:
+        return None
     return value.quantize(Decimal("0.01"))
 
 
@@ -199,7 +202,7 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
 
     starting_balance = _parse_balance(data.get("starting_balance"))
     if starting_balance is None:
-        return None, (jsonify({"success": False, "error": "Starting balance is required and must be greater than zero"}), 400)
+        return None, (jsonify({"success": False, "error": "Starting balance is required and must be between 1 and 999,999"}), 400)
 
     market = str(data.get("market") or "Forex").strip()
     if account_type == "prop":

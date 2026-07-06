@@ -29547,6 +29547,23 @@ class Chart {
             if (grew && this._tfSwitchAnchorLock) {
                 try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
             }
+            // B-FIX-D (storm guard): backward prepends during replay keep the same
+            // logical bars on screen via the B-FIX-C offset compensation, so `leftIdx`
+            // never climbs past the `>= 6` stop above. Without this guard the loop keeps
+            // pulling 2000-bar chunks until session start (~24 chunks / ~48k bars) — the
+            // "candle-by-candle" reload storm on a host replay TF switch. If the master
+            // grew but the visible left window gained NO headroom, more history cannot
+            // help the viewport, so stop. Does NOT touch the compensation (drift fix)
+            // and does NOT affect a normal gap-fill (there `leftIdx` actually increases).
+            const stormGuardOn = !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_TF_SWITCH_FILL_STORM_GUARD);
+            if (stormGuardOn && grew) {
+                let leftIdxAfter = Infinity;
+                try { leftIdxAfter = Math.floor(this.pixelToDataIndex(m.l)); } catch (_e) { /* ignore */ }
+                if (leftIdxAfter < 6 && leftIdxAfter <= leftIdx) {
+                    return; // master grew but no left headroom gained — stop the storm
+                }
+            }
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
             if (!grew && !busy) return; // nothing more to load

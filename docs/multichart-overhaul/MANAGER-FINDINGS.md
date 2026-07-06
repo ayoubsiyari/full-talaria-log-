@@ -971,6 +971,185 @@ owner→mirror handover if the 4h/1m step engaged B8 (only in live mode where ho
 to confirm: (a) live-browse vs backtest, (b) whether it's a regression from B-FIX-A/B-FIX-C (test
 with kill-switches) or pre-existing mirror-commit re-render. Read-only diagnosis before any fix.
 
+## 6ak. B-FIX-6b-2 ACCEPTED live (group-by-group GONE) (2026-07-06, b29)
+
+PO on b29: idle-armed host 4h now shows `fetchedBars=4000` (14 fetches) vs the ~34k 1m haul before
+(§6af). **The group-by-group slow loading is fixed** and PO confirmed "it's fixed." Host holds a
+display-TF (4h) master while idle-armed, lazily hydrating 1m only on real play/step. Drift stays
+gone (B-FIX-C holds). **B-FIX-6b-2 acceptance = PASS** (headline fetchedBars criterion). Note: full
+B8-activation counters (`ownerFetches>0`, `handovers`) during drag/play were not separately captured
+before the PO moved on — the boundary/loading win is confirmed; B8 owner-fetch counter proof is
+softly outstanding but non-blocking (host-master win is the user-visible result).
+
+## 6al. Switch-back symptom refined (BL-1 + host price-scale) — next target (2026-07-06)
+
+PO after 6b-2: switching host BACK to 1m (from 4h) → (a) other panels re-render/flicker (BL-1), AND
+(b) **the HOST chart's price scale goes off-screen until a double-click resets it.** (b) is new
+detail — a host price-axis/autoscale failure on the 4h→1m switch-back, not just the panel repaint.
+Could be pre-existing OR a 6b-2 interaction (6b-2 changes host master/commit on switch). Per I11:
+read-only DIAG with a live capture (incl. a `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER` regression
+check) before any fix. This is now the sharpest remaining user-facing item; per D-022 the price-scale
+class (BL-2 family) outranks cosmetic flicker. Recommend pulling this DIAG forward ahead of Phase 2.
+
+## 6am. REPRO SPEC — host TF switch-back cascade (b29, the next target) (2026-07-06)
+
+PO's exact reproducible sequence:
+1. Fresh reload → 1m default → perfect.
+2. Set 2×2, all panels 1m → good.
+3. Host → 4h → perfect (6b-2: fast display-TF master, 4000 bars).
+4. **Host back to 1m → host chart HIDES (blanks), other panels re-render AND refetch/reload all
+   charts** (not a clean mirror; a full reload storm).
+5. **Host → 4h AGAIN → reverts to candle-by-candle (group-by-group) loading** — i.e. the 2nd 4h
+   switch is SLOW, unlike the first. Suggests host is stuck on a retained 1m master after the 1m
+   episode and resamples 4h from it in chunks instead of loading a fresh 4h display master.
+
+Hypotheses (UNPROVEN — I11 requires live capture before fix):
+- Switch-back 4h→1m: host legitimately needs 1m (it now displays 1m) but does a full blanking
+  reload; panels refetch instead of mirroring the host's new 1m (should be fetches=0).
+- 2nd 4h slow: `_mcFineMasterHydrated` / `_nativeRawFetchTf='1m'` state persists from the 1m episode,
+  so `_multichartReplayFineMasterInUse()` / the display-TF-master gate no longer takes the clean
+  path → host resamples 4h from retained 1m candle-by-candle.
+- Regression suspect: this switch-back path is what 6b-2 changed → check with
+  `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER=true`.
+
+Next: live `[B10]` capture of the 4h→1m→4h sequence (instrumentation still in build), then DIAG.
+
+## 6an. LIVE EVIDENCE — host 4h→1m switch-back cascade (b29 [B10] capture) (2026-07-06)
+
+Capture of host switching to 1m (armed replay, 2×2):
+```
+updateChartData id=A currentIndex=0 fullLen=66535 sliceEnd=1   ← host reloads FULL 66k 1m master; currentIndex RESET to 0 → slices to 1 bar
+hostLoad id=A prepended=2000 newLen=68535 offsetX=462.132
+updateChartData id=A currentIndex=2000 fullLen=68535 sliceEnd=2001
+hostLoad id=A prepended=2000 newLen=70535 offsetX=-13337.868   ← offsetX running away negative
+hostLoad id=A prepended=2000 newLen=72535 offsetX=-27341.868   ← further runaway
+updateChartData id=A currentIndex=6000 fullLen=72535 sliceEnd=6001
+```
+
+Three distinct host bugs proven (all on chartId=A, the host):
+1. **Playhead lost:** on 4h→1m, host `currentIndex` RESETS to 0 → `sliceEnd=1` → host renders 1 bar =
+   the "host chart hides."
+2. **offsetX runaway:** host auto-loads history in 2000-bar chunks and its own prepend compensation
+   drives offsetX hugely negative (462 → -13337 → -27341) → view off-screen → needs double-click
+   (fit/autoscale) to recover = the "scale hides until double-click."
+3. **Full 66k 1m reload** on the switch (not bounded) + chunked auto-load = the reload storm /
+   candle-by-candle.
+
+Likely 6b-2 interaction: pre-6b-2 the host always held a 1m master, so 4h→1m was a resample (no
+reload). 6b-2 makes idle-armed host hold 4h (great for loading), but switching back to 1m now must
+(re)load 1m — and that path resets the playhead + runs offsetX away. This is exactly the switch-back
+transition D-021 #2 / D-022 #2 flagged as riskiest. NOT yet confirmed regression vs pre-existing —
+need `__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER=true` comparison. (Panel B/C/D activity not in this
+capture slice; host is the dominant symptom.)
+
+Next: confirm regression via kill-switch, then read-only DIAG to name the playhead-reset +
+offsetX-runaway sites on the host's own replay TF-switch reload path.
+
+### UPDATE (kill-switch result + panel logs) — PRE-EXISTING, not a 6b-2 regression
+`__TALARIA_MC_DISABLE_LAZY_REPLAY_MASTER=true` → **no change** (PO: "same like before"). So the
+switch-back cascade is a PRE-EXISTING host replay-TF-switch bug that 6b-2 merely exposed, not caused.
+
+Refined from the fuller capture (host 4h→1m, armed replay, 2×2):
+- **Host does MULTIPLE full reloads** on the one switch: `updateChartData id=A currentIndex=0
+  fullLen=50000 sliceEnd=1` … then `fullLen=12000 sliceEnd=1` … then `fullLen=2000 sliceEnd=1` —
+  the host reloads/reslices from scratch several times.
+- **Host playhead resets to index 0** each reload (`currentIndex=0 sliceEnd=1` → 1 bar rendered =
+  the "host hides"), then currentIndex walks 0→2000→…→48000 as it auto-prepends 2000-bar chunks,
+  re-slicing `0..currentIndex` — i.e. re-building history from the oldest bar (the reload storm /
+  candle-by-candle, up to ~50k bars).
+- **Panels are NOT drifting:** panel B/C/D `render` shows `firstVisTs` CONSTANT (e.g. 1576554960000)
+  while offsetX runs hugely negative — that is B-FIX-C correctly anchoring the visible window as the
+  shared master grows. So B-FIX-C holds; the panels just RE-RENDER on every host reload step (the
+  "other panels re-render" the PO sees is the downstream repaint of the host's reload storm, not a
+  drift).
+
+Net: the problem is entirely the HOST's replay-TF-switch reload path (playhead reset + repeated
+full reload + unbounded history auto-load). Pre-existing, complex, and now the sharpest remaining
+TF-switch pain. Warrants a focused read-only DIAG (and likely Director prioritization — pre-existing
+scope, not part of the drift/6b-2 threads).
+
+### DIAG-B11 RESULT (read-only, agent 7a995e0d) — single root cause chain identified
+Host 4h→1m in armed replay: `setTimeframe` → `_refetchBacktestTimeframeCore` →
+`_hotSwapBacktestReplayTimeframe` → deferred follow-up → backward history loaders.
+
+ROOT CAUSE (one chain, three visible symptoms):
+1. Host 1m bulk fetch uses **session-start** high-limit window (`_getBacktestBulkHistoryFetchRange`,
+   chart.js:21732-21740, 5772-5776), NOT a playhead-centered window. The saved playhead timestamp
+   often does not map into the freshly replaced `fullRawData`.
+2. When `_findLastRawIndexAtOrBefore(...)` returns `hit < 0`, both `applyPersistedState`
+   (replay-system.js:186-202) and `syncCurrentIndexFromReplayTimestamp` (118-143) **collapse
+   currentIndex to sessionStartIndex (=0)** → `updateChartData sliceEnd=1` = "host hides".
+   Same collapse doc'd in `goToReplayTimestamp` (replay-system.js:5528-5546).
+3. With playhead pinned at oldest bar, `_snapReplayViewportAfterTfSwitch` (chart.js:21617-21620)
+   + `_fillViewportHistoryAfterTfSwitch` (29448-29553) + `_scheduleReplayPanLoadLeft` force
+   repeated 2000-bar backward loads; each prepend walks currentIndex forward
+   (chart.js:22325-22328: `replayIndex + uniqueNew.length`) and reslices 0..currentIndex →
+   the 0→2000→…→48000 storm. `hasMoreLeft` is force-set true (chart.js:21803-21804) so the
+   normal stop condition never fires until session start (~48k bars).
+Multiple full rebuilds (50000→12000→2000) = cache-hit swap + network bulk swap +
+`ensureGoToWindowContainsTimestamp` (2000-bar) swap, each re-running the failing playhead restore.
+
+Host offsetX prepend-compensation (chart.js:22307-22356, B-FIX-C sibling) IS reached but runs
+AFTER the reset — it can't restore a playhead that was already collapsed upstream.
+
+### DIAG-B11 FOLLOW-UP (read-only, agent 7a995e0d) — original B-FIX-D model was WRONG; corrected
+Reading the actual code refuted two parts of the first DIAG's model:
+- The bulk fetch ALREADY centers on the playhead (`_getBacktestBulkHistoryFetchRange`
+  chart.js:5779-5786 splits backward/forward around playhead); "playhead-centered fetch" is not the
+  missing lever.
+- During the 2000-chunk WALK the playhead is PRESERVED, not reset (chart.js:22325
+  `replayIndex + uniqueNew.length`); `currentIndex=0` only appears on the separate reload cycles.
+
+VERIFIED STORM DRIVER (the real one):
+The backward-fill loop `_fillViewportHistoryAfterTfSwitch` stops only when
+`leftIdx = floor(pixelToDataIndex(m.l)) >= 6` (chart.js:29475-29476). But the B-FIX-C prepend
+compensation (`offsetX -= shiftBars*spacing`, chart.js:22343-22356) keeps the SAME logical bars on
+screen after each prepend, so `leftIdx` never climbs past 6. The loop's continue condition is only
+`grew || busy` (29552), so it chains 2000-bar backward loads to session start (~24 chunks / ~48k
+bars) = the candle-by-candle reload storm. The observed host offsetX "~60/step" is CORRECT
+compensation at zoomed-out spacing (~0.03 px/bar, plotW/~2000 visible bars), not a bug. Autoscroll
+does NOT override it during the storm (`updateChartData(false)` skips `syncReplayViewportToPlayhead`,
+replay-system.js:3108-3120).
+
+### B-FIX-D (SHIPPED, gated) — fill-loop plateau guard
+Fix: in `_fillViewportHistoryAfterTfSwitch` recursion callback (chart.js ~29545), stop when the
+master grew but the visible left window gained NO headroom (`grew && leftIdxAfter < 6 &&
+leftIdxAfter <= leftIdx`). This halts the storm after ONE useless prepend cycle without touching
+B-FIX-C compensation (drift fix preserved) and without affecting a normal single-chart gap-fill
+(there `leftIdx` actually increases, so recursion continues as before).
+Kill-switch: `__TALARIA_MC_DISABLE_TF_SWITCH_FILL_STORM_GUARD` (I8).
+Acceptance (live, host 4h→1m in armed replay): no 2000-chunk walk to ~48k bars (expect ≤ ~2-3
+backward loads to fill the visible left gap), host TF switch fast (not candle-by-candle);
+kill-switch=true reverts to the storm; panels still don't drift (B-FIX-C intact).
+NOTE: the transient "host hides" (`currentIndex=0 sliceEnd=1`) on the reload cycles is a SEPARATE
+playhead-restore path (`applyPersistedState` idx=smin when `hit<0`, replay-system.js:191-192) —
+deferred; address only if still visible after the storm guard lands.
+
+### DIAG-B11 host-hides flash follow-up (read-only, agent 7a995e0d) + REJECTED naive fix
+Root of the flash: on a reload cycle the freshly loaded window can have
+`fullRawData[0].t > savedReplayTimestamp` (playhead is a sub-bar intraday moment from the coarse TF;
+the applied dataset is NOT the playhead-centered bulk window but a cache entry
+(`_applyBacktestTimeframeCacheEntry`, chart.js:8272-8280) or a start-anchored `ensureGoToWindow`
+fetch (chart.js:19985-19991)). Then `_findLastRawIndexAtOrBefore` returns hit<0 →
+`applyPersistedState`/`syncCurrentIndexFromReplayTimestamp` set currentIndex=sessionStartIndex(0) →
+hot swap paints `updateChartData(false)` → sliceEnd=1 → "host hides". Defer follow-up repairs it
+later (too late to prevent the flash).
+
+REJECTED FIX (tried + reverted): gating the hot-swap first paint on `syncCurrentIndexFromReplayTimestamp`
+returning true. Reason it fails: when hit<0 the ENTIRE loaded window is in the FUTURE relative to
+the playhead, and `_endTimeframeSwitching` (chart.js:20826, 20852-20869) re-renders the committed
+window via a `!destBarsMatched` safety net + unconditional `render()` regardless — so skipping the
+first paint merely trades the 1-bar flash for a full FUTURE-window flash. No net win.
+
+CORRECT FIX (deferred, needs its own gated task): prevent the non-covering window from being applied
+at the SOURCE — add a playhead-coverage guard to the cache fast-path
+(`_applyBacktestTimeframeFromCache`/`_applyBacktestTimeframeCacheEntry`): if the cached entry does
+not bracket the saved playhead, skip the cache and fall through to the playhead-centered network
+refetch. Optionally add a small backward margin to `ensureGoToWindowContainsTimestamp` so a bar
+<= playhead is always returned (kills hit<0 on the start-anchored path). Do NOT ship this on the
+same build as B-FIX-D — verify B-FIX-D live first (I8/I11: one change per verifiable build on this
+hot path), then dispatch the flash fix as its own gated task.
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
