@@ -1118,3 +1118,93 @@ No new fix tasks (backlog items included) until these three land:
 Register updates: **BL-4** (bound the session-start bulk fetch to a playhead-centered
 window, from B-FIX-E's secondary note) is formally in the backlog. BL-2 remains the
 top-priority backlog item after consolidation (invariant violation, per D-022).
+
+---
+
+## D-024 — COURSE CORRECTION: ledger repair, BL-5 finishes, then a hard freeze (2026-07-06)
+
+### What the record shows
+
+Since D-023 ("after G passes, STOP FIXING, CONSOLIDATE"): B-FIX-H, B-FIX-I, and
+B-FIX-J shipped; builds ran b46 → b67; BL-5 is open with two admitted
+patch-on-patch attempts behind it. Meanwhile the ledger has HOLES:
+- **B-FIX-G live acceptance: not recorded.** Nor the four checks D-023 folded into
+  that session (BL-1 reconciliation, §6al price-scale, B8 counters).
+- **B-FIX-H live verification: explicitly REQUIRED in its own entry, result not
+  recorded.** Same for the BL-2b isolation test (settled-resync flag).
+- **B-FIX-I and B-FIX-J have NO ledger entries at all** — they exist only as
+  passing mentions inside the BL-5 brief. This is the 6c gap (D-019) again, ×2.
+- Section numbering collided again (two §6ak).
+- The D-023 consolidation (cleanup, baseline re-capture, plan re-baseline):
+  none of it happened.
+
+The PO authorized fix-now on BL-2b — that override was the PO's call to make, and
+B-FIX-H itself was disciplined. But the freeze then dissolved entirely, and §6ak's
+own words ("prior patch-on-patch attempts did NOT resolve it — do NOT iterate
+blindly") describe the exact loop this overhaul was commissioned to break, now
+running in fast-forward: 12+ builds in a day, fixes shipping without ledger
+entries, baselines three generations stale, ~17 kill-switches uninventoried.
+
+### Rulings
+
+1. **BL-5 proceeds** — the §6ak worker brief is good (facts pinned, caller-name
+   requirement per I11, one gated fix, narrowest entry). Dispatch as written.
+   One addition: the report must state whether B-FIX-I and B-FIX-J are still
+   needed once the real driver is fixed, or are dead scar tissue to retire.
+2. **Ledger repair is mandatory and parallel** (docs-only, no build): entries for
+   B-FIX-G acceptance result, B-FIX-H live result, BL-2b isolation-test result,
+   and full sign-off entries for B-FIX-I and B-FIX-J (site, mechanism, kill-switch,
+   hashes, live status). If any of these was never actually verified live, the
+   entry must SAY so — an honest hole beats a smooth narrative. Fix the §6ak
+   collision (renumber the BL-5 entry).
+3. **After BL-5: HARD freeze.** No fix tasks — PO fix-now requests included —
+   until D-023's three consolidation items land (cleanup + flag inventory;
+   baseline re-capture on the current build; plan re-baseline). To the PO
+   directly: every fix shipped without re-captured baselines is unprotected —
+   the next regression lands silently, exactly like the weeks before this
+   process existed. The freeze is not bureaucracy; it is what keeps the last
+   48 hours' wins from unwinding. If a true showstopper appears mid-freeze,
+   it comes through ESCALATIONS with a Director ruling, not a chat authorization.
+4. **Scope note for consolidation:** the flag inventory now also decides, for each
+   of F/G/H/I/J (five overlapping mirror-hold/recovery patches on one path),
+   whether it is load-bearing or superseded. Five interacting holds on
+   `applyReplayFrame` is a maintenance hazard; the consolidation should propose a
+   single coherent hold policy if the BL-5 root cause makes any of them redundant.
+
+---
+
+## D-025 — Ledger repair ACCEPTED; deferred-checks manifest; freeze stands (2026-07-06)
+
+§6ap satisfies D-024 #2, and satisfies it the right way: real results recorded where
+they exist (G accepted; I accepted twice, including its own b56 regression and b58
+re-fix — which should have been ledgered at the time, but is now honestly on record),
+and **NOT CAPTURED written where nothing was captured** instead of a smoothed
+narrative. Two findings in the repair materially change the working picture:
+- **B-FIX-H is INERT for its target symptom** — BL-2b's mechanism remains
+  static-derived and unproven. Whatever resets the sync-off panel scale on host
+  1m↔4h is still unidentified. BL-2b therefore goes back on the backlog as OPEN
+  (not fixed-by-H), and H is a retire-candidate in the flag inventory.
+- **B-FIX-J is INSUFFICIENT by its own honest status** — its intent is subsumed by
+  the BL-5 root fix. The manager's provisional classification (F+G load-bearing,
+  H inert-harmless, I load-bearing, J insufficient) is accepted as the working
+  input to the consolidation's single-hold-policy proposal.
+
+### Deferred-checks manifest (so nothing evaporates a second time)
+
+The following owed items are now a NAMED checklist, executed as part of the
+consolidation baseline re-capture — each gets a PASS / FAIL / STILL-NOT-CAPTURED
+line in BASELINE-RESULTS:
+1. BL-1 reconciliation (resolved-by-F/G, or narrowed remnant).
+2. §6al host price-scale-off-screen-until-double-click check.
+3. B8 activation counters (`ownerFetches > 0`, `handovers` incrementing) during
+   one drag/play capture.
+4. BL-2b isolation test (`__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC=true`) — now
+   doubly relevant since H's inertness reopened the question.
+5. BL-2 (sync-ON price reframe) — specced fix exists (§BL-2 DIAG), held by freeze.
+
+### Standing state (no change)
+
+BL-5 worker runs per D-024 #1 (name the caller live, one gated fix, report rules on
+I/J retirement). After BL-5: hard freeze → cleanup + flag inventory → baseline
+re-capture incl. the manifest above → plan re-baseline. Escalations file is the only
+path for exceptions.

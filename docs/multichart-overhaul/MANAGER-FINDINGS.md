@@ -1370,6 +1370,153 @@ Worker 1 implemented B-FIX-6b-2. Manager verification:
 before/after (idle boot fetchedBars ≪34k; first-play lazy 1m 1–3 reqs; kill-switch reverts; B8
 `ownerFetches>0`; drift stays gone; no blank frames on the play transition). §6af is the "before".
 
+## 6ao. BL-5 — paused COARSER-panel candle-by-candle re-render on host FINER TF switch (2026-07-06, b67)
+
+**Status:** OPEN. Diagnosis converged; caller not yet name-confirmed live (I11 blocker). This is the
+Manager brief + Worker handoff for the next fix attempt. Prior patch-on-patch attempts (B-FIX-J,
+self-heal gating) did NOT resolve it — do NOT iterate blindly; NAME the caller first.
+
+### Symptom (PO, reproducible, b66/b67)
+- All four panels opened on 4h. Host paused. Host switches 4h → **1m**.
+- Panels B/C/D (which stay 4h — COARSER than the new host 1m) visibly re-render **candle by candle**
+  (slow). Switching host back to 4h re-renders them **fast** (one shot).
+- Console: bursts of `No candles drawn! All N candles are outside viewport. Skipped: N`
+  (chart.js `drawCandlesticks` ~28800/28924) where **N INCREMENTS** across frames (captured 43→67).
+- `[Violation] 'requestAnimationFrame' handler took 50ms` at **panel-cmd-bridge.js:1375**
+  (inside `scheduleCoalescedSeek`'s rAF body).
+
+### Established facts (do NOT re-litigate)
+1. Replay is **PAUSED** → this is NOT a play-loop broadcast; a paused host emits at most ONE settled
+   broadcast (B-FIX-G, chart.js ~8016).
+2. It is **NOT** `checkViewportLoadMore` — the B-TRACE-PANLOAD probe on that function did NOT fire.
+3. Panels are **COARSER** than the host after the switch (4h panel vs 1m host) →
+   `_multichartFinerSamePairPanelSelfOwns()` (panel-cmd-bridge.js ~3022, `panelMs < hostMs*0.92`)
+   returns **FALSE**. So the finer-self-owns detach branch does not apply.
+4. The **incrementing** empty-render count (43,44,…,67) means bars are being appended/stepped ONE AT A
+   TIME into the panel's series while its viewport is off-screen → a per-frame append+render loop
+   INSIDE the panel, re-entered ~once per rAF. It is NOT a single pan-load of a wide window.
+5. Existing mitigations do NOT cover it: B-FIX-F/G/H (mirror holds), B-FIX-I (self-heal, gated to
+   OFF-SCREEN playhead), B-FIX-J (empty-recovery suppression while `_timeframeSwitching`). All shipped,
+   all confirmed deployed in b66 via grep. Kill-switching self-heal did NOT stop it → not self-heal.
+6. Deploy is CONFIRMED current (b66/b67, grep verified) — this is a real code path, not a stale build.
+
+### Leading hypothesis (needs the live caller name to confirm — I11)
+The rAF at panel-cmd-bridge.js:1375 is `scheduleCoalescedSeek` → `forceReplaySeek` (~1414) →
+`goToReplayTimestamp` + `ensureReplayDataCoversTimestamp`. Suspected mechanism: the host's settled
+1m broadcast (or a mirror-catch-up retry, `scheduleMirrorCatchUp` ~757) drives the coarser panel to
+SEEK to the host playhead ts and to lazily EXTEND/fill its own replay master toward that ts. Because
+the panel is 4h its own bars are few and far from the 1m-scaled offsetX, so each fill chunk lands
+off-viewport → empty-render, and the fill self-reschedules per rAF → candle-by-candle. Switch-BACK to
+4h is fast because the panel TF then equals the host and the settled frame covers in one mirror.
+WHY only coarser: a same-TF panel mirrors host data by reference in one shot; a FINER panel self-owns
+and detaches; only a COARSER same-pair panel falls into the seek+fill-per-frame branch with a viewport
+scaled to the (now finer) host.
+
+### The ONE missing piece (blocks the gated fix — I11)
+Which function appends bars per rAF? The b67 trace `_traceEmptyRenderDriver` (gated by
+`window.__TALARIA_MC_TRACE_PANLOAD=true`) logs `[EMPTYRENDER]` + caller stack at the `drawn===0`
+branch. It has NOT yet been captured live (flag resets on reload / prior deploy lag). Capturing ONE
+`[EMPTYRENDER]` stack on a paused 4h→1m switch names the driver and unblocks the fix.
+
+### Fix shape (SPECCED, gated, ship ONLY after caller confirmed)
+When the HOST changes TF and a same-pair panel is COARSER than the new host TF (self-owns FALSE) AND
+the panel's own playhead/data did not change, SKIP the seek+fill-per-frame path: keep the panel's own
+detached slice and viewport, do not chase the host's finer playhead ts, do not lazily extend the
+panel master toward an off-viewport ts. Concretely, guard the entry the trace names — most likely one
+of: `scheduleCoalescedSeek`/`forceReplaySeek` (bail when `hostTf!==panelTf && !panelSelfOwnsFiner &&
+paused`), or the empty-render-driven fill in `drawCandlesticks`/`_scheduleViewportEmptyRecovery`
+(already partly guarded by B-FIX-J — extend to cover post-flag-clear window for coarser embeds).
+Kill-switch: `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK` (new, orthogonal to F/G/H/I/J).
+Isolation: only affects a coarser same-pair panel during a host switch to a finer TF; same-TF mirror,
+finer self-own, single-chart, and real replay playback untouched.
+
+### WORKER PROMPT (hand this to a fresh worker; read-only DIAG first, then one gated fix)
+
+> Read-only-first investigation, then a single minimal gated fix. Multi-chart trading app; files are
+> DUPLICATED in two trees that MUST stay byte-identical (I4): edit BOTH
+> `chart v 1.4/chart/...` and `homepage/public/chart/...`. Engine: `chart/chart.js`; replay:
+> `chart/modules/replay-system.js`; panel IPC: `chart/multichart-prod/panel-cmd-bridge.js`; grid:
+> `talaria-design/src/MultichartGrid.jsx`.
+>
+> BUG (BL-5): host + 4 panels all on 4h, replay PAUSED. Host switches 4h→1m. The 4h panels
+> (COARSER than the new 1m host) re-render CANDLE BY CANDLE (slow); switching back to 4h re-renders
+> fast. Console shows `No candles drawn! All N candles are outside viewport` with N INCREMENTING
+> (43→67), and `[Violation] requestAnimationFrame handler took 50ms` at panel-cmd-bridge.js:1375
+> (scheduleCoalescedSeek rAF). This is a per-frame append+render loop INSIDE the coarser panel.
+>
+> FACTS (verified, do not re-litigate): replay PAUSED; it is NOT checkViewportLoadMore (traced, did
+> not fire); `_multichartFinerSamePairPanelSelfOwns()` returns FALSE for these panels; B-FIX-F/G/H/I/J
+> are all shipped and deployed (b66) and do NOT fix it; disabling self-heal does not stop it.
+>
+> TASK:
+> 1. Trace the chain from "paused host switches 4h→1m" (settled broadcast at chart.js ~8016 and/or
+>    scheduleMirrorCatchUp panel-cmd-bridge.js ~757) to the per-rAF append/fill+render at
+>    panel-cmd-bridge.js:1375 (scheduleCoalescedSeek → forceReplaySeek ~1414 → goToReplayTimestamp /
+>    ensureReplayDataCoversTimestamp) and the empty-render branch in chart.js drawCandlesticks
+>    (~28800/28924). Name the EXACT function that appends bars one-at-a-time with file:line.
+>    (A gated trace `_traceEmptyRenderDriver` already exists behind `window.__TALARIA_MC_TRACE_PANLOAD`
+>    — you may rely on / extend it, but prefer static confirmation with cited line numbers.)
+> 2. Explain WHY only coarser panels hit it and why slow for 1m-host / fast for 4h-host.
+> 3. Ship ONE minimal, kill-switchable fix: stop an independent/coarser same-pair panel from running
+>    the seek+fill-per-frame loop when only the HOST changed TF and the panel's own playhead/data did
+>    not change (keep its detached slice + viewport). Kill-switch
+>    `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK`. Guard the narrowest entry point; do NOT
+>    touch same-TF mirror, finer self-own, single-chart, or real playback.
+> 4. Invariants: I4 both copies byte-identical; `node --check` both edited files + lint clean; bump
+>    build id (talaria-design/scripts/bump-dist-v9-cache.mjs), embed + sw.js. Report the exact
+>    file:line of the culprit, the diff, the build id, and the kill-switch name.
+
+## 6ap. LEDGER REPAIR (D-024 #2, docs-only) — G/H/I/J + BL-2b honest status (2026-07-06)
+
+Per D-024 the following entries were missing or incomplete. Reconstructed from session record;
+where a live result was never actually captured it is marked NOT CAPTURED rather than narrated.
+
+### B-FIX-G — live acceptance
+- **Result: ACCEPTED live.** PO: "perfect much better" — C and D no longer flash / show stale
+  ~1.094; all four panels settle to the host frame on host 1m↔4h; B stayed perfect.
+- **Owed checks folded by D-023 into the G session — NOT CAPTURED:** BL-1 reconciliation
+  (resolved-by-F/G vs remnant), §6al host price-scale-off-screen check, B8 activation counters
+  (`ownerFetches>0`/`handovers`). These remain open for the consolidation baseline re-capture.
+
+### B-FIX-H — live verification (was flagged REQUIRED in its own entry)
+- **Result: INERT for the target symptom.** The sync-off reframe/re-scale on host 1m↔4h was NOT
+  on the mirror-hold path the H guard covers (`_switchingToTimeframe` + target≠panelTf); the reset
+  driver sits elsewhere. H did not reproduce a fix for BL-2b.
+- **Disposition:** retained (gated, harmless, worst-case shows last-good frame slightly longer),
+  NOT load-bearing for BL-2b. Consolidation flag-inventory must decide retire vs keep.
+- **BL-2b isolation test** (`__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC=true` to confirm by-ref trap
+  vs B-FIX-G): **NOT CAPTURED.** Mechanism remains static-derived; do not treat as live-proven.
+
+### B-FIX-I (SHIPPED, gated, b56; regression-fixed b58) — debounced panel settled self-heal
+- **Site:** panel-cmd-bridge.js `_mcScheduleSettledSelfHeal` + three call points in `applyReplayFrame`
+  (both copies). **Mechanism:** once the host fully settles after a TF switch, held panels re-anchor
+  their viewport + price scale to their OWN playhead, debounced to coalesce rapid fast-switches.
+- **Kill-switch:** `__TALARIA_MC_DISABLE_PANEL_SETTLED_SELFHEAL`.
+- **Live (b56): ACCEPTED.** PO: "perfect it works" — fast-switch panel corruption fixed.
+- **Regression (b56):** on host 4h→1m the 4h panels refetched needlessly (self-heal recentered even
+  fine cross-TF panels → `checkViewportLoadMore`). **Fix (b58):** gate self-heal to panels whose
+  playhead is actually OFF-SCREEN (skip fine cross-TF panels). **Live (b58): ACCEPTED.** PO:
+  "perfect now good".
+- **BL-5 relevance:** disabling self-heal does NOT stop BL-5 → I is not the BL-5 driver. D-024 #1
+  requires the BL-5 report to state whether I survives the real fix or retires.
+
+### B-FIX-J (SHIPPED, gated, b62) — suppress panel empty-recovery while host mid-switch
+- **Site:** chart.js `_scheduleViewportEmptyRecovery` — early-return (skip price-scale reset) for
+  embed panels while the host is switching (`_timeframeSwitching` / `_switchingToTimeframe` /
+  `_pairSwitchLoading`) (both copies). **Kill-switch:** `__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET`.
+- **Live status: INSUFFICIENT (honest hole).** On a PAUSED host 4h→1m the coarser panels still
+  re-render candle-by-candle AFTER the switch flags clear — the driver is inside the panel and fires
+  post-flag-clear, outside J's guard window. This insufficiency is exactly what spawned **BL-5**
+  (§6ao). J is retained gated pending the BL-5 root fix.
+- **BL-5 relevance:** D-024 #1 — the BL-5 report must state whether J is still needed once the real
+  driver is guarded, or is scar tissue to retire.
+
+### Cross-cutting note for consolidation (D-024 #4)
+F/G/H/I/J are five overlapping holds/recoveries on the `applyReplayFrame` / empty-recovery path.
+Once BL-5 names the real driver, the flag inventory must classify each as load-bearing or superseded
+and propose a single coherent hold policy. Current honest read: F+G load-bearing (same-TF panel
+flash), H inert-but-harmless, I load-bearing (fast-switch), J insufficient (BL-5 supersedes intent).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

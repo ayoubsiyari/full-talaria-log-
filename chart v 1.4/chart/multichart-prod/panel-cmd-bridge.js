@@ -1365,7 +1365,54 @@
         }
     }
 
+    // BL-5 (paused COARSER same-pair panel candle-by-candle re-render on host FINER TF switch):
+    // when the HOST switches to a FINER TF (e.g. 4h host -> 1m) while replay is PAUSED, a COARSER
+    // same-pair panel (still 4h) must NOT chase the host's finer playhead ts through the coalesced
+    // seek. Doing so runs forceReplaySeek -> ensureReplayDataCoversTimestamp ->
+    // _syncReplayMasterFromParentIfCovers -> goToReplayTimestamp (replay-system.js), which reseeds
+    // this panel onto the host's now-1m master and resamples a large 1m prefix down to the coarse
+    // panel TF on every rAF -> "No candles drawn! All N candles outside viewport" (N incrementing)
+    // + the 50ms rAF violation (candle-by-candle). It is SLOW for a 1m host (huge 1m prefix to
+    // resample) and FAST for a 4h host (tiny prefix). The panel already holds the correct detached
+    // slice + viewport at its own (unchanged) playhead, so keep it. Only skip a NO-OP re-anchor
+    // (panel already aligned to its own playhead) — a genuine scrub moves ts and still seeks. Finer
+    // self-owning panels (which detach + own their finer view) and same-TF mirror panels are
+    // untouched. Kill-switch: window.__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK.
+    function shouldSkipCoarsePanelHostSwitchSeek(ch, ts) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK) {
+                return false;
+            }
+            if (!ch || !isMultichartIframePanel()) return false;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive) return false;
+            // PAUSED only — real playback must keep streaming/seeking.
+            if (rs.isPlaying || isParentReplayPlaying()) return false;
+            // Same symbol as host, on a DIFFERENT timeframe.
+            if (!isSameSymbolAsHost(ch)) return false;
+            var pc = readParentChart();
+            var hostTf = pc ? String(pc.currentTimeframe || '').toLowerCase().trim() : '';
+            var panelTf = String(ch.currentTimeframe || '').toLowerCase().trim();
+            if (!hostTf || !panelTf || hostTf === panelTf) return false;
+            // Finer self-owning panels detach + own their finer view — never touch them.
+            if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
+                && ch._multichartFinerSamePairPanelSelfOwns()) {
+                return false;
+            }
+            // COARSER only: this panel's bar is longer than the (now finer) host bar.
+            var hostMs = (typeof ch.parseTimeframe === 'function') ? ch.parseTimeframe(hostTf) : NaN;
+            var panelMs = (typeof ch.parseTimeframe === 'function') ? ch.parseTimeframe(panelTf) : NaN;
+            if (!(Number.isFinite(hostMs) && Number.isFinite(panelMs) && panelMs > hostMs)) return false;
+            // Only a no-op re-anchor: panel already at its own playhead (paused, ts unchanged).
+            return isPanelReplayAligned(ch, ts);
+        } catch (_) {
+            return false;
+        }
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
+        if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) return;
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
         coalescedSeekScheduled = true;
