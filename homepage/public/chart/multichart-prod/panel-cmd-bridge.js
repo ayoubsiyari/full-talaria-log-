@@ -433,6 +433,43 @@
         return false;
     }
 
+    // B-FIX-I (fast-switch self-heal): under RAPID host TF switching the settling machinery
+    // (B-FIX-F/G/H) can race — a held panel's one-shot settled re-mirror can be lost or coalesced
+    // when the next switch starts before the previous one finishes, leaving the panel parked on a
+    // stale window/scale (candles are the right TF, but offsetX + price scale are wrong). This is a
+    // panel-local, host-data-independent backstop: whenever we HOLD a panel during a host switch we
+    // (re)arm a debounced timer; it fires only once the host is FULLY settled (each new switch
+    // resets it, so a storm of fast switches collapses into ONE heal at the end) and re-anchors this
+    // panel's viewport to its OWN playhead + refits its OWN price scale. Only heals panels that were
+    // actually held (ch._mcNeedsSelfHeal), so it never yanks correctly-positioned panels. Kill-switch:
+    // window.__TALARIA_MC_DISABLE_PANEL_SETTLED_SELFHEAL.
+    function _mcScheduleSettledSelfHeal(ch) {
+        if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_SETTLED_SELFHEAL) return;
+        if (!ch) return;
+        try {
+            ch._mcNeedsSelfHeal = true;
+            if (ch._mcSelfHealTimer) { clearTimeout(ch._mcSelfHealTimer); }
+            ch._mcSelfHealTimer = setTimeout(function () {
+                ch._mcSelfHealTimer = null;
+                try {
+                    var pc = readParentChart();
+                    // Host still mid-switch → re-arm and wait for a quiet window (coalesces fast switching).
+                    if (pc && (pc._timeframeSwitching || pc._switchingToTimeframe || pc._pairSwitchLoading)) {
+                        _mcScheduleSettledSelfHeal(ch);
+                        return;
+                    }
+                    if (ch._mcNeedsSelfHeal !== true) return;
+                    ch._mcNeedsSelfHeal = false;
+                    var rs = ch.replaySystem;
+                    if (!rs || !rs.isActive) return;
+                    if (typeof rs.syncReplayViewportToPlayhead === 'function') {
+                        rs.syncReplayViewportToPlayhead(ch, { forceRecenter: true, resetPriceScale: true, render: true });
+                    }
+                } catch (_) {}
+            }, 320);
+        } catch (_) {}
+    }
+
     /**
      * Apply one replay animation frame from parent tile A. Iframe panels stay
      * paused locally — parent is the single playhead driver.
@@ -455,6 +492,7 @@
             var pcSwitching = readParentChart();
             if (pcSwitching
                 && (pcSwitching._timeframeSwitching || pcSwitching._pairSwitchLoading)) {
+                _mcScheduleSettledSelfHeal(ch);
                 return;
             }
             // B-FIX-F (panel flash on host TF-switch): the host clears _timeframeSwitching
@@ -477,6 +515,7 @@
                         // once the host settles and re-broadcasts, we force a one-shot re-mirror
                         // even though the paused playhead timestamp has not advanced.
                         ch._mcMirrorHeldUnsettled = true;
+                        _mcScheduleSettledSelfHeal(ch);
                         return;
                     }
                 }
@@ -502,6 +541,7 @@
                 var _panelTfSw = String(ch.currentTimeframe || '').toLowerCase().trim();
                 if (_swTarget && _panelTfSw && _swTarget !== _panelTfSw) {
                     ch._mcMirrorHeldUnsettled = true;
+                    _mcScheduleSettledSelfHeal(ch);
                     return;
                 }
             }
