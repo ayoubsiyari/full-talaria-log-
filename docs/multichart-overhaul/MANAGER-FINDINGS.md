@@ -1264,6 +1264,66 @@ sync-bridge.js:2203 (skip when `m.sourceTimeframe!==chart.currentTimeframe && !m
 Immediate PO workaround: turn OFF Date Range / Time sync → coupling stops. BL-2 remains top post-
 consolidation backlog item (D-022/D-023).
 
+### DIAG BL-2b (read-only, b45) — sync-OFF viewport/scale coupling REFUTES BL-2 as the whole story
+PO retested with ALL sync toggles OFF (Symbol/Interval/Crosshair/Time/Date Range/Drawings/Indicators/
+Chart Type) and the panels STILL reframe + re-scale on host 1m↔4h. So the BL-2 visibleRange path is NOT
+the (only) cause — DIAG c23f1163 found a SECOND path that ignores sync toggles entirely: the replay
+mirror bus (`replayFrame` fan-out, multichart-manager.js:1145; also B-FIX-G's settled broadcast
+chart.js:8009), which is never sync-gated.
+Root (CONFIRMED): a BY-REFERENCE data trap across the TF switch. During 1m→4h there is a race window
+where the host label still reads 1m (host clears `_timeframeSwitching` before the 4h bars settle,
+B-FIX-F comment). A `replayFrame` landing there passes the same-TF mirror and assigns
+`panel.data = host.data` / `panel.rawData = host.rawData` BY REFERENCE (replay-system.js:6305-6306;
+panel-cmd-bridge.js:1083-1084). The host then commits 4h and resamples those SAME array objects IN
+PLACE (`_commitTimeframeChange`/`_emitMultichartHostDataCommit`, chart.js:20874-20892). The panel now
+points at 4h bars but keeps its 1m viewport (offsetX/candleWidth) → visible window jumps ~10h off
+(~06:00 vs 16:00 playhead) + wider auto-scaled Y. INTERMITTENT: only when a replayFrame slips into the
+transient label-still-1m window past the B-FIX-F hold + dedup; otherwise panel keeps its detached own
+slice and stays perfect.
+B-FIX-G disposition: NOT the cause of the forward jump (`_mcForceSettledResync` requires host TF ==
+panel TF, false while host=4h). G participates only in switch-BACK to 1m (by design). PO isolation test:
+`__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC=true` — forward jump should persist (confirms by-ref trap,
+not G).
+Eliminated under sync-off: visibleRange/chartScrolled fan-out (sync-gated 1322/1068/2071),
+setTimeframe iframe fan-out (interval sync off), `_multichartMirrorHostTfSwitchIfReady` (host 4h ≠
+panel 1m), `talariaMcHostDataCommit` finer-owner path (returns when not finer-owner).
+Fix shape (SPECCED, NOT shipped — D-023 freeze): the by-ref share is intentional for a stable same-TF
+panel, but must NOT survive a host TF change. Smallest gated fix: in `applyReplayFrame` skip the same-TF
+mirror (return to the independent branch, never `forceSamePairParentDataMirror` /
+`_syncReplayMasterFromParentIfCovers` / `_tryMirrorFrameFromParentData`) when `hostTf !== panelTf` OR the
+host is switching; AND detach (`.slice()` / `_multichartDetachViewportFromHost`) instead of by-ref so a
+panel can never keep pointing at arrays the host later resamples to another TF. Kill-switch
+`__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH` (orthogonal to F/G flags). No regression to
+B-FIX-C/D/E/F/G, same-TF mirroring (unchanged when hostTf==panelTf && !switching), or single-chart.
+NOTE: this is a correctness glitch (panels show the wrong window/bars), arguably above "cosmetic" — it
+belongs to the TF-SWITCH SETTLING family, not the render-budget backlog. Recommend escalation for a
+fix-now ruling rather than holding behind full consolidation.
+
+### B-FIX-H (SHIPPED, gated, b46) — hold panel mirror across the same-label TF-switch window
+PO authorized fix-now. Correction to the BL-2b DIAG hypothesis: chart.js:20883 `_endTimeframeSwitching`
+REPLACES `this.data` (does not mutate in place), so the "shared array mutated underneath" theory is not
+the surviving mechanism. The mechanism that holds: during the START of a host TF switch there is a
+transient window where the host TF LABEL still equals the panel TF (both '1m' before a 1m→4h commit); a
+broadcast `replayFrame` landing there passes the same-TF mirror and the panel adopts a TRANSITIONAL host
+frame; the host then commits the new TF and the different-TF guard (panel-cmd-bridge.js:613) locks the
+panel out from correction → stuck on the wrong window/scale until switch-back. Intermittent = whether a
+frame lands in that window.
+Fix: in `applyReplayFrame`, hold (return, keep last good frame, mark `_mcMirrorHeldUnsettled`) when
+`pcSwitching._switchingToTimeframe` is set AND its target differs from this panel's TF. The host sets
+`_switchingToTimeframe` at `_beginTimeframeSwitching` (chart.js:20776) and clears it at
+`_endTimeframeSwitching` (chart.js:20852); the label flips within that span, so coverage is CONTINUOUS —
+label==panelTf ⇒ flag set ⇒ B-FIX-H holds; label flips ⇒ guard 613 takes over. No gap. NOT sync-gated
+(the replay mirror bus never was). Switch-back (target==panelTf) is intentionally not held by H — guard
+613 covers the pre-commit window and B-FIX-G re-syncs on commit.
+Kill-switch: `__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH` (orthogonal to F/G flags).
+Isolation: only adds a hold during an active host TF switch to a DIFFERENT target TF; same-TF mirroring,
+B-FIX-C/D/E/F/G, and single-chart untouched. Worst case (if inert) = panel shows last-good frame slightly
+longer. I4: both copies edited; build id b46.
+LIVE-VERIFICATION REQUIRED (I10/I11): mechanism is static-derived after one wrong prior DIAG (BL-2) and a
+partially-contradicted second (BL-2b in-place claim). PO must confirm b46 stops the sync-off reframe on
+host 1m↔4h; if it does NOT, the fix may be inert (frame processed outside the flag window) and we
+instrument the exact trigger before iterating — do NOT patch-on-patch.
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
