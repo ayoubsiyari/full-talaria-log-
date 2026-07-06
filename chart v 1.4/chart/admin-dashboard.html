@@ -5124,6 +5124,20 @@ select { cursor:default; }
             <p style="font-size:11px;color:var(--text-muted);margin-top:12px">These defaults are used when creating new users. Set access days to 0 for unlimited access.</p>
           </div>
         </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><polyline points="3,20 3,4"/><polyline points="3,15 8,11 12,14 18,7"/></svg>
+            <div class="card-title">Backtesting Sessions</div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:var(--text-muted)">User access</span>
+              <button class="btn sm" type="button" id="btSessionsToggleBtn" onclick="toggleBacktestSessionsMode()">…</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="btSessionsModeHint" style="font-size:12px;color:var(--text-muted);margin-bottom:0"></div>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:12px;margin-bottom:0">When OFF, non-admin users cannot open the Sessions / Backtest dashboard, chart replay, or any <code style="font-size:10px">/api/sessions</code> endpoint — direct links are blocked server-side. Admins always retain access for testing.</p>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -13641,6 +13655,49 @@ function updateSettingsPage() {
   $('settTotalDs').textContent = allDatasets.length;
   $('settActiveSess').textContent = allSessions.length;
   $('settServerTime').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+  loadBacktestSessionsMode();
+}
+
+// ── Backtesting sessions platform toggle ──
+let btSessionsEnabled = true;
+
+function renderBacktestSessionsMode() {
+  const btn = $('btSessionsToggleBtn');
+  const hint = $('btSessionsModeHint');
+  if (btn) {
+    btn.textContent = btSessionsEnabled ? 'ON' : 'OFF';
+    btn.style.background = btSessionsEnabled ? 'var(--accent)' : '';
+    btn.style.color = btSessionsEnabled ? '#fff' : '';
+  }
+  if (hint) {
+    hint.textContent = btSessionsEnabled
+      ? 'Sessions are ON — users with backtest access can open the Sessions dashboard, run replays, and use session APIs.'
+      : 'Sessions are OFF — regular users are blocked from Sessions / Backtest pages and all session APIs. Admins can still access for verification.';
+  }
+}
+
+async function loadBacktestSessionsMode() {
+  try {
+    const data = await api('/api/admin/platform/backtest-sessions');
+    btSessionsEnabled = !!data.enabled;
+  } catch (e) { /* keep default */ }
+  renderBacktestSessionsMode();
+}
+
+async function toggleBacktestSessionsMode() {
+  const next = !btSessionsEnabled;
+  const label = next ? 'Turn sessions ON for all users?' : 'Turn sessions OFF? Non-admins will be blocked immediately from Sessions, chart replay, and session APIs.';
+  if (!confirm(label)) return;
+  try {
+    const data = await api('/api/admin/platform/backtest-sessions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    });
+    btSessionsEnabled = !!data.enabled;
+    renderBacktestSessionsMode();
+    toast(btSessionsEnabled ? 'Backtesting sessions enabled' : 'Backtesting sessions disabled', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
 }
 </script>
 </body>

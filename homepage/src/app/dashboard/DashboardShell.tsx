@@ -17,6 +17,7 @@ import {
   dashboardPathRequiresPaidJournal,
   dashboardPathToModule,
   defaultDashboardPathForUser,
+  isBacktestSessionsPath,
   isNavItemAdminOnlyWip,
   isPathAdminOnlyWip,
   lockedModuleGateReason,
@@ -24,9 +25,11 @@ import {
   resolveDashboardGateVariant,
   userCanAccessAdminOnlyWipPath,
   userCanAccessDashboardPath,
+  userHasBacktestSessionsAccess,
   userHasDashboardModule,
   userHasPartialDashboardAccess,
   userIsDashboardAdmin,
+  type PlatformFeatures,
 } from "@/lib/dashboardAccess";
 import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
 import { isAnonymousPlaceholderUser } from "@/lib/authUser";
@@ -55,16 +58,23 @@ type User = {
   subscription?: { status?: string };
 };
 
-async function fetchMe(): Promise<User> {
+async function fetchMe(): Promise<{ user: User; platform: PlatformFeatures }> {
   const res = await fetch("/api/auth/me", {
     credentials: "include",
     cache: "no-store",
   });
   if (!res.ok) throw new Error("not_authenticated");
-  const data = (await res.json()) as { user: User; journal_token?: string };
+  const data = (await res.json()) as {
+    user: User;
+    platform?: PlatformFeatures;
+    journal_token?: string;
+  };
   applyJournalTokenFromAuthResponse(data);
   if (isAnonymousPlaceholderUser(data.user)) throw new Error("not_authenticated");
-  return data.user;
+  return {
+    user: data.user,
+    platform: data.platform ?? { backtest_sessions_enabled: true },
+  };
 }
 
 type NotifRow = {
@@ -341,6 +351,9 @@ export default function DashboardShell({
 }) {
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
+  const [platform, setPlatform] = React.useState<PlatformFeatures>({
+    backtest_sessions_enabled: true,
+  });
   const [authReady, setAuthReady] = React.useState(false);
   const [activeView, setActiveView] = React.useState<string>("dashboard");
   const [loadedViews, setLoadedViews] = React.useState<Record<string, boolean>>({ journal: true });
@@ -374,8 +387,9 @@ export default function DashboardShell({
 
   React.useEffect(() => {
     fetchMe()
-      .then((u) => {
+      .then(({ user: u, platform: pf }) => {
         setUser(u);
+        setPlatform(pf);
         setAuthReady(true);
       })
       .catch(() => {
@@ -384,24 +398,31 @@ export default function DashboardShell({
       });
   }, []);
 
-  const enforceAccessForPath = React.useCallback((u: User, path: string) => {
-    if (isPathAdminOnlyWip(path) && !userCanAccessAdminOnlyWipPath(u, path)) {
-      window.location.replace(defaultDashboardPathForUser(u));
-      return;
-    }
-    if (!dashboardPathRequiresPaidJournal(path)) return;
-    if (userCanAccessDashboardPath(u, path)) return;
-    window.location.replace(defaultDashboardPathForUser(u));
-  }, []);
+  const enforceAccessForPath = React.useCallback(
+    (u: User, path: string, platformFlags?: PlatformFeatures) => {
+      const search = window.location.search || "";
+      if (isPathAdminOnlyWip(path) && !userCanAccessAdminOnlyWipPath(u, path)) {
+        window.location.replace(defaultDashboardPathForUser(u, platformFlags));
+        return;
+      }
+      const needsGate =
+        dashboardPathRequiresPaidJournal(path) || isBacktestSessionsPath(path, search);
+      if (!needsGate) return;
+      if (userCanAccessDashboardPath(u, path, platformFlags, search)) return;
+      window.location.replace(defaultDashboardPathForUser(u, platformFlags));
+    },
+    []
+  );
 
   /** Re-sync after checkout, admin access change, tab focus, or browser back (bfcache). */
   React.useEffect(() => {
     const resync = () => {
       fetchMe()
-        .then((u) => {
+        .then(({ user: u, platform: pf }) => {
           setUser(u);
+          setPlatform(pf);
           setAuthReady(true);
-          enforceAccessForPath(u, window.location.pathname);
+          enforceAccessForPath(u, window.location.pathname, pf);
         })
         .catch(() => {});
     };
@@ -428,11 +449,15 @@ export default function DashboardShell({
 
   React.useEffect(() => {
     if (!authReady || !user) return;
-    enforceAccessForPath(user, pathname);
-  }, [authReady, user, pathname, enforceAccessForPath]);
+    enforceAccessForPath(user, pathname, platform);
+  }, [authReady, user, pathname, platform, enforceAccessForPath]);
 
-  const gatedPath = dashboardPathRequiresPaidJournal(pathname);
-  const pathAllowed = userCanAccessDashboardPath(user, pathname);
+  const locationSearch =
+    typeof window !== "undefined" ? window.location.search : "";
+  const onSessionsView = isBacktestSessionsPath(pathname, locationSearch);
+  const needsAccessGate = dashboardPathRequiresPaidJournal(pathname) || onSessionsView;
+  const gatedPath = needsAccessGate;
+  const pathAllowed = userCanAccessDashboardPath(user, pathname, platform, locationSearch);
   const wipSectionBlocked =
     authReady &&
     !!user &&
@@ -445,7 +470,12 @@ export default function DashboardShell({
       : "none";
   const subscriptionWall =
     authReady && !!user && gatedPath && !pathAllowed && !wipSectionBlocked;
-  const gateVariant = resolveDashboardGateVariant(user);
+  const gateVariant = resolveDashboardGateVariant(
+    user,
+    pathname,
+    locationSearch,
+    platform
+  );
   const gatedAuthLoading = gatedPath && !authReady;
 
   const goPricing = React.useCallback(() => {
@@ -517,7 +547,15 @@ export default function DashboardShell({
 
   const handleNavClick = (id: string) => {
     if (isNavItemAdminOnlyWip(id) && user && !userIsDashboardAdmin(user)) {
-      router.replace(defaultDashboardPathForUser(user));
+      router.replace(defaultDashboardPathForUser(user, platform));
+      return;
+    }
+    if (
+      (id === "backtest" || id === "trades") &&
+      user &&
+      !userHasBacktestSessionsAccess(user, platform)
+    ) {
+      router.replace(defaultDashboardPathForUser(user, platform));
       return;
     }
     const mod = navModuleForId(id);
@@ -587,12 +625,16 @@ export default function DashboardShell({
   const NAV_ITEMS = React.useMemo(() => {
     const items = ALL_NAV_ITEMS.filter(
       (item) => !isNavItemAdminOnlyWip(item.id) || userIsDashboardAdmin(user)
+    ).filter(
+      (item) =>
+        (item.id !== "backtest" && item.id !== "trades") ||
+        userHasBacktestSessionsAccess(user, platform)
     );
     if (userIsDashboardAdmin(user)) {
       return [...items, ADMIN_NAV_ITEM];
     }
     return items;
-  }, [user, ADMIN_NAV_ITEM]);
+  }, [user, platform, ADMIN_NAV_ITEM]);
 
   return (
     <div
@@ -973,7 +1015,7 @@ export default function DashboardShell({
                       router.push("/dashboard/profile/?tab=support&topic=access");
                     }}
                     onGoToAllowed={() => {
-                      router.replace(defaultDashboardPathForUser(user));
+                      router.replace(defaultDashboardPathForUser(user, platform));
                     }}
                   />
                 </div>

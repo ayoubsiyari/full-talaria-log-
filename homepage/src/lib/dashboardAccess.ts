@@ -68,7 +68,37 @@ export type DashboardGateVariant =
   | "subscription_ended"
   | "payment_required"
   | "access_period_ended"
-  | "admin_restricted";
+  | "admin_restricted"
+  | "backtest_unavailable";
+
+export type PlatformFeatures = {
+  backtest_sessions_enabled?: boolean;
+  backtest_sessions_globally_enabled?: boolean;
+};
+
+export function userHasBacktestSessionsAccess(
+  user: DashboardUser | null,
+  platform?: PlatformFeatures | null
+): boolean {
+  if (!user) return false;
+  if (userIsDashboardAdmin(user)) return true;
+  return platform?.backtest_sessions_enabled !== false;
+}
+
+/** True when URL targets Sessions / Trades / backtest analytics (includes ?view=sessions). */
+export function isBacktestSessionsPath(path: string, search = ""): boolean {
+  const p = path.split("?")[0].split("#")[0];
+  if (p.startsWith("/dashboard/sessions")) return true;
+  if (p.startsWith("/dashboard/backtest")) return true;
+  if (p.startsWith("/dashboard/trades")) return true;
+  const raw = search || (p === path ? "" : path.split("?")[1] || "");
+  const qs = raw.startsWith("?") ? raw.slice(1) : raw;
+  const view = new URLSearchParams(qs).get("view");
+  if (p === "/dashboard" || p === "/dashboard/") {
+    return view === "sessions" || view === "trades";
+  }
+  return false;
+}
 
 export type DashboardUser = {
   role?: string;
@@ -133,14 +163,20 @@ export function userHasDashboardModule(
 }
 
 /** First dashboard path the user may open (for redirects). */
-export function defaultDashboardPathForUser(user: DashboardUser | null): string {
+export function defaultDashboardPathForUser(
+  user: DashboardUser | null,
+  platform?: PlatformFeatures | null
+): string {
   if (!user) return "/pricing/?browse=1";
   if (userIsDashboardAdmin(user)) {
     return "/dashboard/?view=sessions";
   }
   if (userHasPaidFullDashboard(user)) {
     if (ADMIN_ONLY_WIP_SECTIONS) {
-      return "/dashboard/?view=sessions";
+      if (userHasBacktestSessionsAccess(user, platform)) {
+        return "/dashboard/?view=sessions";
+      }
+      return "/dashboard/?view=stratbank";
     }
     return "/dashboard/journal/";
   }
@@ -148,7 +184,12 @@ export function defaultDashboardPathForUser(user: DashboardUser | null): string 
   for (const mod of order) {
     if (isModuleAdminOnlyWip(mod)) continue;
     if (user.dashboard_modules?.[mod]) {
-      if (mod === "backtest") return "/dashboard/?view=sessions";
+      if (mod === "backtest") {
+        if (userHasBacktestSessionsAccess(user, platform)) {
+          return "/dashboard/?view=sessions";
+        }
+        continue;
+      }
       if (mod === "strategies") return "/dashboard/?view=stratbank";
     }
   }
@@ -182,9 +223,14 @@ export function dashboardPathRequiresPaidJournal(path: string): boolean {
 
 export function userCanAccessDashboardPath(
   user: DashboardUser | null,
-  path: string
+  path: string,
+  platform?: PlatformFeatures | null,
+  search = ""
 ): boolean {
   if (!userCanAccessAdminOnlyWipPath(user, path)) return false;
+  if (isBacktestSessionsPath(path, search) && !userHasBacktestSessionsAccess(user, platform)) {
+    return false;
+  }
   const mod = dashboardPathToModule(path);
   if (mod === null) return true;
   return userHasDashboardModule(user, mod);
@@ -207,7 +253,20 @@ export function lockedModuleGateReason(
 }
 
 /** Full-screen gate copy when user cannot open a paid dashboard section. */
-export function resolveDashboardGateVariant(user: DashboardUser | null): DashboardGateVariant {
+export function resolveDashboardGateVariant(
+  user: DashboardUser | null,
+  path?: string,
+  search = "",
+  platform?: PlatformFeatures | null
+): DashboardGateVariant {
+  if (
+    path &&
+    isBacktestSessionsPath(path, search) &&
+    user &&
+    !userHasBacktestSessionsAccess(user, platform)
+  ) {
+    return "backtest_unavailable";
+  }
   if (!user) return "subscription";
   if (userHasPartialDashboardAccess(user)) return "admin_restricted";
   const reason = user.access_denial_reason;

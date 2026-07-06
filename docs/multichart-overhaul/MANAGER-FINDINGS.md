@@ -1466,6 +1466,49 @@ finer self-own, single-chart, and real replay playback untouched.
 >    build id (talaria-design/scripts/bump-dist-v9-cache.mjs), embed + sw.js. Report the exact
 >    file:line of the culprit, the diff, the build id, and the kill-switch name.
 
+### B-FIX-BL5 (SHIPPED, gated, b68) — skip paused coarser-panel host-switch no-op seek
+Culprit (live-traced): `scheduleCoalescedSeek` rAF (panel-cmd-bridge.js:1375) → `forceReplaySeek`
+(~1414) → `ch.ensureReplayDataCoversTimestamp` (chart.js:5873) → `_syncReplayMasterFromParentIfCovers`
+(chart.js:5570, adopts host's now-1m master) → `replaySystem.goToReplayTimestamp` (replay-system.js:5513)
+which reslices+resamples the large 1m prefix to the panel's 4h series EVERY rAF → off-viewport render
+(`drawCandlesticks` 28802/28927) → `_scheduleViewportEmptyRecovery` re-arms → N increments 43→67.
+Coarser-only: finer panels self-own+detach, same-TF mirror by-ref; only a coarser same-pair panel hits
+the reseed+resample branch. Slow with 1m host (huge prefix) / fast with 4h host (tiny prefix).
+Fix: `shouldSkipCoarsePanelHostSwitchSeek(ch, ts)` guard at top of `scheduleCoalescedSeek`
+(panel-cmd-bridge.js:1381) — bails only when kill-switch off + iframe panel + replay active + PAUSED +
+same symbol + different TF + NOT finer-self-own + coarser (panelMs>hostMs) + already aligned to own
+playhead (`isPanelReplayAligned`, so genuine scrubs still seek). Keeps panel's detached slice+viewport.
+Kill-switch: `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK` (flag on = no-op = old behavior;
+orthogonal to F/G/H/I/J). Manager verify: I4 hashes identical (2B6380F8…), `node --check` clean both
+copies, guard present both trees. Build id b68.
+LIVE-VERIFIED (I11, b68): PO "perfect it's fixed" — coarse panels no longer re-render candle-by-candle
+on paused host 4h→1m. RESIDUAL (separate bug, NOT re-render): panels still change PRICE SCALE on host
+TF switch with all sync OFF → this is BL-2b (§6ao-residual below), the price-axis-independence invariant
+violation, still OPEN.
+
+### BL-2b RESURFACED (b68) — sync-OFF price-scale coupling is the remaining target
+PO (post-BL-5): with ALL sync toggles OFF, switching host TF still rescales panels B/C/D's Y axis (no
+re-render now — that's BL-5, fixed). Confirms the standing TARGET: all-sync-off ⇒ host TF switch / drag /
+any host action must have ZERO effect on B/C/D (price-axis independence, MultichartGrid invariant).
+Status: OPEN. B-FIX-H was INERT for this (§6ap); the reset driver is still UNIDENTIFIED. Prior BL-2b
+mechanism is static-derived and unproven. Per I11, the NEXT step is a LIVE-INSTRUMENTED DIAG to name the
+exact function that rescales the panel Y-axis on a sync-off host TF switch — NOT another static-guess fix
+(H already burned that path). Per D-024/D-025 freeze, this is a fix-now candidate that requires a Director
+escalation ruling; it qualifies (invariant violation, PO's core target).
+
+### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
+Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does
+NOT cover the earlier `applyReplayFrame` hold paths (I) nor the render-side empty-recovery path (J).
+- **B-FIX-I — KEEP.** Unique scenario: rapid host TF switching where a held panel misses/coalesces the
+  settled re-mirror and ends with its own playhead OFF-SCREEN; `_mcScheduleSettledSelfHeal`
+  (panel-cmd-bridge.js:446-488) heals only then. Not a BL-5 fix. Flag-inventory label:
+  "fast-switch/off-screen held-panel backstop."
+- **B-FIX-J — KEEP (narrow).** Unique path: `_scheduleViewportEmptyRecovery` triggered directly by a
+  transient mid-switch empty render (chart.js:23121-23130, 28800-28803), blocked while host still
+  switching/pair-loading (chart.js:17321-17336). BL-5 guard does not cover this (panel-side seek only).
+  Flag-inventory label: "mid-switch empty-render quieting; not sufficient for BL-5."
+Both remain in the consolidation flag inventory (neither retired); H stays the only retire-candidate.
+
 ## 6ap. LEDGER REPAIR (D-024 #2, docs-only) — G/H/I/J + BL-2b honest status (2026-07-06)
 
 Per D-024 the following entries were missing or incomplete. Reconstructed from session record;

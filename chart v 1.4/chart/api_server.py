@@ -2623,6 +2623,25 @@ def _request_requires_journal_for_backtest(path: str, request: Request) -> bool:
     return False
 
 
+def _request_is_backtest_sessions_dashboard(path: str, request: Request) -> bool:
+    """Homepage dashboard routes for backtest / sessions (query ?view=sessions|trades)."""
+    if path.startswith("/dashboard/sessions"):
+        return True
+    if path.startswith("/dashboard/backtest"):
+        return True
+    if path.startswith("/dashboard/trades"):
+        return True
+    if path in ("/dashboard", "/dashboard/"):
+        try:
+            qs = parse_qs(urlparse(str(request.url)).query)
+            view = (qs.get("view") or [""])[0].strip().lower()
+            if view in ("sessions", "trades"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if not AUTH_ENABLED:
@@ -2683,6 +2702,29 @@ async def auth_middleware(request: Request, call_next):
 
     user = _get_user_from_request(request)
     if user is not None:
+        # Platform kill-switch: backtest / sessions UI and APIs (admins exempt).
+        needs_backtest_platform = (
+            _request_is_backtest_sessions_dashboard(path, request)
+            or _request_requires_journal_for_backtest(path, request)
+            or (path.startswith("/api/sessions") and path != "/api/sessions/seed-demo-trades/scenarios")
+        )
+        if needs_backtest_platform and (user.role or "") != "admin":
+            db_gate = SessionLocal()
+            try:
+                if not _backtest_sessions_enabled(db_gate):
+                    if path.startswith("/api/"):
+                        return JSONResponse(
+                            {
+                                "detail": {
+                                    "code": "backtest_sessions_disabled",
+                                    "message": BACKTEST_SESSIONS_DISABLED_MESSAGE,
+                                }
+                            },
+                            status_code=403,
+                        )
+                    return RedirectResponse(url="/dashboard/?view=dashboard&disabled=backtest_sessions")
+            finally:
+                db_gate.close()
         # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
         if _request_requires_journal_for_backtest(path, request):
             if not _chart_user_has_module(user, "backtest"):
@@ -9746,6 +9788,12 @@ def _require_paid_journal_user(request: Request, module: str = "backtest"):
     user = _require_user(request)
     if not AUTH_ENABLED:
         return user
+    if module == "backtest":
+        db_gate = SessionLocal()
+        try:
+            _assert_backtest_sessions_platform_enabled(user, db_gate)
+        finally:
+            db_gate.close()
     if _user_has_chart_journal_access(user):
         return user
     db = SessionLocal()
@@ -11055,6 +11103,11 @@ SIGNUP_BLOCKED_MESSAGE = (
     "If you believe this is a mistake, please contact support."
 )
 
+BACKTEST_SESSIONS_ENABLED_SETTING = "backtest_sessions_enabled"
+BACKTEST_SESSIONS_DISABLED_MESSAGE = (
+    "Backtesting sessions are temporarily unavailable. Please try again later."
+)
+
 
 def _get_app_setting(db, key: str, default: str | None = None) -> str | None:
     try:
@@ -11084,6 +11137,34 @@ def _signup_allowlist_only(db) -> bool:
     if v is None:
         return _truthy(os.getenv("MENTORSHIP_SIGNUP_ALLOWLIST_ONLY", "true"))
     return _truthy(v)
+
+
+def _backtest_sessions_enabled(db) -> bool:
+    """Platform-wide backtest / sessions feature toggle (default on)."""
+    v = _get_app_setting(db, BACKTEST_SESSIONS_ENABLED_SETTING, None)
+    if v is None:
+        return True
+    return _truthy(v)
+
+
+def _user_may_use_backtest_sessions(user: User, db) -> bool:
+    if not user:
+        return False
+    if (user.role or "") == "admin":
+        return True
+    return _backtest_sessions_enabled(db)
+
+
+def _assert_backtest_sessions_platform_enabled(user: User, db) -> None:
+    if _user_may_use_backtest_sessions(user, db):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "backtest_sessions_disabled",
+            "message": BACKTEST_SESSIONS_DISABLED_MESSAGE,
+        },
+    )
 
 
 def _allowlist_entry(db, email: str):
@@ -11565,6 +11646,10 @@ def _auth_response_with_journal_token(user: User, db, response: Response | None 
     """Build the auth payload and, when a response is given, also set the httpOnly
     journal_token cookie plus the readable CSRF cookie (auth hardening)."""
     out: dict = {"user": _user_public_dict(user, db=db)}
+    out["platform"] = {
+        "backtest_sessions_enabled": _user_may_use_backtest_sessions(user, db),
+        "backtest_sessions_globally_enabled": _backtest_sessions_enabled(db),
+    }
     csrf = secrets.token_urlsafe(32)
     tok = _mint_journal_access_token(user, csrf=csrf)
     if tok:
@@ -15253,6 +15338,46 @@ async def admin_mentorship_set_signup_mode(payload: _SignupModeIn, request: Requ
             params={"allowlist_only": bool(payload.allowlist_only)},
         )
         return {"success": True, "allowlist_only": bool(payload.allowlist_only)}
+    finally:
+        db.close()
+
+
+# ── Platform feature toggles ──
+
+
+@app.get("/api/admin/platform/backtest-sessions")
+async def admin_get_backtest_sessions_mode(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        return {"enabled": _backtest_sessions_enabled(db)}
+    finally:
+        db.close()
+
+
+class _BacktestSessionsModeIn(BaseModel):
+    enabled: bool
+
+
+@app.put("/api/admin/platform/backtest-sessions")
+async def admin_set_backtest_sessions_mode(payload: _BacktestSessionsModeIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        _set_app_setting(
+            db,
+            BACKTEST_SESSIONS_ENABLED_SETTING,
+            "true" if payload.enabled else "false",
+        )
+        db.commit()
+        _record_admin_action(
+            request,
+            action="backtest_sessions_mode_set",
+            target_type="app_setting",
+            target_id=BACKTEST_SESSIONS_ENABLED_SETTING,
+            params={"enabled": bool(payload.enabled)},
+        )
+        return {"success": True, "enabled": bool(payload.enabled)}
     finally:
         db.close()
 

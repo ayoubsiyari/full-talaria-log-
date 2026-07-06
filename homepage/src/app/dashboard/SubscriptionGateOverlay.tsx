@@ -9,7 +9,8 @@ export type GateVariant =
   | "subscription_ended"
   | "payment_required"
   | "access_period_ended"
-  | "admin_restricted";
+  | "admin_restricted"
+  | "backtest_unavailable";
 
 type Props = {
   isArabic: boolean;
@@ -34,10 +35,11 @@ export default function SubscriptionGateOverlay({
   active,
 }: Props) {
   const isAdminRestricted = variant === "admin_restricted";
+  const isBacktestUnavailable = variant === "backtest_unavailable";
   const isPlanEnded = variant === "subscription_ended";
   const isAccessEnded = variant === "access_period_ended";
   const isPaymentIssue = variant === "payment_required";
-  const skipCountdown = isAdminRestricted || isPlanEnded || isAccessEnded || isPaymentIssue;
+  const skipCountdown = isAdminRestricted || isBacktestUnavailable || isPlanEnded || isAccessEnded || isPaymentIssue;
   const [seconds, setSeconds] = React.useState(8);
   const redirectedRef = React.useRef(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -92,7 +94,11 @@ export default function SubscriptionGateOverlay({
 
   if (!active) return null;
 
-  const title = isAdminRestricted
+  const title = isBacktestUnavailable
+    ? isArabic
+      ? "الجلسات غير متاحة مؤقتاً"
+      : "Sessions temporarily unavailable"
+    : isAdminRestricted
     ? isArabic
       ? "هذا القسم غير متاح"
       : "This section is not available"
@@ -112,7 +118,11 @@ export default function SubscriptionGateOverlay({
           ? "يتطلب اشتراكاً نشطاً"
           : "Subscription required";
 
-  const body = isAdminRestricted
+  const body = isBacktestUnavailable
+    ? isArabic
+      ? "تم إيقاف جلسات الاختبار مؤقتاً للصيانة. حاول لاحقاً أو تواصل مع الدعم إذا استمرت المشكلة."
+      : "Backtesting sessions are temporarily disabled for maintenance. Please try again later or contact support if this persists."
+    : isAdminRestricted
     ? isArabic
       ? "تم تقييد وصولك إلى هذا القسم من قبل الإدارة. إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم."
       : "Your access to this area was limited by an administrator. Contact support if you believe this is a mistake or need it enabled."
@@ -132,7 +142,11 @@ export default function SubscriptionGateOverlay({
           ? "جلسة التداول والتحليلات والأدوات المتقدمة متاحة مع الخطة المدفوعة. اختر خطةً للمتابعة."
           : "Journal, analytics, backtesting, and pro tools are included with an active plan. Choose a plan to continue.";
 
-  const primaryCta = isAdminRestricted
+  const primaryCta = isBacktestUnavailable
+    ? isArabic
+      ? "العودة إلى لوحة التحكم"
+      : "Back to dashboard"
+    : isAdminRestricted
     ? isArabic
       ? "تواصل مع الدعم"
       : "Contact support"
@@ -148,7 +162,11 @@ export default function SubscriptionGateOverlay({
           ? "عرض الخطط والأسعار"
           : "View plans & pricing";
 
-  const secondaryCta = isAdminRestricted
+  const secondaryCta = isBacktestUnavailable
+    ? isArabic
+      ? "تواصل مع الدعم"
+      : "Contact support"
+    : isAdminRestricted
     ? isArabic
       ? "العودة إلى أقسامي"
       : "Back to my sections"
@@ -167,14 +185,24 @@ export default function SubscriptionGateOverlay({
           : "Redirecting…"
         : null;
 
-  const onPrimary = isAdminRestricted
+  const onPrimary = isBacktestUnavailable
+    ? onGoToAllowed
+    : isAdminRestricted
     ? onContactSupport
     : isPaymentIssue
       ? onAccountSettings
       : goPlans;
-  const onSecondary = isAdminRestricted ? onGoToAllowed : onAccountSettings;
+  const onSecondary = isBacktestUnavailable
+    ? onContactSupport
+    : isAdminRestricted
+      ? onGoToAllowed
+      : onAccountSettings;
 
-  const footerNote = isAdminRestricted
+  const footerNote = isBacktestUnavailable
+    ? isArabic
+      ? "هذا إجراء على مستوى المنصة — لا يمكن تجاوزه عبر رابط مباشر."
+      : "This is a platform-wide setting — direct links cannot bypass it."
+    : isAdminRestricted
     ? isArabic
       ? "لا يلزم الاشتراك لهذا القسم — يجب تفعيله من الإدارة."
       : "A subscription is not required for this section — an admin must enable it for your account."

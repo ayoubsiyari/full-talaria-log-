@@ -1208,3 +1208,39 @@ BL-5 worker runs per D-024 #1 (name the caller live, one gated fix, report rules
 I/J retirement). After BL-5: hard freeze → cleanup + flag inventory → baseline
 re-capture incl. the manifest above → plan re-baseline. Escalations file is the only
 path for exceptions.
+
+---
+
+## D-026 — BL-5 CLOSED; BL-2b escalation GRANTED before the freeze; strict sequence (2026-07-06)
+
+### Ratifications
+- **BL-5 (B-FIX-BL5, b68) ACCEPTED live.** PO: "perfect it's fixed" — coarse-panel
+  candle-by-candle re-render on paused host 4h→1m is gone. I4 hashes identical,
+  node --check clean, kill-switch orthogonal. D-024 #1 satisfied: **B-FIX-I and
+  B-FIX-J both KEEP** (load-bearing on different paths — held-panel off-screen
+  backstop / mid-switch empty-render quieting); H remains the only retire-candidate.
+
+### The question (PO): BL-2b now, or freeze first?
+BL-2b (sync-OFF host TF switch rescales panels B/C/D Y-axis) is the surviving
+symptom. It is a **price-axis-independence INVARIANT violation** (D-022 flagged it
+top-priority) AND the PO's explicitly stated core target ("all sync off ⇒ host must
+not affect B/C/D"). That clears the D-024 escalation bar for a fix-now exception.
+
+### Ruling — GRANT the escalation, run BOTH in a STRICT sequence
+1. **BL-2b DIAG (live-instrumented, read-only) FIRST.** I11 is binding and
+   non-negotiable here: B-FIX-H already shipped INERT against a static-derived BL-2b
+   mechanism. No fix leaves the gate until an instrumented live capture NAMES the
+   exact function that rescales a panel Y-axis on a sync-off host TF switch. If the
+   DIAG cannot reproduce/name it, we STOP and report — no third guess.
+2. **BL-2b FIX** — one minimal gated guard at the named driver, own kill-switch,
+   both copies, live-verified. This closes the TF-SWITCH SETTLING / price-axis thread.
+3. **THEN the D-024/D-025 freeze runs in full** — cleanup + flag inventory (now also
+   ruling on H retire + whether BL-2b's driver makes any of F/G/H/I/J redundant),
+   baseline re-capture incl. the D-025 5-item manifest, plan re-baseline.
+
+Rationale for this order (not freeze-first): BL-2b's driver is on the same
+host-TF-switch path as F/G/H/I/J; identifying it makes the flag-inventory and
+plan-re-baseline ACCURATE instead of speculative. Doing consolidation before we know
+the last driver would just force a re-do. One more disciplined DIAG→fix, then the
+freeze is real and complete. No further fix-now exceptions after BL-2b until
+consolidation lands — this is the last one.
