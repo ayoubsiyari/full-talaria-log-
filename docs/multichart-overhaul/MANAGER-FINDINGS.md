@@ -1239,6 +1239,31 @@ build id b42.
 Acceptance (live, host 1m→4h→1m armed, all four same 1m): C AND D no longer flash / show stale ~1.094 /
 "change place"; all panels settle to the host's current frame; B stays perfect; kill-switch reverts.
 
+### DIAG BL-2 (read-only, b45) — cross-panel price-scale coupling on host TF switch
+PO symptom: all four EUR/USD; host TF 1m→4h reframes panels B/C/D price-axis scale, 1m→ reverts. Panels'
+1m data unchanged; only framing.
+Root (DIAG 6982c08f, CONFIRMED indirect — NOT a direct price-value leak; guards block priceMin/priceMax
+fan-out per I6): host TF switch reframes the host visible TIME window (4h spans days vs 1m hours); when
+Date Range (`layoutSync.dateRange`) and/or Time (`layoutSync.time`) sync is ON, the host emits the SAME
+`visibleRange` message pan/zoom uses (tagged `panSync:false`) via `chartScrolled` (sync-bridge.js:1322) →
+manager `_fanOut` → panel `applyVisibleRange`/`applyWallClockDateRange`/`setVisibleTimeRange`. Each panel
+then re-autoscales its Y axis to ITS OWN newly-visible bars via `refitPriceAutoScale` (sync-bridge.js:858)
+— host min/max never copied. Reversible because the window reverts on switch-back.
+Decisive: with ALL sync toggles OFF the coupling is blocked at THREE layers (host outbound 1322, manager
+1068, panel 2071) — so BL-2 only manifests with range/time sync enabled. A host TF switch is NOT a
+distinct event; it rides the pan/zoom viewport pipeline as `panSync:false`.
+Second path REFUTED for this scenario: same-pair replay mirror returns early when hostTf≠panelTf
+(panel-cmd-bridge.js:613); direct priceScale copy exists only in `_multichartMirrorHostTfSwitchIfReady`
+(chart.js:2921) and only when panel TF already matches host.
+Fix shape (SPECCED, NOT shipped — D-023 freeze): gate TF-switch-originated outbound `visibleRange` at
+sync-bridge.js:1322 (skip when `chart._timeframeSwitching` or a short `_tfSwitchRangeSuppressUntil`
+window, UNLESS `panSync===true` so real pan/zoom still syncs). Optional panel-side backstop at
+sync-bridge.js:2203 (skip when `m.sourceTimeframe!==chart.currentTimeframe && !m.panSync`). Kill-switch
+`__TALARIA_MC_DISABLE_TF_SWITCH_RANGE_FANOUT`. No regression to same-TF mirror, B-FIX-C/D/E/F/G (uses
+`_multichartBroadcastReplayFrame`, not this gate), single-chart, or legit pan/zoom sync.
+Immediate PO workaround: turn OFF Date Range / Time sync → coupling stops. BL-2 remains top post-
+consolidation backlog item (D-022/D-023).
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
