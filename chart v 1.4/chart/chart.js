@@ -8272,6 +8272,35 @@ class Chart {
         const savedReplayTimestamp = this._resolveMultichartReplayPlayheadMs()
             ?? this._captureReplayPlayheadMs(replay);
 
+        // B-FIX-E (master-thrash + host-hides flash): the cached TF window is a tail-truncated
+        // slice (max ~12000 bars). On return to a finer TF whose playhead sits near session
+        // start, that tail does NOT bracket the playhead — applying it collapses currentIndex
+        // to 0 (sliceEnd=1 = "host hides"), and then _deferBacktestTfSwitchFollowUp sees the
+        // playhead outside the window and fires ANOTHER non-covering ensureGoToWindow reload
+        // (a second flash + a third full master replace). Skip the cache when it does not cover
+        // the playhead and fall through to the covering network load — one clean load, no flash.
+        // Kill-switch restores the old unchecked fast-path.
+        const cacheCoverGuardOn = !(typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_BT_TF_CACHE_PLAYHEAD_COVER);
+        if (cacheCoverGuardOn
+            && replay.isActive
+            && Number.isFinite(savedReplayTimestamp)
+            && Array.isArray(entry.rawData) && entry.rawData.length > 0) {
+            const firstT = entry.rawData[0].t;
+            const lastIdx = entry.rawData.length - 1;
+            const lastBar = entry.rawData[lastIdx];
+            if (Number.isFinite(firstT) && lastBar && Number.isFinite(lastBar.t)) {
+                const periodMs = this.parseTimeframe(entry.nativeRawFetchTf || timeframe)
+                    || this._getNativeRawStepMs() || 60000;
+                const lastEnd = this._getBarPeriodEndMs(lastBar.t, entry.rawData, lastIdx, periodMs)
+                    || (lastBar.t + periodMs);
+                if (savedReplayTimestamp < firstT || savedReplayTimestamp >= lastEnd) {
+                    // Cache does not bracket the playhead → not a safe fast-path; refetch.
+                    return false;
+                }
+            }
+        }
+
         this.rawData = entry.rawData;
         this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
         this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;

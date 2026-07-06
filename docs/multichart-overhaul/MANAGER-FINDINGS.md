@@ -1150,6 +1150,35 @@ refetch. Optionally add a small backward margin to `ensureGoToWindowContainsTime
 same build as B-FIX-D — verify B-FIX-D live first (I8/I11: one change per verifiable build on this
 hot path), then dispatch the flash fix as its own gated task.
 
+### B-FIX-D LIVE-VERIFIED (build b35) — storm gone; master-thrash exposed as the remaining cost
+PO live logs on b35: the 24-chunk backward march is GONE (each phase now does 1-2 prepends). But a
+1m→4h→1m sequence still shows the host replacing its ENTIRE master multiple times with two
+host-hides flashes: `fullLen 68535 (bulk, playhead valid @2000)` → `12000 (cache, idx→0 flash)` →
+`2000 (ensureGoTo, idx→0 flash)`. B-FIX-D confirmed working; remaining pain = the reload cascade.
+
+### DIAG (read-only, agent 76a76a11) — reload cascade root, verified
+On return to a finer TF, `_applyBacktestTimeframeFromCache` applies a tail-truncated cache entry
+(max 12000 bars, `_saveBtTfDataCacheFromChart`/`maxCacheBars`) WITHOUT checking playhead coverage
+(`_applyBacktestTimeframeCacheEntry` never calls `_replayPlayheadOutsideMasterWindow`). When the
+playhead sits near session start, that tail does not bracket it → `applyPersistedState` idx=smin(0)
+→ sliceEnd=1 flash (reload 2). That non-covering master then makes `_deferBacktestTfSwitchFollowUp`
+see `_replayPlayheadOutsideMasterWindow=true` and fire `ensureGoToWindowContainsTimestamp` (2000-bar
+'start'-anchored) = reload 3 + second flash. Reload 3 is a downstream CONSEQUENCE of reload 2.
+
+### B-FIX-E (SHIPPED, gated) — cache playhead-coverage guard
+Fix: in `_applyBacktestTimeframeCacheEntry` (chart.js ~8275, before `this.rawData = entry.rawData`),
+if armed replay and the cached entry does NOT bracket the saved playhead
+(`savedReplayTimestamp < entry.rawData[0].t || >= lastEnd`), return false → fall through to the
+covering network load. Eliminates reload 2, its downstream reload 3, and BOTH host-hides flashes in
+one change. Covering caches still apply instantly (fast-path preserved).
+Kill-switch: `__TALARIA_DISABLE_BT_TF_CACHE_PLAYHEAD_COVER` (I8).
+Isolation: does not touch B-FIX-C prepend compensation or B-FIX-D fill-loop plateau guard.
+Acceptance (live, 1m→4h→1m armed): on the 1m return — a SINGLE covering master load (no 12000 then
+2000 re-replace), no `currentIndex=0 sliceEnd=1` flash; kill-switch reverts to the 3-reload cascade.
+SECONDARY (not in this build): the covering network load is ~68535 bars because the session-start
+branch of `_getBacktestBulkHistoryFetchRange` (chart.js:5772-5776) pulls session-start→end. Consider
+bounding it to a playhead-centered window later (BL-4) — lower priority than removing the cascade.
+
 ## 6ai. Backlog (observed on b25, NOT yet worked — deferred to stay on plan) (2026-07-06)
 
 PO explicitly asked to return to the structured plan rather than chase each new symptom. Logging
