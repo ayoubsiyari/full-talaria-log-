@@ -371,7 +371,14 @@ no stale-data repaint (B-FIX-D/E/F/G).
   but also stops the viewport recenter → panel parked off-screen. Tracked as BL-6 (MANAGER-FINDINGS);
   escalated ESC-011. Distinct from R2's data/flash PASS.
 
+## BL-7 (deferred, cosmetic) — transient `No candles drawn` during same-TF host switch
+All-1m config: `No candles drawn` flood fires ONLY DURING a host switch and self-corrects (panels end
+centered/correct). Transient console noise, no persistent visible defect. Deferred under freeze (Phase-3
+render-budget family). Not escalated.
+
 ## R3 — Paused host 4h → 1m, coarse panels (no candle-by-candle)
+**Result (b72+):** PO live — coarse 4h panels STAY CENTERED on paused host 4h→1m, no candle-by-candle
+storm, no persistent off-screen park (BL-5 + BL-6). **Verdict: PASS.**
 **Do this:** all panels 4h, replay paused, switch host 4h→1m. **Expect:** 4h panels do NOT re-render
 candle-by-candle; no `No candles drawn!` flood; no 50ms rAF (BL-5). Kill-switch
 `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK=true` reverts.
@@ -382,8 +389,11 @@ candle-by-candle; no `No candles drawn!` flood; no 50ms rAF (BL-5). Kill-switch
 **Do this:** all sync toggles OFF, 4 same-pair panels; switch host 1m↔4h. **Expect:** B/C/D price (Y) axis
 stays put (each autoscales own bars). Kill-switch `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE=true`
 reverts (coupling returns). Own scrub/playback unaffected (BL-2b).
-- Result: __CAPTURE__
-- Verdict: PASS / FAIL / NOT-CAPTURED
+- Result (b72+): PO live — B/C/D price axis stays put on the large majority of switches. **Verdict: PASS.**
+- Residual (BL-2b-r, minor/intermittent): occasionally a panel Y moves "a little" — NOT every switch.
+  Small, non-reproducible-on-demand. Deferred (Phase-3 render-budget family); not escalated. Likely the
+  panel's own autoscale recomputing on a transient visible-bar set during the switch, not host coupling
+  (host copy is gated off by BL-2b). Re-check during Phase-3 with the [BL2B_PRICE] probe still in place.
 
 ## D-025 deferred-checks manifest (each gets PASS / FAIL / STILL-NOT-CAPTURED)
 - **M1 — BL-1 reconciliation:** is the switch-back flicker resolved by F/G, or is there a remnant? __CAPTURE__

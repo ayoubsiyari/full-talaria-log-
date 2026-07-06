@@ -7,6 +7,42 @@ from email_templates import render_email_template, get_plain_text_template
 
 mail = Mail()
 
+# ── Branding for HTML emails ────────────────────────────────────────────────
+# Logo must be a publicly reachable HTTPS URL (email clients won't load
+# relative paths or the app's private host). Override via env if needed.
+EMAIL_LOGO_URL = os.environ.get('EMAIL_LOGO_URL', 'https://www.talaria-log.com/logo-08.png')
+EMAIL_BRAND_NAME = os.environ.get('EMAIL_BRAND_NAME', 'Talaria Trading Journal')
+EMAIL_SITE_URL = os.environ.get('EMAIL_SITE_URL', 'https://www.talaria-log.com')
+
+
+def _brand_email_html(heading, body_html):
+    """Wrap content in a branded shell: logo header + signature footer.
+    Table-based, inline-styled markup for broad email-client support."""
+    return (
+        '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#0b1220;'
+        'font-family:Arial,Helvetica,sans-serif;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#0b1220;padding:24px 0;"><tr><td align="center">'
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" '
+        'style="max-width:600px;width:100%;background:#111a2e;border-radius:12px;'
+        'overflow:hidden;border:1px solid #1e2a44;">'
+        '<tr><td align="center" style="padding:28px 24px 8px;">'
+        f'<img src="{EMAIL_LOGO_URL}" width="64" height="64" alt="{EMAIL_BRAND_NAME}" '
+        'style="display:block;border:0;outline:none;">'
+        f'<div style="color:#e6edf7;font-size:18px;font-weight:bold;margin-top:10px;">{EMAIL_BRAND_NAME}</div>'
+        '</td></tr>'
+        '<tr><td style="padding:8px 32px 8px;">'
+        f'<h1 style="color:#ffffff;font-size:20px;margin:16px 0 8px;">{heading}</h1>'
+        f'<div style="color:#c3cede;font-size:15px;line-height:1.6;">{body_html}</div>'
+        '</td></tr>'
+        '<tr><td style="padding:24px 32px 28px;border-top:1px solid #1e2a44;">'
+        '<div style="color:#9fb0c9;font-size:14px;line-height:1.6;">Best regards,<br>'
+        f'<strong style="color:#e6edf7;">The {EMAIL_BRAND_NAME} Team</strong><br>'
+        f'<a href="{EMAIL_SITE_URL}" style="color:#5b9dff;text-decoration:none;">{EMAIL_SITE_URL}</a></div>'
+        f'<div style="color:#5f708c;font-size:12px;margin-top:16px;">&copy; {EMAIL_BRAND_NAME}. All rights reserved.</div>'
+        '</td></tr></table></td></tr></table></body></html>'
+    )
+
 def init_mail(app):
     """Initialize Flask-Mail with the app using domain email configuration"""
     # Use domain email settings if available, otherwise fall back to Gmail
@@ -48,35 +84,79 @@ def init_mail(app):
     mail.init_app(app)
 
 def send_verification_email(user, verification_code):
-    """Send verification email to user with 6-digit code"""
+    """Send verification email to user with 6-digit code (branded HTML)."""
+    recipient = getattr(user, 'email', None) or str(user)
     try:
-        subject = "Verify Your Email - Talaria Trading Journal"
-        
-        # Load template from file, fallback to inline if not found
-        html_content = render_email_template(
-            'verification-email.html',
-            verification_code=verification_code,
-            user_email=user.email
+        subject = f"Verify Your Email - {EMAIL_BRAND_NAME}"
+
+        body_html = (
+            '<p>Welcome! Thanks for registering. Enter this verification code to '
+            'complete your registration:</p>'
+            '<div style="text-align:center;margin:24px 0;">'
+            '<span style="display:inline-block;background:#0b1220;border:1px solid #2b3b5c;'
+            'border-radius:10px;padding:14px 28px;color:#ffffff;font-size:30px;'
+            f'letter-spacing:8px;font-weight:bold;">{verification_code}</span></div>'
+            '<p style="color:#9fb0c9;font-size:13px;">This code expires in 15 minutes. '
+            "If you didn't request this, you can safely ignore this email.</p>"
         )
-        text_content = get_plain_text_template(
-            'verification',
-            verification_code=verification_code,
-            user_email=user.email
+        html_content = _brand_email_html("Verify your email", body_html)
+        text_content = (
+            f"Your {EMAIL_BRAND_NAME} verification code is: {verification_code}\n"
+            "It expires in 15 minutes. If you didn't request this, ignore this email."
         )
-        
-        # Create and send message
+
         msg = Message(
             subject=subject,
-            recipients=[user.email],
+            recipients=[recipient],
             html=html_content,
-            body=text_content
+            body=text_content,
         )
-        
+
         mail.send(msg)
         return True
-        
+
     except Exception as e:
-        current_app.logger.error(f"Failed to send verification email to {user.email}: {str(e)}")
+        current_app.logger.error(f"Failed to send verification email to {recipient}: {str(e)}")
+        return False
+
+
+def send_welcome_coupon_email(recipient_email, coupon_code, coupon_note=None):
+    """Send a branded 'welcome discount' email with a coupon code after the
+    user verifies their email (before payment)."""
+    try:
+        subject = f"Your welcome discount - {EMAIL_BRAND_NAME}"
+        note_html = (
+            f'<p style="color:#9fb0c9;font-size:13px;">{coupon_note}</p>' if coupon_note else ''
+        )
+        body_html = (
+            '<p>Your email is verified. As a welcome gift, here is a discount code to '
+            'use at checkout:</p>'
+            '<div style="text-align:center;margin:24px 0;">'
+            '<span style="display:inline-block;background:#0b1220;border:1px dashed #5b9dff;'
+            'border-radius:10px;padding:14px 28px;color:#ffffff;font-size:24px;'
+            f'letter-spacing:3px;font-weight:bold;">{coupon_code}</span></div>'
+            f'{note_html}'
+            '<p>Enter this code on the pricing page when you subscribe.</p>'
+        )
+        html_content = _brand_email_html("A gift before you start", body_html)
+        text_content = (
+            f"Your {EMAIL_BRAND_NAME} welcome discount code: {coupon_code}\n"
+            "Enter it at checkout on the pricing page.\n"
+        )
+        if coupon_note:
+            text_content += f"\n{coupon_note}\n"
+
+        msg = Message(
+            subject=subject,
+            recipients=[recipient_email],
+            html=html_content,
+            body=text_content,
+        )
+        mail.send(msg)
+        return True
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to send welcome coupon email to {recipient_email}: {str(e)}")
         return False
 
 def send_password_reset_email(user, reset_code):

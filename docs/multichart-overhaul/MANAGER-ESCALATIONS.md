@@ -410,3 +410,11 @@ Sequence: (1) read-only DIAG names the mechanism (record brief+agent ID per D-02
 live-verified; (3) resume Item-2/3 consolidation. The freeze otherwise stands. ESC-011 open until BL-6
 fix live-verified.
 
+**RESOLVED (2026-07-07, b72+).** DIAG agent `db6d3d80` (BL-5 skip removed offsetX recenter + B-FIX-I
+stale-index self-heal). Fix agent `cf13f1ec`: one-shot offsetX-only recenter
+(`maybeRecenterCoarsePanelAfterHostSwitch`, panel-cmd-bridge.js:1440/1481), kill-switch
+`__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER`. Manager-verified (I4 hash
+554D9AAF…, node --check clean). PO live-verified: coarse 4h panels STAY CENTERED on paused host 4h→1m.
+ESC-011 CLOSED. NOTE: a SEPARATE `No candles drawn` flood persists in the ALL-1m (same-TF) config —
+tracked as BL-7 (distinct from BL-6; BL-6 fix targets coarser panels only).
+

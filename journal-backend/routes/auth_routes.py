@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from sqlalchemy import text
 from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
-from email_service import send_verification_email, send_password_reset_email, send_welcome_email
+from email_service import send_verification_email, send_password_reset_email, send_welcome_email, send_welcome_coupon_email
 from datetime import datetime, timedelta
 import os
 
@@ -133,6 +133,30 @@ def _consume_signup_verification(email):
         )
     except Exception:
         pass
+
+
+def _signup_welcome_coupon():
+    """Return (code, note) for the admin-configured signup welcome coupon, or
+    (None, None) when disabled/unset. Read from the shared app_settings table
+    (managed from the chart admin dashboard)."""
+    try:
+        rows = db.session.execute(
+            text(
+                "SELECT key, value FROM app_settings WHERE key IN "
+                "('signup_welcome_coupon_enabled','signup_welcome_coupon_code','signup_welcome_coupon_note')"
+            )
+        ).fetchall()
+    except Exception:
+        return (None, None)
+    data = {r[0]: r[1] for r in rows}
+    enabled = str(data.get("signup_welcome_coupon_enabled") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    code = (data.get("signup_welcome_coupon_code") or "").strip()
+    if not enabled or not code:
+        return (None, None)
+    note = (data.get("signup_welcome_coupon_note") or "").strip() or None
+    return (code, note)
 
 
 def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
@@ -626,6 +650,15 @@ def signup_verify_code():
     except Exception:
         db.session.rollback()
         return jsonify({"error": "Could not confirm the code. Please try again."}), 500
+
+    # Welcome-discount nudge: email the admin-configured coupon (if enabled)
+    # right after verification, before payment. Never block verification on it.
+    try:
+        coupon_code, coupon_note = _signup_welcome_coupon()
+        if coupon_code:
+            send_welcome_coupon_email(email, coupon_code, coupon_note)
+    except Exception:
+        pass
 
     return jsonify({"message": "Email verified.", "verified": True}), 200
 

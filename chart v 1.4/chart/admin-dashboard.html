@@ -3467,6 +3467,31 @@ select { cursor:default; }
           </div>
         </div>
 
+        <!-- Signup welcome coupon -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M20 12v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>
+            <div class="card-title">Signup welcome coupon</div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:var(--text-muted)">Email after verification</span>
+              <button class="btn sm" type="button" id="mtCouponToggleBtn" onclick="toggleSignupCoupon()">…</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+              When enabled, every newly-verified signup is emailed this promo code (before payment).
+              The code must exist as a real coupon under <strong>Subscriptions &rarr; Coupons</strong> to actually discount checkout.
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>Promo code</label><input type="text" id="mtCouponCode" placeholder="e.g. WELCOME20" style="text-transform:uppercase" maxlength="64"></div>
+              <div class="field"><label>Note in email (optional)</label><input type="text" id="mtCouponNote" placeholder="e.g. 20% off your first month" maxlength="200"></div>
+              <div class="fg-full" style="text-align:right;margin-top:4px">
+                <button class="btn primary" id="mtCouponSaveBtn" onclick="saveSignupCoupon()">Save coupon</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Cohorts + roster -->
         <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
           <div class="card">
@@ -7763,7 +7788,59 @@ function mtReadModules(cls) {
 }
 
 async function loadMentorship() {
-  await Promise.allSettled([loadSignupMode(), loadAllowlist(), loadCohorts()]);
+  await Promise.allSettled([loadSignupMode(), loadAllowlist(), loadCohorts(), loadSignupCoupon()]);
+}
+
+// ── Signup welcome coupon (emailed after email verification) ──
+let mtCouponEnabled = false;
+
+function renderSignupCoupon() {
+  const btn = $('mtCouponToggleBtn');
+  if (btn) {
+    btn.textContent = mtCouponEnabled ? 'ON' : 'OFF';
+    btn.style.background = mtCouponEnabled ? 'var(--accent)' : '';
+    btn.style.color = mtCouponEnabled ? '#fff' : '';
+  }
+}
+
+async function loadSignupCoupon() {
+  try {
+    const data = await api('/api/admin/signup-coupon');
+    mtCouponEnabled = !!data.enabled;
+    if ($('mtCouponCode')) $('mtCouponCode').value = data.code || '';
+    if ($('mtCouponNote')) $('mtCouponNote').value = data.note || '';
+  } catch (e) { /* keep defaults */ }
+  renderSignupCoupon();
+}
+
+async function toggleSignupCoupon() {
+  // Flipping ON with no code is a no-op server-side; nudge the admin to enter one.
+  const code = ($('mtCouponCode') ? $('mtCouponCode').value : '').trim();
+  const next = !mtCouponEnabled;
+  if (next && !code) { toast('Enter a promo code first', 'err'); return; }
+  await putSignupCoupon(next, code, ($('mtCouponNote') ? $('mtCouponNote').value : '').trim());
+}
+
+async function saveSignupCoupon() {
+  const code = ($('mtCouponCode') ? $('mtCouponCode').value : '').trim();
+  const note = ($('mtCouponNote') ? $('mtCouponNote').value : '').trim();
+  // Saving a code keeps whatever enabled state we have; blank code forces OFF.
+  await putSignupCoupon(mtCouponEnabled && !!code, code, note);
+}
+
+async function putSignupCoupon(enabled, code, note) {
+  try {
+    const data = await api('/api/admin/signup-coupon', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled, code: code, note: note }),
+    });
+    mtCouponEnabled = !!data.enabled;
+    if ($('mtCouponCode')) $('mtCouponCode').value = data.code || '';
+    if ($('mtCouponNote')) $('mtCouponNote').value = data.note || '';
+    renderSignupCoupon();
+    toast(mtCouponEnabled ? 'Welcome coupon saved & enabled' : 'Welcome coupon saved (off)', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 // ── Registration allowlist (invite-only signup) ──

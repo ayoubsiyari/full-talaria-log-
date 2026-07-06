@@ -15462,6 +15462,62 @@ async def admin_mentorship_set_signup_mode(payload: _SignupModeIn, request: Requ
         db.close()
 
 
+# ── Signup welcome coupon (emailed after email verification, before payment) ──
+# One admin-set promo code emailed to every newly-verified signup. The code must
+# exist as a real Stripe coupon/promo (create it under Subscriptions → Coupons)
+# for it to actually discount checkout. The journal backend reads these same
+# app_settings when sending the coupon email.
+
+SIGNUP_COUPON_ENABLED_SETTING = "signup_welcome_coupon_enabled"
+SIGNUP_COUPON_CODE_SETTING = "signup_welcome_coupon_code"
+SIGNUP_COUPON_NOTE_SETTING = "signup_welcome_coupon_note"
+
+
+@app.get("/api/admin/signup-coupon")
+async def admin_get_signup_coupon(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        return {
+            "enabled": _truthy(_get_app_setting(db, SIGNUP_COUPON_ENABLED_SETTING, "false")),
+            "code": _get_app_setting(db, SIGNUP_COUPON_CODE_SETTING, "") or "",
+            "note": _get_app_setting(db, SIGNUP_COUPON_NOTE_SETTING, "") or "",
+        }
+    finally:
+        db.close()
+
+
+class _SignupCouponIn(BaseModel):
+    enabled: bool = False
+    code: str = ""
+    note: str = ""
+
+
+@app.put("/api/admin/signup-coupon")
+async def admin_set_signup_coupon(payload: _SignupCouponIn, request: Request):
+    _require_admin(request)
+    code = (payload.code or "").strip()[:64]
+    note = (payload.note or "").strip()[:200]
+    # Only "on" if a code is actually present, so we never email an empty coupon.
+    enabled = bool(payload.enabled) and bool(code)
+    db = SessionLocal()
+    try:
+        _set_app_setting(db, SIGNUP_COUPON_ENABLED_SETTING, "true" if enabled else "false")
+        _set_app_setting(db, SIGNUP_COUPON_CODE_SETTING, code)
+        _set_app_setting(db, SIGNUP_COUPON_NOTE_SETTING, note)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="signup_coupon_set",
+            target_type="app_setting",
+            target_id="signup_welcome_coupon",
+            params={"enabled": enabled, "code": code},
+        )
+        return {"success": True, "enabled": enabled, "code": code, "note": note}
+    finally:
+        db.close()
+
+
 # ── Platform feature toggles ──
 
 
