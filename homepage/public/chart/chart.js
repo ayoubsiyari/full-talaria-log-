@@ -1,3 +1,67 @@
+// ── DIAG BL-2b: gated read-only price-axis mutation probe (§6ao) ──────────────
+// Install-once helpers. Pure no-op unless window.__TALARIA_BL2B_PRICE_PROBE is
+// truthy. Never throw (wrapped in try/catch) so hot paths are unaffected.
+// Snap: capture Y-scale state. Mark: record which BUS delivered the frame.
+// Log: compare before/after on embed panels and warn on the first change.
+if (typeof window !== 'undefined' && !window.__talariaBl2bSnap) {
+    window.__talariaBl2bSnap = function (ch) {
+        try {
+            if (!window.__TALARIA_BL2B_PRICE_PROBE || !ch) return null;
+            var ys = null;
+            try {
+                if (ch.yScale && typeof ch.yScale.domain === 'function') ys = ch.yScale.domain();
+            } catch (_e) { ys = null; }
+            return {
+                priceZoom: ch.priceZoom,
+                priceOffset: ch.priceOffset,
+                autoScale: ch.autoScale,
+                priceScaleAutoScale: ch.priceScale ? ch.priceScale.autoScale : undefined,
+                yDomain: (ys && ys.length === 2) ? [Number(ys[0]), Number(ys[1])] : null
+            };
+        } catch (_e) { return null; }
+    };
+    window.__talariaBl2bMark = function (ch, bus, site, extra) {
+        try {
+            if (!window.__TALARIA_BL2B_PRICE_PROBE || !ch) return;
+            ch.__bl2bLastBus = bus;
+            ch.__bl2bLastBusSite = site;
+            ch.__bl2bLastBusAt = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now() : Date.now();
+            if (extra) ch.__bl2bLastBusExtra = extra;
+        } catch (_e) { /* never throw */ }
+    };
+    window.__talariaBl2bLog = function (site, ch, before, extra) {
+        try {
+            if (!window.__TALARIA_BL2B_PRICE_PROBE || !ch || !before) return;
+            // Embed panels only — the invariant is about B/C/D, not the host.
+            if (!(typeof ch._isMultichartEmbedPanel === 'function' && ch._isMultichartEmbedPanel())) return;
+            var after = window.__talariaBl2bSnap(ch);
+            if (!after) return;
+            var yBefore = before.yDomain, yAfter = after.yDomain;
+            var yChanged = (yBefore && yAfter)
+                ? (yBefore[0] !== yAfter[0] || yBefore[1] !== yAfter[1])
+                : (yBefore !== yAfter);
+            var changed = before.priceZoom !== after.priceZoom
+                || before.priceOffset !== after.priceOffset
+                || before.autoScale !== after.autoScale
+                || before.priceScaleAutoScale !== after.priceScaleAutoScale
+                || yChanged;
+            if (!changed) return;
+            console.warn('[BL2B_PRICE]', {
+                site: site,
+                bus: ch.__bl2bLastBus || null,
+                busSite: ch.__bl2bLastBusSite || null,
+                busExtra: ch.__bl2bLastBusExtra || null,
+                before: before,
+                after: after,
+                extra: extra || null,
+                panel: ch._multichartPanelId || ch.panelId || null,
+                tf: ch.currentTimeframe || null
+            });
+        } catch (_e) { /* never throw */ }
+    };
+}
+
 /**
  * TileManager — LRU cache for binary tiles with prefetch support.
  * Each tile = 50,000 candles, 48 bytes each (6×float64 little-endian: t,o,h,l,c,v).
@@ -2918,6 +2982,7 @@ class Chart {
             mirrorPrependSnapshot,
             { replay },
         );
+        var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(this);
         this.priceZoom = parent.priceZoom;
         this.priceOffset = parent.priceOffset;
         this.autoScale = parent.autoScale;
@@ -2927,6 +2992,7 @@ class Chart {
             // auto-fit sets locked=true and would freeze B/C/D wheel/drag during mirror.
             this.priceScale.locked = false;
         }
+        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_multichartMirrorHostTfSwitchIfReady', this, __bl2bBefore);
 
         const pm = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
@@ -17349,6 +17415,7 @@ class Chart {
         requestAnimationFrame(() => {
             this._viewportEmptyRecoverPending = false;
             if (!this.data || this.data.length === 0) return;
+            var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(this);
             if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
                 const until = this._multichartViewportSettleUntil;
                 if (Number.isFinite(until) && performance.now() < until) {
@@ -17409,6 +17476,7 @@ class Chart {
                         forceRecenter: true,
                         render: true,
                     });
+                    window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: '_ensureMultichartViewportVisible' });
                     return;
                 }
                 if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
@@ -17417,10 +17485,12 @@ class Chart {
                         resetPriceScale: true,
                         render: true,
                     });
+                    window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'syncReplayViewportToPlayhead' });
                     return;
                 }
             }
             this.jumpToLatest();
+            window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:_scheduleViewportEmptyRecovery', this, __bl2bBefore, { path: 'jumpToLatest' });
         });
     }
     
@@ -22961,6 +23031,7 @@ class Chart {
      * Calculate scales for chart rendering
      */
     calculateScales() {
+        var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(this);
         if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
             this._syncSeparateIndicatorPanelHeightEstimate();
         }
@@ -23339,6 +23410,7 @@ class Chart {
         if (this._chartPanRenderLoopActive) {
             this._panScalesCalculated = true;
         }
+        window.__talariaBl2bLog && window.__talariaBl2bLog('chart.js:calculateScales', this, __bl2bBefore);
     }
 
     /**

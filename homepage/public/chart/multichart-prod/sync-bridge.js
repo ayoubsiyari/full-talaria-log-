@@ -857,8 +857,10 @@
 
     function refitPriceAutoScale(chart) {
         if (!chart || shouldPreserveManualPriceScale(chart)) return;
+        var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(chart);
         if (chart.priceScale) chart.priceScale.autoScale = true;
         chart.autoScale = true;
+        window.__talariaBl2bLog && window.__talariaBl2bLog('sync-bridge.js:refitPriceAutoScale', chart, __bl2bBefore);
     }
 
     /**
@@ -2003,6 +2005,7 @@
         }
 
         function applyVisibleRange(m) {
+            window.__talariaBl2bMark && window.__talariaBl2bMark(chart, 'sync', 'sync-bridge.js:applyVisibleRange');
             // When this iframe is mid-drag, it is the pan leader — ignore host/peer
             // echo ranges that would mirror back from A and freeze B/C/D in place.
             // Also ignore while price/time axis drag is active so manual Y scale
