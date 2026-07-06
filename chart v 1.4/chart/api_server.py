@@ -2625,21 +2625,8 @@ def _request_requires_journal_for_backtest(path: str, request: Request) -> bool:
 
 def _request_is_backtest_sessions_dashboard(path: str, request: Request) -> bool:
     """Homepage dashboard routes for backtest / sessions (query ?view=sessions|trades)."""
-    if path.startswith("/dashboard/sessions"):
-        return True
-    if path.startswith("/dashboard/backtest"):
-        return True
-    if path.startswith("/dashboard/trades"):
-        return True
-    if path in ("/dashboard", "/dashboard/"):
-        try:
-            qs = parse_qs(urlparse(str(request.url)).query)
-            view = (qs.get("view") or [""])[0].strip().lower()
-            if view in ("sessions", "trades"):
-                return True
-        except Exception:
-            pass
-    return False
+    sec = _request_dashboard_platform_section(path, request)
+    return sec in ("sessions", "trades")
 
 
 @app.middleware("http")
@@ -2681,6 +2668,17 @@ async def auth_middleware(request: Request, call_next):
     )
 
     if path in public_paths or any(path.startswith(p) for p in public_prefixes):
+        if path == "/bootcamp" or path.startswith("/bootcamp/"):
+            user_boot = _get_user_from_request(request)
+            if user_boot and (user_boot.role or "") != "admin":
+                db_boot = SessionLocal()
+                try:
+                    if not _platform_section_enabled(db_boot, "resources"):
+                        return RedirectResponse(
+                            url="/dashboard/?view=dashboard&disabled=resources"
+                        )
+                finally:
+                    db_boot.close()
         return await call_next(request)
 
     protected = False
@@ -2702,27 +2700,27 @@ async def auth_middleware(request: Request, call_next):
 
     user = _get_user_from_request(request)
     if user is not None:
-        # Platform kill-switch: backtest / sessions UI and APIs (admins exempt).
-        needs_backtest_platform = (
-            _request_is_backtest_sessions_dashboard(path, request)
-            or _request_requires_journal_for_backtest(path, request)
-            or (path.startswith("/api/sessions") and path != "/api/sessions/seed-demo-trades/scenarios")
-        )
-        if needs_backtest_platform and (user.role or "") != "admin":
+        # Platform kill-switch per dashboard section (admins exempt).
+        platform_section = _api_platform_section(path)
+        if platform_section is None:
+            platform_section = _request_dashboard_platform_section(path, request)
+        if platform_section is None and _request_requires_journal_for_backtest(path, request):
+            platform_section = "sessions"
+        if platform_section and (user.role or "") != "admin":
             db_gate = SessionLocal()
             try:
-                if not _backtest_sessions_enabled(db_gate):
-                    if path.startswith("/api/"):
-                        return JSONResponse(
-                            {
-                                "detail": {
-                                    "code": "backtest_sessions_disabled",
-                                    "message": BACKTEST_SESSIONS_DISABLED_MESSAGE,
-                                }
-                            },
-                            status_code=403,
-                        )
-                    return RedirectResponse(url="/dashboard/?view=dashboard&disabled=backtest_sessions")
+                if not _platform_section_enabled(db_gate, platform_section):
+                    label = PLATFORM_SECTION_LABELS.get(platform_section, platform_section.title())
+                    detail = {
+                        "code": "platform_section_disabled",
+                        "section": platform_section,
+                        "message": f"{label} is temporarily unavailable. Please try again later.",
+                    }
+                    if path.startswith("/api/") or path.startswith("/ws/"):
+                        return JSONResponse({"detail": detail}, status_code=403)
+                    return RedirectResponse(
+                        url=f"/dashboard/?view=dashboard&disabled={platform_section}"
+                    )
             finally:
                 db_gate.close()
         # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
@@ -9791,7 +9789,7 @@ def _require_paid_journal_user(request: Request, module: str = "backtest"):
     if module == "backtest":
         db_gate = SessionLocal()
         try:
-            _assert_backtest_sessions_platform_enabled(user, db_gate)
+            _assert_platform_section_enabled(user, db_gate, "sessions")
         finally:
             db_gate.close()
     if _user_has_chart_journal_access(user):
@@ -11108,6 +11106,89 @@ BACKTEST_SESSIONS_DISABLED_MESSAGE = (
     "Backtesting sessions are temporarily unavailable. Please try again later."
 )
 
+PLATFORM_SECTION_KEYS = (
+    "dashboard",
+    "trades",
+    "sessions",
+    "strategies",
+    "resources",
+    "support",
+)
+
+PLATFORM_SECTION_LABELS = {
+    "dashboard": "Dashboard",
+    "trades": "Trades",
+    "sessions": "Sessions",
+    "strategies": "Strategies",
+    "resources": "Resources",
+    "support": "Support",
+}
+
+PLATFORM_SECTION_DISABLED_MESSAGE = (
+    "This section is temporarily unavailable. Please try again later."
+)
+
+
+def _platform_section_setting_key(section: str) -> str:
+    return f"platform_section_{section}_enabled"
+
+
+def _platform_section_enabled(db, section: str, default: bool = True) -> bool:
+    key = _platform_section_setting_key(section)
+    v = _get_app_setting(db, key, None)
+    if v is None and section == "sessions":
+        legacy = _get_app_setting(db, BACKTEST_SESSIONS_ENABLED_SETTING, None)
+        if legacy is not None:
+            return _truthy(legacy)
+    if v is None:
+        return default
+    return _truthy(v)
+
+
+def _platform_sections_global(db) -> dict[str, bool]:
+    return {k: _platform_section_enabled(db, k) for k in PLATFORM_SECTION_KEYS}
+
+
+def _user_may_use_platform_section(user: User, db, section: str) -> bool:
+    if not user:
+        return False
+    if (user.role or "") == "admin":
+        return True
+    if section not in PLATFORM_SECTION_KEYS:
+        return True
+    return _platform_section_enabled(db, section)
+
+
+def _platform_sections_effective_for_user(user: User, db) -> dict[str, bool]:
+    return {k: _user_may_use_platform_section(user, db, k) for k in PLATFORM_SECTION_KEYS}
+
+
+def _assert_platform_section_enabled(user: User, db, section: str) -> None:
+    if _user_may_use_platform_section(user, db, section):
+        return
+    label = PLATFORM_SECTION_LABELS.get(section, section.title())
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "platform_section_disabled",
+            "section": section,
+            "message": f"{label} is temporarily unavailable. Please try again later.",
+        },
+    )
+
+
+def _backtest_sessions_enabled(db) -> bool:
+    """Backward-compatible alias for sessions section."""
+    return _platform_section_enabled(db, "sessions")
+
+
+def _user_may_use_backtest_sessions(user: User, db) -> bool:
+    return _user_may_use_platform_section(user, db, "sessions")
+
+
+def _assert_backtest_sessions_platform_enabled(user: User, db) -> None:
+    _assert_platform_section_enabled(user, db, "sessions")
+
 
 def _get_app_setting(db, key: str, default: str | None = None) -> str | None:
     try:
@@ -11139,32 +11220,60 @@ def _signup_allowlist_only(db) -> bool:
     return _truthy(v)
 
 
-def _backtest_sessions_enabled(db) -> bool:
-    """Platform-wide backtest / sessions feature toggle (default on)."""
-    v = _get_app_setting(db, BACKTEST_SESSIONS_ENABLED_SETTING, None)
-    if v is None:
-        return True
-    return _truthy(v)
+def _request_dashboard_platform_section(path: str, request: Request) -> str | None:
+    """Map homepage dashboard URLs to a platform section (or None if exempt)."""
+    if path.startswith("/dashboard/support"):
+        return "support"
+    if path.startswith("/dashboard/strategies"):
+        return "strategies"
+    if path.startswith("/dashboard/sessions") or path.startswith("/dashboard/backtest"):
+        return "sessions"
+    if path.startswith("/dashboard/trades"):
+        return "trades"
+    if path.startswith("/bootcamp"):
+        return "resources"
+    if path in ("/dashboard", "/dashboard/"):
+        try:
+            qs = parse_qs(urlparse(str(request.url)).query)
+            view = (qs.get("view") or [""])[0].strip().lower()
+            tab = (qs.get("tab") or [""])[0].strip().lower()
+            if view == "profile" and tab == "support":
+                return "support"
+            if view in ("profile", ""):
+                return None
+            mapping = {
+                "dashboard": "dashboard",
+                "trades": "trades",
+                "sessions": "sessions",
+                "backtest": "sessions",
+                "stratbank": "strategies",
+                "strategies": "strategies",
+                "resources": "resources",
+            }
+            if not view:
+                return "dashboard"
+            return mapping.get(view)
+        except Exception:
+            return "dashboard"
+    if path.startswith("/dashboard/profile"):
+        try:
+            qs = parse_qs(urlparse(str(request.url)).query)
+            tab = (qs.get("tab") or [""])[0].strip().lower()
+            if tab == "support":
+                return "support"
+        except Exception:
+            pass
+    return None
 
 
-def _user_may_use_backtest_sessions(user: User, db) -> bool:
-    if not user:
-        return False
-    if (user.role or "") == "admin":
-        return True
-    return _backtest_sessions_enabled(db)
-
-
-def _assert_backtest_sessions_platform_enabled(user: User, db) -> None:
-    if _user_may_use_backtest_sessions(user, db):
-        return
-    raise HTTPException(
-        status_code=403,
-        detail={
-            "code": "backtest_sessions_disabled",
-            "message": BACKTEST_SESSIONS_DISABLED_MESSAGE,
-        },
-    )
+def _api_platform_section(path: str) -> str | None:
+    if path.startswith("/api/support") or path.startswith("/ws/support"):
+        return "support"
+    if path.startswith("/api/sessions"):
+        return "sessions"
+    if path.startswith("/api/strategies"):
+        return "strategies"
+    return None
 
 
 def _allowlist_entry(db, email: str):
@@ -11647,8 +11756,11 @@ def _auth_response_with_journal_token(user: User, db, response: Response | None 
     journal_token cookie plus the readable CSRF cookie (auth hardening)."""
     out: dict = {"user": _user_public_dict(user, db=db)}
     out["platform"] = {
-        "backtest_sessions_enabled": _user_may_use_backtest_sessions(user, db),
-        "backtest_sessions_globally_enabled": _backtest_sessions_enabled(db),
+        "sections": _platform_sections_effective_for_user(user, db),
+        "sections_globally_enabled": _platform_sections_global(db),
+        # Legacy fields — keep for older clients
+        "backtest_sessions_enabled": _user_may_use_platform_section(user, db, "sessions"),
+        "backtest_sessions_globally_enabled": _platform_section_enabled(db, "sessions"),
     }
     csrf = secrets.token_urlsafe(32)
     tok = _mint_journal_access_token(user, csrf=csrf)
@@ -14448,6 +14560,14 @@ async def ws_support(websocket: WebSocket):
     if user is None:
         await websocket.close(code=4401)
         return
+    if (user.role or "") != "admin":
+        db_gate = SessionLocal()
+        try:
+            if not _platform_section_enabled(db_gate, "support"):
+                await websocket.close(code=4403)
+                return
+        finally:
+            db_gate.close()
     subscribed_tid: int | None = None
     inbox_subscribed = False
     uid = int(user.id)
@@ -15345,12 +15465,58 @@ async def admin_mentorship_set_signup_mode(payload: _SignupModeIn, request: Requ
 # ── Platform feature toggles ──
 
 
+@app.get("/api/admin/platform/sections")
+async def admin_get_platform_sections(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        return {"sections": _platform_sections_global(db)}
+    finally:
+        db.close()
+
+
+class _PlatformSectionsIn(BaseModel):
+    sections: dict[str, bool]
+
+
+@app.put("/api/admin/platform/sections")
+async def admin_set_platform_sections(payload: _PlatformSectionsIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        updated: dict[str, bool] = {}
+        for key, val in (payload.sections or {}).items():
+            sec = str(key).strip().lower()
+            if sec not in PLATFORM_SECTION_KEYS:
+                continue
+            enabled = bool(val)
+            _set_app_setting(db, _platform_section_setting_key(sec), "true" if enabled else "false")
+            if sec == "sessions":
+                _set_app_setting(
+                    db,
+                    BACKTEST_SESSIONS_ENABLED_SETTING,
+                    "true" if enabled else "false",
+                )
+            updated[sec] = enabled
+        db.commit()
+        _record_admin_action(
+            request,
+            action="platform_sections_set",
+            target_type="app_setting",
+            target_id="platform_sections",
+            params={"sections": updated},
+        )
+        return {"success": True, "sections": _platform_sections_global(db)}
+    finally:
+        db.close()
+
+
 @app.get("/api/admin/platform/backtest-sessions")
 async def admin_get_backtest_sessions_mode(request: Request):
     _require_admin(request)
     db = SessionLocal()
     try:
-        return {"enabled": _backtest_sessions_enabled(db)}
+        return {"enabled": _platform_section_enabled(db, "sessions")}
     finally:
         db.close()
 
@@ -15364,10 +15530,16 @@ async def admin_set_backtest_sessions_mode(payload: _BacktestSessionsModeIn, req
     _require_admin(request)
     db = SessionLocal()
     try:
+        enabled = bool(payload.enabled)
+        _set_app_setting(
+            db,
+            _platform_section_setting_key("sessions"),
+            "true" if enabled else "false",
+        )
         _set_app_setting(
             db,
             BACKTEST_SESSIONS_ENABLED_SETTING,
-            "true" if payload.enabled else "false",
+            "true" if enabled else "false",
         )
         db.commit()
         _record_admin_action(
@@ -15375,9 +15547,9 @@ async def admin_set_backtest_sessions_mode(payload: _BacktestSessionsModeIn, req
             action="backtest_sessions_mode_set",
             target_type="app_setting",
             target_id=BACKTEST_SESSIONS_ENABLED_SETTING,
-            params={"enabled": bool(payload.enabled)},
+            params={"enabled": enabled},
         )
-        return {"success": True, "enabled": bool(payload.enabled)}
+        return {"success": True, "enabled": enabled}
     finally:
         db.close()
 

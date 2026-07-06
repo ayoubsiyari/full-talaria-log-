@@ -2851,6 +2851,7 @@ class ReplaySystem {
         }
         if (!Number.isFinite(offsetX)) return false;
 
+        var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(chartInstance);
         chartInstance.offsetX = offsetX;
         if (opts.resetPriceScale !== false) {
             chartInstance.autoScale = true;
@@ -2871,6 +2872,7 @@ class ReplaySystem {
                 chartInstance.render();
             }
         }
+        window.__talariaBl2bLog && window.__talariaBl2bLog('replay-system.js:syncReplayViewportToPlayhead', chartInstance, __bl2bBefore, { resetPriceScale: opts.resetPriceScale !== false });
         return true;
     }
 
@@ -6384,6 +6386,7 @@ class ReplaySystem {
      * @returns {boolean} false when target bar is not in loaded fullRawData (caller may refetch)
      */
     applyMultichartMirrorFrame(detail) {
+        window.__talariaBl2bMark && window.__talariaBl2bMark(this.chart, 'replay-mirror', 'replay-system.js:applyMultichartMirrorFrame');
         if (!this.isActive || !detail || typeof detail !== 'object') return false;
         const chart = this.chart;
         const frd = this._resolveMirrorRawSeries(chart, detail);

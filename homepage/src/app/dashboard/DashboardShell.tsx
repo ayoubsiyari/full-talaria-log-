@@ -17,15 +17,15 @@ import {
   dashboardPathRequiresPaidJournal,
   dashboardPathToModule,
   defaultDashboardPathForUser,
-  isBacktestSessionsPath,
   isNavItemAdminOnlyWip,
   isPathAdminOnlyWip,
   lockedModuleGateReason,
   lockedModuleNavTitle,
+  pathRequiresPlatformOrModuleGate,
   resolveDashboardGateVariant,
   userCanAccessAdminOnlyWipPath,
   userCanAccessDashboardPath,
-  userHasBacktestSessionsAccess,
+  userCanUseNavId,
   userHasDashboardModule,
   userHasPartialDashboardAccess,
   userIsDashboardAdmin,
@@ -73,7 +73,16 @@ async function fetchMe(): Promise<{ user: User; platform: PlatformFeatures }> {
   if (isAnonymousPlaceholderUser(data.user)) throw new Error("not_authenticated");
   return {
     user: data.user,
-    platform: data.platform ?? { backtest_sessions_enabled: true },
+    platform: data.platform ?? {
+      sections: {
+        dashboard: true,
+        trades: true,
+        sessions: true,
+        strategies: true,
+        resources: true,
+        support: true,
+      },
+    },
   };
 }
 
@@ -352,7 +361,14 @@ export default function DashboardShell({
   const { isArabic } = useLanguage();
   const [user, setUser] = React.useState<User | null>(null);
   const [platform, setPlatform] = React.useState<PlatformFeatures>({
-    backtest_sessions_enabled: true,
+    sections: {
+      dashboard: true,
+      trades: true,
+      sessions: true,
+      strategies: true,
+      resources: true,
+      support: true,
+    },
   });
   const [authReady, setAuthReady] = React.useState(false);
   const [activeView, setActiveView] = React.useState<string>("dashboard");
@@ -405,8 +421,7 @@ export default function DashboardShell({
         window.location.replace(defaultDashboardPathForUser(u, platformFlags));
         return;
       }
-      const needsGate =
-        dashboardPathRequiresPaidJournal(path) || isBacktestSessionsPath(path, search);
+      const needsGate = pathRequiresPlatformOrModuleGate(path, search);
       if (!needsGate) return;
       if (userCanAccessDashboardPath(u, path, platformFlags, search)) return;
       window.location.replace(defaultDashboardPathForUser(u, platformFlags));
@@ -454,8 +469,7 @@ export default function DashboardShell({
 
   const locationSearch =
     typeof window !== "undefined" ? window.location.search : "";
-  const onSessionsView = isBacktestSessionsPath(pathname, locationSearch);
-  const needsAccessGate = dashboardPathRequiresPaidJournal(pathname) || onSessionsView;
+  const needsAccessGate = pathRequiresPlatformOrModuleGate(pathname, locationSearch);
   const gatedPath = needsAccessGate;
   const pathAllowed = userCanAccessDashboardPath(user, pathname, platform, locationSearch);
   const wipSectionBlocked =
@@ -550,11 +564,7 @@ export default function DashboardShell({
       router.replace(defaultDashboardPathForUser(user, platform));
       return;
     }
-    if (
-      (id === "backtest" || id === "trades") &&
-      user &&
-      !userHasBacktestSessionsAccess(user, platform)
-    ) {
+    if (user && !userCanUseNavId(user, id, platform)) {
       router.replace(defaultDashboardPathForUser(user, platform));
       return;
     }
@@ -625,11 +635,7 @@ export default function DashboardShell({
   const NAV_ITEMS = React.useMemo(() => {
     const items = ALL_NAV_ITEMS.filter(
       (item) => !isNavItemAdminOnlyWip(item.id) || userIsDashboardAdmin(user)
-    ).filter(
-      (item) =>
-        (item.id !== "backtest" && item.id !== "trades") ||
-        userHasBacktestSessionsAccess(user, platform)
-    );
+    ).filter((item) => userCanUseNavId(user, item.id, platform));
     if (userIsDashboardAdmin(user)) {
       return [...items, ADMIN_NAV_ITEM];
     }

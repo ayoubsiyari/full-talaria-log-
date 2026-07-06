@@ -496,6 +496,7 @@
      * paused locally — parent is the single playhead driver.
      */
     function applyReplayFrame(ch, args) {
+        global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay', 'panel-cmd-bridge.js:applyReplayFrame');
         if (!ch || !args || typeof args !== 'object') return;
         if (ch._multichartPairLoadInFlight) return;
         // Never block replay frames during boot settle — only viewport mirrors
@@ -1412,6 +1413,7 @@
     }
 
     function scheduleCoalescedSeek(ch, ts) {
+        global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
         if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) return;
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
@@ -1459,6 +1461,7 @@
      * loaded a session-start window cannot follow host A without refetch.
      */
     function forceReplaySeek(ch, ts, isEnter, onDone) {
+        global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:forceReplaySeek');
         if (!Number.isFinite(ts)) {
             if (typeof onDone === 'function') onDone();
             return;

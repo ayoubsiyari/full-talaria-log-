@@ -5126,16 +5126,13 @@ select { cursor:default; }
         </div>
         <div class="card" style="margin-top:16px">
           <div class="card-hdr">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><polyline points="3,20 3,4"/><polyline points="3,15 8,11 12,14 18,7"/></svg>
-            <div class="card-title">Backtesting Sessions</div>
-            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-              <span style="font-size:12px;color:var(--text-muted)">User access</span>
-              <button class="btn sm" type="button" id="btSessionsToggleBtn" onclick="toggleBacktestSessionsMode()">…</button>
-            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <div class="card-title">Dashboard page access</div>
+            <button class="btn sm" type="button" onclick="loadPlatformSections()" style="margin-left:auto">Refresh</button>
           </div>
           <div class="card-body">
-            <div id="btSessionsModeHint" style="font-size:12px;color:var(--text-muted);margin-bottom:0"></div>
-            <p style="font-size:11px;color:var(--text-muted);margin-top:12px;margin-bottom:0">When OFF, non-admin users cannot open the Sessions / Backtest dashboard, chart replay, or any <code style="font-size:10px">/api/sessions</code> endpoint — direct links are blocked server-side. Admins always retain access for testing.</p>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Turn sidebar pages ON/OFF for all non-admin users. When OFF, direct links and APIs for that section return 403 — admins always retain access.</p>
+            <div id="platformSectionsGrid" style="display:grid;gap:10px"></div>
           </div>
         </div>
       </div>
@@ -13655,48 +13652,62 @@ function updateSettingsPage() {
   $('settTotalDs').textContent = allDatasets.length;
   $('settActiveSess').textContent = allSessions.length;
   $('settServerTime').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
-  loadBacktestSessionsMode();
+  loadPlatformSections();
 }
 
-// ── Backtesting sessions platform toggle ──
-let btSessionsEnabled = true;
+// ── Dashboard sidebar page toggles ──
+var PLATFORM_SECTION_META = [
+  { key: 'dashboard', label: 'Dashboard', hint: 'Main analytics overview (?view=dashboard)' },
+  { key: 'trades', label: 'Trades', hint: 'Trades table and trade-level views' },
+  { key: 'sessions', label: 'Sessions', hint: 'Backtesting sessions, chart replay, /api/sessions' },
+  { key: 'strategies', label: 'Strategies', hint: 'Strategy bank and /journal/api/strategies' },
+  { key: 'resources', label: 'Resources', hint: 'Bootcamp / learning resources' },
+  { key: 'support', label: 'Support', hint: 'Support inbox, /api/support, live chat' },
+];
+var platformSections = {};
 
-function renderBacktestSessionsMode() {
-  const btn = $('btSessionsToggleBtn');
-  const hint = $('btSessionsModeHint');
-  if (btn) {
-    btn.textContent = btSessionsEnabled ? 'ON' : 'OFF';
-    btn.style.background = btSessionsEnabled ? 'var(--accent)' : '';
-    btn.style.color = btSessionsEnabled ? '#fff' : '';
-  }
-  if (hint) {
-    hint.textContent = btSessionsEnabled
-      ? 'Sessions are ON — users with backtest access can open the Sessions dashboard, run replays, and use session APIs.'
-      : 'Sessions are OFF — regular users are blocked from Sessions / Backtest pages and all session APIs. Admins can still access for verification.';
-  }
+function renderPlatformSections() {
+  var grid = $('platformSectionsGrid');
+  if (!grid) return;
+  grid.innerHTML = PLATFORM_SECTION_META.map(function (m) {
+    var on = platformSections[m.key] !== false;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-secondary)">' +
+      '<div style="min-width:0"><div style="font-size:13px;font-weight:600">' + esc(m.label) + '</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + esc(m.hint) + '</div></div>' +
+      '<button class="btn sm" type="button" data-sec="' + esc(m.key) + '" onclick="togglePlatformSection(\'' + esc(m.key) + '\')" ' +
+      'style="' + (on ? 'background:var(--accent);color:#fff' : '') + '">' + (on ? 'ON' : 'OFF') + '</button></div>';
+  }).join('');
 }
 
-async function loadBacktestSessionsMode() {
+async function loadPlatformSections() {
   try {
-    const data = await api('/api/admin/platform/backtest-sessions');
-    btSessionsEnabled = !!data.enabled;
-  } catch (e) { /* keep default */ }
-  renderBacktestSessionsMode();
+    var data = await api('/api/admin/platform/sections');
+    platformSections = data.sections || {};
+  } catch (e) { /* keep prior */ }
+  PLATFORM_SECTION_META.forEach(function (m) {
+    if (platformSections[m.key] === undefined) platformSections[m.key] = true;
+  });
+  renderPlatformSections();
 }
 
-async function toggleBacktestSessionsMode() {
-  const next = !btSessionsEnabled;
-  const label = next ? 'Turn sessions ON for all users?' : 'Turn sessions OFF? Non-admins will be blocked immediately from Sessions, chart replay, and session APIs.';
-  if (!confirm(label)) return;
+async function togglePlatformSection(key) {
+  var cur = platformSections[key] !== false;
+  var next = !cur;
+  var meta = PLATFORM_SECTION_META.find(function (m) { return m.key === key; });
+  var label = meta ? meta.label : key;
+  if (!confirm((next ? 'Enable' : 'Disable') + ' "' + label + '" for all non-admin users?')) return;
   try {
-    const data = await api('/api/admin/platform/backtest-sessions', {
+    var body = { sections: {} };
+    body.sections[key] = next;
+    var data = await api('/api/admin/platform/sections', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
+      body: JSON.stringify(body),
     });
-    btSessionsEnabled = !!data.enabled;
-    renderBacktestSessionsMode();
-    toast(btSessionsEnabled ? 'Backtesting sessions enabled' : 'Backtesting sessions disabled', 'ok');
+    platformSections = data.sections || platformSections;
+    platformSections[key] = next;
+    renderPlatformSections();
+    toast(label + (next ? ' enabled' : ' disabled'), 'ok');
   } catch (e) { toast(e.message, 'err'); }
 }
 </script>

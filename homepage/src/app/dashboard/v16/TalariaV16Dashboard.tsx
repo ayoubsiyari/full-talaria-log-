@@ -2,8 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useLayoutEffect } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { useLanguage } from "@/app/LanguageProvider";
+import {
+  firstAllowedPlatformDashboardPath,
+  platformSectionForPath,
+  userHasPlatformSection,
+  userIsDashboardAdmin,
+  v16ViewToPlatformSection,
+  type PlatformFeatures,
+  type PlatformSectionKey,
+} from "@/lib/dashboardAccess";
 import { useBacktestNewSession } from "../BacktestNewSessionContext";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
@@ -12,10 +21,31 @@ import { V16ProfilePortal } from "./V16ProfilePortal";
 import { V16SupportChatPopover } from "./V16SupportChatPopover";
 import V16DashboardLoading from "./V16DashboardLoading";
 
+declare global {
+  interface Window {
+    __TALARIA_PLATFORM_SECTIONS__?: Partial<Record<PlatformSectionKey, boolean>>;
+  }
+}
+
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   ssr: false,
   loading: () => <V16DashboardLoading />,
 });
+
+type AuthUser = { role?: string; is_admin?: boolean };
+
+async function fetchPlatformSections(): Promise<{
+  user: AuthUser;
+  platform: PlatformFeatures;
+}> {
+  const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+  if (!res.ok) throw new Error("auth");
+  const data = (await res.json()) as { user?: AuthUser; platform?: PlatformFeatures };
+  return {
+    user: data.user ?? {},
+    platform: data.platform ?? {},
+  };
+}
 
 export default function TalariaV16Dashboard() {
   const boot = useV16LiveBootstrap();
@@ -24,9 +54,23 @@ export default function TalariaV16Dashboard() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [platform, setPlatform] = useState<PlatformFeatures | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
 
   useLayoutEffect(() => {
     primeV16EmbeddedShell();
+  }, []);
+
+  useEffect(() => {
+    fetchPlatformSections()
+      .then(({ user, platform: pf }) => {
+        setAuthUser(user);
+        setPlatform(pf);
+        if (pf.sections) {
+          window.__TALARIA_PLATFORM_SECTIONS__ = pf.sections;
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -103,14 +147,33 @@ export default function TalariaV16Dashboard() {
   }, [pathname, router, searchParams]);
 
   const viewParam = searchParams.get("view");
+  const tabParam = searchParams.get("tab");
   useEffect(() => {
     const view = normalizeV16DashboardView(viewParam);
     if (!view) return;
     window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view } }));
   }, [viewParam]);
 
+  useEffect(() => {
+    if (!platform || !authUser || userIsDashboardAdmin(authUser)) return;
+    const search = searchParams.toString();
+    const path = pathname || "/dashboard/";
+    const section =
+      platformSectionForPath(path, search ? `?${search}` : "") ||
+      (tabParam === "support" && viewParam === "profile" ? "support" : null) ||
+      v16ViewToPlatformSection(viewParam);
+    if (!section) return;
+    if (userHasPlatformSection(authUser, platform, section)) return;
+    router.replace(firstAllowedPlatformDashboardPath(authUser, platform));
+  }, [authUser, platform, pathname, searchParams, viewParam, tabParam, router]);
+
   const v16View = normalizeV16DashboardView(searchParams.get("view"));
   const profileActive = v16View === "profile";
+  const supportEnabled =
+    !platform ||
+    !authUser ||
+    userIsDashboardAdmin(authUser) ||
+    userHasPlatformSection(authUser, platform, "support");
 
   return (
     <div
@@ -146,7 +209,7 @@ export default function TalariaV16Dashboard() {
         </div>
       ) : null}
       <V16ProfilePortal active={profileActive} />
-      <V16SupportChatPopover />
+      {supportEnabled ? <V16SupportChatPopover /> : null}
       <div
         style={{
           flex: 1,

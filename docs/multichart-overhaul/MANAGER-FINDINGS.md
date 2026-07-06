@@ -1494,7 +1494,27 @@ Status: OPEN. B-FIX-H was INERT for this (§6ap); the reset driver is still UNID
 mechanism is static-derived and unproven. Per I11, the NEXT step is a LIVE-INSTRUMENTED DIAG to name the
 exact function that rescales the panel Y-axis on a sync-off host TF switch — NOT another static-guess fix
 (H already burned that path). Per D-024/D-025 freeze, this is a fix-now candidate that requires a Director
-escalation ruling; it qualifies (invariant violation, PO's core target).
+escalation ruling; it qualifies (invariant violation, PO's core target). ESCALATION GRANTED — D-026.
+
+### DIAG BL-2b (read-only, worker) — candidate Y-scale mutator map + gated price probe (SPECCED)
+Three mutator families to prove/eliminate on a sync-off host TF switch:
+1. Sync bus visible-range autoscale: manager gate `multichart-manager.js:1068-1070` (should block when
+   visibleRange=false && timeSync=false); if it leaks → panel `applyVisibleRange` (sync-bridge.js:2005)
+   → `refitPriceAutoScale` (sync-bridge.js:858).
+2. Replay mirror bus (NOT sync-gated): host fan-out `multichart-manager.js:1132-1148` → panel
+   `applyReplayFrame` (panel-cmd-bridge.js:498) → `_syncReplayMasterFromParentIfCovers`
+   (chart.js:5570-5625) → `goToReplayTimestamp` (replay-system.js:5513); sink
+   `syncReplayViewportToPlayhead` (replay-system.js:2834, mutates Y when resetPriceScale!==false).
+3. Empty-render recovery: chart.js:28800-28803/28925-28928 → `_scheduleViewportEmptyRecovery`
+   (chart.js:17321) → `_ensureMultichartViewportVisible({resetPriceScale:true})` (chart.js:17404).
+   Plus direct copy `_multichartMirrorHostTfSwitchIfReady` (chart.js:2921, same-TF only) and the final
+   Y-domain write `calculateScales` (chart.js:22963/23308).
+Probe (gated `window.__TALARIA_BL2B_PRICE_PROBE`): `__talariaBl2bSnap/Mark/Log` helpers tag bus origin
+(sync vs replay) + emit first Y-scale mutation site file:line for embed panels only. Placements: mark at
+sync-bridge.js:2005, panel-cmd-bridge.js:498/1414/1461, replay-system.js:6386; wrap+log at
+sync-bridge.js:858, replay-system.js:2834, chart.js:2841/17321/22963.
+NEXT: install probe (both trees, gated, node --check), bump diag build, PO captures [BL2B_PRICE] on
+sync-off host 1m→4h→1m; the bus tag + first mutation site names the driver → then one gated fix.
 
 ### D-024 #1 verdict — B-FIX-I and B-FIX-J both KEEP (load-bearing, different paths)
 Worker read-only verdict (accepted): the BL-5 guard only intercepts the coalesced-seek fallback; it does

@@ -14852,6 +14852,14 @@ const TalariaV8b = () => {
         const dashIsPhone = dashViewportW < 640;
         const dashIsNarrow = dashViewportW < 900;
         const dashIsTablet = dashViewportW < 1100;
+        const v16PlatformSectionOn = (section) => {
+          try {
+            const m = typeof window !== "undefined" && window.__TALARIA_PLATFORM_SECTIONS__;
+            if (!m || typeof m !== "object") return true;
+            return m[section] !== false;
+          } catch (_) { return true; }
+        };
+        const v16NavSectionKey = (navId) => (navId === "stratbank" ? "strategies" : navId);
         const navPanel = (
           <div className={`tlr-session-nav-rail${dashIsPhone ? " tlr-session-nav-rail--bottom" : ""}`} style={{width:dashIsPhone?undefined:64,flexShrink:0,alignSelf:dashIsPhone?"auto":"stretch",height:dashIsPhone?"auto":"100%",overflow:"hidden",display:"flex",flexDirection:dashIsPhone?"row":"column",alignItems:"center",padding:dashIsPhone?"0 4px":"0 0 6px",background:c.el,gap:1,boxShadow:dashIsPhone?"0 -2px 20px rgba(0,0,0,0.45)":"4px 0 20px rgba(0,0,0,0.45)",zIndex:dashIsPhone?12:1}}>
             {[
@@ -14860,7 +14868,7 @@ const TalariaV8b = () => {
               {id:"sessions",  label:"Sessions",   icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>},
               {id:"stratbank", label:"Strategies", icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M7 3.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.45"/><path d="M5 5.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.7"/><rect x="3" y="7.5" width="13.5" height="13" rx="1.2" stroke="currentColor" strokeWidth="1.45"/><circle cx="7" cy="11.2" r="1.25" fill="currentColor"/><circle cx="12.5" cy="11.2" r="1.25" fill="currentColor"/><circle cx="9.8" cy="16.6" r="1.25" fill="currentColor"/><path d="M7 11.2c0 2.8 2.8 2.7 2.8 5.4M12.5 11.2c-.7 2.2-.8 3.2-2.7 5.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/></svg>},
               {id:"resources", label:"Resources",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>},
-            ].map(({id,label,icon})=>{
+            ].filter(({id}) => v16PlatformSectionOn(v16NavSectionKey(id))).map(({id,label,icon})=>{
               const isA=sessView===id;
               const goNavView = () => {
                 if (isA) return;
@@ -14880,7 +14888,7 @@ const TalariaV8b = () => {
               );
             })}
             <div className="tlr-session-nav-spacer" style={{flex:1}}/>
-            {(()=>{
+            {v16PlatformSectionOn("support") ? (()=>{
               const isSupportA = supportNavOpen;
               const goSupportNav = () => {
                 const toggle =
@@ -14902,7 +14910,7 @@ const TalariaV8b = () => {
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Support</span>
               </div>
               );
-            })()}
+            })() : null}
             {(()=>{
               const isProfileA = sessView === "profile";
               const goProfileNav = () => {

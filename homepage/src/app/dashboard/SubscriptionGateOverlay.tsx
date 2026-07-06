@@ -10,7 +10,7 @@ export type GateVariant =
   | "payment_required"
   | "access_period_ended"
   | "admin_restricted"
-  | "backtest_unavailable";
+  | "platform_section_disabled";
 
 type Props = {
   isArabic: boolean;
@@ -34,12 +34,17 @@ export default function SubscriptionGateOverlay({
   onGoToAllowed,
   active,
 }: Props) {
+  const isPlatformSectionDisabled = variant === "platform_section_disabled";
   const isAdminRestricted = variant === "admin_restricted";
-  const isBacktestUnavailable = variant === "backtest_unavailable";
   const isPlanEnded = variant === "subscription_ended";
   const isAccessEnded = variant === "access_period_ended";
   const isPaymentIssue = variant === "payment_required";
-  const skipCountdown = isAdminRestricted || isBacktestUnavailable || isPlanEnded || isAccessEnded || isPaymentIssue;
+  const skipCountdown =
+    isPlatformSectionDisabled ||
+    isAdminRestricted ||
+    isPlanEnded ||
+    isAccessEnded ||
+    isPaymentIssue;
   const [seconds, setSeconds] = React.useState(8);
   const redirectedRef = React.useRef(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,10 +99,10 @@ export default function SubscriptionGateOverlay({
 
   if (!active) return null;
 
-  const title = isBacktestUnavailable
+  const title = isPlatformSectionDisabled
     ? isArabic
-      ? "الجلسات غير متاحة مؤقتاً"
-      : "Sessions temporarily unavailable"
+      ? "هذا القسم غير متاح مؤقتاً"
+      : "This section is temporarily unavailable"
     : isAdminRestricted
     ? isArabic
       ? "هذا القسم غير متاح"
@@ -118,10 +123,10 @@ export default function SubscriptionGateOverlay({
           ? "يتطلب اشتراكاً نشطاً"
           : "Subscription required";
 
-  const body = isBacktestUnavailable
+  const body = isPlatformSectionDisabled
     ? isArabic
-      ? "تم إيقاف جلسات الاختبار مؤقتاً للصيانة. حاول لاحقاً أو تواصل مع الدعم إذا استمرت المشكلة."
-      : "Backtesting sessions are temporarily disabled for maintenance. Please try again later or contact support if this persists."
+      ? "تم إيقاف هذا القسم مؤقتاً للصيانة. حاول لاحقاً أو تواصل مع الدعم إذا استمرت المشكلة."
+      : "This section has been temporarily disabled for maintenance. Please try again later or contact support if this persists."
     : isAdminRestricted
     ? isArabic
       ? "تم تقييد وصولك إلى هذا القسم من قبل الإدارة. إذا كنت تعتقد أن هذا خطأ، تواصل مع الدعم."
@@ -142,7 +147,7 @@ export default function SubscriptionGateOverlay({
           ? "جلسة التداول والتحليلات والأدوات المتقدمة متاحة مع الخطة المدفوعة. اختر خطةً للمتابعة."
           : "Journal, analytics, backtesting, and pro tools are included with an active plan. Choose a plan to continue.";
 
-  const primaryCta = isBacktestUnavailable
+  const primaryCta = isPlatformSectionDisabled
     ? isArabic
       ? "العودة إلى لوحة التحكم"
       : "Back to dashboard"
@@ -162,7 +167,7 @@ export default function SubscriptionGateOverlay({
           ? "عرض الخطط والأسعار"
           : "View plans & pricing";
 
-  const secondaryCta = isBacktestUnavailable
+  const secondaryCta = isPlatformSectionDisabled
     ? isArabic
       ? "تواصل مع الدعم"
       : "Contact support"
@@ -185,20 +190,20 @@ export default function SubscriptionGateOverlay({
           : "Redirecting…"
         : null;
 
-  const onPrimary = isBacktestUnavailable
+  const onPrimary = isPlatformSectionDisabled
     ? onGoToAllowed
     : isAdminRestricted
     ? onContactSupport
     : isPaymentIssue
       ? onAccountSettings
       : goPlans;
-  const onSecondary = isBacktestUnavailable
+  const onSecondary = isPlatformSectionDisabled
     ? onContactSupport
     : isAdminRestricted
       ? onGoToAllowed
       : onAccountSettings;
 
-  const footerNote = isBacktestUnavailable
+  const footerNote = isPlatformSectionDisabled
     ? isArabic
       ? "هذا إجراء على مستوى المنصة — لا يمكن تجاوزه عبر رابط مباشر."
       : "This is a platform-wide setting — direct links cannot bypass it."

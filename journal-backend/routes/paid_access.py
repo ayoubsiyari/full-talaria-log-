@@ -9,6 +9,12 @@ from dashboard_access import (
     user_has_full_dashboard_modules,
 )
 from models import User
+from platform_sections import user_may_use_platform_section
+
+JOURNAL_MODULE_PLATFORM_SECTION = {
+    "strategies": "strategies",
+    "backtest": "sessions",
+}
 
 
 def user_may_access_paid_route(user, required_module: str | None) -> bool:
@@ -58,6 +64,16 @@ def register_paid_journal_guard(
 
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        platform_section = JOURNAL_MODULE_PLATFORM_SECTION.get(required_module or "")
+        if platform_section and not user_may_use_platform_section(user, platform_section):
+            return jsonify(
+                {
+                    "error": "This section is temporarily unavailable",
+                    "code": "platform_section_disabled",
+                    "section": platform_section,
+                }
+            ), 403
 
         if user_may_access_paid_route(user, required_module):
             return None
