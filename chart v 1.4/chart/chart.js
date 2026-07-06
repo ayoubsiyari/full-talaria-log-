@@ -28640,6 +28640,45 @@ class Chart {
         const m = this.margin;
         let drawn = 0;
         let skipped = 0;
+        // B-INSTR-BL2b (TEMPORARY, gated by window.__TALARIA_BL2B_DIAG): corruption detector.
+        // Fires the instant a panel's ACTUAL bar spacing disagrees with its declared timeframe
+        // (e.g. a 1m panel suddenly holding 4h-spaced bars) — the fast-switch race symptom — and
+        // reports whether the panel is aliasing the host's arrays by reference. Throttled to ~600ms;
+        // silent during normal operation; behavior-neutral. Strip after root cause confirmed.
+        if (typeof window !== 'undefined' && window.__TALARIA_BL2B_DIAG
+            && typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+            try {
+                const _now = Date.now();
+                if (!this._bl2bLastLog || (_now - this._bl2bLastLog) > 600) {
+                    const _dd = Array.isArray(this.data) ? this.data : [];
+                    const _n = _dd.length;
+                    if (_n >= 3) {
+                        const _mid = Math.floor(_n / 2);
+                        const _dtMin = Math.round((Number(_dd[_mid].t) - Number(_dd[_mid - 1].t)) / 60000);
+                        const _tf = String(this.currentTimeframe || '');
+                        const _num = parseInt(_tf, 10) || 0;
+                        const _unit = _tf.replace(/[0-9]/g, '').toLowerCase();
+                        const _expMin = _unit === 'h' ? _num * 60 : (_unit === 'd' ? _num * 1440 : _num);
+                        if (_expMin > 0 && _dtMin > 0 && _dtMin !== _expMin) {
+                            let _pcR = null; try { _pcR = window.parent && window.parent.chart; } catch (_e) {}
+                            const _pRs = (_pcR && _pcR.replaySystem) ? _pcR.replaySystem : null;
+                            const _rs = this.replaySystem || {};
+                            this._bl2bLastLog = _now;
+                            console.warn('[BL2b] TF-MISMATCH panel=' + ((typeof this._getMultichartPanelId === 'function') ? this._getMultichartPanelId() : '?')
+                                + ' panelTf=' + _tf + ' expMin=' + _expMin + ' actualBarDeltaMin=' + _dtMin
+                                + ' hostTf=' + (_pcR ? _pcR.currentTimeframe : null)
+                                + ' hostSwitching=' + (_pcR ? _pcR._switchingToTimeframe : null)
+                                + ' dataLen=' + _n
+                                + ' sharesHostData=' + (!!_pcR && this.data === _pcR.data)
+                                + ' sharesHostFullRaw=' + (!!_pRs && _rs.fullRawData === _pRs.fullRawData)
+                                + ' sharesHostRaw=' + (!!_pcR && this.rawData === _pcR.rawData)
+                                + ' offsetX=' + Math.round(this.offsetX)
+                                + ' playheadTs=' + _rs.replayTimestamp);
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
         const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
         const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
 
