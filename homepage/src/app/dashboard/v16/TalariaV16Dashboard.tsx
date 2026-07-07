@@ -175,7 +175,19 @@ function TalariaV16DashboardReady({
   }, [authUser, platform, pathname, searchParams, router]);
 
   const v16View = normalizeV16DashboardView(searchParams.get("view"));
-  const profileActive = v16View === "profile";
+  const [localProfileActive, setLocalProfileActive] = useState(v16View === "profile");
+  useEffect(() => {
+    setLocalProfileActive(v16View === "profile");
+  }, [v16View]);
+  useEffect(() => {
+    const onSetView = (event: Event) => {
+      const view = normalizeV16DashboardView((event as CustomEvent<{ view?: string }>).detail?.view);
+      setLocalProfileActive(view === "profile");
+    };
+    window.addEventListener("talaria-v16-set-view", onSetView);
+    return () => window.removeEventListener("talaria-v16-set-view", onSetView);
+  }, []);
+  const profileActive = v16View === "profile" || localProfileActive;
   const supportEnabled =
     userIsDashboardAdmin(authUser) || userHasPlatformSection(authUser, platform, "support");
 

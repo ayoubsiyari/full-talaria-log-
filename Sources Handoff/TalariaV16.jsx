@@ -1054,6 +1054,7 @@ const openDashboardStrategyBuilder = () => {
 const openV16Profile = (tab) => {
   if (!isV16Embedded()) return false;
   window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view: "profile" } }));
+  syncV16ViewUrl("profile");
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_OPEN_PROFILE__ : null;
   if (typeof fn === "function") {
     fn(tab);
@@ -1063,7 +1064,6 @@ const openV16Profile = (tab) => {
   const mapped = tab && tabMap[tab] ? tabMap[tab] : tab;
   const known = new Set(["profile", "security", "subscription", "support"]);
   const resolved = mapped && known.has(mapped) ? mapped : "profile";
-  syncV16ViewUrl("profile");
   if (resolved !== "profile") {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -46593,9 +46593,9 @@ const TalariaV8b = () => {
         if (sessView === "profile") {
           return (
             <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
-              <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
+              <div className={`tlr-dash-body-stack${dashIsPhone ? " tlr-dash-body-stack--phone" : ""}`} style={{flex:1,display:"flex",overflow:"hidden",minHeight:0,flexDirection:dashIsPhone?"column":"row"}}>
                 {navPanel}
-                <div id="talaria-v16-profile-mount" style={{flex:1,minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}} />
+                <div id="talaria-v16-profile-mount" className="tlr-dash-main-content" style={{flex:1,minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column",order:dashIsPhone?1:undefined}} />
               </div>
             </div>
           );
