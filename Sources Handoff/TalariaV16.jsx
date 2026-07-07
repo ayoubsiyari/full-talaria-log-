@@ -5684,6 +5684,29 @@ const dropPosViewport = (ref, w, minBelow, flipMaxH, center = true) => {
     : Math.max(8, Math.min(r.left, safeW - w));
   return { top, left, maxH };
 };
+const strategySymbolPickerPos = (ref, desiredW = 270, minBelow = 120, maxH = 320) => {
+  const r = ref.current?.getBoundingClientRect();
+  if (!r) return null;
+  const modal = ref.current?.closest?.('[data-strategy-builder-modal="1"]')?.getBoundingClientRect?.();
+  const footer = document.querySelector('[data-strategy-builder-footer="1"]')?.getBoundingClientRect?.();
+  const edge = 8;
+  const leftBound = (modal?.left ?? 0) + edge;
+  const rightBound = (modal?.right ?? window.innerWidth) - edge;
+  const topBound = (modal?.top ?? 0) + edge;
+  const bottomBound = Math.min((modal?.bottom ?? window.innerHeight) - edge, (footer?.top ?? window.innerHeight) - edge);
+  const availableW = Math.max(190, rightBound - leftBound);
+  const compact = availableW < desiredW + 24;
+  const width = Math.min(desiredW, availableW);
+  const left = compact
+    ? leftBound
+    : Math.max(leftBound, Math.min(r.left + r.width / 2 - width / 2, rightBound - width));
+  const below = bottomBound - r.bottom - 4;
+  const above = r.top - topBound - 4;
+  const flip = below < minBelow && above > below;
+  const top = flip ? Math.max(topBound, r.top - Math.min(maxH, above) - 4) : Math.min(r.bottom + 4, bottomBound - 80);
+  const pickerH = Math.max(96, Math.min(maxH, flip ? above : bottomBound - top));
+  return { top, left, maxH: pickerH, width };
+};
 
 const getInstFlags = id => {
   if (id==='6e') return {base:'EUR',quote:'USD'};
@@ -6054,12 +6077,12 @@ function GeneralInfoStepContent({ c, F,
   const [mktDropPos, setMktDropPos]   = React.useState({top:0,left:0,maxH:200});
   const [mktHov, setMktHov]           = React.useState(null);
   const [trdPickOpen, setTrdPickOpen] = React.useState(false);
-  const [trdPickPos, setTrdPickPos]   = React.useState({top:0,left:0,maxH:280});
+  const [trdPickPos, setTrdPickPos]   = React.useState({top:0,left:0,maxH:280,width:270});
   const [trdPickSearch, setTrdPickSearch] = React.useState('');
   const [trdPickHov, setTrdPickHov]   = React.useState(null);
   const [trdPickCat, setTrdPickCat]   = React.useState(null);
   const [supPickOpen, setSupPickOpen] = React.useState(false);
-  const [supPickPos, setSupPickPos]   = React.useState({top:0,left:0,maxH:280});
+  const [supPickPos, setSupPickPos]   = React.useState({top:0,left:0,maxH:280,width:270});
   const [supPickSearch, setSupPickSearch] = React.useState('');
   const [supPickHov, setSupPickHov]   = React.useState(null);
   const [supPickCat, setSupPickCat]   = React.useState(null);
@@ -6605,7 +6628,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={trdWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=dropPosViewport(trdWrapRef,270,120,320,true);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=strategySymbolPickerPos(trdWrapRef,270,120,320);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
@@ -6653,7 +6676,7 @@ function GeneralInfoStepContent({ c, F,
                   );
                 };
                 return(
-                  <div ref={trdMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:270,maxHeight:trdPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+                  <div ref={trdMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:trdPickPos.width||270,maxHeight:trdPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                       <input autoFocus value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
@@ -6734,7 +6757,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={supWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=dropPosViewport(supWrapRef,270,120,320,true);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=strategySymbolPickerPos(supWrapRef,270,120,320);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7A5A00,rgba(232,194,82,0.9))',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(201,168,76,0.3)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
@@ -6781,7 +6804,7 @@ function GeneralInfoStepContent({ c, F,
                   );
                 };
                 return(
-                  <div ref={supMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:270,maxHeight:supPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+                  <div ref={supMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:supPickPos.width||270,maxHeight:supPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:'linear-gradient(90deg,rgba(201,168,76,0.3),rgba(232,194,82,0.8),rgba(201,168,76,0.3))',flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                       <input autoFocus value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
@@ -7920,7 +7943,7 @@ function StrategyBuilderModal(props) {
       <div style={{position:'fixed',inset:0,zIndex:100010,background:'rgba(4,5,15,0.80)',
         display:'flex',alignItems:'center',justifyContent:'center',padding:compact?8:0,boxSizing:'border-box'}}>
         {/* Modal window */}
-        <div style={{width:compact?'100%':'min(1400px,97vw)',height:compact?'calc(100dvh - 16px)':'min(90vh,880px)',
+        <div data-strategy-builder-modal="1" style={{width:compact?'100%':'min(1400px,97vw)',height:compact?'calc(100dvh - 16px)':'min(90vh,880px)',
           display:'flex',flexDirection:'column',overflow:'hidden',
           position:'relative',
           background:c.bg,
