@@ -127,6 +127,44 @@ try:
 except ImportError:
     _SECURITY_PKG_OK = False
 
+# Password policy (shared with journal): min length/complexity + HIBP breach check.
+# HIBP fails open (returns False on network error) so it can never block signups.
+try:
+    from talaria_security.password import (
+        validate_password_strength as _validate_password_strength,
+        is_password_breached as _is_password_breached,
+    )
+    _PW_POLICY_OK = True
+except Exception:
+    _PW_POLICY_OK = False
+
+    def _validate_password_strength(pw):
+        # Fallback policy if the shared package is unavailable: 12+ chars, mixed case, digit.
+        import re as _re
+        if not pw or len(pw) < 12:
+            return False, "Password must be at least 12 characters."
+        if not _re.search(r"[a-z]", pw):
+            return False, "Password must include a lowercase letter."
+        if not _re.search(r"[A-Z]", pw):
+            return False, "Password must include an uppercase letter."
+        if not _re.search(r"\d", pw):
+            return False, "Password must include a number."
+        return True, ""
+
+    def _is_password_breached(pw):
+        return False
+
+# Email shape + length caps for signup/login input hygiene. SQL injection is
+# already prevented by the ORM / bound parameters; this rejects malformed and
+# oversized input before it ever reaches the database.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_MAX_EMAIL_LEN = 254
+_MAX_NAME_LEN = 120
+
+
+def _is_valid_email(value: str) -> bool:
+    return bool(value) and len(value) <= _MAX_EMAIL_LEN and _EMAIL_RE.match(value) is not None
+
 import _analytics_bootstrap
 
 _analytics_bootstrap.install()
@@ -9659,6 +9697,7 @@ class LoginIn(BaseModel):
     password: str
     affiliate_code: str | None = None
     next_path: str | None = None
+    totp_code: str | None = None
 
 
 class GoogleAuthIn(BaseModel):
@@ -11377,6 +11416,21 @@ async def auth_signup(payload: SignUpIn, request: Request):
     name = payload.name.strip()
     if not email or not name or not payload.password:
         raise HTTPException(status_code=400, detail="Invalid input")
+    if not _is_valid_email(email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    if len(name) > _MAX_NAME_LEN:
+        raise HTTPException(status_code=400, detail="Name is too long.")
+
+    # Enforce the same password policy as the journal /signup path so this
+    # secondary registration route can't be used to set weak/breached passwords.
+    _pw_ok, _pw_msg = _validate_password_strength(payload.password)
+    if not _pw_ok:
+        raise HTTPException(status_code=400, detail=_pw_msg)
+    if _is_password_breached(payload.password):
+        raise HTTPException(
+            status_code=400,
+            detail="This password has appeared in a known data breach. Please choose a different password.",
+        )
 
     db = SessionLocal()
     try:
@@ -11435,6 +11489,61 @@ async def auth_signup(payload: SignUpIn, request: Request):
     finally:
         db.close()
 
+def _chart_enforce_mfa_if_enabled(db, user, totp_code):
+    """If a user has TOTP MFA enabled (enrolled via the journal), require a valid
+    code on chart login too — closing the bypass where an MFA-enrolled admin could
+    sign in password-only via the chart path.
+
+    Fails OPEN on any infrastructure error (missing table / package) so it can
+    NEVER lock a user out. It only blocks when MFA is explicitly enabled AND
+    verifiable, so accounts without MFA (the current state) are unaffected.
+    """
+    try:
+        row = db.execute(
+            text("SELECT totp_secret, backup_codes_hash, enabled FROM user_mfa_settings WHERE user_id = :uid"),
+            {"uid": user.id},
+        ).fetchone()
+    except Exception:
+        return
+    if not row:
+        return
+    secret, backup_hash, enabled = row[0], row[1], row[2]
+    if not enabled or not secret:
+        return
+    code = (totp_code or "").strip()
+    if not code:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "mfa_required", "message": "Enter the code from your authenticator app."},
+        )
+    try:
+        from talaria_security.mfa_totp import verify_totp, verify_backup_code
+    except Exception:
+        return
+    ok = False
+    try:
+        ok = bool(verify_totp(secret, code))
+        if not ok and backup_hash:
+            ok2, updated = verify_backup_code(backup_hash, code)
+            if ok2:
+                ok = True
+                try:
+                    db.execute(
+                        text("UPDATE user_mfa_settings SET backup_codes_hash = :h WHERE user_id = :uid"),
+                        {"h": updated, "uid": user.id},
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+    except Exception:
+        return
+    if not ok:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "mfa_invalid", "message": "Invalid MFA code"},
+        )
+
+
 @app.post("/api/auth/login")
 async def auth_login(payload: LoginIn, request: Request, response: Response):
     ip = _client_ip_for_rate_limit(request)
@@ -11446,6 +11555,8 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.strip().lower()
 
     if not payload.password:
+        raise HTTPException(status_code=400, detail="Invalid input")
+    if len(email) > _MAX_EMAIL_LEN or len(payload.password) > 1024:
         raise HTTPException(status_code=400, detail="Invalid input")
 
     db = SessionLocal()
@@ -11464,6 +11575,8 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             )
         if not _verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+        _chart_enforce_mfa_if_enabled(db, user, payload.totp_code)
 
         is_admin = (user.role or "") == "admin"
         entitled = is_admin or _user_may_access_platform(db, user)

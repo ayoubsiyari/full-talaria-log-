@@ -1238,10 +1238,12 @@ def verify_checkout_session():
                 'status': existing.status
             }), 200
         
-        # Create the subscription from the Stripe data
+        # Create the subscription from the Stripe data. Use the shared resolver so
+        # yearly price IDs (stripe_price_id_yearly) and metadata are matched too —
+        # otherwise a yearly checkout could create a subscription with plan_id=NULL
+        # and fall back to default (wrong) plan caps.
         sub_data = session.subscription
-        price_id = sub_data['items']['data'][0]['price']['id'] if sub_data.get('items') else None
-        plan = SubscriptionPlan.query.filter_by(stripe_price_id=price_id).first()
+        plan = _resolve_plan_for_stripe_subscription(sub_data)
         
         period_start = datetime.fromtimestamp(sub_data.get('current_period_start', 0))
         period_end = datetime.fromtimestamp(sub_data.get('current_period_end', 0))
@@ -1766,7 +1768,11 @@ def create_checkout_session():
                     return jsonify({'error': 'Invalid or expired coupon code'}), 400
             except stripe.error.StripeError:
                 return jsonify({'error': 'Could not apply coupon'}), 400
-        else:
+        elif os.environ.get('STRIPE_ALLOW_OPEN_PROMO', 'false').strip().lower() in ('1', 'true', 'yes'):
+            # Off by default: the Stripe-hosted promo box lets a user enter ANY active
+            # promotion code (including leftover 100%-off codes), bypassing the
+            # rate-limited /validate-coupon check. Welcome coupons are unaffected —
+            # they flow through `coupon_code` -> `discounts` above.
             session_params['allow_promotion_codes'] = True
 
         # Add trial period if plan has one (only if no coupon applied — avoid stacking)

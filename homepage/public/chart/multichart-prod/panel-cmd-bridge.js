@@ -1637,8 +1637,69 @@
                 warn('replayEnter: enterReplayMode threw', e && e.message);
             }
         }
+        function mirrorHostHistoryIfOlder() {
+            if (global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR) return;
+            if (!isSamePairAsHost(ch)) return;
+            try {
+                var pc = readParentChart();
+                if (!pc || !Array.isArray(pc.data) || !pc.data.length) return;
+                var parentFirst = Number(pc.data[0] && pc.data[0].t);
+                var localFirst = Number(ch.data && ch.data[0] && ch.data[0].t);
+                if (!Number.isFinite(parentFirst) || !Number.isFinite(localFirst) || parentFirst >= localFirst) return;
+                var mirrorPrependSnapshot = (typeof ch._captureMultichartMirrorPrependSnapshot === 'function')
+                    ? ch._captureMultichartMirrorPrependSnapshot(ch.replaySystem)
+                    : null;
+                ch.rawData = pc.rawData;
+                ch.data = pc.data;
+                if (pc._serverCursors) ch._serverCursors = Object.assign({}, pc._serverCursors);
+                if (Number.isFinite(pc.totalCandles)) ch.totalCandles = pc.totalCandles;
+                var prs = pc.replaySystem;
+                if (prs && ch.replaySystem && Array.isArray(prs.fullRawData) && prs.fullRawData.length) {
+                    ch.replaySystem.fullRawData = prs.fullRawData;
+                    ch.replaySystem.rawTimeframe = prs.rawTimeframe || '1m';
+                    ch.replaySystem.replayTimestamp = Number.isFinite(Number(ts)) ? Number(ts) : prs.replayTimestamp;
+                    if (Number.isFinite(prs.currentIndex)) ch.replaySystem.currentIndex = prs.currentIndex;
+                }
+                if (typeof ch._applyMultichartMirrorPrependCompensation === 'function') {
+                    ch._applyMultichartMirrorPrependCompensation(mirrorPrependSnapshot, { replay: ch.replaySystem });
+                }
+                if (typeof ch.bumpDataVersion === 'function') ch.bumpDataVersion();
+                if (typeof ch.render === 'function') ch.render();
+            } catch (_) {}
+        }
+        if (!(global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR)
+            && isSamePairAsHost(ch)
+            && typeof ch._tryExtendReplayMasterFromParent === 'function') {
+            try {
+                var mirroredHostHistory = ch._tryExtendReplayMasterFromParent({ lite: false });
+                if (!mirroredHostHistory) {
+                    mirroredHostHistory = forceSamePairParentDataMirror(ch, { timestamp: ts, isPlaying: false });
+                }
+                if (mirroredHostHistory
+                    && ch._multichartPendingMasterResample
+                    && typeof ch._flushMultichartPendingMasterResample === 'function') {
+                    ch._flushMultichartPendingMasterResample();
+                }
+            } catch (_) {}
+        }
         if (rs.isActive && Number.isFinite(ts)) {
             forceReplaySeek(ch, ts, true, function () {
+                if (!(global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR)
+                    && isSamePairAsHost(ch)) {
+                    try { forceSamePairParentDataMirror(ch, { timestamp: ts, isPlaying: false }); } catch (_) {}
+                    mirrorHostHistoryIfOlder();
+                    var mirrorAttempts = 0;
+                    var mirrorTimer = setInterval(function () {
+                        mirrorAttempts++;
+                        if (global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR) {
+                            clearInterval(mirrorTimer);
+                            return;
+                        }
+                        try { forceSamePairParentDataMirror(ch, { timestamp: ts, isPlaying: false }); } catch (_) {}
+                        mirrorHostHistoryIfOlder();
+                        if (mirrorAttempts >= 30) clearInterval(mirrorTimer);
+                    }, 180);
+                }
                 pendingReplayTs = null;
                 try { drainPendingPlay(ch); } catch (_) {}
             });
@@ -1892,6 +1953,59 @@
                             return;
                         }
                     } catch (_) {}
+                    // H-S6 ownership fix: a host-originated same-pair TF fan-out used
+                    // to race the host's own switch. B/C/D saw the command while A was
+                    // still fetching/committing 1h, so mirror/cache paths missed and each
+                    // panel fell into chart.setTimeframe -> server fetch. Wait for the
+                    // host's committed TF frame, then use the existing mirror path. Kill
+                    // switch defaults OFF (fix ON).
+                    if (args.__fromHostFanout === true
+                        && !(global && global.__TALARIA_MC_DISABLE_HOST_TF_MIRROR_WAIT)
+                        && typeof ch._isIndependentMultichartPair === 'function'
+                        && !ch._isIndependentMultichartPair()
+                        && typeof ch._multichartMirrorHostTfSwitchIfReady === 'function') {
+                        var mirrorWaitStarted = Date.now();
+                        var mirrorWaitMaxMs = 5000;
+                        var tryMirrorAfterHost = function () {
+                            try {
+                                if (typeof ch._warmBtTfCacheFromParent === 'function') {
+                                    ch._warmBtTfCacheFromParent(tf);
+                                }
+                                if (ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                                    setTimeout(function () {
+                                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                    }, 0);
+                                    return;
+                                }
+                                var hostForMirror = readParentChart();
+                                var hostTf = hostForMirror ? String(hostForMirror.currentTimeframe || '').toLowerCase().trim() : '';
+                                var hostBusy = !!(hostForMirror && (
+                                    hostForMirror._timeframeSwitching
+                                    || hostForMirror._switchingToTimeframe
+                                    || hostForMirror._pairSwitchLoading
+                                    || hostTf !== tf
+                                ));
+                                if (hostBusy && Date.now() - mirrorWaitStarted < mirrorWaitMaxMs) {
+                                    setTimeout(tryMirrorAfterHost, 60);
+                                    return;
+                                }
+                            } catch (_) {}
+                            var delayedSw = ch.setTimeframe(tf);
+                            if (delayedSw && typeof delayedSw.then === 'function') {
+                                delayedSw.then(function () {
+                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                }).catch(function (e) {
+                                    warn('setTimeframe async failed', e && e.message);
+                                });
+                            } else {
+                                setTimeout(function () {
+                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                }, 0);
+                            }
+                        };
+                        setTimeout(tryMirrorAfterHost, 60);
+                        return;
+                    }
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
                         sw.then(function () {
@@ -2422,6 +2536,11 @@
                     try {
                         didExtend = !!ch._tryExtendReplayMasterFromParent({ lite: liteExtend });
                     } catch (_) {}
+                    if (!(global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR)) {
+                        try {
+                            didExtend = !!forceSamePairParentDataMirror(ch, { timestamp: readParentReplayTimestamp(), isPlaying: false }) || didExtend;
+                        } catch (_) {}
+                    }
                     if (!didExtend) return;
                     if (ch._multichartPendingMasterResample
                         && typeof ch._flushMultichartPendingMasterResample === 'function') {

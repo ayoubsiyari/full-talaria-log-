@@ -32,6 +32,9 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Temporarily hide Google sign-in / sign-up. Flip to true to re-enable.
+const SHOW_GOOGLE_AUTH = false;
+
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -1109,6 +1112,8 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
             )}
             {showExtraOptions && (
               <>
+                {SHOW_GOOGLE_AUTH && (
+                <>
                 <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
                   <span className="relative z-10 bg-background px-2 text-muted-foreground">or</span>
                 </div>
@@ -1147,6 +1152,8 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
                 )}
                 {googleError && !googleAccessDenial && (
                   <div className="text-sm text-red-500 text-center">{googleError}</div>
+                )}
+                </>
                 )}
                 <div className="text-center text-sm">
                     {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}

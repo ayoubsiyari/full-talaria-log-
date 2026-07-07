@@ -3570,7 +3570,16 @@ class Chart {
      * @param {{ direction?: string, lite?: boolean }} [opts]
      */
     _broadcastMultichartMasterExtendIfHost(opts = {}) {
-        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR) {
+            return;
+        }
+        const isHostPanel = (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel())
+            || !!(this._mcDiag && this._mcDiag.panelId === 'HOST')
+            || !!(typeof window !== 'undefined'
+                && window.__multichartGrid
+                && !(typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()));
+        if (!isHostPanel) {
             return;
         }
         // Only push master extends to idle peers when Date Range sync is ON. With
@@ -3580,8 +3589,21 @@ class Chart {
         // via same-pair host delegation) when the user pans THAT panel.
         if (!this._multichartVisibleRangeSyncOn) return;
         if (!this.currentFileId) return;
-        const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+        const grid = typeof window !== 'undefined'
+            ? (window.__multichartGrid || window.__harnessManager)
+            : null;
         if (!grid || typeof grid.broadcastToIframesNoReply !== 'function') return;
+
+        const sendExtend = (o) => {
+            grid.broadcastToIframesNoReply('extendReplayMasterFromHost', {
+                direction: o.direction || 'backward',
+                lite: !!o.lite,
+            });
+        };
+        if (opts.immediate) {
+            try { sendExtend(opts); } catch (_) { /* ignore */ }
+            return;
+        }
 
         this._mcMasterExtendBroadcastOpts = Object.assign(
             {},
@@ -3600,7 +3622,7 @@ class Chart {
                 ? !!o.lite
                 : (stillPanning || !!self._panLoading);
             try {
-                grid.broadcastToIframesNoReply('extendReplayMasterFromHost', {
+                sendExtend({
                     direction: o.direction || 'backward',
                     lite,
                 });
@@ -21731,20 +21753,18 @@ class Chart {
             if (syncOn && !this._isMultichartLocalPanLeader()) {
                 return false;
             }
-            // 3) Need history the host doesn't hold yet.
-            //    • Sync ON: ask the host to fetch it once (shared); the poll extends
-            //      this panel when it lands, so followers stay aligned to one fetch.
-            //    • Sync OFF (independent, single-chart parity): do NOT delegate. A
-            //      single chart pulls its own 2000-5000 bar batch in ONE request;
-            //      delegating + RAF-polling the host was exactly the "loads old
-            //      candles one-by-one" trickle. Fall through to this panel's own
-            //      big-batch fetch path below.
-            if (syncOn
+            // 3) Need history the host doesn't hold yet. Same-pair panels always
+            //    route ownership through tile A; viewport sync only decides whether
+            //    followers share the host's viewport, not whether they self-fetch
+            //    data. Kill-switch defaults OFF (fix ON).
+            const samePairHostPanOwnerOn = !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_SAME_PAIR_PAN_HOST_OWNER);
+            if ((syncOn || samePairHostPanOwnerOn)
                 && typeof this._delegateSamePairPanLoadToHost === 'function'
                 && this._delegateSamePairPanLoadToHost(force)) {
                 return true;
             }
-            // 4) Otherwise fall through to this panel's own fetch path below.
+            // 4) Kill-switch/off or delegate miss: fall through to this panel's own fetch path below.
         }
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
@@ -22182,6 +22202,17 @@ class Chart {
                         this.viewportData.hasMoreRight = !!this._serverCursors.hasMoreRight;
                     }
                     this._syncReplayPanCursorsFromFullRaw();
+                    if ((direction === 'backward' || direction === 'forward')
+                        && uniqueNew.length > 0
+                        && typeof this._broadcastMultichartMasterExtendIfHost === 'function') {
+                        try {
+                            this._broadcastMultichartMasterExtendIfHost({
+                                direction,
+                                lite: false,
+                                immediate: true,
+                            });
+                        } catch (_mcExtNow) { /* ignore */ }
+                    }
                     if (direction === 'backward' && uniqueNew.length > 0
                         && typeof this._isMultichartEmbedPanel === 'function'
                         && this._isMultichartEmbedPanel()

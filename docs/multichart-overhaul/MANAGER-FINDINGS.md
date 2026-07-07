@@ -1996,6 +1996,91 @@ known-failing.json). No new Director decision required; D-030 is binding.
 
 ---
 
+## 6av. Item-1 deferred cleanup DONE + verified (D-030 step 2, b73, 2026-07-07)
+
+**Executed by a PO-dispatched external worker; Manager-verified against the live gate.**
+
+**Removed (both mirrored trees):** viewport-first dead code + its flags
+(`__TALARIA_MC_ENABLE_VIEWPORT_FIRST`, `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH`,
+`__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH`) from chart.js (constructor state, load branches,
+hydration helpers, `_takeParentNativeMasterSmartWindow`, `loadMultichartPanelFromHost`, replay
+coverage, TF-switch begin, `_fillViewportHistoryAfterTfSwitch`); and the B-FIX-H hold + kill-switch
+(`__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH`) from panel-cmd-bridge.js.
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- grep: the 4 removed flags appear ONLY in docs now — 0 matches in any `.js`/`.html`.
+- Kept load-bearing flags CONFIRMED present in both trees: F/G/I/J-family
+  (UNSETTLED_HOST/SETTLED_RESYNC/SETTLED_SELFHEAL/HOSTSWITCH_QUIET), PRICE_INDEPENDENCE,
+  COARSE_PANEL_HOSTSWITCH_SEEK.
+- Mirror hashes (my Get-FileHash) MATCH v1.4↔homepage for chart.js
+  (DAD519E2…113CF) and panel-cmd-bridge.js (74FB7AA1…9B1A) — match the worker's reported hashes.
+- Ran `npm run gate` MYSELF → exit 0, IDENTICAL verdict set (H-S2/S3/S6 known-failing, 0 regressions,
+  0 newly-fixed, others PASS). No regression from the removal.
+- `.github/workflows/security.yml` untouched (git status); build id `20260707b73` in both `sw.js`.
+
+**D-030 step 2 DONE.** Next = step 3 (Phase 2): fix the three confirmed ownership defects
+H-S6 → H-S3 → H-S2, each behind a kill-switch, each ratcheting its ID out of known-failing.json only
+after the gate confirms it green. Discipline: DIAGNOSE (name the exact per-panel fetch driver with
+harness evidence) before FIX (I11). No new Director decision required; D-030 binding.
+
+---
+
+## 6aw. H-S6 FIX — host-TF fan-out mirror wait (D-030 step 3, b74, 2026-07-07)
+
+**Executed by a PO-dispatched external worker; Manager-verified against the live gate.**
+
+**Diagnosis (evidence):** on host 1m→1h, B/C/D self-fetched via
+`panel-cmd-bridge.js:1895 → chart.setTimeframe() → _loadTimeframeFromServer → _fetchSmartWindow →
+_fetchBarsWindow`. Root = RACE: panels received the host TF fan-out while host A was still
+switching/fetching 1h, so `_multichartMirrorHostTfSwitchIfReady()` missed and each panel fell through
+to its own server load.
+
+**Fix (both trees, panel-cmd-bridge.js ~1895–1945):** for host-originated same-pair TF fan-out, panels
+now wait up to 5s for the host to commit the target TF, then reuse `_multichartMirrorHostTfSwitchIfReady()`
+instead of immediately calling `setTimeframe()`. **Kill-switch:** `__TALARIA_MC_DISABLE_HOST_TF_MIRROR_WAIT`
+(default = fix ON; set = restore old self-fetch behavior).
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- Ran `npm run gate` MYSELF → exit 0, **H-S6 PASS**, known-failing now {H-S2,H-S3}, 0 regressions.
+- known-failing.json correctly ratcheted (H-S6 removed from knownFailing, retained in expectedTests).
+- Kill-switch causal proof (my run): `--bugswitch=__TALARIA_MC_DISABLE_HOST_TF_MIRROR_WAIT` → H-S6 FAIL,
+  `panels that fetched=[A,B,C,D]` — confirms the fix is the cause.
+- panel-cmd-bridge.js mirror hashes MATCH (97793556…1FEF). `security.yml` + `gate.mjs` no diff. Build id
+  `20260707b74` in both sw.js. New kill-switch present in both trees.
+
+**H-S6 CLOSED.** 2 confirmed defects remain: H-S3 (panel self-fetch on drag), H-S2 (host history not
+mirrored to peers). Next = H-S3, same DIAG→gated-FIX→ratchet discipline.
+
+---
+
+## 6ax. H-S3 FIX — same-pair pan ownership decoupled from viewport sync (D-030 step 3, b75, 2026-07-07)
+
+**Executed by a PO-dispatched external worker; Manager-verified against the live gate.**
+
+**Diagnosis (evidence):** sync-OFF B self-fetched via
+`chart.js:_fetchCandlesCursor → checkViewportLoadMore → constrainOffset/handleMouseUp + deferred
+replay-pan timer`. Root: `checkViewportLoadMore()` delegated a same-pair panel's history load to host A
+ONLY when VIEWPORT SYNC was ON; with sync OFF the panel fell to its own server load. Confirmed the
+independent-pair path is separate (H-S5 file/27 self-fetch is correct and must stay).
+
+**Fix (both trees, chart.js around `checkViewportLoadMore()`):** same-pair DATA ownership now routes
+through tile A regardless of viewport sync; viewport sync governs viewport SHARING only.
+**Kill-switch:** `__TALARIA_MC_DISABLE_SAME_PAIR_PAN_HOST_OWNER` (default = fix ON).
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- Ran `npm run gate` MYSELF → exit 0, **H-S3 PASS, H-S5 PASS**, only H-S2 known-failing, 0 regressions.
+- known-failing.json ratcheted to {H-S2} only (H-S3 removed from knownFailing, kept in expectedTests).
+- Kill-switch causal proof (my run): `--bugswitch=…SAME_PAIR_PAN_HOST_OWNER` → H-S3 FAIL, sync-OFF B=1
+  self-fetch returns — confirms the fix is the cause.
+- No `_hs3` temp instrumentation remains (grep 0). chart.js mirror hashes MATCH (D4C796B7…69BD).
+  `security.yml`+`gate.mjs` no diff. Build id `20260707b75` in both sw.js. New flag present both trees.
+
+**H-S3 CLOSED.** ONE confirmed defect remains: **H-S2** (paused-replay host history-extension not
+mirrored to same-pair peers) — closely related to the ownership work just landed. Next = H-S2, same
+DIAG→gated-FIX→ratchet discipline. After H-S2, the gate goes fully green (0 known-failing).
+
+---
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

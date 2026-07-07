@@ -65,6 +65,17 @@ def register_paid_journal_guard(
         if not user:
             return jsonify({"error": "User not found"}), 404
 
+        # Banned/deactivated users must lose journal access immediately, even if
+        # their (chart-minted) JWT hasn't expired yet.
+        if not getattr(user, "is_active", True):
+            return jsonify(
+                {
+                    "error": "account_disabled",
+                    "action": "account_disabled",
+                    "message": "Your account has been deactivated. Please contact support.",
+                }
+            ), 403
+
         platform_section = JOURNAL_MODULE_PLATFORM_SECTION.get(required_module or "")
         if platform_section and not user_may_use_platform_section(user, platform_section):
             return jsonify(

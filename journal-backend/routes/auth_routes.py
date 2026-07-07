@@ -7,6 +7,7 @@ from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email, send_welcome_coupon_email
 from datetime import datetime, timedelta
 import os
+import re
 
 import security_bootstrap
 
@@ -28,6 +29,18 @@ BLOCK_DURATION_HOURS = 24
 FAILED_ATTEMPT_WINDOW_HOURS = max(1, LOCKOUT_WINDOW_MINUTES // 60)
 ALERT_THRESHOLD = max(3, MAX_FAILED_ATTEMPTS - 2)
 ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
+
+# Basic email shape check + hard length caps. This is input hygiene / abuse
+# prevention (oversized payloads, malformed data, stored-XSS surface); SQL
+# injection itself is already prevented by the ORM / bound parameters.
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MAX_EMAIL_LEN = 254
+MAX_NAME_LEN = 120
+
+
+def _is_valid_email(value: str) -> bool:
+    return bool(value) and len(value) <= MAX_EMAIL_LEN and EMAIL_RE.match(value) is not None
+
 
 SIGNUP_ALLOWLIST_SETTING = "mentorship_signup_allowlist_only"
 SIGNUP_BLOCKED_MESSAGE = (
@@ -435,9 +448,13 @@ def register_user():
 
     if not name:
         return jsonify({"error": "Name is required"}), 400
-    
+    if len(name) > MAX_NAME_LEN:
+        return jsonify({"error": "Name is too long."}), 400
+
     if not email:
         return jsonify({"error": "Email is required"}), 400
+    if not _is_valid_email(email):
+        return jsonify({"error": "Please enter a valid email address."}), 400
 
     ok, msg = validate_password_strength(password)
     if not ok:
@@ -515,7 +532,7 @@ def signup_check():
     """
     data = request.get_json() or {}
     email = (data.get('email') or '').strip().lower()
-    if not email or '@' not in email:
+    if not _is_valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
     invited, exists = _signup_eligibility(email)
@@ -544,7 +561,7 @@ def signup_send_code():
     """
     data = request.get_json() or {}
     email = (data.get('email') or '').strip().lower()
-    if not email or '@' not in email:
+    if not _is_valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
     invited, exists = _signup_eligibility(email)

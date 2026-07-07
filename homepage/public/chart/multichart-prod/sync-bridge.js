@@ -2084,6 +2084,30 @@
                 return;
             }
 
+            // Host-led pan can expose older bars on A after a fetch completes; if B/C/D
+            // still hold the pre-fetch left edge, adopt A's data before the lite
+            // geometry-only follow returns.
+            if (panSync
+                && isRangeSyncEnabled()
+                && isEmbedPanelChart()
+                && isHostLedRangeMessage(m)
+                && !(global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR)
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try {
+                    var parentChartHs2 = global.parent && global.parent !== global ? global.parent.chart : null;
+                    var parentFirstHs2 = parentChartHs2 && Array.isArray(parentChartHs2.data)
+                        ? Number(parentChartHs2.data[0] && parentChartHs2.data[0].t)
+                        : NaN;
+                    var localFirstHs2 = Array.isArray(chart.data)
+                        ? Number(chart.data[0] && chart.data[0].t)
+                        : NaN;
+                    if (Number.isFinite(parentFirstHs2)
+                        && Number.isFinite(localFirstHs2)
+                        && parentFirstHs2 < localFirstHs2) {
+                        chart._multichartMirrorViewportFromHost();
+                    }
+                } catch (_) {}
+            }
             // Live pan drag: offset + zoom mirror on every follower (same lite path as leader).
             if (panSync && isRangeSyncEnabled()
                 && Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)

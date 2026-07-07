@@ -1992,11 +1992,15 @@ const SectionNode = ({ id, data }) => {
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,width:'100%'}}>
             {editing ? (
               <textarea
+                data-nodrag="1"
+                className="nodrag tlc-edit"
                 ref={inputRef}
                 value={draft}
                 maxLength={72}
                 onChange={handleChange}
                 onBlur={commitEdit}
+                onMouseDown={e=>e.stopPropagation()}
+                onPointerDown={e=>e.stopPropagation()}
                 onKeyDown={e=>{
                   if(e.key==='Enter'){e.preventDefault();inputRef.current?.blur();}
                   if(e.key==='Escape'){cancelRef.current=true;inputRef.current?.blur();}
@@ -2770,13 +2774,15 @@ const ConditionCard = ({ id, data, selected }) => {
           onMouseLeave={()=>setHTitle(false)}
           style={{flex:1, minHeight:0, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 12px 28px', position:'relative'}}>
             {editingTitle ? (
-              <textarea ref={titleRef} value={titleDraft}
+              <textarea data-nodrag="1" ref={titleRef} value={titleDraft}
                 maxLength={70}
                 rows={1}
                 onChange={e=>setTitleDraft(e.target.value.replace(/[\r\n]+/g, ' '))}
                 onBlur={commitTitle}
+                onMouseDown={e=>e.stopPropagation()}
+                onPointerDown={e=>e.stopPropagation()}
                 onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();commitTitle();} if(e.key==='Escape')setEditingTitle(false); e.stopPropagation(); }}
-                className="tlc-edit"
+                className="nodrag tlc-edit"
                 style={{width:'100%', height:taH, minHeight:COND_TITLE_MIN_HEIGHT_PX, fontSize:COND_TITLE_FONT_SIZE, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid rgba(255,255,255,0.45)', outline:'none', color:'#fff', padding:'2px 0', fontFamily:'inherit', lineHeight:COND_TITLE_LINE_HEIGHT, textAlign:'center', resize:'none', caretColor:'#fff', overflow:'hidden'}}
               />
             ) : (
@@ -46079,7 +46085,7 @@ const TalariaV8b = () => {
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
                   <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-                      {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length}].map(({k,l,ct,disabled})=>{
+                      {[{k:"mine",l:"My Strategies",ct:mineSource.length}/* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
                         const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
                         const tabBg=isA?c.acD:"transparent";
