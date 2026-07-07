@@ -15992,10 +15992,69 @@ async def admin_delete_user(user_id: int, request: Request):
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # A user is referenced by many tables (subscriptions, payments, trades,
+        # preferences, chart data, sessions, …). A bare DELETE hits a foreign-key
+        # violation, so first clear every row that points at this user. We discover
+        # the referencing tables/columns from the live schema (works for both
+        # journal- and chart-owned tables) and delete them with per-table savepoints
+        # so chained FKs resolve over a few passes. Everything is one transaction:
+        # if the final delete fails, nothing is removed and the admin gets a clear
+        # error instead of a silent 500.
+        refs = []
+        try:
+            rows = db.execute(text(
+                """
+                SELECT kcu.table_name AS tbl, kcu.column_name AS col
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage ccu
+                  ON tc.constraint_name = ccu.constraint_name
+                 AND tc.table_schema = ccu.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND ccu.table_name = 'users'
+                  AND ccu.column_name = 'id'
+                """
+            )).fetchall()
+            refs = [(r[0], r[1]) for r in rows if r[0] and r[0] != "users"]
+        except Exception:
+            # Non-Postgres (e.g. SQLite dev) — fall back to the minimal cleanup.
+            refs = []
+
+        pending = list(refs)
+        for _pass in range(6):
+            if not pending:
+                break
+            still = []
+            for tbl, col in pending:
+                sp = db.begin_nested()
+                try:
+                    db.execute(text(f'DELETE FROM "{tbl}" WHERE "{col}" = :uid'), {"uid": user_id})
+                    sp.commit()
+                except Exception:
+                    sp.rollback()
+                    still.append((tbl, col))
+            if len(still) == len(pending):
+                # No progress this pass — remaining tables have chained FKs we can't
+                # resolve generically. Stop and let the final delete surface the error.
+                break
+            pending = still
+
         db.query(UserSession).filter(UserSession.user_id == user_id).delete()
         db.delete(user)
         db.commit()
         return {"success": True}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not delete user — related records still reference them: {str(e)[:300]}",
+        )
     finally:
         db.close()
 
@@ -18248,9 +18307,16 @@ async def admin_delete_plan(plan_id: int, request: Request):
         ).count()
         if active_subs > 0:
             raise HTTPException(status_code=400, detail=f"Cannot delete plan with {active_subs} active subscribers")
+        # Detach any remaining (canceled/expired/past-due) subscriptions that still
+        # reference this plan, otherwise the FK constraint subscriptions_plan_id_fkey
+        # blocks the delete. plan_id is nullable, so this preserves the billing
+        # history rows while removing the reference.
+        detached = db.query(Subscription).filter(
+            Subscription.plan_id == plan_id
+        ).update({Subscription.plan_id: None}, synchronize_session=False)
         db.delete(plan)
         db.commit()
-        return {"success": True}
+        return {"success": True, "detached_subscriptions": int(detached or 0)}
     except HTTPException:
         raise
     except Exception as e:
