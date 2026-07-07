@@ -4035,7 +4035,7 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   );
 };
 
-function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate }) {
+function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate, compact=false }) {
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -4055,6 +4055,8 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const rfNodeInternals = useStore(s => s.nodeInternals);
   const [descPanelOpen, setDescPanelOpen] = useState(false);
   const scrollValuesRef = useRef({ canvasH: 0, contentBotGraph: 0 });
+  const compactPanRef = useRef(null);
+  const compactPanSuppressClickRef = useRef(false);
   const dragStartRef = useRef(null);
   const liveOrderRef = useRef([]);
   const gapDataRef = useRef(null);
@@ -4066,6 +4068,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [templateToast, setTemplateToast] = useState(null);
   const [flowViewMode, setFlowViewMode] = useState('board');
   const [outlineZoom, setOutlineZoom] = useState(1);
+  const compactBoardPan = !!compact;
 
   const showOutlineImageError = useCallback((message) => {
     const text = String(message || '').trim();
@@ -4183,6 +4186,53 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     if (el) setRfNodesEl(el);
     instance.setViewport({ x: 0, y: SEC_GAP * BASE_ZOOM, zoom: BASE_ZOOM });
   }, []);
+
+  const compactPanHandlers = compactBoardPan ? {
+    onPointerDownCapture: (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .tlc-drag-grip')) return;
+      compactPanRef.current = {
+        id: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        x: rfTransform[0],
+        y: rfTransform[1],
+        zoom: rfTransform[2],
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMoveCapture: (e) => {
+      const pan = compactPanRef.current;
+      if (!pan || pan.id !== e.pointerId) return;
+      const dx = e.clientX - pan.startX;
+      const dy = e.clientY - pan.startY;
+      if (Math.abs(dx) + Math.abs(dy) < 4) return;
+      pan.moved = true;
+      rfRef.current?.setViewport({ x: pan.x + dx, y: pan.y + dy, zoom: pan.zoom });
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    onPointerUpCapture: (e) => {
+      const pan = compactPanRef.current;
+      if (pan && pan.id === e.pointerId) {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+        if (pan.moved) {
+          compactPanSuppressClickRef.current = true;
+          setTimeout(() => { compactPanSuppressClickRef.current = false; }, 0);
+        }
+        compactPanRef.current = null;
+      }
+    },
+    onPointerCancelCapture: (e) => {
+      if (compactPanRef.current?.id === e.pointerId) compactPanRef.current = null;
+    },
+    onClickCapture: (e) => {
+      if (!compactPanSuppressClickRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  } : {};
 
   const addConditionToSection = useCallback((sectionId, targetSlot) => {
     setSliding(true);
@@ -5219,8 +5269,8 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
         {/* Canvas Area */}
         {flowViewMode === 'board' ? (
-        <div ref={canvasContainerRef} className={sliding?'tlc-sliding':''} style={{flex:1,position:'relative',background:'var(--tlc-bg)'}}>
-          <div style={{position:'absolute',inset:0,zIndex:descPanelOpen?20:'auto'}}>
+        <div ref={canvasContainerRef} className={sliding?'tlc-sliding':''} {...compactPanHandlers} style={{flex:1,position:'relative',background:'var(--tlc-bg)',touchAction:compactBoardPan?'none':undefined}}>
+          <div style={{position:'absolute',inset:0,zIndex:descPanelOpen?20:'auto',touchAction:compactBoardPan?'none':undefined}}>
           <ReactFlow
             nodes={displayNodes}
             edges={canvasEdges}
@@ -5235,10 +5285,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             onNodeDragStop={onNodeDragStop}
             nodeTypes={CANVAS_NODE_TYPES}
             edgeTypes={CANVAS_EDGE_TYPES}
-            panOnDrag={false}
-            panOnScroll={false}
+            panOnDrag={compactBoardPan}
+            panOnScroll={compactBoardPan}
+            panOnScrollMode={PanOnScrollMode.Free}
             zoomOnScroll={false}
-            zoomOnPinch={false}
+            zoomOnPinch={compactBoardPan}
             zoomOnDoubleClick={false}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             deleteKeyCode={null}
@@ -8039,7 +8090,7 @@ function StrategyBuilderModal(props) {
             {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
 
             {/* Step 2: Canvas */}
-            {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
+            {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} compact={compact} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
 
             {/* Step 3: Trade Tags */}
             {stratWizardStep===3&&<VariablesStepContent c={c} F={F} stratBVariables={props.stratBVariables} setStratBVariables={props.setStratBVariables} />}
