@@ -45425,7 +45425,7 @@ const TalariaV8b = () => {
               </div>
             </div>
           );
-          const stratEmptyStateStyle = {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,minHeight:0,gap:14};
+          const stratEmptyStateStyle = {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,minHeight:0,gap:18};
           const StratRowsSkeleton = () => (
             <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
               <StratRowsHeader/>
@@ -46320,18 +46320,18 @@ const TalariaV8b = () => {
                       )
                     ) : filteredMine.length===0?(
                       <div style={stratEmptyStateStyle}>
-                        <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No strategies yet"}</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
+                        <svg width={68} height={68} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                        <div style={{fontSize:16,fontWeight:750,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No strategies yet"}</div>
+                        <div style={{fontSize:12,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:390,lineHeight:1.45}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
                         {!normalizeSearchQuery(stratSearch)&&(
                           <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
-                            style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
+                            style={{width:190,height:42,padding:"0 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:6,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
                             onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                             onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                             onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                             onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
-                            <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                            <span style={{fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Build Strategy</span>
+                            <svg width={17} height={17} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
+                            <span style={{fontSize:14,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Build Strategy</span>
                           </div>
                         )}
                       </div>
