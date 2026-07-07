@@ -2474,6 +2474,10 @@ const ConditionCard = ({ id, data, selected }) => {
     if (!editingTitle || !titleRef.current) return;
     titleRef.current.focus();
     titleRef.current.select();
+  }, [editingTitle]);
+
+  React.useLayoutEffect(() => {
+    if (!editingTitle || !titleRef.current) return;
     syncTitleHeight();
   }, [editingTitle, titleDraft, syncTitleHeight]);
 

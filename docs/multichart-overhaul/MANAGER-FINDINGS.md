@@ -2081,6 +2081,40 @@ DIAG→gated-FIX→ratchet discipline. After H-S2, the gate goes fully green (0 
 
 ---
 
+## 6ay. H-S2 FIX — host history-growth mirror to same-pair peers (D-030 step 3 COMPLETE, b76, 2026-07-07)
+
+**Executed by a PO-dispatched external worker; Manager-verified against the live gate.**
+
+**Diagnosis (evidence):** with paused replay + sync ON, host A prepended older replay history via
+`_fetchCandlesCursor → checkViewportLoadMore`, but same-pair peers stayed on their pre-fetch window
+because (a) the host master-growth fan-out did not recognize the harness host shape
+(panelId="HOST" while `_isMultichartHostPanel()` was false), and (b) the sync-ON path used
+`sync-bridge.js` lightweight panSync follow, which copied offset/zoom and returned BEFORE any host-data
+left-edge mirror could run.
+
+**Fix (both trees), gated by `__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR` (default = fix ON):**
+- chart.js: host master-growth broadcaster now recognizes the host/top-window shape and falls back to
+  `window.__harnessManager` when `window.__multichartGrid` is absent.
+- sync-bridge.js: before the lightweight host-led pan follow returns, same-pair peers check whether host
+  A has an older first bar and mirror host data if needed.
+- panel-cmd-bridge.js: same-pair paused-replay entry / host-growth commands get a gated host-history
+  mirror fallback — no panel self-fetch.
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- Ran `npm run gate` MYSELF → exit 0, **ALL 9 PASS, 0 known-failing** (H-S2/S3/S5/S6/S7/S8/S10/S11/S12).
+  `known-failing.json` = `{}`.
+- Kill-switch causal proof (my run): `--bugswitch=…HOST_HISTORY_GROWTH_MIRROR` → H-S2 FAIL,
+  first bars `A=…188…, B/C/D=…308…` — confirms the fix is the cause.
+- All THREE edited engine mirror pairs MATCH: chart.js (0E774391…27BE), panel-cmd-bridge.js (E166A68F…
+  1BB7), sync-bridge.js (EBAE70A0…C9C2F). Harness assertions (`scenarios.mjs`/`harness-lib.mjs`),
+  `gate.mjs`, `security.yml` all unchanged. Build id `20260707b76` in both sw.js.
+
+**H-S2 CLOSED. THE GATE IS FULLY GREEN (9/9, 0 known-failing). D-030 step 3 DONE → the go-forward fix
+queue is empty.** Remaining is optional Phase-3 polish (render budget, cosmetic BL-7 transient / BL-2b-r
+tiny Y nudge) and the explicit backlog (BL-1/BL-2/BL-4), neither of which is a felt/blocking defect.
+
+---
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
