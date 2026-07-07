@@ -1,0 +1,18 @@
+{
+  "name": "talaria-multichart-harness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase-4 automated regression harness for the Talaria multichart engine (Task 4.1: boot skeleton + stub bar server).",
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs",
+    "gate": "node gate.mjs",
+    "test:flake": "node run.mjs --runs=5",
+    "test:bugproof": "node run.mjs --only=H-S12 --bug",
+    "test:bugproof:baseline": "node run.mjs --only=H-S12",
+    "serve": "node serve.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.10.2"
+  }
+}

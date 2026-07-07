@@ -439,6 +439,7 @@ const TalariaV8b = () => {
   const [viewingScreenshot, setViewingScreenshot] = useState(null);
   const [tapFileSlot, setTapFileSlot] = useState(null);
   const [tapTagInput, setTapTagInput] = useState("");
+  const tapTagInputRef = useRef(null);
   const [tradeTagOverrides, setTradeTagOverrides] = useState({});
   const [tagEditInput, setTagEditInput] = useState("");
   const [selRow, setSelRow] = useState(null);
@@ -449,6 +450,15 @@ const TalariaV8b = () => {
   const [btmResizing, setBtmResizing] = useState(false);
   const btmDragRef = useRef({startY:0, startH:0, curH:Math.round((window.innerHeight/1.05-92)*0.25)});
   const btmPanelRef = useRef(null);
+  const focusTapTagInput = () => requestAnimationFrame(() => tapTagInputRef.current?.focus());
+  const addTapCustomTag = () => {
+    const nextTag = tapTagInput.trim();
+    if (nextTag) {
+      setTapTags(prev=>({...prev,_custom:[...(prev._custom||[]),nextTag]}));
+      setTapTagInput("");
+    }
+    focusTapTagInput();
+  };
   const [tf, setTf] = useState("1m");
   const [sizeMode, setSizeMode] = useState("$");
   const [riskVal, setRiskVal] = useState("100");
@@ -13095,11 +13105,11 @@ const TalariaV8b = () => {
                       ))}
                     </div>
                     <div style={{display:"flex",border:`1px solid rgba(255,140,66,0.2)`}}>
-                      <input value={tapTagInput} onChange={e=>setTapTagInput(e.target.value)}
-                        onKeyDown={e=>{if(e.key==="Enter"&&tapTagInput.trim()){setTapTags(prev=>({...prev,_custom:[...(prev._custom||[]),tapTagInput.trim()]}));setTapTagInput("");}}}
+                      <input ref={tapTagInputRef} value={tapTagInput} onChange={e=>setTapTagInput(e.target.value)}
+                        onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTapCustomTag();}}}
                         placeholder="Add custom tag…"
                         style={{flex:1,background:"rgba(255,140,66,0.04)",border:"none",color:c.tx,fontFamily:F,fontSize:10,padding:"5px 8px",outline:"none",caretColor:"#FF8C42"}}/>
-                      <div onClick={()=>{if(tapTagInput.trim()){setTapTags(prev=>({...prev,_custom:[...(prev._custom||[]),tapTagInput.trim()]}));setTapTagInput("");}}}
+                      <div onMouseDown={e=>e.preventDefault()} onClick={addTapCustomTag}
                         style={{padding:"0 8px",display:"flex",alignItems:"center",cursor:"default",fontSize:12,fontWeight:700,color:"rgba(255,140,66,0.6)",borderLeft:"1px solid rgba(255,140,66,0.15)"}}>+</div>
                     </div>
                   </div>

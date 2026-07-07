@@ -160,8 +160,7 @@ function TalariaV16DashboardReady({
 
   const viewParam = searchParams.get("view");
   useEffect(() => {
-    const view = normalizeV16DashboardView(viewParam);
-    if (!view) return;
+    const view = normalizeV16DashboardView(viewParam) || "dashboard";
     if (!userCanUseV16EmbeddedView(authUser, platform, view)) return;
     window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view } }));
   }, [viewParam, authUser, platform]);
