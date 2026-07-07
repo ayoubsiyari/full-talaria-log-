@@ -1429,3 +1429,55 @@ ACTIVE freeze). Manager ACK + traceability backfill recorded in MANAGER-FINDINGS
 ### Standing
 Freeze remains ACTIVE (consolidation only; no fix tasks; exceptions via ESC→ruling). Next action: PO
 captures Item-2 R1–R4 + M1–M5 on b71; Manager records PASS/FAIL/NOT-CAPTURED; then Item 3.
+
+---
+
+## D-029 — Consolidation COMPLETE; plan re-baselined; go-forward order set (2026-07-07)
+
+### Ratifications
+- **Item 2 (baseline re-capture) DONE.** BASELINE-RESULTS b72+: R1–R4 PASS (armed-idle pan-load, switch-back,
+  paused coarse-panel, price-independence). M-checks recorded HONESTLY incl. STILL-NOT-CAPTURED (B8 owner
+  activation) and deferred residuals (BL-7 transient flood; BL-2b-r intermittent tiny Y move) — honest gaps
+  over a smoothed narrative, per standing discipline.
+- **BL-6 (ESC-011) closed live** (coarse panels stay centered) — the last of the TF-SWITCH SETTLING /
+  price-axis thread. The PO's felt pain is resolved.
+- **Item 3 (plan re-baseline) DONE** — `PLAN-REBASELINE.md`. Phase 0 DONE; Phase 1 DONE out-of-order
+  (residuals noted); Phase 2 ~50%; Phase 3 ~70% (felt pain closed, cosmetic/budget remainder); Phase 4
+  (harness) NOT started.
+
+### Go-forward order (ratified; supersedes the strict README §3 sequence)
+1. Item-1 deferred cleanup (viewport-first removal + retire H) — safe now a baseline exists.
+2. **Phase 4 regression harness FIRST** — ~17 gated fixes are protected only by manual runs; encode
+   R1–R4 + the scenario matrix as automated checks BEFORE more engine surgery. Highest durability value.
+3. Phase 2 finish (event-sync) behind the harness.
+4. Phase 3 remainder (renders-high budget, BL-3, cosmetic BL-7/BL-2b-r, B-FIX-I predicate hardening).
+5. Backlog BL-1/BL-2/BL-4.
+
+### Freeze status
+The D-026 consolidation freeze is **LIFTED** — its three items are complete. Normal work resumes UNDER the
+above order and all standing rules (I1–I11, one gated change/task, I11 live-verify, briefs+IDs in ledger at
+dispatch per D-028, ESC→ruling for scope changes). No return to whack-a-mole: work the ordered plan.
+
+---
+
+## D-030 — Reorder: Phase-4 harness BEFORE Item-1 removals (2026-07-07)
+
+### Decision
+Swap D-029 go-forward steps 1 and 2. **Phase 4 regression harness is now step 1**; the Item-1 deferred
+removals (viewport-first dead-code removal + retire H) drop to step 2, executed UNDER the harness.
+
+### Rationale
+Both Item-1 removals are behavior-adjacent, not inert deletions: viewport-first is ~300+ lines across both
+37k-line engine copies, and H (`__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH`) gates a hold that
+still *runs* (inert for BL-2b only, not dead). Deleting/altering that surface with no automated net is the
+exact regression risk Phase 4 exists to kill. Building the harness first means the removals — and every
+subsequent Phase 2/3 change — merge only against a green machine check. PO concurred (harness-first).
+
+### Effect on order
+1. **Phase 4 regression harness** (Task 4.1 skeleton → 4.2 scenario assertions → 4.3 workflow wiring).
+2. Item-1 deferred cleanup (viewport-first removal + retire H) — now protected by the harness.
+3. Phase 2 finish (event-sync) behind the harness.
+4. Phase 3 remainder.
+5. Backlog BL-1/BL-2/BL-4.
+
+All standing rules unchanged. H stays shipped/inert until step 2.

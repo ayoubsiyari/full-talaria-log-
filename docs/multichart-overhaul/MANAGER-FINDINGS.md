@@ -1719,6 +1719,41 @@ Once BL-5 names the real driver, the flag inventory must classify each as load-b
 and propose a single coherent hold policy. Current honest read: F+G load-bearing (same-TF panel
 flash), H inert-but-harmless, I load-bearing (fast-switch), J insufficient (BL-5 supersedes intent).
 
+## 6aq. Phase-4 harness Task 4.1 dispatch (D-030 step 1, 2026-07-07)
+
+**Context:** D-030 reordered the go-forward plan so the Phase-4 regression harness lands BEFORE the
+Item-1 removals (viewport-first + retire H). This is the Task 4.1 skeleton dispatch. Brief recorded
+VERBATIM per D-028 rule (1); agent ID recorded on return; acceptance = INDEPENDENT re-derivation
+(node --check, run npm test, confirm real tree served, zero console errors), never the worker's
+self-report.
+
+**Worker brief (verbatim):**
+> Build Phase-4 Task 4.1 ONLY (harness skeleton + stub bar server). Read
+> `docs/multichart-overhaul/PHASE-4-regression-harness.md` Task 4.1 first — it is authoritative.
+> New files under `chart v 1.4/chart/multichart-prod/harness/`: `package.json` (private, single
+> devDependency `puppeteer` — official npm package, install via `npm install`, do NOT hand-edit the
+> lockfile), `serve.mjs` (Node, zero deps), `run.mjs` (puppeteer).
+> `serve.mjs`: static-serve the REAL canonical tree (`chart v 1.4/chart/`) at the paths the engine
+> expects (`/chart/chart.js`, `/chart/modules/*`, `/chart/multichart-prod/*`, `/chart/dist-v9/*`);
+> emulate `/api/file/{id}/bars` (honor `has_more_left/right`, `resolution`, anchor-start truncation at
+> `limit`), `/api/file/{id}/smart`, `/api/file/{id}/meta` with deterministic synthetic 1m candles
+> (~90 days); two file ids (25 and 27); LOG every API hit with query params (fetch-count assertions
+> depend on it). `run.mjs`: boot a 2x2 same-pair layout — prefer the production dist-v9 page; if it is
+> too heavy to boot headless, fall back to composing `chart-embed.html` panels + a minimal host that
+> wires `chart.js` + the manager mirroring `MultichartGrid`, and DOCUMENT which was chosen and why.
+> Use REAL mouse events for any gesture (none needed yet for 4.1). Wait for 4 painted panels, call
+> `window.__mcDiagReport()`, print a diag table, exit 0.
+> ACCEPTANCE (4.1 only): `npm test` boots the 2x2, waits for 4 painted panels, prints the diag table,
+> exits 0, with ZERO console errors during boot. Do NOT implement Task 4.2 scenario assertions yet.
+> Do NOT touch engine code, bridges, build IDs, sw.js, or the security workflow. Confirm
+> `.dockerignore` already excludes `**/node_modules` (report the line); nothing here ships in Docker.
+> Report: files created, boot path chosen (dist-v9 vs composed) + rationale, exact `npm test` output,
+> and any console warnings observed.
+
+Agent ID + verification result appended on return.
+
+---
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

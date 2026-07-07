@@ -1651,10 +1651,38 @@ def _get_user_from_request(request: Request):
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
             return None
-        # Revoke session when entitlement ended (admins exempt) — forces re-login with clear denial.
+        # Deny access to protected (paid) resources when entitlement is absent, but
+        # do NOT destroy the session: the user stays signed in so they can reach
+        # pricing/checkout and regain access immediately after paying. Previously we
+        # deleted every session here, which logged brand-new (unpaid) signups out on
+        # the pricing page and made "Get started" bounce to /login in a loop.
         if (user.role or "") != "admin" and not _user_may_access_platform(db, user):
-            db.query(UserSession).filter(UserSession.user_id == user.id).delete()
-            db.commit()
+            return None
+        sess.last_active_at = datetime.utcnow()
+        db.commit()
+        return user
+    except Exception:
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
+def _get_session_identity(request: Request):
+    """Resolve the session cookie to a User for IDENTITY only (who is signed in),
+    with NO entitlement gate. Used by /api/auth/me so a logged-in but not-yet-paid
+    user still reports as authenticated and can reach checkout. Paid resources stay
+    gated by _get_user_from_request()."""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        return None
+    db = SessionLocal()
+    try:
+        sess = db.query(UserSession).filter(UserSession.id == session_id).first()
+        if not sess:
+            return None
+        user = db.query(User).filter(User.id == sess.user_id).first()
+        if not user or not user.is_active:
             return None
         sess.last_active_at = datetime.utcnow()
         db.commit()
@@ -11847,7 +11875,11 @@ async def auth_config():
 async def auth_me(request: Request, response: Response):
     if not AUTH_ENABLED:
         return {"user": {"id": 0, "email": "anonymous@local", "name": "Trader", "role": "admin"}}
-    user = _get_user_from_request(request)
+    # Identity resolution (no entitlement gate): a signed-in user who hasn't paid
+    # yet must still be recognized here so the pricing page treats them as logged in
+    # and can start checkout. The response body still carries has_journal_access /
+    # dashboard_modules, so the frontend gates paid UI correctly.
+    user = _get_session_identity(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = SessionLocal()

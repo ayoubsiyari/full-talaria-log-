@@ -398,7 +398,13 @@ reverts (coupling returns). Own scrub/playback unaffected (BL-2b).
 ## D-025 deferred-checks manifest (each gets PASS / FAIL / STILL-NOT-CAPTURED)
 - **M1 — BL-1 reconciliation:** is the switch-back flicker resolved by F/G, or is there a remnant? __CAPTURE__
 - **M2 — §6al host price-scale-off-screen-until-double-click:** gone post-D/E, or still present? __CAPTURE__
-- **M3 — B8 activation counters:** during one drag/play, `ownerFetches>0` / `handovers` increment? __CAPTURE__
+- **M3 — B8 activation counters:** b75 capture, 4× same-pair 1m (fileId 25). seams=0 all panels ✓.
+  C/D copy correctly (fetches=0). HOST 9 fetches/12000; **B self-fetched 8/16000 (extendsFromParent=1)**
+  while C/D=0 — consistent with B being the DRAGGED panel loading its own history (or RC1-pan residual;
+  not distinguishable from counters alone). **`ownerFetches=0` / `handovers=0` on all panels → B8
+  owner-path did NOT activate in this scenario.** Verdict: **STILL-NOT-CAPTURED** for B8 activation
+  (needs a finer-than-host panel + play to exercise the owner path); seams-clean + C/D-copy = PASS.
+  Flag B's 16k self-fetch for Phase-3 / plan re-baseline review.
 - **M4 — BL-2b isolation:** `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE=true` → coupling returns
   (already observed live during BL-2b acceptance; record with evidence pointer). __CAPTURE__
 - **M5 — BL-2 sync-ON reframe:** with Date-Range/Time sync ON, does host TF switch still reframe panels?
