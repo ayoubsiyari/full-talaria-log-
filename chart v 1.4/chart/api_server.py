@@ -11072,22 +11072,27 @@ def _user_public_dict_impl(user: User, db=None):
         except Exception:
             trading_sessions_count = 0
         try:
-            active_sub = db.query(Subscription).filter(
-                Subscription.user_id == user.id,
-                Subscription.status.in_(["active", "trialing"])
-            ).first()
-            if active_sub:
-                plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == active_sub.plan_id).first() if active_sub.plan_id else None
-                period_end = active_sub.current_period_end or active_sub.ends_at
+            # Show the LATEST subscription regardless of status so the admin can
+            # see cancelled / past_due / incomplete subscriptions too — previously
+            # this only surfaced active/trialing, so a cancellation vanished from
+            # the dashboard entirely. Entitlement (has_active_subscription below)
+            # is computed separately and still requires active/trialing.
+            latest_sub = db.query(Subscription).filter(
+                Subscription.user_id == user.id
+            ).order_by(Subscription.id.desc()).first()
+            if latest_sub:
+                plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == latest_sub.plan_id).first() if latest_sub.plan_id else None
+                period_end = latest_sub.current_period_end or latest_sub.ends_at
                 sub_info = {
-                    "id": active_sub.id,
-                    "plan_id": active_sub.plan_id,
-                    "plan_name": plan.name if plan else ("Manual" if active_sub.is_manual else "—"),
-                    "status": active_sub.status,
-                    "is_manual": bool(active_sub.is_manual),
+                    "id": latest_sub.id,
+                    "plan_id": latest_sub.plan_id,
+                    "plan_name": plan.name if plan else ("Manual" if latest_sub.is_manual else "—"),
+                    "status": latest_sub.status,
+                    "is_manual": bool(latest_sub.is_manual),
                     "period_end": period_end.isoformat() if period_end else None,
-                    "cancel_at_period_end": bool(active_sub.cancel_at_period_end),
-                    "stripe_subscription_id": active_sub.stripe_subscription_id,
+                    "cancelled_at": _safe_iso(getattr(latest_sub, "cancelled_at", None)),
+                    "cancel_at_period_end": bool(latest_sub.cancel_at_period_end),
+                    "stripe_subscription_id": latest_sub.stripe_subscription_id,
                 }
         except Exception:
             pass

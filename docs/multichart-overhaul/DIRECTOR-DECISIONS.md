@@ -1511,3 +1511,30 @@ tiny Y nudge, B-FIX-I predicate hardening) and D-030 step 5 backlog (BL-1/BL-2/B
 felt/blocking defect; starting the backlog requires a fresh decision per the Phase-4 doc. Any new work
 here follows all standing rules (I1–I11, one gated change/task, gate-green precondition, briefs+IDs in
 ledger per D-028).
+
+---
+
+## D-032 — Multichart overhaul CLOSED at core-complete; polish + backlog deferred (2026-07-07)
+
+### Decision (PO/Director ruling)
+Declare the core multichart overhaul **DONE and CLOSED** at D-031's fully-green state. Do NOT start
+D-030 step 4 (Phase-3 polish) or step 5 (backlog BL-1/BL-2/BL-4) now — both are deferred until a future
+explicit decision.
+
+### Rationale
+The PO's felt experience is resolved, the three machine-caught ownership defects are fixed, the scar
+tissue is removed, and a green CI regression gate now protects every future multichart change. The
+remaining items are non-blocking (cosmetic residuals + efficiency polish + backlog); their cost is not
+justified right now.
+
+### Standing state (frozen baseline for resumption)
+- Gate: **9/9 green, `known-failing.json` = {}**. Build id **20260707b76**.
+- Active multichart fix kill-switches (all default = fix ON): `…HOST_TF_MIRROR_WAIT` (H-S6),
+  `…SAME_PAIR_PAN_HOST_OWNER` (H-S3), `…HOST_HISTORY_GROWTH_MIRROR` (H-S2), plus the pre-existing
+  F/G/I/J, price-independence, and coarse-seek switches. Retired: viewport-first, H (B-FIX-H).
+- Deferred (need a fresh decision to start): Phase-3 polish (renders-high budget, BL-7 transient flood,
+  BL-2b-r intermittent tiny Y nudge, B-FIX-I predicate hardening); backlog BL-1/BL-2/BL-4.
+- Housekeeping for next commit: commit `harness/package-lock.json` (CI `npm ci` depends on it).
+
+Resuming any deferred work re-enters under all standing rules (I1–I11, one gated change/task,
+gate-green precondition, briefs+IDs per D-028).
