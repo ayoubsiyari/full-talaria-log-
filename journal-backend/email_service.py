@@ -159,36 +159,143 @@ def send_welcome_coupon_email(recipient_email, coupon_code, coupon_note=None):
         current_app.logger.error(f"Failed to send welcome coupon email to {recipient_email}: {str(e)}")
         return False
 
-def send_password_reset_email(user, reset_code):
-    """Send password reset email to user with 6-digit code in Arabic"""
+def _fmt_money(amount, currency='usd'):
+    """Best-effort currency formatting for email display."""
     try:
-        subject = "رمز إعادة تعيين كلمة المرور - Talaria"
-        
-        # Load template from file
-        html_content = render_email_template(
-            'password-reset-ar.html',
-            reset_code=reset_code,
-            user_email=user.email
+        amt = float(amount)
+    except (TypeError, ValueError):
+        return None
+    cur = (currency or 'usd').upper()
+    symbol = {'USD': '$', 'EUR': '\u20ac', 'GBP': '\u00a3'}.get(cur, '')
+    if symbol:
+        return f"{symbol}{amt:,.2f}"
+    return f"{amt:,.2f} {cur}"
+
+
+def _info_row(label, value):
+    return (
+        '<tr>'
+        f'<td style="padding:8px 0;color:#9fb0c9;font-size:14px;">{label}</td>'
+        f'<td style="padding:8px 0;color:#e6edf7;font-size:14px;font-weight:bold;text-align:right;">{value}</td>'
+        '</tr>'
+    )
+
+
+def send_subscription_welcome_email(user, details=None):
+    """Branded confirmation email sent after a successful payment/subscription.
+    Recaps the customer's info and the plan they purchased.
+
+    details (dict, optional): {plan_name, amount, currency, interval,
+    next_billing_date} — any missing field is simply omitted from the recap.
+    """
+    recipient = getattr(user, 'email', None) or str(user)
+    details = details or {}
+    try:
+        user_name = (
+            getattr(user, 'full_name', None)
+            or getattr(user, 'name', None)
+            or recipient
         )
-        text_content = get_plain_text_template(
-            'password_reset_ar',
-            reset_code=reset_code,
-            user_email=user.email
+        plan_name = details.get('plan_name') or 'Your plan'
+        price = _fmt_money(details.get('amount'), details.get('currency'))
+        interval = (details.get('interval') or '').strip().lower()
+        interval_label = {'month': 'Monthly', 'year': 'Yearly',
+                          'week': 'Weekly', 'day': 'Daily'}.get(interval, interval.title())
+        next_billing = details.get('next_billing_date')
+
+        subject = f"Payment confirmed — welcome to {plan_name} | {EMAIL_BRAND_NAME}"
+
+        rows = _info_row('Name', user_name) + _info_row('Email', recipient) + _info_row('Plan', plan_name)
+        if price:
+            price_line = price + (f" / {interval_label.lower()}" if interval_label else '')
+            rows += _info_row('Amount', price_line)
+        if interval_label:
+            rows += _info_row('Billing cycle', interval_label)
+        if next_billing:
+            rows += _info_row('Next renewal', next_billing)
+
+        body_html = (
+            f'<p>Hi {user_name},</p>'
+            '<p>Your payment was successful and your subscription is now active. '
+            "Here's a summary of your account:</p>"
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            'style="margin:18px 0;border-top:1px solid #1e2a44;border-bottom:1px solid #1e2a44;">'
+            f'{rows}'
+            '</table>'
+            '<div style="text-align:center;margin:26px 0 8px;">'
+            f'<a href="{EMAIL_SITE_URL}/dashboard" '
+            'style="display:inline-block;background:#5b9dff;color:#0b1220;text-decoration:none;'
+            'font-weight:bold;font-size:15px;padding:13px 30px;border-radius:8px;">Go to your dashboard</a>'
+            '</div>'
+            '<p style="color:#9fb0c9;font-size:13px;">You can manage or cancel your '
+            'subscription anytime from your account settings. Thanks for choosing us!</p>'
         )
-        
-        # Create and send message
+        html_content = _brand_email_html("You're all set!", body_html)
+
+        text_lines = [
+            f"Hi {user_name},",
+            "",
+            "Your payment was successful and your subscription is now active.",
+            "",
+            f"Plan: {plan_name}",
+        ]
+        if price:
+            text_lines.append(f"Amount: {price}" + (f" / {interval_label.lower()}" if interval_label else ''))
+        if next_billing:
+            text_lines.append(f"Next renewal: {next_billing}")
+        text_lines += ["", f"Manage your subscription: {EMAIL_SITE_URL}/dashboard", "",
+                       f"— The {EMAIL_BRAND_NAME} Team"]
+        text_content = "\n".join(text_lines)
+
         msg = Message(
             subject=subject,
-            recipients=[user.email],
+            recipients=[recipient],
             html=html_content,
-            body=text_content
+            body=text_content,
         )
-        
         mail.send(msg)
         return True
-        
+
     except Exception as e:
-        current_app.logger.error(f"Failed to send password reset email to {user.email}: {str(e)}")
+        current_app.logger.error(f"Failed to send subscription welcome email to {recipient}: {str(e)}")
+        return False
+
+
+def send_password_reset_email(user, reset_code):
+    """Send a branded password-reset email with a 6-digit code."""
+    recipient = getattr(user, 'email', None) or str(user)
+    try:
+        subject = f"Reset your password - {EMAIL_BRAND_NAME}"
+
+        body_html = (
+            '<p>We received a request to reset the password for your account. '
+            'Enter this code to set a new password:</p>'
+            '<div style="text-align:center;margin:24px 0;">'
+            '<span style="display:inline-block;background:#0b1220;border:1px solid #2b3b5c;'
+            'border-radius:10px;padding:14px 28px;color:#ffffff;font-size:30px;'
+            f'letter-spacing:8px;font-weight:bold;">{reset_code}</span></div>'
+            '<p style="color:#9fb0c9;font-size:13px;">This code expires in 15 minutes. '
+            "If you didn't request a password reset, you can safely ignore this email — "
+            'your password will stay the same.</p>'
+        )
+        html_content = _brand_email_html("Password reset", body_html)
+        text_content = (
+            f"Your {EMAIL_BRAND_NAME} password reset code is: {reset_code}\n"
+            "It expires in 15 minutes. If you didn't request this, ignore this email."
+        )
+
+        msg = Message(
+            subject=subject,
+            recipients=[recipient],
+            html=html_content,
+            body=text_content,
+        )
+
+        mail.send(msg)
+        return True
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to send password reset email to {recipient}: {str(e)}")
         return False 
 
 def send_welcome_email(user):

@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "test": "node run.mjs",
+    "test:flake": "node run.mjs --runs=5",
+    "test:bugproof": "node run.mjs --only=H-S12 --bug",
+    "test:bugproof:baseline": "node run.mjs --only=H-S12",
     "serve": "node serve.mjs"
   },
   "devDependencies": {

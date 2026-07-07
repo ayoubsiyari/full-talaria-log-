@@ -1750,7 +1750,118 @@ self-report.
 > Report: files created, boot path chosen (dist-v9 vs composed) + rationale, exact `npm test` output,
 > and any console warnings observed.
 
-Agent ID + verification result appended on return.
+**Agent ID:** 5e47b9c8-e4ff-4d19-bec1-e6c58187dfae
+
+**Manager INDEPENDENT verification (not the worker self-report) — PASS:**
+- `node --check serve.mjs && node --check run.mjs` → exit 0.
+- Read `serve.mjs`: `CHART_ROOT = path.resolve(__dirname,'..','..')` → serves the REAL canonical
+  `chart v 1.4/chart/` tree at `/chart/*` (chart.js, modules, multichart-prod, dist-v9, vendor,
+  fonts), confirmed 1:1 — not copies. API stubs match engine-read shapes (bars/smart/meta/candles).
+- Ran `npm test` myself: exit 0; 4/4 panels painted; diag table printed; **0 console errors**; boot
+  API hits `{auth.me:4, other:4, file.bars:8}`.
+- Boot path chosen = composed `chart-embed.html` panels + minimal host mirroring `MultichartGrid`
+  (dist-v9 React page rejected as too heavy — the doc-anticipated fallback), documented in run.mjs.
+- `.dockerignore:9 = **/node_modules`; only `puppeteer` installed from npm; no engine/bridge/build-id/
+  sw.js/security-workflow touched. **Task 4.1 acceptance MET.**
+
+**Observation for Task 4.2 (not a 4.1 blocker):** same-pair 2x2 boot shows `file.bars:8` (≈2 per panel)
+and per-panel `fetches:4` — i.e. panels self-fetch on cold boot rather than the host being the sole
+fetcher. This is exactly the ownership defect H-S10 ("same-pair panels: 0 fetches") is meant to catch,
+so 4.2 assertions should be written to FAIL against current behavior and thus flag the real bug.
+
+---
+
+## 6ar. Phase-4 harness Task 4.2 dispatch (D-030 step 1, 2026-07-07)
+
+**Context:** 4.1 skeleton verified green (§6aq). Task 4.2 = scenario assertions mirroring the Phase-0
+matrix. Brief verbatim per D-028 (1); agent ID + independent verification on return.
+
+**Critical policy for this task (Manager ruling):** assertions encode INTENDED behavior, not current
+behavior. Where current code violates an invariant (e.g. same-pair cold-boot self-fetch seen in §6aq),
+the worker MUST write the assertion to the intended contract and let it FAIL — reporting it as a
+harness-CAUGHT real defect — rather than weakening the assertion to force green. Do NOT relax an
+assertion to match a buggy result (same spirit as the security rule against weakening guards to pass).
+The 5-run flake check applies to assertion STABILITY (same verdict each run), not to forcing all-pass.
+
+**Worker brief (verbatim):**
+> Build Phase-4 Task 4.2 (scenario assertions) on top of the existing 4.1 harness at
+> `chart v 1.4/chart/multichart-prod/harness/`. Read `PHASE-4-regression-harness.md` Task 4.2 — the
+> table there is authoritative; keep test IDs in sync with the Phase-0 matrix. Implement each row as an
+> individually-named test that resets diagnostics first (`window.__mcDiagReport`/reset hooks): H-S2,
+> H-S3, H-S5, H-S6, H-S7, H-S8, H-S10, H-S11, and H-INV (run after every test). Simulate gestures with
+> REAL puppeteer mouse events (`page.mouse.down/move/up`), never direct function calls, so drag/burst
+> paths are exercised. Assert on FETCH COUNTS (from serve.mjs's per-hit log), first/last bar equality,
+> seam counters, playhead equality, and offset-delta-at-release. Run each scenario under sync ON and
+> sync OFF and same-pair / independent-pair where the row calls for it.
+> POLICY: write assertions to the INTENDED contract. If current engine behavior violates it (e.g.
+> same-pair cold boot currently self-fetches ~2 bars/panel instead of 0), let the assertion FAIL and
+> label it clearly as a harness-CAUGHT real defect in the output — do NOT weaken the assertion to force
+> a pass. Provide a machine-readable summary line (e.g. `RESULT <id> PASS|FAIL-REAL-BUG|FAIL-FLAKE`).
+> Also add the deliberate-bug proof: a documented way (env var or kill-switch toggle) to re-enable a
+> panel fetch path and show H-S2/H-S3 flip to FAIL — proving the harness catches the class it exists
+> for. Run the full suite 5 consecutive times and report per-test verdict stability (flake = differing
+> verdicts across runs; that IS a bug to report).
+> Do NOT touch engine code, bridges, build IDs, sw.js, or the security workflow (toggling an EXISTING
+> kill-switch from the harness via query param/env is fine; adding new engine flags is not). Report:
+> every test's 5-run verdict table, which failures are real-bug vs flake, the exact deliberate-bug
+> proof output, and any scenario you could not implement faithfully (with why). Windows/PowerShell env.
+
+**Agent ID:** c02b8a0e-fd42-4409-82c3-4b479e8fa980
+
+**Manager verification — 4.2 built, but ACCEPTANCE WITHHELD (harness fidelity defect):**
+- Files (`harness-lib.mjs`, `scenarios.mjs`, rewritten `run.mjs`, modified `serve.mjs`/`package.json`)
+  created; suite runs stable across 5 runs (zero flakes) with per-test `RESULT` lines and an H-S12
+  deliberate-bug lever (`__TALARIA_DISABLE_SHARED_BAR_STORE`: 1→2 late-panel fetch) that flips PASS→FAIL.
+  Green now: H-S5, H-S7, H-S8, H-S11, H-S12. Red: H-S2, H-S3, H-S6, H-S10.
+- **BUT: the harness has NO in-process host chart.** `serve.mjs` `hostPageHtml` registers tile A as a
+  4th `chart-embed.html` iframe (`ids=['A','B','C','D']`, all `mgr.addChart`). Production (verified in
+  `MultichartGrid.jsx`) makes **tile A the parent page's real `window.chart`** with the host bridge
+  installed on it (`installBridge`, `HOST_PANEL_ID`); only B/C/D are iframes. The host chart is the
+  mirror/clone/fetch source (`allReadyIframesShareHostFileForMirror(managerCharts, hostChart)`,
+  host replay fan-out). With no host actor, the ownership model is inverted → every tile is a peer with
+  no mirror source.
+- **Consequence:** H-S2/S3/S6/S10 RED are almost certainly TOPOLOGY ARTIFACTS, not proven engine
+  defects. The worker disclosed this honestly (its §6). A gate that is red at baseline for harness
+  reasons cannot distinguish a regression from known-red, so 4.2 is NOT accepted until the host is real.
+- **Ruling:** the reds are RE-CLASSIFIED from "harness-caught real defect" to "UNPROVEN pending host
+  fidelity." No engine fix may cite them yet. Next: Task 4.1c host-fidelity fix (below), then re-run 4.2
+  and re-triage which reds survive (= real engine defects) vs turn green (= were artifacts).
+
+---
+
+## 6as. Phase-4 Task 4.1c dispatch — host-chart fidelity (D-030 step 1, 2026-07-07)
+
+**Context:** §6ar verification found the harness lacks a real host chart. Task 4.1c makes tile A the
+parent's real `window.chart` (chart.js + host bridge) mirroring `MultichartGrid`, then re-runs 4.2.
+Brief verbatim per D-028 (1); agent ID + independent verification on return.
+
+**Worker brief (verbatim):**
+> Fix the Phase-4 harness so it faithfully mirrors production topology, then re-run Task 4.2 and
+> re-triage. Repo root `c:\Users\user\Desktop\talaria1\full-talaria-log--main`; harness at
+> `chart v 1.4/chart/multichart-prod/harness/`. Read `chart v 1.4/talaria-design/src/MultichartGrid.jsx`
+> — it is authoritative for host wiring: tile A is the PARENT page's real `window.chart` (loads
+> `chart.js` + `modules/*`), with the host bridge installed on it (see `installBridge`, `HOST_PANEL_ID`,
+> host-bridge install block); ONLY B/C/D are `chart-embed.html` iframes; the `MultichartManager` owns
+> them; host TF/replay/mirror fans out to panels; same-pair mirroring is gated by
+> `allReadyIframesShareHostFileForMirror(managerCharts, hostChart)`.
+> Change `serve.mjs` `hostPageHtml` (and any run.mjs assumptions) so cell A hosts a REAL in-process
+> chart: load `/chart/chart.js` + required `modules/*` into the host page, construct the host chart the
+> same way the production parent page does (inspect how dist-v9 / the parent boots `window.chart`), set
+> `window.chart`, register it with the manager as the HOST panel (not an iframe), and install the host
+> bridge exactly as MultichartGrid does. B/C/D remain iframes. Keep it MINIMAL but faithful — the goal
+> is that the host→panel mirror/clone and host-replay fan-out paths are LIVE.
+> Then re-run the full 4.2 suite (`npm run test:flake`, 5×) and RE-TRIAGE every previously-red test
+> (H-S2/S3/S6/S10): report which are now GREEN (were topology artifacts) and which stay RED (candidate
+> REAL engine defects) with the exact fetch/bar numbers. Keep the H-INV invariant and the H-S12
+> deliberate-bug proof working. Update the run.mjs top comment to document the now-faithful topology.
+> CONSTRAINTS: do NOT modify engine code, bridges, build IDs, sw.js, or the security workflow — only the
+> harness folder. Toggling EXISTING kill-switches from the harness is fine; no new engine flags. Only
+> the already-installed puppeteer. REPORT: exact host-boot approach + how you confirmed the host bridge
+> installed and mirror path is live (e.g. a panel mirrors host without self-fetch), the re-triaged
+> 5-run verdict table with before/after for each red test, and any scenario still not faithfully
+> reproducible + why. Windows/PowerShell env; run via `npm test` / `npm run test:flake`.
+
+Agent ID + verification appended on return.
 
 ---
 

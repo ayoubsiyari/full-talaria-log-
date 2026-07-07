@@ -994,12 +994,60 @@ def handle_subscription_created(sub_data):
         )
         
         _apply_plan_entitlements_to_user(user, plan)
-        
+
+        # Send a branded payment-confirmation email once, only on first creation and
+        # when the subscription is actually active/trialing. Never let an email error
+        # fail the webhook (entitlements are the priority; Stripe would otherwise retry).
+        if _created and (sub_data.get('status') or '').lower() in ('active', 'trialing'):
+            try:
+                _send_subscription_confirmation(user, plan, sub_data, period_end)
+            except Exception as mail_err:
+                current_app.logger.error(f"Subscription confirmation email failed: {mail_err}")
+
     except Exception as e:
         # Re-raise so the webhook dispatcher can mark this event failed and
         # return 500, prompting Stripe to retry (entitlements must not be lost).
         current_app.logger.error(f"Error handling subscription created: {e}")
         raise
+
+
+def _send_subscription_confirmation(user, plan, sub_data, period_end):
+    """Build details from the Stripe subscription payload and send the branded
+    'payment confirmed' email. Isolated so failures can't affect the webhook."""
+    from email_service import send_subscription_welcome_email
+
+    amount = None
+    currency = 'usd'
+    interval = None
+    try:
+        item = (((sub_data.get('items') or {}).get('data') or [None])[0]) or {}
+        price = item.get('price') or {}
+        if price.get('unit_amount') is not None:
+            amount = float(price.get('unit_amount')) / 100.0
+        currency = price.get('currency') or currency
+        interval = ((price.get('recurring') or {}).get('interval')) or interval
+    except Exception:
+        pass
+    if amount is None and plan is not None:
+        amount = getattr(plan, 'price', None)
+    if interval is None and plan is not None:
+        interval = getattr(plan, 'interval', None)
+
+    next_billing = None
+    try:
+        if period_end:
+            next_billing = period_end.strftime('%b %d, %Y')
+    except Exception:
+        next_billing = None
+
+    details = {
+        'plan_name': getattr(plan, 'name', None) if plan else None,
+        'amount': amount,
+        'currency': currency,
+        'interval': interval,
+        'next_billing_date': next_billing,
+    }
+    send_subscription_welcome_email(user, details)
 
 
 def handle_subscription_updated(sub_data):
@@ -1211,7 +1259,15 @@ def verify_checkout_session():
         )
         
         _apply_plan_entitlements_to_user(user, plan)
-        
+
+        # Same confirmation email as the webhook path. Guarded by _created so a
+        # webhook + fallback race can't double-send (the loser early-returns above).
+        if _created and (sub_data.get('status') or 'active').lower() in ('active', 'trialing'):
+            try:
+                _send_subscription_confirmation(user, plan, sub_data, period_end)
+            except Exception as mail_err:
+                current_app.logger.error(f"Subscription confirmation email failed (verify-session): {mail_err}")
+
         # Record the payment so it shows in admin Payments tab
         try:
             latest_invoice_id = sub_data.get('latest_invoice')

@@ -3392,6 +3392,10 @@ select { cursor:default; }
             <span class="card-badge" id="userCountBadge">0</span>
           </div>
           <div class="card-body" style="padding:0">
+            <div style="display:flex;gap:6px;padding:14px 20px 0;flex-wrap:wrap">
+              <button type="button" class="btn sm primary" id="userTabAll" onclick="setUserTab('all')">All users <span id="userTabAllCount">0</span></button>
+              <button type="button" class="btn sm" id="userTabMentorship" onclick="setUserTab('mentorship')">Mentorship <span id="userTabMentorshipCount">0</span></button>
+            </div>
             <div class="search-bar" style="padding:16px 20px 0">
               <input type="text" id="searchInput" placeholder="Search by name or email..." oninput="renderUsers()">
               <select id="filterStatus" onchange="renderUsers()">
@@ -7339,10 +7343,23 @@ async function sendBulkEmailFromAdmin() {
   }
 }
 
+let userTab = 'all';
+function setUserTab(tab) {
+  userTab = tab === 'mentorship' ? 'mentorship' : 'all';
+  const a = $('userTabAll'), m = $('userTabMentorship');
+  if (a) a.classList.toggle('primary', userTab === 'all');
+  if (m) m.classList.toggle('primary', userTab === 'mentorship');
+  renderUsers();
+}
+
 function renderUsers() {
   const search = ($('searchInput').value || '').toLowerCase();
   const filter = $('filterStatus').value;
-  let filtered = allUsers.filter(u => {
+  const mentorshipUsers = allUsers.filter(u => u.is_mentorship || u.group_id);
+  const allCountEl = $('userTabAllCount'); if (allCountEl) allCountEl.textContent = allUsers.length;
+  const mtCountEl = $('userTabMentorshipCount'); if (mtCountEl) mtCountEl.textContent = mentorshipUsers.length;
+  const base = userTab === 'mentorship' ? mentorshipUsers : allUsers;
+  let filtered = base.filter(u => {
     if (filter && u.status !== filter) return false;
     if (search && !u.name.toLowerCase().includes(search) && !u.email.toLowerCase().includes(search)) return false;
     return true;
@@ -7356,7 +7373,7 @@ function renderUsers() {
     return va < vb ? -sortDir : va > vb ? sortDir : 0;
   });
 
-  $('userCountBadge').textContent = allUsers.length;
+  $('userCountBadge').textContent = base.length;
   const tbody = $('usersBody');
   $('emptyUsers').style.display = filtered.length === 0 ? '' : 'none';
   if (!filtered.length) { tbody.innerHTML = ''; return; }
@@ -7375,8 +7392,9 @@ function renderUsers() {
     const subBadge = sub
       ? `<span class="badge badge-active" style="font-size:10px">${esc(sub.plan_name)}</span>`
       : (u.has_journal_access ? '<span class="badge badge-admin" style="font-size:10px">Access</span>' : '<span style="font-size:11px;color:var(--text-muted)">None</span>');
+    const cohortTag = u.group_name ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">◆ ${esc(u.group_name)}</div>` : '';
     return `<tr>
-      <td><div style="font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(u.email)}</div></td>
+      <td><div style="font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(u.email)}</div>${cohortTag}</td>
       <td>${roleBadge}</td>
       <td>${statusBadge}</td>
       <td style="font-size:12px">${subBadge}</td>
@@ -7995,10 +8013,27 @@ async function selectCohort(id) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+function mtStatusCell(u) {
+  // Engagement pipeline for a registered student: subscribed > logged in > registered.
+  const st = u.signup_status || (!u.is_active ? 'banned'
+    : (u.has_active_subscription || u.has_journal_access ? 'subscribed'
+      : (u.last_active_at ? 'logged_in' : 'registered')));
+  let badge = '';
+  if (st === 'banned') badge = '<span class="badge badge-banned">Banned</span>';
+  else if (st === 'subscribed') {
+    const plan = (u.subscription && u.subscription.plan_name) || (u.has_journal_access ? 'Full access' : 'Subscribed');
+    badge = '<span class="badge badge-active" title="Verified · logged in · paying">' + esc(plan) + '</span>';
+  } else if (st === 'logged_in') badge = '<span class="badge badge-admin" title="Verified email &amp; logged in — not subscribed yet">Logged in</span>';
+  else badge = '<span class="badge badge-expired" title="Account created — has not logged in yet">Registered</span>';
+  const last = u.last_active_at ? ('Active ' + timeAgo(u.last_active_at)) : 'Never logged in';
+  return '<td style="min-width:150px">' + badge +
+    '<div style="font-size:10px;color:var(--text-muted);margin-top:3px">' + esc(last) + '</div></td>';
+}
+
 function renderRoster(members) {
   const cat = mtModuleCatalog();
   const head = $('mtRosterHead');
-  if (head) head.innerHTML = '<th>Student</th>' + cat.map(function (m) { return '<th style="text-align:center">' + esc(m.label) + '</th>'; }).join('');
+  if (head) head.innerHTML = '<th>Student</th><th>Status</th>' + cat.map(function (m) { return '<th style="text-align:center">' + esc(m.label) + '</th>'; }).join('');
   const body = $('mtRosterBody');
   const empty = $('mtEmptyRoster');
   if (!body) return;
@@ -8016,7 +8051,7 @@ function renderRoster(members) {
         'onchange="toggleMemberModule(this,' + u.id + ')"></td>';
     }).join('');
     const nameHtml = '<div>' + esc(u.email) + '</div>' + (u.name ? '<div style="font-size:11px;color:var(--text-muted)">' + esc(u.name) + '</div>' : '') + (locked ? '<span style="font-size:10px;color:var(--accent)">full access</span>' : '');
-    return '<tr><td>' + nameHtml + '</td>' + cells + '</tr>';
+    return '<tr><td>' + nameHtml + '</td>' + mtStatusCell(u) + cells + '</tr>';
   }).join('');
 }
 

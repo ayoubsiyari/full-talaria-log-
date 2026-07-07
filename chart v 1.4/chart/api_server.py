@@ -1651,12 +1651,17 @@ def _get_user_from_request(request: Request):
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
             return None
-        # Deny access to protected (paid) resources when entitlement is absent, but
-        # do NOT destroy the session: the user stays signed in so they can reach
-        # pricing/checkout and regain access immediately after paying. Previously we
-        # deleted every session here, which logged brand-new (unpaid) signups out on
-        # the pricing page and made "Get started" bounce to /login in a loop.
+        # No entitlement: always deny access to protected (paid) resources. For a
+        # user who PREVIOUSLY had access (lapsed/canceled/expired) we also revoke the
+        # session to force a clean re-login with the "subscription ended" denial. A
+        # brand-new user who has never subscribed KEEPS their session so they stay
+        # signed in and can reach pricing/checkout — previously we deleted every
+        # session here, which logged new signups out and made "Get started" bounce to
+        # /login in a loop.
         if (user.role or "") != "admin" and not _user_may_access_platform(db, user):
+            if _user_previously_had_access(db, user):
+                db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+                db.commit()
             return None
         sess.last_active_at = datetime.utcnow()
         db.commit()
@@ -11103,6 +11108,7 @@ def _user_public_dict_impl(user: User, db=None):
         "phone": getattr(user, "phone", None),
         "birth_date": _safe_iso(getattr(user, "birth_date", None)),
         "stripe_customer_id": getattr(user, "stripe_customer_id", None),
+        "group_id": getattr(user, "group_id", None),
     }
     if db is not None and not subscription_entitled:
         try:
@@ -14678,6 +14684,13 @@ async def admin_list_users(request: Request):
             .all()
         )
         trading_count_map = {int(row[0]): int(row[1]) for row in ts_rows}
+        # Cohort names so the Users page can label/split mentorship students.
+        group_name_map = {}
+        try:
+            for g in db.query(Group.id, Group.name).all():
+                group_name_map[g.id] = g.name
+        except Exception:
+            group_name_map = {}
         result = []
         now = datetime.utcnow()
         for u in users:
@@ -14689,6 +14702,10 @@ async def admin_list_users(request: Request):
             d["last_active_at"] = la.isoformat() if la else None
             expired = u.access_expires_at and u.access_expires_at < now
             d["status"] = "banned" if not u.is_active else ("expired" if expired else "active")
+            gid = getattr(u, "group_id", None)
+            d["group_id"] = gid
+            d["group_name"] = group_name_map.get(gid) if gid else None
+            d["is_mentorship"] = gid is not None
             result.append(d)
         return {"users": result}
     finally:
@@ -15401,8 +15418,66 @@ async def admin_mentorship_cohort_members(group_id: int, request: Request):
         if not group:
             raise HTTPException(status_code=404, detail="Cohort not found")
         members = db.query(User).filter(User.group_id == group_id).order_by(User.email.asc()).all()
+        member_ids = [u.id for u in members]
+        # Batch session + subscription lookups so the roster can show real engagement
+        # status (has the student logged in / subscribed) without N+1 queries.
+        session_map = {}
+        sub_map = {}
+        if member_ids:
+            try:
+                for row in (
+                    db.query(
+                        UserSession.user_id,
+                        func.count(UserSession.id).label("cnt"),
+                        func.max(UserSession.last_active_at).label("last_active"),
+                    )
+                    .filter(UserSession.user_id.in_(member_ids))
+                    .group_by(UserSession.user_id)
+                    .all()
+                ):
+                    session_map[row.user_id] = {"count": int(row.cnt or 0), "last_active": row.last_active}
+            except Exception:
+                session_map = {}
+            try:
+                subs = (
+                    db.query(Subscription)
+                    .filter(
+                        Subscription.user_id.in_(member_ids),
+                        Subscription.status.in_(["active", "trialing"]),
+                    )
+                    .all()
+                )
+                plan_names = {}
+                plan_ids = {s.plan_id for s in subs if s.plan_id}
+                if plan_ids:
+                    for p in db.query(SubscriptionPlan).filter(SubscriptionPlan.id.in_(plan_ids)).all():
+                        plan_names[p.id] = p.name
+                for s in subs:
+                    if s.user_id in sub_map:
+                        continue
+                    sub_map[s.user_id] = {
+                        "plan_name": plan_names.get(s.plan_id) or ("Manual" if s.is_manual else "—"),
+                        "status": s.status,
+                        "is_manual": bool(s.is_manual),
+                    }
+            except Exception:
+                sub_map = {}
+        now = datetime.utcnow()
         roster = []
         for u in members:
+            sinfo = session_map.get(u.id, {})
+            last_active = sinfo.get("last_active")
+            sub = sub_map.get(u.id)
+            expired = bool(u.access_expires_at and u.access_expires_at < now)
+            subscribed = bool(sub) or bool(u.has_journal_access)
+            if not u.is_active:
+                signup_status = "banned"
+            elif subscribed and not expired:
+                signup_status = "subscribed"
+            elif last_active is not None:
+                signup_status = "logged_in"
+            else:
+                signup_status = "registered"
             roster.append({
                 "id": u.id,
                 "email": u.email,
@@ -15412,6 +15487,11 @@ async def admin_mentorship_cohort_members(group_id: int, request: Request):
                 "has_journal_access": bool(u.has_journal_access),
                 "dashboard_modules": effective_dashboard_modules(u, fully_entitled=bool(u.has_journal_access)),
                 "access_expires_at": u.access_expires_at.isoformat() if u.access_expires_at else None,
+                "session_count": sinfo.get("count", 0),
+                "last_active_at": last_active.isoformat() if last_active else None,
+                "subscription": sub,
+                "has_active_subscription": bool(sub),
+                "signup_status": signup_status,
             })
         return {
             "cohort": {
@@ -18217,6 +18297,26 @@ def _user_may_access_platform(db, user: User) -> bool:
         return True
     grants = normalize_module_grants(_parse_user_module_grants(user))
     return any(grants.values()) if isinstance(grants, dict) else False
+
+
+def _user_previously_had_access(db, user: User) -> bool:
+    """True when the user ever had platform access and lost it (lapsed), vs. a
+    brand-new account that has never subscribed. Signals: a Stripe customer id, any
+    subscription row on file, or an access window that was set (now expired). Used
+    to decide whether losing entitlement should hard-revoke the session (lapsed) or
+    leave the user signed in so they can complete a first checkout (never-subscribed)."""
+    if not user:
+        return False
+    if getattr(user, "stripe_customer_id", None):
+        return True
+    if getattr(user, "access_expires_at", None) is not None:
+        return True
+    try:
+        if db.query(Subscription).filter(Subscription.user_id == user.id).first():
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _chart_user_has_module(user: User, module: str) -> bool:
