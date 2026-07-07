@@ -45376,7 +45376,7 @@ const TalariaV8b = () => {
           });
 
           /* ─── Strategy card (shared) ─── */
-          const STRAT_ROW_COLS = "44px 210px 350px 285px 135px 110px 222px";
+          const STRAT_ROW_COLS = "44px minmax(190px,1.05fr) minmax(280px,1.75fr) minmax(230px,1.45fr) minmax(120px,0.7fr) minmax(104px,0.62fr) minmax(180px,1fr)";
           const StratRowsHeader = () => (
             <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,flexShrink:0,borderBottom:`1px solid ${c.brH}`,background:c.bg}}>
               {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results"].map((label,colIdx)=>(
@@ -45429,7 +45429,7 @@ const TalariaV8b = () => {
           );
           const stratEmptyStateStyle = {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,minHeight:0,gap:14};
           const StratRowsSkeleton = () => (
-            <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{width:"100%",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
               <StratRowsHeader/>
               <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",display:"flex",flexDirection:"column",gap:6}}>
               {Array.from({length:4}).map((_,idx)=>(
@@ -45709,7 +45709,7 @@ const TalariaV8b = () => {
             );
           };
           const renderStrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => (
-            <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
+            <div style={{width:"100%",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
               <StratRowsHeader/>
               <div className="tlr-scroll tlr-strat-bank-rows-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",overflowAnchor:"none"}}>
               {items.map((strat,idx)=>{
@@ -46177,7 +46177,7 @@ const TalariaV8b = () => {
                 <div className="tlr-dash-main-content" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0,order:dashIsPhone?1:undefined}}>
                 {/* ─ Filter/search bar ─ */}
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
-                  <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
+                  <div style={{width:"100%",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
                       {[{k:"mine",l:"My Strategies",ct:mineSource.length}/* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
@@ -46316,7 +46316,7 @@ const TalariaV8b = () => {
                       effectiveStratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`strat-skel-${i}`}/>)}
                         </div>
                       )
@@ -46346,7 +46346,7 @@ const TalariaV8b = () => {
                           onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
                           onUseTemplate:tpl=>applyTemplateToBuilder(tpl)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredMine.map(strat=>(
                             <React.Fragment key={strategyRowKey(strat)||strat.id}>
                               {renderStratCard({strat,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
