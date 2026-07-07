@@ -40,6 +40,10 @@ import {
   makeChecks,
   countFetchesByFile,
   totalDataFetches,
+  waitReplayQuiescent,
+  seekAllAndConverge,
+  computePlayPlan,
+  waitBootSettled,
   sleep,
 } from './harness-lib.mjs';
 
@@ -351,8 +355,26 @@ async function hS7(ctx) {
 }
 
 // ── H-S8 ─────────────────────────────────────────────────────────────────
-// replay play 15s (accelerated) → fetches during play ≈ forward prefetch only;
+// replay play 15s (accelerated) → fetches during play == 0;
 // renders bounded; playhead equal across panels every second.
+//
+// DETERMINISM MODEL (cross-session fix):
+//   1. ENTRY GATE — after entering replay, poll until every panel is replay-
+//      active, its playhead == ts0, and NOTHING is in flight (waitReplay
+//      Quiescent). No fixed sleep; FAIL LOUDLY if it never settles.
+//   2. IN-DATA PLAY — the accelerated play advances 15 evenly-spaced targets
+//      that stay strictly INSIDE the loaded replay master (computePlayPlan).
+//      The previous code advanced the playhead PAST the last loaded bar, so the
+//      real host correctly clamped at its last loaded candle while iframe peers
+//      over-advanced → permanent, machine-independent divergence at the tail
+//      (sec13-14) that made the verdict flip by machine speed. Playing through
+//      loaded bars is what "replay play" actually does in production.
+//   3. QUIESCENT SAMPLING — each step SEEKS then polls to CONVERGENCE
+//      (seekAllAndConverge): all panels' playhead == the exact target, stable
+//      across two reads, none loading. Equality/fetch/render are only read at
+//      these quiescent points. Hard per-step budget → FAIL LOUDLY, never pass
+//      by timing. Because targets land on loaded candles, convergence is a
+//      deterministic property of the engine (not of the machine's clock).
 async function hS8(ctx) {
   return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
     const { page } = boot;
@@ -368,56 +390,40 @@ async function hS8(ctx) {
     }
     await hostReplayEnter(page, ts0);
     await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
-    await sleep(1200);
+
+    // 1. Deterministic entry gate (replaces the fixed 1200ms sleep).
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S8 replay entered + playhead settled on all panels @ ts0', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // 2. Plan an accelerated play that stays inside the loaded replay master.
+    const plan = await computePlayPlan(page, ts0, 15);
+    checks.check('H-S8 loaded replay master provides a forward play window', plan.ok, plan.detail);
+    if (!plan.ok) return checks;
 
     ctx.srv.resetApiLog();
     await resetDiag(page);
     const rendersBefore = await readPanels(page);
 
-    // Accelerated "play": 15 one-second steps, each advancing the shared
-    // playhead by 60 candles (1 minute of bars). replayTick seeks every panel
-    // to the same ts via the real goToReplayTimestamp path.
-    let ts = ts0;
-    const perSecondMs = 60 * 60_000;
-    let playheadEqualEverySecond = true;
+    // 3. Step through the plan; each step converges before we advance.
+    let playheadEqualEveryStep = true;
     const playheadDetail = [];
-    for (let sec = 0; sec < 15; sec++) {
-      ts += perSecondMs;
-      // Panel seeks are rAF-coalesced (scheduleCoalescedSeek), and a discrete
-      // tick can be dropped when it coalesces with a neighbour — a harness
-      // driving artifact (production streams frames, not discrete ticks). So
-      // RE-broadcast the same target ts across the settle window until every
-      // panel converges to it. If they never converge, that's the real defect.
-      let heads = [];
-      const settleDeadline = Date.now() + 2500;
-      let lastSend = 0;
-      while (Date.now() < settleDeadline) {
-        if (Date.now() - lastSend >= 400) {
-          // Host seeks its own playhead in-process; iframe peers via replayTick.
-          await hostReplaySeek(page, ts);
-          await broadcastCmd(page, 'replayTick', { timestamp: ts });
-          lastSend = Date.now();
-        }
-        const p = await readPanels(page);
-        heads = ids.map((i) => p[i]?.replayTs);
-        const defined = heads.filter((h) => h != null);
-        if (defined.length === ids.length && allEqual(defined) && defined[0] === ts) break;
-        await sleep(120);
-      }
-      const defined = heads.filter((h) => h != null);
-      const eq = defined.length === ids.length && allEqual(defined);
-      if (!eq) {
-        playheadEqualEverySecond = false;
-        playheadDetail.push(`sec${sec}:${heads.join('/')}`);
+    for (let sec = 0; sec < plan.targets.length; sec++) {
+      const conv = await seekAllAndConverge(page, ids, plan.targets[sec], 8_000);
+      if (!conv.ok) {
+        playheadEqualEveryStep = false;
+        playheadDetail.push(`sec${sec}:${conv.detail}`);
       }
     }
-    checks.check('H-S8 playhead equal across panels every second', playheadEqualEverySecond,
-      playheadDetail.slice(0, 4).join(' '));
+    checks.check('H-S8 playhead converges equal across panels at every step', playheadEqualEveryStep,
+      playheadDetail.slice(0, 4).join(' ') || `all ${plan.targets.length} steps converged`);
 
-    // Fetches during play ≈ forward prefetch only (bounded, not per-frame).
+    // Fetches during play must be exactly zero; the loaded replay master is the
+    // forward window, so any data request here is a real ownership/prefetch bug.
+    // Sampled at a quiescent point (after the final convergence).
     const fetches = totalDataFetches(ctx.srv.getApiLog());
-    checks.check('H-S8 fetches during play bounded (forward prefetch only)', fetches <= ids.length * 2,
-      `data fetches during 15s play=${fetches}`);
+    checks.check('H-S8 data fetches during play == 0', fetches === 0,
+      `data fetches during play=${fetches}`);
 
     // Renders bounded (no unbounded repaint storm).
     const rAfter = await readPanels(page);
@@ -427,18 +433,37 @@ async function hS8(ctx) {
       if (delta > maxRenders) maxRenders = delta;
     }
     checks.check('H-S8 renders bounded during play', maxRenders < 500, `max render delta=${maxRenders}`);
-    notes.push('H-S8: the in-process host (tile A) seeks its own replay playhead '
-      + '(real goToReplayTimestamp) and fans replayTick to iframe peers, matching '
-      + 'production; discrete ticks are re-broadcast until panels converge (harness '
-      + 'driving artifact — production streams frames).');
+    notes.push('H-S8: in-process host (tile A) seeks its own replay playhead (real '
+      + 'goToReplayTimestamp) and fans replayTick to iframe peers, matching production. '
+      + 'DETERMINISM: entry is gated on all-panels-settled@ts0; the accelerated play '
+      + 'targets stay INSIDE the loaded replay master (so the host never clamps past '
+      + 'loaded data — the old tail-divergence); each step is polled to exact-playhead '
+      + 'convergence at a quiescent point with a hard budget (no pass-by-timing).');
     return checks;
   });
 }
 
 // ── H-S10 ────────────────────────────────────────────────────────────────
 // cold boot 2×2 same-pair → 0 panel fetches; time-to-painted under budget.
+//
+// DETERMINISM MODEL (cross-session fix):
+//   The old code read the fetch count at a NON-deterministic lifecycle point
+//   (and, via a `page` typo, never ran the real contract check at all — the
+//   verdict was decided by incidental H-INV boot noise). Cold-boot self-fetches
+//   can land AFTER first paint (mirror, forward-prefetch), so a read taken "just
+//   after paint" captures a different count on a fast vs. slow machine.
+//   FIX: reset the server log immediately before boot (clean cold-boot count),
+//   then anchor the read to a real SETTLED signal — all 4 panels painted +
+//   nothing in flight + viewport boot/mirror settle expired + per-panel
+//   diag.fetches STABLE across two spaced reads (waitBootSettled). Only THEN is
+//   the fetch count read. The 0-panel-fetch contract is NOT relaxed: if a panel
+//   genuinely self-fetches on cold boot, its diag.fetches is non-zero at the
+//   settled point → H-S10 FAILS deterministically every session (a real defect).
 async function hS10(ctx) {
-  // Measure the cold boot directly (do NOT reset the log before boot).
+  const ids = ['A', 'B', 'C', 'D'];
+  // Clean the server log so file25 hits reflect ONLY this cold boot (the shared
+  // log otherwise carries prior scenarios' fetches).
+  ctx.srv.resetApiLog();
   const t0 = Date.now();
   const boot = await bootLayout(ctx.browser, ctx.srv, { pair: 'same', panels: 4, tf: '1m', bug: ctx.bug, bugSwitches: ctx.bugSwitches });
   const paintMs = Date.now() - t0;
@@ -446,12 +471,19 @@ async function hS10(ctx) {
   let checks = makeChecks();
   let inv;
   try {
+    // Anchor to a deterministic settled signal before reading fetch counts.
+    const settled = await waitBootSettled(boot.page, ids, 20_000, boot.getInFlightDataRequests);
+    const panels = settled.panels || await readPanels(boot.page);
     const apiLog = ctx.srv.getApiLog();
     const byFile = countFetchesByFile(apiLog);
     const file25 = byFile[HOST_FILE] || 0;
-    const panels = await readPanels(page);
     const peerFetches = sumFetches(panels, ['B', 'C', 'D']); // iframe panels
     const hostFetches = panels.A ? panels.A.fetches : 0;
+
+    // Surface (but do not gate on) the settle signal so a non-settling boot is
+    // visible rather than silently sampled mid-flight.
+    checks.check('H-S10 cold boot reached a deterministic settled read point', settled.ok, settled.detail);
+
     // Faithful contract for the PRODUCTION topology: same-pair cold boot must
     // yield 0 PANEL fetches — B/C/D mirror the in-process host in-memory
     // (embed-bridge _multichartMirrorViewportFromHost) instead of self-loading.
@@ -466,7 +498,8 @@ async function hS10(ctx) {
     checks.check(`H-S10 time-to-painted < ${PAINT_BUDGET_MS}ms`, paintMs < PAINT_BUDGET_MS,
       `painted in ${paintMs}ms`);
     notes.push(`H-S10 time-to-painted=${paintMs}ms; host(A) owner fetches=${hostFetches}; `
-      + `peer(B/C/D) self-fetches=${peerFetches}; boot data fetches by file=${JSON.stringify(byFile)}`);
+      + `peer(B/C/D) self-fetches=${peerFetches}; settled=${settled.ok}; `
+      + `boot data fetches by file=${JSON.stringify(byFile)}`);
   } finally {
     inv = await invariantCheck(boot.page, boot);
     await boot.close();

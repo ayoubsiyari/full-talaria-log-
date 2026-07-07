@@ -7,7 +7,6 @@ export const dynamic = "force-static";
 const PUBLIC_PATHS: { path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[0]["changeFrequency"] }[] = [
   { path: "/", priority: 1, changeFrequency: "weekly" },
   { path: "/pricing/", priority: 0.9, changeFrequency: "weekly" },
-  { path: "/bootcamp/", priority: 0.8, changeFrequency: "monthly" },
   { path: "/ninjatrader/", priority: 0.75, changeFrequency: "monthly" },
   { path: "/terms/", priority: 0.3, changeFrequency: "yearly" },
   { path: "/privacy/", priority: 0.3, changeFrequency: "yearly" },

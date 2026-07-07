@@ -36,6 +36,7 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Presentation-only subresources the harness intentionally does not bundle
 // (web fonts + favicon). They never touch the engine's data/paint path.
 const PRESENTATION_ASSET_RE = /\.(woff2?|ttf|otf|eot)(\?|$)|\/favicon\.ico$/i;
+const DATA_REQUEST_RE = /\/api\/file\/[^/]+\/(?:bars|smart|candles)(?:\?|$)/i;
 
 function isIgnorableConsoleError(text, url) {
   if (url && PRESENTATION_ASSET_RE.test(url)) return true;
@@ -91,6 +92,8 @@ export async function bootLayout(browser, srv, opts = {}) {
   const page = await browser.newPage();
   const consoleErrors = [];
   const pageErrors = [];
+  const inFlightDataRequests = new WeakSet();
+  let inFlightDataRequestCount = 0;
 
   const switches = bug ? (bugSwitches && bugSwitches.length ? bugSwitches : DEFAULT_BUG_SWITCHES) : [];
   if (switches.length) {
@@ -104,12 +107,23 @@ export async function bootLayout(browser, srv, opts = {}) {
   await page.setRequestInterception(true);
   page.on('request', (req) => {
     const url = req.url();
+    if (DATA_REQUEST_RE.test(url)) {
+      inFlightDataRequests.add(req);
+      inFlightDataRequestCount++;
+    }
     if (PRESENTATION_ASSET_RE.test(url)) {
       req.respond({ status: 200, contentType: 'font/woff2', body: '' }).catch(() => {});
       return;
     }
     req.continue().catch(() => {});
   });
+  const markDataRequestDone = (req) => {
+    if (!inFlightDataRequests.has(req)) return;
+    inFlightDataRequests.delete(req);
+    inFlightDataRequestCount = Math.max(0, inFlightDataRequestCount - 1);
+  };
+  page.on('requestfinished', markDataRequestDone);
+  page.on('requestfailed', markDataRequestDone);
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
@@ -160,6 +174,7 @@ export async function bootLayout(browser, srv, opts = {}) {
     consoleErrors,
     pageErrors,
     expectedPanels: panels,
+    getInFlightDataRequests: () => inFlightDataRequestCount,
     close: () => page.close().catch(() => {}),
   };
 }
@@ -220,8 +235,30 @@ const SNAPSHOT_FN = () => {
     panLoading: !!c._panLoading,
     replayActive: !!(rs && rs.isActive),
     replayTs: rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+    // Replay master (fullRawData) extent — the loaded window replay can seek
+    // within WITHOUT a network round-trip. Used by H-S8 to keep the accelerated
+    // play strictly inside loaded data (production plays through loaded bars;
+    // seeking PAST the last loaded bar is a harness driving artifact that makes
+    // the real host clamp while peers over-advance).
+    replayMasterFirstT: rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length ? Number(rs.fullRawData[0].t) : null,
+    replayMasterLastT: rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length ? Number(rs.fullRawData[rs.fullRawData.length - 1].t) : null,
+    // Viewport boot/mirror settle window (embed-bridge markViewportBootSettle /
+    // panel-cmd-bridge afterLoadFile). While `perfNow < viewportSettleUntil` the
+    // panel DROPS replayTick seeks (unless the parent is actively playing), so a
+    // deterministic harness must wait this out before sampling — this exposes
+    // the real settled signal instead of guessing with a fixed sleep.
+    viewportSettleUntil: Number.isFinite(c._multichartViewportSettleUntil) ? Number(c._multichartViewportSettleUntil) : null,
+    perfNow: (typeof performance !== 'undefined' && performance.now) ? Number(performance.now()) : Date.now(),
   };
 };
+
+/** True when a panel snapshot is at a quiescent point (no seek/fetch mid-flight). */
+export function isPanelQuiescent(p) {
+  if (!p) return false;
+  if (p.panLoading) return false;
+  if (p.viewportSettleUntil != null && p.perfNow != null && p.perfNow < p.viewportSettleUntil) return false;
+  return true;
+}
 
 /**
  * Snapshot the in-process HOST chart (tile A) from the top main frame.
@@ -267,6 +304,56 @@ export async function diagReport(page) {
     if (typeof window.__mcDiagReport === 'function') return window.__mcDiagReport();
     return null;
   });
+}
+
+async function diagRowsByPanelId(page) {
+  const rows = await diagReport(page).catch(() => []);
+  const out = {};
+  if (!Array.isArray(rows)) return out;
+  for (const row of rows) {
+    const rawId = row && row.panelId != null ? String(row.panelId) : '';
+    const id = rawId === 'HOST' ? 'A' : rawId;
+    if (id) out[id] = row;
+  }
+  return out;
+}
+
+async function managerBootState(page, ids) {
+  return page.evaluate((panelIds) => {
+    const mgr = window.__harnessManager;
+    const out = {
+      hostReady: !!window.__harnessHostReady,
+      bootError: window.__harnessBootError || null,
+      managerReady: false,
+      readyIds: [],
+      pendingIds: [],
+      cmdPendingIds: [],
+      noRevealHold: true,
+    };
+    if (!mgr || !mgr.charts) return out;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const revealAfter = Number(window.__multichartBootRevealAfter || 0);
+    out.noRevealHold = !Number.isFinite(revealAfter) || revealAfter <= now;
+    for (const id of panelIds) {
+      const entry = mgr.charts.get(id);
+      if (entry && entry.ready) out.readyIds.push(id);
+      else out.pendingIds.push(id);
+      if (entry && !entry.host && !entry.cmdReady) out.cmdPendingIds.push(id);
+    }
+    out.managerReady = out.hostReady
+      && out.pendingIds.length === 0
+      && out.cmdPendingIds.length === 0
+      && out.noRevealHold;
+    return out;
+  }, ids).catch((err) => ({
+    hostReady: false,
+    bootError: err && err.message ? err.message : String(err),
+    managerReady: false,
+    readyIds: [],
+    pendingIds: ids.slice(),
+    cmdPendingIds: [],
+    noRevealHold: false,
+  }));
 }
 
 /** Drive the manager's sync toggles the way the real MultichartGrid does. */
@@ -484,6 +571,146 @@ export function countFetchesByFile(apiLog) {
 
 export function totalDataFetches(apiLog) {
   return apiLog.filter((e) => DATA_ENDPOINTS.has(e.endpoint)).length;
+}
+
+// ── deterministic convergence / settle waits ────────────────────────────────
+//
+// These replace fixed sleeps + single-sample reads. Every wait polls a REAL
+// engine signal (playhead, panLoading, viewport-settle, diag.fetches) and has a
+// HARD budget: if the signal never reaches the expected state, the caller FAILS
+// LOUDLY with the observed numbers — a pass is never granted by timing alone.
+
+/**
+ * Wait until every panel in `ids` reports replay ACTIVE and its playhead
+ * (replayTs) has settled to `ts` (± exact), with no fetch/settle in flight.
+ * Deterministic entry gate for replay scenarios.
+ */
+export async function waitReplayQuiescent(page, ids, ts, budgetMs = 15_000) {
+  const deadline = Date.now() + budgetMs;
+  let last = {};
+  let lastDiag = {};
+  while (Date.now() < deadline) {
+    lastDiag = await diagRowsByPanelId(page);
+    const p = await readPanels(page);
+    last = p;
+    const ready = ids.every((i) => {
+      const s = p[i];
+      return s && lastDiag[i] && s.replayActive && s.replayTs === ts && isPanelQuiescent(s);
+    });
+    if (ready) return { ok: true, detail: `all panels active+settled @ ${ts}` };
+    await sleep(POLL_INTERVAL_MS);
+  }
+  const detail = ids
+    .map((i) => `${i}:active=${last[i]?.replayActive} ts=${last[i]?.replayTs} panLoad=${last[i]?.panLoading} diagFetch=${lastDiag[i]?.fetches}`)
+    .join(' ');
+  return { ok: false, detail: `replay never quiescent @ ${ts} within ${budgetMs}ms — ${detail}` };
+}
+
+/**
+ * Seek every panel to `target` and poll until they CONVERGE: all panels report
+ * replayTs === target, stable across two consecutive reads, none loading. The
+ * host (tile A) is seeked in-process; iframe peers via the replayTick fan-out,
+ * RE-broadcast each poll so a tick dropped during a settle window is retried.
+ * Hard budget → FAIL LOUDLY (no pass-by-timing).
+ */
+export async function seekAllAndConverge(page, ids, target, budgetMs = 8_000) {
+  const deadline = Date.now() + budgetMs;
+  let prevHeads = null;
+  let last = {};
+  let lastDiag = {};
+  let lastSend = 0;
+  while (Date.now() < deadline) {
+    if (Date.now() - lastSend >= 200) {
+      await hostReplaySeek(page, target);
+      await broadcastCmd(page, 'replayTick', { timestamp: target });
+      lastSend = Date.now();
+    }
+    lastDiag = await diagRowsByPanelId(page);
+    const p = await readPanels(page);
+    last = p;
+    const heads = ids.map((i) => p[i]?.replayTs);
+    const allAtTarget = heads.every((h) => h === target);
+    const quiescent = ids.every((i) => lastDiag[i] && isPanelQuiescent(p[i]));
+    const stable = prevHeads && heads.every((h, k) => h === prevHeads[k]);
+    if (allAtTarget && quiescent && stable) {
+      return { ok: true, detail: `converged @ ${target}` };
+    }
+    prevHeads = heads;
+    await sleep(120);
+  }
+  const heads = ids.map((i) => `${i}=${last[i]?.replayTs}`).join('/');
+  const fetches = ids.map((i) => `${i}.fetches=${lastDiag[i]?.fetches}`).join('/');
+  return { ok: false, detail: `no converge @ ${target}: ${heads}; ${fetches}` };
+}
+
+/**
+ * Build an accelerated-play plan of `steps` evenly-spaced playhead targets that
+ * stay strictly INSIDE the loaded replay master (so every target lands on a
+ * loaded candle and the host never has to clamp/refetch). Targets are snapped
+ * to the candle grid so goToReplayTimestamp resolves to exactly the target.
+ */
+export async function computePlayPlan(page, ts0, steps, candleMs = 60_000) {
+  const host = await readHost(page);
+  const lastT = host && host.replayMasterLastT;
+  if (!Number.isFinite(lastT) || !Number.isFinite(ts0) || lastT <= ts0) {
+    return { ok: false, detail: `no forward-loaded master: ts0=${ts0} masterLast=${lastT}`, targets: [] };
+  }
+  const usable = lastT - ts0;
+  // Divide by (steps+1) and floor to the candle grid → the final target is
+  // ts0 + steps*perStep < lastT, i.e. a full candle-grid margin inside data.
+  let perStep = Math.floor(usable / (steps + 1) / candleMs) * candleMs;
+  if (perStep < candleMs) perStep = candleMs;
+  const targets = [];
+  for (let k = 1; k <= steps; k++) {
+    const t = ts0 + k * perStep;
+    if (t > lastT) break;
+    targets.push(t);
+  }
+  if (targets.length === 0) {
+    return { ok: false, detail: `forward span too small: usable=${usable}ms`, targets: [] };
+  }
+  return { ok: true, detail: `${targets.length} targets, perStep=${perStep}ms, master forward span=${usable}ms`, targets };
+}
+
+/**
+ * Anchor a cold-boot read to a DETERMINISTIC settled signal: wait until every
+ * panel is painted (bootLayout guarantees), no fetch is in flight, the viewport
+ * boot/mirror settle window has expired, AND per-panel diag.fetches is STABLE
+ * across two spaced reads (no boot self-fetch still to come). Only THEN is the
+ * fetch count read, so the same lifecycle point is sampled every session.
+ * Returns settled state; on timeout the caller still reads (a perpetually
+ * unsettled boot is itself the defect and its fetch count is reported).
+ */
+export async function waitBootSettled(page, ids, budgetMs = 20_000, getInFlightDataRequests = () => 0) {
+  const deadline = Date.now() + budgetMs;
+  let prevFetches = null;
+  let last = {};
+  let lastDiag = {};
+  let lastManager = null;
+  let lastInFlight = 0;
+  while (Date.now() < deadline) {
+    lastDiag = await diagRowsByPanelId(page);
+    const p = await readPanels(page);
+    last = p;
+    lastManager = await managerBootState(page, ids);
+    lastInFlight = Number(getInFlightDataRequests()) || 0;
+    const painted = ids.every((i) => (p[i]?.dataLen || 0) > 0 && (p[i]?.renders || 0) > 0);
+    const quiescent = ids.every((i) => isPanelQuiescent(p[i]));
+    const fetches = ids.map((i) => lastDiag[i]?.fetches ?? p[i]?.fetches ?? 0);
+    const stable = prevFetches && fetches.every((f, k) => f === prevFetches[k]);
+    if (painted && lastManager.managerReady && lastInFlight === 0 && quiescent && stable) {
+      return { ok: true, detail: `boot settled: fetches=${fetches.join('/')} inFlight=${lastInFlight}`, panels: p };
+    }
+    prevFetches = fetches;
+    await sleep(300);
+  }
+  const detail = ids
+    .map((i) => `${i}:fetches=${lastDiag[i]?.fetches ?? last[i]?.fetches} panLoad=${last[i]?.panLoading} painted=${(last[i]?.dataLen || 0) > 0 && (last[i]?.renders || 0) > 0}`)
+    .join(' ');
+  const managerDetail = lastManager
+    ? ` managerReady=${lastManager.managerReady} pending=${lastManager.pendingIds.join(',')} cmdPending=${lastManager.cmdPendingIds.join(',')} hostReady=${lastManager.hostReady} revealDone=${lastManager.noRevealHold}`
+    : ' managerReady=false';
+  return { ok: false, detail: `boot never settled within ${budgetMs}ms — ${detail}; inFlight=${lastInFlight};${managerDetail}`, panels: last };
 }
 
 // ── assertion collector ─────────────────────────────────────────────────────

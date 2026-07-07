@@ -4,7 +4,6 @@ import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
-import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import SentryInit from "@/components/SentryInit";
 import { JsonLdScript } from "@/components/seo/JsonLdScript";
 import {
@@ -122,7 +121,6 @@ export default function RootLayout({
           <SentryInit />
           {children}
           <CookieConsent />
-          <PwaInstallPrompt />
         </LanguageProvider>
       </body>
     </html>
