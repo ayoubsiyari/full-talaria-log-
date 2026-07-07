@@ -1861,6 +1861,73 @@ Brief verbatim per D-028 (1); agent ID + independent verification on return.
 > 5-run verdict table with before/after for each red test, and any scenario still not faithfully
 > reproducible + why. Windows/PowerShell env; run via `npm test` / `npm run test:flake`.
 
+**Status: host-fidelity landed (worker interrupted late, but the change is complete and functional).**
+`serve.mjs` `hostPageHtml` now boots tile A as the PARENT page's REAL in-process `window.chart`
+(chart.js auto-init on `#chartCanvas`) with the host bridge installed (`installBridge`, chartId 'A');
+only B/C/D are `chart-embed.html` iframes. `confirm-host.mjs` added. No engine/bridge/sw.js/build-id
+files touched (git confirms only harness files changed).
+
+**Manager INDEPENDENT verification (ran `npm run test:flake` myself, 5 runs) — divergence found:**
+My 5-run session is internally STABLE but DIFFERS from the worker's session on two tests:
+| Test | Worker 5-run | Manager 5-run | Verdict |
+|------|-------------|---------------|---------|
+| H-S2 | FAIL×5 | FAIL×5 | **CONFIRMED real defect (10/10)** |
+| H-S3 | FAIL×5 | FAIL×5 | **CONFIRMED real defect (10/10)** |
+| H-S6 | FAIL×5 | FAIL×5 | **CONFIRMED real defect (10/10)** |
+| H-S8 | PASS×5 | **FAIL×5** | **CROSS-SESSION FLAKE** |
+| H-S10| FAIL×5 | **PASS×5** | **CROSS-SESSION FLAKE** |
+| H-S5/S7/S11/S12 | PASS | PASS | stable PASS |
+
+**Rulings:**
+1. **Host fidelity ACCEPTED** — H-S8 (replay playhead equal, 0 fetch during play) exercising the
+   host→panel replay-mirror path, plus H-S5/S7/S11/S12 green, prove the real host chart is live. The
+   earlier §6ar reds are no longer topology artifacts.
+2. **Three CONFIRMED-STABLE real engine ownership defects** (fail 10/10 across two independent sessions,
+   now that the host is real):
+   - **H-S2** — paused replay, sync ON: host A extends into history but same-pair peers B/C/D do NOT
+     mirror the host's extended first bar (A first=…168…, B/C/D=…288…). Host history-extension not
+     fanned out to same-pair panels.
+   - **H-S3** — drag panel B (same-pair): B SELF-FETCHES (B=2) instead of the host being the sole
+     fetcher; fails under sync ON and OFF. Peer-panel pan should route through host ownership.
+   - **H-S6** — TF fan-out 1m→1h: ALL FOUR panels fetch (expected ≤1 owner). Each panel independently
+     re-fetches on TF switch instead of one owner fetch + fan-out. (1h→1m step is clean.)
+3. **H-S8 and H-S10 are CROSS-SESSION FLAKY** (verdict flips between machines) → NOT trustworthy, must
+   NOT feed the engine fix queue. Root is harness timing (S8 playhead settle-window; S10 cold-boot fetch
+   race), not proven engine behavior. Requires harness hardening before their verdicts count.
+4. **Task 4.2 NOT yet a merge gate.** A gate with 2 cross-session-flaky scenarios is worse than none.
+   Task 4.3 (wire as gate) is BLOCKED until S8/S10 give deterministic cross-session verdicts.
+
+---
+
+## 6at. Phase-4 Task 4.2b dispatch — de-flake H-S8/H-S10 (D-030 step 1, 2026-07-07)
+
+**Context:** §6as found H-S8/H-S10 flip verdict across sessions. Harden their timing so verdicts are
+deterministic, WITHOUT weakening the intended contract. Brief verbatim per D-028 (1); agent ID +
+independent (own machine, 2 separate 5-run sessions) verification on return.
+
+**Worker brief (verbatim):**
+> The Phase-4 harness at `chart v 1.4/chart/multichart-prod/harness/` now boots a real host chart and
+> its suite is stable WITHIN a session but H-S8 and H-S10 flip verdict ACROSS sessions/machines
+> (Manager saw H-S8 FAIL×5 + H-S10 PASS×5; a prior session saw H-S8 PASS×5 + H-S10 FAIL×5). Make
+> BOTH deterministic across runs WITHOUT weakening the intended contract from
+> `PHASE-4-regression-harness.md`. Read `run.mjs`/`harness-lib.mjs`/`scenarios.mjs` for their current
+> timing model. H-S8 (replay play 15s: playhead equal across panels + bounded fetch/render): replace
+> any fixed sleeps / single-sample checks with deterministic convergence waits (poll `__mcDiagReport`
+> until all panels report the same playhead within a bounded settle budget, or a hard timeout that
+> fails LOUDLY — never a pass-by-timing) and sample only at quiescent points. H-S10 (cold-boot 2x2
+> same-pair: 0 panel data fetches): the boot fetch race means the count is read at different lifecycle
+> points across runs; anchor the assertion to a DETERMINISTIC lifecycle signal (wait until all 4 panels
+> report painted AND the manager reports boot/mirror settled, then read the cumulative same-file data
+> hits) so the number is reproducible. Do NOT relax the 0-fetch / equality contracts — if the engine
+> truly self-fetches on cold boot, H-S10 must FAIL deterministically (it is then a real defect), not
+> flip. Then RUN `npm run test:flake` TWICE (two full 5-run sessions, ideally with a gap) and show BOTH
+> sessions produce IDENTICAL per-test verdicts for all 9 tests. Report the two session summaries side
+> by side and state each test's now-deterministic verdict.
+> CONSTRAINTS: harness folder ONLY; do NOT touch engine/bridges/sw.js/build-ids/security-workflow; no
+> new engine flags (toggling existing kill-switches is fine); only the installed puppeteer. Windows/
+> PowerShell. REPORT: exact timing changes per test, the two 5-run session tables proving determinism,
+> and confirm H-S2/H-S3/H-S6 remain FAIL and H-S5/S7/S11/S12 remain PASS.
+
 Agent ID + verification appended on return.
 
 ---
