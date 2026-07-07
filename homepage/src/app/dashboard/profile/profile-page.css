@@ -47,6 +47,104 @@
   overflow-y: auto;
 }
 
+@media (max-width: 720px) {
+  .prof-settings--v16-embed {
+    overflow: hidden;
+  }
+
+  .prof-settings--v16-embed .prof-settings__shell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .prof-settings--v16-embed .prof-settings__nav {
+    width: 100%;
+    height: auto;
+    max-height: 132px;
+    flex-shrink: 0;
+    padding: 10px 10px 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--prof-br);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .prof-settings--v16-embed .prof-settings__nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .prof-settings--v16-embed .prof-settings__back {
+    margin: 0 0 8px;
+    padding: 3px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .prof-settings--v16-embed .prof-settings__nav-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 10px 0 0;
+    vertical-align: top;
+  }
+
+  .prof-settings--v16-embed .prof-settings__nav-label {
+    display: none;
+  }
+
+  .prof-settings--v16-embed .prof-settings__nav-item {
+    width: auto;
+    min-width: max-content;
+    height: 34px;
+    margin: 0;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .prof-settings--v16-embed .prof-settings__main {
+    flex: 1;
+    min-height: 0;
+    padding: 18px 14px 86px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .prof-settings--v16-embed .prof-settings__title {
+    font-size: 22px;
+  }
+
+  .prof-settings--v16-embed .prof-settings__subtitle {
+    margin-bottom: 16px;
+    max-width: none;
+  }
+
+  .prof-settings--v16-embed .prof-card {
+    padding: 18px 16px;
+    border-radius: 12px;
+  }
+
+  .prof-settings--v16-embed .prof-profile-layout,
+  .prof-settings--v16-embed .prof-sub-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .prof-settings--v16-embed .prof-avatar-card {
+    padding: 18px 14px;
+  }
+
+  .prof-settings--v16-embed .prof-avatar-ring {
+    width: 96px;
+    height: 96px;
+    font-size: 34px;
+  }
+}
+
 /* ── Sidebar ── */
 .prof-settings__nav {
   width: 220px;
