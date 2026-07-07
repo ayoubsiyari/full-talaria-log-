@@ -28,6 +28,7 @@ import {
   userCanAccessAdminOnlyWipPath,
   userCanAccessDashboardPath,
   userCanUseNavId,
+  userHasAnyDashboardAccess,
   userHasDashboardModule,
   userHasPartialDashboardAccess,
   userIsDashboardAdmin,
@@ -419,6 +420,14 @@ export default function DashboardShell({
   const enforceAccessForPath = React.useCallback(
     (u: User, path: string, platformFlags?: PlatformFeatures) => {
       const search = window.location.search || "";
+      // Hard paywall: a signed-in user with NO access at all (not admin, no active
+      // subscription, no dashboard modules) must never remain anywhere inside the
+      // dashboard — kick them to pricing to pay/renew. Covers every /dashboard/*
+      // route (profile, journal, sessions, strategies, cot, support, …).
+      if (!userIsDashboardAdmin(u) && !userHasAnyDashboardAccess(u)) {
+        window.location.replace("/pricing/?browse=1");
+        return;
+      }
       if (isPathAdminOnlyWip(path) && !userCanAccessAdminOnlyWipPath(u, path)) {
         window.location.replace(defaultDashboardPathForUser(u, platformFlags));
         return;
