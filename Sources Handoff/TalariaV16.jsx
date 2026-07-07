@@ -6146,7 +6146,7 @@ function GeneralInfoStepContent({ c, F,
   const supWrapRef = React.useRef(null);
   const supMenuRef = React.useRef(null);
   const generalInfoScrollRef = React.useRef(null);
-  const mobileSymbolPicker = typeof window !== 'undefined' && (window.innerWidth <= 720 || 'ontouchstart' in window);
+  const mobileSymbolPicker = typeof window !== 'undefined' && window.innerWidth <= 720;
   const [tfPickOpen, setTfPickOpen] = React.useState(false);
   const [tfPickPos, setTfPickPos]   = React.useState({top:0,left:0,maxH:360});
   const [tfPickHov, setTfPickHov]   = React.useState(null);
@@ -6214,6 +6214,11 @@ function GeneralInfoStepContent({ c, F,
   const requiredGlow = key => (nameIsDuplicate && key === "name")
     ? "0 0 0 1px rgba(255,180,80,0.35), 0 0 18px rgba(255,180,80,0.22)"
     : requiredMissing(key) ? "0 0 0 1px rgba(255,80,104,0.35), 0 0 18px rgba(255,80,104,0.28)" : "none";
+  const symbolPickerPos = ref => {
+    if (mobileSymbolPicker) return strategySymbolPickerPos(ref, 270, 120, 320);
+    const pos = dropPosViewport(ref, 270, 120, 320, true);
+    return pos ? { ...pos, width: 270 } : null;
+  };
   const tbtn = active => ({
     display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 16px',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
     border:'1px solid '+(active?c.acL:c.brH),color:active?c.acL:c.tx,
@@ -6683,7 +6688,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={trdWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=strategySymbolPickerPos(trdWrapRef,270,120,320);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=symbolPickerPos(trdWrapRef);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
@@ -6812,7 +6817,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={{padding:'4px 8px 10px',display:'flex',gap:6,alignItems:'stretch'}}>
             <div ref={supWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
-                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=strategySymbolPickerPos(supWrapRef,270,120,320);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
+                onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=symbolPickerPos(supWrapRef);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
                 style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7A5A00,rgba(232,194,82,0.9))',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(201,168,76,0.3)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
