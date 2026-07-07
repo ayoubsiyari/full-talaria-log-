@@ -3002,11 +3002,11 @@ const normalizeConditionTitleLabel = (label) => {
 };
 const isDefaultStrategyFlowGroupLabel = (label) => {
   const v = String(label || '').trim();
-  return !v || /^new group$/i.test(v) || /^group$/i.test(v);
+  return !v || /^new group$/i.test(v) || /^group$/i.test(v) || /^untitled group$/i.test(v);
 };
 const isDefaultStrategyFlowConditionLabel = (label) => {
   const v = String(label || '').trim();
-  return !v || /^new condition$/i.test(v) || /^condition$/i.test(v);
+  return !v || /^new condition$/i.test(v) || /^condition$/i.test(v) || /^untitled condition$/i.test(v);
 };
 const strategyFlowEditLabel = (label, kind) => {
   const isDefault = kind === 'group'
@@ -4757,7 +4757,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       .sort((a,b) => a.position.y - b.position.y)
       .map(sec => ({
         id: sec.id,
-        label: sec.data?.label || 'Untitled Group',
+        label: sec.data?.label ?? '',
         description: sec.data?.description || '',
         images: Array.isArray(sec.data?.images) ? sec.data.images : [],
         conditions: canvasNodes
@@ -4765,7 +4765,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           .sort((a,b) => (a.data?.slot ?? 0) - (b.data?.slot ?? 0))
           .map(cond => ({
             id: cond.id,
-            label: cond.data?.label || 'Untitled Condition',
+            label: cond.data?.label ?? '',
             description: cond.data?.description || '',
             status: cond.data?.status || (cond.data?.mandatory === false ? 'optional' : 'mandatory'),
             images: Array.isArray(cond.data?.images) ? cond.data.images : [],
@@ -4962,9 +4962,9 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       const conditions = group.conditions.map((cond, ci) => {
         const statusMeta = outlineStatusMeta(cond.status);
         const condImages = (cond.images || []).filter(Boolean).map(img => `<figure><img src="${escPrint(img.src)}" alt=""><figcaption>${escPrint(img.name || 'Condition image')}</figcaption></figure>`).join('');
-        return `<article class="condition" style="border-left-color:${statusMeta.color}"><div class="condition-head"><h3 style="color:${statusMeta.color}">${gi + 1}.${ci + 1} ${escPrint(cond.label)}</h3><span style="color:${statusMeta.color}">${statusMeta.label}</span></div><p>${escPrint(cond.description || 'No description added.')}</p>${condImages ? `<div class="image-grid">${condImages}</div>` : ''}</article>`;
+        return `<article class="condition" style="border-left-color:${statusMeta.color}"><div class="condition-head"><h3 style="color:${statusMeta.color}">${gi + 1}.${ci + 1} ${escPrint(cond.label || 'Untitled Condition')}</h3><span style="color:${statusMeta.color}">${statusMeta.label}</span></div><p>${escPrint(cond.description || 'No description added.')}</p>${condImages ? `<div class="image-grid">${condImages}</div>` : ''}</article>`;
       }).join('');
-      return `<section class="group"><div class="group-kicker">Group ${String(gi + 1).padStart(2, '0')}</div><h2>${escPrint(group.label)}</h2><p>${escPrint(group.description || 'No group description added.')}</p>${groupImages ? `<div class="image-grid">${groupImages}</div>` : ''}${conditions}</section>`;
+      return `<section class="group"><div class="group-kicker">Group ${String(gi + 1).padStart(2, '0')}</div><h2>${escPrint(group.label || 'Untitled Group')}</h2><p>${escPrint(group.description || 'No group description added.')}</p>${groupImages ? `<div class="image-grid">${groupImages}</div>` : ''}${conditions}</section>`;
     }).join('') : '<p>No strategy flow yet.</p>';
     const printWindow = window.open('', '_blank', 'width=900,height=1100');
     if (!printWindow) return;

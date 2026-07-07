@@ -1481,3 +1481,33 @@ subsequent Phase 2/3 change — merge only against a green machine check. PO con
 5. Backlog BL-1/BL-2/BL-4.
 
 All standing rules unchanged. H stays shipped/inert until step 2.
+
+---
+
+## D-031 — Core multichart overhaul COMPLETE; regression gate fully green (2026-07-07)
+
+### Ratification
+D-030 go-forward steps 1–3 are DONE and Manager-verified (independent gate runs, hash checks,
+kill-switch causal proofs — see MANAGER-FINDINGS §6au–§6ay):
+- **Step 1 — Phase 4 regression harness + CI gate:** COMPLETE (4.1 skeleton, 4.1c real-host fidelity,
+  4.2 scenarios, 4.2b cross-session determinism, 4.3 gate+ratchet+PR CI). RC5 (whack-a-mole) closed.
+- **Step 2 — Item-1 cleanup:** COMPLETE (b73) — viewport-first dead code + H flag removed, both trees
+  hash-identical, gate unchanged.
+- **Step 3 — the three ownership defects the gate surfaced:** ALL FIXED, each behind a kill-switch,
+  each ratcheted out of the baseline:
+  - H-S6 host-TF fan-out mirror wait (`__TALARIA_MC_DISABLE_HOST_TF_MIRROR_WAIT`, b74).
+  - H-S3 same-pair pan ownership decoupled from viewport sync
+    (`__TALARIA_MC_DISABLE_SAME_PAIR_PAN_HOST_OWNER`, b75).
+  - H-S2 host history-growth mirror to same-pair peers
+    (`__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR`, b76).
+
+**The harness gate is FULLY GREEN: 9/9 scenarios pass, `known-failing.json` = {}.** Every future
+multichart engine change now merges only against this green machine gate (PR CI on chart paths).
+
+### Standing / remainder
+Freeze remains LIFTED. The go-forward FIX QUEUE is empty. What remains is OPTIONAL and non-blocking:
+D-030 step 4 (Phase-3 polish: renders-high budget, cosmetic BL-7 transient flood, BL-2b-r intermittent
+tiny Y nudge, B-FIX-I predicate hardening) and D-030 step 5 backlog (BL-1/BL-2/BL-4). Neither is a
+felt/blocking defect; starting the backlog requires a fresh decision per the Phase-4 doc. Any new work
+here follows all standing rules (I1–I11, one gated change/task, gate-green precondition, briefs+IDs in
+ledger per D-028).

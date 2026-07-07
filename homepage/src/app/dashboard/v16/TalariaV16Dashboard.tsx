@@ -9,9 +9,11 @@ import {
   platformSectionForPath,
   platformSectionsMap,
   userCanUseV16EmbeddedView,
+  userHasAnyDashboardAccess,
   userHasPlatformSection,
   userIsDashboardAdmin,
   v16ViewToPlatformSection,
+  type DashboardUser,
   type PlatformFeatures,
   type PlatformSectionKey,
 } from "@/lib/dashboardAccess";
@@ -36,7 +38,12 @@ const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   loading: () => <V16DashboardLoading />,
 });
 
-type AuthUser = { role?: string; is_admin?: boolean };
+type AuthUser = {
+  role?: string;
+  is_admin?: boolean;
+  has_dashboard_access?: boolean;
+  dashboard_modules?: Record<string, boolean>;
+};
 
 async function fetchPlatformSections(): Promise<{
   user: AuthUser;
@@ -248,6 +255,14 @@ export default function TalariaV16Dashboard() {
       try {
         const { user, platform: pf } = await fetchPlatformSections();
         if (cancelled) return;
+
+        // Hard paywall gate: a signed-in user with NO access at all (e.g. verified
+        // but never paid, or lapsed) must be sent to pricing — never parked inside
+        // the dashboard. Admins and anyone with any module/section pass through.
+        if (!userIsDashboardAdmin(user) && !userHasAnyDashboardAccess(user as DashboardUser)) {
+          window.location.replace("/pricing/?browse=1");
+          return;
+        }
 
         window.__TALARIA_PLATFORM_SECTIONS__ = platformSectionsMap(pf);
 
