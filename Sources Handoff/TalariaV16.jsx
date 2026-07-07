@@ -46389,7 +46389,7 @@ const TalariaV8b = () => {
                         renderStrategyRows({items:filteredSavedCommunity,isMine:false,inSavedTab:true,
                           onRemove:s=>saveCommunity(s)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredSavedCommunity.map(strat=>(
                             <React.Fragment key={strat.id}>
                               {renderStratCard({strat,isMine:false,inSavedTab:true,
@@ -46407,7 +46407,7 @@ const TalariaV8b = () => {
                       effectiveStratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`comm-skel-${i}`}/>)}
                         </div>
                       )
@@ -46425,7 +46425,7 @@ const TalariaV8b = () => {
                           onUseTemplate:tpl=>applyTemplateToBuilder(tpl),
                           onDuplicate:s=>copyCommunityStrategyIntoBank(s)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredCommunity.map(strat=>(
                             <React.Fragment key={strategyRowKey(strat)||strat.id}>
                               {renderStratCard({strat,isMine:false,
