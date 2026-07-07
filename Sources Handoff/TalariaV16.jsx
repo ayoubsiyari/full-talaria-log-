@@ -3752,7 +3752,7 @@ function buildNodesFromTemplate(template) {
 }
 
 /* ── Template Picker Modal ── */
-const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }) => {
+const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, compact=false }) => {
   const [selectedId, setSelectedId] = React.useState(null);
   const [hovered, setHovered] = React.useState(null);
   const [confirmReplace, setConfirmReplace] = React.useState(false);
@@ -3776,6 +3776,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
     ...STRATEGY_TEMPLATES,
     { id:'__blank', name:'Create your own', tagline:'', description:'', tags:[], icon:'➕', groups:[] },
   ];
+  const isCompact = compact || (typeof window !== "undefined" && window.innerWidth <= 720);
 
   const commit = () => {
     if (!selectedId) return;
@@ -3854,7 +3855,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
         onDoubleClick={()=>{ setSelectedId(tpl.id); setTimeout(commit, 50); }}
         onMouseEnter={()=>setHovered(tpl.id)} onMouseLeave={()=>setHovered(null)}
         style={{
-          position:'relative', minHeight:316, padding:0, overflow:'hidden',
+          position:'relative', minHeight:isCompact?236:316, padding:0, overflow:'hidden',
           background:selected?'rgba(38,67,247,0.07)':hov?'rgba(140,160,255,0.045)':c.sf,
           border:`1px solid ${selected?c.acL:hov?c.brH:c.br}`,
           cursor:'default', userSelect:'none',
@@ -3864,7 +3865,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
         }}>
         <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`,flexShrink:0}}/>
         {selected && <div style={{position:'absolute',left:0,top:10,bottom:10,width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-        <div style={{padding:'15px 15px 16px',display:'flex',flexDirection:'column',gap:15,flex:1,minHeight:0}}>
+        <div style={{padding:isCompact?'12px 12px 13px':'15px 15px 16px',display:'flex',flexDirection:'column',gap:isCompact?11:15,flex:1,minHeight:0}}>
           <div style={{display:'grid',gridTemplateColumns:'30px minmax(0,1fr) auto',alignItems:'center',gap:10}}>
             <div style={{width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',background:c.hv2,border:`1px solid ${selected?c.acB:c.brH}`}}>
               <IconFor name={tpl.icon}/>
@@ -3877,7 +3878,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
 
           <div style={{display:'flex',flexDirection:'column',gap:7}}>
             <FieldLabel>Description</FieldLabel>
-            <div style={{minHeight:64,fontSize:12,color:c.ts,fontFamily:F,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:4,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{tpl.description}</div>
+            <div style={{minHeight:isCompact?50:64,fontSize:12,color:c.ts,fontFamily:F,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:isCompact?3:4,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{tpl.description}</div>
           </div>
 
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -3897,7 +3898,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
 
           <div style={{display:'flex',flexDirection:'column',gap:7}}>
             <FieldLabel>Strategy Tags</FieldLabel>
-            <div style={{display:'flex',gap:'6px 8px',flexWrap:'wrap',minHeight:76,alignContent:'flex-start'}}>
+            <div style={{display:'flex',gap:'6px 8px',flexWrap:'wrap',minHeight:isCompact?44:76,alignContent:'flex-start',maxHeight:isCompact?48:undefined,overflow:isCompact?'hidden':undefined}}>
               {tpl.tags.map(t => <Pill key={t} accent>{t}</Pill>)}
             </div>
           </div>
@@ -3912,20 +3913,20 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
   return createPortal(
     <div onClick={e=>{if(e.target===e.currentTarget)onCancel();}}
       style={{position:'fixed',inset:0,zIndex:100050,background:'rgba(0,0,0,0.60)',
-        display:'flex',alignItems:'center',justifyContent:'center',fontFamily:F,
+        display:'flex',alignItems:'center',justifyContent:'center',fontFamily:F,padding:isCompact?8:0,boxSizing:'border-box',
         animation:'tlrCpIn 0.15s ease'}}>
       <div onClick={e=>e.stopPropagation()}
-        style={{width:'min(920px,94vw)',maxHeight:'84vh',display:'flex',flexDirection:'column',
+        style={{width:isCompact?'100%':'min(920px,94vw)',height:isCompact?'calc(100dvh - 16px)':undefined,maxHeight:isCompact?'calc(100dvh - 16px)':'84vh',display:'flex',flexDirection:'column',
           background:c.bg,border:`1px solid ${c.brH}`,
           boxShadow:'0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(140,160,255,0.13)',
           overflow:'hidden'}}>
         <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
         {/* Header */}
-        <div style={{flexShrink:0,padding:'12px 18px',borderBottom:`1px solid ${c.brH}`,display:'flex',alignItems:'center',gap:10}}>
-          <img src="/LOGO-07.png" alt="" style={{width:34,height:34,objectFit:'contain',flexShrink:0,display:'block'}}/>
+        <div style={{flexShrink:0,padding:isCompact?'10px 12px':'12px 18px',borderBottom:`1px solid ${c.brH}`,display:'flex',alignItems:'center',gap:10}}>
+          <img src="/LOGO-07.png" alt="" style={{width:isCompact?28:34,height:isCompact?28:34,objectFit:'contain',flexShrink:0,display:'block'}}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:700,color:c.tx,fontFamily:F,letterSpacing:'0.02em'}}>Choose a Strategy Template</div>
-            <div style={{fontSize:9,color:c.tm,fontFamily:F,marginTop:2}}>Start from a proven framework or build from scratch</div>
+            <div style={{fontSize:isCompact?11:12,fontWeight:700,color:c.tx,fontFamily:F,letterSpacing:'0.02em'}}>Choose a Strategy Template</div>
+            <div style={{fontSize:9,color:c.tm,fontFamily:F,marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Start from a proven framework or build from scratch</div>
           </div>
           <div onClick={onCancel}
             style={{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
@@ -3938,9 +3939,9 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
           </div>
         </div>
         {/* Body */}
-        <div className="tlr-scroll" style={{flex:1,overflowY:'auto',padding:'14px 18px 18px',minHeight:0}}>
+        <div className="tlr-scroll" style={{flex:1,overflowY:'auto',padding:isCompact?'12px 12px 14px':'14px 18px 18px',minHeight:0}}>
           <div style={{fontSize:9,fontWeight:850,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:10,fontFamily:F}}>Templates</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:12}}>
+          <div style={{display:'grid',gridTemplateColumns:isCompact?'minmax(0,1fr)':'repeat(auto-fit,minmax(300px,1fr))',gap:isCompact?10:12}}>
             {STRATEGY_TEMPLATES.map(t => <Card key={t.id} tpl={t}/>)}
           </div>
 
@@ -3951,10 +3952,10 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
           )}
         </div>
         {/* Footer */}
-        <div style={{flexShrink:0,padding:'10px 18px',borderTop:`1px solid ${c.brH}`,display:'flex',alignItems:'center',justifyContent:'flex-end',gap:10}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <div style={{flexShrink:0,padding:isCompact?'8px 10px':'10px 18px',borderTop:`1px solid ${c.brH}`,display:'flex',alignItems:'center',justifyContent:'flex-end',gap:10}}>
+          <div style={{display:'flex',alignItems:'center',gap:isCompact?6:8,width:isCompact?'100%':undefined}}>
             <button onClick={onCancel}
-              style={{padding:'0 14px',height:32,minWidth:78,boxSizing:'border-box',background:c.hv2,border:`1px solid rgba(140,160,255,0.22)`,color:c.ts,fontSize:11,fontWeight:700,fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase',cursor:'default',transition:'background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s'}}
+              style={{padding:'0 14px',height:32,minWidth:isCompact?0:78,flex:isCompact?'0 0 76px':undefined,boxSizing:'border-box',background:c.hv2,border:`1px solid rgba(140,160,255,0.22)`,color:c.ts,fontSize:11,fontWeight:700,fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase',cursor:'default',transition:'background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s'}}
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(140,160,255,0.07)';e.currentTarget.style.borderColor='rgba(140,160,255,0.4)';e.currentTarget.style.color=c.tx;}}
               onMouseLeave={e=>{e.currentTarget.style.background=c.hv2;e.currentTarget.style.borderColor='rgba(140,160,255,0.22)';e.currentTarget.style.color=c.ts;e.currentTarget.style.transform='scale(1)';}}
               onMouseDown={e=>{e.currentTarget.style.transform='scale(0.97)';}}
@@ -3962,7 +3963,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
               Cancel
             </button>
             <button onClick={()=>onPick(null)}
-              style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,padding:'0 14px',height:32,minWidth:136,boxSizing:'border-box',
+              style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,padding:'0 14px',height:32,minWidth:isCompact?0:136,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
                 background:actionHov==='tpl-create'?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
                 border:`1px solid rgba(74,106,255,0.5)`,color:'#fff',
                 fontSize:11,fontWeight:800,fontFamily:F,letterSpacing:'0.05em',textTransform:'uppercase',
@@ -3980,7 +3981,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups }
               Create Your Own
             </button>
             <button onClick={commit} disabled={!selectedId}
-              style={{padding:'0 16px',height:32,minWidth:120,boxSizing:'border-box',
+              style={{padding:'0 16px',height:32,minWidth:isCompact?0:120,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
                 background:selectedId?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',
                 border:`1px solid ${selectedId?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,
                 color:selectedId?'#fff':c.tm,fontSize:11,fontWeight:800,fontFamily:F,letterSpacing:'0.06em',textTransform:'uppercase',
@@ -7805,6 +7806,7 @@ function StrategyBuilderModal(props) {
   const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
+  const compact = !!props.compact || (typeof window !== "undefined" && window.innerWidth <= 720);
 
   const STEPS = [
     { id:1, label:'General Info', hint:'Name your strategy, choose markets and timeframes.' },
@@ -7916,9 +7918,9 @@ function StrategyBuilderModal(props) {
     <ReactFlowProvider>
       {/* Backdrop — clicks on it are intentionally ignored; use the close button to dismiss */}
       <div style={{position:'fixed',inset:0,zIndex:100010,background:'rgba(4,5,15,0.80)',
-        display:'flex',alignItems:'center',justifyContent:'center'}}>
+        display:'flex',alignItems:'center',justifyContent:'center',padding:compact?8:0,boxSizing:'border-box'}}>
         {/* Modal window */}
-        <div style={{width:'min(1400px,97vw)',height:'min(90vh,880px)',
+        <div style={{width:compact?'100%':'min(1400px,97vw)',height:compact?'calc(100dvh - 16px)':'min(90vh,880px)',
           display:'flex',flexDirection:'column',overflow:'hidden',
           position:'relative',
           background:c.bg,
@@ -7932,18 +7934,18 @@ function StrategyBuilderModal(props) {
           {/* ── Wizard Header (step tabs) ── */}
           <div style={{flexShrink:0,borderBottom:`1px solid ${c.brH}`,background:c.bg}}>
             {/* Top row: title + close */}
-            <div style={{height:44,display:'flex',alignItems:'center',gap:12,padding:'0 18px'}}>
-              <img src="/LOGO-07.png" alt="Talaria" style={{width:26,height:26,objectFit:'contain',flexShrink:0}}/>
-              <div style={{fontSize:13,fontWeight:800,color:c.tx,fontFamily:F,flex:1}}>
+            <div style={{minHeight:compact?48:44,display:'flex',alignItems:'center',gap:compact?8:12,padding:compact?'6px 10px':'0 18px',boxSizing:'border-box'}}>
+              <img src="/LOGO-07.png" alt="Talaria" style={{width:compact?22:26,height:compact?22:26,objectFit:'contain',flexShrink:0}}/>
+              <div style={{fontSize:compact?12:13,fontWeight:800,color:c.tx,fontFamily:F,flex:'1 1 auto',minWidth:0,whiteSpace:compact?'normal':'nowrap',lineHeight:1.15}}>
                 {stratEditId?'Edit Strategy':'Strategy Builder'}
-                <span style={{color:c.acL,fontWeight:600,marginLeft:8}}>— Step {stratWizardStep} of 4</span>
+                <span style={{color:c.acL,fontWeight:600,marginLeft:compact?0:8,display:compact?'block':'inline'}}>— Step {stratWizardStep} of 4</span>
               </div>
-              <div style={{flex:1}}/>
+              {!compact && <div style={{flex:1}}/>}
               {/* Templates button — opens the strategy template picker */}
               {onOpenTemplates && (
                 <button onClick={isSaving?undefined:onOpenTemplates} disabled={isSaving} aria-label="Open strategy templates" title="Browse strategy templates"
                   onMouseEnter={()=>setTplBtnHov(true)} onMouseLeave={e=>{setTplBtnHov(false);e.currentTarget.style.transform='scale(1)';}}
-                  style={{height:28,padding:'0 12px',marginRight:6,display:'inline-flex',alignItems:'center',gap:6,
+                  style={{height:28,padding:compact?'0 9px':'0 12px',marginRight:compact?0:6,display:'inline-flex',alignItems:'center',gap:6,flexShrink:0,
                     fontSize:11,fontWeight:700,letterSpacing:'0.04em',fontFamily:F,
                     color:tplBtnHov?c.acL:c.ts,
                     background:tplBtnHov?'rgba(140,160,255,0.06)':c.hv2,
@@ -7957,7 +7959,7 @@ function StrategyBuilderModal(props) {
                     <rect x="3" y="13" width="8" height="8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
                     <rect x="13" y="13" width="8" height="8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
                   </svg>
-                  TEMPLATES
+                  {compact?'TPL':'TEMPLATES'}
                 </button>
               )}
               {/* Close button */}
@@ -7974,14 +7976,14 @@ function StrategyBuilderModal(props) {
               </div>
             </div>
             {/* Step tabs */}
-            <div style={{display:'flex',borderTop:`1px solid ${c.brH}`}}>
+            <div style={{display:'flex',borderTop:`1px solid ${c.brH}`,overflowX:compact?'auto':'visible',overflowY:'hidden'}} className={compact?'tlr-scroll':undefined}>
               {STEPS.map(s=>{
                 const isActive = stratWizardStep===s.id;
                 const isDone = stratWizardStep>s.id;
                 return (
                   <div key={s.id}
                     onClick={()=>{if(!isSaving)goToStep(s.id);}}
-                    style={{flex:1,height:36,display:'flex',alignItems:'center',justifyContent:'center',gap:7,
+                    style={{flex:compact?'0 0 112px':1,height:36,display:'flex',alignItems:'center',justifyContent:'center',gap:compact?5:7,
                       cursor:'default',position:'relative',opacity:isSaving&&!isActive?0.62:1,transition:'background 0.12s, opacity 0.12s',
                       background:isActive?c.acD:'transparent'}}
                     onMouseEnter={e=>{if(!isActive&&!isSaving)e.currentTarget.style.background=c.hv;}}
@@ -7994,7 +7996,7 @@ function StrategyBuilderModal(props) {
                         :<span style={{fontSize:9,fontWeight:900,color:isActive?'#fff':'rgba(255,255,255,0.4)',fontFamily:F}}>{s.id}</span>
                       }
                     </div>
-                    <span style={{fontSize:11,fontWeight:isActive?700:500,color:isActive?c.acL:isDone?c.gn:c.tm,fontFamily:F}}>{s.label}</span>
+                    <span style={{fontSize:compact?10:11,fontWeight:isActive?700:500,color:isActive?c.acL:isDone?c.gn:c.tm,fontFamily:F,whiteSpace:'nowrap'}}>{s.label}</span>
                     {isActive&&<div style={{position:'absolute',bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}} />}
                   </div>
                 );
@@ -8021,7 +8023,7 @@ function StrategyBuilderModal(props) {
 
           {/* ── Footer (only for steps 1, 3, 4 — step 2 has its own canvas footer) ── */}
           {stratWizardStep!==2&&(
-            <div data-strategy-builder-footer="1" style={{flexShrink:0,height:56,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el}}>
+            <div data-strategy-builder-footer="1" style={{flexShrink:0,height:compact?58:56,display:'flex',alignItems:'center',justifyContent:'space-between',gap:compact?8:0,padding:compact?'0 10px':'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el}}>
               {/* Cancel / Back */}
               <button onClick={isSaving?undefined:(stratWizardStep===1?onClose:goPrev)} disabled={isSaving}
                 style={{...secondaryBtnStyle,opacity:isSaving?0.5:secondaryBtnStyle.opacity}}
@@ -45262,6 +45264,9 @@ const TalariaV8b = () => {
           const stratLiveMode = isV16LiveBoot();
           const stratDataLoading = stratLiveMode && dashBootLoading;
           const communityDataLoading = stratLiveMode && (dashBootLoading || communityFetchLoading);
+          const stratCompactLayout = dashIsPhone || dashIsNarrow;
+          const effectiveStratLayoutMode = stratCompactLayout ? "cards" : stratLayoutMode;
+          const stratGridColumns = dashIsPhone ? "minmax(0,1fr)" : dashIsNarrow ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)";
           const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
           const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
           const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyRow(s))}));
@@ -46062,22 +46067,22 @@ const TalariaV8b = () => {
           return (
             <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
               {/* ─ Header ─ */}
-              <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
-                <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <img src="/LOGO-07.png" style={{width:52,height:52,objectFit:"contain"}} alt=""/>
+              <div style={{height:dashIsPhone?58:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2,minWidth:0}}>
+                <div style={{width:dashIsPhone?48:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <img src="/LOGO-07.png" style={{width:dashIsPhone?40:52,height:dashIsPhone?40:52,objectFit:"contain"}} alt=""/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
-                  <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
-                  <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14}}/>
-                  <div style={{fontSize:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2}}>Strategy Bank</div>
+                <div style={{display:"flex",alignItems:"center",flexShrink:1,minWidth:0,padding:"0 8px 0 0"}}>
+                  <div style={{fontSize:dashIsPhone?13:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:dashIsPhone?8:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dashIsPhone?112:undefined}}>Talaria-Log</div>
+                  <div style={{width:1.5,height:dashIsPhone?28:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:dashIsPhone?8:14,flexShrink:0}}/>
+                  <div style={{fontSize:dashIsPhone?11:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Strategy Bank</div>
                 </div>
                 <div style={{flex:1}}/>
                 {/* Build Strategy button */}
-                <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()} style={sessionHeaderActionBtnStyle}
+                <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()} style={{...sessionHeaderActionBtnStyle,marginRight:dashIsPhone?8:sessionHeaderActionBtnStyle.marginRight,padding:dashIsPhone?"0 12px":sessionHeaderActionBtnStyle.padding,minWidth:dashIsPhone?44:sessionHeaderActionBtnStyle.minWidth}}
                   onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                   onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                  Build Strategy
+                  {!dashIsPhone && "Build Strategy"}
                 </div>
               </div>
 
@@ -46087,7 +46092,7 @@ const TalariaV8b = () => {
                 <div className="tlr-dash-main-content" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0,order:dashIsPhone?1:undefined}}>
                 {/* ─ Filter/search bar ─ */}
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
-                  <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
+                  <div style={{width:"100%",maxWidth:V16_TABLE_WIDTH,margin:"0 auto",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
                       {[{k:"mine",l:"My Strategies",ct:mineSource.length}/* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
@@ -46139,7 +46144,7 @@ const TalariaV8b = () => {
                       </div>
                     )}
                     <div style={{flex:1}}/>
-                    <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    <div style={{display:stratCompactLayout?"none":"flex",gap:4,flexShrink:0}}>
                       {[
                         {mode:"cards",label:"Cards",icon:(
                           <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
@@ -46157,7 +46162,7 @@ const TalariaV8b = () => {
                           </svg>
                         )},
                       ].map(({mode,label,icon})=>{
-                        const isA=stratLayoutMode===mode;
+                        const isA=effectiveStratLayoutMode===mode;
                         return(
                           <div key={mode} role="button" tabIndex={0} aria-label={`Show strategies as ${label.toLowerCase()}`} title={label} onClick={()=>setStratLayoutMode(mode)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",cursor:"default",background:isA?"rgba(74,106,255,0.08)":"transparent",color:isA?c.acL:c.ts,transition:"background 0.12s,color 0.12s,transform 0.08s"}}
@@ -46172,7 +46177,7 @@ const TalariaV8b = () => {
                       })}
                     </div>
                     {/* search */}
-                    <div style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${stratSearchFocus?c.acB:c.brH}`,padding:"0 10px",width:210,height:28,boxSizing:"border-box",flexShrink:0,transition:"border-color 0.12s, background 0.12s"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${stratSearchFocus?c.acB:c.brH}`,padding:"0 10px",width:dashIsPhone?"100%":210,height:28,boxSizing:"border-box",flexShrink:dashIsPhone?1:0,transition:"border-color 0.12s, background 0.12s",order:dashIsPhone?3:undefined}}>
                       <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm,flexShrink:0}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                       <input value={stratSearch} onChange={e=>setStratSearch(e.target.value)} placeholder={stratTab==="mine"?"Search my strategies…":stratTab==="saved"?"Search saved…":"Search community…"}
                         onFocus={()=>setStratSearchFocus(true)} onBlur={()=>setStratSearchFocus(false)}
@@ -46217,16 +46222,16 @@ const TalariaV8b = () => {
                 <div style={{
                   flex:1,minHeight:0,display:"flex",flexDirection:"column",
                   padding:`24px ${stratPageGutterX}px`,
-                  overflow:stratLayoutMode==="rows"?"hidden":"auto",
-                }} className={stratLayoutMode==="rows"?undefined:"tlr-scroll"}>
+                  overflow:effectiveStratLayoutMode==="rows"?"hidden":"auto",
+                }} className={effectiveStratLayoutMode==="rows"?undefined:"tlr-scroll"}>
 
                   {/* MY STRATEGIES */}
                   {stratTab==="mine"&&(
                     stratDataLoading ? (
-                      stratLayoutMode==="rows" ? (
+                      effectiveStratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`strat-skel-${i}`}/>)}
                         </div>
                       )
@@ -46248,7 +46253,7 @@ const TalariaV8b = () => {
                         )}
                       </div>
                     ):(
-                      stratLayoutMode==="rows"?(
+                      effectiveStratLayoutMode==="rows"?(
                         renderStrategyRows({items:filteredMine,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
                           onEdit:s=>openBuilder(s),
                           onDelete:s=>deleteStrategyFromBank(s),
@@ -46256,7 +46261,7 @@ const TalariaV8b = () => {
                           onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
                           onUseTemplate:tpl=>applyTemplateToBuilder(tpl)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredMine.map(strat=>(
                             <React.Fragment key={strategyRowKey(strat)||strat.id}>
                               {renderStratCard({strat,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
@@ -46295,11 +46300,11 @@ const TalariaV8b = () => {
                         <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Try adjusting your search.</div>
                       </div>
                     ):(
-                      stratLayoutMode==="rows"?(
+                      effectiveStratLayoutMode==="rows"?(
                         renderStrategyRows({items:filteredSavedCommunity,isMine:false,inSavedTab:true,
                           onRemove:s=>saveCommunity(s)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredSavedCommunity.map(strat=>(
                             <React.Fragment key={strat.id}>
                               {renderStratCard({strat,isMine:false,inSavedTab:true,
@@ -46314,10 +46319,10 @@ const TalariaV8b = () => {
                   {/* COMMUNITY */}
                   {stratTab==="community"&&(
                     communityDataLoading ? (
-                      stratLayoutMode==="rows" ? (
+                      effectiveStratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
                       ) : (
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`comm-skel-${i}`}/>)}
                         </div>
                       )
@@ -46328,14 +46333,14 @@ const TalariaV8b = () => {
                         <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:360}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Published strategies from other traders will appear here once shared to the community."}</div>
                       </div>
                     ):(
-                      stratLayoutMode==="rows"?(
+                      effectiveStratLayoutMode==="rows"?(
                         renderStrategyRows({items:filteredCommunity,isMine:false,
                           isSaved:id=>savedCommunityIds.has(id),
                           onSave:s=>saveCommunity(s),
                           onUseTemplate:tpl=>applyTemplateToBuilder(tpl),
                           onDuplicate:s=>copyCommunityStrategyIntoBank(s)})
                       ):(
-                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                        <div style={{width:"100%",maxWidth:V16_CARD_GRID_WIDTH,margin:"0 auto",display:"grid",gridTemplateColumns:stratGridColumns,gap:10,padding:"4px 0 24px"}}>
                           {filteredCommunity.map(strat=>(
                             <React.Fragment key={strategyRowKey(strat)||strat.id}>
                               {renderStratCard({strat,isMine:false,
@@ -46459,7 +46464,7 @@ const TalariaV8b = () => {
               })()}
 
               {/* ─ Pre-builder Template Picker ─ */}
-              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} hasExistingGroups={false}
+              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} compact={stratCompactLayout} hasExistingGroups={false}
                 onPick={(tpl)=>{
                   setStratTemplatePickerOpen(false);
                   fillStrategyBuilderFromTemplate(tpl);
@@ -46471,6 +46476,7 @@ const TalariaV8b = () => {
               {stratBuilderOpen&&!(sessView==="stratbank"&&dashBootLoading)&&(
                 <StrategyBuilderModal
                   c={c} F={F}
+                  compact={stratCompactLayout}
                   stratWizardStep={stratWizardStep} setStratWizardStep={setStratWizardStep}
                   stratBName={stratBName} setStratBName={setStratBName}
                   stratBDesc={stratBDesc} setStratBDesc={setStratBDesc}
