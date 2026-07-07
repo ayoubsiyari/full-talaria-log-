@@ -234,7 +234,27 @@ Panels apply frames via `applyMultichartMirrorFrame` (`replay-system.js:6281`): 
 
 ---
 
-## 8. Phase 1+2 implementation notes (shared bar store)
+## 8. Phase 1-4 landed
+
+The Phase 1-4 work now has an automated regression harness under `chart v 1.4/chart/multichart-prod/harness/`. It boots the real chart topology: Panel A is the parent page's in-process `window.chart`, while B/C/D are real `chart-embed.html` iframes owned by one `MultichartManager`.
+
+The harness covers the Phase-4 scenario set: host/peer drag ownership, independent-pair fetching, timeframe fan-out, replay frame stability, replay playhead/fetch/render behavior, cold boot ownership, closed-layout cleanup, and the late same-pair shared-store proof.
+
+Run it locally from the harness folder:
+
+```powershell
+npm test
+npm run test:flake
+npm run gate
+```
+
+`npm run gate` is the merge check. It allows only the tracked current real defects in `known-failing.json` (`H-S2`, `H-S3`, `H-S6`) and fails on any new red test. It also fails when a tracked defect turns green, so the baseline must be ratcheted down instead of carrying stale known-failing entries.
+
+Operational docs live in `docs/multichart-overhaul/`, especially `PHASE-4-regression-harness.md`, `MANAGER-FINDINGS.md`, and `CHECKLIST.md`.
+
+---
+
+## 9. Phase 1+2 implementation notes (shared bar store)
 
 Added to `chart.js` (canonical + `homepage/public/chart/chart.js` mirror). Fully additive — disable via `window.__TALARIA_DISABLE_SHARED_BAR_STORE = true`; inspect via `window.__talariaBarStoreStats()`.
 

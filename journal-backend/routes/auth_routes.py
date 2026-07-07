@@ -475,19 +475,22 @@ def register_user():
         is_active=True,
         has_journal_access=False
     )
-    # Link the registrant to their cohort (for reporting) when the allowlist assigned one.
-    if allow_entry and allow_entry[1]:
-        new_user.group_id = allow_entry[1]
+    # Link the registrant to their cohort (for reporting) when they were invited —
+    # even if allowlist-only mode is off (allow_entry is None then), so invited
+    # students still land in their cohort roster.
+    invite = allow_entry or _allowlist_lookup(email)
+    if invite and invite[1]:
+        new_user.group_id = invite[1]
 
     db.session.add(new_user)
     db.session.flush()
     from user_public_id import ensure_user_public_id
     ensure_user_public_id(new_user, commit=False)
-    if allow_entry:
+    if invite:
         try:
             db.session.execute(
                 text("UPDATE mentorship_allowlist SET registered_at = :now WHERE id = :id"),
-                {"now": datetime.utcnow(), "id": allow_entry[0]},
+                {"now": datetime.utcnow(), "id": invite[0]},
             )
         except Exception:
             pass

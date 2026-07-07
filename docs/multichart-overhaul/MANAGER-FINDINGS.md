@@ -1928,7 +1928,71 @@ independent (own machine, 2 separate 5-run sessions) verification on return.
 > PowerShell. REPORT: exact timing changes per test, the two 5-run session tables proving determinism,
 > and confirm H-S2/H-S3/H-S6 remain FAIL and H-S5/S7/S11/S12 remain PASS.
 
-Agent ID + verification appended on return.
+**Executed by a PO-dispatched external worker (no Task agent ID); result pasted back to Manager.**
+
+**Manager INDEPENDENT verification (3rd session — ran `npm run test:flake` myself) — ACCEPTED:**
+- My 5-run session verdicts match the worker's TWO sessions EXACTLY (3 independent sessions now agree):
+  FAIL×5 → H-S2, H-S3, H-S6 · PASS×5 → H-S5, H-S7, H-S8, H-S10, H-S11, H-S12. Cross-session flake GONE.
+- Read the actual assertions in `scenarios.mjs`:
+  - **H-S8:** determinism = convergence polling (all panels settle @ts0, per-step exact-playhead
+    convergence at quiescent points, hard-timeout fail-loud). Contract UNCHANGED/TIGHTENED
+    (`data fetches during play == 0`, renders bounded). NOT weakened.
+  - **H-S10:** the OLD assertion was BROKEN — a `page` typo meant the real contract check never ran and
+    the verdict was decided by incidental H-INV boot noise (THIS is the true root of the S10 flip, not
+    engine behavior). Fix resets the server log for a clean cold-boot count, anchors the read to a
+    deterministic settled signal (all painted + nothing in-flight + viewport/mirror settle + stable
+    diag.fetches), and measures the FAITHFUL Phase-4 contract: same-pair **panels B/C/D** self-fetch==0
+    (they mirror the in-process host), while host A's own owner-load (file25 hits=2) is the intended
+    design and is reported, not counted as a violation. My run: `B/C/D=0, host(A)=4, file25 hits=2`.
+    This is a CORRECTION to the true contract, NOT a weakening — a genuine panel self-fetch would still
+    FAIL it deterministically.
+- Harness-only; no engine/bridge/sw.js/build-id/security-workflow changes.
+
+**Rulings:**
+1. **Task 4.2b ACCEPTED. The harness is now a TRUSTWORTHY deterministic gate** — 9 scenarios, identical
+   verdicts across 3 independent sessions, with a working deliberate-bug lever (H-S12).
+2. **H-S10 re-classified:** it was NEVER a real engine defect — it was a broken/noise-driven assertion +
+   (in the pre-host harness) a topology artifact. With the real host, same-pair cold-boot ownership is
+   CORRECT (peers mirror, 0 self-fetch). Removed from any fix queue.
+3. **Confirmed real engine ownership defects remain exactly three:** H-S2 (host history-extension not
+   mirrored to same-pair peers), H-S3 (panel self-fetch on its own drag, sync ON+OFF), H-S6 (all four
+   panels fetch on 1m→1h fan-out instead of ≤1 owner). These are the Phase-2/3 fix targets.
+4. **Task 4.3 (wire harness as merge gate) is now UNBLOCKED** — determinism precondition met.
+
+---
+
+## 6au. Phase-4 Task 4.3 COMPLETE — merge gate wired + verified (D-030 step 1 DONE, 2026-07-07)
+
+**Executed by a PO-dispatched external worker (no Task agent ID); result pasted back + Manager-verified.**
+
+**Files:** `harness/gate.mjs` (ratchet runner), `harness/known-failing.json` (expectedTests[9] +
+knownFailing{H-S2,H-S3,H-S6} with reasons+tracking), `harness/package.json` (`npm run gate`),
+`.github/workflows/multichart-harness.yml` (NEW, PR-only), `docs/.../CHECKLIST.md`,
+`docs/multichart-panel-data-and-rendering.md` ("Phase 1–4 landed" section).
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- Ran `npm run gate` myself → **exit 0**: known-failing H-S2/S3/S6 still red, 0 regressions, 0
+  newly-fixed; H-S5/S7/S8/S10/S11/S12 PASS. Matches report.
+- Read `gate.mjs`: ratchet semantics correct — FAIL on (a) a non-baseline test failing [regression],
+  (b) a baseline test passing [stale baseline → must remove/ratchet], (c) scenario-ID drift vs
+  expectedTests, (d) known-failing IDs outside expectedTests, (e) raw exit≠0 not matching baseline.
+  `node --check` clean.
+- Read workflow: PR-triggered on `chart v 1.4/chart/**` + `chart v 1.4/talaria-design/src/Multichart*`
+  only, `permissions: contents: read`, node 20, `npm ci`, `npm run gate` on ubuntu. Separate NEW file.
+- `git status`: only harness files (+ the two intended docs); **no engine/bridge/sw.js/build-id changes,
+  `security.yml` untouched** (independently confirmed via scoped git status).
+- Minor follow-up for whoever commits: `harness/package-lock.json` must be committed (workflow
+  `npm ci` + cache-dependency-path depend on it).
+
+**PHASE 4 (regression harness) COMPLETE** — 4.1 (skeleton) + 4.1c (real host fidelity) + 4.2
+(scenarios) + 4.2b (cross-session determinism) + 4.3 (gate+CI) all landed and Manager-verified. The
+whack-a-mole root cause (RC5) is closed: multichart engine changes now ratchet against a deterministic
+machine gate. **D-030 go-forward step 1 DONE.**
+
+**Next per D-030:** step 2 = Item-1 deferred cleanup (viewport-first dead-code removal + retire H flag)
+— now genuinely safe because the gate catches any regression. Then step 3 (Phase 2 finish) which
+absorbs the three confirmed ownership defects H-S2/H-S3/H-S6 (each fix ratchets its ID out of
+known-failing.json). No new Director decision required; D-030 is binding.
 
 ---
 

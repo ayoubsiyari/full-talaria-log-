@@ -1,0 +1,36 @@
+name: Multichart harness
+
+on:
+  pull_request:
+    paths:
+      - "chart v 1.4/chart/**"
+      - "chart v 1.4/talaria-design/src/Multichart*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multichart-harness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: "chart v 1.4/chart/multichart-prod/harness/package-lock.json"
+
+      - name: Install harness dependencies
+        working-directory: "chart v 1.4/chart/multichart-prod/harness"
+        run: npm ci
+
+      - name: Run multichart regression gate
+        working-directory: "chart v 1.4/chart/multichart-prod/harness"
+        run: npm run gate

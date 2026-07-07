@@ -543,31 +543,6 @@
                     }
                 }
             }
-            // B-FIX-H (BL-2b — sync-off cross-TF viewport corruption): B-FIX-F only holds while
-            // _timeframeSwitching / playhead-outside-master is set, but there is a transient window
-            // at the START of a host TF switch where the host TF LABEL still equals this panel's TF
-            // (e.g. both '1m' before a 1m->4h commit). A broadcast replayFrame landing there slips
-            // past the same-TF mirror below; the panel adopts a transitional host frame, then the
-            // host commits the new TF and the different-TF guard (~line 613) locks this panel out —
-            // leaving it stuck on the WRONG window/scale (~06:00 vs the playhead) until the user
-            // switches back. The host sets `_switchingToTimeframe` at _beginTimeframeSwitching and
-            // clears it exactly when `currentTimeframe` flips to the new TF, so it precisely covers
-            // that same-label window; the moment the label flips, the ~613 guard takes over. This is
-            // the SYNC-OFF path (replay mirror bus is never sync-gated), so it is NOT gated by any
-            // sync toggle. Only hold when the switch TARGET differs from this panel's TF (a switch
-            // landing on our own TF needs no hold — B-FIX-G handles the switch-back re-sync). Mark
-            // held so B-FIX-G re-syncs on a switch-BACK to a matching TF.
-            if (pcSwitching
-                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH)
-                && pcSwitching._switchingToTimeframe) {
-                var _swTarget = String(pcSwitching._switchingToTimeframe || '').toLowerCase().trim();
-                var _panelTfSw = String(ch.currentTimeframe || '').toLowerCase().trim();
-                if (_swTarget && _panelTfSw && _swTarget !== _panelTfSw) {
-                    ch._mcMirrorHeldUnsettled = true;
-                    _mcScheduleSettledSelfHeal(ch);
-                    return;
-                }
-            }
         } catch (_) {}
 
         // B-FIX-G (panel settled resync): if this same-pair, same-TF panel was HELD during the

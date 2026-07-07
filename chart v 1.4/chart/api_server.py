@@ -11406,13 +11406,17 @@ async def auth_signup(payload: SignUpIn, request: Request):
             role="user",
             is_active=True,
         )
-        if allow_entry and allow_entry.cohort_id:
-            user.group_id = allow_entry.cohort_id
+        # Link the registrant to their cohort whenever they were invited — even if
+        # allowlist-only mode is off (allow_entry is None then), so invited students
+        # still land in their cohort roster. _allowlist_entry is a plain lookup.
+        invite = allow_entry or _allowlist_entry(db, email)
+        if invite and invite.cohort_id:
+            user.group_id = invite.cohort_id
         db.add(user)
         db.flush()
         _ensure_user_public_id_chart(db, user)
-        if allow_entry:
-            allow_entry.registered_at = datetime.utcnow()
+        if invite:
+            invite.registered_at = datetime.utcnow()
         try:
             db.execute(
                 text("DELETE FROM signup_verifications WHERE email = :e"),
@@ -14691,6 +14695,16 @@ async def admin_list_users(request: Request):
                 group_name_map[g.id] = g.name
         except Exception:
             group_name_map = {}
+        # Invited (allowlisted) emails count as mentorship even if they were never
+        # assigned to a cohort — otherwise invite-only students who signed up in
+        # open-signup mode (no group_id) would be invisible on the Mentorship tab.
+        allow_emails = set()
+        try:
+            for r in db.execute(text("SELECT lower(email) FROM mentorship_allowlist")).fetchall():
+                if r[0]:
+                    allow_emails.add(r[0])
+        except Exception:
+            allow_emails = set()
         result = []
         now = datetime.utcnow()
         for u in users:
@@ -14703,9 +14717,11 @@ async def admin_list_users(request: Request):
             expired = u.access_expires_at and u.access_expires_at < now
             d["status"] = "banned" if not u.is_active else ("expired" if expired else "active")
             gid = getattr(u, "group_id", None)
+            invited = bool(u.email and u.email.lower() in allow_emails)
             d["group_id"] = gid
             d["group_name"] = group_name_map.get(gid) if gid else None
-            d["is_mentorship"] = gid is not None
+            d["invited"] = invited
+            d["is_mentorship"] = (gid is not None) or invited
             result.append(d)
         return {"users": result}
     finally:

@@ -1,0 +1,27 @@
+{
+  "expectedTests": [
+    "H-S2",
+    "H-S3",
+    "H-S5",
+    "H-S6",
+    "H-S7",
+    "H-S8",
+    "H-S10",
+    "H-S11",
+    "H-S12"
+  ],
+  "knownFailing": {
+    "H-S2": {
+      "reason": "Paused replay host history-extension is not mirrored to same-pair peers.",
+      "tracking": "docs/multichart-overhaul/MANAGER-FINDINGS.md §6as/6at"
+    },
+    "H-S3": {
+      "reason": "Same-pair panel drag self-fetches instead of routing ownership through the host.",
+      "tracking": "docs/multichart-overhaul/MANAGER-FINDINGS.md §6as/6at"
+    },
+    "H-S6": {
+      "reason": "1m→1h timeframe fan-out makes every panel fetch instead of at most one owner.",
+      "tracking": "docs/multichart-overhaul/MANAGER-FINDINGS.md §6as/6at"
+    }
+  }
+}

@@ -7383,7 +7383,12 @@ function renderUsers() {
       : u.status === 'expired' ? '<span class="badge badge-expired">Expired</span>'
       : '<span class="badge badge-active">Active</span>';
     const roleBadge = u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : '<span class="badge badge-user">User</span>';
-    const expires = u.access_expires_at ? new Date(u.access_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '∞';
+    // Access end: prefer an explicit manual expiry, else the active subscription's
+    // period end (so coupon/subscription users show a real date instead of ∞).
+    const _expRaw = u.access_expires_at || (u.subscription && u.subscription.period_end) || null;
+    const expires = _expRaw
+      ? new Date(_expRaw).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : ((u.has_journal_access || u.role === 'admin') ? '∞' : '—');
     const lastActive = u.last_active_at ? timeAgo(u.last_active_at) : 'Never';
     const banBtn = u.status === 'banned'
       ? `<button class="btn sm ok" onclick="unbanUser(${u.id})">Unban</button>`
