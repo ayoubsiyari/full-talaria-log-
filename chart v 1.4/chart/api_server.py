@@ -14818,7 +14818,7 @@ async def admin_list_users(request: Request):
         # open-signup mode (no group_id) would be invisible on the Mentorship tab.
         allow_emails = set()
         try:
-            for r in db.execute(text("SELECT lower(email) FROM mentorship_allowlist")).fetchall():
+            for r in db.execute(text("SELECT lower(trim(email)) FROM mentorship_allowlist")).fetchall():
                 if r[0]:
                     allow_emails.add(r[0])
         except Exception:
@@ -14835,7 +14835,7 @@ async def admin_list_users(request: Request):
             expired = u.access_expires_at and u.access_expires_at < now
             d["status"] = "banned" if not u.is_active else ("expired" if expired else "active")
             gid = getattr(u, "group_id", None)
-            invited = bool(u.email and u.email.lower() in allow_emails)
+            invited = bool(u.email and u.email.strip().lower() in allow_emails)
             d["group_id"] = gid
             d["group_name"] = group_name_map.get(gid) if gid else None
             d["invited"] = invited
@@ -15866,6 +15866,17 @@ async def admin_mentorship_allowlist_list(request: Request, cohort_id: int | Non
             q = q.filter(MentorshipAllowlist.cohort_id == cohort_id)
         rows = q.order_by(MentorshipAllowlist.created_at.desc()).all()
         cohort_names = {g.id: g.name for g in db.query(Group).all()}
+        # "Registered" reflects whether a live account currently exists for the
+        # email (case-insensitive), not just the sticky registered_at flag — a
+        # deleted account would otherwise keep counting as registered forever and
+        # not match the Mentorship users tab (which lists real accounts).
+        existing_emails = set()
+        try:
+            for r in db.execute(text("SELECT lower(trim(email)) FROM users WHERE email IS NOT NULL")).fetchall():
+                if r[0]:
+                    existing_emails.add(r[0])
+        except Exception:
+            existing_emails = set()
         entries = [
             {
                 "id": r.id,
@@ -15876,7 +15887,7 @@ async def admin_mentorship_allowlist_list(request: Request, cohort_id: int | Non
                 "added_by": r.added_by,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "registered_at": r.registered_at.isoformat() if r.registered_at else None,
-                "registered": bool(r.registered_at),
+                "registered": bool(r.email and r.email.strip().lower() in existing_emails),
             }
             for r in rows
         ]
