@@ -213,6 +213,9 @@ services:
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
       CSRF_ENABLED: ${CSRF_ENABLED:-true}
       AUTH_ENABLED: "true"
+      # Signup is protected by email verification; allow legitimate launch bursts
+      # while keeping login throttling stricter against credential stuffing.
+      AUTH_SIGNUP_MAX_PER_MINUTE: ${AUTH_SIGNUP_MAX_PER_MINUTE:-120}
       SESSION_COOKIE_NAME: "chart_session_id"
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       SESSION_COOKIE_SAMESITE: "lax"
