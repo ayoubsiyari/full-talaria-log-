@@ -6094,6 +6094,7 @@ function GeneralInfoStepContent({ c, F,
   const supWrapRef = React.useRef(null);
   const supMenuRef = React.useRef(null);
   const generalInfoScrollRef = React.useRef(null);
+  const mobileSymbolPicker = typeof window !== 'undefined' && (window.innerWidth <= 720 || 'ontouchstart' in window);
   const [tfPickOpen, setTfPickOpen] = React.useState(false);
   const [tfPickPos, setTfPickPos]   = React.useState({top:0,left:0,maxH:360});
   const [tfPickHov, setTfPickHov]   = React.useState(null);
@@ -6285,8 +6286,10 @@ function GeneralInfoStepContent({ c, F,
     if (!mktDropOpen && !trdPickOpen && !supPickOpen && !tfPickOpen && !emojiOpen) return;
     const closeMenus = () => {
       setMktDropOpen(false);
-      setTrdPickOpen(false);
-      setSupPickOpen(false);
+      if (!mobileSymbolPicker) {
+        setTrdPickOpen(false);
+        setSupPickOpen(false);
+      }
       setTfPickOpen(false);
       setTfUnitOpen(false);
       setEmojiOpen(false);
@@ -6299,7 +6302,7 @@ function GeneralInfoStepContent({ c, F,
       scrollEl?.removeEventListener('scroll', closeMenus);
       window.removeEventListener('scroll', closeMenus);
     };
-  }, [mktDropOpen, trdPickOpen, supPickOpen, tfPickOpen, emojiOpen]);
+  }, [mktDropOpen, trdPickOpen, supPickOpen, tfPickOpen, emojiOpen, mobileSymbolPicker]);
   const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
   const tfAtMax    = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
   const toggleTf   = id => {
@@ -6679,7 +6682,7 @@ function GeneralInfoStepContent({ c, F,
                   <div ref={trdMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:trdPickPos.width||270,maxHeight:trdPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                      <input autoFocus value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
+                      <input autoFocus={!mobileSymbolPicker} value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
                         style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
                     </div>
                     {availCats.length>1&&(
@@ -6807,7 +6810,7 @@ function GeneralInfoStepContent({ c, F,
                   <div ref={supMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:supPickPos.width||270,maxHeight:supPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                     <div style={{height:2,background:'linear-gradient(90deg,rgba(201,168,76,0.3),rgba(232,194,82,0.8),rgba(201,168,76,0.3))',flexShrink:0}}/>
                     <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                      <input autoFocus value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
+                      <input autoFocus={!mobileSymbolPicker} value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
                         style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
                     </div>
                     {availCats.length>1&&(
@@ -7098,7 +7101,7 @@ function GeneralInfoStepContent({ c, F,
             <div style={{position:'fixed',top:trdPickPos.top,left:trdPickPos.left,width:190,maxHeight:280,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:9999,fontFamily:F}}>
               <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
               <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                <input autoFocus value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
+                <input autoFocus={!mobileSymbolPicker} value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
                   style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
               </div>
               <div className="tlr-scroll" style={{overflowY:'auto',flex:1}}>
@@ -7147,7 +7150,7 @@ function GeneralInfoStepContent({ c, F,
             <div style={{position:'fixed',top:supPickPos.top,left:supPickPos.left,width:190,maxHeight:280,display:'flex',flexDirection:'column',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:9999,fontFamily:F}}>
               <div style={{height:2,background:'linear-gradient(90deg,rgba(201,168,76,0.3),rgba(232,194,82,0.8),rgba(201,168,76,0.3))',flexShrink:0}}/>
               <div style={{padding:'5px 8px',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                <input autoFocus value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
+                <input autoFocus={!mobileSymbolPicker} value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
                   style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
               </div>
               <div className="tlr-scroll" style={{overflowY:'auto',flex:1}}>
