@@ -1745,7 +1745,7 @@ const SectionNode = ({ id, data }) => {
   const GOLD = '#C9A84C';
 
   return (
-    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'inset 0 0 0 1px var(--tlc-brh)',background:descOpen?'transparent':'var(--tlc-sf)',display:'flex',overflow:'visible',position:'relative'}}>
+    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'inset 0 0 0 1px var(--tlc-brh)',background:'transparent',display:'flex',overflow:'visible',position:'relative'}}>
 
       {/* Left gold accent bar */}
       <div style={{position:'absolute',top:0,left:0,bottom:0,width:4,background:GOLD,zIndex:2,pointerEvents:'none'}}/>
