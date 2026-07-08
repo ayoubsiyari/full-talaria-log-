@@ -425,7 +425,9 @@ export default function DashboardShell({
       // dashboard — kick them to pricing to pay/renew. Covers every /dashboard/*
       // route (profile, journal, sessions, strategies, cot, support, …).
       if (!userIsDashboardAdmin(u) && !userHasAnyDashboardAccess(u)) {
-        window.location.replace("/pricing/?browse=1");
+        // Waitlist leads may hold a session (to view their profile on the
+        // homepage) but never the dashboard — send them home, not to checkout.
+        window.location.replace((u as { is_waitlisted?: boolean }).is_waitlisted ? "/" : "/pricing/?browse=1");
         return;
       }
       if (isPathAdminOnlyWip(path) && !userCanAccessAdminOnlyWipPath(u, path)) {

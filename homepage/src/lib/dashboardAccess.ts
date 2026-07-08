@@ -209,6 +209,7 @@ export function isBacktestSessionsPath(path: string, search = ""): boolean {
 
 export type DashboardUser = {
   role?: string;
+  is_waitlisted?: boolean;
   has_journal_access?: boolean;
   has_active_subscription?: boolean;
   access_denial_reason?: string;

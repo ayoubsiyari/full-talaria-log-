@@ -271,7 +271,9 @@ export default function TalariaV16Dashboard() {
         // but never paid, or lapsed) must be sent to pricing — never parked inside
         // the dashboard. Admins and anyone with any module/section pass through.
         if (!userIsDashboardAdmin(user) && !userHasAnyDashboardAccess(user as DashboardUser)) {
-          window.location.replace("/pricing/?browse=1");
+          // Waitlist leads may hold a session (profile on homepage) but never the
+          // dashboard — send them home, not to checkout.
+          window.location.replace((user as { is_waitlisted?: boolean }).is_waitlisted ? "/" : "/pricing/?browse=1");
           return;
         }
 

@@ -11635,23 +11635,14 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
 
         _chart_enforce_mfa_if_enabled(db, user, payload.totp_code)
 
-        # Waitlist leads cannot sign in (even toward pricing) — they have no access
-        # until an admin approves them (which clears is_waitlisted).
-        if getattr(user, "is_waitlisted", False):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "waitlisted",
-                    "message": (
-                        "Your account is on the waitlist. We'll email you when a spot "
-                        "opens — you'll be able to sign in then."
-                    ),
-                },
-            )
-
         is_admin = (user.role or "") == "admin"
+        is_waitlisted = bool(getattr(user, "is_waitlisted", False))
         entitled = is_admin or _user_may_access_platform(db, user)
-        if not entitled and not _is_pricing_renewal_path(payload.next_path):
+        # Waitlist leads MAY sign in (so they can see their profile on the homepage)
+        # but have no dashboard/paid access — the frontend routes them to "/" and
+        # every dashboard/journal/checkout path stays gated. So skip the pricing
+        # denial for them (they'd otherwise be pushed to checkout, which is blocked).
+        if not entitled and not is_waitlisted and not _is_pricing_renewal_path(payload.next_path):
             ctx = _subscription_access_context(db, user)
             reason = ctx.get("access_denial_reason") or "subscription"
             raise HTTPException(
@@ -11742,7 +11733,7 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
         elif not is_new:
             is_admin = (user.role or "") == "admin"
             entitled = is_admin or _user_may_access_platform(db, user)
-            if not entitled and not _is_pricing_renewal_path(getattr(payload, "next_path", None)):
+            if not entitled and not getattr(user, "is_waitlisted", False) and not _is_pricing_renewal_path(getattr(payload, "next_path", None)):
                 ctx = _subscription_access_context(db, user)
                 reason = ctx.get("access_denial_reason") or "subscription"
                 raise HTTPException(
@@ -11752,20 +11743,6 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
                         "message": _login_access_denied_message(user, ctx),
                     },
                 )
-
-        # Waitlist leads (incl. brand-new Google sign-ups not on the allowlist)
-        # cannot sign in until an admin approves them.
-        if getattr(user, "is_waitlisted", False):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "code": "waitlisted",
-                    "message": (
-                        "Your account is on the waitlist. We'll email you when a spot "
-                        "opens — you'll be able to sign in then."
-                    ),
-                },
-            )
 
         session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)

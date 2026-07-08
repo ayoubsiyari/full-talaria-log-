@@ -172,7 +172,7 @@ export default function PricingClient() {
       // Auth hardening: the JWT is no longer readable from JS. Ask the chart
       // session (httpOnly cookie) who we are; this also re-mints the journal
       // cookie + CSRF token used for the billing calls below.
-      let me: { user?: { is_admin?: boolean; role?: string } } | null = null;
+      let me: { user?: { is_admin?: boolean; role?: string; is_waitlisted?: boolean } } | null = null;
       try {
         const meRes = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
         if (meRes.ok) me = await meRes.json().catch(() => null);
@@ -184,6 +184,12 @@ export default function PricingClient() {
         setAccessNavReady(true);
         await fetchPlans();
         if (!cancelled) setLoading(false);
+        return;
+      }
+      // Waitlist leads have no purchasing access — they can't check out, so don't
+      // show them the plans at all. Send them back to the homepage.
+      if (user.is_waitlisted === true) {
+        window.location.replace("/");
         return;
       }
       if (!cancelled) setIsLoggedIn(true);

@@ -1670,6 +1670,11 @@ const SectionNode = ({ id, data }) => {
         return n;
       });
     } catch (err) {
+      logStrategyBuilderDiagnostic('group-image-upload-error', {
+        message: err instanceof Error ? err.message : String(err || ''),
+        fileSize: file?.size || 0,
+        fileType: file?.type || '',
+      });
       _cvCb.showImageError?.(err instanceof Error ? err.message : 'Could not process image');
     }
   };
@@ -2511,6 +2516,11 @@ const ConditionCard = ({ id, data, selected }) => {
       const img = {src, name:file.name};
       setScreenshots(prev=>{ const n=[...prev]; n[activeSlot]=img; _cvCb.updateCondition?.(id,{images:n}); return n; });
     } catch (err) {
+      logStrategyBuilderDiagnostic('condition-image-upload-error', {
+        message: err instanceof Error ? err.message : String(err || ''),
+        fileSize: file?.size || 0,
+        fileType: file?.type || '',
+      });
       _cvCb.showImageError?.(err instanceof Error ? err.message : 'Could not process image');
     }
   };
@@ -4997,6 +5007,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       updateNodeImages(nodeId, next);
       setOutlineImgError(null);
     } catch (err) {
+      logStrategyBuilderDiagnostic('outline-image-upload-error', {
+        message: err instanceof Error ? err.message : String(err || ''),
+        fileSize: file?.size || 0,
+        fileType: file?.type || '',
+      });
       showOutlineImageError(err instanceof Error ? err.message : 'Could not process image');
     }
   };
@@ -5859,13 +5874,54 @@ const SCREENSHOT_UPLOAD_MAX_BYTES = IMAGE_UPLOAD_MAX_BYTES;
 const SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN = IMAGE_UPLOAD_MAX_DATA_URL_LEN;
 const SCREENSHOT_UPLOAD_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/*';
 const SCREENSHOT_UPLOAD_FORMAT_HINT = 'JPEG, PNG, GIF, or WebP · max 5 MB';
+const STRATEGY_IMAGE_DESKTOP_MAX_EDGE = 1920;
+const STRATEGY_IMAGE_MOBILE_MAX_EDGE = 1280;
+const STRATEGY_IMAGE_DESKTOP_QUALITY = 0.92;
+const STRATEGY_IMAGE_MOBILE_QUALITY = 0.82;
+const STRATEGY_IMAGE_MIN_QUALITY = 0.48;
+const STRATEGY_IMAGE_MOBILE_MAX_DATA_URL_LEN = Math.min(IMAGE_UPLOAD_MAX_DATA_URL_LEN, 1.75 * 1024 * 1024);
+const STRATEGY_BUILDER_MOBILE_COVER_LIMIT = 4;
+
+function isStrategyBuilderMobileDevice() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.innerWidth <= 720 ||
+      (window.matchMedia?.('(pointer: coarse)')?.matches && (navigator.maxTouchPoints || 0) > 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function formatStrategyImageBytes(bytes) {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`;
+}
+
+function logStrategyBuilderDiagnostic(event, detail = {}) {
+  try {
+    const payload = {
+      event,
+      mobile: isStrategyBuilderMobileDevice(),
+      width: typeof window !== 'undefined' ? window.innerWidth : null,
+      ...detail,
+    };
+    if (event === 'step-change') console.debug?.('[StrategyBuilder]', payload);
+    else console.warn?.('[StrategyBuilder]', payload);
+  } catch {}
+}
 
 function imageUploadTooLargeError(fileSizeBytes) {
   const mb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
   return `Image too large (${mb} MB). Maximum size is ${IMAGE_UPLOAD_MAX_MB} MB.`;
 }
 
-function imageDataUrlTooLargeError() {
+function imageDataUrlTooLargeError(limitBytes = IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
+  if (limitBytes < IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
+    return `Image too large for mobile (${formatStrategyImageBytes(limitBytes)} max after compression). Try a smaller screenshot.`;
+  }
   return `Image too large. Maximum size is ${IMAGE_UPLOAD_MAX_MB} MB.`;
 }
 
@@ -5907,6 +5963,19 @@ function validateScreenshotDataUrl(dataUrl) {
   return { ok: true };
 }
 
+function validateCompressedStrategyDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+    return { ok: false, error: 'Invalid image data.' };
+  }
+  const limit = isStrategyBuilderMobileDevice()
+    ? STRATEGY_IMAGE_MOBILE_MAX_DATA_URL_LEN
+    : IMAGE_UPLOAD_MAX_DATA_URL_LEN;
+  if (dataUrl.length > limit) {
+    return { ok: false, error: imageDataUrlTooLargeError(limit) };
+  }
+  return { ok: true };
+}
+
 function readScreenshotDataUrl(file) {
   return compressCoverImage(file).then((dataUrl) => {
     const urlCheck = validateScreenshotDataUrl(dataUrl);
@@ -5934,49 +6003,77 @@ function sanitizeScreenshotMap(map) {
 }
 
 function compressCoverImage(file, maxEdge, quality) {
-  maxEdge = maxEdge || 1920;
-  quality = quality || 0.92;
+  const mobile = isStrategyBuilderMobileDevice();
+  maxEdge = maxEdge || (mobile ? STRATEGY_IMAGE_MOBILE_MAX_EDGE : STRATEGY_IMAGE_DESKTOP_MAX_EDGE);
+  quality = quality || (mobile ? STRATEGY_IMAGE_MOBILE_QUALITY : STRATEGY_IMAGE_DESKTOP_QUALITY);
   return new Promise(function(resolve, reject) {
     const check = validateStrategyImageFile(file);
     if (!check.ok) { reject(new Error(check.error)); return; }
-    var reader = new FileReader();
-    reader.onerror = function() { reject(new Error('Failed to read file')); };
-    reader.onload = function(ev) {
-      var img = new Image();
-      img.onerror = function() { reject(new Error('Failed to decode image')); };
-      img.onload = function() {
+    var objUrl = URL.createObjectURL(file);
+    var img = new Image();
+    var done = false;
+    var finish = function(err, dataUrl) {
+      if (done) return;
+      done = true;
+      URL.revokeObjectURL(objUrl);
+      if (err) reject(err);
+      else resolve(dataUrl);
+    };
+    img.onerror = function() { finish(new Error('Failed to decode image')); };
+    img.onload = function() {
+      var cv = null;
+      try {
         var nw = img.naturalWidth, nh = img.naturalHeight;
-        if (!nw || !nh) { reject(new Error('Invalid image dimensions')); return; }
+        if (!nw || !nh) { finish(new Error('Invalid image dimensions')); return; }
         var longest = Math.max(nw, nh);
         var r = longest > maxEdge ? (maxEdge / longest) : 1;
         var w = Math.round(nw * r), h = Math.round(nh * r);
-        var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv = document.createElement('canvas'); cv.width = w; cv.height = h;
         var ctx = cv.getContext('2d');
-        if (!ctx) { reject(new Error('Could not process image')); return; }
+        if (!ctx) { finish(new Error('Could not process image')); return; }
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingQuality = mobile ? 'medium' : 'high';
         ctx.drawImage(img, 0, 0, w, h);
         var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
         var preferPng = mime === 'image/png' || mime === 'image/gif';
         var q = quality;
         var out = preferPng ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', q);
-        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && preferPng) {
+        var maxDataUrlLen = mobile ? STRATEGY_IMAGE_MOBILE_MAX_DATA_URL_LEN : IMAGE_UPLOAD_MAX_DATA_URL_LEN;
+        while (out.length > maxDataUrlLen && preferPng) {
           preferPng = false;
           out = cv.toDataURL('image/jpeg', q);
         }
-        while (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN && q > 0.5) {
+        while (out.length > maxDataUrlLen && q > STRATEGY_IMAGE_MIN_QUALITY) {
           q -= 0.04;
           out = cv.toDataURL('image/jpeg', q);
         }
-        if (out.length > IMAGE_UPLOAD_MAX_DATA_URL_LEN) {
-          reject(new Error(imageDataUrlTooLargeError()));
+        const urlCheck = validateCompressedStrategyDataUrl(out);
+        if (!urlCheck.ok) {
+          logStrategyBuilderDiagnostic('image-compression-limit', {
+            length: out.length,
+            limit: mobile ? STRATEGY_IMAGE_MOBILE_MAX_DATA_URL_LEN : IMAGE_UPLOAD_MAX_DATA_URL_LEN,
+            fileSize: file?.size || 0,
+            fileType: file?.type || '',
+          });
+          finish(new Error(urlCheck.error));
           return;
         }
-        resolve(out);
-      };
-      img.src = ev.target.result;
+        finish(null, out);
+      } catch (err) {
+        logStrategyBuilderDiagnostic('image-compression-error', {
+          message: err instanceof Error ? err.message : String(err || ''),
+          fileSize: file?.size || 0,
+          fileType: file?.type || '',
+        });
+        finish(err instanceof Error ? err : new Error('Could not process image'));
+      } finally {
+        if (cv) {
+          cv.width = 0;
+          cv.height = 0;
+        }
+      }
     };
-    reader.readAsDataURL(file);
+    img.src = objUrl;
   });
 }
 
@@ -5989,6 +6086,52 @@ function strategyImageUrl(item) {
     return typeof src === 'string' ? src : '';
   }
   return '';
+}
+
+function estimateStrategyImageEntryBytes(item) {
+  const src = strategyImageUrl(item);
+  if (!src) return 0;
+  const name = item && typeof item === 'object' ? String(item.name || '') : '';
+  return src.length + name.length;
+}
+
+function summarizeStrategyBuilderImages(stratBImages, canvasNodes) {
+  const images = [];
+  const collect = value => {
+    if (Array.isArray(value)) value.forEach(collect);
+    else if (value) images.push(value);
+  };
+  collect(stratBImages || []);
+  (canvasNodes || []).forEach(node => collect(node?.data?.images || []));
+  const imageBytes = images.reduce((sum, img) => sum + estimateStrategyImageEntryBytes(img), 0);
+  return { count: images.length, bytes: imageBytes };
+}
+
+function estimateStrategyBuilderPayloadBytes(props) {
+  const nodeBytes = (props.canvasNodes || []).reduce((sum, node) => {
+    const data = node?.data || {};
+    const imageBytes = Array.isArray(data.images)
+      ? data.images.reduce((n, img) => n + estimateStrategyImageEntryBytes(img), 0)
+      : 0;
+    return sum +
+      String(node?.id || '').length +
+      String(node?.type || '').length +
+      String(data.label || '').length +
+      String(data.description || '').length +
+      imageBytes +
+      320;
+  }, 0);
+  const edgeBytes = (props.canvasEdges || []).length * 180;
+  const fieldBytes = [
+    props.stratBName,
+    props.stratBDesc,
+    ...(props.stratBMarkets || []),
+    ...(props.stratBTimeframes || []),
+    ...(props.stratBTags || []),
+    ...(props.stratBVariables || []).map(v => `${v?.name || ''}:${(v?.options || []).join(',')}`),
+  ].reduce((sum, value) => sum + String(value || '').length, 0);
+  const topImageBytes = (props.stratBImages || []).reduce((sum, img) => sum + estimateStrategyImageEntryBytes(img), 0);
+  return fieldBytes + nodeBytes + edgeBytes + topImageBytes + 1024;
 }
 
 function InstrumentMultiSelect({ c, F, selectedIds, onToggle, marketCategories }) {
@@ -6234,16 +6377,29 @@ function GeneralInfoStepContent({ c, F,
       setImgError(check.error);
       return;
     }
+    if (isStrategyBuilderMobileDevice() && (stratBImages || []).length >= STRATEGY_BUILDER_MOBILE_COVER_LIMIT) {
+      setImgError(`Mobile supports up to ${STRATEGY_BUILDER_MOBILE_COVER_LIMIT} strategy images. Remove one before adding another.`);
+      logStrategyBuilderDiagnostic('cover-image-count-limit', { currentCount: (stratBImages || []).length });
+      return;
+    }
     setImgError('');
     setImgBusy(true);
     try {
       const results = await Promise.all(files.map(f => compressCoverImage(f)));
       setStratBImages(prev => {
+        const mobile = isStrategyBuilderMobileDevice();
         const next = [...(prev||[]), ...results.filter(Boolean)];
-        return next.slice(0, 6);
+        return next.slice(0, mobile ? STRATEGY_BUILDER_MOBILE_COVER_LIMIT : 6);
       });
     }
-    catch (err) { setImgError(err instanceof Error ? err.message : 'Could not process image'); }
+    catch (err) {
+      logStrategyBuilderDiagnostic('cover-image-upload-error', {
+        message: err instanceof Error ? err.message : String(err || ''),
+        fileSize: files[0]?.size || 0,
+        fileType: files[0]?.type || '',
+      });
+      setImgError(err instanceof Error ? err.message : 'Could not process image');
+    }
     finally { setImgBusy(false); }
   };
 
@@ -7557,7 +7713,7 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
   );
 }
 
-function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratBTimeframes, stratBTags, stratBVariables, stratBInstruments, stratBSupportInst, stratBImages, stratBLogoEmoji, canvasNodes, sessions, stratEditId }) {
+function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratBTimeframes, stratBTags, stratBVariables, stratBInstruments, stratBSupportInst, stratBImages, stratBLogoEmoji, canvasNodes, sessions, stratEditId, compact=false }) {
   const vars = stratBVariables||[];
   const divIdx = vars.findIndex(v=>v.type==='divider');
   const preLimit = divIdx < 0 ? vars.length : divIdx;
@@ -7632,18 +7788,25 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
       <span style={{fontSize:9,fontWeight:850,color:c.tm,fontFamily:F,letterSpacing:'0.08em',textTransform:'uppercase'}}>{label}</span>
     </div>
   );
-  const imageStrip = (images) => {
+  const imageStrip = (images, maxVisible = compact ? 3 : 6) => {
     const entries = (images || [])
       .map((item, i) => ({ url: strategyImageUrl(item), key: i }))
       .filter(entry => entry.url);
     if (!entries.length) return null;
+    const visible = entries.slice(0, maxVisible);
+    const hidden = entries.length - visible.length;
     return (
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(112px,1fr))',gap:8,marginTop:10}}>
-      {entries.slice(0,6).map((entry,i)=>(
+      {visible.map((entry,i)=>(
         <div key={`${entry.key}-${i}`} style={{height:72,border:`1px solid ${c.brH}`,background:c.el,overflow:'hidden'}}>
           <img src={entry.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
         </div>
       ))}
+      {hidden > 0 ? (
+        <div style={{height:72,border:`1px solid ${c.brH}`,background:c.el,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:c.tm,fontFamily:F}}>
+          +{hidden} more
+        </div>
+      ) : null}
     </div>
     );
   };
@@ -7885,6 +8048,42 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   );
 }
 
+class StrategyBuilderStepBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    logStrategyBuilderDiagnostic('step-render-error', {
+      step: this.props.step,
+      message: error?.message || String(error || ''),
+      stack: info?.componentStack || '',
+    });
+  }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const { c, F, compact } = this.props;
+    return (
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:compact?18:32,boxSizing:'border-box'}}>
+        <div style={{maxWidth:520,border:`1px solid ${c.rd}55`,background:'rgba(255,80,104,0.08)',padding:18,fontFamily:F,color:c.ts,lineHeight:1.45}}>
+          <div style={{fontSize:13,fontWeight:850,color:c.rd,marginBottom:8}}>Strategy step could not render</div>
+          <div style={{fontSize:12,fontWeight:650}}>
+            This step hit a browser rendering error. Go back, remove a few uploaded images, or refresh and try again.
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
 function StrategyBuilderModal(props) {
   const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
@@ -7920,28 +8119,19 @@ function StrategyBuilderModal(props) {
     if (generalInfoReady) setShowGeneralInfoRequired(false);
   }, [generalInfoReady]);
   const savingStats = React.useMemo(() => {
-    const images = [];
-    const collect = value => {
-      if (Array.isArray(value)) value.forEach(collect);
-      else if (value) images.push(value);
-    };
-    collect(props.stratBImages || []);
-    (props.canvasNodes || []).forEach(node => collect(node?.data?.images || []));
-    const textBytes = value => {
-      try { return unescape(encodeURIComponent(JSON.stringify(value || ""))).length; }
-      catch { return String(value || "").length; }
-    };
-    const imageBytes = images.reduce((sum, img) => sum + textBytes(img), 0);
-    const payloadBytes = textBytes({
-      name: props.stratBName, desc: props.stratBDesc, markets: props.stratBMarkets,
-      timeframes: props.stratBTimeframes, tags: props.stratBTags, variables: props.stratBVariables,
-      nodes: props.canvasNodes, edges: props.canvasEdges, images: props.stratBImages,
-    });
-    const formatBytes = bytes => bytes >= 1024 * 1024
-      ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
-      : `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`;
-    return `${images.length} image${images.length===1?'':'s'} · ${formatBytes(imageBytes)} images · ${formatBytes(payloadBytes)} payload`;
+    const images = summarizeStrategyBuilderImages(props.stratBImages, props.canvasNodes);
+    const payloadBytes = estimateStrategyBuilderPayloadBytes(props);
+    return `${images.count} image${images.count===1?'':'s'} · ${formatStrategyImageBytes(images.bytes)} images · ~${formatStrategyImageBytes(payloadBytes)} payload`;
   }, [props.stratBImages, props.canvasNodes, props.canvasEdges, props.stratBName, props.stratBDesc, props.stratBMarkets, props.stratBTimeframes, props.stratBTags, props.stratBVariables]);
+  React.useEffect(() => {
+    const images = summarizeStrategyBuilderImages(props.stratBImages, props.canvasNodes);
+    logStrategyBuilderDiagnostic('step-change', {
+      step: stratWizardStep,
+      imageCount: images.count,
+      imageBytes: images.bytes,
+      payloadBytes: estimateStrategyBuilderPayloadBytes(props),
+    });
+  }, [stratWizardStep]);
   const requireGeneralInfo = () => {
     if (generalInfoReady) return true;
     setShowGeneralInfoRequired(true);
@@ -8090,18 +8280,19 @@ function StrategyBuilderModal(props) {
           {/* ── Content area ── */}
           <div style={{flex:1,overflow:stratWizardStep===2?'hidden':'auto',display:'flex',flexDirection:'column',minHeight:0}}
             className={stratWizardStep!==2?'tlr-scroll':undefined}>
+            <StrategyBuilderStepBoundary step={stratWizardStep} resetKey={`${stratWizardStep}:${props.stratEditId || 'new'}`} c={c} F={F} compact={compact}>
+              {/* Step 1: General Info */}
+              {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
 
-            {/* Step 1: General Info */}
-            {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
+              {/* Step 2: Canvas */}
+              {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} compact={compact} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
 
-            {/* Step 2: Canvas */}
-            {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} compact={compact} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
+              {/* Step 3: Trade Tags */}
+              {stratWizardStep===3&&<VariablesStepContent c={c} F={F} stratBVariables={props.stratBVariables} setStratBVariables={props.setStratBVariables} />}
 
-            {/* Step 3: Trade Tags */}
-            {stratWizardStep===3&&<VariablesStepContent c={c} F={F} stratBVariables={props.stratBVariables} setStratBVariables={props.setStratBVariables} />}
-
-            {/* Step 4: Review */}
-            {stratWizardStep===4&&<ReviewStepContent c={c} F={F} stratBName={props.stratBName} stratBDesc={props.stratBDesc} stratBMarkets={props.stratBMarkets} stratBTimeframes={props.stratBTimeframes} stratBTags={props.stratBTags} stratBVariables={props.stratBVariables} stratBInstruments={props.stratBInstruments} stratBSupportInst={props.stratBSupportInst} stratBImages={props.stratBImages} stratBLogoEmoji={props.stratBLogoEmoji} canvasNodes={props.canvasNodes} sessions={props.sessions} stratEditId={props.stratEditId} />}
+              {/* Step 4: Review */}
+              {stratWizardStep===4&&<ReviewStepContent c={c} F={F} stratBName={props.stratBName} stratBDesc={props.stratBDesc} stratBMarkets={props.stratBMarkets} stratBTimeframes={props.stratBTimeframes} stratBTags={props.stratBTags} stratBVariables={props.stratBVariables} stratBInstruments={props.stratBInstruments} stratBSupportInst={props.stratBSupportInst} stratBImages={props.stratBImages} stratBLogoEmoji={props.stratBLogoEmoji} canvasNodes={props.canvasNodes} sessions={props.sessions} stratEditId={props.stratEditId} compact={compact} />}
+            </StrategyBuilderStepBoundary>
           </div>
 
           {/* ── Footer (only for steps 1, 3, 4 — step 2 has its own canvas footer) ── */}

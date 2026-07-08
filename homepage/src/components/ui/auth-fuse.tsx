@@ -88,6 +88,11 @@ export function getPostAuthRedirectUrl(opts: {
     if (safeNext) return safeNext;
     return "/dashboard/?view=sessions";
   }
+  // Waitlist leads may sign in but have no dashboard/checkout access — send them
+  // to the public homepage where they can see their profile.
+  if ((user as { is_waitlisted?: boolean }).is_waitlisted) {
+    return "/";
+  }
   if (safeNext && isPathAdminOnlyWip(safeNext)) {
     return firstAllowedPlatformDashboardPath(user, platform);
   }
@@ -145,6 +150,7 @@ export async function completeAuthLogin(
   const url = getPostAuthRedirectUrl({
     user: {
       role: chartUser?.role,
+      is_waitlisted: !!chartUser?.is_waitlisted,
       has_journal_access: chartHasAccess,
       has_active_subscription: !!chartUser?.has_active_subscription,
       manual_full_access: !!chartUser?.manual_full_access,
@@ -929,9 +935,24 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
         setError(readErr(body, "Sign up failed."));
         return;
       }
-      // Waitlist account: no access, so don't log in / send to checkout. Show
-      // the "you're on the waitlist" confirmation instead.
+      // Waitlist account: no dashboard/checkout access, but log them in so the
+      // homepage recognizes them (profile menu). Then show the confirmation with
+      // a Home button. Every dashboard/journal/checkout path stays gated.
       if (body?.waitlist === true || isWaitlist) {
+        try {
+          const lr = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ email, password, next_path: "/" }),
+          });
+          const lb = await lr.json().catch(() => null);
+          if (lr.ok && lb?.user) {
+            localStorage.setItem("talaria_current_user", JSON.stringify(lb.user));
+          }
+        } catch {
+          // Non-fatal — they can still sign in later to view their profile.
+        }
         setStep("waitlist");
         return;
       }
@@ -975,10 +996,10 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
           <p className="text-balance text-sm text-muted-foreground">
             Your account for <strong>{email}</strong> was created and added to the
             waitlist. Access is pending approval — we&apos;ll email you as soon as a
-            spot opens up.
+            spot opens up. You can view your profile from the homepage anytime.
           </p>
-          <AuthButton type="button" variant="outline" className="mt-2" onClick={() => onSignedUp(email)}>
-            Back to sign in
+          <AuthButton type="button" variant="outline" className="mt-2" onClick={() => { window.location.href = "/"; }}>
+            Home
           </AuthButton>
         </div>
       )}
