@@ -7408,6 +7408,7 @@ function renderUsers() {
       <td style="text-align:center;font-weight:600;font-size:12px">${u.session_count || 0}<span style="color:var(--text-muted);font-weight:400">/${u.max_sessions || 1}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         ${u.is_waitlisted ? `<button class="btn sm ok" onclick="approveWaitlist(${u.id},'${esc(u.name)}')" title="Approve: unlock the account and add to the mentorship allowlist">Approve</button>` : ''}
+        ${u.is_waitlisted ? `<button class="btn sm" style="border-color:rgba(59,130,246,.3);color:#60a5fa" onclick="sendWelcomeCoupon(${u.id},'${esc(u.name)}')" title="Email the welcome/gift coupon to this waitlist user">Send coupon</button>` : ''}
         <button type="button" class="btn sm primary" onclick="openUserMonitor(${u.id})" title="Sessions, trades, replay, analytics">Monitor</button>
         <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
         <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
@@ -7476,6 +7477,14 @@ async function deleteUser(id, name) {
   if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
   try { await api(`/api/admin/users/${id}`, { method: 'DELETE' }); toast('User deleted', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+async function sendWelcomeCoupon(id, name) {
+  if (!confirm(`Email the configured welcome/gift coupon to ${name}?`)) return;
+  try {
+    const r = await api(`/api/admin/users/${id}/send-welcome-coupon`, { method: 'POST' });
+    toast('Coupon email sent' + (r && r.code ? ' (' + r.code + ')' : ''), 'ok');
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function approveWaitlist(id, name) {

@@ -695,10 +695,15 @@ def signup_verify_code():
 
     # Welcome-discount nudge: email the admin-configured coupon (if enabled)
     # right after verification, before payment. Never block verification on it.
+    # Waitlist leads (not on the mentorship allowlist while invite-only mode is on)
+    # must NOT get the gift coupon automatically — an admin sends it to them
+    # manually from the dashboard once they decide to let them in.
     try:
-        coupon_code, coupon_note = _signup_welcome_coupon()
-        if coupon_code:
-            send_welcome_coupon_email(email, coupon_code, coupon_note)
+        invited_now, _exists = _signup_eligibility(email)
+        if invited_now:
+            coupon_code, coupon_note = _signup_welcome_coupon()
+            if coupon_code:
+                send_welcome_coupon_email(email, coupon_code, coupon_note)
     except Exception:
         pass
 

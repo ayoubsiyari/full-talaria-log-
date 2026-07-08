@@ -10424,6 +10424,21 @@ def _get_or_create_trading_session_state(db, session_id: int, user_id: int) -> T
     st = db.query(TradingSessionState).filter(TradingSessionState.session_id == session_id).first()
     if st:
         return st
+    if _DATABASE_USES_ROW_LOCK:
+        stmt = pg_insert(TradingSessionState).values(
+            session_id=session_id,
+            user_id=user_id,
+            state_json="{}",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        stmt = stmt.on_conflict_do_nothing(index_elements=["session_id"])
+        db.execute(stmt)
+        db.commit()
+        st = db.query(TradingSessionState).filter(TradingSessionState.session_id == session_id).first()
+        if st:
+            return st
+        raise HTTPException(status_code=500, detail="Session state missing after create")
     st = TradingSessionState(session_id=session_id, user_id=user_id, state_json="{}")
     db.add(st)
     db.commit()
@@ -15833,6 +15848,71 @@ async def admin_set_signup_coupon(payload: _SignupCouponIn, request: Request):
             params={"enabled": enabled, "code": code},
         )
         return {"success": True, "enabled": enabled, "code": code, "note": note}
+    finally:
+        db.close()
+
+
+def _welcome_coupon_email_html(coupon_code: str, coupon_note: str | None) -> str:
+    import html as _html
+    _esc = _html.escape
+    note_html = (
+        f'<p style="color:#5b6b83;font-size:13px;margin:8px 0 0">{_esc(coupon_note)}</p>'
+        if coupon_note else ''
+    )
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;'
+        'background:#0b1220;border-radius:14px;overflow:hidden;border:1px solid #1b2740">'
+        '<div style="padding:28px 32px;text-align:center;background:linear-gradient(135deg,#111c33,#0b1220)">'
+        '<h1 style="color:#ffffff;margin:0;font-size:22px">A gift before you start</h1></div>'
+        '<div style="padding:28px 32px;color:#c7d2e0;font-size:15px;line-height:1.6">'
+        '<p style="margin:0 0 14px">Great news — a spot opened up! As a welcome gift, here is a '
+        'discount code to use at checkout:</p>'
+        '<div style="text-align:center;margin:24px 0">'
+        '<span style="display:inline-block;background:#0b1220;border:1px dashed #5b9dff;'
+        'border-radius:10px;padding:14px 28px;color:#ffffff;font-size:24px;letter-spacing:3px;'
+        f'font-weight:bold">{_esc(coupon_code)}</span></div>'
+        f'{note_html}'
+        '<p style="margin:14px 0 0">Enter this code on the pricing page when you subscribe.</p>'
+        '</div>'
+        '<div style="padding:18px 32px;text-align:center;color:#5b6b83;font-size:12px;'
+        'border-top:1px solid #1b2740">Talaria Log</div></div>'
+    )
+
+
+@app.post("/api/admin/users/{user_id}/send-welcome-coupon")
+async def admin_send_welcome_coupon(user_id: int, request: Request):
+    """Manually email the configured welcome/gift coupon to one user. Used to send
+    the promo to waitlist leads only when the admin decides to — they never get it
+    automatically at signup."""
+    admin = _require_admin(request)
+    admin_id = getattr(admin, "id", 0) or 0
+    if not _bulk_email_rate_ok(admin_id):
+        raise HTTPException(status_code=429, detail="Too many emails sent recently. Please wait a moment.")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.email:
+            raise HTTPException(status_code=404, detail="User not found")
+        code = (_get_app_setting(db, SIGNUP_COUPON_CODE_SETTING, "") or "").strip()
+        note = (_get_app_setting(db, SIGNUP_COUPON_NOTE_SETTING, "") or "").strip() or None
+        if not code:
+            raise HTTPException(
+                status_code=400,
+                detail="No welcome coupon is configured. Set one in the Signup welcome coupon card first.",
+            )
+        html_body = _welcome_coupon_email_html(code, note)
+        sent, failed = _run_bulk_smtp_session([user.email], f"Your welcome discount — Talaria Log", html_body)
+        if not sent:
+            err = (failed[0].get("error") if failed else "Unknown error")
+            raise HTTPException(status_code=502, detail=f"Could not send email: {err}")
+        _record_admin_action(
+            request,
+            action="welcome_coupon_send",
+            target_type="user",
+            target_id=user_id,
+            params={"email": user.email, "code": code},
+        )
+        return {"success": True, "email": user.email, "code": code}
     finally:
         db.close()
 
