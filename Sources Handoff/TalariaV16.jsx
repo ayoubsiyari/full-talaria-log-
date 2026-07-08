@@ -3036,9 +3036,7 @@ function getSectionHeight() {
   return SEC_H;
 }
 function getSlotLocalPositions() {
-  const availW = SEC_W - STRIP_W - 32;
-  const fullRowW = COND_COLS * COND_W + (COND_COLS - 1) * COND_COL_GAP;
-  const localStartX = STRIP_W + 16 + Math.max(0, (availW - fullRowW) / 2);
+  const localStartX = STRIP_W + 72;
   const localY = (SEC_H - COND_H) / 2;
   const slots = [];
   for (let i = 0; i < COND_COLS; i++) {
