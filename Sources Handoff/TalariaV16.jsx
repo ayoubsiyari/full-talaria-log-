@@ -3026,6 +3026,7 @@ const strategyFlowEditLabel = (label, kind) => {
 };
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
+const DESKTOP_BOARD_ZOOM = 0.55;
 const COND_COL_GAP = 108;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getFlowMinGraphWidth() {
@@ -4137,7 +4138,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     if (w === 0) return;
     const minGraphW = getFlowMinGraphWidth();
     const visibleW = Math.max(480, w - 80);
-    const fitZoom = Math.min(BASE_ZOOM, visibleW / minGraphW);
+    const fitZoom = compactBoardPan ? Math.min(BASE_ZOOM, visibleW / minGraphW) : DESKTOP_BOARD_ZOOM;
     fitZoomRef.current = fitZoom;
     const newW = Math.max(minGraphW, visibleW / fitZoom);
     const newX = 32 / fitZoom;
@@ -4152,7 +4153,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         rfRef.current.setViewport({ x, y, zoom: fitZoom });
       }
     }
-  }, [setCanvasNodes]);
+  }, [compactBoardPan, setCanvasNodes]);
 
   useLayoutEffect(() => { applySecSize(); }, []);
 
@@ -4468,10 +4469,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [history, histIdx, setCanvasNodes, setCanvasEdges]);
 
   const doFit = useCallback(() => {
-    if (rfRef.current) rfRef.current.setViewport({ x: 0, y: SEC_GAP * BASE_ZOOM, zoom: BASE_ZOOM }, { duration: 300 });
+    if (rfRef.current) rfRef.current.setViewport({ x: 0, y: SEC_GAP * fitZoomRef.current, zoom: fitZoomRef.current }, { duration: 300 });
   }, []);
 
   const setBoardZoom = useCallback((direction) => {
+    if (!compactBoardPan) return;
     if (!rfRef.current) return;
     const el = canvasContainerRef.current;
     const { x, y, zoom } = rfRef.current.getViewport();
@@ -4487,7 +4489,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       y: el.clientHeight / 2 - centerGraphY * nextZoom,
       zoom: nextZoom,
     }, { duration: 180 });
-  }, []);
+  }, [compactBoardPan]);
 
   const setOutlineZoomBy = useCallback((direction) => {
     setOutlineZoom(z => Math.max(0.75, Math.min(1.25, parseFloat((z + direction * 0.05).toFixed(2)))));
@@ -5266,35 +5268,37 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               style={{border:'none',background:'transparent',color:'#FFB8C2',fontSize:16,lineHeight:1,cursor:'default',padding:0,flexShrink:0}}>×</button>
           </div>
         )}
-        <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            {...zoomButtonHandlers('flow-zoom-in', ()=>flowViewMode==='board'?setBoardZoom(1):setOutlineZoomBy(1))}
-            style={zoomButtonStyle('flow-zoom-in')}
-          >
-            <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-              <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
-              <path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-              <path d="M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-            </svg>
-          </button>
-          <div style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)'}}>
-            {currentZoomPct}%
+        {(flowViewMode !== 'board' || compactBoardPan) && (
+          <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              {...zoomButtonHandlers('flow-zoom-in', ()=>flowViewMode==='board'?setBoardZoom(1):setOutlineZoomBy(1))}
+              style={zoomButtonStyle('flow-zoom-in')}
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
+                <path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <div style={{height:22,minWidth:40,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.72)',fontSize:10,fontWeight:900,fontFamily:F,fontVariantNumeric:'tabular-nums',letterSpacing:'0.02em',textShadow:'0 2px 8px rgba(0,0,0,0.7)'}}>
+              {currentZoomPct}%
+            </div>
+            <button
+              type="button"
+              aria-label="Zoom out"
+              {...zoomButtonHandlers('flow-zoom-out', ()=>flowViewMode==='board'?setBoardZoom(-1):setOutlineZoomBy(-1))}
+              style={zoomButtonStyle('flow-zoom-out')}
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+                <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
+                <path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Zoom out"
-            {...zoomButtonHandlers('flow-zoom-out', ()=>flowViewMode==='board'?setBoardZoom(-1):setOutlineZoomBy(-1))}
-            style={zoomButtonStyle('flow-zoom-out')}
-          >
-            <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-              <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2.2"/>
-              <path d="M15.5 15.5L21 21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-              <path d="M7.5 10.5h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
+        )}
 
         {/* Canvas Area */}
         {flowViewMode === 'board' ? (
