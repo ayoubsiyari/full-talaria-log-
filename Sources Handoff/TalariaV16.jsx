@@ -5389,9 +5389,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           <div style={{width:'min(920px,100%)',minHeight:'calc(100% - 8px)',margin:'0 auto',position:'relative',isolation:'isolate',overflow:'hidden',background:'#FFFFFF',color:'#101828',boxShadow:'0 34px 90px rgba(0,0,0,0.62),0 0 0 1px rgba(255,255,255,0.08)',display:'flex',flexDirection:'column',padding:'42px 48px 54px',fontFamily:F,zoom:outlineZoom}}>
             <img src="/LOGO-07.png" alt="" aria-hidden="true" style={{position:'absolute',left:'50%',top:'46%',width:360,height:360,objectFit:'contain',opacity:0.035,transform:'translate(-50%,-50%) rotate(-8deg)',pointerEvents:'none',userSelect:'none',zIndex:0}}/>
             <div style={{position:'relative',zIndex:1,display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,paddingBottom:18,marginBottom:18,borderBottom:`3px solid ${outlineFlowColors.group}`}}>
-              <div style={{minWidth:0}}>
-                <div style={{fontSize:11,color:'#2643F7',fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase'}}>Talaria Strategy Builder</div>
-                <div style={{marginTop:8,fontSize:30,lineHeight:1.1,color:'#101828',fontWeight:900,letterSpacing:0,textTransform:'uppercase'}}>{stratBName || 'Strategy Flow'}</div>
+              <div style={{display:'flex',alignItems:'center',gap:14,minWidth:0}}>
+                <img src="/LOGO-07.png" alt="Talaria" style={{height:54,width:'auto',objectFit:'contain',flexShrink:0}}/>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:11,color:'#2643F7',fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase'}}>Talaria Strategy Builder</div>
+                  <div style={{marginTop:8,fontSize:30,lineHeight:1.1,color:'#101828',fontWeight:900,letterSpacing:0,textTransform:'uppercase'}}>{stratBName || 'Strategy Flow'}</div>
+                </div>
               </div>
               <div style={{fontSize:11,color:'#667085',lineHeight:1.6,textAlign:'right',fontWeight:700,whiteSpace:'nowrap'}}>
                 {sections.length} group{sections.length!==1?'s':''}<br/>
@@ -5411,8 +5414,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               <section key={group.id} style={{position:'relative',zIndex:1,padding:'18px 0 0',marginTop:gi===0?0:22,borderTop:`1px solid rgba(201,168,76,0.55)`,breakInside:'avoid'}}>
                 <div style={{display:'grid',gridTemplateColumns:'68px minmax(0,1fr)',gap:20}}>
                   <div style={{borderRight:`2px solid rgba(201,168,76,0.42)`,paddingRight:14}}>
-                    <div style={{fontSize:10,color:'#667085',fontFamily:F,fontWeight:900,letterSpacing:'0.12em',textTransform:'uppercase'}}>Group</div>
-                    <div style={{marginTop:7,fontSize:30,lineHeight:1,color:outlineFlowColors.group,fontFamily:F,fontWeight:900,fontVariantNumeric:'tabular-nums'}}>
+                    <div style={{fontSize:30,lineHeight:1,color:outlineFlowColors.group,fontFamily:F,fontWeight:900,fontVariantNumeric:'tabular-nums'}}>
                       {String(gi+1).padStart(2,'0')}
                     </div>
                   </div>
