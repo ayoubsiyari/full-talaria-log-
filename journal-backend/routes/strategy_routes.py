@@ -16,9 +16,16 @@ from schemas.strategy_lab import (
 
 strategy_bp = Blueprint('strategy', __name__)
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'uploads')
-STRATEGY_IMAGES_FOLDER = os.path.join(UPLOAD_FOLDER, 'strategy-images')
-os.makedirs(STRATEGY_IMAGES_FOLDER, exist_ok=True)
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), '..', 'uploads'
+)
+STRATEGY_IMAGES_FOLDER = os.environ.get('STRATEGY_IMAGES_DIR') or os.path.join(UPLOAD_FOLDER, 'strategy-images')
+try:
+    os.makedirs(STRATEGY_IMAGES_FOLDER, exist_ok=True)
+except OSError:
+    # The uploads path may be on a read-only or permission-restricted volume in
+    # production; the upload endpoint falls back to inline data URLs in that case.
+    pass
 
 STRATEGY_IMAGE_FILENAME_RE = re.compile(r'^(\d+)_[a-f0-9]{32}\.(png|jpg|jpeg|webp|gif)$')
 MAX_STRATEGY_IMAGE_BYTES = int(os.environ.get('MAX_STRATEGY_IMAGE_BYTES', str(5 * 1024 * 1024)))
@@ -80,8 +87,15 @@ def upload_strategy_image():
 
         fname = f'{user_id}_{uuid.uuid4().hex}.{ext}'
         path = os.path.join(STRATEGY_IMAGES_FOLDER, fname)
-        with open(path, 'wb') as f:
-            f.write(binary)
+        try:
+            os.makedirs(STRATEGY_IMAGES_FOLDER, exist_ok=True)
+            with open(path, 'wb') as f:
+                f.write(binary)
+        except OSError:
+            # Filesystem is not writable (e.g. read-only container volume / missing
+            # permissions). Keep the image inline as a data URL so saving the strategy
+            # still succeeds — the strategy schema accepts data-URL images and caps size.
+            return jsonify({'success': True, 'url': data_url, 'path': data_url, 'inline': True}), 200
 
         url = f'/journal/api/strategy-images/{fname}'
         return jsonify({'success': True, 'url': url, 'path': url}), 201
