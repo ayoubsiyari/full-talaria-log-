@@ -752,7 +752,7 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
   );
 }
 
-type SignupStep = "email" | "code" | "password";
+type SignupStep = "email" | "code" | "password" | "waitlist";
 
 function SignupStepper({ step }: { step: SignupStep }) {
   const steps: { key: SignupStep; label: string }[] = [
@@ -802,6 +802,9 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  // True when the entered email isn't on the mentorship allowlist (invite-only
+  // mode): the user still completes signup but lands on the waitlist (no access).
+  const [isWaitlist, setIsWaitlist] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; password?: string; confirmPassword?: string }>({});
 
   const jsonPost = async (url: string, payload: Record<string, unknown>) => {
@@ -841,10 +844,10 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
         setError(body.message || "An account with this email already exists. Please log in.");
         return;
       }
-      if (body && body.invited === false) {
-        setError(body.message || "Registration is currently open to Mentorship members only.");
-        return;
-      }
+      // Not on the mentorship allowlist → waitlist flow. They still verify their
+      // email and set a password; access is withheld until an admin approves.
+      const waitlist = body?.waitlist === true || body?.invited === false;
+      setIsWaitlist(waitlist);
       const sent = await jsonPost("/journal/api/auth/signup/send-code", { email: trimmedEmail });
       if (!sent.res.ok) {
         setError(readErr(sent.body, "Could not send the verification code. Please try again."));
@@ -926,6 +929,12 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
         setError(readErr(body, "Sign up failed."));
         return;
       }
+      // Waitlist account: no access, so don't log in / send to checkout. Show
+      // the "you're on the waitlist" confirmation instead.
+      if (body?.waitlist === true || isWaitlist) {
+        setStep("waitlist");
+        return;
+      }
       // Auto-login and send the new member straight to pricing to pay.
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
@@ -948,9 +957,31 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <h1 className="text-2xl font-bold">Create an account</h1>
-        <SignupStepper step={step} />
+        <h1 className="text-2xl font-bold">{step === "waitlist" ? "You're on the waitlist" : "Create an account"}</h1>
+        {step !== "waitlist" && <SignupStepper step={step} />}
       </div>
+
+      {isWaitlist && step !== "waitlist" && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+          This email isn&apos;t on the Mentorship list yet. You can still finish
+          creating your account to join the <strong>waitlist</strong> — we&apos;ll
+          email you when a spot opens. You won&apos;t have access until an admin approves you.
+        </div>
+      )}
+
+      {step === "waitlist" && (
+        <div className="grid gap-4 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-600/15 text-2xl">✓</div>
+          <p className="text-balance text-sm text-muted-foreground">
+            Your account for <strong>{email}</strong> was created and added to the
+            waitlist. Access is pending approval — we&apos;ll email you as soon as a
+            spot opens up.
+          </p>
+          <AuthButton type="button" variant="outline" className="mt-2" onClick={() => onSignedUp(email)}>
+            Back to sign in
+          </AuthButton>
+        </div>
+      )}
 
       {step === "email" && (
         <form onSubmit={handleEmailStep} className="grid gap-4">
@@ -1034,7 +1065,11 @@ function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => v
           </div>
           {error && <div className="text-sm text-red-500">{error}</div>}
           <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>
-            {loading ? "Creating…" : "Create account & continue to payment"}
+            {loading
+              ? "Creating…"
+              : isWaitlist
+                ? "Create account & join waitlist"
+                : "Create account & continue to payment"}
           </AuthButton>
         </form>
       )}

@@ -470,12 +470,15 @@ def register_user():
     if existing_user:
         return jsonify({"error": "An account with this email already exists"}), 400
 
-    # Invite-only gate: when allowlist mode is on, only pre-approved emails may register.
+    # Invite-only gate: when allowlist mode is on, non-approved emails are not
+    # blocked — they are created as WAITLIST accounts (no access) so we capture
+    # the lead. Approved emails register normally.
     allow_entry = None
+    waitlisted = False
     if _signup_allowlist_only():
         allow_entry = _allowlist_lookup(email)
         if not allow_entry:
-            return jsonify({"error": SIGNUP_BLOCKED_MESSAGE, "code": "mentorship_only"}), 403
+            waitlisted = True
 
     # Signup wizard gate: the mailbox must have completed the email-code step.
     if not _email_verified_for_signup(email):
@@ -490,7 +493,8 @@ def register_user():
         email=email,
         password=password_hash,
         is_active=True,
-        has_journal_access=False
+        has_journal_access=False,
+        is_waitlisted=waitlisted,
     )
     # Link the registrant to their cohort (for reporting) when they were invited —
     # even if allowlist-only mode is off (allow_entry is None then), so invited
@@ -514,6 +518,17 @@ def register_user():
     # Email was already verified via the signup wizard; consume the pending row.
     _consume_signup_verification(email)
     db.session.commit()
+
+    if waitlisted:
+        return jsonify({
+            "message": (
+                "You're on the waitlist! Your account is created but access is "
+                "pending approval. We'll email you when a spot opens."
+            ),
+            "waitlist": True,
+            "requires_verification": False,
+            "email": email,
+        }), 201
 
     return jsonify({
         "message": "Account created successfully! You can now log in.",
@@ -543,11 +558,18 @@ def signup_check():
             "message": "An account with this email already exists. Please log in.",
         }), 200
     if not invited:
+        # Not on the mentorship allowlist while invite-only mode is on: instead of
+        # turning them away, let them finish signup as a WAITLIST lead (no access
+        # until an admin approves them). The frontend switches to a waitlist copy.
         return jsonify({
             "invited": False,
+            "waitlist": True,
             "exists": False,
-            "code": "mentorship_only",
-            "message": SIGNUP_BLOCKED_MESSAGE,
+            "code": "waitlist",
+            "message": (
+                "You're not on the Mentorship list yet. You can still create an "
+                "account to join the waitlist — we'll email you when a spot opens."
+            ),
         }), 200
     return jsonify({"invited": True, "exists": False}), 200
 
@@ -570,8 +592,8 @@ def signup_send_code():
             "error": "An account with this email already exists. Please log in.",
             "code": "exists",
         }), 400
-    if not invited:
-        return jsonify({"error": SIGNUP_BLOCKED_MESSAGE, "code": "mentorship_only"}), 403
+    # Non-invited emails are NOT blocked here — they still verify their mailbox so
+    # the waitlist collects real, reachable leads. Access is withheld at register.
 
     now = datetime.utcnow()
     try:

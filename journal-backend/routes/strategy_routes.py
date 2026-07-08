@@ -1,8 +1,11 @@
 # backend/routes/strategy_routes.py
 
+import base64
 import os
+import re
+import uuid
 from collections import defaultdict
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Strategy, JournalEntry
 from schemas.strategy_lab import (
@@ -12,6 +15,20 @@ from schemas.strategy_lab import (
 
 
 strategy_bp = Blueprint('strategy', __name__)
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'uploads')
+STRATEGY_IMAGES_FOLDER = os.path.join(UPLOAD_FOLDER, 'strategy-images')
+os.makedirs(STRATEGY_IMAGES_FOLDER, exist_ok=True)
+
+STRATEGY_IMAGE_FILENAME_RE = re.compile(r'^(\d+)_[a-f0-9]{32}\.(png|jpg|jpeg|webp|gif)$')
+MAX_STRATEGY_IMAGE_BYTES = int(os.environ.get('MAX_STRATEGY_IMAGE_BYTES', str(5 * 1024 * 1024)))
+STRATEGY_IMAGE_TYPES = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+}
 
 
 def _uid():
@@ -33,6 +50,55 @@ def _strategy_dict(strategy, include_legacy=True):
         out['exit_rules'] = strategy.exit_rules
         out['risk_management'] = strategy.risk_management
     return out
+
+
+@strategy_bp.route('/strategy-images', methods=['POST'])
+@jwt_required()
+def upload_strategy_image():
+    """Store Strategy Builder image blobs as files and return a small URL for strategy JSON."""
+    try:
+        user_id = _uid()
+        data = request.get_json(silent=True) or {}
+        data_url = data.get('data_url') or data.get('dataUrl')
+        if not isinstance(data_url, str) or not data_url.startswith('data:image/') or ',' not in data_url:
+            return jsonify({'success': False, 'error': 'Missing or invalid image data'}), 400
+
+        header, b64 = data_url.split(',', 1)
+        mime = header[5:].split(';', 1)[0].strip().lower()
+        ext = STRATEGY_IMAGE_TYPES.get(mime)
+        if not ext:
+            return jsonify({'success': False, 'error': 'Only JPEG, PNG, WebP, or GIF images are supported'}), 400
+
+        try:
+            binary = base64.b64decode(b64, validate=True)
+        except Exception:
+            return jsonify({'success': False, 'error': 'Invalid image data'}), 400
+
+        if not binary or len(binary) > MAX_STRATEGY_IMAGE_BYTES:
+            max_mb = round(MAX_STRATEGY_IMAGE_BYTES / (1024 * 1024), 1)
+            return jsonify({'success': False, 'error': f'Image too large. Max {max_mb} MB.'}), 413
+
+        fname = f'{user_id}_{uuid.uuid4().hex}.{ext}'
+        path = os.path.join(STRATEGY_IMAGES_FOLDER, fname)
+        with open(path, 'wb') as f:
+            f.write(binary)
+
+        url = f'/journal/api/strategy-images/{fname}'
+        return jsonify({'success': True, 'url': url, 'path': url}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@strategy_bp.route('/strategy-images/<filename>', methods=['GET'])
+def serve_strategy_image(filename):
+    """Serve uploaded strategy images. Filenames are opaque and unguessable."""
+    safe = os.path.basename(filename)
+    if not STRATEGY_IMAGE_FILENAME_RE.match(safe):
+        return jsonify({'error': 'Not found'}), 404
+    full = os.path.join(STRATEGY_IMAGES_FOLDER, safe)
+    if not os.path.isfile(full):
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory(STRATEGY_IMAGES_FOLDER, safe)
 
 
 @strategy_bp.route('/strategies', methods=['GET'])

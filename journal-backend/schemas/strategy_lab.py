@@ -6,11 +6,20 @@ MAX_DESC_LEN = 5000
 MAX_COVER_IMAGE_LEN = 2_800_000
 
 
+def _is_strategy_image_url(val):
+    return isinstance(val, str) and (
+        val.startswith('/journal/api/strategy-images/')
+        or val.startswith('/api/strategy-images/')
+    )
+
+
 def _sanitize_cover_image(val):
     """Allow only safe data-URL images (no SVG) for strategy_definition.cover_image."""
     if not isinstance(val, str) or not val.strip():
         return ''
     val = val.strip()
+    if _is_strategy_image_url(val):
+        return val[:500]
     if len(val) > MAX_COVER_IMAGE_LEN:
         return ''
     if not val.startswith('data:image/'):

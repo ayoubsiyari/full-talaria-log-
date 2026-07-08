@@ -91,6 +91,9 @@ class User(db.Model):
     max_personal_live_journals = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     max_prop_live_journals = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     entitlements_override = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
+    # Signed up while invite-only mode was on but not on the mentorship allowlist:
+    # a lead with a real account but NO access until an admin approves them.
+    is_waitlisted = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
     # Community / feed display id (e.g. TLR-00428173) — not the internal primary key.
     public_id = db.Column(db.String(20), unique=True, nullable=True, index=True)
 

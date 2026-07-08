@@ -6,6 +6,7 @@ export const TALARIA_V9_PANEL_KEY = "talaria_v9";
 
 /** Align with journal-backend — max stored data-URL length per image. */
 const MAX_IMAGE_DATA_LEN = MAX_IMAGE_DATA_URL_LEN;
+const STRATEGY_IMAGE_URL_RE = /^\/(?:journal\/)?api\/strategy-images\/[A-Za-z0-9_.-]+$/;
 
 export type StrategyImageEntry = { src: string; name?: string };
 
@@ -22,7 +23,9 @@ export function strategyImageUrl(item: unknown): string {
 
 function sanitizeImageEntry(entry: unknown): StrategyImageEntry | null {
   const src = strategyImageUrl(entry).trim();
-  if (!src.startsWith("data:image/") || src.length > MAX_IMAGE_DATA_LEN) return null;
+  const isUploadedUrl = STRATEGY_IMAGE_URL_RE.test(src);
+  const isDataImage = src.startsWith("data:image/") && src.length <= MAX_IMAGE_DATA_LEN;
+  if (!isUploadedUrl && !isDataImage) return null;
   const name =
     typeof entry === "object" && entry !== null && "name" in entry
       ? String((entry as { name?: unknown }).name || "").trim()
@@ -188,7 +191,6 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
   const name = String(strat.name || "Untitled Strategy").trim() || "Untitled Strategy";
   const desc = String(strat.desc || "").trim();
   const galleryImages = sanitizeImageList(strat.images, 6);
-  const coverFromGallery = galleryImages[0]?.src || "";
 
   const core = definitionFromDraft({
     name,
@@ -200,7 +202,7 @@ export function bankStrategyToApiBody(strat: Record<string, unknown>): {
     timeframe: Array.isArray(strat.timeframes) && strat.timeframes.length ? strat.timeframes[0] : "",
     conditions: strat.conditions,
     variables: strat.variables,
-    cover_image: coverFromGallery,
+    cover_image: "",
   }) as Record<string, unknown>;
 
   const talaria_v9 = {

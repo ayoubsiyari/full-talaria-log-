@@ -48,6 +48,9 @@ def _normalize_preview_entry(entry: Any) -> dict | None:
         src = raw.strip() if isinstance(raw, str) else ""
         nm = entry.get("name")
         name = str(nm).strip()[:120] if nm else ""
+    is_uploaded = src.startswith("/journal/api/strategy-images/") or src.startswith("/api/strategy-images/")
+    if is_uploaded:
+        return {"src": src[:500], "name": name} if name else {"src": src[:500]}
     if not src.startswith("data:image/") or len(src) > MAX_PREVIEW_IMAGE_LEN:
         return None
     return {"src": src, "name": name} if name else {"src": src}

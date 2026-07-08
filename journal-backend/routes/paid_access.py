@@ -76,6 +76,17 @@ def register_paid_journal_guard(
                 }
             ), 403
 
+        # Waitlist leads have a real account but NO access to anything until an
+        # admin approves them.
+        if getattr(user, "is_waitlisted", False):
+            return jsonify(
+                {
+                    "error": "waitlisted",
+                    "action": "waitlisted",
+                    "message": "Your account is on the waitlist. Access is pending approval.",
+                }
+            ), 403
+
         platform_section = JOURNAL_MODULE_PLATFORM_SECTION.get(required_module or "")
         if platform_section and not user_may_use_platform_section(user, platform_section):
             return jsonify(

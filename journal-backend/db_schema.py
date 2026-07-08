@@ -59,6 +59,12 @@ def ensure_users_schema(app) -> None:
                     )
                     conn.execute(
                         text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "is_waitlisted BOOLEAN NOT NULL DEFAULT FALSE"
+                        )
+                    )
+                    conn.execute(
+                        text(
                             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id "
                             "ON users (public_id) WHERE public_id IS NOT NULL"
                         )
@@ -304,6 +310,13 @@ def ensure_users_schema(app) -> None:
                             text(
                                 "ALTER TABLE users ADD COLUMN "
                                 "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
+                    if "is_waitlisted" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "is_waitlisted BOOLEAN NOT NULL DEFAULT 0"
                             )
                         )
                     if "max_personal_live_journals" not in cols:

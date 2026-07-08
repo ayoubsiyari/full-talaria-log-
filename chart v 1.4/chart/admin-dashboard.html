@@ -3395,6 +3395,7 @@ select { cursor:default; }
             <div style="display:flex;gap:6px;padding:14px 20px 0;flex-wrap:wrap">
               <button type="button" class="btn sm primary" id="userTabAll" onclick="setUserTab('all')">All users <span id="userTabAllCount">0</span></button>
               <button type="button" class="btn sm" id="userTabMentorship" onclick="setUserTab('mentorship')">Mentorship <span id="userTabMentorshipCount">0</span></button>
+              <button type="button" class="btn sm" id="userTabWaitlist" onclick="setUserTab('waitlist')">Waitlist <span id="userTabWaitlistCount">0</span></button>
             </div>
             <div class="search-bar" style="padding:16px 20px 0">
               <input type="text" id="searchInput" placeholder="Search by name or email..." oninput="renderUsers()">
@@ -7342,20 +7343,23 @@ async function sendBulkEmailFromAdmin() {
 
 let userTab = 'all';
 function setUserTab(tab) {
-  userTab = tab === 'mentorship' ? 'mentorship' : 'all';
-  const a = $('userTabAll'), m = $('userTabMentorship');
+  userTab = (tab === 'mentorship' || tab === 'waitlist') ? tab : 'all';
+  const a = $('userTabAll'), m = $('userTabMentorship'), w = $('userTabWaitlist');
   if (a) a.classList.toggle('primary', userTab === 'all');
   if (m) m.classList.toggle('primary', userTab === 'mentorship');
+  if (w) w.classList.toggle('primary', userTab === 'waitlist');
   renderUsers();
 }
 
 function renderUsers() {
   const search = ($('searchInput').value || '').toLowerCase();
   const filter = $('filterStatus').value;
-  const mentorshipUsers = allUsers.filter(u => u.is_mentorship || u.group_id);
+  const mentorshipUsers = allUsers.filter(u => (u.is_mentorship || u.group_id) && !u.is_waitlisted);
+  const waitlistUsers = allUsers.filter(u => u.is_waitlisted);
   const allCountEl = $('userTabAllCount'); if (allCountEl) allCountEl.textContent = allUsers.length;
   const mtCountEl = $('userTabMentorshipCount'); if (mtCountEl) mtCountEl.textContent = mentorshipUsers.length;
-  const base = userTab === 'mentorship' ? mentorshipUsers : allUsers;
+  const wlCountEl = $('userTabWaitlistCount'); if (wlCountEl) wlCountEl.textContent = waitlistUsers.length;
+  const base = userTab === 'mentorship' ? mentorshipUsers : (userTab === 'waitlist' ? waitlistUsers : allUsers);
   let filtered = base.filter(u => {
     if (filter && u.status !== filter) return false;
     if (search && !u.name.toLowerCase().includes(search) && !u.email.toLowerCase().includes(search)) return false;
@@ -7376,7 +7380,8 @@ function renderUsers() {
   if (!filtered.length) { tbody.innerHTML = ''; return; }
 
   tbody.innerHTML = filtered.map(u => {
-    const statusBadge = u.status === 'banned' ? '<span class="badge badge-banned">Banned</span>'
+    const statusBadge = u.is_waitlisted ? '<span class="badge" style="background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.35)" title="On the waitlist — no access until approved">Waitlist</span>'
+      : u.status === 'banned' ? '<span class="badge badge-banned">Banned</span>'
       : u.status === 'expired' ? '<span class="badge badge-expired">Expired</span>'
       : '<span class="badge badge-active">Active</span>';
     const roleBadge = u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : '<span class="badge badge-user">User</span>';
@@ -7402,6 +7407,7 @@ function renderUsers() {
       <td style="text-align:center;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums">${u.trading_sessions_count != null ? u.trading_sessions_count : 0}</td>
       <td style="text-align:center;font-weight:600;font-size:12px">${u.session_count || 0}<span style="color:var(--text-muted);font-weight:400">/${u.max_sessions || 1}</span></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${u.is_waitlisted ? `<button class="btn sm ok" onclick="approveWaitlist(${u.id},'${esc(u.name)}')" title="Approve: unlock the account and add to the mentorship allowlist">Approve</button>` : ''}
         <button type="button" class="btn sm primary" onclick="openUserMonitor(${u.id})" title="Sessions, trades, replay, analytics">Monitor</button>
         <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
         <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
@@ -7470,6 +7476,20 @@ async function deleteUser(id, name) {
   if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
   try { await api(`/api/admin/users/${id}`, { method: 'DELETE' }); toast('User deleted', 'ok'); await Promise.all([loadUsers(), loadSessions()]); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+async function approveWaitlist(id, name) {
+  const cohort = prompt(`Approve ${name} from the waitlist.\n\nOptional: assign a cohort name (leave blank for none). This unlocks their account and adds them to the mentorship allowlist.`, '');
+  if (cohort === null) return; // cancelled
+  try {
+    await api(`/api/admin/waitlist/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cohort_name: (cohort || '').trim() || null }),
+    });
+    toast('Approved — account unlocked', 'ok');
+    await loadUsers();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 function umKpi(label, val) {

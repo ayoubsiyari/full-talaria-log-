@@ -28,7 +28,11 @@ def register_all_blueprints(app):
         required_module="journal",
         skip_endpoints=_JOURNAL_PUBLIC,
     )
-    register_paid_journal_guard(strategy_bp, required_module="strategies")
+    register_paid_journal_guard(
+        strategy_bp,
+        required_module="strategies",
+        skip_endpoints=frozenset({"strategy.serve_strategy_image"}),
+    )
     register_paid_journal_guard(profile_bp, required_module="journal")
     register_paid_journal_guard(chart_bp, required_module="chart")
     register_paid_journal_guard(

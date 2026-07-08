@@ -22,6 +22,7 @@ from sqlalchemy import (
     case,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, aliased
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime, timedelta
 import sys
 import csv
@@ -910,6 +911,9 @@ class User(Base):
     birth_date = Column(Date, nullable=True)
     public_id = Column(String(20), unique=True, nullable=True, index=True)
     group_id = Column(Integer, ForeignKey("journal_groups.id"), nullable=True)
+    # Signed up while invite-only mode was on but not on the mentorship allowlist:
+    # a lead with a real account but NO access to anything until an admin approves.
+    is_waitlisted = Column(Boolean, default=False, nullable=False, server_default="false")
 
 
 class Group(Base):
@@ -1373,6 +1377,7 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS public_id VARCHAR(20)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS group_id INTEGER"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_waitlisted BOOLEAN NOT NULL DEFAULT FALSE"))
         try:
             _conn.execute(text("ALTER TABLE journal_groups ADD COLUMN IF NOT EXISTS default_modules TEXT"))
         except Exception:
@@ -10439,26 +10444,49 @@ def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, jour
             continue
         incoming_ids.add(tid)
         payload = json.dumps(raw, separators=(",", ":"))
-        row = (
-            db.query(TradingSessionJournalTrade)
-            .filter(
-                TradingSessionJournalTrade.session_id == session_id,
-                TradingSessionJournalTrade.client_trade_id == tid,
-            )
-            .first()
-        )
-        if row:
-            row.payload_json = payload
-            row.user_id = user_id
-        else:
-            db.add(
-                TradingSessionJournalTrade(
-                    session_id=session_id,
-                    user_id=user_id,
-                    client_trade_id=tid,
-                    payload_json=payload,
+        if DATABASE_URL.startswith("sqlite"):
+            row = (
+                db.query(TradingSessionJournalTrade)
+                .filter(
+                    TradingSessionJournalTrade.session_id == session_id,
+                    TradingSessionJournalTrade.client_trade_id == tid,
                 )
+                .first()
             )
+            if row:
+                row.payload_json = payload
+                row.user_id = user_id
+            else:
+                db.add(
+                    TradingSessionJournalTrade(
+                        session_id=session_id,
+                        user_id=user_id,
+                        client_trade_id=tid,
+                        payload_json=payload,
+                    )
+                )
+        else:
+            now = datetime.utcnow()
+            stmt = pg_insert(TradingSessionJournalTrade).values(
+                session_id=session_id,
+                user_id=user_id,
+                client_trade_id=tid,
+                payload_json=payload,
+                created_at=now,
+                updated_at=now,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[
+                    TradingSessionJournalTrade.session_id,
+                    TradingSessionJournalTrade.client_trade_id,
+                ],
+                set_={
+                    "user_id": user_id,
+                    "payload_json": payload,
+                    "updated_at": now,
+                },
+            )
+            db.execute(stmt)
 
     q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
     if incoming_ids:
@@ -11135,6 +11163,7 @@ def _user_public_dict_impl(user: User, db=None):
         "timezone": getattr(user, 'timezone', 'UTC'),
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
+        "is_waitlisted": bool(getattr(user, "is_waitlisted", False)),
         "manual_full_access": bool(getattr(user, "has_journal_access", False)),
         "module_grants": grants or {},
         "has_journal_access": journal_entitled,
@@ -11443,7 +11472,14 @@ async def auth_signup(payload: SignUpIn, request: Request):
         if existing:
             raise HTTPException(status_code=400, detail="Email already exists")
 
-        allow_entry = _assert_email_may_register(db, email)
+        # Invite-only: non-approved emails become WAITLIST accounts (no access)
+        # instead of being rejected — mirrors the journal signup wizard.
+        allow_entry = None
+        waitlisted = False
+        if _signup_allowlist_only(db):
+            allow_entry = _allowlist_entry(db, email)
+            if not allow_entry:
+                waitlisted = True
 
         # Signup-wizard gate: the mailbox must have passed the email-code step.
         # This mirrors the journal /signup gate so the chart password-signup
@@ -11464,6 +11500,7 @@ async def auth_signup(payload: SignUpIn, request: Request):
             password_hash=_hash_password(payload.password),
             role="user",
             is_active=True,
+            is_waitlisted=waitlisted,
         )
         # Link the registrant to their cohort whenever they were invited — even if
         # allowlist-only mode is off (allow_entry is None then), so invited students
@@ -11490,7 +11527,7 @@ async def auth_signup(payload: SignUpIn, request: Request):
             db.commit()
         except Exception:
             db.rollback()
-        return {"success": True, "user": _user_public_dict(user)}
+        return {"success": True, "waitlist": bool(waitlisted), "user": _user_public_dict(user)}
     finally:
         db.close()
 
@@ -11583,6 +11620,20 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
 
         _chart_enforce_mfa_if_enabled(db, user, payload.totp_code)
 
+        # Waitlist leads cannot sign in (even toward pricing) — they have no access
+        # until an admin approves them (which clears is_waitlisted).
+        if getattr(user, "is_waitlisted", False):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "waitlisted",
+                    "message": (
+                        "Your account is on the waitlist. We'll email you when a spot "
+                        "opens — you'll be able to sign in then."
+                    ),
+                },
+            )
+
         is_admin = (user.role or "") == "admin"
         entitled = is_admin or _user_may_access_platform(db, user)
         if not entitled and not _is_pricing_renewal_path(payload.next_path):
@@ -11639,13 +11690,21 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
         user = db.query(User).filter(User.email == email).first()
         is_new = False
         if not user:
-            allow_entry = _assert_email_may_register(db, email)
+            # Invite-only: non-approved Google sign-ups become waitlist accounts
+            # (no access) instead of being rejected.
+            allow_entry = None
+            waitlisted = False
+            if _signup_allowlist_only(db):
+                allow_entry = _allowlist_entry(db, email)
+                if not allow_entry:
+                    waitlisted = True
             user = User(
                 name=name,
                 email=email,
                 password_hash=_hash_password(secrets.token_urlsafe(48)),
                 role="user",
                 is_active=True,
+                is_waitlisted=waitlisted,
             )
             if allow_entry and allow_entry.cohort_id:
                 user.group_id = allow_entry.cohort_id
@@ -11678,6 +11737,20 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
                         "message": _login_access_denied_message(user, ctx),
                     },
                 )
+
+        # Waitlist leads (incl. brand-new Google sign-ups not on the allowlist)
+        # cannot sign in until an admin approves them.
+        if getattr(user, "is_waitlisted", False):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "waitlisted",
+                    "message": (
+                        "Your account is on the waitlist. We'll email you when a spot "
+                        "opens — you'll be able to sign in then."
+                    ),
+                },
+            )
 
         session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)
@@ -16005,6 +16078,69 @@ async def admin_mentorship_allowlist_delete(entry_id: int, request: Request):
         db.close()
 
 
+class _WaitlistApproveIn(BaseModel):
+    cohort_name: str | None = None
+
+
+@app.post("/api/admin/waitlist/{user_id}/approve")
+async def admin_waitlist_approve(user_id: int, request: Request, payload: _WaitlistApproveIn | None = None):
+    """Approve a waitlist lead: clear the waitlist flag (so they can sign in and
+    subscribe) and add their email to the mentorship allowlist. Optionally attach
+    them to a (find-or-create) cohort."""
+    admin = _require_admin(request)
+    added_by = getattr(admin, "email", None) if admin else None
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        cohort_id = None
+        cohort_name = (getattr(payload, "cohort_name", None) or "").strip() if payload else ""
+        if cohort_name:
+            cohort = db.query(Group).filter(Group.name == cohort_name).first()
+            if not cohort:
+                cohort = Group(name=cohort_name, description=f"Mentorship cohort: {cohort_name}", is_active=True)
+                db.add(cohort)
+                db.flush()
+            cohort_id = cohort.id
+
+        email = (user.email or "").strip().lower()
+        entry = _allowlist_entry(db, email)
+        if not entry:
+            entry = MentorshipAllowlist(
+                email=email,
+                cohort_id=cohort_id,
+                note="Approved from waitlist",
+                added_by=added_by,
+                registered_at=datetime.utcnow(),
+            )
+            db.add(entry)
+        else:
+            if cohort_id is not None:
+                entry.cohort_id = cohort_id
+            if not entry.registered_at:
+                entry.registered_at = datetime.utcnow()
+
+        # Unlock the account and link the cohort for reporting.
+        user.is_waitlisted = False
+        if cohort_id is not None:
+            user.group_id = cohort_id
+        elif entry and entry.cohort_id and not user.group_id:
+            user.group_id = entry.cohort_id
+        db.commit()
+        _record_admin_action(
+            request,
+            action="waitlist_approve",
+            target_type="user",
+            target_id=user_id,
+            params={"email": email, "cohort_name": cohort_name or None},
+        )
+        return {"success": True, "user_id": user_id, "email": email}
+    finally:
+        db.close()
+
+
 @app.post("/api/admin/mentorship/cohorts/{group_id}/purge-members")
 async def admin_mentorship_purge_members(group_id: int, request: Request):
     """Delete every (non-admin) user account assigned to this cohort. Intended to
@@ -18503,6 +18639,10 @@ def _user_may_access_platform(db, user: User) -> bool:
     module. Per-section visibility is still enforced by _chart_user_has_module,
     so partial students only see the sections they were granted."""
     if not user:
+        return False
+    # Waitlist leads never get platform access until an admin approves them
+    # (clears is_waitlisted), regardless of any stray grant/subscription.
+    if getattr(user, "is_waitlisted", False):
         return False
     if _user_entitles_journal_db(db, user):
         return True
@@ -21867,6 +22007,15 @@ async def patch_trading_session_state(session_id: int, request: Request):
             raise HTTPException(status_code=403, detail="Forbidden")
 
         st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        if _DATABASE_USES_ROW_LOCK:
+            st = (
+                db.query(TradingSessionState)
+                .filter(TradingSessionState.session_id == s.id)
+                .with_for_update()
+                .first()
+            )
+            if not st:
+                raise HTTPException(status_code=500, detail="Session state missing after create")
         state = _parse_json_dict(st.state_json)
 
         if payload.drawings is not None:

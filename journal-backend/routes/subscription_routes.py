@@ -1662,6 +1662,13 @@ def create_checkout_session():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
+        # Waitlist leads cannot purchase — they have no access until an admin approves.
+        if getattr(user, 'is_waitlisted', False):
+            return jsonify({
+                'error': 'Your account is on the waitlist. Checkout is unavailable until an admin approves your access.',
+                'action': 'waitlisted',
+            }), 403
+
         data = request.get_json() or {}
         plan_id = data.get('plan_id')
         coupon_code = _sanitize_coupon_code(data.get('coupon_code', ''))

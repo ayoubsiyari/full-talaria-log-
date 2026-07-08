@@ -2,6 +2,7 @@
 
 export type AccessDenialReason =
   | "account_disabled"
+  | "waitlisted"
   | "subscription_ended"
   | "payment_required"
   | "access_period_ended"
@@ -70,6 +71,8 @@ export function accessDenialTitle(reason?: string | null): string {
   switch (reason) {
     case "account_disabled":
       return "Account deactivated";
+    case "waitlisted":
+      return "You're on the waitlist";
     case "subscription_ended":
       return "Your subscription has ended";
     case "payment_required":
@@ -94,6 +97,8 @@ export function accessDenialMessage(
   switch (reason) {
     case "account_disabled":
       return "Your account has been deactivated by an administrator. Contact support if you believe this is a mistake.";
+    case "waitlisted":
+      return "Your account is on the waitlist. We'll email you when a spot opens — you'll be able to sign in then.";
     case "subscription_ended":
       if (plan && ended) {
         return `Your ${plan} subscription ended on ${ended}. Renew below to restore journal, backtest, and pro tools.`;
