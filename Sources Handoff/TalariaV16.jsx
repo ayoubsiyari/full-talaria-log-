@@ -1745,7 +1745,7 @@ const SectionNode = ({ id, data }) => {
   const GOLD = '#C9A84C';
 
   return (
-    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'inset 0 0 0 1px var(--tlc-brh)',background:'transparent',display:'flex',overflow:'visible',position:'relative'}}>
+    <div className={`${data.deleting?' tlc-sec-deleting':''}`} style={{fontFamily:"'Exo 2',sans-serif",width:'100%',height:'100%',border:'none',boxShadow:'none',background:'transparent',display:'flex',overflow:'visible',position:'relative'}}>
 
       {/* Left gold accent bar */}
       <div style={{position:'absolute',top:0,left:0,bottom:0,width:4,background:GOLD,zIndex:2,pointerEvents:'none'}}/>
@@ -2998,7 +2998,7 @@ const SECTION_COLOR_CYCLE = [
   { ac:'rgba(201,168,76,0.9)', bd:'rgba(201,168,76,0.25)', bg:'rgba(201,168,76,0.035)',hdr:'rgba(201,168,76,0.07)' },
   { ac:'rgba(168,85,247,0.9)', bd:'rgba(168,85,247,0.25)', bg:'rgba(168,85,247,0.035)',hdr:'rgba(168,85,247,0.07)' },
 ];
-const COND_W = 220, COND_H = 275, COND_COLS = 6;
+const COND_W = 190, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
 const DEFAULT_GROUP_LABEL = 'NEW GROUP';
 const DEFAULT_CONDITION_LABEL = 'New condition';
@@ -3027,7 +3027,7 @@ const strategyFlowEditLabel = (label, kind) => {
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const DESKTOP_BOARD_ZOOM = 0.55;
-const COND_COL_GAP = 108;
+const COND_COL_GAP = 70;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getFlowMinGraphWidth() {
   return STRIP_W + 32 + (COND_COLS * COND_W) + ((COND_COLS - 1) * COND_COL_GAP);
