@@ -3028,6 +3028,9 @@ let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const COND_COL_GAP = 108;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
+function getFlowMinGraphWidth() {
+  return STRIP_W + 32 + (COND_COLS * COND_W) + ((COND_COLS - 1) * COND_COL_GAP);
+}
 function getSectionHeight() {
   return SEC_H;
 }
@@ -4071,6 +4074,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const liveOrderRef = useRef([]);
   const gapDataRef = useRef(null);
   const isDraggingRef = useRef(false);
+  const fitZoomRef = useRef(BASE_ZOOM);
   const [isDragging, setIsDragging] = useState(false);
   const canvasNodesRef = useRef([]);
   const [rfNodesEl, setRfNodesEl] = useState(null);
@@ -4131,12 +4135,22 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     if (!el) return;
     const w = el.clientWidth;
     if (w === 0) return;
-    const newW = Math.max(480, w - 80) / BASE_ZOOM;
-    const newX = 32 / BASE_ZOOM;
+    const minGraphW = getFlowMinGraphWidth();
+    const visibleW = Math.max(480, w - 80);
+    const fitZoom = Math.min(BASE_ZOOM, visibleW / minGraphW);
+    fitZoomRef.current = fitZoom;
+    const newW = Math.max(minGraphW, visibleW / fitZoom);
+    const newX = 32 / fitZoom;
     if (newW !== SEC_W || newX !== SEC_X) {
       SEC_W = newW;
       SEC_X = newX;
       setCanvasNodes(nds => restackAll(nds));
+    }
+    if (rfRef.current) {
+      const { x, y, zoom } = rfRef.current.getViewport();
+      if (Math.abs(zoom - fitZoom) > 0.01) {
+        rfRef.current.setViewport({ x, y, zoom: fitZoom });
+      }
     }
   }, [setCanvasNodes]);
 
@@ -4194,7 +4208,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     rfRef.current = instance;
     const el = canvasContainerRef.current?.querySelector('.react-flow__nodes');
     if (el) setRfNodesEl(el);
-    instance.setViewport({ x: 0, y: SEC_GAP * BASE_ZOOM, zoom: BASE_ZOOM });
+    instance.setViewport({ x: 0, y: SEC_GAP * fitZoomRef.current, zoom: fitZoomRef.current });
   }, []);
 
   const compactPanHandlers = compactBoardPan ? {
