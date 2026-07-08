@@ -2033,7 +2033,7 @@ const SectionNode = ({ id, data }) => {
       </div>
 
       {/* Content area */}
-      <div style={{flex:1,background:descOpen?'transparent':'var(--tlc-sf)',position:'relative'}}>
+      <div style={{flex:1,background:'transparent',position:'relative'}}>
         {/* Dashed placeholder slots for empty positions */}
         {(()=>{
           const slots = getSlotLocalPositions();
@@ -6358,9 +6358,7 @@ function GeneralInfoStepContent({ c, F,
     ? "0 0 0 1px rgba(255,180,80,0.35), 0 0 18px rgba(255,180,80,0.22)"
     : requiredMissing(key) ? "0 0 0 1px rgba(255,80,104,0.35), 0 0 18px rgba(255,80,104,0.28)" : "none";
   const symbolPickerPos = ref => {
-    if (mobileSymbolPicker) return strategySymbolPickerPos(ref, 270, 120, 320);
-    const pos = dropPosViewport(ref, 270, 120, 320, true);
-    return pos ? { ...pos, width: 270 } : null;
+    return strategySymbolPickerPos(ref, 270, 120, 320);
   };
   const tbtn = active => ({
     display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 16px',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
@@ -6687,10 +6685,10 @@ function GeneralInfoStepContent({ c, F,
         </div>
 
         {/* ── Section: Tags ── */}
-        <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
+        <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px',minHeight:mobileSymbolPicker?218:112,boxSizing:'border-box'}}>
           <div style={lbl}>Tags</div>
-          <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:6,rowGap:4}}>
-            <div ref={tagWrapRef} style={{position:'relative',display:'inline-block',flexShrink:0}}>
+          <div style={{display:'grid',gridTemplateColumns:mobileSymbolPicker?'1fr':'140px minmax(0,1fr)',gap:mobileSymbolPicker?8:12,alignItems:'start'}}>
+            <div ref={tagWrapRef} style={{position:'relative',display:'block',minWidth:0}}>
               <div onClick={e=>{
                 e.stopPropagation();
                 if (tagDropOpen) { setTagDropOpen(false); return; }
@@ -6709,7 +6707,7 @@ function GeneralInfoStepContent({ c, F,
                 }
                 setTagDropOpen(true);
               }}
-                style={{display:'flex',alignItems:'center',border:`1px solid ${tagDropOpen?c.acB:c.brH}`,background:c.el,padding:'0 26px 0 10px',height:30,minWidth:140,cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s'}}>
+                style={{display:'flex',alignItems:'center',border:`1px solid ${tagDropOpen?c.acB:c.brH}`,background:c.el,padding:'0 26px 0 10px',height:30,width:'100%',cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s',boxSizing:'border-box'}}>
                 <span style={{fontSize:11,fontWeight:600,fontFamily:F,color:c.ts}}>
                   {tags.length?`Tags · ${tags.length}/${MAX_TAGS}`:'Choose tags'}
                 </span>
@@ -6760,12 +6758,14 @@ function GeneralInfoStepContent({ c, F,
                 document.body
               )}
             </div>
-            {tags.map(t => (
-              <div key={t} onClick={()=>removeTag(t)} onMouseEnter={()=>setTagHov(`sel-tag-${t}`)} onMouseLeave={()=>setTagHov(null)} style={{padding:'4px 6px',position:'relative',cursor:'default'}}>
-                <span style={{fontSize:12,fontWeight:700,color:tagHov===`sel-tag-${t}`?c.acL:c.ts,fontFamily:F}}>{t}</span>
-                <div style={{position:'absolute',bottom:-1,left:'10%',right:'10%',height:1.5,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 5px ${c.acG}`,pointerEvents:'none'}}/>
-              </div>
-            ))}
+            <div style={{display:'grid',gridTemplateColumns:mobileSymbolPicker?'repeat(2,minmax(0,1fr))':'repeat(5,minmax(0,1fr))',gridAutoRows:24,gap:'7px 10px',alignContent:'start',minHeight:mobileSymbolPicker?148:55,overflow:'hidden'}}>
+              {tags.map(t => (
+                <div key={t} title={`${t} — click to remove`} onClick={()=>removeTag(t)} onMouseEnter={()=>setTagHov(`sel-tag-${t}`)} onMouseLeave={()=>setTagHov(null)} style={{position:'relative',cursor:'default',minWidth:0,display:'flex',alignItems:'center',height:24,padding:'0 2px',boxSizing:'border-box'}}>
+                  <span style={{fontSize:11,fontWeight:750,color:tagHov===`sel-tag-${t}`?c.acL:c.ts,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0}}>{t}</span>
+                  <div style={{position:'absolute',bottom:0,left:0,right:0,height:1.5,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 5px ${c.acG}`,pointerEvents:'none'}}/>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
