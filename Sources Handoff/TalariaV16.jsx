@@ -2998,7 +2998,7 @@ const SECTION_COLOR_CYCLE = [
   { ac:'rgba(201,168,76,0.9)', bd:'rgba(201,168,76,0.25)', bg:'rgba(201,168,76,0.035)',hdr:'rgba(201,168,76,0.07)' },
   { ac:'rgba(168,85,247,0.9)', bd:'rgba(168,85,247,0.25)', bg:'rgba(168,85,247,0.035)',hdr:'rgba(168,85,247,0.07)' },
 ];
-const COND_W = 190, COND_H = 275, COND_COLS = 6;
+const COND_W = 220, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
 const DEFAULT_GROUP_LABEL = 'NEW GROUP';
 const DEFAULT_CONDITION_LABEL = 'New condition';
@@ -3027,7 +3027,7 @@ const strategyFlowEditLabel = (label, kind) => {
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const DESKTOP_BOARD_ZOOM = 0.55;
-const COND_COL_GAP = 70;
+const COND_COL_GAP = 108;
 const CONNECTOR_OPTIONS = ['AND', 'OR', 'OFF'];
 function getFlowMinGraphWidth() {
   return STRIP_W + 32 + (COND_COLS * COND_W) + ((COND_COLS - 1) * COND_COL_GAP);
@@ -4047,7 +4047,7 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   );
 };
 
-function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate, compact=false }) {
+function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, isSaving=false, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate, compact=false }) {
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -5035,7 +5035,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     updateNodeImages(nodeId, next);
   };
   const escPrint = (value) => String(value || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const printOutlineDocument = () => {
+  const printOutlineDocument = (targetWindow = null) => {
     const docHeader = `<header class="doc-head"><div><div class="brand">Talaria Strategy Builder</div><h1 class="title">${escPrint(stratBName || 'Strategy Flow')}</h1></div><div class="meta">${outlineGroups.length} groups<br>${conditions.length} conditions</div></header>`;
     const htmlGroups = outlineGroups.length ? outlineGroups.map((group, gi) => {
       const groupImages = (group.images || []).filter(Boolean).map(img => `<figure><img src="${escPrint(img.src)}" alt=""><figcaption>${escPrint(img.name || 'Group image')}</figcaption></figure>`).join('');
@@ -5046,7 +5046,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       }).join('');
       return `<section class="group"><div class="group-kicker">Group ${String(gi + 1).padStart(2, '0')}</div><h2>${escPrint(group.label || 'Untitled Group')}</h2><p>${escPrint(group.description || 'No group description added.')}</p>${groupImages ? `<div class="image-grid">${groupImages}</div>` : ''}${conditions}</section>`;
     }).join('') : '<p>No strategy flow yet.</p>';
-    const printWindow = window.open('', '_blank', 'width=900,height=1100');
+    const printWindow = targetWindow || window.open('', '_blank', 'width=900,height=1100');
     if (!printWindow) return;
     printWindow.document.open();
     printWindow.document.write(`<!doctype html><html><head><title>${escPrint(stratBName || 'Strategy Flow')}</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#101828;font-family:${escPrint(F)},sans-serif;font-size:11pt;line-height:1.5}.doc{max-width:178mm;margin:0 auto;position:relative;isolation:isolate}.watermark{position:fixed;left:50%;top:50%;width:118mm;height:118mm;object-fit:contain;opacity:.035;transform:translate(-50%,-50%);pointer-events:none;z-index:0}.doc>*:not(.watermark){position:relative;z-index:1}.doc-head{border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:18px;display:flex;justify-content:space-between;gap:20px}.brand{font-size:10pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#2643F7}.title{margin:7px 0 0;font-size:24pt;line-height:1.1;color:#101828}.meta{font-size:9pt;color:#667085;text-align:right}.group{break-inside:auto;border-top:1px solid rgba(201,168,76,.55);padding-top:14px;margin-top:18px}.doc-head+.group{margin-top:0}.group-kicker{font-size:8pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#C9A84C}.group h2{margin:5px 0 8px;font-size:16pt;color:#101828;text-transform:uppercase}.group p,.condition p{margin:0 0 10px;color:#344054}.condition{break-inside:avoid;margin-top:13px;padding:10px 0 0 14px;border-left:3px solid #2643F7}.condition-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.condition h3{margin:0 0 6px;font-size:12pt;color:#101828;text-transform:uppercase}.condition span{font-size:8pt;font-weight:900;text-transform:uppercase;white-space:nowrap}.image-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:7px 0 9px}figure{margin:0;border:1px solid #D6DCE8;padding:5px;break-inside:avoid}img{width:100%;height:110px;object-fit:cover;display:block}figcaption{margin-top:4px;font-size:7.5pt;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media screen{body{padding:16px 0}}@media print{body{padding:0}.doc{max-width:none}}</style></head><body><main class="doc"><img class="watermark" src="/LOGO-07.png" alt="">${docHeader}${htmlGroups}</main><script>window.onload=()=>{window.focus();setTimeout(()=>window.print(),120);};<\/script></body></html>`);
@@ -5057,6 +5057,26 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         printWindow.print();
       } catch {}
     }, 300);
+  };
+  const handlePrintPdf = async () => {
+    if (isSaving) return;
+    const printWindow = window.open('', '_blank', 'width=900,height=1100');
+    if (!printWindow) {
+      showOutlineImageError('Allow pop-ups to print the strategy PDF.');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html><head><title>Saving strategy...</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#05060A;color:#C7D0E0;font-family:${escPrint(F)},sans-serif;font-size:13px}</style></head><body>Saving strategy before printing...</body></html>`);
+    printWindow.document.close();
+    try {
+      if (typeof onSave === 'function') {
+        await onSave({ keepOpen: true });
+      }
+      printOutlineDocument(printWindow);
+    } catch (err) {
+      try { printWindow.close(); } catch {}
+      showOutlineImageError(err?.message || 'Could not save strategy before printing.');
+    }
   };
   const renderOutlineImageSlots = (nodeId, images, accent = outlineFlowColors.group) => {
     const slots = Array.from({ length: 4 }, (_, i) => images?.[i] || null);
@@ -5233,12 +5253,13 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           {flowViewMode === 'outline' && (
             <button
               type="button"
-              onClick={printOutlineDocument}
+              onClick={isSaving ? undefined : handlePrintPdf}
+              disabled={isSaving}
               onMouseEnter={e=>{setBtnHov('print-outline');showOutlineTip('Print PDF', e.currentTarget);}}
               onMouseLeave={()=>{setBtnHov(null);setOutlinePress(null);hideOutlineTip();}}
               onMouseDown={()=>setOutlinePress('print-outline')}
               onMouseUp={()=>setOutlinePress(null)}
-              style={{width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',padding:0,marginRight:12,border:'none',background:outlinePress==='print-outline'?'rgba(255,255,255,0.14)':btnHov==='print-outline'?'rgba(255,255,255,0.08)':'transparent',color:btnHov==='print-outline'?'#FFFFFF':'var(--tlc-ts)',cursor:'default',transform:outlinePress==='print-outline'?'translateY(1px) scale(0.94)':'translateY(0) scale(1)',filter:'none',transition:'background 0.12s, color 0.12s, transform 0.08s'}}
+              style={{width:28,height:22,display:'flex',alignItems:'center',justifyContent:'center',padding:0,marginRight:12,border:'none',background:outlinePress==='print-outline'?'rgba(255,255,255,0.14)':btnHov==='print-outline'?'rgba(255,255,255,0.08)':'transparent',color:btnHov==='print-outline'?'#FFFFFF':'var(--tlc-ts)',cursor:'default',opacity:isSaving?0.45:1,transform:outlinePress==='print-outline'?'translateY(1px) scale(0.94)':'translateY(0) scale(1)',filter:'none',transition:'background 0.12s, color 0.12s, transform 0.08s, opacity 0.12s'}}
             >
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none">
                 <path d="M6 9V3h12v6M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -8104,7 +8125,8 @@ function StrategyBuilderModal(props) {
   const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
-  const compact = !!props.compact || (typeof window !== "undefined" && window.innerWidth <= 720);
+  const compact = !!props.compact
+    || (typeof window !== "undefined" && (isStrategyBuilderMobileDevice() || window.innerWidth <= 900));
 
   const STEPS = [
     { id:1, label:'General Info', hint:'Name your strategy, choose markets and timeframes.' },
@@ -45557,6 +45579,12 @@ const TalariaV8b = () => {
           const stratDataLoading = stratLiveMode && dashBootLoading;
           const communityDataLoading = stratLiveMode && (dashBootLoading || communityFetchLoading);
           const stratCompactLayout = dashIsPhone || dashIsNarrow;
+          const dashCoarsePointer = typeof window !== "undefined"
+            && !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+            && (navigator.maxTouchPoints || 0) > 0;
+          // Builder-specific compact: routes every touch tablet (incl. iPad landscape up
+          // to 1366px) into the touch-friendly layout, without changing the list grid.
+          const stratBuilderCompact = stratCompactLayout || (dashCoarsePointer && dashViewportW <= 1366);
           const effectiveStratLayoutMode = stratCompactLayout ? "cards" : stratLayoutMode;
           const stratGridColumns = dashIsPhone ? "minmax(0,1fr)" : dashIsNarrow ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)";
           const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
@@ -46274,13 +46302,14 @@ const TalariaV8b = () => {
             });
           };
 
-          const saveBuilder = () => {
-            if (stratBuilderSaving || !stratBName.trim()) return;
+          const saveBuilder = (options = {}) => {
+            const keepOpen = !!options.keepOpen;
+            if (stratBuilderSaving || !stratBName.trim()) return Promise.reject(new Error("Strategy name is required."));
             const bankRows = getV16StrategyBankRows(myStrategies);
             if (findStrategyBankNameDuplicate(stratBName, bankRows, stratEditId)) {
               setStratBuilderSaveError("A strategy with this name already exists. Choose a different name.");
               setStratWizardStep(1);
-              return;
+              return Promise.reject(new Error("A strategy with this name already exists. Choose a different name."));
             }
             const existingRow = stratEditId ? myStrategies.find(s=>sameStrategyRowId(s,{id:stratEditId})) : null;
             const strat = {
@@ -46314,22 +46343,31 @@ const TalariaV8b = () => {
               }
               setStratBuilderSaving(false);
               setStratBuilderSaveError("");
-              setStratBuilderOpen(false);
-              setStratEditId(null);
+              if (keepOpen) {
+                setStratEditId(row.id ?? strat.id);
+              } else {
+                setStratBuilderOpen(false);
+                setStratEditId(null);
+              }
+              return row;
             };
             setStratBuilderSaving(true);
             setStratBuilderSaveError("");
             const persist = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_STRATEGY__ : null;
             if (isV16LiveBoot() && typeof persist === "function") {
               const apiId = parseStratApiId(stratEditId);
-              persist(strat, apiId).then(applySavedRow).catch((err) => {
-                console.error("[V16] strategy save failed", err);
-                setStratBuilderSaving(false);
-                setStratBuilderSaveError(err?.message || "Could not save strategy.");
-              });
-              return;
+              return persist(strat, apiId)
+                .then(applySavedRow)
+                .catch((err) => {
+                  console.error("[V16] strategy save failed", err);
+                  setStratBuilderSaving(false);
+                  setStratBuilderSaveError(err?.message || "Could not save strategy.");
+                  throw err;
+                });
             }
-            window.setTimeout(()=> applySavedRow(strat), 650);
+            return new Promise((resolve) => {
+              window.setTimeout(()=> resolve(applySavedRow(strat)), 650);
+            });
           };
 
           const saveCommunity = (strat) => {
@@ -46756,7 +46794,7 @@ const TalariaV8b = () => {
               })()}
 
               {/* ─ Pre-builder Template Picker ─ */}
-              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} compact={stratCompactLayout} hasExistingGroups={false}
+              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} compact={stratBuilderCompact} hasExistingGroups={false}
                 onPick={(tpl)=>{
                   setStratTemplatePickerOpen(false);
                   fillStrategyBuilderFromTemplate(tpl);
@@ -46768,7 +46806,7 @@ const TalariaV8b = () => {
               {stratBuilderOpen&&!(sessView==="stratbank"&&dashBootLoading)&&(
                 <StrategyBuilderModal
                   c={c} F={F}
-                  compact={stratCompactLayout}
+                  compact={stratBuilderCompact}
                   stratWizardStep={stratWizardStep} setStratWizardStep={setStratWizardStep}
                   stratBName={stratBName} setStratBName={setStratBName}
                   stratBDesc={stratBDesc} setStratBDesc={setStratBDesc}
