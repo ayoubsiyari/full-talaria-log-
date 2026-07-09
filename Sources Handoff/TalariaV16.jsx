@@ -6990,7 +6990,7 @@ function GeneralInfoStepContent({ c, F,
 
         {/* ── Section: Classification ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
-          <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />
+          {false && <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />}
           <ToggleRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} />
           <ToggleRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} />
         </div>

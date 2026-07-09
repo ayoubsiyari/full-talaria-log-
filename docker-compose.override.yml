@@ -1,7 +1,0 @@
-# Local dev override — publish journal-backend to the host so `next dev` (running on the
-# host) can proxy /journal/api -> http://127.0.0.1:5000 via next.config.mjs rewrites.
-# Not used in production (nginx proxies over the compose network there).
-services:
-  journal-backend:
-    ports:
-      - "5000:5000"

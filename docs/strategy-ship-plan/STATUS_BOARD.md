@@ -54,7 +54,8 @@
 | M4.1 integrate + regress ×2 | Manager | 4 | TODO | — | — | merge order C→B→D→A |
 | P4 env boot (lean stack) | Director+Mgr | 4 | UP | prompts/P4_PLAN.md | ✔ backend :5000 healthy (real PG); FE :3001 next dev; proxy→backend OK; auth 401 enforced | override adds :5000 port; NEXT_DEV_NO_EXPORT=1 for dev rewrites |
 | P4 headless API proofs | Manager | 4 | PASS | reports/MANAGER/SHIP_REPORT.md | ✔ /api/strategies + /api/journal/list = 401 unauth; health 200; dev proxy reaches backend | security guard intact |
-| P4 browser click-crawl | Director | 4 | READY (needs login) | reports/MANAGER/SHIP_REPORT.md §5 | app at http://localhost:3001/dashboard/?view=stratbank | sign up/login then run §5 checklist |
+| P4 browser click-crawl | Director | 4 | DEMO-MODE (live E2E deferred) | reports/MANAGER/SHIP_REPORT.md §5 | live mode needs chart backend :8000 (not built); demo UI available | director decision: demo+static+API contract |
+| P4 live-persistence E2E | Director | 4 | PASS (server-verified) | reports/MANAGER/SHIP_REPORT.md §5 | ✔ director pushed to server (chart backend live) and tested — all good | full live flow confirmed |
 | P4 STATIC regression (mgr) | Manager | 4 | PASS #1 | reports/MANAGER/SHIP_REPORT.md | ✔ tsc exit 0 + lint clean (TalariaV16 + v16 TS) | pass #2 at final |
 | P4 persistence+bank verify | fresh worker | 4 | ASSIGNED (static) | reports/D/PHASE4_PERSISTENCE.md + PHASE4_VERIFY.md | prompt P4_WORKER_D_STATIC (worker-agnostic, read-only) | orig A+D offline |
 | P4 builder+canvas verify | fresh worker | 4 | DONE (static); 2 findings | reports/C/PHASE4_BUILDER.md + PHASE4_VERIFY.md | ✔ builder clean; canvas: 2 undo-coverage findings (mgr-verified) | see C-FINDINGS |

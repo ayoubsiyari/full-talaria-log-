@@ -28,10 +28,7 @@ const JOURNAL_BACKEND =
   "http://127.0.0.1:5000";
 
 const nextConfig = {
-  // Local live-verification override: set NEXT_DEV_NO_EXPORT=1 with `next dev` so API/journal
-  // rewrites (the /journal/api -> backend proxy) actually work. Production builds leave this unset
-  // and keep the static export exactly as before.
-  ...(process.env.NEXT_DEV_NO_EXPORT === "1" ? {} : { output: "export" }),
+  output: "export",
   trailingSlash: true,
   images: {
     unoptimized: true,

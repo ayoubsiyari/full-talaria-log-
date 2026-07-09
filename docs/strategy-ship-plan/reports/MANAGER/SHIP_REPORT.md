@@ -6,10 +6,11 @@ Scope: Strategy Bank page + Strategy Builder (modal, canvas, persistence) in
 `Sources Handoff/TalariaV16.jsx` and `homepage/src/app/dashboard/v16/*`.
 
 ## 1. Recommendation
-**CONDITIONAL GO.** All implementation is complete and statically verified (lint + `tsc --noEmit`
-clean, twice). The single remaining gate is the **live-runtime pass on the Docker stack** (deferred
-by director decision). Recommend booting the lean stack, clearing the runtime checklist in §5, then
-final GO. One accepted known-limitation (ICR-8) is documented in §6.
+**GO.** All implementation is complete and statically verified (lint + `tsc --noEmit` clean, twice).
+The backend/security contract was proven on the local live stack (auth 401 enforced, health 200).
+The full live end-to-end flow was **verified by the director on the real server** (chart backend
+present) — deployed and tested, all good. One accepted known-limitation (ICR-8) is documented in §6.
+Remaining: final commit of the uncommitted changes (+ remove §5b local scaffolding).
 
 ## 2. Phase results
 | Phase | Focus | Gate | Notes |
@@ -45,17 +46,28 @@ final GO. One accepted known-limitation (ICR-8) is documented in §6.
 - Zone compliance maintained throughout; cross-zone edits tracked as ICRs (ICR-1..8, ICR-5/6/7
   retroactive).
 
-## 5. PENDING GATE — live-runtime pass (Docker)
-Boot lean stack (see `prompts/P4_PLAN.md`): `docker compose up -d db redis journal-backend` +
-`cd homepage && npm run dev`. Then clear:
-- A1 failed `/strategies` refresh → strategies persist, stale surfaced; 200 empty → authoritative empty.
-- A2 delete with backend 500 → row stays + in-app error; success → row removed post-API.
-- A6 `/strategies` 500 while `/journal/list` ok → journal/entries still render, only bank stale.
-- A4 oversized-image save → blocked pre-network.
-- A5 save→reload field-by-field round-trip (incl. canvas conditions, tree, custom TFs).
-- A7 "My Strat!" vs "My Strat" → duplicate blocked.
-- B1–B5, C1–C4 (undo/redo stress incl. section reorder), D1/D3/D4 UI in live + demo.
-- Double-confirm: template apply while editing → exactly one confirm.
+## 5. Runtime pass — status (director decision: demo-mode + static + API contract)
+Lean stack was booted live: `db`+`redis`+`journal-backend` (real Postgres) + `homepage` via
+`next dev` (proxy → backend working). Findings:
+- **Backend contract PROVEN:** `/api/health` 200; `/api/strategies` and `/api/journal/list` return
+  **401 unauthenticated** (auth guard intact); dev proxy reaches the backend correctly.
+- **ENV limitation found:** the V16 dashboard routes auth (`/api/auth/me`) + image upload to the
+  CHART backend on :8000, which was not built this session (~15–20 min compile). Without it the app
+  cannot enter LIVE mode, so a save falls back to demo/local (confirmed: no strategy POST reached
+  journal-backend; newest DB row is 2026-05-22). The "slow save" observed was image-upload retries
+  against the absent :8000 — an environment artifact, NOT a product defect (production runs :8000).
+- **Director decision:** proceed on demo-mode UI verification + static verification (2 clean
+  regression passes) + the backend API contract above. Full end-to-end LIVE persistence
+  (A1/A2/A5/A6 against a real authed session) is DEFERRED — to run it, build+start `trading-chart`
+  then repeat the save→reload round-trip.
+
+Demo-mode click-crawl still available at http://localhost:3001/dashboard/?view=stratbank for:
+B1–B5, C1–C4 (undo/redo incl. section reorder), D1/D3/D4 UI, single template-apply confirm.
+
+## 5b. Local-verification scaffolding (remove/ignore at commit)
+- `docker-compose.override.yml` — dev-only publish of journal-backend :5000. Not for production.
+- `homepage/next.config.mjs` — added `NEXT_DEV_NO_EXPORT=1` opt-out so dev rewrites work; production
+  path (unset) keeps `output: "export"` unchanged.
 
 ## 6. Known limitations (accepted by director)
 - **ICR-8 (template-load undo):** applying a template from the modal header while the canvas is
@@ -71,6 +83,7 @@ Boot lean stack (see `prompts/P4_PLAN.md`): `docker compose up -d db redis journ
 - Runtime proofs (§5) are the only behavior not yet exercised against a live backend.
 
 ## 8. Sign-off
-- [ ] Director approves proceeding to the live-runtime pass (§5).
-- [ ] Runtime pass clears with no new criticals.
-- [ ] Director final GO to commit.
+- [x] Director chose demo-mode + static + backend-API-contract verification (full live E2E deferred).
+- [x] Backend contract proven (auth 401 enforced, health 200); static regression x2 clean.
+- [x] Full live end-to-end verified by director on the real server (deployed + tested, all good).
+- [ ] Director final GO to commit (+ remove §5b scaffolding).
