@@ -6607,6 +6607,19 @@ function GeneralInfoStepContent({ c, F,
     background:active?'rgba(38,67,247,0.18)':c.sf,transition:'all 0.12s',
     boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
   });
+  const addPickBtn = (active, tone='blue') => {
+    const gold = 'rgba(232,194,82,0.9)';
+    const accent = tone === 'gold' ? gold : c.acL;
+    const activeBg = tone === 'gold' ? 'rgba(201,168,76,0.10)' : 'rgba(38,67,247,0.18)';
+    const activeShadow = tone === 'gold' ? '0 0 12px rgba(232,194,82,0.20)' : '0 0 12px rgba(38,67,247,0.22)';
+    return {
+      width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+      background:active?activeBg:c.sf,border:'1px solid '+(active?accent:c.brH),
+      color:active?accent:c.tx,boxSizing:'border-box',cursor:'default',
+      transition:'border-color 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s',
+      boxShadow:active?activeShadow:undefined,
+    };
+  };
 
   const pickCover = async e => {
     const files = Array.from(e.target.files || []).slice(0, 1); e.target.value = '';
@@ -7164,12 +7177,12 @@ function GeneralInfoStepContent({ c, F,
               <div
                 onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=symbolPickerPos(trdWrapRef);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
-                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
-                onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
-                onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+                style={addPickBtn(trdPickOpen)}
+                onMouseEnter={e=>{if(!trdPickOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
+                onMouseLeave={e=>{if(!trdPickOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                  <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
-                  <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
               {trdPickOpen && createPortal((()=>{
@@ -7302,12 +7315,12 @@ function GeneralInfoStepContent({ c, F,
             <div ref={supWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
                 onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=symbolPickerPos(supWrapRef);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
-                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7A5A00,rgba(232,194,82,0.9))',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(201,168,76,0.3)'}}
-                onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
-                onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+                style={addPickBtn(supPickOpen,'gold')}
+                onMouseEnter={e=>{if(!supPickOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
+                onMouseLeave={e=>{if(!supPickOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                  <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
-                  <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
               {supPickOpen && createPortal((()=>{
