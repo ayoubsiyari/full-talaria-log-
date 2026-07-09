@@ -723,9 +723,22 @@ export type JournalApiData = {
   entries: ApiJournalEntry[];
   connections: ApiBrokerConnection[];
   strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
+  strategyBankError?: string | null;
   activeProfile: ApiJournalProfile | null;
   liveAccounts: ApiLiveJournalAccount[];
 };
+
+async function responseErrorMessage(res: Response | null, label: string): Promise<string> {
+  if (!res) return `${label} request failed`;
+  try {
+    const data = (await res.json()) as { error?: unknown; message?: unknown };
+    const msg = typeof data.error === "string" ? data.error : typeof data.message === "string" ? data.message : "";
+    if (msg.trim()) return msg.trim();
+  } catch {
+    /* ignore malformed error body */
+  }
+  return `${label} request failed (HTTP ${res.status})`;
+}
 
 export async function fetchJournalApiData(opts?: {
   /** When false, skip heavy journal/list fetches (live-accounts still returns trade_count). */
@@ -793,12 +806,15 @@ export async function fetchJournalApiData(opts?: {
     connections = Array.isArray(data) ? data : [];
   }
 
+  let strategyBankError: string | null = null;
   let strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[] = [];
-  if (strategiesRes?.ok) {
-    const data = (await strategiesRes.json()) as {
+  if (!strategiesRes?.ok) {
+    strategyBankError = await responseErrorMessage(strategiesRes, "Strategy bank");
+  } else {
+    const strategiesData = (await strategiesRes.json()) as {
       strategies?: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
     };
-    strategies = (data.strategies || [])
+    strategies = (strategiesData.strategies || [])
       .filter((s) => typeof s.id === "number" && s.name)
       .map((s) => ({
         id: s.id,
@@ -819,5 +835,5 @@ export async function fetchJournalApiData(opts?: {
     activeProfile = profiles.find((p) => p.is_active) || profiles[0] || null;
   }
 
-  return { entries, connections, strategies, activeProfile, liveAccounts };
+  return { entries, connections, strategies, strategyBankError, activeProfile, liveAccounts };
 }

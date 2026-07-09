@@ -60,7 +60,8 @@ async function fetchJournalPayload(
   opts: Parameters<typeof fetchJournalApiData>[0]
 ): Promise<JournalPayloadResult> {
   try {
-    return { payload: await fetchJournalApiData(opts), errorMessage: null };
+    const payload = await fetchJournalApiData(opts);
+    return { payload, errorMessage: payload.strategyBankError ?? null };
   } catch (error) {
     return { payload: EMPTY_JOURNAL_PAYLOAD, errorMessage: bootstrapErrorMessage(error) };
   }

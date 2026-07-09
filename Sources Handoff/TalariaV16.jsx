@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { flushSync, createPortal } from "react-dom";
-import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
+import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Background, BackgroundVariant, getBezierPath, BaseEdge, EdgeLabelRenderer, applyNodeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend, buildInsightSignals } from "./scoreEngine.js";
 import { clampReturnDistributionConfidence, computeEmpiricalReturnDistribution, computeMovingAverageRegime, computePeriodBreakdown, computeProfitConcentration, computeReturnsGrowthEquityCurve, computeReturnsGrowthMetricStrip } from "./metrics/index.js";
@@ -97,6 +97,9 @@ const getV16StrategyBankRows = (localRows = []) => {
   if (!isV16LiveBoot()) return Array.isArray(localRows) ? localRows : [];
   return mergeV16StrategyBankRows(getV16StrategyBank(), localRows);
 };
+const STRATEGY_SAVE_MAX_CONTENT_BYTES = 16 * 1024 * 1024;
+const STRATEGY_SAVE_PAYLOAD_BUDGET_BYTES = 15 * 1024 * 1024;
+const STRATEGY_IMAGE_DATA_URL_MAX_CHARS = 2800000;
 const STARTING_BALANCE_MAX_DIGITS = 6;
 const SESSION_NAME_MAX = 80;
 const sanitizeSessionNameInput = (raw) => String(raw ?? "").slice(0, SESSION_NAME_MAX);
@@ -392,8 +395,33 @@ const computeAnchoredDropdownPos = ({
   return { left, top: Math.max(margin, Math.min(anchorBottom + gap, vpH - menuH - margin)), flipAbove: false };
 };
 const MAX_STRATEGY_TIMEFRAMES = 6;
+const STRATEGY_TIMEFRAME_PRESETS = ["1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M"];
 const MAX_CUSTOM_TF_DIGITS = 4;
 const CUSTOM_TF_VALUE_LIMITS = { m: 1440, H: 168, D: 365, W: 52, M: 12 };
+const canonicalStrategyTimeframe = value => {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d+)\s*([mMhHdDwW])$/);
+  if (!match) return raw;
+  const unitRaw = match[2];
+  const unit = unitRaw === "m" ? "m" : unitRaw === "M" ? "M" : unitRaw.toUpperCase();
+  return `${parseInt(match[1], 10)}${unit}`;
+};
+const normalizeStrategyTimeframes = values => {
+  const list = Array.isArray(values) ? values : [values].filter(Boolean);
+  const seen = new Set();
+  const next = [];
+  list.forEach(value => {
+    const key = canonicalStrategyTimeframe(value);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    next.push(key);
+  });
+  return next;
+};
+const deriveCustomStrategyTimeframes = values => {
+  const presets = new Set(STRATEGY_TIMEFRAME_PRESETS);
+  return normalizeStrategyTimeframes(values).filter(tf => !presets.has(tf));
+};
 const sanitizeStrategyCustomTfInput = (raw, unit) => {
   const digits = String(raw ?? "").replace(/\D/g, "").slice(0, MAX_CUSTOM_TF_DIGITS);
   if (!digits) return "";
@@ -1657,7 +1685,7 @@ const SectionNode = ({ id, data }) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if(!file || activeSlot===null) return;
-    const check = validateScreenshotUploadFile(file);
+    const check = validateStrategyImageFile(file);
     if (!check.ok) {
       _cvCb.showImageError?.(check.error);
       return;
@@ -2508,7 +2536,7 @@ const ConditionCard = ({ id, data, selected }) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if(!file || activeSlot===null) return;
-    const check = validateScreenshotUploadFile(file);
+    const check = validateStrategyImageFile(file);
     if (!check.ok) {
       _cvCb.showImageError?.(check.error);
       return;
@@ -3098,6 +3126,109 @@ function normalizeCanvasFlowNodes(nds) {
     };
   });
   return restackAll(mapped);
+}
+
+function strategyFlowHasMeaningfulTemplateContent(nds = []) {
+  const nodes = Array.isArray(nds) ? nds : [];
+  const sections = nodes
+    .filter(n => n.type === 'section')
+    .sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0));
+  if (nodes.some(n => n.type === 'condition')) return true;
+  if (sections.length > SECTION_DEFS.length) return true;
+  return sections.some((section, idx) => {
+    const label = String(section.data?.label || '').trim();
+    const defaultLabel = String(SECTION_DEFS[idx]?.label || '').trim();
+    const desc = String(section.data?.description || '').trim();
+    if (desc) return true;
+    return !!label && !!defaultLabel && label.toUpperCase() !== defaultLabel.toUpperCase();
+  });
+}
+
+function deriveStrategyBuilderGroupsFromCanvas(nds = []) {
+  const nodes = Array.isArray(nds) ? nds : [];
+  return nodes
+    .filter(n => n?.type === 'section')
+    .sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0))
+    .map(sec => ({
+      id: sec.id,
+      label: sec.data?.label || 'Group',
+      description: sec.data?.description || '',
+      color: sec.data?.ac,
+      images: Array.isArray(sec.data?.images) ? sec.data.images : [],
+      conditions: nodes
+        .filter(n => n?.type === 'condition' && n.data?.sectionId === sec.id)
+        .sort((a, b) => (a.data?.slot ?? 0) - (b.data?.slot ?? 0) || (a.position?.x || 0) - (b.position?.x || 0))
+        .map(cond => ({
+          id: cond.id,
+          label: cond.data?.label || 'Condition',
+          description: cond.data?.description || '',
+          status: cond.data?.status || 'mandatory',
+          images: Array.isArray(cond.data?.images) ? cond.data.images : [],
+        })),
+    }));
+}
+
+function deriveStrategyBuilderConditionsFromCanvas(nds = []) {
+  return deriveStrategyBuilderGroupsFromCanvas(nds).flatMap((group, groupIndex) =>
+    group.conditions.map((condition, conditionIndex) => ({
+      ...condition,
+      groupId: group.id,
+      groupLabel: group.label,
+      groupDescription: group.description,
+      groupIndex,
+      conditionIndex,
+    }))
+  );
+}
+
+function strategyImagePayloadTooLarge(strat) {
+  const imageLists = [
+    strat?.images,
+    ...(Array.isArray(strat?.canvasNodes)
+      ? strat.canvasNodes.map(node => node?.data?.images)
+      : []),
+  ];
+  return imageLists.some(list =>
+    Array.isArray(list) && list.some(item => {
+      const src = typeof item === "string" ? item : item?.src;
+      return typeof src === "string" && src.startsWith("data:image/") && src.length > STRATEGY_IMAGE_DATA_URL_MAX_CHARS;
+    })
+  );
+}
+
+function estimateStrategySavePayloadBytes(strat) {
+  const name = String(strat?.name || "Untitled Strategy").trim() || "Untitled Strategy";
+  const desc = String(strat?.desc || "").trim();
+  const body = {
+    name,
+    description: desc,
+    strategy_definition: {
+      name,
+      description: desc,
+      strategy_tags: Array.isArray(strat?.tags) ? strat.tags : [],
+      conditions: strat?.conditions,
+      variables: strat?.variables,
+      talaria_v9: {
+        icon: strat?.icon,
+        tags: strat?.tags,
+        complexity: strat?.complexity,
+        desc,
+        tree: strat?.tree,
+        instruments: strat?.instruments,
+        timeframes: strat?.timeframes,
+        markets: strat?.markets,
+        conditions: strat?.conditions,
+        variables: strat?.variables,
+        images: strat?.images,
+        supportInst: strat?.supportInst,
+        canvasNodes: strat?.canvasNodes,
+        canvasEdges: strat?.canvasEdges,
+      },
+    },
+  };
+  const json = JSON.stringify(body);
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(json).length;
+  return json.length;
 }
 
 function buildInitialSections() {
@@ -3792,23 +3923,21 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
   ];
   const isCompact = compact || (typeof window !== "undefined" && window.innerWidth <= 720);
 
-  const commit = () => {
-    if (!selectedId) return;
-    if (hasExistingGroups && !confirmReplace) { setConfirmReplace(true); return; }
-    const tpl = selectedId === '__blank' ? null : STRATEGY_TEMPLATES.find(t => t.id === selectedId);
-    onPick(tpl);
+  const selectTemplate = (id) => {
+    setSelectedId(id);
+    setConfirmReplace(false);
   };
 
-  const statsOf = (tpl) => {
-    const groups = tpl.groups.length;
-    let normal=0, inv=0, opt=0;
-    tpl.groups.forEach(g => g.conditions.forEach(c => {
-      if (c.status === 'invalidate') inv++;
-      else if (c.status === 'optional') opt++;
-      else normal++;
-    }));
-    const conds = normal + inv + opt;
-    return `${groups} groups · ${conds} conditions · ${inv} invalidators · ${opt} optional`;
+  const commit = (forcedId = selectedId) => {
+    if (!forcedId) return;
+    const selectionChanged = forcedId !== selectedId;
+    if (selectionChanged) setSelectedId(forcedId);
+    if (hasExistingGroups && (!confirmReplace || selectionChanged)) {
+      setConfirmReplace(true);
+      return;
+    }
+    const tpl = forcedId === '__blank' ? null : STRATEGY_TEMPLATES.find(t => t.id === forcedId);
+    onPick(tpl);
   };
 
   const IconFor = ({ name }) => (
@@ -3842,8 +3971,8 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
         : hov ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`;
       return (
         <div
-          onClick={()=>setSelectedId(tpl.id)}
-          onDoubleClick={()=>{ setSelectedId(tpl.id); setTimeout(commit, 50); }}
+          onClick={()=>selectTemplate(tpl.id)}
+          onDoubleClick={()=>commit(tpl.id)}
           onMouseEnter={()=>setHovered(tpl.id)} onMouseLeave={()=>setHovered(null)}
           style={{
             position:'relative', height:54, padding:'0 18px',
@@ -3865,8 +3994,8 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
     const tfLabels = tpl.timeframes||[];
     return (
       <div
-        onClick={()=>setSelectedId(tpl.id)}
-        onDoubleClick={()=>{ setSelectedId(tpl.id); setTimeout(commit, 50); }}
+        onClick={()=>selectTemplate(tpl.id)}
+        onDoubleClick={()=>commit(tpl.id)}
         onMouseEnter={()=>setHovered(tpl.id)} onMouseLeave={()=>setHovered(null)}
         style={{
           position:'relative', minHeight:isCompact?236:316, padding:0, overflow:'hidden',
@@ -3922,8 +4051,6 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
     );
   };
 
-  const blankTpl = allOptions[allOptions.length-1];
-
   return createPortal(
     <div onClick={e=>{if(e.target===e.currentTarget)onCancel();}}
       style={{position:'fixed',inset:0,zIndex:100050,background:'rgba(0,0,0,0.60)',
@@ -3961,7 +4088,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
 
           {confirmReplace && (
             <div style={{marginTop:12,padding:'10px 12px',background:'rgba(255,80,104,0.06)',border:`1px solid rgba(255,80,104,0.30)`,fontSize:10,color:c.ts,fontFamily:F,lineHeight:1.5}}>
-              Loading this template will replace your current groups. Click <strong style={{color:c.tx}}>Use Template</strong> again to confirm.
+              Loading this choice will replace your current strategy flow. Click <strong style={{color:c.tx}}>Replace</strong> to confirm.
             </div>
           )}
         </div>
@@ -3974,9 +4101,9 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
               onMouseLeave={e=>{e.currentTarget.style.background=c.hv2;e.currentTarget.style.borderColor='rgba(140,160,255,0.22)';e.currentTarget.style.color=c.ts;e.currentTarget.style.transform='scale(1)';}}
               onMouseDown={e=>{e.currentTarget.style.transform='scale(0.97)';}}
               onMouseUp={e=>{e.currentTarget.style.transform='scale(1)';}}>
-              Cancel
+              {confirmReplace ? 'Keep editing' : 'Cancel'}
             </button>
-            <button onClick={()=>onPick(null)}
+            <button onClick={()=>commit('__blank')}
               style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,padding:'0 14px',height:32,minWidth:isCompact?0:136,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
                 background:actionHov==='tpl-create'?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
                 border:`1px solid rgba(74,106,255,0.5)`,color:'#fff',
@@ -3994,7 +4121,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
               </svg>
               Create Your Own
             </button>
-            <button onClick={commit} disabled={!selectedId}
+            <button onClick={()=>commit()} disabled={!selectedId}
               style={{padding:'0 16px',height:32,minWidth:isCompact?0:120,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
                 background:selectedId?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',
                 border:`1px solid ${selectedId?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,
@@ -4006,7 +4133,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
               onMouseLeave={e=>{if(selectedId){e.currentTarget.style.background=`linear-gradient(135deg,${c.ac},${c.acL})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(38,67,247,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
               onMouseDown={e=>{if(selectedId){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
               onMouseUp={e=>{if(selectedId){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
-              {hasExistingGroups && confirmReplace ? 'Replace' : 'Use Template'}
+              {hasExistingGroups && confirmReplace ? 'Replace' : selectedId === '__blank' ? 'Create Your Own' : 'Use Template'}
             </button>
           </div>
         </div>
@@ -4086,7 +4213,9 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [outlineTip, setOutlineTip] = useState(null);
   const [outlineImagePreview, setOutlineImagePreview] = useState(null);
   const [outlineImgError, setOutlineImgError] = useState(null);
+  const [flowNotice, setFlowNotice] = useState(null);
   const outlineImgErrorTimerRef = useRef(null);
+  const flowNoticeTimerRef = useRef(null);
   const outlineTipTimerRef = useRef(null);
   const [canvasH, setCanvasH] = useState(0);
   const [sliding, setSliding] = useState(false);
@@ -4105,8 +4234,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const canvasNodesRef = useRef([]);
   const canvasEdgesRef = useRef([]);
   const [rfNodesEl, setRfNodesEl] = useState(null);
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [templateToast, setTemplateToast] = useState(null);
   const [flowViewMode, setFlowViewMode] = useState('board');
   const [outlineZoom, setOutlineZoom] = useState(1);
   const compactBoardPan = !!compact;
@@ -4119,6 +4246,14 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     outlineImgErrorTimerRef.current = setTimeout(() => setOutlineImgError(null), 9000);
   }, []);
 
+  const showFlowNotice = useCallback((message) => {
+    const text = String(message || '').trim();
+    if (!text) return;
+    setFlowNotice(text);
+    if (flowNoticeTimerRef.current) clearTimeout(flowNoticeTimerRef.current);
+    flowNoticeTimerRef.current = setTimeout(() => setFlowNotice(null), 5000);
+  }, []);
+
   useEffect(() => {
     _cvCb.showImageError = showOutlineImageError;
     return () => { _cvCb.showImageError = null; };
@@ -4126,9 +4261,8 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   useEffect(() => () => {
     if (outlineImgErrorTimerRef.current) clearTimeout(outlineImgErrorTimerRef.current);
+    if (flowNoticeTimerRef.current) clearTimeout(flowNoticeTimerRef.current);
   }, []);
-
-  const hasExistingGroups = canvasNodes.some(n => n.type === 'condition');
 
   const pushHistory = useCallback((nodes, edges) => {
     const snap = makeHistorySnapshot(nodes, edges);
@@ -4166,36 +4300,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       return nextNodes;
     });
   }, [pushHistory, setCanvasEdges, setCanvasNodes]);
-
-  const loadTemplate = useCallback((tpl) => {
-    const nextNodes = tpl ? buildNodesFromTemplate(tpl) : buildInitialSections();
-    const nextEdges = [];
-    pushHistory(nextNodes, nextEdges);
-    if (typeof applyStrategyTemplate === "function") {
-      applyStrategyTemplate(tpl);
-    } else if (!tpl) {
-      setCanvasNodes(nextNodes);
-      setCanvasEdges(nextEdges);
-      setStratBName?.("");
-      setStratBDesc?.("");
-      setStratBMarkets?.([]);
-      setStratBTimeframes?.([]);
-      setStratBTags?.([]);
-    } else {
-      setCanvasNodes(nextNodes);
-      setCanvasEdges(nextEdges);
-      setStratBName?.(`${tpl.name} (my version)`);
-      if (tpl.description) setStratBDesc?.(tpl.description);
-      if (tpl.markets?.length) setStratBMarkets?.(tpl.markets);
-      if (tpl.timeframes?.length) setStratBTimeframes?.(tpl.timeframes);
-      if (tpl.tags?.length) setStratBTags?.(tpl.tags);
-    }
-    if (tpl) {
-      setTemplateToast(`Template '${tpl.name}' loaded — customize as needed`);
-      setTimeout(() => setTemplateToast(null), 4000);
-    }
-    setTemplatePickerOpen(false);
-  }, [applyStrategyTemplate, pushHistory, setCanvasNodes, setCanvasEdges, setStratBName, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags]);
 
   const applySecSize = useCallback(() => {
     const el = canvasContainerRef.current;
@@ -4236,8 +4340,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     return () => { ro.disconnect(); clearTimeout(t); };
   }, [applySecSize]);
 
-  const { screenToFlowPosition } = useReactFlow();
-
   const onNodesChange = useCallback((changes) => {
     const filtered = changes.filter(c => {
       const cid = c.id || c.item?.id || '';
@@ -4247,18 +4349,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     if (filtered.length === 0) return;
     setCanvasNodes(nds => applyNodeChanges(filtered, nds));
   }, [setCanvasNodes]);
-
-  const onEdgesChange = useCallback((changes) => {
-    setCanvasEdges(eds => applyEdgeChanges(changes, eds));
-  }, [setCanvasEdges]);
-
-  const onConnect = useCallback((params) => {
-    setCanvasEdges(eds => {
-      const next = addEdge({ ...params, type:'talEdge', markerEnd:{ type:MarkerType.ArrowClosed, color:'var(--tlc-brh)' } }, eds);
-      pushHistory(canvasNodes, next);
-      return next;
-    });
-  }, [setCanvasEdges, canvasNodes, pushHistory]);
 
   const onSelectionChange = useCallback(({ nodes, edges }) => {
     setSelectedIds([...nodes.map(n=>n.id), ...edges.map(e=>e.id)]);
@@ -4440,7 +4530,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const doDeleteSection = useCallback((sectionId) => {
     const sectionCount = canvasNodesRef.current.filter(n => n.type === 'section').length;
     if (sectionCount <= MIN_STRATEGY_FLOW_GROUPS) {
-      showOutlineImageError('At least one group is required.');
+      showFlowNotice('At least one group is required.');
       return;
     }
     setSliding(true);
@@ -4459,7 +4549,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         setSliding(false);
       }, 320);
     });
-  }, [commitCanvasMutation, setCanvasNodes, showOutlineImageError]);
+  }, [commitCanvasMutation, setCanvasNodes, showFlowNotice]);
 
   const insertSectionAfter = useCallback((afterSectionId) => {
     setSliding(true);
@@ -4535,10 +4625,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     setHistIdx(i => i + 1);
   }, [history, histIdx, setCanvasNodes, setCanvasEdges]);
 
-  const doFit = useCallback(() => {
-    if (rfRef.current) rfRef.current.setViewport({ x: 0, y: SEC_GAP * fitZoomRef.current, zoom: fitZoomRef.current }, { duration: 300 });
-  }, []);
-
   const setBoardZoom = useCallback((direction) => {
     if (!compactBoardPan) return;
     if (!rfRef.current) return;
@@ -4565,11 +4651,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const updateNodeData = useCallback((nodeId, patch) => {
     setCanvasNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
   }, [setCanvasNodes]);
-
-  const selectedNode = useMemo(() => {
-    if (selectedIds.length !== 1) return null;
-    return canvasNodes.find(n => n.id === selectedIds[0] && n.type === 'condition') || null;
-  }, [selectedIds, canvasNodes]);
 
   const renameSection = useCallback((sectionId, newLabel) => {
     commitCanvasMutation(nds => nds.map(n => {
@@ -4890,7 +4971,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   _cvCb.updateDesc = updateSectionDesc;
   _cvCb.setDescPanelOpen = setDescPanelOpen;
   _cvCb.startDrag = startSectionDrag;
-  _cvCb.showFlowNotice = showOutlineImageError;
+  _cvCb.showFlowNotice = showFlowNotice;
   _cvCb.canDeleteSection = () => canvasNodesRef.current.filter(n => n.type === 'section').length > MIN_STRATEGY_FLOW_GROUPS;
 
   const sections = useMemo(() => canvasNodes.filter(n => n.type === 'section'), [canvasNodes]);
@@ -4904,6 +4985,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         label: sec.data?.label ?? '',
         description: sec.data?.description || '',
         images: Array.isArray(sec.data?.images) ? sec.data.images : [],
+        connectors: Array.isArray(sec.data?.connectors) ? sec.data.connectors : [],
         conditions: canvasNodes
           .filter(n => n.type === 'condition' && n.data?.sectionId === sec.id)
           .sort((a,b) => (a.data?.slot ?? 0) - (b.data?.slot ?? 0))
@@ -4912,6 +4994,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             label: cond.data?.label ?? '',
             description: cond.data?.description || '',
             status: cond.data?.status || (cond.data?.mandatory === false ? 'optional' : 'mandatory'),
+            slot: typeof cond.data?.slot === 'number' ? cond.data.slot : null,
             images: Array.isArray(cond.data?.images) ? cond.data.images : [],
           })),
       }));
@@ -5023,6 +5106,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     e.currentTarget.style.background = '#FFFFFF';
     e.currentTarget.style.boxShadow = edgeColor ? `inset 3px 0 0 ${edgeColor}` : 'none';
   };
+  const outlineGroupBlur = (groupId) => (e) => {
+    outlineBlurStyle(e);
+    if (!String(e.currentTarget.value || '').trim()) {
+      renameSection(groupId, DEFAULT_GROUP_LABEL);
+    }
+  };
   const outlineStatusOptions = [
     ['mandatory','Mandatory'],
     ['optional','Optional'],
@@ -5077,6 +5166,15 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     }
     setOutlineTip(null);
   };
+  useEffect(() => {
+    if (!outlineStatusOpen) return;
+    const closeOutlineStatus = (e) => {
+      if (e.target?.closest?.('[data-outline-status-menu-root="1"]')) return;
+      setOutlineStatusOpen(null);
+    };
+    document.addEventListener('mousedown', closeOutlineStatus);
+    return () => document.removeEventListener('mousedown', closeOutlineStatus);
+  }, [outlineStatusOpen]);
   const handleOutlineImageFile = async (nodeId, images, slot, file) => {
     if (!file) return;
     const check = validateStrategyImageFile(file);
@@ -5109,10 +5207,25 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     const docHeader = `<header class="doc-head"><div class="head-main"><img class="head-logo" src="/LOGO-07.png" alt="Talaria"><div><div class="brand">Talaria Strategy Builder</div><h1 class="title">${escPrint(stratBName || 'Strategy Flow')}</h1></div></div><div class="meta">${outlineGroups.length} groups<br>${conditions.length} conditions</div></header>`;
     const htmlGroups = outlineGroups.length ? outlineGroups.map((group, gi) => {
       const groupImages = (group.images || []).filter(Boolean).map(img => `<figure><img src="${escPrint(img.src)}" alt=""><figcaption>${escPrint(img.name || 'Group image')}</figcaption></figure>`).join('');
+      const condConnectors = Array.isArray(group.connectors) ? group.connectors : [];
       const conditions = group.conditions.map((cond, ci) => {
         const statusMeta = outlineStatusMeta(cond.status);
         const condImages = (cond.images || []).filter(Boolean).map(img => `<figure><img src="${escPrint(img.src)}" alt=""><figcaption>${escPrint(img.name || 'Condition image')}</figcaption></figure>`).join('');
-        return `<article class="condition" style="border-left-color:${statusMeta.color}"><div class="condition-head"><h3 style="color:${statusMeta.color}">${gi + 1}.${ci + 1} ${escPrint(cond.label || 'Untitled Condition')}</h3><span style="color:${statusMeta.color}">${statusMeta.label}</span></div><p>${escPrint(cond.description || 'No description added.')}</p>${condImages ? `<div class="image-grid">${condImages}</div>` : ''}</article>`;
+        const article = `<article class="condition" style="border-left-color:${statusMeta.color}"><div class="condition-head"><h3 style="color:${statusMeta.color}">${gi + 1}.${ci + 1} ${escPrint(cond.label || 'Untitled Condition')}</h3><span class="cond-type" style="color:${statusMeta.color};background:${statusMeta.soft};border:1px solid ${statusMeta.border}">${escPrint(statusMeta.label)}</span></div><p>${escPrint(cond.description || 'No description added.')}</p>${condImages ? `<div class="image-grid">${condImages}</div>` : ''}</article>`;
+        // AND/OR joiner to the next condition (stored per-slot on the group; OFF = no join)
+        let joiner = '';
+        if (ci < group.conditions.length - 1) {
+          const slot = typeof cond.slot === 'number' ? cond.slot : ci;
+          const raw = String(condConnectors[slot] || 'AND').toUpperCase();
+          if (raw !== 'OFF') {
+            const isOr = raw === 'OR';
+            const jc = isOr ? '#92400E' : '#0B7A55';
+            const jb = isOr ? '#FEF3C7' : '#D1FAE5';
+            const jbd = isOr ? '#FCD34D' : '#6EE7B7';
+            joiner = `<div class="cond-joiner"><span style="color:${jc};background:${jb};border:1px solid ${jbd}">${escPrint(raw)}</span></div>`;
+          }
+        }
+        return article + joiner;
       }).join('');
       return `<section class="group"><div class="group-kicker">${String(gi + 1).padStart(2, '0')}</div><h2>${escPrint(group.label || 'Untitled Group')}</h2><p>${escPrint(group.description || 'No group description added.')}</p>${groupImages ? `<div class="image-grid">${groupImages}</div>` : ''}${conditions}</section>`;
     }).join('') : '<p>No strategy flow yet.</p>';
@@ -5125,26 +5238,28 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       : '';
     const baseTag = baseHref ? `<base href="${escPrint(baseHref)}">` : '';
     printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html><head>${baseTag}<title>${escPrint(stratBName || 'Strategy Flow')}</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#101828;font-family:${escPrint(F)},sans-serif;font-size:11pt;line-height:1.5}.doc{max-width:178mm;margin:0 auto;position:relative;isolation:isolate}.watermark{position:fixed;left:50%;top:50%;width:118mm;height:118mm;object-fit:contain;opacity:.035;transform:translate(-50%,-50%);pointer-events:none;z-index:0}.doc>*:not(.watermark){position:relative;z-index:1}.doc-head{border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.head-main{display:flex;align-items:flex-start;gap:10px;min-width:0}.head-logo{width:40px;height:40px;object-fit:contain;flex:0 0 auto;margin-top:1px}.brand{font-size:10pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#2643F7}.title{margin:7px 0 0;font-size:24pt;line-height:1.1;color:#101828}.meta{font-size:9pt;color:#667085;text-align:right}.group{break-inside:auto;border-top:1px solid rgba(201,168,76,.55);padding-top:14px;margin-top:18px}.doc-head+.group{margin-top:0}.group-kicker{font-size:12pt;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#C9A84C}.group h2{margin:5px 0 8px;font-size:16pt;color:#101828;text-transform:uppercase}.group p,.condition p{margin:0 0 10px;color:#344054}.condition{break-inside:avoid;margin-top:13px;padding:10px 0 0 14px;border-left:3px solid #2643F7}.condition-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.condition h3{margin:0 0 6px;font-size:12pt;color:#101828;text-transform:uppercase}.condition span{font-size:8pt;font-weight:900;text-transform:uppercase;white-space:nowrap}.image-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:7px 0 9px}figure{margin:0;border:1px solid #D6DCE8;padding:5px;break-inside:avoid}img{width:100%;height:110px;object-fit:cover;display:block}figcaption{margin-top:4px;font-size:7.5pt;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media screen{body{padding:16px 0}}@media print{body{padding:0}.doc{max-width:none}}</style></head><body><main class="doc"><img class="watermark" src="/LOGO-07.png" alt="">${docHeader}${htmlGroups}</main><script>(function(){var done=false;function fire(){if(done)return;done=true;try{window.focus();}catch(e){}setTimeout(function(){try{window.print();}catch(e){}},80);}function ready(){var imgs=Array.prototype.slice.call(document.images||[]);var pending=imgs.filter(function(im){return !im.complete;});if(!pending.length){fire();return;}var left=pending.length;var settle=function(){if(--left<=0)fire();};pending.forEach(function(im){im.addEventListener('load',settle);im.addEventListener('error',settle);});setTimeout(fire,6000);}if(document.readyState==='complete')ready();else window.addEventListener('load',ready);})();<\/script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head>${baseTag}<title>${escPrint(stratBName || 'Strategy Flow')}</title><style>@page{size:A4;margin:16mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#101828;font-family:${escPrint(F)},sans-serif;font-size:11pt;line-height:1.5}.doc{max-width:178mm;margin:0 auto;position:relative;isolation:isolate}.watermark{position:fixed;left:50%;top:50%;width:118mm;height:118mm;object-fit:contain;opacity:.035;transform:translate(-50%,-50%);pointer-events:none;z-index:0}.doc>*:not(.watermark){position:relative;z-index:1}.doc-head{border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.head-main{display:flex;align-items:flex-start;gap:10px;min-width:0}.head-logo{width:40px;height:40px;object-fit:contain;flex:0 0 auto;margin-top:1px}.brand{font-size:10pt;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#2643F7}.title{margin:7px 0 0;font-size:24pt;line-height:1.1;color:#101828}.meta{font-size:9pt;color:#667085;text-align:right}.group{break-inside:auto;border-top:1px solid rgba(201,168,76,.55);padding-top:14px;margin-top:18px}.doc-head+.group{margin-top:0}.group-kicker{font-size:12pt;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#C9A84C}.group h2{margin:5px 0 8px;font-size:16pt;color:#101828;text-transform:uppercase}.group p,.condition p{margin:0 0 10px;color:#344054}.condition{break-inside:avoid;margin-top:13px;padding:10px 0 0 14px;border-left:3px solid #2643F7}.condition-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.condition h3{margin:0 0 6px;font-size:12pt;color:#101828;text-transform:uppercase}.condition span{font-size:8pt;font-weight:900;text-transform:uppercase;white-space:nowrap}.cond-type{padding:2px 8px;flex:0 0 auto}.cond-joiner{display:flex;justify-content:center;margin:8px 0 4px}.cond-joiner span{font-size:8pt;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:2px 12px}.image-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:7px 0 9px}figure{margin:0;border:1px solid #D6DCE8;padding:5px;break-inside:avoid}img{width:100%;height:110px;object-fit:cover;display:block}figcaption{margin-top:4px;font-size:7.5pt;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media screen{body{padding:16px 0}}@media print{body{padding:0}.doc{max-width:none}}</style></head><body><main class="doc"><img class="watermark" src="/LOGO-07.png" alt="">${docHeader}${htmlGroups}</main><script>(function(){var done=false;function fire(){if(done)return;done=true;try{window.focus();}catch(e){}setTimeout(function(){try{window.print();}catch(e){}},80);}function ready(){var imgs=Array.prototype.slice.call(document.images||[]);var pending=imgs.filter(function(im){return !im.complete;});if(!pending.length){fire();return;}var left=pending.length;var settle=function(){if(--left<=0)fire();};pending.forEach(function(im){im.addEventListener('load',settle);im.addEventListener('error',settle);});setTimeout(fire,6000);}if(document.readyState==='complete')ready();else window.addEventListener('load',ready);})();<\/script></body></html>`);
     printWindow.document.close();
   };
   const handlePrintPdf = async () => {
     if (isSaving) return;
-    const printWindow = window.open('', '_blank', 'width=900,height=1100');
-    if (!printWindow) {
-      showOutlineImageError('Allow pop-ups to print the strategy PDF.');
+    if (!String(stratBName || '').trim()) {
+      showOutlineImageError('Add a strategy name before printing the strategy PDF.');
       return;
     }
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html><head><title>Saving strategy...</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#05060A;color:#C7D0E0;font-family:${escPrint(F)},sans-serif;font-size:13px}</style></head><body>Saving strategy before printing...</body></html>`);
-    printWindow.document.close();
+    if (typeof onSave !== 'function') {
+      showOutlineImageError('Save is unavailable, so the strategy PDF cannot be printed.');
+      return;
+    }
     try {
-      if (typeof onSave === 'function') {
-        await onSave({ keepOpen: true });
+      await onSave({ keepOpen: true });
+      const printWindow = window.open('', '_blank', 'width=900,height=1100');
+      if (!printWindow) {
+        showOutlineImageError('Allow pop-ups to print the strategy PDF.');
+        return;
       }
       printOutlineDocument(printWindow);
     } catch (err) {
-      try { printWindow.close(); } catch {}
       showOutlineImageError(err?.message || 'Could not save strategy before printing.');
     }
   };
@@ -5357,6 +5472,20 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               style={{border:'none',background:'transparent',color:'#FFB8C2',fontSize:16,lineHeight:1,cursor:'default',padding:0,flexShrink:0}}>×</button>
           </div>
         )}
+        {flowNotice && (
+          <div role="status" aria-live="polite"
+            style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:119,maxWidth:'min(92%,560px)',display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',background:'rgba(38,67,247,0.14)',border:'1px solid rgba(74,106,255,0.50)',boxShadow:'0 10px 28px rgba(0,0,0,0.42)',fontFamily:F}}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,marginTop:1}}>
+              <circle cx="12" cy="12" r="9" stroke="#7A95FF" strokeWidth="2"/>
+              <path d="M12 11.5v5" stroke="#7A95FF" strokeWidth="2" strokeLinecap="round"/>
+              <circle cx="12" cy="7.8" r="1" fill="#7A95FF"/>
+            </svg>
+            <div style={{flex:1,minWidth:0,fontSize:11,fontWeight:650,color:'#D8E0FF',lineHeight:1.45}}>{flowNotice}</div>
+            <button type="button" aria-label="Dismiss flow notice"
+              onClick={()=>{setFlowNotice(null);if(flowNoticeTimerRef.current)clearTimeout(flowNoticeTimerRef.current);}}
+              style={{border:'none',background:'transparent',color:'#B8C6FF',fontSize:16,lineHeight:1,cursor:'default',padding:0,flexShrink:0}}>×</button>
+          </div>
+        )}
         {(flowViewMode !== 'board' || compactBoardPan) && (
           <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
             <button
@@ -5397,8 +5526,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             nodes={displayNodes}
             edges={canvasEdges}
             onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
             onSelectionChange={onSelectionChange}
             onPaneClick={onPaneClick}
             onInit={onInit}
@@ -5416,7 +5543,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             deleteKeyCode={null}
             proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{ type:'talEdge', markerEnd:{ type:MarkerType.ArrowClosed } }}
             style={{ width:'100%', height:'100%', background:'var(--tlc-bg)' }}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(140,160,255,0.06)"/>
@@ -5497,7 +5623,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                           outlineFocusStyle(e);
                           if (isDefaultStrategyFlowGroupLabel(group.label)) renameSection(group.id, '');
                         }}
-                        onBlur={outlineBlurStyle}
+                        onBlur={outlineGroupBlur(group.id)}
                         onMouseEnter={e=>showOutlineTip('Group Name', e.currentTarget)}
                         onMouseLeave={hideOutlineTip}
                         placeholder="Group title"
@@ -5553,6 +5679,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                             </label>
                             <div style={{display:'flex',flexDirection:'column',gap:7}}>
                               <div
+                                data-outline-status-menu-root="1"
                                 onClick={e=>{e.stopPropagation();setOutlineStatusOpen(outlineStatusOpen===cond.id?null:cond.id);}}
                                 onMouseEnter={e=>{setBtnHov(`outline-status-select-${cond.id}`);showOutlineTip('Condition Type', e.currentTarget);}}
                                 onMouseLeave={()=>{setBtnHov(null);setOutlinePress(null);hideOutlineTip();}}
@@ -5572,6 +5699,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                                 </svg>
                                 {outlineStatusOpen===cond.id && (
                                   <div
+                                    data-outline-status-menu-root="1"
                                     onClick={e=>e.stopPropagation()}
                                     style={{position:'absolute',top:38,right:0,width:158,zIndex:40,background:'#FFFFFF',border:'1px solid #D6DCE8',boxShadow:'0 14px 34px rgba(16,24,40,0.18), 0 0 0 1px rgba(38,67,247,0.05)',padding:'4px 0'}}
                                   >
@@ -5686,22 +5814,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         document.body
       )}
 
-      {/* Template picker */}
-      <TemplatePickerModal open={templatePickerOpen} c={c} F={F} hasExistingGroups={hasExistingGroups}
-        onPick={loadTemplate} onCancel={()=>setTemplatePickerOpen(false)}/>
-
-      {/* Toast */}
-      {templateToast && createPortal(
-        <div style={{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',zIndex:100040,
-          background:c.sf,border:`1px solid ${c.acB}`,padding:'10px 16px',
-          fontFamily:F,fontSize:11,fontWeight:600,color:c.tx,
-          boxShadow:'0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(140,160,255,0.13)',
-          display:'flex',alignItems:'center',gap:8,maxWidth:'92vw'}}>
-          <div style={{width:6,height:6,borderRadius:'50%',background:c.acL,boxShadow:`0 0 8px ${c.acL}`,flexShrink:0}}/>
-          {templateToast}
-        </div>,
-        document.body
-      )}
     </div>
   );
 }
@@ -6052,18 +6164,6 @@ function validateStrategyImageFile(file) {
   return { ok: true };
 }
 
-function validateScreenshotUploadFile(file) {
-  if (!file) return { ok: false, error: 'No file selected.' };
-  const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
-  if (mime && !mime.startsWith('image/')) {
-    return { ok: false, error: 'Unsupported format. Use JPEG, PNG, GIF, or WebP.' };
-  }
-  if (file.size > IMAGE_UPLOAD_MAX_BYTES) {
-    return { ok: false, error: imageUploadTooLargeError(file.size) };
-  }
-  return { ok: true };
-}
-
 function validateScreenshotDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
     return { ok: false, error: 'Invalid image data.' };
@@ -6316,6 +6416,9 @@ function InstrumentMultiSelect({ c, F, selectedIds, onToggle, marketCategories }
 function GeneralInfoStepContent({ c, F,
   stratBName, setStratBName,
   stratBDesc, setStratBDesc,
+  stratBStyle, setStratBStyle,
+  stratBDirection, setStratBDirection,
+  stratBComplexity, setStratBComplexity,
   stratBMarkets, setStratBMarkets,
   stratBTimeframes, setStratBTimeframes,
   stratBInstruments, setStratBInstruments,
@@ -6328,6 +6431,9 @@ function GeneralInfoStepContent({ c, F,
   showRequiredHint=false,
   generalInfoMissingKeys=[],
   generalInfoMissingLabels=[],
+  stratBTfCustom=[],
+  setStratBTfCustom,
+  stratBMarketsManualRef,
 }) {
   const tags = stratBTags || [];
   const MAX_TAGS = 10;
@@ -6387,14 +6493,15 @@ function GeneralInfoStepContent({ c, F,
   const [trdPickSearch, setTrdPickSearch] = React.useState('');
   const [trdPickHov, setTrdPickHov]   = React.useState(null);
   const [trdPickCat, setTrdPickCat]   = React.useState(null);
+  const [trdCapMsg, setTrdCapMsg]     = React.useState('');
   const [supPickOpen, setSupPickOpen] = React.useState(false);
   const [supPickPos, setSupPickPos]   = React.useState({top:0,left:0,maxH:280,width:270});
   const [supPickSearch, setSupPickSearch] = React.useState('');
   const [supPickHov, setSupPickHov]   = React.useState(null);
   const [supPickCat, setSupPickCat]   = React.useState(null);
+  const [supCapMsg, setSupCapMsg]     = React.useState('');
   const mktWrapRef = React.useRef(null);
   const mktMenuRef = React.useRef(null);
-  const marketsManualFilterRef = React.useRef(false);
   const trdWrapRef = React.useRef(null);
   const trdMenuRef = React.useRef(null);
   const supWrapRef = React.useRef(null);
@@ -6406,7 +6513,7 @@ function GeneralInfoStepContent({ c, F,
   const [tfPickHov, setTfPickHov]   = React.useState(null);
   const [tfCustomVal, setTfCustomVal] = React.useState('');
   const [tfCustomUnit, setTfCustomUnit] = React.useState('m');
-  const [sbTfCustom, setSbTfCustom] = React.useState([]);
+  const [tfLimitMsg, setTfLimitMsg] = React.useState('');
   const [tfUnitOpen, setTfUnitOpen] = React.useState(false);
   const [tfUnitPos, setTfUnitPos] = React.useState({ top: 0, left: 0, width: 120 });
   const tfPickWrapRef = React.useRef(null);
@@ -6421,8 +6528,9 @@ function GeneralInfoStepContent({ c, F,
   const emojiBtnRef = React.useRef(null);
   const emojiPickerRef = React.useRef(null);
 
-  const STYLES     = [{id:'scalping',label:'Scalping'},{id:'intraday',label:'Intraday'},{id:'swing',label:'Swing'}];
+  const STYLES     = [{id:'Trend Following',label:'Trend'},{id:'Breakout',label:'Breakout'},{id:'Mean Reversion',label:'Mean Reversion'},{id:'Scalping',label:'Scalping'},{id:'Swing',label:'Swing'}];
   const DIRECTIONS = [{id:'both',label:'Both'},{id:'long',label:'Long Only'},{id:'short',label:'Short Only'}];
+  const COMPLEXITIES = [{id:'Easy',label:'Easy'},{id:'Medium',label:'Medium'},{id:'Hard',label:'Hard'}];
   const EMOJI_CATS = [
     { id:'finance',    ic:'📈', label:'Finance',    list:['📈','📉','💹','💰','💵','💸','🏦','🏧','💳','💲','🪙','🏛','📊','📋','📌','🎯','🏆','🥇','💡','🔑','🗝','⚡','🛡','⚔️','🎰','♟','🧩','🔮','🧲','🧭','🗺','🌐','🔍','🔎','📡','⚙','💎','👑','🎖','🏅','⭐','🌟','💫','✨'] },
     { id:'smileys',    ic:'😊', label:'Smileys',    list:['😀','😃','😄','😁','😆','🤣','😂','🙂','😉','😊','😇','🥰','😍','🤩','😘','😋','😜','🤪','😝','🤑','🤗','🤔','😐','😑','😶','🙄','😬','😌','😔','😢','😭','😤','😡','😈','💀','☠️','👻','🤖','👽','👾','🤡','🥳','😎','🧐'] },
@@ -6526,7 +6634,7 @@ function GeneralInfoStepContent({ c, F,
   };
 
   const toggleMkt  = id => {
-    marketsManualFilterRef.current = true;
+    stratBMarketsManualRef.current = true;
     const cur=stratBMarkets||[];
     const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
     setStratBMarkets(next);
@@ -6539,35 +6647,48 @@ function GeneralInfoStepContent({ c, F,
     [stratBMarkets, stratBInstruments, stratBSupportInst]
   );
   const marketsAutoDerived = !(stratBMarkets||[]).length && effectiveMarkets.length > 0;
+  React.useEffect(() => {
+    if (stratEditId && (stratBMarkets || []).length) {
+      stratBMarketsManualRef.current = true;
+    }
+  }, [stratEditId, stratBMarkets, stratBMarketsManualRef]);
   const syncMarketsFromSymbols = React.useCallback((instruments, support, { force = false } = {}) => {
     const total = (instruments?.length || 0) + (support?.length || 0);
     if (total === 0) {
-      marketsManualFilterRef.current = false;
+      stratBMarketsManualRef.current = false;
       setStratBMarkets([]);
       return;
     }
-    if (!force && marketsManualFilterRef.current) return;
+    if (stratBMarketsManualRef.current) return;
     const derived = deriveStrategyMarketsFromInstruments(instruments, support);
     setStratBMarkets(prev => {
       const nextKey = [...derived].sort().join('|');
       const prevKey = [...(prev || [])].sort().join('|');
       return nextKey === prevKey ? prev : derived;
     });
-  }, [setStratBMarkets]);
+  }, [setStratBMarkets, stratBMarketsManualRef]);
   React.useEffect(() => {
     syncMarketsFromSymbols(stratBInstruments, stratBSupportInst);
   }, [stratBInstruments, stratBSupportInst, syncMarketsFromSymbols]);
   const toggleInst = id => {
-    marketsManualFilterRef.current = false;
     const cur=stratBInstruments||[];
-    const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
+    if (!cur.includes(id) && cur.length >= 10) {
+      setTrdCapMsg('Max 10 symbols');
+      return;
+    }
+    const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
+    setTrdCapMsg('');
     setStratBInstruments(next);
     syncMarketsFromSymbols(next, stratBSupportInst, { force: true });
   };
   const toggleSupportInst = id => {
-    marketsManualFilterRef.current = false;
     const cur=stratBSupportInst||[];
-    const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
+    if (!cur.includes(id) && cur.length >= 10) {
+      setSupCapMsg('Max 10 symbols');
+      return;
+    }
+    const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
+    setSupCapMsg('');
     setStratBSupportInst(next);
     syncMarketsFromSymbols(stratBInstruments, next, { force: true });
   };
@@ -6625,14 +6746,6 @@ function GeneralInfoStepContent({ c, F,
       window.removeEventListener('scroll', closeMenus);
     };
   }, [mktDropOpen, trdPickOpen, supPickOpen, tfPickOpen, emojiOpen, mobileSymbolPicker]);
-  const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
-  const tfAtMax    = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
-  const toggleTf   = id => {
-    if (tfs.includes(id)) { setStratBTimeframes(tfs.filter(x => x !== id)); return; }
-    if (tfs.length >= MAX_STRATEGY_TIMEFRAMES) return;
-    setStratBTimeframes([...tfs, id]);
-  };
-
   const tfSortItems = items=>[...items].sort((a,b)=>{const nA=parseInt(a)||0,nB=parseInt(b)||0;return nA-nB;});
   const tfDefaults={
     minutes:["1m","5m","15m","30m"],
@@ -6641,13 +6754,60 @@ function GeneralInfoStepContent({ c, F,
     weeks:["1W"],
     months:["1M"],
   };
+  const canonicalTf = value => {
+    const raw = String(value ?? '').trim();
+    const match = raw.match(/^(\d+)\s*([mMhHdDwW])$/);
+    if (!match) return raw;
+    const unitRaw = match[2];
+    const unit = unitRaw === 'm' ? 'm' : unitRaw === 'M' ? 'M' : unitRaw.toUpperCase();
+    return `${parseInt(match[1], 10)}${unit}`;
+  };
+  const dedupeTfs = values => {
+    const list = Array.isArray(values) ? values : [values].filter(Boolean);
+    const seen = new Set();
+    const next = [];
+    list.forEach(value => {
+      const key = canonicalTf(value);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      next.push(key);
+    });
+    return next;
+  };
+  const rawTfs = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
+  const normalizedTfs = React.useMemo(() => dedupeTfs(rawTfs), [stratBTimeframes]);
+  const tfs = normalizedTfs.slice(0, MAX_STRATEGY_TIMEFRAMES);
+  const tfOverLimit = normalizedTfs.length > MAX_STRATEGY_TIMEFRAMES;
+  const tfAtMax = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
+  const showTfLimitMsg = tfLimitMsg || tfOverLimit;
+  const toggleTf = id => {
+    const key = canonicalTf(id);
+    if (tfs.includes(key)) {
+      setTfLimitMsg('');
+      setStratBTimeframes(tfs.filter(x => x !== key));
+      return;
+    }
+    if (tfs.length >= MAX_STRATEGY_TIMEFRAMES) {
+      setTfLimitMsg(`Max ${MAX_STRATEGY_TIMEFRAMES} timeframes`);
+      return;
+    }
+    setTfLimitMsg('');
+    setStratBTimeframes([...tfs, key]);
+  };
+  React.useEffect(()=>{
+    const next = normalizedTfs.slice(0, MAX_STRATEGY_TIMEFRAMES);
+    const same = rawTfs.length === next.length && rawTfs.every((value, idx) => value === next[idx]);
+    if (!same) setStratBTimeframes(next);
+  }, [normalizedTfs, stratBTimeframes, setStratBTimeframes]);
+  const customTfs = React.useMemo(() => dedupeTfs(stratBTfCustom || []), [stratBTfCustom]);
   const allTfPresetItems = React.useMemo(
-    () => tfSortItems([...new Set([...Object.values(tfDefaults).flat(), ...sbTfCustom])]),
-    [sbTfCustom]
+    () => tfSortItems(dedupeTfs([...Object.values(tfDefaults).flat(), ...customTfs])),
+    [customTfs]
   );
   const selectablePresetBatch = allTfPresetItems.slice(0, MAX_STRATEGY_TIMEFRAMES);
   const allTfsSelected = selectablePresetBatch.length > 0 && selectablePresetBatch.every(t => tfs.includes(t));
   const toggleAllTfs = () => {
+    setTfLimitMsg('');
     setStratBTimeframes(allTfsSelected ? [] : [...selectablePresetBatch]);
   };
   const openTfUnitMenu = e => {
@@ -6667,31 +6827,32 @@ function GeneralInfoStepContent({ c, F,
     setTfUnitOpen(true);
   };
   const tfCategories={
-    minutes:{label:"Minutes",items:tfSortItems([...tfDefaults.minutes,...sbTfCustom.filter(x=>x.endsWith("m"))])},
-    hours:{label:"Hours",items:tfSortItems([...tfDefaults.hours,...sbTfCustom.filter(x=>x.endsWith("H"))])},
-    days:{label:"Days",items:tfSortItems([...tfDefaults.days,...sbTfCustom.filter(x=>x.endsWith("D"))])},
-    weeks:{label:"Weeks",items:tfSortItems([...tfDefaults.weeks,...sbTfCustom.filter(x=>x.endsWith("W"))])},
-    months:{label:"Months",items:tfSortItems([...tfDefaults.months,...sbTfCustom.filter(x=>x.endsWith("M")&&!x.endsWith("m"))])},
+    minutes:{label:"Minutes",items:tfSortItems(dedupeTfs([...tfDefaults.minutes,...customTfs.filter(x=>x.endsWith("m"))]))},
+    hours:{label:"Hours",items:tfSortItems(dedupeTfs([...tfDefaults.hours,...customTfs.filter(x=>x.endsWith("H"))]))},
+    days:{label:"Days",items:tfSortItems(dedupeTfs([...tfDefaults.days,...customTfs.filter(x=>x.endsWith("D"))]))},
+    weeks:{label:"Weeks",items:tfSortItems(dedupeTfs([...tfDefaults.weeks,...customTfs.filter(x=>x.endsWith("W"))]))},
+    months:{label:"Months",items:tfSortItems(dedupeTfs([...tfDefaults.months,...customTfs.filter(x=>x.endsWith("M")&&!x.endsWith("m"))]))},
   };
   const addCustomTf=()=>{
-    if (tfAtMax) return;
+    if (tfAtMax) {
+      setTfLimitMsg(`Max ${MAX_STRATEGY_TIMEFRAMES} timeframes`);
+      return;
+    }
     const val=parseStrategyCustomTfValue(tfCustomVal, tfCustomUnit);
     if(val==null)return;
-    const key=`${val}${tfCustomUnit}`;
-    const allDef=Object.values(tfDefaults).flat();
-    if(sbTfCustom.includes(key)||allDef.includes(key))return;
-    setSbTfCustom(prev=>[...prev,key]);
-    setStratBTimeframes(prev=>(prev||[]).includes(key)?(prev||[]):[...(prev||[]),key]);
+    const key=canonicalTf(`${val}${tfCustomUnit}`);
+    const allDef=dedupeTfs(Object.values(tfDefaults).flat());
+    if(!customTfs.includes(key)&&!allDef.includes(key) && typeof setStratBTfCustom === 'function') {
+      setStratBTfCustom(prev=>dedupeTfs([...(prev||[]),key]));
+    }
+    setStratBTimeframes(prev=>{
+      const cur=dedupeTfs(prev||[]);
+      return cur.includes(key)?cur:[...cur,key].slice(0,MAX_STRATEGY_TIMEFRAMES);
+    });
+    setTfLimitMsg('');
     setTfCustomVal('');
   };
   const customTfReady = parseStrategyCustomTfValue(tfCustomVal, tfCustomUnit) != null;
-
-  React.useEffect(()=>{
-    const cur=Array.isArray(stratBTimeframes)?stratBTimeframes.filter(Boolean):[];
-    if(cur.length>MAX_STRATEGY_TIMEFRAMES){
-      setStratBTimeframes(cur.slice(0,MAX_STRATEGY_TIMEFRAMES));
-    }
-  },[]);
 
   React.useEffect(()=>{
     if(!tfPickOpen && !tfUnitOpen) return;
@@ -6720,6 +6881,9 @@ function GeneralInfoStepContent({ c, F,
       </div>
     </div>
   );
+  const styleOptions = !stratBStyle || STYLES.some(o => o.id === stratBStyle)
+    ? STYLES
+    : [{id:stratBStyle,label:stratBStyle}, ...STYLES];
 
   return (
     <div ref={generalInfoScrollRef} style={{flex:1,padding:'24px 28px',overflowY:'auto',fontFamily:F}} className="tlr-scroll">
@@ -6793,6 +6957,13 @@ function GeneralInfoStepContent({ c, F,
             onFocus={e=>e.target.style.borderColor=c.acL}
             onBlur={e=>e.target.style.borderColor=c.brH}/>
         </div>
+        </div>
+
+        {/* ── Section: Classification ── */}
+        <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
+          <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />
+          <ToggleRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} />
+          <ToggleRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} />
         </div>
 
         {/* ── Section: Tags ── */}
@@ -6941,7 +7112,7 @@ function GeneralInfoStepContent({ c, F,
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBInstruments||[]).length>0&&(
-                  <div onClick={e=>{e.stopPropagation();marketsManualFilterRef.current=false;setStratBInstruments([]);syncMarketsFromSymbols([], stratBSupportInst, { force: true });}}
+                  <div onClick={e=>{e.stopPropagation();setTrdCapMsg('');setStratBInstruments([]);syncMarketsFromSymbols([], stratBSupportInst, { force: true });}}
                     style={{display:'flex',alignItems:'center',cursor:'default',color:c.tm,transition:'color 0.1s'}}
                     onMouseEnter={e=>e.currentTarget.style.color=c.rd}
                     onMouseLeave={e=>e.currentTarget.style.color=c.tm}>
@@ -6983,10 +7154,10 @@ function GeneralInfoStepContent({ c, F,
                   const sym=!fl?getInstSym(opt.id):null;
                   const isDisabled=atTrdCap&&!isChk;
                   return(
-                  <div key={opt.id} onClick={isDisabled?undefined:onClick}
+                  <div key={opt.id} onClick={()=>{if(isDisabled){setTrdCapMsg('Max 10 symbols');return;}onClick();}}
                     onMouseEnter={()=>setTrdPickHov('t_'+opt.id)} onMouseLeave={()=>setTrdPickHov(null)}
                     style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
-                      opacity:isDisabled?0.35:1,pointerEvents:isDisabled?'none':'auto',
+                      opacity:isDisabled?0.35:1,
                       background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(38,67,247,0.06)':'transparent',transition:'background 0.08s'}}>
                     {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                     <svg width={10} height={10} style={{display:'block',overflow:'visible',flexShrink:0}}>
@@ -7009,6 +7180,11 @@ function GeneralInfoStepContent({ c, F,
                       <input autoFocus={!mobileSymbolPicker} value={trdPickSearch} onChange={e=>setTrdPickSearch(e.target.value)} placeholder="Search symbols…"
                         style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
                     </div>
+                    {(atTrdCap||trdCapMsg)&&(
+                      <div style={{padding:'5px 10px',borderBottom:`1px solid ${c.br}`,fontSize:9,fontWeight:750,color:c.rd,fontFamily:F,letterSpacing:'0.03em',flexShrink:0}}>
+                        Max 10 symbols
+                      </div>
+                    )}
                     {availCats.length>1&&(
                       <div style={{display:'flex',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                         {[{id:null,label:'All'},...availCats.map(id=>({id,label:id.charAt(0).toUpperCase()+id.slice(1)}))].map(tab=>{
@@ -7041,7 +7217,7 @@ function GeneralInfoStepContent({ c, F,
                 );
               })(), document.body)}
             </div>
-            <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:4,alignContent:'start',height:48,overflow:'hidden'}}>
+            <div className="tlr-scroll" style={{flex:1,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(106px,1fr))',gap:4,alignContent:'start',minHeight:48,maxHeight:116,overflowY:'auto',paddingRight:2}}>
               {(stratBInstruments||[]).length===0&&<span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:'48px',gridColumn:'1/-1',textAlign:'center'}}>—</span>}
               {(stratBInstruments||[]).map(id=>{
                 const inst=ALL_INSTRUMENTS.find(o=>o.id===id)||{label:id};
@@ -7057,6 +7233,11 @@ function GeneralInfoStepContent({ c, F,
               })}
             </div>
           </div>
+          {trdCapMsg&&(
+            <div style={{padding:'0 10px 10px 42px',fontSize:10,fontWeight:700,color:c.rd,fontFamily:F}}>
+              {trdCapMsg}
+            </div>
+          )}
 
           {/* Divider */}
           <div style={{height:1,background:c.brH}}/>
@@ -7070,7 +7251,7 @@ function GeneralInfoStepContent({ c, F,
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBSupportInst||[]).length>0&&(
-                  <div onClick={e=>{e.stopPropagation();marketsManualFilterRef.current=false;setStratBSupportInst([]);syncMarketsFromSymbols(stratBInstruments, [], { force: true });}}
+                  <div onClick={e=>{e.stopPropagation();setSupCapMsg('');setStratBSupportInst([]);syncMarketsFromSymbols(stratBInstruments, [], { force: true });}}
                     style={{display:'flex',alignItems:'center',cursor:'default',color:c.tm,transition:'color 0.1s'}}
                     onMouseEnter={e=>e.currentTarget.style.color=c.rd}
                     onMouseLeave={e=>e.currentTarget.style.color=c.tm}>
@@ -7111,10 +7292,10 @@ function GeneralInfoStepContent({ c, F,
                   const sym=!fl?getInstSym(opt.id):null;
                   const isDisabled=atSupCap&&!isChk;
                   return(
-                  <div key={opt.id} onClick={isDisabled?undefined:onClick}
+                  <div key={opt.id} onClick={()=>{if(isDisabled){setSupCapMsg('Max 10 symbols');return;}onClick();}}
                     onMouseEnter={()=>setSupPickHov('s_'+opt.id)} onMouseLeave={()=>setSupPickHov(null)}
                     style={{position:'relative',display:'flex',alignItems:'center',padding:'5px 10px',gap:8,cursor:'default',
-                      opacity:isDisabled?0.35:1,pointerEvents:isDisabled?'none':'auto',
+                      opacity:isDisabled?0.35:1,
                       background:isH&&!isChk?'rgba(255,255,255,0.04)':isChk?'rgba(201,168,76,0.08)':'transparent',transition:'background 0.08s'}}>
                     {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:'linear-gradient(180deg,transparent,rgba(232,194,82,0.9),transparent)',boxShadow:'0 0 6px rgba(232,194,82,0.3)'}}/>}
                     <svg width={10} height={10} style={{display:'block',overflow:'visible',flexShrink:0}}>
@@ -7137,6 +7318,11 @@ function GeneralInfoStepContent({ c, F,
                       <input autoFocus={!mobileSymbolPicker} value={supPickSearch} onChange={e=>setSupPickSearch(e.target.value)} placeholder="Search symbols…"
                         style={{width:'100%',background:'transparent',border:'none',outline:'none',color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:'border-box'}}/>
                     </div>
+                    {(atSupCap||supCapMsg)&&(
+                      <div style={{padding:'5px 10px',borderBottom:`1px solid ${c.br}`,fontSize:9,fontWeight:750,color:c.rd,fontFamily:F,letterSpacing:'0.03em',flexShrink:0}}>
+                        Max 10 symbols
+                      </div>
+                    )}
                     {availCats.length>1&&(
                       <div style={{display:'flex',borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
                         {[{id:null,label:'All'},...availCats.map(id=>({id,label:id.charAt(0).toUpperCase()+id.slice(1)}))].map(tab=>{
@@ -7170,7 +7356,7 @@ function GeneralInfoStepContent({ c, F,
                 );
               })(), document.body)}
             </div>
-            <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:4,alignContent:'start',height:48,overflow:'hidden'}}>
+            <div className="tlr-scroll" style={{flex:1,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(106px,1fr))',gap:4,alignContent:'start',minHeight:48,maxHeight:116,overflowY:'auto',paddingRight:2}}>
               {(stratBSupportInst||[]).length===0&&<span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:'48px',gridColumn:'1/-1',textAlign:'center'}}>—</span>}
               {(stratBSupportInst||[]).map(id=>{
                 const inst=ALL_INSTRUMENTS.find(o=>o.id===id)||{label:id};
@@ -7186,6 +7372,11 @@ function GeneralInfoStepContent({ c, F,
               })}
             </div>
           </div>
+          {supCapMsg&&(
+            <div style={{padding:'0 10px 10px 42px',fontSize:10,fontWeight:700,color:c.rd,fontFamily:F}}>
+              {supCapMsg}
+            </div>
+          )}
         </div>
 
         {/* ── Section: Timeframes ── */}
@@ -7223,13 +7414,13 @@ function GeneralInfoStepContent({ c, F,
                         <div style={{padding:'4px 10px 2px',fontSize:9,fontWeight:700,color:c.tm,letterSpacing:'0.07em'}}>{label.toUpperCase()}</div>
                         {items.map(t=>{
                           const isChk=tfs.includes(t);
-                          const isCustom=sbTfCustom.includes(t);
+                          const isCustom=customTfs.includes(t);
                           const isDisabled=!isChk&&tfAtMax;
                           const isH=tfPickHov===`tf-${t}`;
                           const isDelH=tfPickHov===`tfdel-${t}`;
                           const isRowH=isH||isDelH;
                           return(
-                            <div key={t} onClick={()=>{if(!isDisabled)toggleTf(t);}} onMouseEnter={()=>setTfPickHov(`tf-${t}`)} onMouseLeave={()=>setTfPickHov(null)}
+                            <div key={t} onClick={()=>toggleTf(t)} onMouseEnter={()=>setTfPickHov(`tf-${t}`)} onMouseLeave={()=>setTfPickHov(null)}
                               style={{display:'flex',alignItems:'center',padding:'3px 10px',gap:6,position:'relative',cursor:isDisabled?'default':'default',opacity:isDisabled?0.38:1,
                                 background:isChk?c.acD:isRowH?'rgba(255,255,255,0.025)':'transparent',transition:'background 0.1s, opacity 0.12s'}}>
                               {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -7241,7 +7432,7 @@ function GeneralInfoStepContent({ c, F,
                               </svg>
                               <span style={{flex:1,color:isChk&&isRowH?c.acL:c.ts,fontSize:13,fontWeight:isChk?700:500,fontFamily:F}}>{t}</span>
                               {isCustom&&(
-                                <div onClick={e=>{e.stopPropagation();setSbTfCustom(prev=>prev.filter(x=>x!==t));setStratBTimeframes(prev=>(prev||[]).filter(x=>x!==t));}}
+                                <div onClick={e=>{e.stopPropagation();if(typeof setStratBTfCustom === 'function') setStratBTfCustom(prev=>(prev||[]).filter(x=>canonicalTf(x)!==t));setStratBTimeframes(prev=>(prev||[]).filter(x=>canonicalTf(x)!==t));}}
                                   onMouseEnter={()=>setTfPickHov(`tfdel-${t}`)} onMouseLeave={()=>setTfPickHov(`tf-${t}`)}
                                   style={{width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center',cursor:'default',flexShrink:0,opacity:isDelH?1:isRowH?0.6:0,transition:'opacity 0.15s'}}>
                                   <svg width={8} height={8} viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={isDelH?c.rd:c.ts} strokeWidth="3" strokeLinecap="round"/></svg>
@@ -7258,7 +7449,7 @@ function GeneralInfoStepContent({ c, F,
                     <div style={{width:34,height:22,flexShrink:0}}>
                       <input type="text" inputMode="numeric" value={tfCustomVal}
                         onChange={e=>setTfCustomVal(sanitizeStrategyCustomTfInput(e.target.value, tfCustomUnit))}
-                        onKeyDown={e=>{if(e.key==='Enter'&&customTfReady&&!tfAtMax)addCustomTf();}}
+                        onKeyDown={e=>{if(e.key==='Enter'&&customTfReady)addCustomTf();}}
                         className="tlr-nospinner"
                         style={{width:34,height:22,background:c.hv,border:'1px solid rgba(140,160,255,0.22)',color:c.tx,fontSize:11,fontFamily:F,padding:'0 4px',outline:'none',textAlign:'center',boxSizing:'border-box',transition:'border-color 0.14s',caretColor:c.acL}}/>
                     </div>
@@ -7297,7 +7488,7 @@ function GeneralInfoStepContent({ c, F,
                         </div>
                       );
                     })()}
-                    <div onClick={()=>{if(customTfReady&&!tfAtMax)addCustomTf();}}
+                    <div onClick={()=>{if(customTfReady)addCustomTf();}}
                       onMouseEnter={()=>{if(customTfReady&&!tfAtMax)setTfPickHov('tf-add');}} onMouseLeave={()=>setTfPickHov(null)}
                       style={{width:22,height:22,position:'relative',boxSizing:'border-box',cursor:'default',padding:0,flexShrink:0,opacity:customTfReady&&!tfAtMax?1:0.35,
                         background:tfPickHov==='tf-add'?'rgba(74,106,255,0.12)':'transparent',
@@ -7311,6 +7502,11 @@ function GeneralInfoStepContent({ c, F,
                       </svg>
                     </div>
                   </div>
+                  {showTfLimitMsg&&(
+                    <div style={{padding:'0 10px 8px',fontSize:9,fontWeight:700,color:c.rd,fontFamily:F,letterSpacing:'0.03em',flexShrink:0}}>
+                      Max {MAX_STRATEGY_TIMEFRAMES} timeframes
+                    </div>
+                  )}
                 </div>,
                 document.body
               )}
@@ -7323,6 +7519,11 @@ function GeneralInfoStepContent({ c, F,
               </div>
             ))}
           </div>
+          {showTfLimitMsg&&(
+            <div style={{marginTop:8,fontSize:10,fontWeight:700,color:c.rd,fontFamily:F}}>
+              Max {MAX_STRATEGY_TIMEFRAMES} timeframes
+            </div>
+          )}
         </div>
 
         {/* ── Section: Strategy Image ── */}
@@ -7832,26 +8033,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   const postTradeTags = vars.filter(v=>v.type==='variable'&&v.timing==='post');
   const preCount = preTradeTags.length;
   const postCount = postTradeTags.length;
-  const groups = (canvasNodes||[])
-    .filter(n=>n.type==='section')
-    .sort((a,b)=>(a.position?.y||0)-(b.position?.y||0))
-    .map(sec=>({
-      id: sec.id,
-      label: sec.data?.label || 'Group',
-      description: sec.data?.description || '',
-      color: sec.data?.ac || c.acL,
-      images: Array.isArray(sec.data?.images) ? sec.data.images : [],
-      conditions: (canvasNodes||[])
-        .filter(n=>n.type==='condition'&&n.data?.sectionId===sec.id)
-        .sort((a,b)=>(a.data?.slot??0)-(b.data?.slot??0)||(a.position?.x||0)-(b.position?.x||0))
-        .map(cond=>({
-          id: cond.id,
-          label: cond.data?.label || 'Condition',
-          description: cond.data?.description || '',
-          status: cond.data?.status || 'mandatory',
-          images: Array.isArray(cond.data?.images) ? cond.data.images : [],
-        }))
-    }));
+  const groups = deriveStrategyBuilderGroupsFromCanvas(canvasNodes).map(group => ({ ...group, color: group.color || c.acL }));
   const conditionCount = groups.reduce((sum,g)=>sum+g.conditions.length,0);
 
   const preAccent = c.gold || '#C9A84C';
@@ -8263,6 +8445,22 @@ function StrategyBuilderModal(props) {
     { id:4, label:'Review', hint:'Confirm your strategy before saving.' },
   ];
 
+  const normalizedBuilderTimeframes = React.useMemo(() => {
+    const list = Array.isArray(props.stratBTimeframes) ? props.stratBTimeframes : [props.stratBTimeframes].filter(Boolean);
+    const seen = new Set();
+    const next = [];
+    list.forEach(value => {
+      const raw = String(value ?? '').trim();
+      const match = raw.match(/^(\d+)\s*([mMhHdDwW])$/);
+      const unitRaw = match?.[2];
+      const unit = unitRaw === 'm' ? 'm' : unitRaw === 'M' ? 'M' : unitRaw ? unitRaw.toUpperCase() : '';
+      const key = match ? `${parseInt(match[1], 10)}${unit}` : raw;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      next.push(key);
+    });
+    return next;
+  }, [props.stratBTimeframes]);
   const generalInfoIssues = React.useMemo(() => {
     const issues = [];
     if (!(stratBName || '').trim()) issues.push({key:'name', label:'strategy name'});
@@ -8273,9 +8471,12 @@ function StrategyBuilderModal(props) {
       ? props.stratBMarkets
       : deriveStrategyMarketsFromInstruments(props.stratBInstruments, props.stratBSupportInst);
     if (!resolvedMarkets.length) issues.push({key:'markets', label:'markets or trading symbols'});
-    if (!(props.stratBTimeframes || []).length) issues.push({key:'timeframes', label:'time frames'});
+    if (!normalizedBuilderTimeframes.length) issues.push({key:'timeframes', label:'time frames'});
+    else if (normalizedBuilderTimeframes.length > MAX_STRATEGY_TIMEFRAMES) {
+      issues.push({key:'timeframes', label:`${MAX_STRATEGY_TIMEFRAMES} or fewer timeframes`});
+    }
     return issues;
-  }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, props.stratBTimeframes]);
+  }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, normalizedBuilderTimeframes]);
   const generalInfoReady = generalInfoIssues.length === 0;
   const flowGroupCount = React.useMemo(
     () => countStrategyFlowGroups(props.canvasNodes),
@@ -8448,7 +8649,7 @@ function StrategyBuilderModal(props) {
             className={stratWizardStep!==2?'tlr-scroll':undefined}>
             <StrategyBuilderStepBoundary step={stratWizardStep} resetKey={`${stratWizardStep}:${props.stratEditId || 'new'}`} c={c} F={F} compact={compact}>
               {/* Step 1: General Info */}
-              {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
+              {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBStyle={props.stratBStyle} setStratBStyle={props.setStratBStyle} stratBDirection={props.stratBDirection} setStratBDirection={props.setStratBDirection} stratBComplexity={props.stratBComplexity} setStratBComplexity={props.setStratBComplexity} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBMarketsManualRef={props.stratBMarketsManualRef} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBTfCustom={props.stratBTfCustom} setStratBTfCustom={props.setStratBTfCustom} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
 
               {/* Step 2: Canvas */}
               {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} compact={compact} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
@@ -12062,6 +12263,7 @@ const TalariaV8b = () => {
   const [stratWizardStep, setStratWizardStep] = useState(1);
   const [stratBDirection, setStratBDirection] = useState("both");
   const [stratBMarkets, setStratBMarkets] = useState([]);
+  const stratBMarketsManualRef = useRef(false);
   const [stratBConditions, setStratBConditions] = useState([]);
   const [stratBVariables, setStratBVariables] = useState([]);
   const [stratBImages, setStratBImages] = useState([]);
@@ -12077,6 +12279,7 @@ const TalariaV8b = () => {
   const [stratBMktDropPos, setStratBMktDropPos] = useState({top:0,left:0,width:0});
   const [stratBTfDropOpen, setStratBTfDropOpen] = useState(false);
   const [stratBTfDropPos, setStratBTfDropPos] = useState({top:0,left:0,width:0});
+  const [stratBTfCustom, setStratBTfCustom] = useState([]);
   const [stratBCustomTfs, setStratBCustomTfs] = useState([]);
   const [stratBCustomTfVal, setStratBCustomTfVal] = useState("");
   const [stratBCustomTfUnit, setStratBCustomTfUnit] = useState("m");
@@ -46056,6 +46259,7 @@ const TalariaV8b = () => {
             setStratBDirection("both");
             setStratBMarkets([]);
             setStratBConditions([]);
+            setStratBTree([]);
             setStratBVariables([{type:"divider",id:"div0"}]);
             setStratBImages([]);
             setStratBSupportInst([]);
@@ -46067,6 +46271,7 @@ const TalariaV8b = () => {
             setStratBInstDropOpen(false);
             setStratBInstSearch("");
             setStratBTfDropOpen(false);
+            setStratBTfCustom([]);
             setStratBCustomTfs([]);
             setStratBCustomTfVal("");
             setStratBCustomTfUnit("m");
@@ -46100,7 +46305,7 @@ const TalariaV8b = () => {
               hasCanvasChanges
             );
           };
-          const fillStrategyBuilderFromTemplate = (tpl, afterApply) => {
+          const fillStrategyBuilderFromTemplate = (tpl, afterApply, skipConfirm=false) => {
             const applyTemplate = () => {
               if (!tpl) {
                 resetStrategyBuilderForm();
@@ -46113,12 +46318,13 @@ const TalariaV8b = () => {
               setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
               setStratBDesc(tpl.description || "");
               setStratBInstruments([]);
-              setStratBTimeframes([...(tpl.timeframes || [])]);
+              setStratBTimeframes(normalizeStrategyTimeframes(tpl.timeframes || []).slice(0, MAX_STRATEGY_TIMEFRAMES));
               setStratBTags([...(tpl.tags || [])]);
               setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
               setStratBDirection("both");
               setStratBMarkets([...(tpl.markets || [])]);
               setStratBConditions([]);
+              setStratBTree([]);
               setStratBVariables([{type:"divider",id:"div0"}]);
               setStratBImages([]);
               setStratBSupportInst([]);
@@ -46128,6 +46334,7 @@ const TalariaV8b = () => {
               setStratBInstDropOpen(false);
               setStratBInstSearch("");
               setStratBTfDropOpen(false);
+              setStratBTfCustom(deriveCustomStrategyTimeframes(tpl.timeframes || []));
               setStratBCustomTfs([]);
               setStratBCustomTfVal("");
               setStratBCustomTfUnit("m");
@@ -46142,7 +46349,7 @@ const TalariaV8b = () => {
               applyTemplate();
               return true;
             }
-            if (strategyBuilderHasUnsavedChanges()) {
+            if (!skipConfirm && strategyBuilderHasUnsavedChanges()) {
               openAppConfirm({
                 title: profileLang === "arabic" ? "استبدال الاستراتيجية" : "Replace strategy",
                 message: profileLang === "arabic"
@@ -46167,19 +46374,18 @@ const TalariaV8b = () => {
               setStratBStyle(editStrat.style||"Trend Following");
               setStratBDesc(editStrat.desc||"");
               setStratBInstruments(editStrat.instruments||[]);
-              setStratBTimeframes(editStrat.timeframes||[]);
+              const editTimeframes = normalizeStrategyTimeframes(editStrat.timeframes||[]).slice(0, MAX_STRATEGY_TIMEFRAMES);
+              setStratBTimeframes(editTimeframes);
               setStratBTags(editStrat.tags||[]);
               setStratBComplexity(editStrat.complexity||"Medium");
               setStratBDirection(editStrat.direction||"both");
               const editInst = editStrat.instruments || [];
               const editSupport = editStrat.supportInst || [];
+              const editSavedMarkets = Array.isArray(editStrat.markets) ? editStrat.markets : [];
               const editDerivedMarkets = deriveStrategyMarketsFromInstruments(editInst, editSupport);
-              setStratBMarkets(
-                editDerivedMarkets.length
-                  ? editDerivedMarkets
-                  : (editStrat.markets || [])
-              );
+              setStratBMarkets(editSavedMarkets.length ? editSavedMarkets : editDerivedMarkets);
               setStratBConditions(editStrat.conditions||[]);
+              setStratBTree(Array.isArray(editStrat.tree) ? editStrat.tree : []);
               setStratBVariables(editStrat.variables||[{type:"divider",id:"div0"}]);
               setStratBImages(editStrat.images||[]);
               setStratBSupportInst(editStrat.supportInst||[]);
@@ -46191,6 +46397,7 @@ const TalariaV8b = () => {
               setStratBInstDropOpen(false);
               setStratBInstSearch("");
               setStratBTfDropOpen(false);
+              setStratBTfCustom(deriveCustomStrategyTimeframes(editTimeframes));
               setStratBCustomTfs([]);
               setStratBCustomTfVal("");
               setStratBCustomTfUnit("m");
@@ -46417,6 +46624,21 @@ const TalariaV8b = () => {
               setStratWizardStep(1);
               return Promise.reject(new Error("A strategy with this name already exists. Choose a different name."));
             }
+            const normalizedTimeframes = normalizeStrategyTimeframes(stratBTimeframes);
+            if (!normalizedTimeframes.length) {
+              const err = new Error("Choose at least one timeframe before saving.");
+              setStratBuilderSaveError(err.message);
+              setStratWizardStep(1);
+              return Promise.reject(err);
+            }
+            if (normalizedTimeframes.length > MAX_STRATEGY_TIMEFRAMES) {
+              const err = new Error(`Choose ${MAX_STRATEGY_TIMEFRAMES} or fewer timeframes before saving.`);
+              setStratBuilderSaveError(err.message);
+              setStratWizardStep(1);
+              return Promise.reject(err);
+            }
+            const canvasConditions = deriveStrategyBuilderConditionsFromCanvas(canvasNodes);
+            const rootConditions = canvasConditions.length ? canvasConditions : (stratBConditions || []);
             const existingRow = stratEditId ? myStrategies.find(s=>sameStrategyRowId(s,{id:stratEditId})) : null;
             const strat = {
               id: stratEditId || `m${Date.now()}`,
@@ -46425,12 +46647,12 @@ const TalariaV8b = () => {
               style: stratBStyle,
               desc: stratBDesc.trim(),
               instruments: stratBInstruments,
-              timeframes: stratBTimeframes,
+              timeframes: normalizedTimeframes,
               tags: stratBTags,
               complexity: stratBComplexity,
               direction: stratBDirection,
               markets: (stratBMarkets||[]).length ? stratBMarkets : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst),
-              conditions: stratBConditions,
+              conditions: rootConditions,
               tree: stratBTree,
               variables: stratBVariables,
               images: (stratBImages||[]).length ? stratBImages : undefined,
@@ -46440,6 +46662,21 @@ const TalariaV8b = () => {
               createdAt: existingRow?.createdAt || new Date().toISOString(),
               ...(stratEditId ? { updatedAt: new Date().toISOString() } : {}),
             };
+            if (strategyImagePayloadTooLarge(strat)) {
+              const err = new Error("One or more strategy images are too large. Use images under 2.8 MB each before saving.");
+              setStratBuilderSaveError(err.message);
+              return Promise.reject(err);
+            }
+            const payloadBytes = estimateStrategySavePayloadBytes(strat);
+            if (payloadBytes > STRATEGY_SAVE_PAYLOAD_BUDGET_BYTES) {
+              const mb = (payloadBytes / (1024 * 1024)).toFixed(1);
+              const maxMb = Math.floor(STRATEGY_SAVE_MAX_CONTENT_BYTES / (1024 * 1024));
+              const err = new Error(`This strategy is too large to save (${mb} MB). Keep it under ${maxMb} MB by removing images or using smaller screenshots.`);
+              setStratBuilderSaveError(err.message);
+              return Promise.reject(err);
+            }
+            setStratBTimeframes(normalizedTimeframes);
+            setStratBConditions(rootConditions);
             const applySavedRow = (savedRow) => {
               const row = savedRow || strat;
               if (stratEditId) {
@@ -46904,10 +47141,10 @@ const TalariaV8b = () => {
               })()}
 
               {/* ─ Pre-builder Template Picker ─ */}
-              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} compact={stratBuilderCompact} hasExistingGroups={false}
+              <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} compact={stratBuilderCompact} hasExistingGroups={strategyFlowHasMeaningfulTemplateContent(canvasNodes) || stratEditId != null}
                 onPick={(tpl)=>{
                   setStratTemplatePickerOpen(false);
-                  fillStrategyBuilderFromTemplate(tpl);
+                  fillStrategyBuilderFromTemplate(tpl, undefined, true);
                   setStratBuilderOpen(true);
                 }}
                 onCancel={()=>setStratTemplatePickerOpen(false)}/>
@@ -46924,7 +47161,9 @@ const TalariaV8b = () => {
                   stratBDirection={stratBDirection} setStratBDirection={setStratBDirection}
                   stratBComplexity={stratBComplexity} setStratBComplexity={setStratBComplexity}
                   stratBMarkets={stratBMarkets} setStratBMarkets={setStratBMarkets}
+                  stratBMarketsManualRef={stratBMarketsManualRef}
                   stratBTimeframes={stratBTimeframes} setStratBTimeframes={setStratBTimeframes}
+                  stratBTfCustom={stratBTfCustom} setStratBTfCustom={setStratBTfCustom}
                   stratBInstruments={stratBInstruments} setStratBInstruments={setStratBInstruments}
                   stratBTags={stratBTags} setStratBTags={setStratBTags}
                   stratBVariables={stratBVariables} setStratBVariables={setStratBVariables}
