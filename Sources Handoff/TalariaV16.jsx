@@ -16956,6 +16956,13 @@ const TalariaV8b = () => {
                           return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
                         };
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
+                        const nsAddBtn=(active,tone="blue")=>{
+                          const gold="rgba(232,194,82,0.9)";
+                          const accent=tone==="gold"?gold:c.acL;
+                          const activeBg=tone==="gold"?"rgba(201,168,76,0.10)":"rgba(38,67,247,0.18)";
+                          const activeShadow=tone==="gold"?"0 0 12px rgba(232,194,82,0.20)":"0 0 12px rgba(38,67,247,0.22)";
+                          return {width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:active?activeBg:c.sf,border:`1px solid ${active?accent:c.brH}`,color:active?accent:c.tx,boxSizing:"border-box",cursor:"default",transition:"border-color 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s",flexShrink:0,boxShadow:active?activeShadow:undefined};
+                        };
                         /* ── date helpers (shared with grid below) ── */
                         const MON_D=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                         const MONS_D=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
@@ -17096,11 +17103,11 @@ const TalariaV8b = () => {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");}} onMouseLeave={()=>setHov(null)}
-                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)",filter:hov==="symPickBtn"?"brightness(1.12)":"brightness(1)"}}>
+                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}} onMouseLeave={e=>{setHov(null);if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
+                                    style={nsAddBtn(newSessSymPickerOpen)}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSymPickerOpen&&(<>
@@ -17191,11 +17198,11 @@ const TalariaV8b = () => {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
-                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
+                                    onMouseEnter={e=>{e.stopPropagation();if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}} onMouseLeave={e=>{if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
+                                    style={nsAddBtn(newSessSupPickerOpen,"gold")}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSupPickerOpen&&(<>
