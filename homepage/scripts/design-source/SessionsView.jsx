@@ -64,19 +64,6 @@ export function renderSessionsView(ctx, shared) {
     });
   };
   const modalOnly = !!shared.modalOnly;
-  const outlinedAddBtn = (active, tone = "blue", height = 40) => {
-    const gold = "rgba(232,194,82,0.9)";
-    const accent = tone === "gold" ? gold : c.acL;
-    const activeBg = tone === "gold" ? "rgba(201,168,76,0.10)" : "rgba(38,67,247,0.18)";
-    const activeShadow = tone === "gold" ? "0 0 12px rgba(232,194,82,0.20)" : "0 0 12px rgba(38,67,247,0.22)";
-    return {
-      width:26,height,display:"flex",alignItems:"center",justifyContent:"center",
-      background:active?activeBg:c.sf,border:`1px solid ${active?accent:c.brH}`,
-      color:active?accent:c.tx,boxSizing:"border-box",cursor:"default",flexShrink:0,
-      transition:"border-color 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s",
-      boxShadow:active?activeShadow:undefined,
-    };
-  };
 
   return (
           <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none",visibility:modalOnly?"hidden":"visible"}}>
@@ -1170,12 +1157,12 @@ export function renderSessionsView(ctx, shared) {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);setNewSessSupPickerOpen(false);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
-                                    onMouseLeave={e=>{setHov(null);if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
-                                    style={outlinedAddBtn(newSessSymPickerOpen)}>
+                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
+                                    onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSymPickerOpen&&(<>
@@ -1264,11 +1251,11 @@ export function renderSessionsView(ctx, shared) {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}} onMouseLeave={e=>{if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
-                                    style={outlinedAddBtn(newSessSupPickerOpen,"gold")}>
+                                    onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSupPickerOpen&&(<>

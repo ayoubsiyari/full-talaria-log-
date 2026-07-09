@@ -6632,19 +6632,6 @@ function GeneralInfoStepContent({ c, F,
     boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
     userSelect:'none',position:'relative',
   });
-  const addPickBtn = (active, tone='blue') => {
-    const gold = 'rgba(232,194,82,0.9)';
-    const accent = tone === 'gold' ? gold : c.acL;
-    const activeBg = tone === 'gold' ? 'rgba(201,168,76,0.10)' : 'rgba(38,67,247,0.18)';
-    const activeShadow = tone === 'gold' ? '0 0 12px rgba(232,194,82,0.20)' : '0 0 12px rgba(38,67,247,0.22)';
-    return {
-      width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',
-      background:active?activeBg:c.sf,border:'1px solid '+(active?accent:c.brH),
-      color:active?accent:c.tx,boxSizing:'border-box',cursor:'default',
-      transition:'border-color 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s',
-      boxShadow:active?activeShadow:undefined,
-    };
-  };
 
   const pickCover = async e => {
     const files = Array.from(e.target.files || []).slice(0, 1); e.target.value = '';
@@ -6944,7 +6931,7 @@ function GeneralInfoStepContent({ c, F,
   const SingleSelectRow = ({label,opts,value,onChange,open,setOpen,wrapRef,width=150}) => {
     const selected = opts.find(o => o.id === value) || opts[0];
     return (
-      <div style={{marginBottom:22}}>
+      <div style={{marginBottom:0}}>
         <div style={lbl}>{label}</div>
         <div ref={wrapRef} style={{position:'relative',display:'inline-block'}}>
           <div
@@ -7073,8 +7060,10 @@ function GeneralInfoStepContent({ c, F,
         {/* ── Section: Classification ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
           {false && <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />}
-          <SingleSelectRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} open={dirDropOpen} setOpen={setDirDropOpen} wrapRef={dirDropRef} width={150} />
-          <SingleSelectRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} open={cmpDropOpen} setOpen={setCmpDropOpen} wrapRef={cmpDropRef} width={150} />
+          <div style={{display:'flex',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
+            <SingleSelectRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} open={dirDropOpen} setOpen={setDirDropOpen} wrapRef={dirDropRef} width={150} />
+            <SingleSelectRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} open={cmpDropOpen} setOpen={setCmpDropOpen} wrapRef={cmpDropRef} width={150} />
+          </div>
         </div>
 
         {/* ── Section: Tags ── */}
@@ -7100,13 +7089,11 @@ function GeneralInfoStepContent({ c, F,
                 }
                 setTagDropOpen(true);
               }}
-                style={selectBtn(tagDropOpen,'100%')}
-                onMouseEnter={e=>{if(!tagDropOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
-                onMouseLeave={e=>{if(!tagDropOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
-                <span style={{flex:1,fontSize:12,fontWeight:tagDropOpen?600:500,fontFamily:F,color:'currentColor',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                style={{display:'flex',alignItems:'center',border:`1px solid ${tagDropOpen?c.acB:c.brH}`,background:c.el,padding:'0 26px 0 10px',height:30,width:'100%',cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s',boxSizing:'border-box'}}>
+                <span style={{fontSize:11,fontWeight:600,fontFamily:F,color:c.ts}}>
                   {tags.length?`Tags · ${tags.length}/${MAX_TAGS}`:'Choose tags'}
                 </span>
-                <svg style={{position:'absolute',right:9,top:'50%',transform:`translateY(-50%) rotate(${tagDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${tagDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               {tagDropOpen && createPortal(
                 <div ref={tagMenuRef} onClick={e=>e.stopPropagation()}
@@ -7179,9 +7166,7 @@ function GeneralInfoStepContent({ c, F,
           </div>
           <div ref={mktWrapRef} style={{position:'relative',display:'inline-block'}}>
             <div onClick={e=>{e.stopPropagation();if(mktDropOpen){setMktDropOpen(false);}else{const pos=dropPosViewport(mktWrapRef,210,100,200,false);if(pos)setMktDropPos(pos);setMktDropOpen(true);}}}
-              style={{...selectBtn(mktDropOpen,210),border:'1px solid '+(mktDropOpen?c.acL:requiredBorder('markets'))}}
-              onMouseEnter={e=>{if(!mktDropOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
-              onMouseLeave={e=>{if(!mktDropOpen){e.currentTarget.style.borderColor=requiredBorder('markets');e.currentTarget.style.color=c.tx;}}}>
+              style={{display:'flex',alignItems:'center',border:`1px solid ${mktDropOpen?c.acB:requiredBorder('markets')}`,background:c.el,padding:'0 26px 0 10px',height:30,width:210,cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s'}}>
               {(()=>{
                 const sel=effectiveMarkets||[];
                 const label=sel.length===0
@@ -7191,9 +7176,9 @@ function GeneralInfoStepContent({ c, F,
                     :sel.length===MKT_CAT_OPTS.length
                       ?'All markets'
                       :sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
-                return <span style={{flex:1,fontSize:12,fontWeight:mktDropOpen?600:500,fontFamily:F,color:'currentColor',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}</span>;
+                return <span style={{flex:1,fontSize:11,fontWeight:600,fontFamily:F,color:sel.length?c.tx:c.tm}}>{label}</span>;
               })()}
-              <svg style={{position:'absolute',right:9,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
             {mktDropOpen && createPortal(
               <div ref={mktMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:mktDropPos.top,left:mktDropPos.left,width:210,maxHeight:mktDropPos.maxH,overflowY:'auto',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
@@ -7250,12 +7235,12 @@ function GeneralInfoStepContent({ c, F,
               <div
                 onClick={e=>{e.stopPropagation();if(trdPickOpen){setTrdPickOpen(false);}else{const pos=symbolPickerPos(trdWrapRef);if(pos)setTrdPickPos(pos);setTrdPickSearch('');setTrdPickCat(null);setTrdPickOpen(true);setSupPickOpen(false);}}}
 
-                style={addPickBtn(trdPickOpen)}
-                onMouseEnter={e=>{if(!trdPickOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
-                onMouseLeave={e=>{if(!trdPickOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
+                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
+                onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
+                onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                  <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
               {trdPickOpen && createPortal((()=>{
@@ -7388,12 +7373,12 @@ function GeneralInfoStepContent({ c, F,
             <div ref={supWrapRef} style={{position:'relative',flexShrink:0}}>
               <div
                 onClick={e=>{e.stopPropagation();if(supPickOpen){setSupPickOpen(false);}else{const pos=symbolPickerPos(supWrapRef);if(pos)setSupPickPos(pos);setSupPickSearch('');setSupPickCat(null);setSupPickOpen(true);setTrdPickOpen(false);}}}
-                style={addPickBtn(supPickOpen,'gold')}
-                onMouseEnter={e=>{if(!supPickOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
-                onMouseLeave={e=>{if(!supPickOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
+                style={{width:26,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7A5A00,rgba(232,194,82,0.9))',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(201,168,76,0.3)'}}
+                onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
+                onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
                 <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                  <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                  <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
               </div>
               {supPickOpen && createPortal((()=>{
@@ -17029,13 +17014,6 @@ const TalariaV8b = () => {
                           return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
                         };
                         const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
-                        const nsAddBtn=(active,tone="blue")=>{
-                          const gold="rgba(232,194,82,0.9)";
-                          const accent=tone==="gold"?gold:c.acL;
-                          const activeBg=tone==="gold"?"rgba(201,168,76,0.10)":"rgba(38,67,247,0.18)";
-                          const activeShadow=tone==="gold"?"0 0 12px rgba(232,194,82,0.20)":"0 0 12px rgba(38,67,247,0.22)";
-                          return {width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:active?activeBg:c.sf,border:`1px solid ${active?accent:c.brH}`,color:active?accent:c.tx,boxSizing:"border-box",cursor:"default",transition:"border-color 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s",flexShrink:0,boxShadow:active?activeShadow:undefined};
-                        };
                         /* ── date helpers (shared with grid below) ── */
                         const MON_D=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                         const MONS_D=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
@@ -17176,11 +17154,11 @@ const TalariaV8b = () => {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}} onMouseLeave={e=>{setHov(null);if(!newSessSymPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
-                                    style={nsAddBtn(newSessSymPickerOpen)}>
+                                    onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");}} onMouseLeave={()=>setHov(null)}
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)",filter:hov==="symPickBtn"?"brightness(1.12)":"brightness(1)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSymPickerOpen&&(<>
@@ -17271,11 +17249,11 @@ const TalariaV8b = () => {
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
                                   <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
-                                    onMouseEnter={e=>{e.stopPropagation();if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}} onMouseLeave={e=>{if(!newSessSupPickerOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}
-                                    style={nsAddBtn(newSessSupPickerOpen,"gold")}>
+                                    onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
+                                    style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
-                                      <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                                      <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="6" y1="1" x2="6" y2="11" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
+                                      <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
                                   {newSessSupPickerOpen&&(<>
