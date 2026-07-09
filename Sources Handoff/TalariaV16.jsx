@@ -6437,8 +6437,10 @@ function GeneralInfoStepContent({ c, F,
 }) {
   const tags = stratBTags || [];
   const MAX_TAGS = 10;
+  const MAX_TAG_LENGTH = 28;
   const tagAtMax = tags.length >= MAX_TAGS;
   const [tagInput, setTagInput] = React.useState('');
+  const [tagFeedback, setTagFeedback] = React.useState('');
   const [tagHov, setTagHov] = React.useState(null);
   const [tagDropOpen, setTagDropOpen] = React.useState(false);
   const [tagDropPos, setTagDropPos] = React.useState({top:0,left:0,maxH:280});
@@ -6469,10 +6471,23 @@ function GeneralInfoStepContent({ c, F,
     'Trend Following','Volatility','Volume','Wyckoff',
   ].sort((a,b)=>a.localeCompare(b));
   const allTagOptions = Array.from(new Set([...TAG_LIBRARY, ...tags])).sort((a,b)=>a.localeCompare(b));
+  const applyTagInput = value => {
+    const raw = String(value || '');
+    if (raw.length > MAX_TAG_LENGTH) {
+      setTagFeedback(`Max ${MAX_TAG_LENGTH} characters per tag`);
+      setTagInput(raw.slice(0, MAX_TAG_LENGTH));
+      return;
+    }
+    if (tagFeedback) setTagFeedback('');
+    setTagInput(raw);
+  };
   const addTag = (t) => {
-    const v = (t || '').trim();
+    const raw = String(t || '').trim();
+    const v = raw.slice(0, MAX_TAG_LENGTH);
+    if (raw.length > MAX_TAG_LENGTH) setTagFeedback(`Max ${MAX_TAG_LENGTH} characters per tag`);
     if (!v || tags.includes(v) || tags.length >= MAX_TAGS) return;
     setStratBTags && setStratBTags([...tags, v]);
+    if (raw.length <= MAX_TAG_LENGTH) setTagFeedback('');
   };
   const toggleTag = (t) => {
     if (tags.includes(t)) { setStratBTags && setStratBTags(tags.filter(x => x !== t)); }
@@ -6507,7 +6522,14 @@ function GeneralInfoStepContent({ c, F,
   const supWrapRef = React.useRef(null);
   const supMenuRef = React.useRef(null);
   const generalInfoScrollRef = React.useRef(null);
-  const mobileSymbolPicker = typeof window !== 'undefined' && window.innerWidth <= 720;
+  const [builderViewportWidth, setBuilderViewportWidth] = React.useState(() => typeof window !== 'undefined' ? window.innerWidth : 1024);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => setBuilderViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const mobileSymbolPicker = builderViewportWidth <= 720;
   const [tfPickOpen, setTfPickOpen] = React.useState(false);
   const [tfPickPos, setTfPickPos]   = React.useState({top:0,left:0,maxH:360});
   const [tfPickHov, setTfPickHov]   = React.useState(null);
