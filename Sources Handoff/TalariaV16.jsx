@@ -6607,6 +6607,14 @@ function GeneralInfoStepContent({ c, F,
     background:active?'rgba(38,67,247,0.18)':c.sf,transition:'all 0.12s',
     boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
   });
+  const selectBtn = (active, width) => ({
+    display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 28px 7px 16px',
+    height:34,width,boxSizing:'border-box',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
+    border:'1px solid '+(active?c.acL:c.brH),color:active?c.acL:c.tx,
+    background:active?'rgba(38,67,247,0.18)':c.sf,transition:'all 0.12s',
+    boxShadow:active?'0 0 12px rgba(38,67,247,0.22)':undefined,
+    userSelect:'none',position:'relative',
+  });
   const addPickBtn = (active, tone='blue') => {
     const gold = 'rgba(232,194,82,0.9)';
     const accent = tone === 'gold' ? gold : c.acL;
@@ -7031,11 +7039,13 @@ function GeneralInfoStepContent({ c, F,
                 }
                 setTagDropOpen(true);
               }}
-                style={{display:'flex',alignItems:'center',border:`1px solid ${tagDropOpen?c.acB:c.brH}`,background:c.el,padding:'0 26px 0 10px',height:30,width:'100%',cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s',boxSizing:'border-box'}}>
-                <span style={{fontSize:11,fontWeight:600,fontFamily:F,color:c.ts}}>
+                style={selectBtn(tagDropOpen,'100%')}
+                onMouseEnter={e=>{if(!tagDropOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
+                onMouseLeave={e=>{if(!tagDropOpen){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
+                <span style={{flex:1,fontSize:12,fontWeight:tagDropOpen?600:500,fontFamily:F,color:'currentColor',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                   {tags.length?`Tags · ${tags.length}/${MAX_TAGS}`:'Choose tags'}
                 </span>
-                <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${tagDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg style={{position:'absolute',right:9,top:'50%',transform:`translateY(-50%) rotate(${tagDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
               {tagDropOpen && createPortal(
                 <div ref={tagMenuRef} onClick={e=>e.stopPropagation()}
@@ -7108,7 +7118,9 @@ function GeneralInfoStepContent({ c, F,
           </div>
           <div ref={mktWrapRef} style={{position:'relative',display:'inline-block'}}>
             <div onClick={e=>{e.stopPropagation();if(mktDropOpen){setMktDropOpen(false);}else{const pos=dropPosViewport(mktWrapRef,210,100,200,false);if(pos)setMktDropPos(pos);setMktDropOpen(true);}}}
-              style={{display:'flex',alignItems:'center',border:`1px solid ${mktDropOpen?c.acB:requiredBorder('markets')}`,background:c.el,padding:'0 26px 0 10px',height:30,width:210,cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s'}}>
+              style={{...selectBtn(mktDropOpen,210),border:'1px solid '+(mktDropOpen?c.acL:requiredBorder('markets'))}}
+              onMouseEnter={e=>{if(!mktDropOpen){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
+              onMouseLeave={e=>{if(!mktDropOpen){e.currentTarget.style.borderColor=requiredBorder('markets');e.currentTarget.style.color=c.tx;}}}>
               {(()=>{
                 const sel=effectiveMarkets||[];
                 const label=sel.length===0
@@ -7118,9 +7130,9 @@ function GeneralInfoStepContent({ c, F,
                     :sel.length===MKT_CAT_OPTS.length
                       ?'All markets'
                       :sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
-                return <span style={{flex:1,fontSize:11,fontWeight:600,fontFamily:F,color:sel.length?c.tx:c.tm}}>{label}</span>;
+                return <span style={{flex:1,fontSize:12,fontWeight:mktDropOpen?600:500,fontFamily:F,color:'currentColor',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}</span>;
               })()}
-              <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg style={{position:'absolute',right:9,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
             {mktDropOpen && createPortal(
               <div ref={mktMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:mktDropPos.top,left:mktDropPos.left,width:210,maxHeight:mktDropPos.maxH,overflowY:'auto',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
