@@ -6500,6 +6500,9 @@ function GeneralInfoStepContent({ c, F,
   const [imgError, setImgError]       = React.useState('');
   const [imgHovIdx, setImgHovIdx]     = React.useState(null);
   const [imgPreview, setImgPreview]   = React.useState(null);
+  const [dirDropOpen, setDirDropOpen] = React.useState(false);
+  const [cmpDropOpen, setCmpDropOpen] = React.useState(false);
+  const [singleSelectHov, setSingleSelectHov] = React.useState(null);
   const [mktDropOpen, setMktDropOpen] = React.useState(false);
   const [mktDropPos, setMktDropPos]   = React.useState({top:0,left:0,maxH:200});
   const [mktHov, setMktHov]           = React.useState(null);
@@ -6517,6 +6520,8 @@ function GeneralInfoStepContent({ c, F,
   const [supCapMsg, setSupCapMsg]     = React.useState('');
   const mktWrapRef = React.useRef(null);
   const mktMenuRef = React.useRef(null);
+  const dirDropRef = React.useRef(null);
+  const cmpDropRef = React.useRef(null);
   const trdWrapRef = React.useRef(null);
   const trdMenuRef = React.useRef(null);
   const supWrapRef = React.useRef(null);
@@ -6582,6 +6587,18 @@ function GeneralInfoStepContent({ c, F,
     if (r) setEmojiPos({ top: r.bottom + 4, left: r.left + r.width / 2 - 148 });
     setEmojiOpen(true); setEmojiSearch('');
   };
+
+  React.useEffect(() => {
+    if (!dirDropOpen && !cmpDropOpen) return;
+    const h = e => {
+      if (dirDropRef.current?.contains(e.target)) return;
+      if (cmpDropRef.current?.contains(e.target)) return;
+      setDirDropOpen(false);
+      setCmpDropOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [dirDropOpen, cmpDropOpen]);
 
   const lbl  = {fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:7};
   const inp  = {background:c.sf,border:'1px solid '+c.brH,color:c.tx,fontFamily:F,fontSize:13,padding:'9px 12px',outline:'none',width:'100%',boxSizing:'border-box',transition:'border-color 0.12s'};
@@ -6924,6 +6941,50 @@ function GeneralInfoStepContent({ c, F,
       </div>
     </div>
   );
+  const SingleSelectRow = ({label,opts,value,onChange,open,setOpen,wrapRef,width=150}) => {
+    const selected = opts.find(o => o.id === value) || opts[0];
+    return (
+      <div style={{marginBottom:22}}>
+        <div style={lbl}>{label}</div>
+        <div ref={wrapRef} style={{position:'relative',display:'inline-block'}}>
+          <div
+            onClick={e=>{e.stopPropagation();setDirDropOpen(false);setCmpDropOpen(false);setOpen(!open);}}
+            style={selectBtn(open,width)}
+            onMouseEnter={e=>{if(!open){e.currentTarget.style.borderColor=c.tx;e.currentTarget.style.color=c.tx;}}}
+            onMouseLeave={e=>{if(!open){e.currentTarget.style.borderColor=c.brH;e.currentTarget.style.color=c.tx;}}}>
+            <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'currentColor'}}>
+              {selected?.label || ''}
+            </span>
+            <svg style={{position:'absolute',right:9,top:'50%',transform:`translateY(-50%) rotate(${open?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none">
+              <polyline points="1,3 5,7 9,3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          {open&&(
+            <div style={{position:'absolute',top:38,left:0,width,background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:40,fontFamily:F}}>
+              <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+              {opts.map(o=>{
+                const active = value === o.id;
+                const hovKey = `${label}-${o.id}`;
+                const isH = singleSelectHov === hovKey;
+                return (
+                  <div key={o.id}
+                    onClick={e=>{e.stopPropagation();onChange(o.id);setOpen(false);setSingleSelectHov(null);}}
+                    onMouseEnter={()=>setSingleSelectHov(hovKey)}
+                    onMouseLeave={()=>setSingleSelectHov(null)}
+                    style={{position:'relative',display:'flex',alignItems:'center',padding:'7px 10px',cursor:'default',
+                      background:active?'rgba(38,67,247,0.10)':isH?'rgba(255,255,255,0.04)':'transparent',
+                      color:active?c.acL:isH?c.tx:c.ts,fontSize:12,fontWeight:active?700:500,transition:'background 0.08s,color 0.08s'}}>
+                    {active&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                    {o.label}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
   const styleOptions = !stratBStyle || STYLES.some(o => o.id === stratBStyle)
     ? STYLES
     : [{id:stratBStyle,label:stratBStyle}, ...STYLES];
@@ -7012,8 +7073,8 @@ function GeneralInfoStepContent({ c, F,
         {/* ── Section: Classification ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
           {false && <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />}
-          <ToggleRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} />
-          <ToggleRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} />
+          <SingleSelectRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} open={dirDropOpen} setOpen={setDirDropOpen} wrapRef={dirDropRef} width={150} />
+          <SingleSelectRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} open={cmpDropOpen} setOpen={setCmpDropOpen} wrapRef={cmpDropRef} width={150} />
         </div>
 
         {/* ── Section: Tags ── */}
