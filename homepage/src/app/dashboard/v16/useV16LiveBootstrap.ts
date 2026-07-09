@@ -51,16 +51,39 @@ const EMPTY_JOURNAL_PAYLOAD: JournalApiData = {
   liveAccounts: [],
 };
 
+type JournalPayloadResult = {
+  payload: JournalApiData;
+  errorMessage: string | null;
+};
+
+async function fetchJournalPayload(
+  opts: Parameters<typeof fetchJournalApiData>[0]
+): Promise<JournalPayloadResult> {
+  try {
+    return { payload: await fetchJournalApiData(opts), errorMessage: null };
+  } catch (error) {
+    return { payload: EMPTY_JOURNAL_PAYLOAD, errorMessage: bootstrapErrorMessage(error) };
+  }
+}
+
 function buildBootFromPayloads(
   apiSessions: Session[],
   kpisMap: Record<string, SessionKpis>,
   journalPayload: JournalApiData,
   communityStrategies: Record<string, unknown>[],
-  urlSessionId: string | null
+  urlSessionId: string | null,
+  opts?: {
+    strategyBankError?: string | null;
+    strategyBankFallback?: Record<string, unknown>[];
+  }
 ): V16LiveBoot {
-  const strategyBank = (journalPayload.strategies || []).map((s) =>
-    apiStrategyToBankRow(s as ApiStrategyRecord)
-  );
+  const strategyBankError = opts?.strategyBankError || null;
+  const strategyBank =
+    strategyBankError && Array.isArray(opts?.strategyBankFallback)
+      ? opts.strategyBankFallback
+      : (journalPayload.strategies || []).map((s) =>
+          apiStrategyToBankRow(s as ApiStrategyRecord)
+        );
 
   const openSessionId = resolveSessionIdForUser(apiSessions, {
     urlSessionId,
@@ -120,6 +143,8 @@ function buildBootFromPayloads(
     journal,
     strategies,
     strategyBank,
+    strategyBankError,
+    strategyBankStale: Boolean(strategyBankError),
     communityStrategies,
     appliedSource,
   };
@@ -231,14 +256,26 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
     ) => saveManualTradeToLiveJournal(source, trade);
 
     window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ = async () => {
-      const journalPayload = await fetchJournalApiData({ includeEntries: true }).catch(
-        () => EMPTY_JOURNAL_PAYLOAD
-      );
+      const currentBank = window.__TALARIA_V16_BOOT__?.strategyBank || [];
+      const { payload: journalPayload, errorMessage } = await fetchJournalPayload({
+        includeEntries: true,
+      });
+      if (errorMessage) {
+        if (window.__TALARIA_V16_BOOT__) {
+          window.__TALARIA_V16_BOOT__.strategyBank = currentBank;
+          window.__TALARIA_V16_BOOT__.strategyBankError = errorMessage;
+          window.__TALARIA_V16_BOOT__.strategyBankStale = true;
+          window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+        }
+        throw new Error(errorMessage);
+      }
       const strategyBank = (journalPayload.strategies || []).map((s) =>
         apiStrategyToBankRow(s as ApiStrategyRecord)
       );
       if (window.__TALARIA_V16_BOOT__) {
         window.__TALARIA_V16_BOOT__.strategyBank = strategyBank;
+        window.__TALARIA_V16_BOOT__.strategyBankError = null;
+        window.__TALARIA_V16_BOOT__.strategyBankStale = false;
         window.__TALARIA_V16_BOOT__.sessions = (window.__TALARIA_V16_BOOT__.sessions || []).map(
           (sess) => enrichV16SessionFromStrategyBank(sess, strategyBank)
         );
@@ -269,7 +306,14 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
     window.__TALARIA_V16_DELETE_STRATEGY__ = async (strategyId) => {
       await deleteStrategyFromJournalApi(strategyId);
       const refresh = window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
-      if (typeof refresh === "function") await refresh();
+      if (typeof refresh === "function") {
+        try {
+          await refresh();
+        } catch (error) {
+          return { refreshError: bootstrapErrorMessage(error) };
+        }
+      }
+      return {};
     };
 
     window.__TALARIA_V16_REFRESH_COMMUNITY__ = async () => {
@@ -342,18 +386,22 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
 
     (async () => {
       try {
-        const [apiSessions, journalPayload] = await Promise.all([
+        const [apiSessions, journalResult] = await Promise.all([
           fetchSessionsList(sessionsEnabled),
-          fetchJournalApiData({ includeEntries: false }).catch(() => EMPTY_JOURNAL_PAYLOAD),
+          fetchJournalPayload({ includeEntries: false }),
         ]);
 
         if (cancelled) return;
         const boot = buildBootFromPayloads(
           apiSessions,
           {},
-          journalPayload,
+          journalResult.payload,
           window.__TALARIA_V16_BOOT__?.communityStrategies ?? [],
-          searchParams.get("sessionId")
+          searchParams.get("sessionId"),
+          {
+            strategyBankError: journalResult.errorMessage,
+            strategyBankFallback: window.__TALARIA_V16_BOOT__?.strategyBank,
+          }
         );
 
         window.__TALARIA_V16_BOOT_LOADING__ = false;
@@ -363,13 +411,13 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
 
         void (async () => {
           try {
-            const [kpisPayload, journalFull, communityStrategies] = await Promise.all([
+            const [kpisPayload, journalFullResult, communityStrategies] = await Promise.all([
               sessionsEnabled
                 ? fetchJson<{ kpis_by_session_id?: Record<string, SessionKpis> }>(
                     "/api/sessions/kpis"
                   ).catch(() => ({ kpis_by_session_id: {} }))
                 : Promise.resolve({ kpis_by_session_id: {} }),
-              fetchJournalApiData({ includeEntries: true }).catch(() => EMPTY_JOURNAL_PAYLOAD),
+              fetchJournalPayload({ includeEntries: true }),
               fetchCommunityTemplates().catch(() => [] as Record<string, unknown>[]),
             ]);
 
@@ -380,9 +428,13 @@ export function useV16LiveBootstrap(opts?: V16BootstrapOptions): BootState {
             const enriched = buildBootFromPayloads(
               apiSessions,
               kpisMap,
-              journalFull,
+              journalFullResult.payload,
               communityStrategies,
-              searchParams.get("sessionId")
+              searchParams.get("sessionId"),
+              {
+                strategyBankError: journalFullResult.errorMessage,
+                strategyBankFallback: window.__TALARIA_V16_BOOT__?.strategyBank,
+              }
             );
 
             window.__TALARIA_V16_BOOT_ENRICHING__ = false;

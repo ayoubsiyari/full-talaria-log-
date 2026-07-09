@@ -41,6 +41,7 @@ const isV16LiveBoot = () =>
 const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.journal : null);
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
 const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
+const isV16StrategyBankStale = () => !!(isV16LiveBoot() && window.__TALARIA_V16_BOOT__?.strategyBankStale);
 const getV16CommunityBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.communityStrategies : null);
 const parseStratApiId = (id) => {
   if (typeof id === "number" && Number.isFinite(id) && id > 0) return id;
@@ -74,9 +75,10 @@ const sameStrategyRowId = (a, b) => {
   return keyA != null && keyB != null && keyA === keyB;
 };
 /** Merge boot strategy bank with local rows (empty boot array must not hide local saves). */
-const mergeV16StrategyBankRows = (bankRows, localRows = []) => {
+const mergeV16StrategyBankRows = (bankRows, localRows = [], opts = {}) => {
   const bank = Array.isArray(bankRows) ? bankRows : [];
   const local = Array.isArray(localRows) ? localRows : [];
+  const preservePersistedLocal = !!opts.preservePersistedLocal || isV16StrategyBankStale();
   const byKey = new Map();
   for (const row of bank) {
     const key = strategyRowKey(row);
@@ -85,8 +87,8 @@ const mergeV16StrategyBankRows = (bankRows, localRows = []) => {
   for (const row of local) {
     const key = strategyRowKey(row);
     if (!key) continue;
-    // Persisted strategies come from the server bank only — never resurrect stale local API copies.
-    if (parseStratApiId(row.id) != null) continue;
+    // Persisted rows normally come from the server bank; keep local copies only when refresh failed.
+    if (!preservePersistedLocal && parseStratApiId(row.id) != null) continue;
     if (!byKey.has(key)) byKey.set(key, row);
   }
   return [...byKey.values()];
@@ -4051,7 +4053,32 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [history, setHistory] = useState([{ nodes:[], edges:[] }]);
+  const HISTORY_LIMIT = 50;
+  const makeHistorySnapshot = useCallback((nodes, edges) => ({
+    nodes: Array.isArray(nodes) ? nodes : [],
+    edges: Array.isArray(edges) ? edges : [],
+  }), []);
+  const historyKey = useCallback((snap) => JSON.stringify({
+    nodes: (snap?.nodes || []).map(n => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: n.data,
+      style: n.style,
+      zIndex: n.zIndex,
+    })),
+    edges: (snap?.edges || []).map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
+      type: e.type,
+      data: e.data,
+    })),
+  }), []);
+  const initialHistorySnapshot = makeHistorySnapshot(canvasNodes, canvasEdges);
+  const [history, setHistory] = useState([initialHistorySnapshot]);
   const [histIdx, setHistIdx] = useState(0);
   const [btnHov, setBtnHov] = useState(null);
   const [outlinePress, setOutlinePress] = useState(null);
@@ -4076,6 +4103,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const fitZoomRef = useRef(BASE_ZOOM);
   const [isDragging, setIsDragging] = useState(false);
   const canvasNodesRef = useRef([]);
+  const canvasEdgesRef = useRef([]);
   const [rfNodesEl, setRfNodesEl] = useState(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateToast, setTemplateToast] = useState(null);
@@ -4102,20 +4130,60 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   const hasExistingGroups = canvasNodes.some(n => n.type === 'condition');
 
+  const pushHistory = useCallback((nodes, edges) => {
+    const snap = makeHistorySnapshot(nodes, edges);
+    const nextKey = historyKey(snap);
+    const activeKey = historyKey(history[histIdx] || makeHistorySnapshot([], []));
+    if (nextKey === activeKey) return;
+    const base = history.slice(0, histIdx + 1);
+    const capped = [...base, snap].slice(-HISTORY_LIMIT);
+    setHistory(capped);
+    setHistIdx(capped.length - 1);
+  }, [HISTORY_LIMIT, histIdx, history, historyKey, makeHistorySnapshot]);
+
+  useLayoutEffect(() => {
+    const snap = makeHistorySnapshot(canvasNodes, canvasEdges);
+    const activeKey = historyKey(history[histIdx] || makeHistorySnapshot([], []));
+    const currentKey = historyKey(snap);
+    const activeEmpty = (history[histIdx]?.nodes || []).length === 0 && (history[histIdx]?.edges || []).length === 0;
+    const currentHasCanvas = (snap.nodes || []).length > 0 || (snap.edges || []).length > 0;
+    if (history.length === 1 && activeEmpty && currentHasCanvas && currentKey !== activeKey) {
+      setHistory([snap]);
+      setHistIdx(0);
+    }
+  }, [canvasNodes, canvasEdges, histIdx, history, historyKey, makeHistorySnapshot]);
+
+  const commitCanvasMutation = useCallback((nodeUpdater, edgeUpdater) => {
+    setCanvasNodes(nds => {
+      const baseEdges = canvasEdgesRef.current;
+      const nextNodes = typeof nodeUpdater === 'function' ? nodeUpdater(nds, baseEdges) : nodeUpdater;
+      const nextEdges = edgeUpdater
+        ? (typeof edgeUpdater === 'function' ? edgeUpdater(baseEdges, nextNodes, nds) : edgeUpdater)
+        : baseEdges;
+      if (nextNodes === nds && nextEdges === baseEdges) return nds;
+      pushHistory(nextNodes, nextEdges);
+      if (nextEdges !== baseEdges) setCanvasEdges(nextEdges);
+      return nextNodes;
+    });
+  }, [pushHistory, setCanvasEdges, setCanvasNodes]);
+
   const loadTemplate = useCallback((tpl) => {
+    const nextNodes = tpl ? buildNodesFromTemplate(tpl) : buildInitialSections();
+    const nextEdges = [];
+    pushHistory(nextNodes, nextEdges);
     if (typeof applyStrategyTemplate === "function") {
       applyStrategyTemplate(tpl);
     } else if (!tpl) {
-      setCanvasNodes(buildInitialSections());
-      setCanvasEdges([]);
+      setCanvasNodes(nextNodes);
+      setCanvasEdges(nextEdges);
       setStratBName?.("");
       setStratBDesc?.("");
       setStratBMarkets?.([]);
       setStratBTimeframes?.([]);
       setStratBTags?.([]);
     } else {
-      setCanvasNodes(buildNodesFromTemplate(tpl));
-      setCanvasEdges([]);
+      setCanvasNodes(nextNodes);
+      setCanvasEdges(nextEdges);
       setStratBName?.(`${tpl.name} (my version)`);
       if (tpl.description) setStratBDesc?.(tpl.description);
       if (tpl.markets?.length) setStratBMarkets?.(tpl.markets);
@@ -4127,7 +4195,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       setTimeout(() => setTemplateToast(null), 4000);
     }
     setTemplatePickerOpen(false);
-  }, [applyStrategyTemplate, setCanvasNodes, setCanvasEdges, setStratBName, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags]);
+  }, [applyStrategyTemplate, pushHistory, setCanvasNodes, setCanvasEdges, setStratBName, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags]);
 
   const applySecSize = useCallback(() => {
     const el = canvasContainerRef.current;
@@ -4169,11 +4237,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [applySecSize]);
 
   const { screenToFlowPosition } = useReactFlow();
-
-  const pushHistory = useCallback((nodes, edges) => {
-    setHistory(prev => [...prev.slice(0, histIdx + 1), { nodes, edges }]);
-    setHistIdx(prev => prev + 1);
-  }, [histIdx]);
 
   const onNodesChange = useCallback((changes) => {
     const filtered = changes.filter(c => {
@@ -4259,7 +4322,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   const addConditionToSection = useCallback((sectionId, targetSlot) => {
     setSliding(true);
-    setCanvasNodes(nds => {
+    commitCanvasMutation(nds => {
       const section = nds.find(n => n.id === sectionId);
       if (!section) return nds;
       const existingConds = nds.filter(n => n.type === 'condition' && n.data?.sectionId === sectionId);
@@ -4289,11 +4352,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       return restackAll(updated);
     });
     setTimeout(() => setSliding(false), 350);
-  }, [setCanvasNodes, setSliding]);
+  }, [commitCanvasMutation, setSliding]);
 
   const deleteCondition = useCallback((condId) => {
     setSliding(true);
-    setCanvasNodes(nds => {
+    commitCanvasMutation(nds => {
       const cond = nds.find(n => n.id === condId);
       if (!cond) return nds;
       const sectionId = cond.data.sectionId;
@@ -4305,17 +4368,22 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         .filter(n => n.id !== condId)
         .map(n => n.id === sectionId ? { ...n, data: { ...n.data, condCount: newFilled.length, filledSlots: newFilled }, style: { ...n.style, height: SEC_H } } : n);
       return restackAll(updated);
-    });
+    }, (eds) => eds.filter(e => e.source !== condId && e.target !== condId));
     setTimeout(() => setSliding(false), 350);
-  }, [setCanvasNodes, setSliding]);
+  }, [commitCanvasMutation, setSliding]);
 
-  const updateConditionData = useCallback((condId, updates) => {
-    setCanvasNodes(nds => nds.map(n => n.id === condId ? { ...n, data: { ...n.data, ...updates } } : n));
-  }, [setCanvasNodes]);
+  const updateConditionData = useCallback((condId, updates, recordHistory = true) => {
+    const updateNodes = (nds) => nds.map(n => n.id === condId ? { ...n, data: { ...n.data, ...updates } } : n);
+    if (recordHistory) {
+      commitCanvasMutation(updateNodes);
+    } else {
+      setCanvasNodes(updateNodes);
+    }
+  }, [commitCanvasMutation, setCanvasNodes]);
 
   const addSection = useCallback(() => {
     setSliding(true);
-    setCanvasNodes(nds => {
+    commitCanvasMutation(nds => {
       const sections = nds.filter(n => n.type === 'section');
       if (sections.length >= 10) return nds;
       const colorScheme = SECTION_COLOR_CYCLE[sections.length % SECTION_COLOR_CYCLE.length];
@@ -4347,12 +4415,12 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         rf.setCenter(SEC_W / 2, last.position.y + SEC_H / 2, { zoom, duration: 250 });
       }
     }, 350);
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation]);
 
   const insertSectionAtStart = useCallback(() => {
     setSliding(true);
     requestAnimationFrame(() => {
-      setCanvasNodes(nds => {
+      commitCanvasMutation(nds => {
         if (nds.filter(n => n.type === 'section').length >= 10) return nds;
         const id = `sec_${Date.now()}`;
         const newH = getSectionHeight(0);
@@ -4367,7 +4435,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       });
       setTimeout(() => setSliding(false), 350);
     });
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation]);
 
   const doDeleteSection = useCallback((sectionId) => {
     const sectionCount = canvasNodesRef.current.filter(n => n.type === 'section').length;
@@ -4381,21 +4449,22 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         n.id === sectionId ? { ...n, data: { ...n.data, deleting: true } } : n
       ));
       setTimeout(() => {
-        setCanvasNodes(nds => {
-          const condIds = nds.filter(n => n.type === 'condition' && n.data?.sectionId === sectionId).map(n => n.id);
-          setCanvasEdges(eds => eds.filter(e => !condIds.includes(e.source) && !condIds.includes(e.target)));
+        commitCanvasMutation(nds => {
           const filtered = nds.filter(n => n.id !== sectionId && n.data?.sectionId !== sectionId);
           return restackAll(filtered);
+        }, (eds, _nextNodes, nds) => {
+          const condIds = nds.filter(n => n.type === 'condition' && n.data?.sectionId === sectionId).map(n => n.id);
+          return eds.filter(e => !condIds.includes(e.source) && !condIds.includes(e.target));
         });
         setSliding(false);
       }, 320);
     });
-  }, [setCanvasNodes, setCanvasEdges, showOutlineImageError]);
+  }, [commitCanvasMutation, setCanvasNodes, showOutlineImageError]);
 
   const insertSectionAfter = useCallback((afterSectionId) => {
     setSliding(true);
     requestAnimationFrame(() => {
-      setCanvasNodes(nds => {
+      commitCanvasMutation(nds => {
         const secs = nds.filter(n => n.type === 'section').sort((a, b) => a.position.y - b.position.y);
         if (secs.length >= 10) return nds;
         const afterIdx = secs.findIndex(s => s.id === afterSectionId);
@@ -4416,7 +4485,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       });
       setTimeout(() => setSliding(false), 350);
     });
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation]);
 
   const deleteSelected = useCallback(() => {
     const toDelete = selectedIds.filter(id => {
@@ -4503,7 +4572,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [selectedIds, canvasNodes]);
 
   const renameSection = useCallback((sectionId, newLabel) => {
-    setCanvasNodes(nds => nds.map(n => {
+    commitCanvasMutation(nds => nds.map(n => {
       if (n.id !== sectionId) return n;
       return {
         ...n,
@@ -4513,7 +4582,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         height: SEC_H,
       };
     }));
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation]);
 
   const resizeSectionLive = useCallback((sectionId, newH) => {
     setCanvasNodes(nds => {
@@ -4715,7 +4784,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   const onNodeDragStop = useCallback((_, node) => {
     if (node.type === 'condition') {
-      setCanvasNodes(nds => {
+      commitCanvasMutation(nds => {
         const cond = nds.find(n => n.id === node.id);
         if (!cond) return nds;
         const origSectionId = cond.data.sectionId;
@@ -4808,7 +4877,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       });
     });
     setTimeout(() => setSliding(false), 350);
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation, setCanvasNodes]);
 
   shortcutsRef.current = { undo: doUndo, redo: doRedo, del: deleteSelected, hasSel: selectedIds.length > 0 };
   _cvCb.addCondition = addConditionToSection;
@@ -4881,6 +4950,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     : { gapPositions, topEdge, botEdge, contentBotGraph };
 
   canvasNodesRef.current = canvasNodes;
+  canvasEdgesRef.current = canvasEdges;
   // Keep scroll values ref current so the wheel handler never has stale closures
   scrollValuesRef.current = { canvasH, contentBotGraph };
 
@@ -8126,11 +8196,65 @@ class StrategyBuilderStepBoundary extends React.Component {
 }
 
 function StrategyBuilderModal(props) {
-  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, strategyBankRows=[] } = props;
+  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, openAppConfirm, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
   const compact = !!props.compact
     || (typeof window !== "undefined" && (isStrategyBuilderMobileDevice() || window.innerWidth <= 900));
+
+  const builderDirtySignature = React.useMemo(() => {
+    const seen = new WeakSet();
+    const normalize = value => {
+      if (typeof value === "function" || typeof value === "undefined") return undefined;
+      if (!value || typeof value !== "object") return value;
+      if (seen.has(value)) return "__cycle__";
+      seen.add(value);
+      if (Array.isArray(value)) return value.map(normalize);
+      return Object.keys(value).sort().reduce((acc, key) => {
+        if (["selected", "dragging", "resizing", "measured", "positionAbsolute"].includes(key)) return acc;
+        const next = normalize(value[key]);
+        if (typeof next !== "undefined") acc[key] = next;
+        return acc;
+      }, {});
+    };
+    return JSON.stringify(normalize({
+      name: props.stratBName || "",
+      desc: props.stratBDesc || "",
+      style: props.stratBStyle || "",
+      direction: props.stratBDirection || "",
+      complexity: props.stratBComplexity || "",
+      markets: props.stratBMarkets || [],
+      timeframes: props.stratBTimeframes || [],
+      instruments: props.stratBInstruments || [],
+      supportInst: props.stratBSupportInst || [],
+      tags: props.stratBTags || [],
+      variables: props.stratBVariables || [],
+      images: props.stratBImages || [],
+      logoEmoji: props.stratBLogoEmoji || "",
+      canvasNodes: props.canvasNodes || [],
+      canvasEdges: props.canvasEdges || [],
+    }));
+  }, [props.stratBName, props.stratBDesc, props.stratBStyle, props.stratBDirection, props.stratBComplexity, props.stratBMarkets, props.stratBTimeframes, props.stratBInstruments, props.stratBSupportInst, props.stratBTags, props.stratBVariables, props.stratBImages, props.stratBLogoEmoji, props.canvasNodes, props.canvasEdges]);
+  const builderInitialSignatureRef = React.useRef(null);
+  if (builderInitialSignatureRef.current === null) {
+    builderInitialSignatureRef.current = builderDirtySignature;
+  }
+  const builderIsDirty = builderInitialSignatureRef.current !== builderDirtySignature;
+  const requestBuilderClose = () => {
+    if (isSaving) return;
+    if (!builderIsDirty || typeof openAppConfirm !== "function") {
+      onClose && onClose();
+      return;
+    }
+    openAppConfirm({
+      title: "Discard changes?",
+      message: "Your unsaved changes to this strategy will be lost.",
+      confirmLabel: "Discard",
+      cancelLabel: "Keep editing",
+      danger: true,
+      onConfirm: onClose,
+    });
+  };
 
   const STEPS = [
     { id:1, label:'General Info', hint:'Name your strategy, choose markets and timeframes.' },
@@ -8278,7 +8402,7 @@ function StrategyBuilderModal(props) {
                 </button>
               )}
               {/* Close button */}
-              <div onClick={isSaving?undefined:onClose}
+              <div onClick={isSaving?undefined:requestBuilderClose}
                 style={{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
                   cursor:'default',color:c.tm,borderRadius:0,opacity:isSaving?0.45:1,transition:'color 0.12s, background 0.12s, transform 0.08s'}}
                 onMouseEnter={e=>{if(!isSaving){e.currentTarget.style.color=c.rd;e.currentTarget.style.background='rgba(255,80,104,0.08)';}}}
@@ -8341,7 +8465,7 @@ function StrategyBuilderModal(props) {
           {stratWizardStep!==2&&(
             <div data-strategy-builder-footer="1" style={{flexShrink:0,height:compact?58:56,display:'flex',alignItems:'center',justifyContent:'space-between',gap:compact?8:0,padding:compact?'0 10px':'0 20px',borderTop:`1px solid ${c.brH}`,background:c.el}}>
               {/* Cancel / Back */}
-              <button onClick={isSaving?undefined:(stratWizardStep===1?onClose:goPrev)} disabled={isSaving}
+              <button onClick={isSaving?undefined:(stratWizardStep===1?requestBuilderClose:goPrev)} disabled={isSaving}
                 style={{...secondaryBtnStyle,opacity:isSaving?0.5:secondaryBtnStyle.opacity}}
                 onMouseEnter={e=>{if(!isSaving)onSecondaryEnter(e);}}
                 onMouseLeave={onSecondaryLeave}
@@ -11183,7 +11307,12 @@ const TalariaV8b = () => {
         });
       }
       if (Array.isArray(boot.strategyBank)) {
-        setMyStrategies((prev) => mergeV16StrategyBankRows(boot.strategyBank, prev));
+        const bankLoading = !!window.__TALARIA_V16_BOOT_LOADING__ || !!window.__TALARIA_V16_BOOT_ENRICHING__;
+        const bankStale = !!boot.strategyBankStale;
+        setMyStrategies((prev) => {
+          if (!boot.strategyBank.length && bankLoading && !bankStale) return prev;
+          return mergeV16StrategyBankRows(boot.strategyBank, prev, { preservePersistedLocal: bankStale });
+        });
       }
       if (Array.isArray(boot.communityStrategies)) {
         setCommunityStrategies(boot.communityStrategies);
@@ -11721,6 +11850,7 @@ const TalariaV8b = () => {
   const [newSessApiFilesLoading, setNewSessApiFilesLoading] = useState(false);
   const [newSessPlaybookId, setNewSessPlaybookId] = useState(null);
 
+  const COMMUNITY_ENABLED = false;
   const [stratTab, setStratTab] = useState("mine");
   const [stratSearch, setStratSearch] = useState("");
   const [stratSearchFocus, setStratSearchFocus] = useState(false);
@@ -11738,6 +11868,7 @@ const TalariaV8b = () => {
   const [stratBuilderSaveError, setStratBuilderSaveError] = useState("");
   const [stratTemplatePickerOpen, setStratTemplatePickerOpen] = useState(false);
   const [stratEditId, setStratEditId] = useState(null);
+  const strategyDeleteInFlightRef = useRef(new Set());
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
   const [communityStrategies, setCommunityStrategies] = useState(() => {
@@ -11763,13 +11894,16 @@ const TalariaV8b = () => {
       if (cancelled) return;
       setMyStrategies(prev => {
         const merged = mergeDashStrategyBankRows(bankRows, prev);
-        return merged.length ? merged : prev;
+        const bankStale = isV16StrategyBankStale();
+        if (!merged.length && (!Array.isArray(bankRows) || bankStale)) return prev;
+        return merged;
       });
     };
     const syncBank = () => {
       const bank = getV16StrategyBank();
-      if (!Array.isArray(bank) || !bank.length) return false;
+      if (!Array.isArray(bank)) return false;
       applyBank(bank);
+      if (!bank.length && (window.__TALARIA_V16_BOOT_LOADING__ || window.__TALARIA_V16_BOOT_ENRICHING__)) return false;
       return true;
     };
     if (syncBank()) return;
@@ -11818,7 +11952,7 @@ const TalariaV8b = () => {
     };
   }, []);
   useEffect(() => {
-    if (stratTab !== "community" || !isV16LiveBoot()) return;
+    if (!COMMUNITY_ENABLED || stratTab !== "community" || !isV16LiveBoot()) return;
     if (communityStrategies.length || communityFetchLoading) return;
     const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_COMMUNITY__ : null;
     if (typeof refresh !== "function") return;
@@ -45507,7 +45641,7 @@ const TalariaV8b = () => {
           const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
           const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
 
-          const communityPool = communityStrategies;
+          const communityPool = COMMUNITY_ENABLED ? communityStrategies : [];
           const communitySortValue = (strat, key) => {
             if (key === "name" || key === "author") return String(strat?.[key] || "").toLowerCase();
             if (key === "saves") return Number(strat?.saves ?? strat?.copyCount) || 0;
@@ -45581,7 +45715,7 @@ const TalariaV8b = () => {
           /* ─── Filter + sort my strategies ─── */
           const stratLiveMode = isV16LiveBoot();
           const stratDataLoading = stratLiveMode && dashBootLoading;
-          const communityDataLoading = stratLiveMode && (dashBootLoading || communityFetchLoading);
+          const communityDataLoading = COMMUNITY_ENABLED && stratLiveMode && (dashBootLoading || communityFetchLoading);
           const stratCompactLayout = dashIsPhone || dashIsNarrow;
           const dashCoarsePointer = typeof window !== "undefined"
             && !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
@@ -45609,10 +45743,10 @@ const TalariaV8b = () => {
               if(av>bv) return stratSortDir==="asc"?1:-1;
               return 0;
             });
-          const filteredSavedCommunity = savedCommunityStrats.filter(s=>{
+          const filteredSavedCommunity = COMMUNITY_ENABLED ? savedCommunityStrats.filter(s=>{
             const q=normalizeSearchQuery(stratSearch);
             return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
-          });
+          }) : [];
 
           /* ─── Strategy card (shared) ─── */
           const STRAT_ROW_COLS = "44px minmax(190px,1.05fr) minmax(280px,1.75fr) minmax(230px,1.45fr) minmax(120px,0.7fr) minmax(104px,0.62fr) minmax(180px,1fr)";
@@ -45691,10 +45825,9 @@ const TalariaV8b = () => {
             </div>
           );
 
-          const renderStratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => {
+          const renderStratCard = ({strat,isMine,inSavedTab=false,onEdit,onUseTemplate,metricsLoading=false}) => {
             const cardIcon = strat.icon || strat.template?.icon || "◎";
             const marketItems = strategyBankScopeItems(strat);
-            const cardIsSaved = typeof isSaved === "function" ? isSaved(strat.id) : !!isSaved;
             const backtestSessions = strat.backtestSessions || [];
             const backtestCompleted = backtestSessions.filter(s=>(s.progress||0)===100).length;
             const backtestTrades = backtestSessions.reduce((sum,s)=>sum+(s.trades||0),0);
@@ -45803,80 +45936,6 @@ const TalariaV8b = () => {
                     )}
                   </div>
                 </div>
-                {/* action bar */}
-                <div style={{display:"none",gap:0,borderTop:`1px solid ${c.brL}`,flexShrink:0}}>
-                  {strat.templatePreview?(
-                    <>
-                      <div onClick={()=>onSave&&onSave(strat)}
-                        style={{flex:1,height:34,display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:c.sf,cursor:"default",fontSize:9,fontWeight:760,color:c.ts,transition:"filter 0.12s, background 0.12s",borderRight:`1px solid ${c.brL}`,fontFamily:F,letterSpacing:"0.04em",textTransform:"uppercase"}}
-                        onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.12)";e.currentTarget.style.background="rgba(255,255,255,0.045)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.background=c.sf;}}>
-                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2"/></svg>
-                        Save Reference
-                      </div>
-                      <div onClick={()=>onUseTemplate&&onUseTemplate(strat.template)}
-                        style={{flex:1,height:34,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:9,fontWeight:850,color:"rgba(255,255,255,0.96)",letterSpacing:"0.07em",transition:"filter 0.12s, transform 0.08s",fontFamily:F,textTransform:"uppercase"}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
-                        onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
-                        onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
-                        onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
-                        Build From This
-                      </div>
-                    </>
-                  ):isMine?(
-                    <>
-                      <div onClick={()=>onEdit&&onEdit(strat)}
-                        style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",fontSize:9,fontWeight:700,color:c.ts,transition:"filter 0.12s",borderRight:`1px solid ${c.brL}`,fontFamily:F,gap:5}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.15)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                        Edit
-                      </div>
-                      <div title="Duplicate" onClick={()=>onDuplicate&&onDuplicate(strat)}
-                        style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",color:c.ts,transition:"filter 0.12s",borderRight:`1px solid ${c.brL}`}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.2)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-                      </div>
-                      <div title="Delete" onClick={()=>onDelete&&onDelete(strat)}
-                        style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",color:c.rd,transition:"filter 0.12s"}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.25)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      </div>
-                    </>
-                  ):inSavedTab?(
-                    <>
-                      <div onClick={()=>{onRemove&&onRemove(strat);}}
-                        style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",gap:5,background:c.sf,cursor:"default",fontSize:9,fontWeight:700,color:c.rd,transition:"filter 0.12s",borderRight:`1px solid ${c.brL}`,fontFamily:F}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.15)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={c.rd} strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                        Remove
-                      </div>
-                      <div style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.06em",transition:"filter 0.12s",fontFamily:F}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        Use Strategy
-                      </div>
-                    </>
-                  ):(
-                    <>
-                      <div onClick={()=>{onSave&&onSave(strat);}}
-                        style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",gap:5,background:cardIsSaved?"rgba(74,106,255,0.12)":c.sf,cursor:"default",fontSize:9,fontWeight:700,color:cardIsSaved?c.acL:c.ts,transition:"filter 0.12s, background 0.15s",borderRight:`1px solid ${c.brL}`,fontFamily:F}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={10} height={10} viewBox="0 0 24 24" fill={cardIsSaved?c.acL:"none"} stroke={cardIsSaved?c.acL:c.ts} strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                        {cardIsSaved?"Saved":"Save"}
-                      </div>
-                      <div style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.06em",transition:"filter 0.12s",fontFamily:F}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        Use Strategy
-                      </div>
-                    </>
-                  )}
-                </div>
               </div>
             );
           };
@@ -45918,36 +45977,7 @@ const TalariaV8b = () => {
               </div>
             );
           };
-          const StrategyRowAction = ({strat,isMine,inSavedTab,isSaved,onEdit,onRemove,onSave,onUseTemplate}) => {
-            const actionColor = strat.templatePreview ? c.acL : inSavedTab ? c.rd : isSaved ? c.acL : c.ts;
-            const handleClick = e => {
-              e.stopPropagation();
-              if (strat.templatePreview) onUseTemplate&&onUseTemplate(strat.template);
-              else if (isMine) onEdit&&onEdit(strat);
-              else if (inSavedTab) onRemove&&onRemove(strat);
-              else onSave&&onSave(strat);
-            };
-            return (
-              <div onClick={handleClick}
-                title={strat.templatePreview?"Build from this":isMine?"Edit":inSavedTab?"Remove":"Save"}
-                style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",color:actionColor,cursor:"default",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.075)"}
-                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";}}
-                onMouseDown={e=>e.currentTarget.style.transform="scale(0.94)"}
-                onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
-                {strat.templatePreview?(
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/></svg>
-                ):isMine?(
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                ):inSavedTab?(
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M9 6V4h6v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                ):(
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill={isSaved?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2"/></svg>
-                )}
-              </div>
-            );
-          };
-          const renderStrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => (
+          const renderStrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onUseTemplate,metricsLoading=false}) => (
             <div style={{width:"100%",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
               <StratRowsHeader/>
               <div className="tlr-scroll tlr-strat-bank-rows-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",overflowAnchor:"none"}}>
@@ -46046,40 +46076,87 @@ const TalariaV8b = () => {
             setCanvasNodes(buildInitialSections());
             setCanvasEdges([]);
           };
-          const fillStrategyBuilderFromTemplate = (tpl) => {
+          const strategyBuilderHasUnsavedChanges = () => {
+            const defaultDividerOnly =
+              !Array.isArray(stratBVariables) ||
+              stratBVariables.length === 0 ||
+              (stratBVariables.length === 1 && stratBVariables[0]?.type === "divider");
+            const hasCanvasChanges =
+              (Array.isArray(canvasEdges) && canvasEdges.length > 0) ||
+              (Array.isArray(canvasNodes) && canvasNodes.some(n => n?.type !== "section" || n?.data?.condCount > 0));
+            return Boolean(
+              stratEditId != null ||
+              String(stratBName || "").trim() ||
+              String(stratBDesc || "").trim() ||
+              (Array.isArray(stratBInstruments) && stratBInstruments.length) ||
+              (Array.isArray(stratBTimeframes) && stratBTimeframes.length) ||
+              (Array.isArray(stratBTags) && stratBTags.length) ||
+              (Array.isArray(stratBMarkets) && stratBMarkets.length) ||
+              (Array.isArray(stratBConditions) && stratBConditions.length) ||
+              (Array.isArray(stratBImages) && stratBImages.length) ||
+              (Array.isArray(stratBSupportInst) && stratBSupportInst.length) ||
+              String(stratBLogoEmoji || "").trim() ||
+              !defaultDividerOnly ||
+              hasCanvasChanges
+            );
+          };
+          const fillStrategyBuilderFromTemplate = (tpl, afterApply) => {
+            const applyTemplate = () => {
+              if (!tpl) {
+                resetStrategyBuilderForm();
+                if (typeof afterApply === "function") afterApply();
+                return;
+              }
+              setStratEditId(null);
+              setStratBuilderSaveError("");
+              setStratBName(`${tpl.name} (my version)`);
+              setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
+              setStratBDesc(tpl.description || "");
+              setStratBInstruments([]);
+              setStratBTimeframes([...(tpl.timeframes || [])]);
+              setStratBTags([...(tpl.tags || [])]);
+              setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
+              setStratBDirection("both");
+              setStratBMarkets([...(tpl.markets || [])]);
+              setStratBConditions([]);
+              setStratBVariables([{type:"divider",id:"div0"}]);
+              setStratBImages([]);
+              setStratBSupportInst([]);
+              setStratBLogoEmoji(tpl.icon || "");
+              setStratBInstInput("");
+              setStratBTagInput("");
+              setStratBInstDropOpen(false);
+              setStratBInstSearch("");
+              setStratBTfDropOpen(false);
+              setStratBCustomTfs([]);
+              setStratBCustomTfVal("");
+              setStratBCustomTfUnit("m");
+              setStratBTfUnitOpen(false);
+              setStratBMktDropOpen(false);
+              setStratWizardStep(1);
+              setCanvasNodes(buildNodesFromTemplate(tpl));
+              setCanvasEdges([]);
+              if (typeof afterApply === "function") afterApply();
+            };
             if (!tpl) {
-              resetStrategyBuilderForm();
-              return;
+              applyTemplate();
+              return true;
             }
-            setStratEditId(null);
-            setStratBuilderSaveError("");
-            setStratBName(`${tpl.name} (my version)`);
-            setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
-            setStratBDesc(tpl.description || "");
-            setStratBInstruments([]);
-            setStratBTimeframes([...(tpl.timeframes || [])]);
-            setStratBTags([...(tpl.tags || [])]);
-            setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
-            setStratBDirection("both");
-            setStratBMarkets([...(tpl.markets || [])]);
-            setStratBConditions([]);
-            setStratBVariables([{type:"divider",id:"div0"}]);
-            setStratBImages([]);
-            setStratBSupportInst([]);
-            setStratBLogoEmoji(tpl.icon || "");
-            setStratBInstInput("");
-            setStratBTagInput("");
-            setStratBInstDropOpen(false);
-            setStratBInstSearch("");
-            setStratBTfDropOpen(false);
-            setStratBCustomTfs([]);
-            setStratBCustomTfVal("");
-            setStratBCustomTfUnit("m");
-            setStratBTfUnitOpen(false);
-            setStratBMktDropOpen(false);
-            setStratWizardStep(1);
-            setCanvasNodes(buildNodesFromTemplate(tpl));
-            setCanvasEdges([]);
+            if (strategyBuilderHasUnsavedChanges()) {
+              openAppConfirm({
+                title: profileLang === "arabic" ? "استبدال الاستراتيجية" : "Replace strategy",
+                message: profileLang === "arabic"
+                  ? "سيؤدي تطبيق هذا القالب إلى تجاهل تغييراتك غير المحفوظة على هذه الاستراتيجية."
+                  : "Applying this template will discard your unsaved changes to this strategy.",
+                cancelLabel: profileLang === "arabic" ? "متابعة التحرير" : "Keep editing",
+                confirmLabel: profileLang === "arabic" ? "استبدال" : "Replace",
+                danger: true,
+                onConfirm: applyTemplate,
+              });
+              return false;
+            }
+            applyTemplate();
+            return true;
           };
 
           const openBuilder = (editStrat=null) => {
@@ -46139,8 +46216,10 @@ const TalariaV8b = () => {
           };
 
           const applyTemplateToBuilder = (tpl) => {
-            fillStrategyBuilderFromTemplate(normalizeCommunityTemplateForBuilder(tpl));
-            setStratBuilderOpen(true);
+            fillStrategyBuilderFromTemplate(
+              normalizeCommunityTemplateForBuilder(tpl),
+              () => setStratBuilderOpen(true)
+            );
           };
 
           const resolveCommunityTemplateId = (source) => {
@@ -46274,6 +46353,7 @@ const TalariaV8b = () => {
             const removeKey = strategyRowKey(source);
             const strategyName = String(source.name || source.strategyName || "this strategy").trim();
             const runDelete = () => {
+              if (removeKey && strategyDeleteInFlightRef.current.has(removeKey)) return;
               const removeLocal = () => {
                 setMyStrategies(prev=>prev.filter(s=>strategyRowKey(s)!==removeKey));
                 if (stratShareStrat && sameStrategyRowId(stratShareStrat, source)) setStratShareStrat(null);
@@ -46284,13 +46364,35 @@ const TalariaV8b = () => {
               };
               const deleter = typeof window !== "undefined" ? window.__TALARIA_V16_DELETE_STRATEGY__ : null;
               if (isV16LiveBoot() && apiId != null && typeof deleter === "function") {
-                removeLocal();
-                deleter(apiId).catch((err) => {
-                  console.error("[V16] strategy delete failed", err);
-                  window.alert(err?.message || "Could not delete strategy.");
-                  const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
-                  if (typeof refresh === "function") refresh().catch(() => {});
-                });
+                if (removeKey) strategyDeleteInFlightRef.current.add(removeKey);
+                deleter(apiId)
+                  .then((result) => {
+                    removeLocal();
+                    if (result?.refreshError) {
+                      openAppConfirm({
+                        title: profileLang === "arabic" ? "تم الحذف، وفشل التحديث" : "Deleted, refresh failed",
+                        message: profileLang === "arabic"
+                          ? "تم حذف الاستراتيجية، لكن تعذر تحديث القائمة من الخادم. احتفظت تالاريا بآخر بيانات معروفة حتى ينجح التحديث التالي."
+                          : "The strategy was deleted, but Talaria could not refresh the strategy list from the server. The last-known list is kept until the next successful refresh.",
+                        cancelLabel: profileLang === "arabic" ? "إغلاق" : "Close",
+                        confirmLabel: profileLang === "arabic" ? "حسنًا" : "OK",
+                        danger: false,
+                      });
+                    }
+                  })
+                  .catch((err) => {
+                    console.error("[V16] strategy delete failed", err);
+                    openAppConfirm({
+                      title: profileLang === "arabic" ? "فشل حذف الاستراتيجية" : "Could not delete strategy",
+                      message: err?.message || (profileLang === "arabic" ? "تعذر حذف الاستراتيجية. بقيت في قائمتك." : "Could not delete strategy. It is still in your list."),
+                      cancelLabel: profileLang === "arabic" ? "إغلاق" : "Close",
+                      confirmLabel: profileLang === "arabic" ? "حسنًا" : "OK",
+                      danger: false,
+                    });
+                  })
+                  .finally(() => {
+                    if (removeKey) strategyDeleteInFlightRef.current.delete(removeKey);
+                  });
                 return;
               }
               removeLocal();
@@ -46375,6 +46477,7 @@ const TalariaV8b = () => {
           };
 
           const saveCommunity = (strat) => {
+            if (!COMMUNITY_ENABLED) return;
             const already = savedCommunityIds.has(strat.id);
             if(already){
               setSavedCommunityIds(prev=>{const n=new Set(prev);n.delete(strat.id);return n;});
@@ -46428,7 +46531,10 @@ const TalariaV8b = () => {
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
                   <div style={{width:"100%",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-                      {[{k:"mine",l:"My Strategies",ct:mineSource.length}/* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
+                      {[{k:"mine",l:"My Strategies",ct:mineSource.length}, ...(COMMUNITY_ENABLED ? [
+                        {k:"saved",l:"Saved",ct:savedCommunityStrats.length},
+                        {k:"community",l:"Community",ct:filteredCommunity.length},
+                      ] : []) /* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
                         const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
                         const tabBg=isA?c.acD:"transparent";
@@ -46522,7 +46628,7 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>{e.currentTarget.style.color=c.tm;e.currentTarget.style.background="transparent";}}>×</div>}
                     </div>
                     {/* sort dropdown (community tab only) */}
-                    {stratTab==="community"&&(
+                    {COMMUNITY_ENABLED&&stratTab==="community"&&(
                       <div style={{position:"relative",flexShrink:0}}>
                         <div onClick={e=>{e.stopPropagation();setSessSortOpen(p=>!p);}}
                           style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
@@ -46612,7 +46718,7 @@ const TalariaV8b = () => {
                   )}
 
                   {/* SAVED FROM COMMUNITY */}
-                  {stratTab==="saved"&&(
+                  {COMMUNITY_ENABLED&&stratTab==="saved"&&(
                     savedCommunityStrats.length===0?(
                       <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.2"/></svg>
@@ -46651,7 +46757,7 @@ const TalariaV8b = () => {
                   )}
 
                   {/* COMMUNITY */}
-                  {stratTab==="community"&&(
+                  {COMMUNITY_ENABLED&&stratTab==="community"&&(
                     communityDataLoading ? (
                       effectiveStratLayoutMode==="rows" ? (
                         <StratRowsSkeleton/>
@@ -46699,8 +46805,8 @@ const TalariaV8b = () => {
                 if(!ms)return null;
                 const isTemplate=!!ms.templatePreview;
                 const isMineMenu=!!stratActMenu.isMine&&!isTemplate;
-                const isSavedMenu=!!stratActMenu.inSavedTab;
-                const isSavedNow=savedCommunityIds.has(ms.id);
+                const isSavedMenu=COMMUNITY_ENABLED&&!!stratActMenu.inSavedTab;
+                const isSavedNow=COMMUNITY_ENABLED&&savedCommunityIds.has(ms.id);
                 const closeMenu=()=>setStratActMenu(null);
                 const run=fn=>e=>{e.stopPropagation();fn&&fn();closeMenu();};
                 const startStrategy=()=>{
@@ -46735,9 +46841,9 @@ const TalariaV8b = () => {
                     {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isSavedMenu?[
                     {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
-                  ]:[
+                  ]:COMMUNITY_ENABLED?[
                     {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
-                  ]),
+                  ]:[]),
                 ];
                 const menuW=160;
                 const menuH=estimateActionMenuHeight(actions);
@@ -46837,13 +46943,14 @@ const TalariaV8b = () => {
                   sessions={strategyReviewSessions}
                   onSave={saveBuilder}
                   onClose={()=>{if(!stratBuilderSaving){setStratBuilderOpen(false);setStratEditId(null);}}}
+                  openAppConfirm={openAppConfirm}
                   onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
                   applyStrategyTemplate={fillStrategyBuilderFromTemplate}
                 />
               )}
 
               {/* ─ Share to Community Modal ─ */}
-              {stratShareStrat&&(
+              {COMMUNITY_ENABLED&&stratShareStrat&&(
                 <div style={{position:"fixed",inset:0,zIndex:100002,background:"rgba(4,5,15,0.88)",display:"flex",alignItems:"center",justifyContent:"center"}}
                   onClick={e=>{if(e.target===e.currentTarget)setStratShareStrat(null);}}>
                   <div style={{width:"min(480px,92vw)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 20px 60px rgba(0,0,0,0.75)",display:"flex",flexDirection:"column",overflow:"hidden"}}

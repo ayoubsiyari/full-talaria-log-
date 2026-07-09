@@ -12,6 +12,10 @@ export type V16LiveBoot = {
   strategies: V16StrategyGroup[];
   /** Full strategy lab rows (includes `variables` for Add Trade tag defs). */
   strategyBank?: Record<string, unknown>[];
+  /** Last strategy bank refresh error. Non-null means `strategyBank` is stale preserved data. */
+  strategyBankError?: string | null;
+  /** True when the latest strategy bank refresh failed and the previous bank was kept. */
+  strategyBankStale?: boolean;
   /** Published community / official strategy templates. */
   communityStrategies?: Record<string, unknown>[];
   appliedSource: V16AppliedSource | null;
@@ -88,7 +92,9 @@ declare global {
       existingId?: number | null
     ) => Promise<Record<string, unknown>>;
     /** Delete a persisted strategy from journal-backend. */
-    __TALARIA_V16_DELETE_STRATEGY__?: (strategyId: number) => Promise<void>;
+    __TALARIA_V16_DELETE_STRATEGY__?: (
+      strategyId: number
+    ) => Promise<{ refreshError?: string } | void>;
     /** Reload published community strategies. */
     __TALARIA_V16_REFRESH_COMMUNITY__?: () => Promise<Record<string, unknown>[]>;
     /** Copy a community template into My Strategies. */
