@@ -6906,6 +6906,8 @@ function GeneralInfoStepContent({ c, F,
   const styleOptions = !stratBStyle || STYLES.some(o => o.id === stratBStyle)
     ? STYLES
     : [{id:stratBStyle,label:stratBStyle}, ...STYLES];
+  const strategyImageLimit = mobileSymbolPicker ? STRATEGY_BUILDER_MOBILE_COVER_LIMIT : 6;
+  const canAddStrategyImage = (stratBImages || []).length < strategyImageLimit;
 
   return (
     <div ref={generalInfoScrollRef} style={{flex:1,padding:'24px 28px',overflowY:'auto',fontFamily:F}} className="tlr-scroll">
@@ -6980,6 +6982,11 @@ function GeneralInfoStepContent({ c, F,
             onBlur={e=>e.target.style.borderColor=c.brH}/>
         </div>
         </div>
+        {showRequiredHint && (generalInfoMissingLabels || []).length > 0 && (
+          <div role="alert" style={{marginTop:-4,marginBottom:14,padding:'9px 11px',background:'rgba(255,80,104,0.08)',border:'1px solid rgba(255,80,104,0.34)',fontSize:11,fontWeight:650,color:'#FFB8C2',fontFamily:F,lineHeight:1.45}}>
+            Complete before continuing: {(generalInfoMissingLabels || []).join(', ')}.
+          </div>
+        )}
 
         {/* ── Section: Classification ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
@@ -7044,9 +7051,15 @@ function GeneralInfoStepContent({ c, F,
                       );
                     })}
                   </div>
-                  <div style={{flexShrink:0,borderTop:`1px solid ${c.brH}`,padding:'8px 10px',display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{flexShrink:0,borderTop:`1px solid ${c.brH}`,padding:'8px 10px',display:'flex',flexDirection:'column',gap:5}}>
+                    {tagFeedback&&(
+                      <div style={{fontSize:9,fontWeight:700,color:c.rd,fontFamily:F,lineHeight:1.3}}>
+                        {tagFeedback}
+                      </div>
+                    )}
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
                     <div style={{flex:1,display:'flex',alignItems:'center',border:`1px solid ${tagInputFocus?c.acB:c.brH}`,background:c.el,height:24,padding:'0 8px',transition:'border-color 0.12s',opacity:tagAtMax?0.45:1}}>
-                      <input value={tagInput} onChange={e=>setTagInput(e.target.value)} disabled={tagAtMax}
+                      <input value={tagInput} onChange={e=>applyTagInput(e.target.value)} disabled={tagAtMax}
                         onFocus={()=>setTagInputFocus(true)} onBlur={()=>setTagInputFocus(false)}
                         onKeyDown={e=>{if(e.key==='Enter'&&tagInput.trim()&&!tagAtMax){e.preventDefault();addTag(tagInput);setTagInput('');}}}
                         placeholder={tagAtMax?'10 tags max':'Create custom tag…'}
@@ -7056,6 +7069,7 @@ function GeneralInfoStepContent({ c, F,
                       style={{display:'inline-flex',alignItems:'center',gap:3,padding:'0 10px',height:24,background:tagInput.trim()&&!tagAtMax?`linear-gradient(135deg,${c.ac},${c.acL})`:'rgba(140,160,255,0.10)',border:`1px solid ${tagInput.trim()&&!tagAtMax?'rgba(74,106,255,0.5)':'rgba(140,160,255,0.18)'}`,fontSize:9,fontWeight:700,color:tagInput.trim()&&!tagAtMax?'#fff':c.tm,letterSpacing:'0.04em',cursor:'default',opacity:tagInput.trim()&&!tagAtMax?1:0.55,transition:'background 0.12s',textTransform:'uppercase'}}>
                       <svg width={9} height={9} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>
                       Add
+                    </div>
                     </div>
                   </div>
                 </div>,
@@ -7599,7 +7613,7 @@ function GeneralInfoStepContent({ c, F,
               </div>
               );
             })}
-            {(stratBImages||[]).length < 6 && (
+            {canAddStrategyImage && (
               <div onClick={()=>!imgBusy&&fileRef.current?.click()}
                 style={{width:100,height:70,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
                   gap:4,border:'1px dashed '+c.brH,cursor:'default',color:c.tm,fontSize:10,fontFamily:F,
@@ -8705,7 +8719,7 @@ function StrategyBuilderModal(props) {
               </div>
               {/* Next / Save */}
               {stratWizardStep<4?(
-                <button onClick={isSaving?undefined:goNext} disabled={isSaving||!(stratWizardStep===1?generalInfoReady:canNext)}
+                <button onClick={isSaving?undefined:goNext} disabled={isSaving||(stratWizardStep!==1&&!canNext)}
                   style={primaryBtnStyle(!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
                   onMouseEnter={e=>onPrimaryEnter(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
                   onMouseLeave={e=>onPrimaryLeave(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
