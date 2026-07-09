@@ -46,13 +46,23 @@
 | — PHASE 2 GATE — | Manager | 2 | PASSED (static) | reports/MANAGER/PHASE2_GATE.md | ✔ lint+tsc clean; live-runtime→P4 | CLOSED |
 | C3 canvas UX batch | C | 3 | DONE (verified); runtime→P4 | reports/C/C3.md | ✔ dead code 0-refs, onConnect gone/edges render, img parity, lint clean | |
 | C4 PDF polish | C | 3 | DONE (verified); runtime→P4 | reports/C/C4.md | ✔ preflight before window.open (5246-5256); escPrint intact | |
-| B5 feedback & caps | B | 3 | ASSIGNED (serial #2) | reports/B/B5.md | prompt P3_WORKER_B | file now free |
-| D3 sort/filter honesty | D | 3 | QUEUED (serial #3) | reports/D/D3.md | prompt P3_WORKER_D | defaults: remove fake sorts, badge=real rows |
-| D4 dead-code sweep | D | 3 | QUEUED (serial #3) | reports/D/D4.md | prompt P3_WORKER_D | keep community plumbing |
-| A7 name normalization | A | 3 | QUEUED (serial #4) | reports/A/A7.md | prompt P3_WORKER_A | D-3 client-side only |
-| — PHASE 3 GATE — | Manager | 3 | TODO | reports/MANAGER/PHASE3_GATE.md | — | |
+| B5 feedback & caps | B→reassigned | 3 | DONE (verified present); runtime→P4 | reports/B/B5.md | ✔ missing-labels@6985, MAX_TAG_LENGTH=28, canAddStrategyImage tile-gate@7616; likely orig-B unreported work | |
+| D3 sort/filter honesty | D | 3 | DONE (verified); runtime→P4 | reports/D/D3.md | ✔ SORT_OPTIONS=name/pnl, stratSortOpen, badge=real rows | |
+| D4 dead-code sweep | D | 3 | DONE (verified); runtime→P4 | reports/D/D4.md | ✔ stratStyleFilter/alias removed, Hide relabel; STYLES kept | leftover: orphaned sessSortOpen→A7 |
+| A7 name normalization | A→reassigned | 3 | DONE (verified); runtime→P4 | reports/A/A7.md | ✔ normalizeStrategyBankNameKey (450-458); +A7b sessSortOpen removed; lint+tsc clean | |
+| — PHASE 3 GATE — | Manager | 3 | PASSED (static) | reports/MANAGER/PHASE3_GATE.md | ✔ all 6 tasks; lint+tsc clean; live-runtime→P4 | CLOSED |
 | M4.1 integrate + regress ×2 | Manager | 4 | TODO | — | — | merge order C→B→D→A |
-| A/B/C/D PHASE4_VERIFY | All | 4 | TODO | reports/*/PHASE4_VERIFY.md | — | |
+| P4 env boot (lean stack) | Director+Mgr | 4 | UP | prompts/P4_PLAN.md | ✔ backend :5000 healthy (real PG); FE :3001 next dev; proxy→backend OK; auth 401 enforced | override adds :5000 port; NEXT_DEV_NO_EXPORT=1 for dev rewrites |
+| P4 headless API proofs | Manager | 4 | PASS | reports/MANAGER/SHIP_REPORT.md | ✔ /api/strategies + /api/journal/list = 401 unauth; health 200; dev proxy reaches backend | security guard intact |
+| P4 browser click-crawl | Director | 4 | READY (needs login) | reports/MANAGER/SHIP_REPORT.md §5 | app at http://localhost:3001/dashboard/?view=stratbank | sign up/login then run §5 checklist |
+| P4 STATIC regression (mgr) | Manager | 4 | PASS #1 | reports/MANAGER/SHIP_REPORT.md | ✔ tsc exit 0 + lint clean (TalariaV16 + v16 TS) | pass #2 at final |
+| P4 persistence+bank verify | fresh worker | 4 | ASSIGNED (static) | reports/D/PHASE4_PERSISTENCE.md + PHASE4_VERIFY.md | prompt P4_WORKER_D_STATIC (worker-agnostic, read-only) | orig A+D offline |
+| P4 builder+canvas verify | fresh worker | 4 | DONE (static); 2 findings | reports/C/PHASE4_BUILDER.md + PHASE4_VERIFY.md | ✔ builder clean; canvas: 2 undo-coverage findings (mgr-verified) | see C-FINDINGS |
+| C5 fix (canvas findings) | fresh worker | 4 | DONE | reports/C/C5.md | ✔ section-move undoable (4941); #1 = accepted known-limit (ICR-8) | lint+tsc clean |
+| ICR-8 template-load undo bridge | C→A/D | C5 | CLOSED — accepted known-limitation (director) | reports/C/ICR-8.md | destructive-confirm already guards user; documented in ship report | no code change |
+| P4 STATIC regression #2 (final) | Manager | 4 | PASS | reports/MANAGER/SHIP_REPORT.md | ✔ tsc exit 0 + lint clean post-C5 | |
+| P4 persistence+bank verify | fresh worker | 4 | DONE (static); no findings | reports/D/PHASE4_PERSISTENCE.md + PHASE4_VERIFY.md | ✔ A1/A2/A4/A5/A6/ICR-1/A7 + D1/D3/D4 all PASS; tsc+lint clean (mgr-recorded) | runtime→final Docker |
+| — PHASE 4 GATE / SHIP — | Manager | 4 | TODO | reports/MANAGER/SHIP_REPORT.md | — | double regression + sign-off |
 | M4.3 final ship report | Manager | 4 | TODO | reports/MANAGER/FINAL_SHIP_REPORT.md | — | Director sign-off |
 
 ## ICR tracker

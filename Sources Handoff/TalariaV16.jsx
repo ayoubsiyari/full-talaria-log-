@@ -448,11 +448,11 @@ const normalizeStrategyBankNameKey = (value) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 const findStrategyBankNameDuplicate = (name, rows, excludeEditId = null) => {
-  const key = String(name || "").trim().toLowerCase();
+  const key = normalizeStrategyBankNameKey(name);
   if (!key) return null;
   for (const row of Array.isArray(rows) ? rows : []) {
     if (excludeEditId != null && sameStrategyRowId(row, { id: excludeEditId })) continue;
-    if (String(row?.name || "").trim().toLowerCase() === key) return row;
+    if (normalizeStrategyBankNameKey(row?.name) === key) return row;
   }
   return null;
 };
@@ -4768,7 +4768,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       setIsDragging(false);
       dragStartRef.current = null;
       setSliding(true);
-      setCanvasNodes(nds => {
+      commitCanvasMutation(nds => {
         const secs = nds.filter(n => n.type === 'section');
         const snapY = {};
         let y = 0;
@@ -4792,7 +4792,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [setCanvasNodes]);
+  }, [commitCanvasMutation, setCanvasNodes]);
 
   // Keep module-level callbacks current
   const onNodeDragStart = useCallback((_, node) => {
@@ -4938,7 +4938,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     isDraggingRef.current = false;
     dragStartRef.current = null;
     setIsDragging(false);
-    setCanvasNodes(nds => {
+    commitCanvasMutation(nds => {
       const secs = nds.filter(n => n.type === 'section');
       const snapY = {};
       let y = 0;
@@ -4958,7 +4958,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       });
     });
     setTimeout(() => setSliding(false), 350);
-  }, [commitCanvasMutation, setCanvasNodes]);
+  }, [commitCanvasMutation]);
 
   shortcutsRef.current = { undo: doUndo, redo: doRedo, del: deleteSelected, hasSel: selectedIds.length > 0 };
   _cvCb.addCondition = addConditionToSection;
@@ -11969,7 +11969,6 @@ const TalariaV8b = () => {
   const [sessActMenu, setSessActMenu] = useState(null);
   const [sessSortBy, setSessSortBy] = useState(null);
   const [sessSortDir, setSessSortDir] = useState("asc");
-  const [sessSortOpen, setSessSortOpen] = useState(false);
   const [sessSearchOpen, setSessSearchOpen] = useState(false);
   const [sessLayoutMode, setSessLayoutMode] = useState("rows");
   const [cardSortOpen, setCardSortOpen] = useState(false);
@@ -12093,7 +12092,7 @@ const TalariaV8b = () => {
   const [stratSearchFocus, setStratSearchFocus] = useState(false);
   const [stratSort, setStratSort] = useState("name");
   const [stratSortDir, setStratSortDir] = useState("asc");
-  const [stratStyleFilter, setStratStyleFilter] = useState("All");
+  const [stratSortOpen, setStratSortOpen] = useState(false);
   const [stratLayoutMode, setStratLayoutMode] = useState(readStoredStratLayoutMode);
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
   useEffect(() => {
@@ -45907,7 +45906,6 @@ const TalariaV8b = () => {
             };
           };
 
-          const normalizeStrategyBankName = normalizeStrategyBankNameKey;
           const sessionsForStrategyName = sessionsForStrategyBankName;
           const sessionsForStrategyRow = sessionsForStrategyBankRow;
 
@@ -46772,7 +46770,7 @@ const TalariaV8b = () => {
             </span>
           );
 
-          const SORT_OPTIONS=[{k:"name",l:"Name"},{k:"winRate",l:"Win Rate"},{k:"rr",l:"Avg R:R"},{k:"saves",l:"Most Saved"},{k:"pnl",l:"Net P&L"}];
+          const SORT_OPTIONS=[{k:"name",l:"Name"},{k:"pnl",l:"Net P&L"}];
 
           return (
             <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
@@ -46804,7 +46802,7 @@ const TalariaV8b = () => {
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
                   <div style={{width:"100%",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-                      {[{k:"mine",l:"My Strategies",ct:mineSource.length}, ...(COMMUNITY_ENABLED ? [
+                      {[{k:"mine",l:"My Strategies",ct:stratBankRows.length}, ...(COMMUNITY_ENABLED ? [
                         {k:"saved",l:"Saved",ct:savedCommunityStrats.length},
                         {k:"community",l:"Community",ct:filteredCommunity.length},
                       ] : []) /* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
@@ -46829,20 +46827,20 @@ const TalariaV8b = () => {
                     {/* sort dropdown (My Strategies — left aligned) */}
                     {stratTab==="mine"&&(
                       <div style={{position:"relative",flexShrink:0,marginLeft:4}}>
-                        <div onClick={e=>{e.stopPropagation();setSessSortOpen(p=>!p);}}
+                        <div onClick={e=>{e.stopPropagation();setStratSortOpen(p=>!p);}}
                           style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
                           <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M3 6h18M6 12h12M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                           <span style={{fontSize:9,fontWeight:600,color:c.ts}}>{SORT_OPTIONS.find(o=>o.k===stratSort)?.l||"Sort"}</span>
                           <svg width={8} height={8} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                         </div>
-                        {sessSortOpen&&(
+                        {stratSortOpen&&(
                           <>
-                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setSessSortOpen(false)}/>
+                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setStratSortOpen(false)}/>
                             <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:99991,width:160,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
                               {SORT_OPTIONS.map(o=>{
                                 const isA=stratSort===o.k;
                                 return(
-                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setSessSortOpen(false);}}
+                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setStratSortOpen(false);}}
                                     style={{padding:"8px 12px",fontSize:10,fontWeight:isA?700:500,color:isA?c.tx:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"space-between",borderLeft:isA?`2px solid ${c.acL}`:"2px solid transparent",transition:"background 0.1s",fontFamily:F}}
                                     onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
                                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -46903,20 +46901,20 @@ const TalariaV8b = () => {
                     {/* sort dropdown (community tab only) */}
                     {COMMUNITY_ENABLED&&stratTab==="community"&&(
                       <div style={{position:"relative",flexShrink:0}}>
-                        <div onClick={e=>{e.stopPropagation();setSessSortOpen(p=>!p);}}
+                        <div onClick={e=>{e.stopPropagation();setStratSortOpen(p=>!p);}}
                           style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
                           <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M3 6h18M6 12h12M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                           <span style={{fontSize:9,fontWeight:600,color:c.ts}}>{SORT_OPTIONS.find(o=>o.k===stratSort)?.l||"Sort"}</span>
                           <svg width={8} height={8} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                         </div>
-                        {sessSortOpen&&(
+                        {stratSortOpen&&(
                           <>
-                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setSessSortOpen(false)}/>
+                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setStratSortOpen(false)}/>
                             <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:99991,width:160,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
                               {SORT_OPTIONS.map(o=>{
                                 const isA=stratSort===o.k;
                                 return(
-                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setSessSortOpen(false);}}
+                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setStratSortOpen(false);}}
                                     style={{padding:"8px 12px",fontSize:10,fontWeight:isA?700:500,color:isA?c.tx:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"space-between",borderLeft:isA?`2px solid ${c.acL}`:"2px solid transparent",transition:"background 0.1s",fontFamily:F}}
                                     onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
                                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -47107,7 +47105,7 @@ const TalariaV8b = () => {
                   ...(isTemplate?[
                     {label:"Edit",handler:()=>applyTemplateToBuilder(normalizeCommunityTemplateForBuilder(ms.template)),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-                    {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+                    {label:"Hide",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isMineMenu?[
                     {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},

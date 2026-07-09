@@ -18,9 +18,16 @@ normalized key so "My Strat!" and "My Strat" are treated consistently.
 - Backend uniqueness is Director decision **D-3 = client-side only this release** → do NOT
   implement backend uniqueness.
 
+## A7b — tiny follow-up sweep (manager-added)
+D3 removed the Strategy Bank's use of `sessSortOpen`, leaving `const [sessSortOpen, setSessSortOpen]
+= useState(false);` (~line 11972) declared-but-unused. Confirm it has ZERO remaining references
+(grep both `sessSortOpen` and `setSessSortOpen`) and remove the dead declaration. If any reference
+still exists, leave it and note why.
+
 ## Verify (static this turn; runtime → P4)
 - Names differing only by punctuation/case are detected as duplicates by the save guard.
 - Legitimately distinct names still save.
+- `sessSortOpen`/`setSessSortOpen` removed and zero references remain (or justified if kept).
 - `ReadLints` clean; `git diff` shows hunks in-zone.
 
 ## Report
