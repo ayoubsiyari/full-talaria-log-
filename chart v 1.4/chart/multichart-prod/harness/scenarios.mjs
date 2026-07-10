@@ -1145,6 +1145,95 @@ async function hS15(ctx) {
   });
 }
 
+// ── H-S16 ────────────────────────────────────────────────────────────────
+// BL-9 REGRESSION GUARD (D-035 ruling #1): the b85 pan-history continuation must
+// be PAUSED-ONLY. This gates the exact CONTRACT of the playback guard rather than
+// a fetch-count storm: the engine's minimum-candleWidth clamp caps a panel's
+// exposed left gap at ~1.5 host batches, so an end-to-end play storm self-limits
+// to ~1-2 fetches and cannot yield a causal fetch-count margin (a fetch-count
+// assertion would be vacuous — it passes with AND without the guard). Instead we
+// assert the predicate directly, viewport-IDENTICAL, toggling only isPlaying:
+//   with an uncovered left gap + history remaining,
+//     _panelPanHistoryGapNeedsHostMore(host) === true   while PAUSED
+//     _panelPanHistoryGapNeedsHostMore(host) === false   while PLAYING (the guard)
+// Temporarily removing the guard during the A/B causal proof makes the PLAYING
+// case return true → the per-frame backward re-fire the PO hit on b85. Binary,
+// deterministic, independent of gap/history size.
+async function hS16(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(600);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S16 replay entered (paused) on all panels', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    // Zoom panel B out so its viewport left region needs more history than the
+    // loaded master covers (uncovered gap) AND older history remains to serve.
+    const zoom = await wheelZoomOutPanel(page, 'B', 60);
+    await sleep(250);
+    const preplay = await readPanelLeftGap(page, 'B');
+    const gapReady = !!(preplay && preplay.needsMoreLeft === true && preplay.hasMoreLeft === true
+      && preplay.replayActive === true && preplay.replayPlaying === false);
+    checks.check('H-S16 panel B (paused) has an uncovered left gap with history remaining',
+      gapReady, `candleWidth ${zoom && zoom.candleWidthBefore}->${zoom && zoom.candleWidthAfter}; ${JSON.stringify(preplay)}`);
+    if (!gapReady) return checks;
+
+    // Evaluate the BL-9 continuation predicate on panel B for the SAME viewport,
+    // toggling only replay isPlaying. Restores isPlaying afterward so the harness
+    // state is untouched.
+    const frameB = panelFrameMap(page).B;
+    const probe = await frameB.evaluate(() => {
+      const ch = window.chart;
+      if (!ch || typeof ch._panelPanHistoryGapNeedsHostMore !== 'function') {
+        return { ok: false, reason: 'no predicate' };
+      }
+      const host = (typeof ch._multichartGetHostChart === 'function') ? ch._multichartGetHostChart() : null;
+      if (!host) return { ok: false, reason: 'no host chart from panel' };
+      const rs = ch.replaySystem || null;
+      const saved = rs ? rs.isPlaying : undefined;
+      let paused = null;
+      let playing = null;
+      try {
+        if (rs) rs.isPlaying = false;
+        paused = !!ch._panelPanHistoryGapNeedsHostMore(host);
+        if (rs) rs.isPlaying = true;
+        playing = !!ch._panelPanHistoryGapNeedsHostMore(host);
+      } finally {
+        if (rs) rs.isPlaying = saved;
+      }
+      return { ok: true, paused, playing, restored: rs ? rs.isPlaying : undefined };
+    }).catch((e) => ({ ok: false, reason: String(e && e.message || e) }));
+
+    const probeOk = !!(probe && probe.ok);
+    checks.check('H-S16 continuation predicate readable on panel B', probeOk, JSON.stringify(probe));
+    if (!probeOk) return checks;
+
+    // PAUSED with an uncovered gap → the continuation SHOULD want more history.
+    checks.check('H-S16 predicate = true while PAUSED (continuation active, uncovered gap)',
+      probe.paused === true, JSON.stringify(probe));
+    // PLAYING → the guard MUST suppress it (this is the whole fix; without the
+    // guard it returns true → the per-frame backward-refetch storm on play).
+    checks.check('H-S16 predicate = false while PLAYING (playback guard suppresses continuation)',
+      probe.playing === false, JSON.stringify(probe));
+
+    notes.push('H-S16 (BL-9 regression guard, D-035): same-pair, sync OFF, paused replay, panel B zoomed to '
+      + 'an uncovered left gap. Asserts the continuation predicate _panelPanHistoryGapNeedsHostMore(host) '
+      + 'contract on B, viewport-identical, toggling only isPlaying: PAUSED=true, PLAYING=false. The playback '
+      + 'guard is what forces the PLAYING=false; temporarily removing it (A/B proof) returns true → the b85 '
+      + 'per-frame backward-refetch storm on play. NOTE: a fetch-count storm is not gateable here — the '
+      + `engine's min-candleWidth clamp caps the exposed gap so the storm self-limits (~1-2 fetches). `
+      + `probe=${JSON.stringify({ paused: probe.paused, playing: probe.playing })}.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -1159,6 +1248,7 @@ export function scenarioList() {
     { id: 'H-S13', title: 'peer TF does not move other Y scales when sync OFF', run: hS13 },
     { id: 'H-S14', title: 'panel pan-to-load-history continues after gesture end (BL-9)', run: hS14 },
     { id: 'H-S15', title: 'independent panel pan-to-load-history continues after gesture end (BL-9)', run: hS15 },
+    { id: 'H-S16', title: 'pan-history continuation is paused-only; no backward storm on play (BL-9)', run: hS16 },
   ];
 }
 

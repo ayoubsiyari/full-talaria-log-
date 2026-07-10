@@ -2280,15 +2280,42 @@ paused-only; playback is untouched. Applied byte-identically to both engine tree
 `63766BD45EA3F729A8A48741FFF9902F0F08689068C212466F1A1DBCC7C0AA98`). No new kill-switch (behaviour is a narrowing
 of the existing `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE` scope).
 
-**Verification.** Paused BL-9 fix intact: H-S14/H-S15 still PASS with the guard; full gate **12/12 GREEN**.
-Direct causal A/B (temp toggle `__TALARIA_TEMP_REMOVE_PLAYBACK_GUARD`, since removed): with a zoomed-out same-pair
-panel under REAL host playback + a backward drag during play, the guard suppressed the poll's per-frame backward
-re-firing (guard: backward loads = drag strokes only; no-guard: extra backward loads continued into playback).
-**No permanent gate scenario was added** for the play-storm: the shallow synthetic harness history self-limits the
-storm to ~1 extra fetch that completes before any measurement window (guard=3 vs no-guard=4 style ±1 margins), so
-a fetch-count assertion would be too fragile for the merge gate (violates the 4.2b anti-flaky-gate rule). The fix
-is proven by the direct A/B run above; a robust automated guard needs deeper synthetic history (future harness
-enhancement). Build ids bumped to `20260707b86`. PENDING: PO live re-test on b86.
+**Verification.** Paused BL-9 fix intact: H-S14/H-S15 still PASS with the guard; full gate GREEN.
+Build ids bumped to `20260707b86`. PENDING: PO live re-test on b86.
+
+**Permanent gate guard — H-S16 (landed per D-035 ruling #1, with a documented deviation).**
+- **Deviation from the literal ruling:** the ruling directed *deepening the synthetic backward history* so a
+  play-storm reaches a wide fetch-count margin. On implementation this was found to be the wrong lever: the
+  engine clamps minimum `candleWidth` (~0.2), which caps a panel's exposed left gap at ~1.5 host batches, so an
+  end-to-end play-storm self-limits to ~1–2 fetches **regardless of server history depth** (verified: 90d and
+  180d both produced backward=2 with AND without the guard — a vacuous, non-causal fetch-count assertion). The
+  synthetic history was temporarily raised to 180d, confirmed not to move the margin, and **reverted to 90d**
+  (kept the gate fast; no scenario needs the extra depth).
+- **What landed instead (robust + causal):** H-S16 asserts the guard's exact CONTRACT on panel B, viewport-
+  IDENTICAL, toggling only `replaySystem.isPlaying`. With an uncovered left gap + history remaining:
+  `_panelPanHistoryGapNeedsHostMore(host)` must be `true` while PAUSED and `false` while PLAYING. This is binary,
+  deterministic, and independent of gap/history size. Causal A/B (temporary guard removal during the proof):
+  guard ⇒ `{paused:true, playing:false}` PASS; no-guard ⇒ `{paused:true, playing:true}` RED. Gate now **13/13
+  GREEN, 0 known-failing**; both engine trees hash-match (`63766BD4…`, unchanged — engine not touched, no build
+  bump); `security.yml` + `gate.mjs` untouched.
+
+**STATE-MATRIX (per D-035 new rule) — playback guard on `_panelPanHistoryGapNeedsHostMore` / the BL-9 continuation.**
+The guard only affects whether the same-pair pan-history continuation keeps driving the host delegate + local
+mirror after a gesture. Rows = replay state; the behaviour is identical across sync-on/sync-off (the continuation
+never consults sync flags) and is only reachable for **same-pair delegating** panels (independent panels use the
+self-fetch path, H-S15; the host itself never delegates to itself).
+
+| Replay state | same-pair panel, uncovered left gap + history remains | same-pair, gap covered / history exhausted | independent panel | host (A) |
+|---|---|---|---|---|
+| **Paused** | continuation ACTIVE (drives delegate+mirror to cover gap) — BL-9 fix, unchanged by this guard | terminates (returns false) — unchanged | unaffected (self-fetch path) | unaffected |
+| **Playing** | **continuation SUPPRESSED (returns false)** — THE FIX; was the storm | already false — unchanged | unaffected | unaffected |
+| **Idle (no replay)** | predicate returns false early (no `replaySystem`/not active) — unchanged | false — unchanged | unaffected | unaffected |
+
+Only ONE cell changes vs b85: (same-pair, uncovered gap, **Playing**) flips from "active → storm" to "suppressed".
+Every other cell is provably unchanged. TF-relation (same/coarser/finer) does not enter this predicate — it keys
+off viewport left-gap coverage + host history availability + isPlaying only — so no TF-relation cell is affected.
+This is the "missing complement" check the rule requires: the b85 continuation added a paused behaviour and
+missed its Playing complement; this guard supplies exactly that complement and nothing else.
 
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 

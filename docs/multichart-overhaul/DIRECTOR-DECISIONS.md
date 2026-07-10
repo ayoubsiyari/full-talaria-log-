@@ -1613,7 +1613,9 @@ permanently as the BL-8 regression guard.
 
 ---
 
-## D-034 — REOPEN for BL-9 (panel pan-to-load-history stalls until click)
+## D-034b — REOPEN for BL-9 (panel pan-to-load-history stalls until click)
+*(renumbered from a duplicate "D-034" — two sessions issued the same ID on 2026-07-10;
+this entry is D-034b so citations stay unambiguous)*
 
 BL-8 is CLOSED (PO live-confirmed on b84). PO immediately surfaced a distinct defect
 (BL-9, MANAGER-FINDINGS §6bb): on a same-pair 2×2 layout with backtest replay ACTIVE
@@ -1639,7 +1641,7 @@ Close conditions for BL-9:
    match; sw.js/build id bumped; `security.yml` + `gate.mjs` untouched.
 4. **PO live confirm** on the deployed build → H-S14 stays permanently as the BL-9 guard.
 
-**D-034 STATUS (2026-07-10): CLOSED in-harness (build 20260707b85), PENDING PO live confirm.**
+**D-034b STATUS (2026-07-10): CLOSED in-harness (build 20260707b85), PENDING PO live confirm.**
 - Same-pair delegate path: FIXED, causal kill-switch proof (H-S14 RED under
   `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE`, GREEN with the fix).
 - Independent/new-pair path: could NOT be reproduced RED (H-S15 GREEN with AND without the
@@ -1648,3 +1650,72 @@ Close conditions for BL-9:
   stall on b85, root-cause with live Network-tab timing before any independent-path change.
 - Gate 12/12 GREEN, 0 known-failing; both engine trees + harness hash-match; all sw.js + HTML at
   b85; `security.yml` + `gate.mjs` untouched; `node --check` clean. See MANAGER-FINDINGS §6bb.
+
+---
+
+## D-035 — Status report VALIDATED; three rulings; Phase-5 defined; state-matrix rule (2026-07-10)
+
+The manager's 2026-07-10 status report is validated against the ledger and the gate
+state — accurate, honest about the two open items, and the discipline it describes
+(RED-first, causal kill-switch proof, ratchet) is being followed. On track.
+
+### Rulings on the three flagged questions
+
+1. **Play-storm gate guard: APPROVE the harness history-deepening + permanent H-S16.**
+   Refusing to ship a flaky assertion was correct (4.2b rule), and the interim
+   coverage argument (H-S8 "0 fetches during play" + H-S14/S15 paused-only) is
+   acceptable SHORT-term. But this regression class — a continuation loop crossing a
+   replay-mode boundary — has now occurred once in production code; it earns a
+   permanent wide-margin guard. Deepen the synthetic backward history, land H-S16,
+   normal harness-only task.
+2. **Independent-panel stall: APPROVED as already disposed (D-034b)** — live
+   Network-tab timing capture BEFORE any independent-path change. If timing shows
+   slow-but-completing batches, the follow-up is window-sizing/prefetch, not stall
+   logic, and it goes to the backlog as its own item rather than riding BL-9.
+3. **Deferred backlog: stays deferred.** One exception: if the PO still FEELS
+   BL-2b-r (tiny Y nudge) after confirming b86, it may be promoted — it is the only
+   deferred item that is a felt correctness symptom rather than efficiency polish.
+   Nothing else starts without a new decision.
+
+### The root-vs-patch question (PO's standing concern), answered honestly
+
+The shipped fixes split into two classes:
+- **Structural root fixes** — display-TF master + lazy 1m (6a/6b-2/6c), finer-panel
+  self-ownership (B8), pan ownership decoupled from viewport sync (H-S3), host
+  history fan-out (H-S2), TF fan-out mirror-wait (H-S6), price-axis independence
+  (BL-2b). These changed WHO owns data / WHAT a bus carries. Root-level. Done.
+- **Narrow guards on the replay-mirror path** — F, G, I, J, BL-5 seek-skip, BL-6
+  recenter, BL-8 aligned-tick guard, BL-9 continuation + its play guard. Each is
+  correct, but they are all compensations around ONE remaining unconsolidated root:
+  **a replay-mirror frame carries data + X-viewport + Y-price together, and every
+  panel type must selectively ignore parts of it depending on mode.** Every new
+  (TF-relation × replay-state × sync-state) combination risks exposing a new cell —
+  which is exactly why BL-6 and BL-9-play "popped out" of prior fixes. The PO's
+  instinct is correct: this family will keep producing BL-N until the frame
+  application is consolidated.
+
+**Therefore: Phase-5 "mirror policy consolidation" is hereby DEFINED (not scheduled).**
+One explicit policy function/table — per (same-pair/independent × same/coarser/finer
+TF × paused/playing/idle × sync flags), what does a panel adopt from a mirror frame:
+data? X-viewport? Y-price? — replacing the scattered guards, which it should subsume
+and retire (the Item-1 inventory's "single-hold policy" section is the design seed).
+**Preconditions to schedule it:** (a) b86 PO-confirmed and BL-8/9 threads closed,
+(b) a quiet period — no new felt multichart defect for ~1–2 weeks of normal use,
+(c) gate green including H-S16. Executing a consolidation refactor mid-defect-flow
+would be the overkill the PO wants to avoid; executing it never means guard-count
+grows forever. The gate is what makes it safe when the time comes.
+
+### New standing rule (cheap, prevents the second-order regressions)
+
+BL-6 and BL-9-play were both "missing complement" regressions: a guard removed or
+extended a behavior and missed what that behavior ALSO did in another mode.
+**Effective now: every fix that adds/modifies a guard or predicate must include a
+STATE-MATRIX statement in its report** — enumerate paused / playing / idle ×
+sync-on / sync-off × same-TF / coarser / finer / independent, and state per relevant
+cell: unchanged, or affected how. The harness cannot cover every cell; the reasoning
+must. The manager rejects reports lacking it.
+
+### Hygiene
+Two sessions both issued "D-034" on 2026-07-10; the BL-9 reopen is renumbered
+**D-034b**. Next free ID after this entry is D-036. Sessions must check the last
+issued ID before writing.
