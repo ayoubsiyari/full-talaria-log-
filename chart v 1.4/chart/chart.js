@@ -3479,6 +3479,21 @@ class Chart {
     _panelPanHistoryGapNeedsHostMore(host) {
         if (!host) return false;
         if (typeof this._needsReplayHistoryLoadLeft !== 'function') return false;
+        // PAUSED-ONLY: never drive backward history while replay is actively
+        // PLAYING. During playback the playhead advances forward every tick, so
+        // the left-gap predicate can stay true frame after frame — continuing
+        // here would re-fire host.checkViewportLoadMore('backward') on every rAF
+        // and collide with playback's forward prefetch (the "refetch over / break
+        // on play" regression). The BL-9 continuation is exclusively for the
+        // paused manual-pan case.
+        try {
+            const localRs = this.replaySystem;
+            if (localRs && localRs.isPlaying) return false;
+            const hostRs = host.replaySystem;
+            if (hostRs && hostRs.isPlaying) return false;
+            const mainChart = (typeof window !== 'undefined') ? window.chart : null;
+            if (mainChart && mainChart.replaySystem && mainChart.replaySystem.isPlaying) return false;
+        } catch (_e) { return false; }
         // Panel viewport left gap covered → done.
         if (!this._needsReplayHistoryLoadLeft()) return false;
         // Host server still has older history → keep driving (host will fetch it).

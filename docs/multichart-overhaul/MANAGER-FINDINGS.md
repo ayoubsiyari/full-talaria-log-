@@ -2261,6 +2261,35 @@ gated. Host pan-back must remain unchanged (already correct).
   `node --check` passes on both chart.js and scenarios.mjs. PENDING: PO live re-test on deployed b85 (same-pair
   stall gone; independent panel behaviour observed with Network timing if still perceived slow).
 
+### 6bb.1 — BL-9 FOLLOW-UP: b85 pan-history continuation storms backward fetches ON PLAY (regression) — FIXED (b86)
+
+**PO report (2026-07-10, on b85):** "all good but it's broke and refetches the data over after I click play on
+replay." The BL-9 same-pair pan-back stall is gone, but pressing PLAY now triggers a backward-history refetch
+storm / visible break.
+
+**Root cause:** the b85 continuation predicate `_panelPanHistoryGapNeedsHostMore(host)` (chart.js) had **no
+playback guard**. During active playback the playhead advances forward every tick, so `_needsReplayHistoryLoadLeft()`
+can stay true frame after frame. `_scheduleMultichartHostMasterSyncPoll`'s continuation branch then re-fired
+`host.checkViewportLoadMore('backward', true)` on every rAF, colliding with playback's forward prefetch → the
+"refetch over / break on play" the PO hit. The BL-9 continuation was only ever meant for the PAUSED manual-pan
+case.
+
+**Fix (b86):** at the top of `_panelPanHistoryGapNeedsHostMore`, return `false` when replay is actively PLAYING
+(this panel's `replaySystem.isPlaying`, the host's, or `window.chart`'s). Makes the continuation strictly
+paused-only; playback is untouched. Applied byte-identically to both engine trees (chart.js hash
+`63766BD45EA3F729A8A48741FFF9902F0F08689068C212466F1A1DBCC7C0AA98`). No new kill-switch (behaviour is a narrowing
+of the existing `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE` scope).
+
+**Verification.** Paused BL-9 fix intact: H-S14/H-S15 still PASS with the guard; full gate **12/12 GREEN**.
+Direct causal A/B (temp toggle `__TALARIA_TEMP_REMOVE_PLAYBACK_GUARD`, since removed): with a zoomed-out same-pair
+panel under REAL host playback + a backward drag during play, the guard suppressed the poll's per-frame backward
+re-firing (guard: backward loads = drag strokes only; no-guard: extra backward loads continued into playback).
+**No permanent gate scenario was added** for the play-storm: the shallow synthetic harness history self-limits the
+storm to ~1 extra fetch that completes before any measurement window (guard=3 vs no-guard=4 style ±1 margins), so
+a fetch-count assertion would be too fragile for the merge gate (violates the 4.2b anti-flaky-gate rule). The fix
+is proven by the direct A/B run above; a robust automated guard needs deeper synthetic history (future harness
+enhancement). Build ids bumped to `20260707b86`. PENDING: PO live re-test on b86.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
