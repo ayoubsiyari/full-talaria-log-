@@ -1334,6 +1334,289 @@ async function hS17(ctx) {
   });
 }
 
+// ── H-S18 ────────────────────────────────────────────────────────────────
+// BL-11 (D-038): during replay PLAY, iframe panels B/C/D advance their bars but
+// their TIME viewport does NOT auto-follow the playhead — the playhead marches
+// off the right edge and the user must drag to keep up. Host A auto-follows via
+// the replay engine's forward auto-scroll (getReplayAutoScrollState →
+// syncReplayViewportToPlayhead offsetX at replay-system.js:2855). The fix gives
+// panels the same play-time forward viewport follow, PLAY-ONLY and X/time-only,
+// respecting the leading-edge drag-disengage contract. Kill-switch (RED):
+// __TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW.
+//
+// Read helper: measure how far a panel's offsetX is from the leading-edge target
+// (getReplayAutoScrollState) AND whether the replay playhead (last data bar) is
+// inside the visible bar window. "Tracks the leading edge the way host A does" ==
+// offsetX ≈ leading-edge target (offsetToTarget small) AND playhead visible.
+
+/**
+ * Per-panel replay-viewport follow snapshot. Computes the visible bar window the
+ * SAME way the engine does (chart.js _countVisiblePlotBars) and the leading-edge
+ * offsetX target (replay getReplayAutoScrollState). offsetToTarget is the signed/
+ * absolute pixel gap between the panel's current offsetX and the leading edge —
+ * the precise "does its offsetX track the right/leading edge like host A" metric.
+ */
+async function readPanelFollow(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    const rs = ch.replaySystem || null;
+    const data = Array.isArray(ch.data) ? ch.data : [];
+    const spacing = (typeof ch.getCandleSpacing === 'function')
+      ? ch.getCandleSpacing()
+      : (Number(ch.candleWidth) + (Number(ch.candleGap) || 2));
+    const m = ch.margin || { l: 0, r: 70 };
+    let effectiveW = Number(ch.w) || 0;
+    if (effectiveW < 80) {
+      try {
+        const el = ch.canvas && ch.canvas.parentElement;
+        const rw = el ? el.getBoundingClientRect().width : 0;
+        if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+      } catch (_) {}
+    }
+    if (effectiveW < 80) effectiveW = 320;
+    const plotW = Math.max(1, effectiveW - (m.l || 0) - (m.r || 0));
+    const offsetX = Number(ch.offsetX);
+    let i0 = null;
+    let i1 = null;
+    let playheadIdx = null;
+    let playheadVisible = null;
+    let barsPastRightEdge = null;
+    if (data.length && Number.isFinite(spacing) && spacing > 0 && Number.isFinite(offsetX)) {
+      i0 = Math.max(0, -Math.floor(offsetX / spacing));
+      i1 = Math.min(data.length, i0 + Math.ceil(plotW / spacing) + 1);
+      playheadIdx = data.length - 1; // replay data is sliced to the playhead bar
+      playheadVisible = playheadIdx >= i0 && playheadIdx < i1;
+      barsPastRightEdge = playheadIdx - (i1 - 1); // >0 == playhead off the right edge
+    }
+    let targetOffsetX = null;
+    try {
+      if (rs && typeof rs.getReplayAutoScrollState === 'function') {
+        const st = rs.getReplayAutoScrollState(ch);
+        if (st && Number.isFinite(st.offsetX)) targetOffsetX = st.offsetX;
+      }
+    } catch (_) {}
+    const offsetToTarget = (Number.isFinite(targetOffsetX) && Number.isFinite(offsetX))
+      ? Math.abs(offsetX - targetOffsetX) : null;
+    return {
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      replayActive: !!(rs && rs.isActive),
+      replayPlaying: !!(rs && rs.isPlaying),
+      userHasPanned: !!(rs && rs.userHasPanned),
+      autoScrollEnabled: !!(rs && rs.autoScrollEnabled),
+      replayTs: rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+      dataLen: data.length,
+      lastBarT: data.length ? Number(data[data.length - 1].t) : null,
+      offsetX,
+      spacing,
+      i0,
+      i1,
+      playheadIdx,
+      playheadVisible,
+      barsPastRightEdge,
+      targetOffsetX,
+      offsetToTarget,
+      priceZoom: Number(ch.priceZoom),
+      priceOffset: Number(ch.priceOffset),
+      autoScale: ch.autoScale,
+      renders: ch._mcDiag ? (Number(ch._mcDiag.renders) || 0) : 0,
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Drive REAL replay PLAY: advance the host playhead one host bar per frame (the
+ * host auto-follows via goToReplayTimestamp) and fan out the production PLAY
+ * message (replayFrame {isPlaying:true}) to every iframe, exactly as
+ * MultichartGrid does. Returns the last ts streamed.
+ */
+async function streamHostPlay(page, startTs, frames, stepMs, opts = {}) {
+  const { yieldEvery = 8, yieldMs = 30 } = opts;
+  // Faithful to production PLAY: the host replay engine's isPlaying flag is TRUE
+  // during playback. Panels gate several replay paths on isParentReplayPlaying()
+  // (host rs.isPlaying), so a seek-only drive (isPlaying=false) would misrepresent
+  // play. Set the host playing flag for the duration; the host playhead is still
+  // advanced deterministically one bar per frame via goToReplayTimestamp.
+  await setHostReplayPlaying(page, true);
+  let ts = startTs;
+  for (let i = 0; i < frames; i++) {
+    ts += stepMs;
+    await hostReplaySeek(page, ts);
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+    if (i % yieldEvery === 0) await sleep(yieldMs);
+  }
+  return ts;
+}
+
+/** Set the in-process HOST replay engine's isPlaying flag (faithful play state). */
+async function setHostReplayPlaying(page, playing) {
+  return page.evaluate((p) => {
+    const rs = window.chart && window.chart.replaySystem;
+    if (!rs || !rs.isActive) return false;
+    rs.isPlaying = !!p;
+    return rs.isPlaying;
+  }, !!playing).catch(() => false);
+}
+
+// The follow contract: a panel "tracks the leading edge" during play when its
+// playhead is inside its visible window AND its offsetX sits within a small slack
+// of the leading-edge target. RED = frozen offset while the target marches left
+// (offsetToTarget grows to many candle-spacings) and/or playhead off-screen.
+function followSlackPx(follow) {
+  const sp = follow && Number.isFinite(follow.spacing) && follow.spacing > 0 ? follow.spacing : 8;
+  return sp * 3; // ≤3 candle-spacings from the leading edge is "at the edge"
+}
+
+async function hS18(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S18 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S18 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // VARIANT (ii): switch panel C to a COARSER TF than the host (host stays 1m).
+    // B and D stay same-TF (variant i). All sync OFF → user-chosen independent TF.
+    await panelCmd(page, 'C', 'setTimeframe', { tf: '5m' }).catch(() => {});
+    await sleep(1800);
+    const cSetup = await readPanel(page, 'C');
+    const hostSetup = await readHost(page);
+    const setupOk = !!(cSetup && hostSetup && cSetup.tf === '5m' && hostSetup.tf === '1m');
+    checks.check('H-S18 setup: panel C coarser (5m) vs host (1m); B/D same-TF (1m)',
+      setupOk, `C.tf=${cSetup?.tf} host.tf=${hostSetup?.tf}`);
+    if (!setupOk) return checks;
+
+    // Bound the play window strictly inside the loaded replay master (like H-S8).
+    const hostMaster = await readHost(page);
+    const stepMs = 60_000;
+    let frames = 240;
+    if (hostMaster && Number.isFinite(hostMaster.replayMasterLastT)) {
+      const forward = Math.floor((hostMaster.replayMasterLastT - ts0) / stepMs) - 4;
+      if (Number.isFinite(forward) && forward < frames) frames = Math.max(60, forward);
+    }
+
+    // ── CORE + VARIANTS: stream real PLAY, then measure follow ──────────────
+    await resetDiag(page);
+    const lastTs = await streamHostPlay(page, ts0, frames, stepMs);
+    await sleep(1200);
+
+    const hostF = await readPanelFollow(page, 'A');
+    const bF = await readPanelFollow(page, 'B');
+    const cF = await readPanelFollow(page, 'C');
+    const dF = await readPanelFollow(page, 'D');
+
+    // Host A must keep its playhead in view (the reference contract).
+    const hostFollows = !!(hostF && hostF.playheadVisible === true);
+    checks.check('H-S18 host A keeps playhead in view during play (reference)',
+      hostFollows, `A: ${JSON.stringify(hostF)}`);
+
+    // Sanity: panels actually ADVANCED (bars form/play) — otherwise "no follow" is vacuous.
+    const advanced = (p, before) => !!(p && before && Number.isFinite(p.replayTs)
+      && Number.isFinite(before.replayTs) && p.replayTs > before.replayTs);
+    void advanced;
+
+    // Per-panel follow evaluation. RED = playhead off-screen OR offsetX frozen far
+    // from the leading-edge target while the host tracks it.
+    const evalFollow = (label, f, redTag) => {
+      const slack = followSlackPx(f);
+      const tracks = !!(f && f.playheadVisible === true
+        && Number.isFinite(f.offsetToTarget) && f.offsetToTarget <= slack);
+      checks.check(`H-S18 ${label} tracks leading edge during play (${redTag})`, tracks,
+        `playheadVisible=${f?.playheadVisible} offsetToTarget=${f?.offsetToTarget} slack=${slack} `
+        +         `barsPastRightEdge=${f?.barsPastRightEdge} offsetX=${f?.offsetX} target=${f?.targetOffsetX} `
+        + `dataLen=${f?.dataLen} replayTs=${f?.replayTs} userHasPanned=${f?.userHasPanned} autoScroll=${f?.autoScrollEnabled}`);
+      return tracks;
+    };
+    const bTracks = evalFollow('panel B (same-TF variant i)', bF, 'CORE same-TF');
+    const dTracks = evalFollow('panel D (same-TF variant i)', dF, 'CORE same-TF');
+    const cTracks = evalFollow('panel C (coarser variant ii, BL-10 path)', cF, 'CORE coarse');
+
+    const redVariants = [];
+    if (!(bTracks && dTracks)) redVariants.push('same-TF(B/D)');
+    if (!cTracks) redVariants.push('coarse-5m(C)');
+
+    // ── (c) DRAG-DISENGAGE PARITY: drag panel B back mid-play → it opts out of
+    // follow for THAT panel until it returns to the edge. After the drag-away the
+    // panel viewport must NOT snap back to the playhead (no fighting the user). ──
+    const bBeforeDrag = await readPanelFollow(page, 'B');
+    await dragCellRight(page, 'B', { screens: 2 }); // pan into history (offsetX up)
+    await sleep(200);
+    const bAfterDrag = await readPanelFollow(page, 'B');
+    // Continue a burst of play frames; a snap-back bug would yank B forward again.
+    const dragResumeTs = await streamHostPlay(page, lastTs, 40, stepMs);
+    await sleep(800);
+    const bAfterResume = await readPanelFollow(page, 'B');
+    // The drag must register as a user pan and must move the viewport away from the edge.
+    const draggedAway = !!(bAfterDrag && bAfterDrag.userHasPanned === true
+      && Number.isFinite(bAfterDrag.offsetToTarget)
+      && bAfterDrag.offsetToTarget > followSlackPx(bAfterDrag));
+    checks.check('H-S18 (c) panel B registered a mid-play user drag-away (opted out of follow)',
+      draggedAway, `afterDrag: userHasPanned=${bAfterDrag?.userHasPanned} offsetToTarget=${bAfterDrag?.offsetToTarget} `
+      + `beforeDrag offsetToTarget=${bBeforeDrag?.offsetToTarget}`);
+    // No snap-back: after more play frames, B stays where the user left it (still
+    // off the leading edge, offsetX ~ unchanged from just after the drag).
+    const noSnapBack = !!(bAfterResume && bAfterDrag
+      && bAfterResume.userHasPanned === true
+      && Number.isFinite(bAfterResume.offsetToTarget)
+      && bAfterResume.offsetToTarget > followSlackPx(bAfterResume));
+    checks.check('H-S18 (c) panel B viewport did NOT snap back to playhead after drag-away',
+      noSnapBack, `afterResume: userHasPanned=${bAfterResume?.userHasPanned} offsetToTarget=${bAfterResume?.offsetToTarget} `
+      + `offsetX afterDrag=${bAfterDrag?.offsetX} afterResume=${bAfterResume?.offsetX} dragResumeTs=${dragResumeTs}`);
+
+    // ── (d) B-FIX-C INTERACTION CELL: while follow is active on a same-TF panel
+    // (D, never dragged), a backward history load (left-prepend) can land during
+    // play. B-FIX-C's left-prepend offsetX compensation shifts offsetX by the
+    // prepended bar count; the play follow recomputes offsetX ABSOLUTELY from the
+    // leading edge. If both stacked we'd DOUBLE-SHIFT (offset far from the edge).
+    // Auto-scroll engaged is the gate: the absolute follow overrides the relative
+    // prepend shift → NET result stays at the leading edge (no double-shift).
+    // Drive a host backward history pan to prepend bars, keep playing, measure D.
+    const dBeforePrepend = await readPanelFollow(page, 'D');
+    await dragCellRight(page, 'A', { screens: 4 }); // host loads older history (left-prepend to master)
+    await sleep(400);
+    // Re-follow the host to the playhead and resume play so D mirrors + follows.
+    await hostReplaySeek(page, dragResumeTs);
+    const prependTs = await streamHostPlay(page, dragResumeTs, 40, stepMs);
+    await sleep(1000);
+    const dAfterPrepend = await readPanelFollow(page, 'D');
+    const dSlack = followSlackPx(dAfterPrepend);
+    // D was never dragged → still following. offsetToTarget must remain bounded
+    // (no double-shift). This is the measured, asserted B-FIX-C answer.
+    const dNoDoubleShift = !!(dAfterPrepend && dAfterPrepend.userHasPanned !== true
+      && Number.isFinite(dAfterPrepend.offsetToTarget)
+      && dAfterPrepend.offsetToTarget <= dSlack);
+    checks.check('H-S18 (d) B-FIX-C interaction: follow-active panel D shows no left-prepend double-shift',
+      dNoDoubleShift, `D afterPrepend: offsetToTarget=${dAfterPrepend?.offsetToTarget} slack=${dSlack} `
+      + `playheadVisible=${dAfterPrepend?.playheadVisible} offsetX=${dAfterPrepend?.offsetX} target=${dAfterPrepend?.targetOffsetX} `
+      + `before offsetToTarget=${dBeforePrepend?.offsetToTarget} prependTs=${prependTs}`);
+
+    notes.push('H-S18 (BL-11, D-038): same-pair 2x2, all sync OFF, host 1m. Real PLAY fan-out '
+      + '(replayFrame isPlaying=true, 1m/frame). Panels must give play-time forward viewport '
+      + 'follow like host A (offsetX tracks the leading edge, playhead stays in view), PLAY-ONLY, '
+      + 'X/time-only. Variant i = same-TF (B/D 1m); variant ii = coarser (C 5m, BL-10 coalesced '
+      + `path). RED variants observed: ${redVariants.length ? redVariants.join(', ') : 'none'}. `
+      + `host offsetToTarget=${hostF?.offsetToTarget}; B=${bF?.offsetToTarget} C=${cF?.offsetToTarget} `
+      + `D=${dF?.offsetToTarget}. (c) drag-disengage: B afterResume offsetToTarget=${bAfterResume?.offsetToTarget} `
+      + `userHasPanned=${bAfterResume?.userHasPanned}. (d) B-FIX-C: D offsetToTarget after left-prepend=`
+      + `${dAfterPrepend?.offsetToTarget} (bounded ⇒ no double-shift; auto-scroll gates the compensation).`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -1350,6 +1633,7 @@ export function scenarioList() {
     { id: 'H-S15', title: 'independent panel pan-to-load-history continues after gesture end (BL-9)', run: hS15 },
     { id: 'H-S16', title: 'pan-history continuation is paused-only; no backward storm on play (BL-9)', run: hS16 },
     { id: 'H-S17', title: 'coarser same-pair panel advances playhead on play (BL-10)', run: hS17 },
+    { id: 'H-S18', title: 'panels auto-follow playhead viewport on play (BL-11)', run: hS18 },
   ];
 }
 

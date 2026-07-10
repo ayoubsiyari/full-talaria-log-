@@ -1793,3 +1793,45 @@ BL-5, BL-6, BL-8, BL-9-play, BL-10) — the same unconsolidated root D-035 named
 `applyReplayFrame` decides per-relationship behavior with scattered branches, and
 the coarser-panel column simply had no play-advance cell. The Phase-5 policy table
 gains a row; the quiet-period clock for scheduling Phase-5 resets with this defect.
+
+---
+
+## D-038 — REOPEN GRANTED: BL-11 (panel viewport doesn't follow playhead during PLAY) (2026-07-10)
+
+Reopen granted. Felt correctness defect: viewport-follow parity — host A auto-scrolls
+during play, B/C/D let the playhead exit the visible window. The manager's request
+already carries the right constraints; approved as submitted, with two additions:
+
+**Approved sequence:** H-S18 RED-first (assert each panel's playhead timestamp stays
+within its visible time window while the host advances, bounded settle budget,
+flake-stable per 4.2b) → confirm the static lead against the RED run → one gated fix
+`__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` (default fix ON).
+
+**Manager's constraints ratified:** (1) PLAY-only — no re-fit/snap-back on pause or
+scrub (the mirror path's BL-2b-era protections stay); (2) X/time viewport only —
+price-axis independence untouched. State-matrix must call out the paused-panel cell
+(follow OFF) and the host cell (unchanged). Worker localizes same-TF vs coarser and
+states the interaction with BL-10's coalesced advance path explicitly.
+
+**Two additions to the spec:**
+1. **User-drag disengage parity.** The host's auto-scroll almost certainly disengages
+   when the user pans away during play (standard chart behavior, and B-FIX-C's
+   compensation is explicitly gated on `autoScroll===false`). The panel follow must
+   mirror that contract exactly: follow only while the panel is at/near the leading
+   edge; a user who drags a panel back mid-play has OPTED OUT for that panel until
+   they return to the edge (or whatever the host's own re-engage rule is — copy it,
+   don't invent one). H-S18 should include this as a second assertion: drag panel
+   away during play → viewport does NOT snap back.
+2. **B-FIX-C interaction cell in the state-matrix.** Follow-on-play changes the
+   panel's effective autoScroll state, which is the gate on B-FIX-C's left-prepend
+   offsetX compensation. The report must state what happens when a backward history
+   load lands while follow is active (compensation skipped because auto-scrolling —
+   correct? or double-shift?). This is exactly the kind of complement cell the
+   D-035 rule exists to force.
+
+Close conditions: standard (H-S18 green under fix / red under kill-switch,
+flake-stable; gate green at 15; trees hash-match; PO live confirm; H-S18 permanent).
+**Phase-5 ledger note:** BL-11 is family case #10 — the panel viewport-follow column
+of the same policy table. The quiet-period clock resets again; at this defect rate,
+once BL-10/BL-11 close and the PO confirms a stable build, the manager should
+prepare the Phase-5 design doc so it is ready the moment the quiet period is met.

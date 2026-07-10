@@ -2389,6 +2389,84 @@ play cell but no coarser play cell; this supplies exactly that one cell and noth
 the coarse panel must advance in lock-step with the host (playhead + forming candle) and stay smooth (no reslice
 flicker); same-TF play and paused/scrub behaviour unchanged.
 
+## 6cd. BL-11 — panels don't auto-follow the play-time viewport ("playhead marches off the right edge") (D-038, b88)
+
+**Symptom.** During replay PLAY, iframe panels B/C/D DO advance (bars form/play) but their TIME viewport does
+NOT auto-follow the playhead: the playhead marches off the right edge and the user must manually drag to keep up.
+Host tile A auto-follows correctly. Contract wanted: give panels the SAME play-time forward viewport follow the
+host uses.
+
+**RED-first repro (H-S18, flake-stable ×3 then kill-switch ×2).** Same-pair 2×2, all sync OFF, host 1m. Enter
+paused replay, switch panel C to **5m (coarser)** while B/D stay 1m (same-TF); stream REAL play fan-out
+(`replayFrame {isPlaying:true}`, 1m/frame) with the host advancing + auto-following. Measured "tracks the leading
+edge" as: playhead (last data bar) inside the visible bar window AND `offsetX` within ≤3 candle-spacings of the
+leading-edge target (`getReplayAutoScrollState().offsetX`).
+- **Coarser panel C = RED** (localized): `playheadVisible=false`, `offsetToTarget≈315–329px` (≈8–10 bars past the
+  right edge), frozen `offsetX≈-693..-721` while target marched to `-1029`. Flake-stable ×3 (322 / 329 / 322).
+- **Same-TF panels B/D = already GREEN**: `offsetToTarget=0`. They follow via the same-TF mirror path
+  (`forceSamePairParentDataMirror`, which already right-anchors during play). So the defect is the **coarser** cell.
+- Host A reference GREEN throughout (`playheadVisible=true`).
+This **localizes BL-11 to BL-10's coalesced path**: the coarser play-advance branch added for BL-10/D-037
+(`applyReplayFrame` `else if (args.isPlaying)` → `scheduleCoalescedSeek`) advances the panel's bars but leaves the
+viewport frozen.
+
+**Confirmed static lead.** `chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js`:
+- Coarser same-pair PLAY branch `applyReplayFrame` (~:697) → `scheduleCoalescedSeek` (~:1492). The mirror exits
+  (`applyParentReplayMirror`/`applyStaticMirrorFrame`) reject a coarse panel over a 1m host, so it advances via
+  `forceReplaySeek` (~:1606) → `goToReplayTimestamp({preserveVisibleWindow:false})`.
+- The re-anchor is then blocked by the ACCUMULATED-DRIFT heuristic in `replay-system.js`
+  `_replayUserOwnsViewport` (~:2749), which `syncReplayViewportToPlayhead` (~:2841) consults: because the frozen
+  offset already differs from the leading edge by ≫ `spacing*0.2`, the engine concludes "the user owns the
+  viewport" and refuses to follow (also short-circuited by the fresh TF-switch anchor lock). The host never drifts
+  (it follows every frame) so it never trips this heuristic — hence "host runs alone". Host follow lands at
+  `syncReplayViewportToPlayhead` offsetX (`replay-system.js:2855`).
+
+**The fix + kill-switch.** New `maybePanelPlayViewportFollow(ch)` in `panel-cmd-bridge.js`, invoked on all three
+`scheduleCoalescedSeek` exit paths (`applyParentReplayMirror`, `applyStaticMirrorFrame`, and the `forceReplaySeek`
+completion callback). It calls `rs.syncReplayViewportToPlayhead(ch, { forceRecenter:true, resetPriceScale:false,
+render:true })`. Constraints honored exactly:
+- **PLAY-ONLY** — gated on `isParentReplayPlaying() || pendingPlayDesired===true || _multichartPassivePlayActive`
+  (the same play signal BL-10 keys off). Paused/scrub clears these ⇒ the window-preserving path is untouched
+  (no BL-2b pause/scrub re-fit / snap-back).
+- **X/TIME ONLY** — `resetPriceScale:false` preserves BL-2b price-axis independence (the price axis is never touched).
+- **LEADING-EDGE DISENGAGE** — we skip when `userHasPanned || autoScrollEnabled===false` (the REAL user-intent
+  signals), so we never fight the user's drag or BL-6 recenter. Only *because* we've proven the user did not move
+  the panel do we pass `forceRecenter:true` — needed to defeat the bug-induced-drift `_replayUserOwnsViewport`
+  false-positive and the TF-switch anchor lock. This matches the host's leading-edge follow contract exactly.
+- Kill-switch `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` (default = fix ON; set = today's RED).
+
+**Does the fix touch BL-10's path?** YES — deliberately. It augments the exact coalesced-seek coarse play-advance
+path D-037 landed; that path now advances the playhead/forming candle (BL-10) AND carries the viewport forward
+(BL-11). The same-TF mirror path (`forceSamePairParentDataMirror`) is untouched (it already followed). BL-10's
+own PAUSED-only guards (`shouldSkipCoarsePanelHostSwitchSeek`, BL-8 aligned guard) are unchanged and still gate
+paused/scrub.
+
+**Verification numbers.**
+- H-S18 **GREEN under fix ×2** (C `offsetToTarget=0`, `playheadVisible=true`, synced every frame).
+- H-S18 **RED under `--bugswitch=__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` ×2** (C `offsetToTarget≈308–315`,
+  `playheadVisible=false`) — causal.
+- Full gate **15/15 GREEN, 0 known-failing** (H-S18 added to `expectedTests`). Both `panel-cmd-bridge.js` trees
+  hash-match `07B736F5E1C19609A975AD14D8668F16F27B62C88F5B1664AC2AD0B3B5EBB038`. `chart.js` untouched. Build id
+  bumped to `20260707b88`. `gate.mjs`/`security.yml` untouched.
+- Adjacent cells confirmed unchanged: **H-S13** (paused-replay peer TF-up; C/D price scales unchanged) PASS;
+  **H-S8** (same-pair play) PASS.
+
+**STATE-MATRIX (D-035 rule).** X/time viewport follow during replay, with the four required cells called out.
+
+| Cell | State | Behavior |
+|---|---|---|
+| **Paused-panel [CALLED-OUT]** | follow **OFF, preserved** | `maybePanelPlayViewportFollow` returns early (play-only gate false); the window-preserving `applyStaticMirrorFrame`/`applyParentReplayMirror` path is byte-for-byte unchanged; BL-2b pause/scrub no-re-fit and BL-5/BL-6 paused guards all intact. |
+| **Host (tile A) [CALLED-OUT]** | unchanged | The host is not an iframe panel; it never enters `panel-cmd-bridge.js`. Its follow (`getReplayAutoScrollState`→`syncReplayViewportToPlayhead`, `replay-system.js:2855`) is the contract we copy, not modify. |
+| **Drag-disengage parity [CALLED-OUT]** | follow **OFF for that panel until it returns to the edge** | A mid-play user drag sets `userHasPanned` (H-S18 measured `userHasPanned=true`, `offsetToTarget≈2494`); the follow skips on that signal, so after continued play the panel viewport does **NOT** snap back (measured `offsetX` identical before/after resume, `-6601.598`). No fighting the user — copies the host's `_replayUserOwnsViewport` opt-out contract. |
+| **B-FIX-C interaction [CALLED-OUT]** | left-prepend compensation effectively **SKIPPED (no double-shift)** | Auto-scroll engaged is the gate: the play follow recomputes `offsetX` **absolutely** from the leading edge, which OVERRIDES B-FIX-C's *relative* `-addedDisplayBars*spacing` prepend shift. Measured on follow-active panel D after a host backward history load (left-prepend) mid-play: `offsetToTarget=0`, `playheadVisible=true` ⇒ **no double-shift**. This closes the BL-6/BL-9-play "missing complement" class: auto-scroll state is precisely the gate on whether B-FIX-C compensation applies. |
+| Coarser same-pair, **Playing** | **THE FIX** | advances playhead + forming candle (BL-10) AND follows the leading-edge viewport (BL-11); `offsetToTarget→0`. |
+| Same-TF same-pair, Playing | unchanged | already followed via `forceSamePairParentDataMirror`; measured `offsetToTarget=0` with and without the fix. |
+| Independent (other pair), Playing | unchanged | own replay master + own follow path; not routed through the coarse coalesced-seek branch. |
+
+**PENDING:** PO live re-test on deployed b88 — all sync off, set one panel to a coarser TF and click play; the
+coarse panel's viewport must follow the playhead in lock-step with the host (no marching off the right edge),
+paused/scrub and price-axis independence unchanged, and a mid-play drag must stay put (no snap-back).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

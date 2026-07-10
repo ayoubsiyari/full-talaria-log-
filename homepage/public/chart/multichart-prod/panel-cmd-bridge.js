@@ -1489,6 +1489,58 @@
         } catch (_) {}
     }
 
+    // BL-11 (D-038): play-time forward viewport follow for iframe panels. During
+    // replay PLAY, a panel routed through the coalesced-seek window-preserving path
+    // (applyStaticMirrorFrame / applyParentReplayMirror — added for BL-2b so
+    // pause/scrub does NOT re-fit/snap the viewport) advances its bars but keeps its
+    // frozen offsetX, so the playhead marches off the right edge ("host runs alone,
+    // panels don't follow"). The COARSER same-pair play-advance branch is the RED
+    // path (same-TF panels already follow via forceSamePairParentDataMirror). Give
+    // those panels the SAME leading-edge follow host A uses: replay-system's
+    // syncReplayViewportToPlayhead recomputes offsetX to the auto-scroll leading edge
+    // (getReplayAutoScrollState → replay-system.js:2855). Constraints matched here:
+    //   • PLAY-ONLY — gated on the parent (host) actively playing; paused/scrub keep
+    //     the window-preserving path untouched (no BL-2b re-fit/snap-back).
+    //   • X/TIME ONLY — resetPriceScale:false preserves BL-2b price-axis independence.
+    //   • LEADING-EDGE DISENGAGE — if the user panned THIS panel (userHasPanned) or
+    //     auto-scroll is off, it has opted out until it returns to the edge; we skip
+    //     (and syncReplayViewportToPlayhead's own _replayUserOwnsViewport gate agrees),
+    //     so we never fight the user's drag or BL-6 recenter.
+    // Kill-switch __TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW ON = today's RED
+    // (frozen viewport, playhead marches off-screen).
+    function maybePanelPlayViewportFollow(ch) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW) {
+                return;
+            }
+            if (!ch) return;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive || typeof rs.syncReplayViewportToPlayhead !== 'function') return;
+            // PLAY-ONLY: follow only while a PLAY stream is in effect. The panel-side
+            // play signal (pendingPlayDesired / _multichartPassivePlayActive, set from
+            // replayFrame {isPlaying:true}) is the same signal BL-10's coarse play-advance
+            // branch reacts to, and it is true during production play alongside the host's
+            // rs.isPlaying. Paused/scrub frames clear it, so this stays play-only.
+            var playing = isParentReplayPlaying()
+                || pendingPlayDesired === true
+                || ch._multichartPassivePlayActive === true;
+            if (!playing) return;
+            // Leading-edge disengage contract (matches host): a user-panned / auto-
+            // scroll-off panel keeps its own viewport — no snap-back. We gate on these
+            // REAL user-intent signals here so we can safely force the recenter below.
+            if (rs.userHasPanned || rs.autoScrollEnabled === false) return;
+            // forceRecenter:true is required: syncReplayViewportToPlayhead's own
+            // _replayUserOwnsViewport gate treats the ACCUMULATED bug drift (frozen
+            // offsetX far from the leading edge) — and a fresh TF-switch anchor lock —
+            // as "user owns viewport" and would refuse to follow. We already proved the
+            // user did NOT move this panel (userHasPanned false, autoScroll on), so a
+            // non-panned playing panel must track the leading edge exactly like host A.
+            // resetPriceScale:false keeps X/time-only (BL-2b price-axis independence).
+            rs.syncReplayViewportToPlayhead(ch, { forceRecenter: true, resetPriceScale: false, render: true });
+        } catch (_) {}
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
         markHostReplayContext(ch);
@@ -1515,12 +1567,18 @@
             if (seekTs == null) return;
             if (isViewportSettling(ch)) return;
             // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
-            if (applyParentReplayMirror(ch, seekTs, false)) return;
+            if (applyParentReplayMirror(ch, seekTs, false)) { maybePanelPlayViewportFollow(ch); return; }
             // Prefer the SAME render path as the play-time frame stream so pause/scrub
             // doesn't visibly re-fit the viewport and snap back. Fall back to a full
             // seek (which can refetch) only when the mirror can't render this ts.
-            if (applyStaticMirrorFrame(ch, seekTs)) return;
-            forceReplaySeek(ch, seekTs, false);
+            // BL-11: during PLAY, add the host's leading-edge viewport follow on top of
+            // the window-preserving render (maybePanelPlayViewportFollow is play-only).
+            if (applyStaticMirrorFrame(ch, seekTs)) { maybePanelPlayViewportFollow(ch); return; }
+            // COARSER same-pair play path: the panel advances on its OWN master via a
+            // real seek. goToReplayTimestamp is itself blocked from re-anchoring by the
+            // accumulated-drift _replayUserOwnsViewport heuristic, so apply the leading-
+            // edge follow once the seek settles (play-only; see maybePanelPlayViewportFollow).
+            forceReplaySeek(ch, seekTs, false, function () { maybePanelPlayViewportFollow(ch); });
         });
     }
 

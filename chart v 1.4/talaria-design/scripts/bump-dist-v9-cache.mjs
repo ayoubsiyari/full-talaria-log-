@@ -35,6 +35,8 @@ const swPaths = [
   path.resolve(__dirname, "../live/public/sw.js"),
   path.resolve(__dirname, "../../chart/sw.js"),
   path.resolve(repoRoot, "homepage/public/chart/sw.js"),
+  path.resolve(__dirname, "../../chart/dist-v9/sw.js"),
+  path.resolve(repoRoot, "homepage/public/chart/dist-v9/sw.js"),
 ];
 
 function defaultBuildId() {
