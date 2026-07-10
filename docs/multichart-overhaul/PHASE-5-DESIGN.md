@@ -10,7 +10,7 @@
 ## 1. Why consolidate
 
 Every defect in one specific family has been fixed with an individually-correct,
-kill-switchable guard. As of D-038 the family has **11 cases**:
+kill-switchable guard. As of D-039 the family has **12 cases**:
 
 | # | Case | Kill-switch | One-line behaviour it patches |
 |---|---|---|---|
@@ -24,7 +24,8 @@ kill-switchable guard. As of D-038 the family has **11 cases**:
 | 8 | BL-9 | `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE` | continue paused pan-history load past gesture end |
 | 9 | BL-9-play | (narrowed BL-9 scope) | make the BL-9 continuation **paused-only** |
 | 10 | BL-10 | `__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE` | advance **playing coarse** panel playhead + forming candle |
-| 11 | BL-11 | `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` *(in progress)* | **playing** panel viewport follows the playhead |
+| 11 | BL-11 | `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` | **playing** panel viewport follows the playhead |
+| 12 | BL-12 | `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` *(in progress)* | **cost** of BL-11 follow: suspend during user drag, coalesce render to ≥1 candle-width move |
 
 Also adjacent (price-axis dimension of the same frame): **BL-2b**
 `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`.
@@ -41,8 +42,17 @@ carries **three coupled payloads** at once —
 across `applyReplayFrame`, `scheduleCoalescedSeek`, `replayTick`, and their
 guards. Each new combination (relationship × state × sync) that lacked a branch
 produced a new BL-N. BL-6 fell out of BL-5, BL-9-play out of BL-9, BL-11 out of
-BL-10 — all **"missing complement"** errors: a guard handled one mode and silently
-did the wrong thing in the adjacent mode.
+BL-10, **BL-12 out of BL-11** — all **"missing complement"** errors: a guard
+handled one mode and silently did the wrong thing in the adjacent mode.
+
+**BL-12 adds a second lesson (D-039):** a cell can be *behaviourally* correct yet
+*cost* wrong. BL-11 correctly made playing panels follow the playhead, but did it
+with an unconditional per-frame recenter+render — right behaviour, wrong cost, and
+the cost regressed drag smoothness during play. D-038 forced the drag-disengage
+correctness cell but not its cost cell; that escape is why the D-035 rule is now
+extended: **any fix that adds per-frame work must state render/work cost per cell,
+not just behaviour.** Consequently the Phase-5 policy table needs a **cost column
+per cell**, not only an adopt/ignore behaviour — see §3.
 
 Consolidation replaces the scattered branches with **one explicit policy table**
 that is total over the context space — so a missing cell is impossible by
@@ -82,8 +92,23 @@ MirrorPolicy = {
   xView:  'FOLLOW_PLAYHEAD' | 'PRESERVE_WINDOW' | 'RECENTER_ONCE' | 'IGNORE',
   yPrice: 'INDEPENDENT',          // always — BL-2b, non-negotiable
   seek:   'COALESCED' | 'FORCE' | 'NONE',
+  // COST column (D-039): every cell declares its per-frame render budget, not
+  // just behaviour. A cell that adopts a payload must also say WHEN it may repaint.
+  render: 'ON_MOVE_GE_1_CANDLE'   // coalesce: repaint only when the viewport actually
+                                  //   moves ≥1 candle-width (sub-pixel advance = 0 renders)
+        | 'SUSPEND_DURING_INTERACTION'  // no per-frame work on a panel the user is dragging
+        | 'EVERY_FRAME'           // legacy/host cadence — must be justified, never a default
+        | 'NONE',
 }
 ```
+
+The `render` field is the D-039 lesson made structural: BL-11's cell was
+`xView:FOLLOW_PLAYHEAD` with an implicit `render:EVERY_FRAME`, which was the cost
+regression. Under Phase-5 the same follow cell carries
+`render:ON_MOVE_GE_1_CANDLE` for idle panels and `SUSPEND_DURING_INTERACTION`
+while the panel is being dragged (BL-12). Cells are verified by the gate on
+**deterministic render counters** (renders per N host play-frames), never
+wall-clock frame-time (D-039 anti-flake rule).
 
 Draft resolution (the authoritative table is finalized at implementation time
 against the then-current gate; cells marked ⟶BL cite the case that established
@@ -152,7 +177,8 @@ Notes embedded in the table:
 
 ## 7. Preconditions checklist (do not start until all true)
 
-- [ ] BL-10 PO-confirmed on live build (✅ reported on b87 — pending independent-verification pass).
-- [ ] BL-11 closed (fix landed, gate green, PO-confirmed).
-- [ ] Quiet period holds: ≥1–2 weeks with no new replay-mirror-frame family defect.
+- [x] BL-10 PO-confirmed on live build (b87) + independently verified.
+- [x] BL-11 fix landed + gate green (b88/b89) + PO-confirmed live (b89).
+- [ ] BL-12 closed (fix landed, gate green, PO-confirmed = "drag during play feels like drag while paused").
+- [ ] Quiet period holds: ≥1–2 weeks with no new replay-mirror-frame family defect. **Clock reset at D-039 (BL-12).**
 - [ ] Gate stable and green across the full scenario set at the start of the window.

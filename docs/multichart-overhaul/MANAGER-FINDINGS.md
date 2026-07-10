@@ -2467,6 +2467,81 @@ paused/scrub.
 coarse panel's viewport must follow the playhead in lock-step with the host (no marching off the right edge),
 paused/scrub and price-axis independence unchanged, and a mid-play drag must stay put (no snap-back).
 
+## 6ce. BL-12 — play-time viewport follow is laggy on drag / renders per host frame (D-039, b90)
+
+**SYMPTOM (PO live, b89).** Dragging a chart during replay PLAY is laggy, whereas dragging while replay is
+STOPPED/paused is instant/smooth. Root suspicion (D-039): the BL-11 follow
+(`maybePanelPlayViewportFollow` → `syncReplayViewportToPlayhead({forceRecenter:true, resetPriceScale:false,
+render:true})`, `panel-cmd-bridge.js`) does a full recenter+**render on every host play-frame** for a panel
+routed through `scheduleCoalescedSeek` (the coarser same-pair play-advance path), even when (a) the panel is
+being actively dragged and (b) the playhead advanced only within the same pixel column (a sub-candle-width
+viewport move). Self-introduced by BL-11, so it gets its OWN new kill-switch so cost and correctness revert
+independently of BL-11.
+
+**REPRO — H-S19 (RED-first, deterministic COUNTERS only; NO wall-clock — D-039 anti-flake).** Same-pair 2x2,
+all sync OFF, host 1m, panels B/C set to 5m (coarse — the only path that reaches `maybePanelPlayViewportFollow`;
+same-TF panels follow via `forceSamePairParentDataMirror` and never enter this branch). Real PLAY fan-out
+(`replayFrame {isPlaying:true}`, 1m/frame, N=120). Renders are read from `ch._mcDiag.renders`. The BL-11
+follow's render cost is isolated as a **follow-attributable delta** = renders(follow ON) − renders(follow OFF)
+measured with identical pacing, so the coarse BL-10 reslice baseline (which BL-12 does NOT touch) cancels out.
+
+**CONFIRMED ATTRIBUTION (kill-switch A/B on `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW`).** On the idle
+coarse panel over N=120 play-frames: follow ON = **724** renders, follow OFF = **600** → the BL-11 follow adds
+**124 ≈ N** renders (~1:1 per host frame). Toggling the BL-11 flag removes exactly that excess → the BL-11
+follow is the cost source. Flake-stable: idleFollowCost measured **124 / 124 / 124** across runs (RED) and
+**28 / 28** (GREEN).
+
+**SURPRISE (flagged, not silently scoped away).** A pan **or** wheel-zoom during replay already calls
+`replaySystem.onUserPan()` (`chart.js:24940`, :30368, …) which sets `userHasPanned=true`, so the follow is
+**already semantically disengaged during the gesture** — measured `dragFollowCost ≈ 0` in BOTH RED and GREEN
+(`playDrag − playDragFollowOff` = +10 / −25). Therefore the measurable per-frame render regression is the
+**IDLE** panel (fixed by coalescing, part b); the drag-suspend (part a) is a ratified structural guard (the
+follow must never fight the drag / BL-6 recenter, and also covers wheel/axis-zoom where the same
+`userHasPanned` path applies). The raw play-drag total (≈1071) vs paused-drag (≈260) is ~4× but that gap is
+the BL-10 coarse reslice, **out of BL-12 scope** — H-S19 does NOT gate on it (reported only).
+
+**FIX — two parts, ONE new kill-switch `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` (default = fix ON; setting
+it restores today's laggy per-frame behaviour).** Both scoped to the BL-11 follow only, in
+`maybePanelPlayViewportFollow`:
+- **(a) SUSPEND** the follow entirely for a panel during ACTIVE user interaction —
+  `rs._isUserInteractingWithChart(ch)` (drag/pan/box-zoom/wheel/axis). Skips the per-frame invocation so it can
+  never fight the user's drag or the BL-6 recenter.
+- **(b) COALESCE** the idle-panel render — compute the leading-edge target (`getReplayAutoScrollState().offsetX`,
+  the same value `syncReplayViewportToPlayhead` uses) and skip the recenter+render when
+  `|target − offsetX| < candleWidth`. A sub-candle-width playhead advance costs **ZERO** renders; the panel
+  renders only when the edge actually moves ≥1 candle.
+
+Constraints (ratified, all verified): BL-11 stays GREEN (H-S18 PASS); PLAY-ONLY; X/TIME-ONLY
+(`resetPriceScale:false`, BL-2b intact); does not fight the user's drag or the BL-6 recenter. `chart.js` NOT
+touched (reuses existing `rs._isUserInteractingWithChart` + `getReplayAutoScrollState`). Applied
+**byte-identically** to both trees — `(Get-FileHash …).Hash` matches:
+`0D47FE7681849A1720FC87A7500075C02A807BA256747EE9387A63E479871A83` for
+`chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js` and
+`homepage/public/chart/multichart-prod/panel-cmd-bridge.js`. `node --check` clean on both.
+
+**VERIFICATION.** H-S19 GREEN under fix (idleFollowCost=28 ≤ 60, flake-stable 28/28) and RED under
+`--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` (idleFollowCost=124 > 60, flake-stable 124/124). H-S18
+(BL-11) still GREEN; H-S8 (host play), H-S13 (paused), H-S17 (BL-10 coarse play) still GREEN. Full `npm run
+gate` GREEN — 16 scenarios, H-S19 added to `expectedTests` (NOT knownFailing), 0 known-failing tracked. Build
+bumped **b89 → 20260707b90** (uniform `SW_VERSION` + `__TALARIA_CHART_BUILD_ID` across dist-v9/live/legacy/embed
+in both trees).
+
+**STATE-MATRIX (D-035 rule, with the D-039 COST COLUMN — renders per N=120 play-frames; follow-attributable =
+renders(follow ON) − renders(follow OFF)).** Cells called out per D-039: the dragging-panel cell and the
+not-dragging (idle) cell, plus the paused reference and host.
+
+| Cell | State | COST (renders / 120 play-frames) — RED (`…COST_GUARD` on) vs GREEN (fix) | Behavior |
+|---|---|---|---|
+| **Idle panel (not dragged) [CALLED-OUT]** | follow **coalesced** | follow-attributable **RED ≈124 (~1:1 with N)** → **GREEN ≈28 (~1/formed-candle, N/5)**; raw follow-on 724→628 vs 600 baseline | Renders only when the leading edge moves ≥1 candle-width; sub-candle playhead advance = ZERO renders. THE FIX (part b). |
+| **Dragging panel [CALLED-OUT]** | follow **SUSPENDED during interaction** | follow-attributable **≈0 in BOTH** (dragFollowCost +10 / −25); raw play-drag ≈1071 (BL-10 reslice, out of scope) | `_isUserInteractingWithChart` gate skips the per-frame follow invocation; already disengaged via `userHasPanned`, now structural (part a). Never fights the drag. |
+| **Paused-drag reference [CALLED-OUT]** | replay STOPPED — no follow | reference ≈260–377 renders (drag-only cost; zero follow renders) | The Director's relative bound: play-drag follow cost must stay bounded to this (it does — follow-attributable ≈0). |
+| **Host (tile A)** | unchanged | n/a (not an iframe panel) | Same-TF host follows via the replay engine's own auto-scroll; never enters `panel-cmd-bridge.js`. |
+| Same-TF same-pair panel, Playing | unchanged | n/a for this path | Follows via `forceSamePairParentDataMirror`; not routed through `maybePanelPlayViewportFollow`. |
+
+**PENDING:** PO live re-test on deployed b90 — all sync off, coarser panel + play: dragging the chart during
+play must be as smooth as dragging while stopped; a not-dragged coarse panel must still follow the playhead
+(no marching off-screen), paused/scrub and price-axis independence unchanged.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

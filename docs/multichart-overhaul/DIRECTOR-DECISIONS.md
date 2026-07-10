@@ -1835,3 +1835,44 @@ flake-stable; gate green at 15; trees hash-match; PO live confirm; H-S18 permane
 of the same policy table. The quiet-period clock resets again; at this defect rate,
 once BL-10/BL-11 close and the PO confirms a stable build, the manager should
 prepare the Phase-5 design doc so it is ready the moment the quiet period is met.
+
+---
+
+## D-039 — REOPEN GRANTED: BL-12 (drag lags during play — BL-11 side-effect) (2026-07-10)
+
+**Severity ruling (the manager asked): in-scope felt defect, not polish.** Two
+reasons: it is a regression introduced by our own change (BL-11's per-frame
+`syncReplayViewportToPlayhead({render:true})`), and "drag is instant when paused but
+laggy during play" is a felt-smoothness break in the PO's primary workflow. A
+regression we caused does not go to the backlog; it gets fixed under the reopen
+discipline. Note for the ledger: this is a state-matrix escape — D-038 forced the
+drag-disengage CORRECTNESS cell, but not its COST cell. The D-035 matrix rule is
+hereby extended: for fixes that add per-frame work, the matrix must state the
+render/work cost per cell, not only the behavior.
+
+**One spec correction to the proposed H-S19 (important):** do NOT gate on wall-clock
+frame-time — timing assertions on shared CI runners are flake bait and violate the
+4.2b anti-flake rule the moment the runner is slow. Assert on DETERMINISTIC counters
+instead: renders (and follow-invocations, if instrumented) per N host play-frames on
+(a) an idle panel and (b) a panel being dragged, with the bound expressed relative
+to the paused-drag render count. Wall-clock numbers may be REPORTED as context, never
+asserted. Causal attribution via the BL-11 kill-switch A/B stands as proposed.
+
+**Fix direction approved** (pending the RED run confirming attribution): two-part,
+one flag —
+1. Suspend the follow CALL (not just the recenter) for a panel during active user
+   interaction — drag already disengages follow semantically (D-038 #1), so the
+   per-frame invocation on that panel is pure waste.
+2. Coalesce/no-op the follow render for non-dragged panels: render only when the
+   follow actually MOVES the viewport by ≥1 candle-width of offset (a playhead
+   advancing within the same pixel column should cost zero renders).
+Kill-switch: own flag (not BL-11's), so follow-correctness and follow-cost revert
+independently. Constraints ratified: BL-11 must stay green (follow works when not
+dragging), play-only, X-viewport-only; state-matrix calls out
+actively-dragging-during-play and not-dragging cells WITH cost columns.
+
+Close conditions: standard (H-S19 green/red-causal, flake-stable; gate 16 green;
+trees hash-match; PO live confirm — specifically "drag during play feels like drag
+while paused"; H-S19 permanent). **Phase-5 ledger:** case #11 — the policy table
+needs a COST column per cell, not just behavior. Quiet-period clock resets; the
+D-038 instruction stands — Phase-5 design doc gets written in parallel NOW.

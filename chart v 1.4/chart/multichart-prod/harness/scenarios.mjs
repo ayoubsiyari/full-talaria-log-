@@ -45,6 +45,7 @@ import {
   computePlayPlan,
   waitBootSettled,
   panelFrameMap,
+  embedFrames,
   isPanelQuiescent,
   sleep,
 } from './harness-lib.mjs';
@@ -1617,6 +1618,244 @@ async function hS18(ctx) {
   });
 }
 
+// ── H-S19 ────────────────────────────────────────────────────────────────
+// BL-12 (D-039): during replay PLAY the BL-11 play-viewport follow
+// (maybePanelPlayViewportFollow → syncReplayViewportToPlayhead {render:true})
+// fires a full recenter+render on EVERY host play-frame for a panel routed
+// through scheduleCoalescedSeek (the coarser same-pair play-advance path). Two
+// wasteful cost sources: (a) a panel being ACTIVELY DRAGGED still gets the
+// per-frame follow invocation (the drag already disengages follow semantically),
+// and (b) an IDLE panel re-renders even when the playhead advanced within the
+// same pixel column (a sub-candle-width viewport move). Result: dragging a chart
+// during play is laggy, while dragging while stopped/paused is smooth.
+//
+// MEASUREMENT (D-039 anti-flake): assert on DETERMINISTIC render COUNTERS only
+// (ch._mcDiag.renders), never wall-clock frame time. Three cost cells over N
+// host play-frames:
+//   • idle-panel cell   — a NOT-dragged coarse panel's renders. RED ≈ scales
+//     with N (per-frame follow render); GREEN ≪ N (coalesced: render only when
+//     the follow moves the viewport ≥1 candle-width).
+//   • dragged-panel cell — a coarse panel dragged WHILE play streams. RED =
+//     per-frame follow renders stacked on the drag; GREEN = follow SUSPENDED
+//     during interaction → bounded to ~the paused-drag cost.
+//   • paused-drag reference — the same drag while replay is STOPPED (the
+//     Director's relative bound: play-drag ≤ small factor × paused-drag).
+
+/** Set/clear a window flag on the host page AND every iframe panel. */
+async function setEngineFlagAll(page, flag, on) {
+  const apply = (f, v) => {
+    if (v) window[f] = true;
+    else { try { delete window[f]; } catch (_) { window[f] = false; } }
+  };
+  await page.evaluate(apply, flag, !!on).catch(() => {});
+  for (const fr of embedFrames(page)) {
+    await fr.evaluate(apply, flag, !!on).catch(() => {});
+  }
+}
+
+/** Read one panel's deterministic render counter (ch._mcDiag.renders). */
+async function readPanelRenders(page, id) {
+  const p = await readPanel(page, id);
+  return p ? (Number(p.renders) || 0) : 0;
+}
+
+/**
+ * Stream N real host PLAY frames (replayFrame {isPlaying:true}), advancing the
+ * host playhead one host bar per frame, WITHOUT any user gesture. Paced so one
+ * rAF flushes per frame (the coalesced-seek follow fires per frame under RED).
+ */
+async function streamPlayFramesNoDrag(page, startTs, frames, stepMs, opts = {}) {
+  const { perFrameMs = 18 } = opts;
+  await setHostReplayPlaying(page, true);
+  let ts = startTs;
+  for (let i = 0; i < frames; i++) {
+    ts += stepMs;
+    await hostReplaySeek(page, ts);
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+    await sleep(perFrameMs);
+  }
+  return ts;
+}
+
+/**
+ * Drag one panel with a real mouse gesture while (optionally) streaming host
+ * PLAY frames mid-gesture. The button stays DOWN across all moves; a play frame
+ * + host seek is emitted between moves so the per-frame follow (if any) lands
+ * DURING the active drag. When playing=false this is the paused-drag reference
+ * (identical gesture + frame cadence, host not playing).
+ */
+async function dragPanelWhileStreaming(page, id, startTs, opts = {}) {
+  const { moves = 60, stepMs = 60_000, playing = true, distancePx = 900, perFrameMs = 18 } = opts;
+  const rect = await page.evaluate((pid) => {
+    const cell = window.__harnessCells && window.__harnessCells[pid];
+    if (!cell) return null;
+    const r = cell.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  }, id);
+  if (!rect) throw new Error(`dragPanelWhileStreaming: no cell for ${id}`);
+  const y = Math.round(rect.y + rect.h * 0.5);
+  const xStart = Math.round(rect.x + Math.min(rect.w * 0.15, 40));
+  const xEnd = Math.round(xStart + distancePx);
+  await setHostReplayPlaying(page, !!playing);
+  let ts = startTs;
+  await page.mouse.move(xStart, y);
+  await page.mouse.down();
+  for (let i = 1; i <= moves; i++) {
+    const x = Math.round(xStart + ((xEnd - xStart) * i) / moves);
+    await page.mouse.move(x, y);
+    ts += stepMs;
+    if (playing) await hostReplaySeek(page, ts);
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: !!playing });
+    await sleep(perFrameMs);
+  }
+  await page.mouse.up();
+  await sleep(300);
+  return ts;
+}
+
+async function hS19(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S19 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S19 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // B (dragged) + C (idle) are COARSER (5m) than the host (1m): the coarse
+    // same-pair play-advance routes through scheduleCoalescedSeek →
+    // maybePanelPlayViewportFollow (the BL-11 follow, the BL-12 cost source). D
+    // stays same-TF (1m). All sync OFF → user-chosen independent TF.
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '5m' }).catch(() => {});
+    await panelCmd(page, 'C', 'setTimeframe', { tf: '5m' }).catch(() => {});
+    await sleep(1800);
+    const bSetup = await readPanel(page, 'B');
+    const cSetup = await readPanel(page, 'C');
+    const hostSetup = await readHost(page);
+    const setupOk = !!(bSetup && cSetup && hostSetup
+      && bSetup.tf === '5m' && cSetup.tf === '5m' && hostSetup.tf === '1m');
+    checks.check('H-S19 setup: B/C coarser (5m) vs host (1m)', setupOk,
+      `B.tf=${bSetup?.tf} C.tf=${cSetup?.tf} host.tf=${hostSetup?.tf}`);
+    if (!setupOk) return checks;
+
+    // Bound the play window strictly inside the loaded replay master.
+    const stepMs = 60_000;
+    const N = 120;
+
+    // ── Cell 1: IDLE-PANEL renders over N play-frames (panel C, never dragged) ──
+    // Measured three ways for RED-first + causal A/B attribution:
+    //   (i)  follow default (today's build = RED; fix reverts under new flag)
+    //   (ii) BL-11 follow disabled (__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW)
+    // proving the excess renders come from the BL-11 follow.
+    let ts = ts0;
+    await resetDiag(page);
+    ts = await streamPlayFramesNoDrag(page, ts, N, stepMs);
+    await sleep(400);
+    const idleRendersDefault = await readPanelRenders(page, 'C');
+
+    // A/B: disable the BL-11 follow entirely, re-measure the idle cost.
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
+    await resetDiag(page);
+    ts = await streamPlayFramesNoDrag(page, ts, N, stepMs);
+    await sleep(400);
+    const idleRendersFollowOff = await readPanelRenders(page, 'C');
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', false);
+
+    // ── Cell 2: PLAY-DRAG renders (panel B dragged WHILE play streams) ──
+    await resetDiag(page);
+    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: true });
+    await sleep(300);
+    const playDragRenders = await readPanelRenders(page, 'B');
+    const bAfterDrag = await readPanelFollow(page, 'B');
+
+    // A/B: play-drag with the BL-11 follow disabled.
+    await setHostReplayPlaying(page, false);
+    await broadcastCmd(page, 'replayTick', { timestamp: ts });
+    await sleep(400);
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
+    await resetDiag(page);
+    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: true });
+    await sleep(300);
+    const playDragRendersFollowOff = await readPanelRenders(page, 'B');
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', false);
+
+    // Re-follow B to the edge so the paused-drag reference starts from parity.
+    await setHostReplayPlaying(page, false);
+    await broadcastCmd(page, 'replayTick', { timestamp: ts });
+    await sleep(400);
+
+    // ── Cell 3: PAUSED-DRAG reference (same gesture, replay STOPPED) ──
+    await resetDiag(page);
+    await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: false });
+    await sleep(300);
+    const pausedDragRenders = await readPanelRenders(page, 'B');
+
+    // Follow-attributable render cost = renders(follow on) − renders(follow off),
+    // measured with identical pacing so the coarse BL-10 reslice baseline (which
+    // BL-12 does NOT touch) cancels out. This isolates the BL-11 follow's render
+    // cost as a DETERMINISTIC counter delta (no wall-clock timing — D-039 rule).
+    const idleFollowCost = idleRendersDefault - idleRendersFollowOff;
+    const dragFollowCost = playDragRenders - playDragRendersFollowOff;
+    // < N: GREEN coalesces the follow to ~one render per formed coarse candle
+    // (N/5 ≈ 24 at 5m/1m); RED renders ~1:1 with host frames (≈ N). The bound
+    // sits between so the cell FLIPS: GREEN passes, kill-switch RED fails.
+    const IDLE_COALESCE_BOUND = 60;
+
+    // Sanity: the follow-off baseline actually rendered (non-vacuous) and the
+    // follow never SUBTRACTS renders — so idleFollowCost is a real cost measure.
+    checks.check('H-S19 follow-off baselines non-vacuous',
+      idleRendersFollowOff > 0 && playDragRendersFollowOff > 0,
+      `idleFollowOff=${idleRendersFollowOff} playDragFollowOff=${playDragRendersFollowOff}`);
+
+    // CORE (idle coalesce cell — the RED→GREEN flip): the BL-11 follow's per-frame
+    // render cost on a NOT-dragged coarse panel must be COALESCED (render only when
+    // the leading edge moves ≥1 candle-width). GREEN ≪ N; kill-switch RED ≈ N.
+    checks.check('H-S19 idle-panel follow render cost coalesced (<< N host play-frames)',
+      idleFollowCost <= IDLE_COALESCE_BOUND,
+      `idleFollowCost=${idleFollowCost} (default=${idleRendersDefault} followOff=${idleRendersFollowOff}) `
+      + `bound=${IDLE_COALESCE_BOUND} N=${N}`);
+
+    // DRAG suspend cell (part a correctness): while the panel is ACTIVELY dragged
+    // during play, the follow must add NO per-frame renders — its follow-attributable
+    // render cost stays bounded (≈ the paused-drag reference, which has zero follow
+    // renders), never scaling with frames the way the idle cell does. In this engine
+    // a pan/zoom already sets userHasPanned (follow semantically disengaged), so this
+    // holds; part (a) makes it structural (never fights the drag / BL-6 recenter).
+    checks.check('H-S19 dragged-panel follow render cost bounded during play-drag (suspended)',
+      dragFollowCost <= IDLE_COALESCE_BOUND,
+      `dragFollowCost=${dragFollowCost} (playDrag=${playDragRenders} followOff=${playDragRendersFollowOff}) `
+      + `pausedDragRef=${pausedDragRenders} bound=${IDLE_COALESCE_BOUND}`);
+
+    notes.push('H-S19 (BL-12, D-039): same-pair 2x2, all sync OFF, host 1m, panels B/C set to 5m (coarse — '
+      + 'the BL-11 follow path). Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, N=' + N + ' frames). '
+      + 'DETERMINISTIC render COUNTERS only (ch._mcDiag.renders), never wall-clock. '
+      + 'COST MATRIX (renders / ' + N + ' play-frames): '
+      + `idle-panel(C) follow-on=${idleRendersDefault} follow-off=${idleRendersFollowOff} `
+      + `→ idleFollowCost=${idleFollowCost} (RED≈N per-frame; GREEN≪N coalesced ~N/5). `
+      + `dragged-panel(B) play-drag follow-on=${playDragRenders} follow-off=${playDragRendersFollowOff} `
+      + `→ dragFollowCost=${dragFollowCost}. paused-drag reference=${pausedDragRenders}. `
+      + `host(A) unchanged (same-TF, follows via forceSamePairParentDataMirror, not this path). `
+      + `ATTRIBUTION A/B (kill-switch __TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW): toggling the BL-11 `
+      + `follow removes the excess idle renders (${idleRendersDefault}→${idleRendersFollowOff}), proving the `
+      + `BL-11 follow is the cost source. NOTE (surprise, flagged): a pan/zoom drag already sets userHasPanned `
+      + `so the follow is disengaged during the gesture (dragFollowCost≈0 in RED and GREEN) — the measurable `
+      + `render regression is the IDLE per-frame follow render (fixed by coalescing, part b); part (a) is the `
+      + `ratified interaction-suspend guard. Fix behind __TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD (default ON).`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -1634,6 +1873,7 @@ export function scenarioList() {
     { id: 'H-S16', title: 'pan-history continuation is paused-only; no backward storm on play (BL-9)', run: hS16 },
     { id: 'H-S17', title: 'coarser same-pair panel advances playhead on play (BL-10)', run: hS17 },
     { id: 'H-S18', title: 'panels auto-follow playhead viewport on play (BL-11)', run: hS18 },
+    { id: 'H-S19', title: 'play-follow cost guard: idle coalesce + drag suspend (BL-12)', run: hS19 },
   ];
 }
 

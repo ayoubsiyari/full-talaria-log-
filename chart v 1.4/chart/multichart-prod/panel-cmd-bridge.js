@@ -1508,6 +1508,35 @@
     //     so we never fight the user's drag or BL-6 recenter.
     // Kill-switch __TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW ON = today's RED
     // (frozen viewport, playhead marches off-screen).
+    //
+    // BL-12 (D-039) COST GUARD: the BL-11 follow above renders on EVERY host play-
+    // frame (render:true), so on a coarse same-pair panel routed here per frame the
+    // playhead advancing within the same pixel column still forces a full recenter+
+    // render — dragging a chart during play was laggy while a stopped/paused drag was
+    // smooth. Two independent cost cuts, BOTH scoped to the BL-11 follow only and BOTH
+    // behind ONE new kill-switch __TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD (default
+    // = fix ON; setting it restores today's per-frame behaviour, so cost/correctness
+    // revert independently of BL-11):
+    //   (a) SUSPEND the follow entirely for a panel during ACTIVE user interaction
+    //       (drag/pan/zoom in progress). The drag already disengages follow
+    //       semantically (userHasPanned), so the per-frame invocation is pure waste;
+    //       skipping it guarantees the follow never fights the user's drag or the
+    //       BL-6 recenter.
+    //   (b) COALESCE the idle-panel render: only recenter+render when the leading-edge
+    //       follow would move the viewport by >= 1 candle-width. A sub-candle-width
+    //       playhead advance (playhead moving within the same pixel column) costs ZERO
+    //       renders — renders drop from ~1:1-with-host-frames to ~1-per-formed-candle.
+    // Constraints preserved: BL-11 stays GREEN (a non-dragged playing panel still
+    // follows once the edge moves a candle); PLAY-ONLY; X/TIME-ONLY (resetPriceScale
+    // stays false — BL-2b price-axis independence intact).
+    function _panelPlayFollowLeadingEdgeOffsetX(ch, rs) {
+        try {
+            if (!rs || typeof rs.getReplayAutoScrollState !== 'function') return NaN;
+            var st = rs.getReplayAutoScrollState(ch);
+            return (st && Number.isFinite(st.offsetX)) ? st.offsetX : NaN;
+        } catch (_) { return NaN; }
+    }
+
     function maybePanelPlayViewportFollow(ch) {
         try {
             if (typeof window !== 'undefined'
@@ -1530,6 +1559,32 @@
             // scroll-off panel keeps its own viewport — no snap-back. We gate on these
             // REAL user-intent signals here so we can safely force the recenter below.
             if (rs.userHasPanned || rs.autoScrollEnabled === false) return;
+            // BL-12 (D-039) cost guard (default ON). Kill-switch reverts to per-frame.
+            var costGuardOn = !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD);
+            if (costGuardOn) {
+                // (a) SUSPEND during active interaction on THIS panel (drag/pan/zoom).
+                if (typeof rs._isUserInteractingWithChart === 'function'
+                    && rs._isUserInteractingWithChart(ch)) {
+                    return;
+                }
+                // (b) COALESCE: skip the recenter+render when the leading-edge follow
+                //     would move the viewport by < 1 candle-width (sub-candle advance).
+                var target = _panelPlayFollowLeadingEdgeOffsetX(ch, rs);
+                if (Number.isFinite(target)) {
+                    var candleW = Number(ch.candleWidth);
+                    if (!(Number.isFinite(candleW) && candleW > 0)) {
+                        candleW = (typeof ch.getCandleSpacing === 'function')
+                            ? ch.getCandleSpacing()
+                            : NaN;
+                    }
+                    var cur = Number(ch.offsetX);
+                    if (Number.isFinite(candleW) && candleW > 0 && Number.isFinite(cur)
+                        && Math.abs(target - cur) < candleW) {
+                        return;
+                    }
+                }
+            }
             // forceRecenter:true is required: syncReplayViewportToPlayhead's own
             // _replayUserOwnsViewport gate treats the ACCUMULATED bug drift (frozen
             // offsetX far from the leading edge) — and a fresh TF-switch anchor lock —
