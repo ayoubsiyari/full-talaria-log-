@@ -234,5 +234,6 @@ retiring BL-11/12/13's three scattered code sites and their shared flag.
 - [x] BL-11 fix landed + gate green (b88/b89) + PO-confirmed live (b89).
 - [x] BL-12 fix landed + gate green (b90). *(Superseded in part by BL-13 — the coalesce unit was wrong; see below.)*
 - [ ] BL-13 closed (device-pixel-column threshold; fix landed, gate green, PO-confirmed = "panel playback scrolls as smoothly as the host's").
-- [ ] Quiet period holds: ≥1–2 weeks with no new replay-mirror-frame family defect. **Clock reset at D-040 (BL-13).**
+- [ ] Quiet period holds: ≥1–2 weeks with **no new felt multichart defect of ANY family** (D-042 clarification: the precondition exists to avoid refactoring mid-defect-flow whatever the family, so even non-mirror-frame defects like BL-14 hold the clock). **Clock reset at D-042 (BL-14).**
+- [ ] BL-14 closed (panel coarse-TF acquisition; different family — no §3a/policy-table cell added, but holds the quiet-period clock).
 - [ ] Gate stable and green across the full scenario set at the start of the window.

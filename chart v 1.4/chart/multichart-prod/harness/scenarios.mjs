@@ -2134,6 +2134,275 @@ async function hS19b(ctx) {
   });
 }
 
+// ── H-S20 ────────────────────────────────────────────────────────────────
+// BL-14 (D-042): with sync OFF, after replay has run a long way on a FINE TF
+// (host 1m), switching a PANEL (B/C/D) to a BIG coarse TF (1D) must acquire its
+// coarse-display window with ONE bounded coarse fetch for the older remainder +
+// a ZERO-fetch resample of the host-covered recent window — NOT a long series
+// of 2000-limit backward chunk requests ("candles load one by one, slowly").
+// The HOST doing the same is fine; this is panel-only.
+//
+// COVERAGE CONTRACT: after a long fine replay, the host 1m master spans only
+// ~a day or two around the playhead, but a 1D viewport spans ~months. The host
+// master therefore covers only PART of the panel's 1D window → HYBRID:
+//   (i)  resample the host-covered recent window from host 1m data (ZERO fetch),
+//   (ii) ONE bounded coarse fetch for the older remainder,
+//   (iii) seam the two so the resampled 1m-derived 1D bar EQUALS the server-
+//         native 1D bar at the boundary.
+//
+// DETERMINISTIC (no wall-clock): all measurements come from the serve.mjs
+// per-hit API log + bar equality + diag counters.
+//   • small fetch bound on the panel's 1D acquisition,
+//   • NO 2000-chunk walk (no long series of limit=2000 backward candles),
+//   • seams == 0 (BAR EQUALITY: resampled 1m-derived 1D == native 1D at seam),
+//   • HOST UNTOUCHED (host fetch count + master first/last/len identical),
+//   • the coarse panel can STILL advance its playhead on the 1D data (BL-10).
+// RED-first: current b91 excludes embed panels from high-limit bulk history
+// (§6c I1) and has no panel display-TF direct-fetch (§6a), so the 1D switch
+// walks the 2000-bar chunked backward path.
+
+/** Read deep engine internals of one panel (master span, coverage, embed flags). */
+async function readPanelDeep(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    const rs = ch.replaySystem || null;
+    const master = rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length ? rs.fullRawData : null;
+    const d = Array.isArray(ch.data) ? ch.data : [];
+    return {
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      nativeTf: ch._nativeRawFetchTf != null ? String(ch._nativeRawFetchTf) : '',
+      isBacktestMode: !!ch.isBacktestMode,
+      isEmbed: typeof ch._isMultichartEmbedPanel === 'function' ? !!ch._isMultichartEmbedPanel() : null,
+      replayActive: !!(rs && rs.isActive),
+      replayTs: rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+      masterFirstT: master ? Number(master[0].t) : null,
+      masterLastT: master ? Number(master[master.length - 1].t) : null,
+      masterLen: master ? master.length : 0,
+      dataLen: d.length,
+      dataFirstT: d.length ? Number(d[0].t) : null,
+      dataLastT: d.length ? Number(d[d.length - 1].t) : null,
+      // committed 1D bars keyed by bucket-start ts → for the seam bar-equality proof.
+      bars: d.map((b) => ({ t: Number(b.t), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c) })),
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Put the HOST (tile A) and every iframe panel into BACKTEST replay mode with a
+ * shared session spanning the deep instrument — production runs BL-14 in backtest
+ * (isBacktestMode true), which is what gates the §6c I1 high-limit exclusion and
+ * the §6a display-TF fetch path. Mirrors autoLoadBacktestingData's isBacktestMode
+ * + backtestingSession + panel-cmd-bridge mirrorParentBacktestSession.
+ */
+async function enterBacktestSessionAllFrames(page, session) {
+  await page.evaluate((sess) => {
+    const ch = window.chart;
+    if (!ch) return;
+    ch.isBacktestMode = true;
+    ch.backtestingSession = sess;
+    if (ch._btTfDataCache && typeof ch._btTfDataCache.clear === 'function') ch._btTfDataCache.clear();
+  }, session);
+  for (const f of embedFrames(page)) {
+    await f.evaluate((sess) => {
+      const ch = window.chart;
+      if (!ch) return;
+      ch.isBacktestMode = true;
+      ch.backtestingSession = sess;
+      if (ch._btTfDataCache && typeof ch._btTfDataCache.clear === 'function') ch._btTfDataCache.clear();
+    }, session).catch(() => {});
+  }
+}
+
+/** Count backward 2000-limit candles chunk requests in an API log slice. */
+function countChunkWalk(apiLog) {
+  return apiLog.filter((e) =>
+    e.endpoint === 'file.candles'
+    && String(e.query && e.query.limit) === '2000'
+    && String(e.query && e.query.direction || 'backward') === 'backward').length;
+}
+
+/** Fetch the server-native 1D bars for a file (the seam ground truth). */
+async function fetchNativeDaily(srvUrl, fileId, limit = 800) {
+  const u = `${srvUrl}/api/file/${fileId}/smart?timeframe=1d&limit=${limit}&anchor=end&response_format=candles`;
+  const r = await fetch(u, { cache: 'no-store' });
+  const j = await r.json();
+  const arr = Array.isArray(j.candles) ? j.candles : [];
+  const byT = new Map();
+  for (const c of arr) byT.set(Number(c.t), { t: Number(c.t), o: Number(c.o), h: Number(c.h), l: Number(c.l), c: Number(c.c) });
+  return byT;
+}
+
+async function hS20(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m', hostFile: 28 }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 30_000, boot.getInFlightDataRequests);
+
+    // Faithful BL-14 topology: BACKTEST replay (isBacktestMode true) on host +
+    // all panels, session spanning the deep instrument (so a 1D coarse window is
+    // ~months while the fine 1m replay master is ~a day). This is what engages
+    // the §6c I1 embed high-limit exclusion + §6a display-TF path under test.
+    const DAY = 86_400_000;
+    const hostExtent = await page.evaluate(() => {
+      const d = window.chart && window.chart.data;
+      if (!Array.isArray(d) || !d.length) return null;
+      return { firstT: Number(d[0].t), lastT: Number(d[d.length - 1].t) };
+    }).catch(() => null);
+    const sessEndMs = hostExtent ? hostExtent.lastT : Date.now();
+    const session = {
+      startDate: new Date(sessEndMs - 399 * DAY).toISOString(),
+      endDate: new Date(sessEndMs).toISOString(),
+    };
+    await enterBacktestSessionAllFrames(page, session);
+    await sleep(300);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S20 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+    checks.check('H-S20 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // Advance the playhead a LONG way on the fine (1m) host — a real play run so
+    // the host 1m master ends up a bounded window well forward of session start.
+    const stepMs = 60_000;
+    let ts = await streamPlayFramesNoDrag(page, ts0, 300, stepMs);
+    await setHostReplayPlaying(page, false);
+    await broadcastCmd(page, 'replayTick', { timestamp: ts });
+    await hostReplaySeek(page, ts);
+    await sleep(1200);
+
+    // ── COVERAGE MEASUREMENT: host 1m master span vs the panel's 1D window ──
+    const hostBefore = await readHost(page);
+    const hostDeepBefore = await readPanelDeep(page, 'A');
+    const bBefore = await readPanelDeep(page, 'B');
+    const hostMasterSpanDays = (hostDeepBefore && hostDeepBefore.masterFirstT != null && hostDeepBefore.masterLastT != null)
+      ? (hostDeepBefore.masterLastT - hostDeepBefore.masterFirstT) / DAY : null;
+    notes.push(`H-S20 COVERAGE: host 1m master span=${hostMasterSpanDays != null ? hostMasterSpanDays.toFixed(2) : 'n/a'} days `
+      + `(len=${hostDeepBefore?.masterLen}, first=${hostDeepBefore?.masterFirstT}, last=${hostDeepBefore?.masterLastT}); `
+      + `panel B isEmbed=${bBefore?.isEmbed} isBacktestMode=${bBefore?.isBacktestMode} tf=${bBefore?.tf}`);
+
+    // ── Switch PANEL B to 1D (the defect trigger). Measure fetches + chunk walk. ──
+    ctx.srv.resetApiLog();
+    await resetDiag(page);
+    // Read the host fetch counter AFTER the diag reset (resetDiag zeroes every
+    // panel), so the delta measures ONLY host fetches during the panel switch.
+    const hostAtReset = await readHost(page);
+    const hostFetchesBefore = hostAtReset?.fetches || 0;
+
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1d' }).catch(() => {});
+    // Settle: poll until B committed native 1D + quiescent, hard budget.
+    const settleDeadline = Date.now() + 20_000;
+    let bAfterDeep = null;
+    while (Date.now() < settleDeadline) {
+      await sleep(300);
+      bAfterDeep = await readPanelDeep(page, 'B');
+      const bSnap = await readPanel(page, 'B');
+      if (bAfterDeep && bAfterDeep.tf === '1d' && bAfterDeep.dataLen > 0 && isPanelQuiescent(bSnap)) break;
+    }
+    await sleep(500);
+    bAfterDeep = await readPanelDeep(page, 'B');
+
+    const apiLog = ctx.srv.getApiLog();
+    const panelFetches = totalDataFetches(apiLog); // host untouched → all attributable to B
+    const chunkWalk = countChunkWalk(apiLog);
+
+    const hostAfter = await readHost(page);
+    const hostDeepAfter = await readPanelDeep(page, 'A');
+
+    notes.push(`H-S20 SWITCH: panelFetches=${panelFetches} chunkWalk(limit=2000 backward candles)=${chunkWalk}; `
+      + `B.tf ${bBefore?.tf}->${bAfterDeep?.tf} B.dataLen=${bAfterDeep?.dataLen} `
+      + `B.dataFirst=${bAfterDeep?.dataFirstT} B.dataLast=${bAfterDeep?.dataLastT}`);
+
+    const setupOk = !!(bAfterDeep && bAfterDeep.tf === '1d' && bAfterDeep.dataLen > 2 && bBefore && bBefore.isEmbed);
+    checks.check('H-S20 setup: panel B switched to 1D (embed, backtest replay)', setupOk,
+      `B.isEmbed=${bBefore?.isEmbed} B.tf=${bAfterDeep?.tf} B.dataLen=${bAfterDeep?.dataLen}`);
+
+    // CORE RED-first #1 — the panel's 1D acquisition is a SMALL bounded fetch.
+    const FETCH_BOUND = 4;
+    checks.check('H-S20 panel 1D acquisition is a small bounded fetch (not chunk-walk)',
+      panelFetches > 0 && panelFetches <= FETCH_BOUND,
+      `panelFetches=${panelFetches} (bound=${FETCH_BOUND})`);
+
+    // CORE RED-first #2 — NO long series of 2000-limit backward chunk requests.
+    const CHUNK_BOUND = 2;
+    checks.check('H-S20 NO 2000-chunk walk on panel 1D acquisition',
+      chunkWalk <= CHUNK_BOUND, `chunkWalk=${chunkWalk} (bound=${CHUNK_BOUND})`);
+
+    // SEAM == 0 — every committed 1D bar that the host 1m master covers must be
+    // BAR-EQUAL to the server-native 1D bar (resample seam is clean, not merely
+    // "a fetch happened").
+    const nativeDaily = await fetchNativeDaily(ctx.srv.url, 28, 800);
+    let seamMismatches = 0;
+    let seamCompared = 0;
+    let worstSeam = null;
+    const eps = 1e-9;
+    // Only COMPLETED 1D bars (fully before the playhead) are compared — the last
+    // bucket at the playhead is a legitimately partial forming candle.
+    const playheadTs = Number(bAfterDeep && bAfterDeep.replayTs);
+    if (bAfterDeep && Array.isArray(bAfterDeep.bars)) {
+      for (const bar of bAfterDeep.bars) {
+        if (!(Number.isFinite(playheadTs) && bar.t + DAY <= playheadTs)) continue;
+        const nat = nativeDaily.get(bar.t);
+        if (!nat) continue;
+        seamCompared++;
+        const ok = Math.abs(bar.o - nat.o) <= eps && Math.abs(bar.h - nat.h) <= eps
+          && Math.abs(bar.l - nat.l) <= eps && Math.abs(bar.c - nat.c) <= eps;
+        if (!ok) { seamMismatches++; if (!worstSeam) worstSeam = { t: bar.t, panel: bar, nat }; }
+      }
+    }
+    checks.check('H-S20 seams==0: committed 1D bars are bar-equal to server-native 1D',
+      seamCompared > 0 && seamMismatches === 0,
+      `compared=${seamCompared} mismatches=${seamMismatches} worst=${worstSeam ? JSON.stringify(worstSeam) : 'none'}`);
+
+    // HOST UNTOUCHED — no host fetch + master first/last/len identical.
+    const hostFetchDelta = (hostAfter?.fetches || 0) - hostFetchesBefore;
+    checks.check('H-S20 HOST fetch count unchanged during panel switch',
+      hostFetchDelta === 0, `hostFetchDelta=${hostFetchDelta}`);
+    const hostMasterUnmutated = !!(hostDeepBefore && hostDeepAfter
+      && hostDeepBefore.masterFirstT === hostDeepAfter.masterFirstT
+      && hostDeepBefore.masterLastT === hostDeepAfter.masterLastT
+      && hostDeepBefore.masterLen === hostDeepAfter.masterLen);
+    checks.check('H-S20 HOST 1m master unmutated (first/last/len identical)',
+      hostMasterUnmutated,
+      `before[${hostDeepBefore?.masterFirstT},${hostDeepBefore?.masterLastT},${hostDeepBefore?.masterLen}] `
+      + `after[${hostDeepAfter?.masterFirstT},${hostDeepAfter?.masterLastT},${hostDeepAfter?.masterLen}]`);
+
+    // STATE-MATRIX (coarser-panel-during-play): after the 1D acquisition the panel
+    // must STILL advance its playhead on the newly acquired 1D data (BL-10).
+    const bPlayStart = await readPanel(page, 'B');
+    ts = await streamPlayFramesNoDrag(page, ts, 240, stepMs);
+    await setHostReplayPlaying(page, false);
+    await broadcastCmd(page, 'replayTick', { timestamp: ts });
+    await sleep(800);
+    const bPlayEnd = await readPanel(page, 'B');
+    const advanced = !!(bPlayEnd && bPlayStart && bPlayEnd.replayTs != null
+      && Number(bPlayEnd.replayTs) > Number(bPlayStart.replayTs || ts0));
+    checks.check('H-S20 coarse (1D) panel still advances playhead on the acquired data (BL-10 cell)',
+      advanced, `B.replayTs ${bPlayStart?.replayTs} -> ${bPlayEnd?.replayTs}`);
+
+    notes.push('H-S20 (BL-14, D-042): same-pair 2x2, all sync OFF, host 1m, deep 400-day instrument (file 28). '
+      + 'Enter paused replay ~60% in, PLAY forward 300 host 1m frames (host 1m master → bounded window), then '
+      + 'switch PANEL B to 1D. The panel must acquire its coarse display window with a SMALL bounded fetch for the '
+      + 'older remainder + a ZERO-fetch resample of the host-covered recent window, seamed BAR-EQUAL to native 1D — '
+      + `NOT a 2000-chunk backward walk. MEASURED: panelFetches=${panelFetches} chunkWalk=${chunkWalk} `
+      + `seamCompared=${seamCompared} seamMismatches=${seamMismatches} hostFetchDelta=${hostFetchDelta} `
+      + `hostMasterUnmutated=${hostMasterUnmutated}. RED (b91 / --bugswitch=__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE): `
+      + 'the embed-panel high-limit exclusion (§6c I1) + missing panel display-TF fetch (§6a) walk the 2000-bar chunked path.');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -2153,6 +2422,7 @@ export function scenarioList() {
     { id: 'H-S18', title: 'panels auto-follow playhead viewport on play (BL-11)', run: hS18 },
     { id: 'H-S19', title: 'play-follow cost guard: idle coalesce + drag suspend (BL-12)', run: hS19 },
     { id: 'H-S19b', title: 'play-follow smoothness: device-pixel coalesce (BL-13)', run: hS19b },
+    { id: 'H-S20', title: 'coarse (1D) panel display acquisition: bounded fetch + resample seam (BL-14)', run: hS20 },
   ];
 }
 

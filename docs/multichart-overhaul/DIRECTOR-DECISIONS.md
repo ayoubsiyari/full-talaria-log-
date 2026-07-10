@@ -1965,3 +1965,46 @@ quantization + easing source), and a design lesson worth recording: when a spec 
 a smoothness bar, the DIAG must first verify the data source can express it — the
 quantized target would have been visible in one read of
 `getReplayAutoScrollState()` before any threshold work.
+
+---
+
+## D-042 — REOPEN GRANTED: BL-14 (panel slow coarse-TF acquisition after long replay) (2026-07-10)
+
+Reopen granted; standard sequence (RED-first harness scenario → confirm lead → one
+gated fix). This is the DATA-ACQUISITION/ownership family (ESC-007, H-S3/S6 lineage),
+not the replay-mirror-frame family — no Phase-5 case added. One clock correction to
+the manager's framing: the Phase-5 quiet-period precondition counts ALL felt
+multichart defects (the point is not refactoring mid-defect-flow), so BL-14 does
+hold the clock; practical effect is the same as the manager stated (Phase-5 paused
+until this closes).
+
+**Two static leads the DIAG must check first (both from our own ledger):**
+1. **6c deliberately excluded panels from high-limit bulk** —
+   `_shouldUseHighLimitBulkHistory()` returns false when `_isMultichartEmbedPanel()`
+   (ledger §6z, an I1 protection). A panel legitimately needing deep coarse history
+   therefore walks the 2000-bar chunked path — plausibly THE slow feel. If so, the
+   fix is a NARROW extension: allow high-limit bulk for a panel's own sanctioned
+   coarse-display acquisition (the DIAG-B8b ownership table already legalizes a
+   bounded panel fetch when the host master cannot cover), with an explicit bound —
+   NOT a blanket re-enable of panel bulk fetching.
+2. **The host got 6a (display-TF master direct fetch); panels never did.** A 1D
+   panel switch may be reusing fine-TF acquisition paths (resample-from-1m or
+   chunked fine history) instead of one bounded coarse fetch. Host/single-chart
+   parity for the panel's OWN coarse display window is the design target.
+
+**Contract question the DIAG must answer before the fix is specced:** per the
+DIAG-B8b ownership table, a coarser panel is host-fed when the host's fine master
+COVERS its window. After a long replay run the 1m master spans days — a 1D viewport
+spans months. The fix must therefore likely be a HYBRID: resample the host-covered
+recent window from host data (zero fetch), bounded direct coarse fetch ONLY for the
+uncovered remainder, and the two must seam cleanly. The resampled-1m-derived 1D bars
+meeting server-native 1D bars at the boundary is a classic mismatch point — the
+harness scenario must assert bar equality across that seam (seams counter stays 0).
+
+RED-first scenario requirements: sync OFF, replay advanced substantially (harness
+may fast-forward), panel switches to 1D; assert fetch count ≤ small bound, no
+2000-chunk walk (serve.mjs per-hit log is the witness), seams == 0 across the
+resample/fetch boundary, and the host untouched (host fetch count unchanged, no
+host master mutation). Kill-switch on the eventual fix; state-matrix per D-035
+including the coarser-panel-during-play cell (BL-10's advance must keep working on
+the newly acquired data).

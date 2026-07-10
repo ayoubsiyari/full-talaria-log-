@@ -45,10 +45,19 @@ const MIN_MS = 60_000;
 const SYNTH_DAYS = 90;
 const SYNTH_COUNT = SYNTH_DAYS * 24 * 60; // 129,600 one-minute candles
 
-// Two independent instruments for same-pair / independent-pair scenarios.
+// H-S20 (BL-14) needs a MUCH deeper 1m history so that a coarse (1D) viewport
+// spans ~months while the host's replay 1m master only ever covers ~a couple of
+// days around the playhead — i.e. a real coverage gap. This depth (in DAYS) is
+// per-file so the existing 90-day instruments (25/27) are untouched and every
+// pre-BL-14 scenario keeps its exact data extent.
+const DEEP_SYNTH_DAYS = 400;
+
+// Two 90-day instruments for same-pair / independent-pair scenarios, plus one
+// DEEP 400-day instrument (28) used only by the coarse-panel-display scenario.
 const FILES = {
   25: { originalName: 'EURUSD.csv', basePrice: 1.08000, decimals: 5 },
   27: { originalName: 'GBPUSD.csv', basePrice: 1.27000, decimals: 5 },
+  28: { originalName: 'DEEPFX.csv', basePrice: 1.15000, decimals: 5, synthDays: DEEP_SYNTH_DAYS },
 };
 
 const CONTENT_TYPES = {
@@ -94,13 +103,14 @@ function getCandles(fileId) {
   const meta = FILES[fileId];
   if (!meta) return null;
   const rnd = mulberry32(1000 + fileId * 7919);
+  const count = (Number.isFinite(meta.synthDays) ? meta.synthDays : SYNTH_DAYS) * 24 * 60;
   const endMinute = Math.floor(Date.now() / MIN_MS) * MIN_MS;
-  const startMs = endMinute - (SYNTH_COUNT - 1) * MIN_MS;
+  const startMs = endMinute - (count - 1) * MIN_MS;
   const factor = Math.pow(10, meta.decimals);
   const round = (x) => Math.round(x * factor) / factor;
-  const candles = new Array(SYNTH_COUNT);
+  const candles = new Array(count);
   let price = meta.basePrice;
-  for (let i = 0; i < SYNTH_COUNT; i++) {
+  for (let i = 0; i < count; i++) {
     const t = startMs + i * MIN_MS;
     const drift = (rnd() - 0.5) * meta.basePrice * 0.0008;
     const o = price;
@@ -447,7 +457,11 @@ function hostPageHtml(query) {
   const pair = (q.get('pair') || 'same').toLowerCase();
   const panels = Math.max(1, Math.min(4, parseInt(q.get('panels') || '4', 10) || 4));
   const tf = q.get('tf') || '1m';
-  const hostFileId = 25;
+  // hostFile lets a scenario pick the instrument the HOST (and same-pair panels)
+  // load — default 25 keeps every pre-BL-14 scenario on the 90-day instrument.
+  // H-S20 passes hostFile=28 (the deep 400-day instrument) to create a real
+  // coarse-viewport-vs-fine-master coverage gap.
+  const hostFileId = parseInt(q.get('hostFile') || '25', 10) || 25;
   const independentFileId = 27;
   const allIds = ['A', 'B', 'C', 'D'];
   const ids = allIds.slice(0, panels);

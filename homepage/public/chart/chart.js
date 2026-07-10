@@ -2519,6 +2519,13 @@ class Chart {
                 return true;
             }
         }
+        // BL-14 (D-042): the host-covered fine master does NOT span this coarse
+        // display window (the coverage gap). Acquire it as a bounded HYBRID
+        // (resample the covered recent window + ONE bounded coarse fetch for the
+        // older remainder + clean seam) instead of the legacy 2000-chunk fine walk.
+        if (await this._multichartPanelCoarseDisplayAcquire(normalizedTf)) {
+            return true;
+        }
         return false;
     }
 
@@ -2888,6 +2895,186 @@ class Chart {
             this._tryExtendReplayMasterFromParent();
         }
         return this._independentPanelTimeframeSwitch(normalizedTf);
+    }
+
+    /**
+     * BL-14 (D-042): panel coarse-display acquisition (HYBRID, bounded, gated).
+     *
+     * When an embed panel switches to a COARSER display TF (e.g. 1D) during backtest
+     * replay and the host's fine (1m) replay master only covers PART of the coarse
+     * viewport (after a long fine replay the 1m master spans ~a day, a 1D viewport
+     * spans ~months), acquire the coarse window as a HYBRID instead of walking the
+     * legacy 2000-bar chunked fine backward path (§6c I1 embed high-limit exclusion +
+     * §6a missing panel display-TF fetch):
+     *   (i)   ZERO-FETCH: resample the host-covered recent window from the 1m master;
+     *   (ii)  ONE bounded coarse fetch (explicit bar bound) for the OLDER remainder;
+     *   (iii) SEAM: completed resampled 1m-derived buckets are bar-equal to the
+     *         server-native coarse bars, so older(native)+recent(resampled) join clean.
+     *
+     * I1 stays intact: the coarse fetch carries its OWN explicit bar bound and only
+     * sets allowHighLimit when that bound exceeds one 2000-bar page — this narrow,
+     * sanctioned exception does NOT broaden the general embed bulk-fetch exclusion.
+     * Host is never mutated (the 1m master is read-only here).
+     *
+     * Kill-switch: window.__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE (default
+     * fix ON; disabling restores today's slow chunked path).
+     * @param {string} normalizedTf
+     * @returns {Promise<boolean>}
+     */
+    async _multichartPanelCoarseDisplayAcquire(normalizedTf) {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE) {
+                return false;
+            }
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return false;
+            if (typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair()) return false;
+            const replay = this.replaySystem;
+            if (!replay || !replay.isActive || !this.isBacktestMode || !this.currentFileId) return false;
+
+            const tf = String(normalizedTf || '').toLowerCase().trim();
+            const tfMs = this.parseTimeframe(tf);
+            const nativeMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
+            // Only COARSER-than-native display targets take this path.
+            if (!Number.isFinite(tfMs) || tfMs <= 0 || tfMs <= nativeMs) return false;
+
+            // Resolve the host-covered fine master (same-pair): host tile A's 1m replay
+            // master, else this panel's own. READ-ONLY — never mutate the host master.
+            let master = null;
+            try {
+                const parent = (window.parent && window.parent !== window) ? window.parent.chart : null;
+                const prs = parent && parent.replaySystem;
+                if (parent && String(parent.currentFileId || '') === String(this.currentFileId || '')
+                    && prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 1) {
+                    master = prs.fullRawData;
+                }
+            } catch (_e) { /* ignore */ }
+            if (!master && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 1) {
+                master = this._panelFullRawData;
+            }
+            if (!master && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 1) {
+                master = replay.fullRawData;
+            }
+            if (!master || master.length < 2) return false;
+
+            const masterFirstT = Number(master[0].t);
+            const masterLastT = Number(master[master.length - 1].t);
+            if (!Number.isFinite(masterFirstT) || !Number.isFinite(masterLastT) || masterLastT <= masterFirstT) {
+                return false;
+            }
+
+            // If the master already spans the coarse window the plain resample path
+            // handles it (no fetch) — this hybrid is only for the coverage GAP.
+            if (typeof this._multichartMasterCoversTimeframe === 'function'
+                && this._multichartMasterCoversTimeframe(tf)) {
+                return false;
+            }
+
+            // (i) ZERO-FETCH recent: resample the master into coarse buckets, keeping
+            // only buckets whose START is at/after the first FULL bucket the master
+            // covers. The partial leading bucket is left to the native older fetch so
+            // the seam bar stays native-equal.
+            const seamTs = Math.ceil(masterFirstT / tfMs) * tfMs;
+            const recentAll = this.resampleData(master, tf);
+            const recent = Array.isArray(recentAll)
+                ? recentAll.filter((b) => Number(b.t) >= seamTs)
+                : [];
+
+            // (ii) ONE bounded coarse fetch for the OLDER remainder [olderStart, seamTs).
+            const session = this.backtestingSession || {};
+            const sessionStartMs = typeof this._getBacktestSessionStartMs === 'function'
+                ? this._getBacktestSessionStartMs(session)
+                : null;
+            let wantBars = Number(this._pendingTfSwitchVisibleBarCount);
+            if (!Number.isFinite(wantBars) || wantBars <= 0) wantBars = 240;
+            const COARSE_DISPLAY_BAR_CAP = 1500; // explicit bound — I1 stays intact
+            const olderBars = Math.max(0, Math.min(COARSE_DISPLAY_BAR_CAP, Math.ceil(wantBars) + 40));
+            let older = [];
+            let fetchHasMoreLeft = false;
+            if (olderBars > 0 && seamTs > masterFirstT) {
+                let olderStartTs = seamTs - olderBars * tfMs;
+                if (Number.isFinite(sessionStartMs)) {
+                    olderStartTs = Math.max(olderStartTs, sessionStartMs - tfMs);
+                }
+                const olderEndTs = seamTs - 1;
+                if (olderEndTs > olderStartTs) {
+                    const smartCap = typeof this._highLimitBulkHistorySmartLimit === 'function'
+                        ? this._highLimitBulkHistorySmartLimit()
+                        : 100000;
+                    const limit = Math.max(100, Math.min(smartCap, olderBars + 40));
+                    const result = await this._fetchSmartWindow(
+                        this.currentFileId, tf, session, 'end',
+                        { startTs: Math.floor(olderStartTs), endTs: Math.floor(olderEndTs) },
+                        { skipSessionDates: true, limit, allowHighLimit: limit > 2000, skipBars: true }
+                    );
+                    if (result && Array.isArray(result.candles) && result.candles.length) {
+                        older = this._normalizeCandlesFromApi(result.candles)
+                            .filter((b) => Number(b.t) < seamTs);
+                        fetchHasMoreLeft = result.has_more_left !== false;
+                    } else {
+                        // No candle payload (e.g. csv-only): bail to the legacy path
+                        // rather than commit a recent-only window.
+                        return false;
+                    }
+                }
+            }
+
+            // (iii) SEAM + merge: native older then resampled recent, de-duplicated by
+            // bucket start (ascending). Recent wins at the seam (live/forming bucket).
+            const byT = new Map();
+            for (const b of older) byT.set(Number(b.t), b);
+            for (const b of recent) byT.set(Number(b.t), b);
+            const merged = Array.from(byT.values()).sort((a, z) => Number(a.t) - Number(z.t));
+            if (merged.length < 2) return false;
+
+            // Commit as the panel's coarse master + replay master (host untouched).
+            const playheadMs = typeof this._captureReplayPlayheadMs === 'function'
+                ? this._captureReplayPlayheadMs(replay)
+                : Number(replay.replayTimestamp);
+            const sessionEndMs = this._getBacktestSessionEndMs(session);
+            const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+
+            this.totalCandles = merged.length;
+            this._panLoading = false;
+            this._nativeRawFetchTf = tf;
+            this._serverCursors = {
+                firstTs: merged[0].t,
+                lastTs: merged[merged.length - 1].t,
+                hasMoreLeft: fetchHasMoreLeft,
+                hasMoreRight: false,
+            };
+            this._commitTimeframeChange(tf);
+            this._ingestSmartWindowResult(
+                {
+                    candles: merged,
+                    timeframe: tf,
+                    total: merged.length,
+                    first_cursor: String(merged[0].t),
+                    last_cursor: String(merged[merged.length - 1].t),
+                    has_more_left: fetchHasMoreLeft,
+                    has_more_right: false,
+                    source: 'panel-coarse-display-acquire',
+                },
+                { skipIndicators: true, skipFitToView: true, skipChartDataLoadedEvent: true, skipTimeframePrefetch: true }
+            );
+            this._syncReplayPanCursorsFromFullRaw();
+
+            await this._hotSwapBacktestReplayTimeframe(tf, {
+                replaceReplayMaster: true,
+                savedReplayTimestamp: playheadMs,
+                savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
+                wasPlaying: !!replay.isPlaying,
+                wasAtSessionEnd: false,
+                savedSpeed: replay.speed,
+                savedPlaybackMode: typeof replay.getPlaybackMode === 'function' ? replay.getPlaybackMode() : null,
+                previousTf,
+                sessionEndMs,
+                coarsePeriodExclusiveEndTs: null,
+            });
+            return true;
+        } catch (e) {
+            console.warn('[multichart] panel coarse-display acquire failed', e);
+            return false;
+        }
     }
 
     /**

@@ -2656,6 +2656,102 @@ motion must be visibly smooth (no candle-by-candle jumps) with **no backward jit
 candle seam**; pausing mid-candle must freeze in place (no snap to a boundary); paused/scrub
 and price-axis independence unchanged.
 
+## 6cg. BL-14 — panel coarse-display acquisition: bounded hybrid fetch + resample seam (D-042, b92)
+
+**DEFECT (BL-14 / D-042).** With **sync OFF**, after replay has run a long way on a fine TF
+(host 1m), switching a **PANEL (B/C/D)** to a big coarse TF like **1D** refetched and loaded
+old data slowly. The **HOST doing the same is fine** — panel-only. It is a
+data-acquisition/ownership defect (NOT the replay-mirror-frame family).
+
+**RED-FIRST (H-S20).** Same-pair 2×2, all sync OFF, host 1m, **deep 400-day instrument
+(serve.mjs file 28)**, faithful **backtest** replay (`isBacktestMode=true` + session on host +
+all panels). Enter paused replay ~60% in, PLAY forward 300 host 1m frames (host 1m master →
+bounded window), then switch **panel B → 1D**. DETERMINISTIC witnesses only (serve.mjs per-hit
+API log + bar equality + diag counters; no wall-clock):
+- **small fetch bound** on the panel's 1D acquisition,
+- **NO 2000-chunk walk** (no long series of `limit=2000` backward `/candles`),
+- **seams == 0** by BAR EQUALITY (resampled 1m-derived 1D bar == server-native 1D at the seam),
+- **HOST UNTOUCHED** (host fetch count + master first/last/len identical),
+- the coarse panel can **still advance its playhead** on the acquired 1D data (BL-10 cell).
+
+Current **b91** reproduction (flake-stable, FAIL-REAL-BUG ×3 = one b91 run + kill-switch ×2):
+`panelFetches = 33–34`, **chunkWalk = 33–34** (`/candles?timeframe=1m&limit=2000&direction=backward`
+walked one page at a time), `seamMismatches = 1–2`, and the walk **mutated the shared/host 1m
+master** (`len 2000 → ~68000`, `hostFetchDelta ≈ +34`) — the panel contaminated the host owner.
+
+**DIAG — the two ledger leads (confirmed with evidence).**
+1. **§6c I1 protection — CONFIRMED (code).** `_shouldUseHighLimitBulkHistory()` (chart.js
+   `:5625`) returns FALSE for embed panels (`_isMultichartEmbedPanel()` guard `:5628`), so a
+   panel that needs deep coarse history is denied the high-limit bulk path and walks the
+   **2000-bar chunked** path — the exact slow "loading old data" feel.
+2. **§6a display-TF direct-fetch — CONFIRMED.** The host has a display-TF fetch path; the panel
+   never did. The 1D panel switch fell to `_multichartReplayTimeframeSwitch` →
+   `_refetchBacktestTimeframeCore` and reused the **fine-TF (1m) backward** acquisition
+   (`checkViewportLoadMore('backward')` → `_delegateSamePairPanLoadToHost`), pulling 1m one 2000
+   page at a time instead of ONE bounded coarse fetch.
+
+**COVERAGE MEASUREMENT (the contract).** Host 1m master span **≈ 1.39 days** (2000 bars around
+the playhead); the panel's committed 1D window spans **≈ 48 completed days** (`dataFirst`
+≈ 8 months back). The host master can only cover the **recent tail** of the 1D window → the fix
+is a **HYBRID**.
+
+**FIX — `_multichartPanelCoarseDisplayAcquire()` (chart.js, gated, bounded).** Invoked from the
+embed backtest fast-path (`_tryMultichartEmbedBacktestTimeframeFastPath`) ONLY when the target is
+**coarser-than-native** and the host-covered master does **NOT** span the coarse window (the gap):
+1. **(i) ZERO-FETCH recent** — resample the host's in-memory 1m master to the coarse TF, keeping
+   only buckets at/after the first FULL bucket the master covers (`seamTs = ceil(masterFirst/tfMs)*tfMs`).
+2. **(ii) ONE bounded coarse fetch** — native 1D `/smart` for the OLDER remainder
+   `[olderStart, seamTs)` with an **explicit bar bound** (`COARSE_DISPLAY_BAR_CAP = 1500`;
+   `limit = min(smartCap, olderBars+40)`). `allowHighLimit` is set **only** when that bound
+   exceeds one 2000-bar page — a narrow, sanctioned exception that does **NOT** broaden the §6c I1
+   embed exclusion (the general `_shouldUseHighLimitBulkHistory` path is untouched).
+3. **(iii) SEAM** — merge `older(native) + recent(resampled)`, de-duplicated by bucket start,
+   recent winning at the seam (the live/forming bucket). Because `resampleData` buckets 1D as
+   `floor(t/86400000)*86400000` — identical to the server's native aggregation — every COMPLETED
+   resampled bucket is **bar-equal** to native; the seam (older-native meets recent-resampled) is
+   clean by construction. Committed via `_ingestSmartWindowResult` + `_hotSwapBacktestReplayTimeframe`
+   (`replaceReplayMaster:true`); the host 1m master is read-only throughout.
+
+Kill-switch **`__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE`** (default **fix ON**; disabling
+restores today's chunked path). `panel-cmd-bridge.js` was **not** touched — the fix lives entirely
+in the panel acquisition path in `chart.js`.
+
+**KILL-SWITCH A/B (H-S20, deterministic).**
+
+| Metric | Fix ON (GREEN) | Fix OFF / kill-switch (RED) |
+|---|---|---|
+| panel data fetches | **1** | **33** |
+| 2000-chunk backward `/candles` | **0** | **33** |
+| seam mismatches (completed 1D vs native) | **0** (298 compared) | **1** |
+| host fetch delta during switch | **0** | **+34** |
+| host 1m master mutated | **no** (len 2000 → 2000) | **yes** (2000 → 68000) |
+| coarse panel playhead still advances | **yes** | yes |
+
+**VERIFICATION.** H-S20 **GREEN ×2** under the fix / **RED ×2** under the kill-switch
+(flake-stable), plus the original b91 RED = **RED ×3** total. **STATE-MATRIX
+coarser-panel-during-play cell:** after the 1D acquisition, BL-10's playhead advance still works
+on the newly acquired 1D data — asserted in H-S20 (`B.replayTs 1783641600000 → 1783708020000`) and
+H-S17 (BL-10) still GREEN. H-S17/H-S18/H-S19b/H-S13/H-S8 all still GREEN. Full `npm run gate`
+**GREEN — 18 scenarios, 0 known-failing tracked, no regressions**.
+
+**STATE-MATRIX (D-035 rule; ✓ = holds under the fix).**
+
+| Cell | State | Behavior |
+|---|---|---|
+| **Coarse panel display acquire [CALLED-OUT]** | sync OFF, long fine replay, panel → 1D | ONE bounded coarse fetch + zero-fetch recent resample; **no 2000-chunk walk**; host untouched. THE FIX. |
+| **Seam (native older ↔ resampled recent) [CALLED-OUT]** | boundary bucket | completed resampled 1D bar == native 1D (same `floor(t/tfMs)` bucketing) ⇒ `seamMismatches=0`. |
+| **Coarser-panel-during-play (BL-10) [CALLED-OUT]** | play after acquire | panel advances its playhead + forming candle on the 1D master; H-S17 GREEN. |
+| **Host (tile A)** | unchanged | host 1m master read-only; fetch delta 0; master first/last/len identical. |
+| **Independent pair** | different file | path declines (`_isIndependentMultichartPair`); existing 1m-master resample unchanged. |
+| **Finer-or-equal target** | e.g. 1D→1m | path declines (`tfMs <= nativeMs`); existing finer paths unchanged. |
+
+**ENGINE PARITY.** `_multichartPanelCoarseDisplayAcquire` + the fast-path hook applied
+**BYTE-IDENTICALLY** to both trees' `chart/chart.js` — SHA256
+`9C92F39842C9194877AA83F76E61D79192BAF18131FD121D07E84C4009B099D6` (equal). `node --check` clean
+on all edited `.js`. Only the `chart v 1.4` harness got scenario/serve edits (H-S20 + deep file 28
++ `hostFile` param). Build bumped **b91 → 20260707b92** (uniform `SW_VERSION` +
+`__TALARIA_CHART_BUILD_ID` across dist-v9/live/legacy/embed in both trees; no b91 stragglers).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
