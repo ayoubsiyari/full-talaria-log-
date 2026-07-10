@@ -46895,37 +46895,53 @@ const TalariaV8b = () => {
                         );
                       })}
                     </div>
-                    {/* sort dropdown (My Strategies — left aligned) */}
-                    {stratTab==="mine"&&(
-                      <div style={{position:"relative",flexShrink:0,marginLeft:4}}>
-                        <div onClick={e=>{e.stopPropagation();setStratSortOpen(p=>!p);}}
-                          style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${c.brH}`,padding:"0 10px",height:28,cursor:"default",fontFamily:F}}>
-                          <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M3 6h18M6 12h12M9 18h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                          <span style={{fontSize:9,fontWeight:600,color:c.ts}}>{SORT_OPTIONS.find(o=>o.k===stratSort)?.l||"Sort"}</span>
-                          <svg width={8} height={8} viewBox="0 0 24 24" fill="none" style={{color:c.tm}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                        </div>
-                        {stratSortOpen&&(
-                          <>
-                            <div style={{position:"fixed",inset:0,zIndex:99990}} onClick={()=>setStratSortOpen(false)}/>
-                            <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:99991,width:160,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}>
-                              {SORT_OPTIONS.map(o=>{
-                                const isA=stratSort===o.k;
-                                return(
-                                  <div key={o.k} onClick={()=>{if(isA)setStratSortDir(d=>d==="asc"?"desc":"asc");else{setStratSort(o.k);setStratSortDir("desc");}setStratSortOpen(false);}}
-                                    style={{padding:"8px 12px",fontSize:10,fontWeight:isA?700:500,color:isA?c.tx:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"space-between",borderLeft:isA?`2px solid ${c.acL}`:"2px solid transparent",transition:"background 0.1s",fontFamily:F}}
-                                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
-                                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                                    {o.l}
-                                    {isA&&<span style={{fontSize:9,color:c.acL}}>{stratSortDir==="asc"?"↑":"↓"}</span>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
                     <div style={{flex:1}}/>
+                    <div style={{marginLeft:"auto",alignSelf:"center",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    {stratTab==="mine"&&(()=>{
+                      const activeLabel=(SORT_OPTIONS.find(o=>o.k===stratSort)?.l)||"Sort";
+                      const chooseStrategySort=(key,dir)=>{setStratSort(key);setStratSortDir(dir??"desc");setStratSortOpen(false);};
+                      const isBH=hov==="stratSortBtn";
+                      return(
+                        <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
+                          <div onClick={()=>setStratSortOpen(v=>!v)}
+                            onMouseEnter={()=>setHov("stratSortBtn")} onMouseLeave={()=>setHov(null)}
+                            style={{height:28,padding:"0 8px",display:"flex",alignItems:"center",gap:5,position:"relative",cursor:"default",
+                              background:stratSortOpen?"rgba(74,106,255,0.08)":isBH?"rgba(255,255,255,0.05)":"transparent",
+                              color:stratSortOpen?c.acL:isBH?c.tx:c.ts,
+                              fontSize:9,fontWeight:700,fontFamily:F,transition:"background 0.12s,color 0.12s",whiteSpace:"nowrap"}}>
+                            <svg width={9} height={9} viewBox="0 0 12 12" fill="none"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="5" y1="9" x2="7" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4}}>{activeLabel}<span style={{letterSpacing:"-0.04em",fontWeight:950}}>{stratSortDir==="asc"?"▲":"▼"}</span></span>
+                            <svg width={6} height={6} viewBox="0 0 8 8" style={{opacity:0.55,flexShrink:0}}><polygon points={stratSortOpen?"4,1 7,6 1,6":"4,7 7,2 1,2"} fill="currentColor"/></svg>
+                            {stratSortOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,pointerEvents:"none"}}/>}
+                            {!stratSortOpen&&isBH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)`,pointerEvents:"none"}}/>}
+                          </div>
+                          {stratSortOpen&&(
+                            <div style={{position:"absolute",top:"calc(100% + 5px)",left:0,background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",zIndex:300,minWidth:196,overflow:"hidden"}}>
+                              <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                              <div style={{padding:"6px 8px 8px"}}>
+                                {SORT_OPTIONS.map(o=>{
+                                  const ascActive=stratSort===o.k&&stratSortDir==="asc";
+                                  const descActive=stratSort===o.k&&stratSortDir==="desc";
+                                  return(
+                                    <div key={o.k} style={{height:30,display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",alignItems:"center",gap:8,borderTop:`1px solid ${c.br}`,boxSizing:"border-box"}}>
+                                      <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:8.3,fontWeight:900,color:ascActive||descActive?c.tx:c.ts,letterSpacing:"0.055em",textTransform:"uppercase",paddingLeft:8}}>{o.l}</span>
+                                      <TableSortDirButtons
+                                        ascActive={ascActive}
+                                        descActive={descActive}
+                                        onAsc={()=>chooseStrategySort(o.k,"asc")}
+                                        onDesc={()=>chooseStrategySort(o.k,"desc")}
+                                        accent={c.acL}
+                                        muted={c.tm}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div style={{display:stratCompactLayout?"none":"flex",gap:4,flexShrink:0}}>
                       {[
                         {mode:"cards",label:"Cards",icon:(
@@ -46957,6 +46973,7 @@ const TalariaV8b = () => {
                           </div>
                         );
                       })}
+                    </div>
                     </div>
                     {/* search */}
                     <div style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${stratSearchFocus?c.acB:c.brH}`,padding:"0 10px",width:dashIsPhone?"100%":210,height:28,boxSizing:"border-box",flexShrink:dashIsPhone?1:0,transition:"border-color 0.12s, background 0.12s",order:dashIsPhone?3:undefined}}>

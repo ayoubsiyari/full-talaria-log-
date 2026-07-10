@@ -1398,6 +1398,28 @@
         try { if (ch) ch._mcHostReplayContextUntil = Date.now() + 2000; } catch (_) {}
     }
 
+    // BL-8 (paused replay same-ts tick from a sibling TF switch): when sync is
+    // OFF and this iframe panel is already at the replay timestamp, a parent
+    // replayTick is only a bus re-prime. Re-seeking it re-centers the untouched
+    // panel's X viewport and calculateScales refits its Y domain. Keep genuine
+    // scrubs/steps (timestamp changes) and viewport-sync followers intact.
+    // Kill-switch: __TALARIA_MC_DISABLE_PAUSED_REPLAY_ALIGNED_SEEK_GUARD.
+    function shouldSkipPausedAlignedReplaySeek(ch, ts) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PAUSED_REPLAY_ALIGNED_SEEK_GUARD) {
+                return false;
+            }
+            if (!ch || !isMultichartIframePanel()) return false;
+            if (ch._multichartVisibleRangeSyncOn) return false;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive || rs.isPlaying || isParentReplayPlaying()) return false;
+            return isPanelReplayAligned(ch, ts);
+        } catch (_) {
+            return false;
+        }
+    }
+
     // BL-6 (viewport-park regression from the BL-5 skip): the BL-5 guard
     // (shouldSkipCoarsePanelHostSwitchSeek) preserves a coarser paused same-pair
     // panel's detached slice by skipping the coalesced seek — which killed the
@@ -1453,6 +1475,9 @@
     function scheduleCoalescedSeek(ch, ts) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
         markHostReplayContext(ch);
+        if (shouldSkipPausedAlignedReplaySeek(ch, ts)) {
+            return;
+        }
         if (shouldSkipCoarsePanelHostSwitchSeek(ch, ts)) {
             // BL-5 skip fired — preserve it (do NOT fall through to the seek), but
             // first do a one-shot offsetX-only recenter so the panel doesn't park

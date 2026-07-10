@@ -44,6 +44,8 @@ import {
   seekAllAndConverge,
   computePlayPlan,
   waitBootSettled,
+  panelFrameMap,
+  isPanelQuiescent,
   sleep,
 } from './harness-lib.mjs';
 
@@ -76,6 +78,107 @@ function panelsThatFetched(before, after, ids) {
 
 function allEqual(nums) {
   return nums.every((n) => n === nums[0]);
+}
+
+function nearlyEqual(a, b, eps = 1e-8) {
+  if (a == null || b == null) return a === b;
+  if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+  return Math.abs(Number(a) - Number(b)) <= eps;
+}
+
+function formatPriceSnap(s) {
+  if (!s) return 'null';
+  const yd = Array.isArray(s.yDomain) ? `[${s.yDomain[0]},${s.yDomain[1]}]` : 'null';
+  return `tf=${s.tf} y=${yd} priceZoom=${s.priceZoom} priceOffset=${s.priceOffset} autoScale=${s.autoScale}`;
+}
+
+async function readPriceScalePanel(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    let yDomain = null;
+    try {
+      if (ch.yScale && typeof ch.yScale.domain === 'function') {
+        const d = ch.yScale.domain();
+        if (Array.isArray(d) && d.length === 2) yDomain = [Number(d[0]), Number(d[1])];
+      }
+    } catch (_) { yDomain = null; }
+    return {
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      yDomain,
+      priceZoom: Number(ch.priceZoom),
+      priceOffset: Number(ch.priceOffset),
+      autoScale: ch.autoScale,
+      priceScaleAutoScale: ch.priceScale ? ch.priceScale.autoScale : undefined,
+      panLoading: !!ch._panLoading,
+      timeframeSwitching: !!ch._timeframeSwitching,
+      replayActive: !!(ch.replaySystem && ch.replaySystem.isActive),
+      replayPlaying: !!(ch.replaySystem && ch.replaySystem.isPlaying),
+      replayTs: ch.replaySystem && Number.isFinite(Number(ch.replaySystem.replayTimestamp))
+        ? Number(ch.replaySystem.replayTimestamp)
+        : null,
+      viewportSettleUntil: Number.isFinite(ch._multichartViewportSettleUntil) ? Number(ch._multichartViewportSettleUntil) : null,
+      perfNow: (typeof performance !== 'undefined' && performance.now) ? Number(performance.now()) : Date.now(),
+    };
+  }).catch(() => null);
+}
+
+async function readPriceScalePanels(page, ids) {
+  const out = {};
+  for (const id of ids) out[id] = await readPriceScalePanel(page, id);
+  return out;
+}
+
+function priceScaleUnchanged(before, after, eps = 1e-8) {
+  if (!before || !after) return false;
+  const by = before.yDomain || [];
+  const ay = after.yDomain || [];
+  const yOk = by.length === ay.length
+    && (!by.length || (nearlyEqual(by[0], ay[0], eps) && nearlyEqual(by[1], ay[1], eps)));
+  return yOk
+    && nearlyEqual(before.priceZoom, after.priceZoom, eps)
+    && nearlyEqual(before.priceOffset, after.priceOffset, eps)
+    && before.autoScale === after.autoScale
+    && before.priceScaleAutoScale === after.priceScaleAutoScale;
+}
+
+async function waitPeerTfSwitchSettled(page, targetId, targetTf, stableIds, budgetMs = 15_000) {
+  const deadline = Date.now() + budgetMs;
+  let prevSig = null;
+  let lastPanels = {};
+  let lastPrices = {};
+  while (Date.now() < deadline) {
+    const panels = await readPanels(page);
+    const prices = await readPriceScalePanels(page, stableIds);
+    lastPanels = panels;
+    lastPrices = prices;
+    const targetReady = panels[targetId]?.tf === targetTf && isPanelQuiescent(panels[targetId]);
+    const peersReady = stableIds.every((id) => panels[id] && isPanelQuiescent(panels[id]) && prices[id] && !prices[id].timeframeSwitching);
+    const sig = stableIds.map((id) => {
+      const s = prices[id];
+      if (!s) return 'null';
+      return JSON.stringify({
+        tf: s.tf,
+        yDomain: s.yDomain,
+        priceZoom: s.priceZoom,
+        priceOffset: s.priceOffset,
+        autoScale: s.autoScale,
+        priceScaleAutoScale: s.priceScaleAutoScale,
+      });
+    }).join('|');
+    if (targetReady && peersReady && prevSig === sig) {
+      return { ok: true, detail: `target ${targetId}.tf=${targetTf}; peer price states stable`, panels, prices };
+    }
+    prevSig = sig;
+    await sleep(200);
+  }
+  const detail = [
+    `${targetId}.tf=${lastPanels[targetId]?.tf} panLoad=${lastPanels[targetId]?.panLoading}`,
+    ...stableIds.map((id) => `${id}:${formatPriceSnap(lastPrices[id])} panLoad=${lastPanels[id]?.panLoading}`),
+  ].join(' ');
+  return { ok: false, detail: `TF switch did not settle within ${budgetMs}ms — ${detail}`, panels: lastPanels, prices: lastPrices };
 }
 
 /**
@@ -636,6 +739,72 @@ async function hS12(ctx) {
   }
 }
 
+// ── H-S13 ────────────────────────────────────────────────────────────────
+// Same-pair 4-panel, paused replay, all sync OFF: a peer iframe TF-up switch must
+// not mutate untouched peers' price scale state (Y-domain, priceZoom, priceOffset).
+async function hS13(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '5m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const untouched = ['C', 'D'];
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S13 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S13 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // With all sync OFF, C/D may sit at their own replay view. Park them away
+    // from the host playhead before B changes TF so a replay-bus re-anchor shows
+    // up as a Y-domain change on untouched panels.
+    await dragCellRight(page, 'C', { screens: 3 });
+    await dragCellRight(page, 'D', { screens: 3 });
+    const parked = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S13 C/D independent paused-replay views settled before B TF-up', parked.ok, parked.detail);
+    if (!parked.ok) return checks;
+
+    const before = await readPriceScalePanels(page, untouched);
+    const haveBefore = untouched.every((id) => before[id]
+      && Array.isArray(before[id].yDomain)
+      && before[id].replayActive
+      && !before[id].replayPlaying);
+    checks.check('H-S13 captured paused-replay C/D price scale before B TF-up switch', haveBefore,
+      untouched.map((id) => `${id}:${formatPriceSnap(before[id])}`).join(' '));
+    if (!haveBefore) return checks;
+
+    await resetDiag(page);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '4h' });
+    // Live MultichartGrid keeps the paused replay bus primed while panels report
+    // state changes. The lean harness has no React onState loop, so emit the same
+    // paused replay seek pulse explicitly after B's TF-up command.
+    await broadcastCmd(page, 'replayTick', { timestamp: ts0, hostTf: '5m', isPlaying: false });
+    const settled = await waitPeerTfSwitchSettled(page, 'B', '4h', untouched, 20_000);
+    checks.check('H-S13 B peer-only paused-replay TF-up switch settled on 4h', settled.ok, settled.detail);
+    const after = settled.prices || await readPriceScalePanels(page, untouched);
+
+    for (const id of untouched) {
+      checks.check(`H-S13 ${id} Y-domain + price scale unchanged after B paused-replay TF-up switch`,
+        priceScaleUnchanged(before[id], after[id], 1e-8),
+        `before ${formatPriceSnap(before[id])} after ${formatPriceSnap(after[id])}`);
+    }
+    notes.push('H-S13: all sync gates OFF; replay is active but paused on A/B/C/D; '
+      + 'C/D are first parked at independent paused-replay views; '
+      + 'B receives a real panel-cmd setTimeframe 5m→4h without __fromHostFanout, '
+      + 'then the live paused replay bus emits the current playhead seek. '
+      + 'C/D must keep Y-domain, priceZoom, priceOffset, autoScale unchanged. '
+      + 'Before/after: '
+      + untouched.map((id) => `${id} ${formatPriceSnap(before[id])} -> ${formatPriceSnap(after[id])}`).join(' | '));
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -647,6 +816,7 @@ export function scenarioList() {
     { id: 'H-S10', title: 'cold boot 2x2 same-pair', run: hS10 },
     { id: 'H-S11', title: 'close layout → single chart drag', run: hS11 },
     { id: 'H-S12', title: 'late same-pair panel reuses shared store (bug lever)', run: hS12 },
+    { id: 'H-S13', title: 'peer TF does not move other Y scales when sync OFF', run: hS13 },
   ];
 }
 

@@ -1538,3 +1538,75 @@ justified right now.
 
 Resuming any deferred work re-enters under all standing rules (I1–I11, one gated change/task,
 gate-green precondition, briefs+IDs per D-028).
+
+---
+
+## D-033 — REOPEN for a felt cross-panel scale-coupling defect (BL-8) (2026-07-10)
+
+### Trigger
+PO live-verified b82: multichart "works perfect" EXCEPT — with **all sync toggles OFF**, same-pair
+4-panel layout, switching one iframe panel's timeframe (PO: the top-right tile) causes the OTHER panels
+(C/D) price scale to change. This violates the core invariant (sync OFF ⇒ a panel's action has zero
+effect on other panels) and is therefore an in-scope felt defect, NOT optional polish. D-032 "closed"
+is superseded for this item.
+
+### Ruling
+Reopen under the standing DIAG→gated-FIX→ratchet discipline, protected by the now-green gate. Track as
+**BL-8**. Because the symptom is price-scale coupling on a PANEL-initiated TF switch (a case the current
+9 scenarios do not cover), FIRST add a harness scenario (H-S13) that reproduces it as a deterministic
+RED, THEN diagnose. Prime suspect: a side-effect of the recent H-S2 (`…HOST_HISTORY_GROWTH_MIRROR`) or
+sync-bridge pan-follow mirror over-firing on a peer TF switch; the diagnosis must test the three new
+kill-switches to confirm/exclude a regression before any new engine change.
+
+### Scope guard
+This reopen is limited to BL-8. Phase-3 polish + backlog remain deferred (D-032). All standing rules
+apply (one gated change/task, kill-switch, both trees hash-identical, gate-green + H-S13-green
+precondition to close, briefs+IDs per D-028).
+
+---
+
+## D-034 — BL-8: H-S13 revision spec; kill-switch exclusion must be RE-RUN (2026-07-10)
+
+§6az accepted. The first H-S13 non-repro was correctly read as a harness-fidelity gap,
+not evidence of no-bug — the PO's pinned conditions (backtest replay ACTIVE but PAUSED,
+peer iframe panel switched to a HIGHER TF, all sync OFF, no indicators) are the
+scenario contract. Three rulings:
+
+1. **The kill-switch exclusion is NOT yet established.** §6az's "the 3 recent
+   kill-switches all left it green" was observed under the NON-reproducing scenario —
+   it excludes nothing. Once revised H-S13 is deterministically RED, re-run the
+   triage under the TRUE trigger: `…HOST_HISTORY_GROWTH_MIRROR`,
+   `…SAME_PAIR_PAN_HOST_OWNER`, `…HOST_TF_MIRROR_WAIT`, and also
+   `…PANEL_PRICE_INDEPENDENCE` (if flipping the BL-2b guard OFF changes the symptom
+   shape, that localizes the family). Only flags that flip RED→GREEN under the true
+   trigger count as implicated.
+
+2. **Revised H-S13 requirements:** enter backtest replay and PAUSE (armed+paused
+   state, not merely armed-at-boot); peer panel (an iframe, not the host) switches
+   5m→1h or →4h; all sync OFF. Assertion = C/D price-scale state STRICTLY unchanged
+   across the switch (priceZoom, priceOffset, autoScale, and the rendered Y domain
+   min/max from the diag), sampled at a settled point per the 4.2b determinism
+   pattern. RED must be stable across two independent 5-run sessions before any
+   DIAG conclusions are drawn from it.
+
+3. **Name the sink with the probe, not by eyeball:** the `[BL2B_PRICE]` probe
+   (`__TALARIA_BL2B_PRICE_PROBE`) was purpose-built to log the first Y-scale
+   mutation site with bus origin. If it survived the cleanup passes, enable it
+   inside the H-S13 run (harness can set the flag pre-boot); if it was stripped,
+   re-install it gated, harness-only trigger. Harness + probe = the mechanism is
+   named by machine in the same run that reproduces it — no manual PO capture
+   needed this time.
+
+**Suspect list for the DIAG (static leads only, I10/I11 still govern):** the BL-2b
+secondary guard marks host-replay context via `markHostReplayContext` with a **2-second
+window** — a peer-TF-switch-triggered replay-mirror frame landing outside that window
+(or originating from the PEER, which never gets marked) would reach
+`syncReplayViewportToPlayhead`'s price reset unguarded. Also check whether the peer's
+TF switch triggers the B-FIX-G settled broadcast / host rebroadcast whose frame C/D
+adopt outside the marked context. The probe capture decides; these are priors, not
+conclusions.
+
+Close conditions for BL-8 (unchanged from D-033, made explicit): revised H-S13
+deterministic RED → probe names sink → one gated fix → H-S13 GREEN + full gate green
+(now 10 scenarios) + PO live confirm on the deployed build → H-S13 stays in the suite
+permanently as the BL-8 regression guard.

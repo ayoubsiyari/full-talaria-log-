@@ -2115,6 +2115,76 @@ tiny Y nudge) and the explicit backlog (BL-1/BL-2/BL-4), neither of which is a f
 
 ---
 
+## 6az. BL-8 (D-033) — cross-panel scale coupling repro conditions pinned (2026-07-10)
+
+**First H-S13 attempt did NOT reproduce** (b83): a PLAIN peer-panel TF switch with sync OFF leaves
+C/D price scale exactly unchanged; the 3 recent kill-switches all left it green. That was a harness
+FIDELITY gap, not proof of no-bug — the scenario was missing the real trigger conditions.
+
+**PO-confirmed real repro conditions (from live b82 + screenshot):**
+- Backtest **replay ACTIVE but PAUSED**.
+- **No** indicators.
+- Peer panel (top-right, an iframe) switched to a **HIGHER** TF (e.g. 5m→4h/1h).
+- All sync toggles OFF.
+
+**Read:** this is the REPLAY-BUS price-coupling family (old BL-2b). The relevant guard is the existing
+`__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`; it likely does not cover this specific trigger (a peer
+panel's TF-up switch fanning a replay-mirror frame that C/D adopt price-state from). H-S13 must be
+REVISED to enter paused replay + higher-TF peer switch, reproduce RED, then diagnose the exact
+price-mutation sink before a gated fix.
+
+### D-034 refinements (Director ruling, binding) + Manager tree-verification
+- **Kill-switch exclusion is VOID** until revised H-S13 reproduces — the earlier "3 flags left it green"
+  observed under the non-reproducing scenario excludes nothing. Re-run triage under the true trigger;
+  add `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE` to the flags tested.
+- **H-S13 contract (pinned):** replay ENTERED and PAUSED (armed-and-paused, not merely armed at boot);
+  a PEER iframe (not the host) switches to a HIGHER TF; all sync OFF; assertion = C/D price-scale state
+  STRICTLY unchanged (priceZoom, priceOffset, autoScale, rendered Y domain), sampled at a settled point
+  via the 4.2b determinism pattern; RED must be STABLE across TWO independent 5-run sessions before any
+  diagnosis is drawn.
+- **Name the sink by machine:** enable the `[BL2B_PRICE]` probe inside the H-S13 run.
+  **Manager-verified: the probe is STILL PRESENT** (`__talariaBl2bSnap`/`__talariaBl2bLog` in chart.js,
+  replay-system.js, sync-bridge.js, panel-cmd-bridge.js, both trees) — no re-install needed; set
+  `window.__TALARIA_BL2B_PRICE_PROBE=true` in ALL panel iframe contexts (not just host).
+- **Static lead (PRIOR, not conclusion):** `panel-cmd-bridge.js:1397 markHostReplayContext(ch)` sets
+  `ch._mcHostReplayContextUntil = Date.now()+2000` (Manager-confirmed). Frames originating from a peer's
+  TF switch may never get marked → either path reaches `syncReplayViewportToPlayhead`'s price reset
+  unguarded. The probe capture decides which sink fires first.
+
+---
+
+## 6ba. BL-8 FIX — paused-replay aligned-seek guard (D-033/D-034, b84, 2026-07-10)
+
+**Executed by a PO-dispatched external worker; Manager-verified.**
+
+**Repro (revised H-S13, now deterministic RED without the guard):** same-pair 4-panel, all sync OFF,
+replay armed-AND-paused, C/D parked at independent paused-replay views, peer iframe B switches 5m→4h,
+then the paused replay bus emits a `replayTick`. C/D Y-domain shifted (C `[0.9289,0.9482]→[0.9477,0.9628]`,
+D `[0.9399,0.9522]→[0.9468,0.9568]`).
+
+**Diagnosis:** flag triage under the reproducing scenario — `PANEL_PRICE_INDEPENDENCE`,
+`HOST_HISTORY_GROWTH_MIRROR`, `HOST_TF_MIRROR_WAIT` all still FAIL; `SAME_PAIR_PAN_HOST_OWNER` → PASS,
+implicating the same-pair host-owner replay/pan path. Driver: `panel-cmd-bridge.js:2661 replayTick →
+:1475 scheduleCoalescedSeek` re-centered untouched C/D → Y-domain refit (host-owner path tied to
+`chart.js:21734 checkViewportLoadMore`, gated ~:21761).
+
+**Fix (both trees, panel-cmd-bridge.js), gated `__TALARIA_MC_DISABLE_PAUSED_REPLAY_ALIGNED_SEEK_GUARD`
+(default = fix ON):** `shouldSkipPausedAlignedReplaySeek()` no-ops a SAME-timestamp paused `replayTick`
+when the iframe panel is already replay-aligned, replay is paused, visible/time sync is off, and parent
+is not playing. Real scrubs/steps (changed timestamps) still seek.
+
+**Manager INDEPENDENT verification — ACCEPTED:**
+- `npm run test:flake` (5 runs): ALL 10 PASS incl H-S13 — stable green.
+- Kill-switch-off (`--bugswitch=…PAUSED_REPLAY_ALIGNED_SEEK_GUARD`) run ×2: H-S13 stable RED, identical
+  C/D Y-domain shift — deterministic causal proof.
+- panel-cmd-bridge.js mirror pair MATCH (6A6480BA…EB0A). Guard flag in both trees. `security.yml`+
+  `gate.mjs` untouched. Build id `20260707b84` in both sw.js. S2/S3/S5/S6/S7/S8 all still green.
+
+**BL-8 CLOSED in the harness.** Gate: 10/10 green, 0 known-failing. PENDING: PO live re-test on deployed
+b84 to confirm the real-world symptom (C/D rescale on peer TF-up during paused replay) is gone.
+
+---
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
