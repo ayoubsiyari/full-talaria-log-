@@ -3458,6 +3458,47 @@ class Chart {
         return true;
     }
 
+    /** Kill-switch for the BL-9 panel pan-to-load-history continuation (default = fix ON). */
+    _mcPanelPanHistoryContinueEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE);
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /**
+     * BL-9: true when THIS delegating same-pair panel's OWN viewport still has an
+     * uncovered left gap AND older history remains to serve — i.e. the host-master
+     * sync poll must keep driving even after the pan gesture has ended. Terminates
+     * (returns false) when the gap is covered, or history is exhausted (host has no
+     * more left AND its already-loaded master is fully mirrored into this panel) —
+     * so it can never spin forever.
+     */
+    _panelPanHistoryGapNeedsHostMore(host) {
+        if (!host) return false;
+        if (typeof this._needsReplayHistoryLoadLeft !== 'function') return false;
+        // Panel viewport left gap covered → done.
+        if (!this._needsReplayHistoryLoadLeft()) return false;
+        // Host server still has older history → keep driving (host will fetch it).
+        const hostHasMoreLeft = !(host._serverCursors && host._serverCursors.hasMoreLeft === false);
+        if (hostHasMoreLeft) return true;
+        // Host server exhausted: only keep going while the host's already-loaded
+        // master still reaches further back than this panel has mirrored (not yet
+        // fully mirrored). Once mirrored, stop — no per-tile fetch, no spin.
+        const hostRs = host.replaySystem;
+        const hostMaster = hostRs && Array.isArray(hostRs.fullRawData) ? hostRs.fullRawData : null;
+        if (!hostMaster || !hostMaster.length) return false;
+        const localRs = this.replaySystem;
+        const localMaster = localRs && Array.isArray(localRs.fullRawData) ? localRs.fullRawData : null;
+        const hostFirst = Number(hostMaster[0] && hostMaster[0].t);
+        const localFirst = (localMaster && localMaster.length)
+            ? Number(localMaster[0] && localMaster[0].t)
+            : Infinity;
+        return Number.isFinite(hostFirst) && hostFirst < localFirst;
+    }
+
     /** While panning, poll host master growth and extend locally (no per-tile /bars). */
     _scheduleMultichartHostMasterSyncPoll() {
         if (this._mcHostMasterSyncRaf != null) return;
@@ -3473,7 +3514,23 @@ class Chart {
             if (typeof self._tryExtendReplayMasterFromParent === 'function') {
                 try { extended = !!self._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) {}
             }
+            // BL-9: after the gesture ends (stillPan false) with the host idle, the
+            // old code stopped even if THIS panel's own viewport still had an
+            // uncovered left gap and history remained — the "stalls until you click"
+            // defect. While the fix is ON, keep driving the host delegate + local
+            // mirror until the panel's gap is covered or history is exhausted.
+            const panelNeedsMore = self._mcPanelPanHistoryContinueEnabled()
+                && self._panelPanHistoryGapNeedsHostMore(host);
             if (stillPan || hostBusy) {
+                self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
+            } else if (panelNeedsMore) {
+                // Host is idle but the panel still needs more history: re-drive the
+                // host backward load (delegate only — never a per-tile /bars fetch),
+                // then keep polling to mirror the growth.
+                if (host && !host._panLoading && typeof host.checkViewportLoadMore === 'function') {
+                    try { host.checkViewportLoadMore('backward', true); } catch (_) { /* ignore */ }
+                }
+                if (extended && typeof self.render === 'function') self.render();
                 self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
             } else if (self._multichartPendingMasterResample) {
                 self._flushMultichartPendingMasterResample();

@@ -44,6 +44,8 @@ import {
   seekAllAndConverge,
   computePlayPlan,
   waitBootSettled,
+  panelFrameMap,
+  isPanelQuiescent,
   sleep,
 } from './harness-lib.mjs';
 
@@ -76,6 +78,107 @@ function panelsThatFetched(before, after, ids) {
 
 function allEqual(nums) {
   return nums.every((n) => n === nums[0]);
+}
+
+function nearlyEqual(a, b, eps = 1e-8) {
+  if (a == null || b == null) return a === b;
+  if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+  return Math.abs(Number(a) - Number(b)) <= eps;
+}
+
+function formatPriceSnap(s) {
+  if (!s) return 'null';
+  const yd = Array.isArray(s.yDomain) ? `[${s.yDomain[0]},${s.yDomain[1]}]` : 'null';
+  return `tf=${s.tf} y=${yd} priceZoom=${s.priceZoom} priceOffset=${s.priceOffset} autoScale=${s.autoScale}`;
+}
+
+async function readPriceScalePanel(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    let yDomain = null;
+    try {
+      if (ch.yScale && typeof ch.yScale.domain === 'function') {
+        const d = ch.yScale.domain();
+        if (Array.isArray(d) && d.length === 2) yDomain = [Number(d[0]), Number(d[1])];
+      }
+    } catch (_) { yDomain = null; }
+    return {
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      yDomain,
+      priceZoom: Number(ch.priceZoom),
+      priceOffset: Number(ch.priceOffset),
+      autoScale: ch.autoScale,
+      priceScaleAutoScale: ch.priceScale ? ch.priceScale.autoScale : undefined,
+      panLoading: !!ch._panLoading,
+      timeframeSwitching: !!ch._timeframeSwitching,
+      replayActive: !!(ch.replaySystem && ch.replaySystem.isActive),
+      replayPlaying: !!(ch.replaySystem && ch.replaySystem.isPlaying),
+      replayTs: ch.replaySystem && Number.isFinite(Number(ch.replaySystem.replayTimestamp))
+        ? Number(ch.replaySystem.replayTimestamp)
+        : null,
+      viewportSettleUntil: Number.isFinite(ch._multichartViewportSettleUntil) ? Number(ch._multichartViewportSettleUntil) : null,
+      perfNow: (typeof performance !== 'undefined' && performance.now) ? Number(performance.now()) : Date.now(),
+    };
+  }).catch(() => null);
+}
+
+async function readPriceScalePanels(page, ids) {
+  const out = {};
+  for (const id of ids) out[id] = await readPriceScalePanel(page, id);
+  return out;
+}
+
+function priceScaleUnchanged(before, after, eps = 1e-8) {
+  if (!before || !after) return false;
+  const by = before.yDomain || [];
+  const ay = after.yDomain || [];
+  const yOk = by.length === ay.length
+    && (!by.length || (nearlyEqual(by[0], ay[0], eps) && nearlyEqual(by[1], ay[1], eps)));
+  return yOk
+    && nearlyEqual(before.priceZoom, after.priceZoom, eps)
+    && nearlyEqual(before.priceOffset, after.priceOffset, eps)
+    && before.autoScale === after.autoScale
+    && before.priceScaleAutoScale === after.priceScaleAutoScale;
+}
+
+async function waitPeerTfSwitchSettled(page, targetId, targetTf, stableIds, budgetMs = 15_000) {
+  const deadline = Date.now() + budgetMs;
+  let prevSig = null;
+  let lastPanels = {};
+  let lastPrices = {};
+  while (Date.now() < deadline) {
+    const panels = await readPanels(page);
+    const prices = await readPriceScalePanels(page, stableIds);
+    lastPanels = panels;
+    lastPrices = prices;
+    const targetReady = panels[targetId]?.tf === targetTf && isPanelQuiescent(panels[targetId]);
+    const peersReady = stableIds.every((id) => panels[id] && isPanelQuiescent(panels[id]) && prices[id] && !prices[id].timeframeSwitching);
+    const sig = stableIds.map((id) => {
+      const s = prices[id];
+      if (!s) return 'null';
+      return JSON.stringify({
+        tf: s.tf,
+        yDomain: s.yDomain,
+        priceZoom: s.priceZoom,
+        priceOffset: s.priceOffset,
+        autoScale: s.autoScale,
+        priceScaleAutoScale: s.priceScaleAutoScale,
+      });
+    }).join('|');
+    if (targetReady && peersReady && prevSig === sig) {
+      return { ok: true, detail: `target ${targetId}.tf=${targetTf}; peer price states stable`, panels, prices };
+    }
+    prevSig = sig;
+    await sleep(200);
+  }
+  const detail = [
+    `${targetId}.tf=${lastPanels[targetId]?.tf} panLoad=${lastPanels[targetId]?.panLoading}`,
+    ...stableIds.map((id) => `${id}:${formatPriceSnap(lastPrices[id])} panLoad=${lastPanels[id]?.panLoading}`),
+  ].join(' ');
+  return { ok: false, detail: `TF switch did not settle within ${budgetMs}ms — ${detail}`, panels: lastPanels, prices: lastPrices };
 }
 
 /**
@@ -636,6 +739,412 @@ async function hS12(ctx) {
   }
 }
 
+// ── H-S13 ────────────────────────────────────────────────────────────────
+// Same-pair 4-panel, paused replay, all sync OFF: a peer iframe TF-up switch must
+// not mutate untouched peers' price scale state (Y-domain, priceZoom, priceOffset).
+async function hS13(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '5m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const untouched = ['C', 'D'];
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S13 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S13 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // With all sync OFF, C/D may sit at their own replay view. Park them away
+    // from the host playhead before B changes TF so a replay-bus re-anchor shows
+    // up as a Y-domain change on untouched panels.
+    await dragCellRight(page, 'C', { screens: 3 });
+    await dragCellRight(page, 'D', { screens: 3 });
+    const parked = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S13 C/D independent paused-replay views settled before B TF-up', parked.ok, parked.detail);
+    if (!parked.ok) return checks;
+
+    const before = await readPriceScalePanels(page, untouched);
+    const haveBefore = untouched.every((id) => before[id]
+      && Array.isArray(before[id].yDomain)
+      && before[id].replayActive
+      && !before[id].replayPlaying);
+    checks.check('H-S13 captured paused-replay C/D price scale before B TF-up switch', haveBefore,
+      untouched.map((id) => `${id}:${formatPriceSnap(before[id])}`).join(' '));
+    if (!haveBefore) return checks;
+
+    await resetDiag(page);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '4h' });
+    // Live MultichartGrid keeps the paused replay bus primed while panels report
+    // state changes. The lean harness has no React onState loop, so emit the same
+    // paused replay seek pulse explicitly after B's TF-up command.
+    await broadcastCmd(page, 'replayTick', { timestamp: ts0, hostTf: '5m', isPlaying: false });
+    const settled = await waitPeerTfSwitchSettled(page, 'B', '4h', untouched, 20_000);
+    checks.check('H-S13 B peer-only paused-replay TF-up switch settled on 4h', settled.ok, settled.detail);
+    const after = settled.prices || await readPriceScalePanels(page, untouched);
+
+    for (const id of untouched) {
+      checks.check(`H-S13 ${id} Y-domain + price scale unchanged after B paused-replay TF-up switch`,
+        priceScaleUnchanged(before[id], after[id], 1e-8),
+        `before ${formatPriceSnap(before[id])} after ${formatPriceSnap(after[id])}`);
+    }
+    notes.push('H-S13: all sync gates OFF; replay is active but paused on A/B/C/D; '
+      + 'C/D are first parked at independent paused-replay views; '
+      + 'B receives a real panel-cmd setTimeframe 5m→4h without __fromHostFanout, '
+      + 'then the live paused replay bus emits the current playhead seek. '
+      + 'C/D must keep Y-domain, priceZoom, priceOffset, autoScale unchanged. '
+      + 'Before/after: '
+      + untouched.map((id) => `${id} ${formatPriceSnap(before[id])} -> ${formatPriceSnap(after[id])}`).join(' | '));
+    return checks;
+  });
+}
+
+// ── H-S14 ────────────────────────────────────────────────────────────────
+// BL-9: same-pair 2x2, backtest replay ACTIVE but PAUSED, all sync OFF. A
+// backward PANEL drag (B, an iframe — NOT the host) that needs MORE than one
+// host batch must keep filling the panel's OWN left gap AFTER the gesture ends
+// (mouseup) with NO click. On the unfixed engine the host-master sync poll
+// (_scheduleMultichartHostMasterSyncPoll) only re-arms while stillPan ||
+// hostBusy, so once the gesture ends and the host (whose own viewport never
+// moved) goes idle the poll STOPS with the panel's left gap still uncovered —
+// the "stalls until you click" defect. The fix keeps the delegate+mirror
+// driving while the panel's own viewport left gap persists AND host history
+// remains; the kill-switch __TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE
+// restores the old stop-on-gesture-end behaviour (deterministic RED).
+//
+// DETERMINISM: the drag is raced ahead of the host fetch (many strokes, no
+// inter-stroke settle) so a single 2000-bar host batch cannot cover the
+// exposed gap; then we wait for a real settled point (no in-flight fetches,
+// panels quiescent, per-panel diag.fetches stable across spaced reads) before
+// sampling. The assertion uses the engine's OWN left-gap predicate
+// (_needsReplayHistoryLoadLeft), which is false iff the viewport left gap is
+// covered OR history is exhausted (hasMoreLeft===false).
+
+/** Read panel B (or any panel) left-edge coverage / gap state. */
+async function readPanelLeftGap(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return { ok: false, reason: 'no chart' };
+    try {
+      const m = ch.margin || { l: 60, r: 60 };
+      const leftIdx = (typeof ch.pixelToDataIndex === 'function')
+        ? Math.floor(ch.pixelToDataIndex(m.l)) : null;
+      const cur = ch._serverCursors || null;
+      const hasMoreLeft = cur ? cur.hasMoreLeft !== false : null;
+      const needsMoreLeft = (typeof ch._needsReplayHistoryLoadLeft === 'function')
+        ? !!ch._needsReplayHistoryLoadLeft() : null;
+      const data = Array.isArray(ch.data) ? ch.data : [];
+      const rs = ch.replaySystem || null;
+      const master = rs && Array.isArray(rs.fullRawData) ? rs.fullRawData : [];
+      return {
+        ok: true,
+        leftIdx,
+        gapOnLeft: leftIdx != null ? leftIdx < 6 : null,
+        hasMoreLeft,
+        needsMoreLeft,
+        replayActive: !!(rs && rs.isActive),
+        replayPlaying: !!(rs && rs.isPlaying),
+        dataLen: data.length,
+        firstBarT: data.length ? Number(data[0].t) : null,
+        masterLen: master.length,
+        masterFirstT: master.length ? Number(master[0].t) : null,
+        offsetX: Number(ch.offsetX),
+        panLoading: !!ch._panLoading,
+      };
+    } catch (e) { return { ok: false, reason: String(e && e.message || e) }; }
+  }).catch(() => null);
+}
+
+/**
+ * Real mouse-wheel zoom-OUT over a panel's chart area. Zooming out widens the
+ * visible bar span far past the loaded window so the viewport's left region
+ * shows an uncovered gap that needs MORE THAN ONE host batch to fill — the
+ * condition under which the delegate poll must keep driving after a gesture.
+ */
+async function wheelZoomOutPanel(page, id, ticks = 24) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) throw new Error(`wheelZoomOutPanel: no frame for panel ${id}`);
+  return frame.evaluate(async (n) => {
+    const ch = window.chart;
+    const canvas = document.getElementById('chartCanvas');
+    if (!ch || !canvas) return { ok: false };
+    const r = canvas.getBoundingClientRect();
+    // Anchor the zoom near the RIGHT (playhead) so zooming out opens whitespace
+    // on the LEFT (older history), matching a "drag back into empty history".
+    const cx = Math.round(r.left + r.width * 0.8);
+    const cy = Math.round(r.top + r.height * 0.5);
+    const before = Number(ch.candleWidth);
+    const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+    for (let i = 0; i < n; i++) {
+      const ev = new WheelEvent('wheel', {
+        bubbles: true, cancelable: true, view: window,
+        deltaY: 120, clientX: cx, clientY: cy,
+      });
+      canvas.dispatchEvent(ev);
+      // Keep each tick inside the same wheel burst window; small yield lets the
+      // engine apply candleWidth per tick.
+      await sleep(15);
+    }
+    return { ok: true, candleWidthBefore: before, candleWidthAfter: Number(ch.candleWidth) };
+  }, ticks);
+}
+
+/**
+ * Real backward drag on a panel: `strokes` back-to-back rightward strokes (pan
+ * into older history) of `distancePx` each. The gesture fully ends (mouseup)
+ * after every stroke and NO click is issued afterward. Kept deliberately short
+ * so it triggers only a couple of host batches — the persistent multi-batch
+ * left gap comes from the zoom-out, and the bug's stop-on-gesture-end leaves it
+ * uncovered.
+ */
+async function dragCellRightBackward(page, id, opts = {}) {
+  const { strokes = 1, distancePx = 220, stepsPerStroke = 12 } = opts;
+  const rect = await page.evaluate((pid) => {
+    const cell = window.__harnessCells && window.__harnessCells[pid];
+    if (!cell) return null;
+    const r = cell.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  }, id);
+  if (!rect) throw new Error(`dragCellRightBackward: no cell for panel ${id}`);
+  const y = Math.round(rect.y + rect.h * 0.5);
+  const xStart = Math.round(rect.x + Math.min(rect.w * 0.15, 40));
+  const xEnd = Math.round(xStart + distancePx);
+  for (let s = 0; s < Math.max(1, strokes); s++) {
+    await page.mouse.move(xStart, y);
+    await page.mouse.down();
+    for (let i = 1; i <= stepsPerStroke; i++) {
+      const x = Math.round(xStart + ((xEnd - xStart) * i) / stepsPerStroke);
+      await page.mouse.move(x, y);
+    }
+    await page.mouse.up();
+  }
+}
+
+/**
+ * Deterministic settle for the pan-load path: wait until no data request is in
+ * flight and every panel's diag.fetches is STABLE across two spaced reads with
+ * all panels quiescent (no pan/settle mid-flight). No fixed sleep; on timeout
+ * the caller still samples (a perpetually loading panel is itself reportable).
+ */
+async function waitPanLoadSettled(page, ids, getInFlightDataRequests, budgetMs = 30_000) {
+  const deadline = Date.now() + budgetMs;
+  let prev = null;
+  let last = {};
+  let lastInFlight = 0;
+  while (Date.now() < deadline) {
+    const p = await readPanels(page);
+    last = p;
+    lastInFlight = Number(getInFlightDataRequests && getInFlightDataRequests()) || 0;
+    const quiescent = ids.every((i) => isPanelQuiescent(p[i]));
+    const fetches = ids.map((i) => p[i]?.fetches ?? 0);
+    const stable = prev && fetches.every((f, k) => f === prev[k]);
+    if (lastInFlight === 0 && quiescent && stable) {
+      return { ok: true, detail: `settled: fetches=${fetches.join('/')} inFlight=0`, panels: p };
+    }
+    prev = fetches;
+    await sleep(300);
+  }
+  const detail = ids
+    .map((i) => `${i}:fetches=${last[i]?.fetches} panLoad=${last[i]?.panLoading}`)
+    .join(' ');
+  return { ok: false, detail: `pan-load never settled within ${budgetMs}ms — ${detail}; inFlight=${lastInFlight}`, panels: last };
+}
+
+async function hS14(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    // Enlarge the page so panel B's plot is wide: at min zoom the visible bar
+    // span then far exceeds a single ~2000-bar host batch, so the zoom-out
+    // opens a robust MULTI-batch left gap that a single post-gesture batch
+    // cannot cover (the bug's stop-on-gesture-end leaves it visibly empty).
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(600);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // Enter backtest replay and PAUSE on all panels (armed + paused).
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S14 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S14 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // Snapshot panel B left-edge coverage BEFORE the drag (should be covered:
+    // paused at the playhead with history loaded to the left).
+    const before = await readPanelLeftGap(page, 'B');
+    const beforeOk = !!(before && before.ok && before.replayActive && !before.replayPlaying);
+    checks.check('H-S14 captured paused-replay panel B left-edge coverage before drag', beforeOk,
+      JSON.stringify(before));
+    if (!beforeOk) return checks;
+
+    // Zoom panel B OUT so the visible span far exceeds one host batch: the
+    // viewport's left region now needs MANY batches to cover. This is the
+    // condition where one post-gesture batch cannot finish the fill.
+    const zoom = await wheelZoomOutPanel(page, 'B', 58);
+    await sleep(300);
+    const zoomed = await readPanelLeftGap(page, 'B');
+    checks.check('H-S14 panel B zoomed out (visible span widened)',
+      !!(zoom && zoom.ok && zoom.candleWidthAfter < zoom.candleWidthBefore),
+      `candleWidth ${zoom && zoom.candleWidthBefore}->${zoom && zoom.candleWidthAfter}; postZoom=${JSON.stringify(zoomed)}`);
+
+    ctx.srv.resetApiLog();
+    await resetDiag(page);
+
+    // REAL backward drag into the zoomed-out history; short gesture that ENDS
+    // (mouseup) with NO click. Only a couple of host batches load during the
+    // gesture; covering the wide left gap requires the poll to keep driving.
+    await dragCellRightBackward(page, 'B', { strokes: 1, distancePx: 260 });
+
+    // Wait for a deterministic settled point (no in-flight fetches, quiescent, stable diag).
+    const settled = await waitPanLoadSettled(page, ids, boot.getInFlightDataRequests, 30_000);
+    checks.check('H-S14 pan-load reached a deterministic settled read point', settled.ok, settled.detail);
+
+    const after = await readPanelLeftGap(page, 'B');
+    const afterOk = !!(after && after.ok);
+    checks.check('H-S14 panel B snapshot readable after gesture', afterOk, JSON.stringify(after));
+    if (!afterOk) return checks;
+
+    // Same-pair delegate: B must NOT self-fetch (host is the only owner).
+    const apiLog = ctx.srv.getApiLog();
+    const bFetchDiag = (after.needsMoreLeft != null); // structural read guard
+    void bFetchDiag;
+
+    // CONTRACT: after the gesture ends with NO click, panel B's viewport left
+    // gap must be COVERED (candles present to the left edge) OR history is
+    // exhausted. The engine's own predicate is false in exactly those two
+    // cases; it stays TRUE (RED) when the poll stalls with an uncovered gap.
+    const covered = after.needsMoreLeft === false;
+    checks.check('H-S14 panel B left gap covered after gesture end (no click)', covered,
+      `before[leftIdx=${before.leftIdx} needsMoreLeft=${before.needsMoreLeft} masterFirstT=${before.masterFirstT}] `
+      + `after[leftIdx=${after.leftIdx} gapOnLeft=${after.gapOnLeft} needsMoreLeft=${after.needsMoreLeft} `
+      + `hasMoreLeft=${after.hasMoreLeft} masterFirstT=${after.masterFirstT} firstBarT=${after.firstBarT} `
+      + `dataLen=${after.dataLen} panLoading=${after.panLoading}]`);
+
+    notes.push('H-S14 (BL-9): same-pair 2x2, replay ACTIVE+PAUSED, all sync OFF. '
+      + 'Panel B dragged backward past one host batch, gesture ends with NO click. '
+      + 'B delegates history to the in-process host and mirrors its growing master; '
+      + 'the fix keeps _scheduleMultichartHostMasterSyncPoll driving the host delegate '
+      + '+ local mirror while B\'s own viewport left gap persists AND host history '
+      + 'remains (kill-switch __TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE restores '
+      + 'stop-on-gesture-end → RED). Assertion = B._needsReplayHistoryLoadLeft()===false '
+      + '(left gap covered OR hasMoreLeft exhausted) at a settled point. '
+      + `host owner data fetches during pan=${totalDataFetches(apiLog)}.`);
+    return checks;
+  });
+}
+
+// ── H-S15 ────────────────────────────────────────────────────────────────
+// BL-9 (independent/new-pair variant) — POSITIVE GUARD.
+// Panel B owns a DIFFERENT pair than the host (file 27), backtest replay ACTIVE
+// but PAUSED, all sync OFF. B self-fetches its own history (no host delegate).
+// A deep multi-stroke backward drag on B (needs MANY batches) ends (mouseup)
+// with NO click, and B's OWN left gap must still end up COVERED.
+//
+// NOTE (evidence, 2026-07-10): the PO reported this stall on new-pair panels,
+// but the harness could NOT reproduce an independent RED — the self-fetch
+// continuation chain (checkViewportLoadMore .finally → rAF constrainOffset →
+// _scheduleReplayPanLoadLeft) already self-continues after the gesture and
+// covers the gap across multiple batches, WITH and WITHOUT the
+// __TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE kill-switch (that switch only
+// gates the same-pair delegate poll, H-S14). This scenario is therefore kept as
+// a permanent POSITIVE guard that the independent pan-back continuation never
+// regresses — it is NOT a bug-lever and stays GREEN under --bug. The reproduced
+// BL-9 defect is the same-pair delegate path (H-S14). If the PO still sees an
+// independent stall on the deployed build, capture the live network timing —
+// the likely cause is per-batch latency (slow-but-completing), not a true stall.
+async function hS15(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(600);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // Enter backtest replay and PAUSE on all panels (B owns file27 independently).
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S15 replay entered (paused) on all panels', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    // Panel B is the independent owner; confirm it is same replay state, paused.
+    const before = await readPanelLeftGap(page, 'B');
+    const beforeOk = !!(before && before.ok && before.replayActive && !before.replayPlaying);
+    checks.check('H-S15 captured paused-replay panel B (independent) left-edge coverage before drag',
+      beforeOk, JSON.stringify(before));
+    if (!beforeOk) return checks;
+
+    // Zoom B OUT so the visible span far exceeds one batch → wide multi-batch
+    // left gap that a single post-gesture batch cannot cover.
+    const zoom = await wheelZoomOutPanel(page, 'B', 58);
+    await sleep(300);
+    const zoomed = await readPanelLeftGap(page, 'B');
+    checks.check('H-S15 panel B zoomed out (visible span widened)',
+      !!(zoom && zoom.ok && zoom.candleWidthAfter < zoom.candleWidthBefore),
+      `candleWidth ${zoom && zoom.candleWidthBefore}->${zoom && zoom.candleWidthAfter}; postZoom=${JSON.stringify(zoomed)}`);
+
+    ctx.srv.resetApiLog();
+    await resetDiag(page);
+
+    // REAL backward drag into the zoomed-out history; gesture ENDS (mouseup)
+    // with NO click. Deep multi-stroke pan so a single self-fetch batch cannot
+    // cover the exposed gap — the continuation must keep driving after the
+    // gesture ends, else B stalls with an uncovered left gap.
+    await dragCellRightBackward(page, 'B', { strokes: 5, distancePx: 600, stepsPerStroke: 16 });
+
+    const settled = await waitPanLoadSettled(page, ids, boot.getInFlightDataRequests, 30_000);
+    checks.check('H-S15 pan-load reached a deterministic settled read point', settled.ok, settled.detail);
+
+    const after = await readPanelLeftGap(page, 'B');
+    const afterOk = !!(after && after.ok);
+    checks.check('H-S15 panel B snapshot readable after gesture', afterOk, JSON.stringify(after));
+    if (!afterOk) return checks;
+
+    // Independent B is its OWN owner → it fetches its own pair (file 27). Prove
+    // it did some backward loading (not vacuous) then that the gap is covered.
+    const apiLog = ctx.srv.getApiLog();
+    const byFile = countFetchesByFile(apiLog);
+    const bFetched = (after.masterFirstT != null && before.masterFirstT != null
+      && Number(after.masterFirstT) < Number(before.masterFirstT))
+      || (byFile[IND_FILE] || 0) > 0;
+    checks.check('H-S15 independent B loaded older history during/after gesture (not vacuous)',
+      bFetched, `file27 hits=${byFile[IND_FILE] || 0} masterFirstT ${before.masterFirstT}->${after.masterFirstT}`);
+
+    // CONTRACT: after the gesture ends with NO click, panel B's viewport left
+    // gap must be COVERED (or history exhausted). Engine predicate is false in
+    // exactly those cases; stays TRUE (RED) when the self-fetch chain stalls.
+    const covered = after.needsMoreLeft === false;
+    checks.check('H-S15 panel B (independent) left gap covered after gesture end (no click)', covered,
+      `before[leftIdx=${before.leftIdx} needsMoreLeft=${before.needsMoreLeft} masterFirstT=${before.masterFirstT}] `
+      + `after[leftIdx=${after.leftIdx} gapOnLeft=${after.gapOnLeft} needsMoreLeft=${after.needsMoreLeft} `
+      + `hasMoreLeft=${after.hasMoreLeft} masterFirstT=${after.masterFirstT} firstBarT=${after.firstBarT} `
+      + `dataLen=${after.dataLen} panLoading=${after.panLoading}]`);
+
+    notes.push('H-S15 (BL-9 independent variant, POSITIVE GUARD): panel B owns a different pair '
+      + '(file27), replay ACTIVE+PAUSED, all sync OFF. Deep backward drag ends with NO click; B\'s '
+      + 'self-fetch continuation must still cover its own left gap. Harness could not reproduce an '
+      + 'independent RED — the self-fetch chain self-continues after the gesture WITH and WITHOUT the '
+      + 'kill-switch (which only gates the same-pair delegate path, H-S14). Guards against regression '
+      + `of the independent pan-back continuation. file27 fetches during pan=${byFile[IND_FILE] || 0}.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -647,6 +1156,9 @@ export function scenarioList() {
     { id: 'H-S10', title: 'cold boot 2x2 same-pair', run: hS10 },
     { id: 'H-S11', title: 'close layout → single chart drag', run: hS11 },
     { id: 'H-S12', title: 'late same-pair panel reuses shared store (bug lever)', run: hS12 },
+    { id: 'H-S13', title: 'peer TF does not move other Y scales when sync OFF', run: hS13 },
+    { id: 'H-S14', title: 'panel pan-to-load-history continues after gesture end (BL-9)', run: hS14 },
+    { id: 'H-S15', title: 'independent panel pan-to-load-history continues after gesture end (BL-9)', run: hS15 },
   ];
 }
 

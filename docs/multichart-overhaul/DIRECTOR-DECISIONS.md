@@ -1610,3 +1610,41 @@ Close conditions for BL-8 (unchanged from D-033, made explicit): revised H-S13
 deterministic RED → probe names sink → one gated fix → H-S13 GREEN + full gate green
 (now 10 scenarios) + PO live confirm on the deployed build → H-S13 stays in the suite
 permanently as the BL-8 regression guard.
+
+---
+
+## D-034 — REOPEN for BL-9 (panel pan-to-load-history stalls until click)
+
+BL-8 is CLOSED (PO live-confirmed on b84). PO immediately surfaced a distinct defect
+(BL-9, MANAGER-FINDINGS §6bb): on a same-pair 2×2 layout with backtest replay ACTIVE
+but PAUSED, dragging a PANEL (B/C/D, not the host) backward loads a few candles then
+STALLS until the PO clicks. All sync OFF.
+
+This is a real engine defect in the same-pair delegate-to-host history path, NOT a
+deploy/harness artifact — the static lead (`_scheduleMultichartHostMasterSyncPoll`
+terminating on gesture-end instead of gap-coverage, chart.js:3462/~3476) is concrete.
+Reopen under the standing invariants (I10/I11: live-verified mechanism, minimal
+kill-switchable fix, RED-first harness proof, mirror both trees, gate stays green).
+
+Close conditions for BL-9:
+1. **H-S14 built RED-first** — panel + paused replay + drag-back-needs->1-batch +
+   gesture ends with NO click → panel left gap persists / not covered. RED must be
+   stable across the flake protocol before any fix lands.
+2. **One gated fix** (`__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE`, default fix
+   ON) that keeps the delegate+mirror driving while the PANEL's own viewport left gap
+   persists AND history remains, independent of the gesture. Must NOT spin when host
+   history is exhausted and must NOT introduce per-tile /bars fetches (delegate only).
+3. **Verify**: H-S14 GREEN under fix, RED under kill-switch (causal proof, flake-stable
+   ×2); full gate GREEN (now 11 scenarios, 0 known-failing); both engine trees hash-
+   match; sw.js/build id bumped; `security.yml` + `gate.mjs` untouched.
+4. **PO live confirm** on the deployed build → H-S14 stays permanently as the BL-9 guard.
+
+**D-034 STATUS (2026-07-10): CLOSED in-harness (build 20260707b85), PENDING PO live confirm.**
+- Same-pair delegate path: FIXED, causal kill-switch proof (H-S14 RED under
+  `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE`, GREEN with the fix).
+- Independent/new-pair path: could NOT be reproduced RED (H-S15 GREEN with AND without the
+  kill-switch — the self-fetch continuation is already robust). Per I11 no speculative fix was
+  landed; H-S15 kept as a permanent POSITIVE guard. If the PO still perceives an independent
+  stall on b85, root-cause with live Network-tab timing before any independent-path change.
+- Gate 12/12 GREEN, 0 known-failing; both engine trees + harness hash-match; all sw.js + HTML at
+  b85; `security.yml` + `gate.mjs` untouched; `node --check` clean. See MANAGER-FINDINGS §6bb.

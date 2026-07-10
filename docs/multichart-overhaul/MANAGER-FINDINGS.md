@@ -2183,7 +2183,83 @@ is not playing. Real scrubs/steps (changed timestamps) still seek.
 **BL-8 CLOSED in the harness.** Gate: 10/10 green, 0 known-failing. PENDING: PO live re-test on deployed
 b84 to confirm the real-world symptom (C/D rescale on peer TF-up during paused replay) is gone.
 
+**PO LIVE CONFIRMED (b84):** on 2026-07-10 the PO verified on the deployed build that C/D no longer
+rescale on peer TF-up during paused replay. BL-8 fully closed live. H-S13 remains the permanent regression
+guard.
+
 ---
+
+## 6bb. BL-9 — panel pan-to-load-history STALLS until a click (paused replay)
+
+**PO report (2026-07-10, screenshot):** on a same-pair 2×2 layout with **backtest replay ACTIVE but
+PAUSED**, dragging a **panel** (B/C/D, NOT the host) backward to load older history fills **a few candles
+then stalls** — the left gap stays empty until the PO **clicks** the chart, which unsticks it. All sync OFF.
+
+**Static root-cause lead (chart.js).** Panel backward pan does not self-fetch — it delegates to the host
+via `_delegateSamePairPanLoadToHost()` (chart.js:3441) and mirrors the host's growing master through the
+self-continuing poll `_scheduleMultichartHostMasterSyncPoll()` (chart.js:3462). That poll only re-arms its
+rAF while `stillPan || hostBusy` (chart.js:~3476). Failure sequence:
+1. Panel drag drives ONE host batch (2000–5000 bars); panel mirrors it → the "few candles."
+2. The **host's own viewport never moved** (only the panel panned), so the host has no reason to keep
+   loading further back; its `.finally` rAF re-check (chart.js:~22368) sees no host-side left gap.
+3. When the gesture ends, `stillPan` → false and host is idle → **the panel poll stops** even though the
+   PANEL's viewport still has an uncovered left gap and more history is available.
+4. Only a discrete interaction re-drives it: a click force-fires `checkViewportLoadMore('backward', true)`
+   (chart.js:20900 / 21473) + `render()`, pulling the next host batch → "stuck until click."
+
+The delegate path is the analogue of the direct-fetch `.finally` self-continue (chart.js:22368-22381),
+but it terminates on gesture-end rather than on gap-coverage.
+
+**Proposed fix (gated `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE`, default = fix ON):** extend the
+poll continue-condition so a delegating same-pair panel keeps driving the host delegate + mirror while ITS
+OWN viewport left gap persists AND history remains (host `hasMoreLeft` or host master does not yet cover
+the panel's needed left edge), independent of `stillPan`. Terminate on gap-covered or no-more-history.
+Must not spin when host has exhausted history, and must not fire per-tile /bars (delegate only).
+
+**Harness scenario H-S14 (to build, RED-first):** boot same-pair 2×2, enter paused replay on all, snapshot
+panel B viewport left-edge coverage, drag B backward far enough to need >1 host batch, let the gesture END
+with NO click, wait for settle, assert B's left gap is covered (or `hasMoreLeft` exhausted). Under the fix
+OFF (kill-switch) the gap must persist (deterministic RED). Add to gate as the permanent BL-9 guard.
+
+**SCOPE BROADENED (PO 2026-07-10): BL-9 also affects INDEPENDENT (non-host / new-pair) panels.** PO
+confirms the SAME symptom (stall-until-click, paused replay, panel-only; host fine) on a panel showing a
+pair DIFFERENT from the host — i.e. the self-fetch path, not just the same-pair delegate path. Shared root
+cause: the panel's post-gesture load-more re-check dies when the drag/inertia ends during paused replay.
+- Same-pair panel: `_scheduleMultichartHostMasterSyncPoll` stops on `!stillPan && !hostBusy` (chart.js:~3476).
+- Independent panel: the self-fetch `.finally` rAF re-check (chart.js:~22368) fires once, but the post-
+  prepend offsetX anchoring (chart.js:~22191) moves the viewport off `constrainOffset`'s near-left-edge
+  threshold (chart.js:~17710), so the chain does not continue; no persistent post-gesture loop covers the
+  remaining left gap. A click re-drives it (chart.js:20900/21473).
+The fix must cover BOTH panel paths under the SAME kill-switch `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE`:
+after a pan gesture ends on any panel in paused replay, keep driving backward load-more (delegate for
+same-pair, self-fetch for independent) while the PANEL's own viewport left gap persists AND history remains,
+terminating on gap-covered or no-more-history. Add a companion harness scenario **H-S15** (independent /
+new-pair panel, paused replay, drag-back-needs->1-batch, no click → gap persists = RED) so both variants are
+gated. Host pan-back must remain unchanged (already correct).
+
+**RESOLUTION (2026-07-10, verified in-harness, build 20260707b85):**
+- **Same-pair delegate path — FIXED & CAUSALLY PROVEN.** `_scheduleMultichartHostMasterSyncPoll()` (chart.js,
+  both trees) now keeps driving the host delegate + local mirror after the gesture ends while the panel's own
+  viewport left gap persists AND history remains, via new helpers `_mcPanelPanHistoryContinueEnabled()` +
+  `_panelPanHistoryGapNeedsHostMore(host)` (terminates on gap-covered / host-exhausted-and-fully-mirrored — no
+  spin, no per-tile /bars). Kill-switch `__TALARIA_MC_DISABLE_PANEL_PAN_HISTORY_CONTINUE` (default = fix ON).
+  H-S14: PASS with fix (B left gap covered, `needsMoreLeft=false`); RED under the kill-switch
+  (`needsMoreLeft=true`, `gapOnLeft=true`, leftIdx=-1123) — deterministic causal proof.
+- **Independent / new-pair path — COULD NOT REPRODUCE A RED.** H-S15 (independent B on file27, paused replay,
+  DEEP 5-stroke backward drag needing multiple batches, gesture ends with NO click) is GREEN on the engine
+  WITH and WITHOUT the kill-switch: B self-continues across 3 sequential batches
+  (`masterFirstT` 1783555500000→1782655500000) and covers its own left gap (`needsMoreLeft=false`). The
+  independent self-fetch continuation (`checkViewportLoadMore` `.finally` → rAF `constrainOffset` →
+  `_scheduleReplayPanLoadLeft`) is robust; the kill-switch only gates the same-pair delegate poll. Per I11
+  (no fix without a reproducing RED) NO speculative independent fix was landed — that would risk a fetch-spin
+  regression. H-S15 is kept as a permanent POSITIVE guard that the independent pan-back continuation never
+  regresses. If the PO still observes an independent stall on b85, the likely cause is per-batch network
+  latency (slow-but-completing) rather than a true stall; capture live Network-tab timing to build a faithful
+  repro before any independent-path change.
+- **Gate: 12/12 GREEN, 0 known-failing** (H-S2/S3/S5/S6/S7/S8/S10/S11/S12/S13/S14/S15). Both engine trees +
+  harness files hash-MATCH. All sw.js + HTML build ids = `20260707b85`. `security.yml` + `gate.mjs` untouched.
+  `node --check` passes on both chart.js and scenarios.mjs. PENDING: PO live re-test on deployed b85 (same-pair
+  stall gone; independent panel behaviour observed with Network timing if still perceived slow).
 
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
