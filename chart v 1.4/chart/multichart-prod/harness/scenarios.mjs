@@ -1234,6 +1234,106 @@ async function hS16(ctx) {
   });
 }
 
+// ── H-S17 ────────────────────────────────────────────────────────────────
+// BL-10 (D-037): a same-pair panel COARSER than the host must advance its replay
+// playhead during PLAY (shared-playhead invariant). Repro drives the exact buggy
+// path: during play, iframe panels ignore replayTick and mirror replayFrame
+// (panel-cmd-bridge.js:2677); applyReplayFrame's different-TF branch (:675-684)
+// only seeks when _multichartFinerSamePairPanelSelfOwns() is true (FINER-only,
+// chart.js:3095-3116), so a COARSER same-pair panel hits the unconditional
+// `return` and freezes — "host runs alone."
+//   All sync OFF. Host stays 1m; panel B → 1h (coarser). Enter paused replay,
+//   then stream real PLAY fan-out (replayFrame {isPlaying:true}) advancing 1m per
+//   frame. ASSERT: B's playhead advances with the host AND its forming candle
+//   updates. D-037 constraint #1 (no BL-5 resurrection): B must repaint at its
+//   OWN cadence — renders over the play window are bounded well under the 1m frame
+//   count (a per-1m-tick reslice would blow this). RED-first: on the current
+//   engine B.replayTs stays frozen at ts0.
+async function hS17(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S17 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await sleep(1400);
+
+    // Panel B → COARSER TF than the host (host stays 1m). All sync OFF, so this
+    // is a user-chosen independent TF, NOT a fan-out.
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1800);
+    const bBefore = await readPanel(page, 'B');
+    const hostBefore = await readHost(page);
+    const setupOk = !!(bBefore && hostBefore
+      && bBefore.tf === '1h' && hostBefore.tf === '1m'
+      && bBefore.replayTs != null);
+    checks.check('H-S17 panel B is coarser (1h) than host (1m) with replay active',
+      setupOk, `B.tf=${bBefore?.tf} host.tf=${hostBefore?.tf} B.replayTs=${bBefore?.replayTs} B.replayActive=${bBefore?.replayActive}`);
+    if (!setupOk) return checks;
+
+    // Stream real PLAY fan-out: replayFrame {isPlaying:true} advancing 1m/frame.
+    // This is the exact production play message; iframes mirror it (replayTick is
+    // suppressed while playing). 180 frames = 3h → a 1h panel forms ~3 new candles.
+    await resetDiag(page);
+    const bAtPlayStart = await readPanel(page, 'B');
+    let ts = ts0;
+    const stepMs = 60_000;
+    const FRAMES = 180;
+    for (let i = 0; i < FRAMES; i++) {
+      ts += stepMs;
+      await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+      // Occasional yield lets the coalesced per-panel rAF flush at its own cadence
+      // (so a correctly-coalescing coarse panel is not starved, and a per-tick
+      // resampler has room to reveal its render storm).
+      if (i % 10 === 0) await sleep(35);
+    }
+    await sleep(1200);
+    const lastTs = ts;
+    const bAfter = await readPanel(page, 'B');
+
+    // CORE (RED-first): the coarse panel's playhead must ADVANCE with the host.
+    const advanced = !!(bAfter && bAfter.replayTs != null && Number(bAfter.replayTs) > Number(ts0));
+    checks.check('H-S17 coarse panel B playhead ADVANCED during play (not frozen)',
+      advanced, `B.replayTs ${bBefore.replayTs} -> ${bAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
+
+    // Playhead tracked the host to the end (within one 1h bucket).
+    const HOUR = 3_600_000;
+    const near = advanced && Math.abs(Number(bAfter.replayTs) - lastTs) <= HOUR;
+    checks.check('H-S17 coarse panel B playhead tracks host to end (±1 coarse bucket)',
+      near, `B.replayTs=${bAfter?.replayTs} lastTs=${lastTs} delta=${bAfter?.replayTs != null ? Number(bAfter.replayTs) - lastTs : 'n/a'}`);
+
+    // Forming candle updated: B's last visible bar advanced across the play window.
+    const formingAdvanced = !!(bAfter && bAtPlayStart && bAfter.lastBarT != null
+      && bAtPlayStart.lastBarT != null && Number(bAfter.lastBarT) > Number(bAtPlayStart.lastBarT));
+    checks.check('H-S17 coarse panel B forming candle advanced (last bar moved forward)',
+      formingAdvanced, `B.lastBarT ${bAtPlayStart?.lastBarT} -> ${bAfter?.lastBarT}`);
+
+    // D-037 #1 — BL-5 ANTI-STORM: a 1h panel must repaint at its OWN cadence, not
+    // per host 1m tick. Over 180 host 1m frames, bounded renders (coalesced). A
+    // per-1m-tick full reslice would push this toward ~180.
+    const bRenders = (bAfter?.renders || 0) - (bAtPlayStart?.renders || 0);
+    checks.check('H-S17 coarse panel B renders bounded during play (no per-1m-tick reslice)',
+      bRenders <= 60, `B renders during play=${bRenders} over ${FRAMES} host 1m frames`);
+
+    notes.push('H-S17 (BL-10, D-037): same-pair 2x2, all sync OFF, host 1m, panel B set to 1h (coarser). '
+      + 'Paused replay entered, then real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, 180 frames). '
+      + 'The coarse panel must advance its playhead + forming candle with the host (shared-playhead invariant) '
+      + 'and repaint at its OWN cadence (renders bounded, no BL-5 per-1m reslice). RED-first: current engine '
+      + 'freezes B (applyReplayFrame :675-684 returns for non-finer different-TF panels). '
+      + `B.replayTs ${bBefore.replayTs}->${bAfter?.replayTs}; renders=${bRenders}.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -1249,6 +1349,7 @@ export function scenarioList() {
     { id: 'H-S14', title: 'panel pan-to-load-history continues after gesture end (BL-9)', run: hS14 },
     { id: 'H-S15', title: 'independent panel pan-to-load-history continues after gesture end (BL-9)', run: hS15 },
     { id: 'H-S16', title: 'pan-history continuation is paused-only; no backward storm on play (BL-9)', run: hS16 },
+    { id: 'H-S17', title: 'coarser same-pair panel advances playhead on play (BL-10)', run: hS17 },
   ];
 }
 

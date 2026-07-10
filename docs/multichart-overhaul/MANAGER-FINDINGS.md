@@ -2317,6 +2317,78 @@ off viewport left-gap coverage + host history availability + isPlaying only — 
 This is the "missing complement" check the rule requires: the b85 continuation added a paused behaviour and
 missed its Playing complement; this guard supplies exactly that complement and nothing else.
 
+## 6cc. BL-10 — coarser same-pair panel frozen during PLAY ("host runs alone") (D-037, b87)
+
+**Symptom (PO live, b86).** With all panels on the SAME pair and all sync OFF: when every panel shares the
+host's timeframe, replay play runs perfectly; but if one panel is switched to a DIFFERENT (coarser) timeframe
+and the user clicks play, only the host advances — the coarser panel freezes ("the host run alone"). Violates
+the shared-playhead invariant (all same-pair panels must show the same moment in time).
+
+**Static lead (confirmed against the RED run — the harness is the live capture, I10/I11 by machine as with H-S13).**
+During PLAY, iframe panels ignore `replayTick` and mirror `replayFrame` (`panel-cmd-bridge.js:2677`). In
+`applyReplayFrame`, the different-TF same-pair branch (`panel-cmd-bridge.js:675-684`) seeks **only** when
+`_multichartFinerSamePairPanelSelfOwns()` is true (FINER-only self-owner, `chart.js:3095-3116`). A COARSER
+same-pair panel is neither a finer self-owner nor same-TF, so it falls straight to the unconditional `return`
+with **no play-advance cell** → its `replaySystem.replayTimestamp` never moves. Case #9 of the replay-mirror-frame
+family (F, G, I, J, BL-5, BL-6, BL-8, BL-9-play, BL-10): the coarser column simply had no play cell.
+
+**RED-first — H-S17** (same-pair 2×2, all sync OFF, host 1m, panel B → 1h coarser; enter paused replay, then
+stream REAL play fan-out `replayFrame {isPlaying:true}` 1m/frame ×180 = 3h). RED, flake-stable (deterministic):
+B.replayTs frozen at `ts0`, forming candle (lastBarT) frozen, **renders during play = 0** (B does literally
+nothing — the `return`). Setup guard confirms B is genuinely coarser (1h) with replay active before the play.
+
+**Fix (b87).** In the different-TF branch, add a PLAY-only `else if` for the non-finer (coarser) case, gated by
+the new kill-switch `__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE` (default fix ON):
+
+```js
+} else if (args.isPlaying && !window.__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE) {
+    scheduleCoalescedSeek(ch, ts);   // advance coarse panel playhead + forming candle on its OWN master
+}
+```
+
+`scheduleCoalescedSeek` is the correct, anti-BL-5 tool by construction: it is **rAF-coalesced** (one seek per
+frame, newest ts wins — the coarse panel repaints at its own cadence, never per-1m-tick), and it already routes
+through the **BL-5 coarse-host-switch guard** `shouldSkipCoarsePanelHostSwitchSeek` (which is PAUSED-only —
+`panel-cmd-bridge.js:1367-1368` returns false while playing, so it does NOT re-freeze here) and the **BL-8
+paused-aligned guard**. Applied byte-identically to both engine trees (`panel-cmd-bridge.js` hash
+`D903EB00031E8077CE02007C1EB4B2BFA0381BB82030F2D12601507947C3335B`).
+
+**D-037 constraint #1 (no BL-5 resurrection) — measured.** Over 180 host 1m frames the 1h panel repaints
+**4 times** (renders during play = 4, flake-stable across 3 runs), decisively under the H-S17 assertion bound of
+≤60 and nowhere near the ~180 a per-1m-tick full reslice would produce. There is no per-tick resample of the
+full series; the coalesced seek collapses each burst of frames into a single own-cadence repaint.
+
+**Verification.**
+- H-S17 GREEN under fix, flake-stable ×3 (identical: B.replayTs→`…8080000`, forming candle→`…5200000`,
+  renders=4). Playhead tracked host to within one 1h bucket; forming candle advanced 2 whole 1h candles.
+- H-S17 RED under `--bugswitch=__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE` ×2 (frozen, renders=0) — causal.
+- Full gate **14/14 GREEN, 0 known-failing** (H-S17 added to `expectedTests`). Both trees hash-match. Build ids
+  bumped to `20260707b87`. `gate.mjs`/`security.yml` untouched.
+- Adjacent cells confirmed unchanged: **H-S13** (paused-replay coarse peer TF-up; C/D price scales unchanged)
+  PASS; **H-S8** (same-pair play) PASS.
+
+**STATE-MATRIX (D-035 rule) — coarse-panel PLAY-advance in `applyReplayFrame`, with the two required cells called
+out.** The change is a single `else if` reached ONLY when: same-pair, panel TF ≠ host TF, panel is NOT a finer
+self-owner (⇒ coarser), AND `args.isPlaying`. Everything else is structurally untouched.
+
+| Panel relationship | Paused (or scrub) | **Playing** | Idle (no replay) |
+|---|---|---|---|
+| **Coarser same-pair** | unchanged — this branch returns without seeking; paused scrubs take the `replayTick` path + its **BL-5 `shouldSkipCoarsePanelHostSwitchSeek` guard** (PAUSED-only), which stays in force. **[CALLED-OUT CELL #1]** | **THE FIX — advance playhead + forming candle via coalesced seek (renders=4/180 frames, no per-tick reslice)** | predicate never reached (branch requires active replay frame) — unchanged |
+| **Finer same-pair (self-owner)** | unchanged (`forceReplaySeek` in the `if` branch) | unchanged — still the `if` branch's `forceReplaySeek`; the new `else if` is only entered when the finer `if` is false, so the finer path is byte-for-byte identical. **[CALLED-OUT CELL #2]** | unchanged |
+| **Same-TF same-pair** | unchanged (does not enter the different-TF branch at all) | unchanged | unchanged |
+| **Independent (other pair)** | unchanged (own replay master) | unchanged | unchanged |
+
+Exactly ONE cell changes vs b86: (coarser same-pair, **Playing**) flips from "frozen `return`" to "coalesced
+play-advance". The paused-coarse cell (#1) is preserved by two independent mechanisms — the new branch is gated
+on `args.isPlaying`, AND the coalesced-seek path retains the PAUSED-only BL-5 guard — so a paused coarse panel
+still cannot reslice (BL-5/BL-6 intact). The finer cell (#2) is untouched because the addition is an `else if`
+of the existing finer `if`. This is the "missing complement" the rule targets: the scattered branch had a finer
+play cell but no coarser play cell; this supplies exactly that one cell and nothing else.
+
+**PENDING:** PO live re-test on deployed b87 — with all sync off, set one panel to a coarser TF and click play;
+the coarse panel must advance in lock-step with the host (playhead + forming candle) and stay smooth (no reslice
+flicker); same-TF play and paused/scrub behaviour unchanged.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

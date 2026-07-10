@@ -1719,3 +1719,77 @@ must. The manager rejects reports lacking it.
 Two sessions both issued "D-034" on 2026-07-10; the BL-9 reopen is renumbered
 **D-034b**. Next free ID after this entry is D-036. Sessions must check the last
 issued ID before writing.
+
+---
+
+## D-036 — H-S16 predicate-contract guard ACCEPTED; clamp-lift REJECTED (2026-07-10)
+
+The D-035 #1 deviation is accepted — and the investigation that produced it was the
+right kind: the original lever (deepen history → wide fetch margin) was tested
+(90d vs 180d, both backward=2 with AND without the guard), proven vacuous, and
+reverted, rather than shipped as a green-but-meaningless assertion. The min-
+candleWidth clamp capping the exposable left gap is a legitimate physical ceiling
+in the engine; asserting fetch counts under it can never be causal.
+
+**Ruling: the predicate-contract H-S16 is ACCEPTED as the permanent BL-9-play
+guard. Lifting the clamp in a harness-only build is REJECTED** — a harness that
+tests a build different from production violates the fidelity principle that made
+this harness trustworthy in the first place (the 4.1c lesson). A deterministic,
+causal contract test on the real engine beats an observable-storm test on a
+modified one.
+
+**One residual risk, one cheap hardening required:** a contract test proves the
+predicate BEHAVES correctly, not that the continuation path still CONSULTS it — a
+future refactor could bypass `_panelPanHistoryGapNeedsHostMore` at the call site
+and H-S16 would stay green while the storm returns. Mitigation (harness-only
+follow-up, no urgency, fold into the next harness touch): during H-S14's paused
+continuation, assert the predicate is actually invoked ≥1 time (instrument via a
+harness-installed wrapper, not an engine change). Defense in depth: H-S8's
+"0 data fetches during play" remains the observable backstop that a sustained
+real-world storm would trip.
+
+Gate at 13/13 green, 0 known-failing, engine untouched — acknowledged. The §6bb.1
+state-matrix (exactly one cell changed vs b85) is the first application of the
+D-035 rule and is exactly what it should look like.
+
+---
+
+## D-037 — REOPEN GRANTED: BL-10 (coarser same-pair panel frozen during PLAY) (2026-07-10)
+
+Reopen granted — this is a felt correctness defect (shared-playhead invariant: all
+same-pair panels show the same moment in time; a frozen coarser panel violates it),
+not polish. The request itself is well-formed: static lead with file:lines, RED-first
+harness before any fix, kill-switch named up front.
+
+**Authorized, in order:**
+1. **H-S17 RED-first** — same-pair 2×2, one panel coarser than host (e.g. host 1m,
+   panel 4h), all sync OFF, REAL play (not synthetic tick injection): assert the
+   coarser panel's playhead timestamp advances with the host's within a bounded
+   settle budget, and its forming coarse candle updates. RED must be flake-stable
+   per the 4.2b protocol before diagnosis conclusions are drawn.
+2. Confirm the static lead against the RED run (the harness IS the live capture —
+   I10/I11 satisfied by machine, as with H-S13): coarser same-pair panels hit the
+   unconditional return in `applyReplayFrame` (:675-684) because the seek branch is
+   gated on finer-only `_multichartFinerSamePairPanelSelfOwns()`.
+3. **One gated fix**, `__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE` (default fix
+   ON). Constraints beyond the standing rules:
+   - **Do not resurrect BL-5.** The BL-5 storm was a coarse panel doing per-frame
+     reseed/reslice work while PAUSED. Advancing the playhead during PLAY must not
+     reintroduce per-1m-tick full reslices on a 4h panel — advance the playhead and
+     update the FORMING candle, coalescing work so a coarse panel repaints at its
+     own cadence (or cheaply), not the host's. If the implementation risks per-tick
+     resample of the full series, say so in the report with numbers (renders/sec on
+     the coarse panel during play becomes an H-S17 assertion bound).
+   - **State-matrix (D-035 rule) with two cells called out explicitly:** the
+     paused-coarse cell (BL-5 guard `shouldSkipCoarsePanelHostSwitchSeek` must
+     remain in force — the new advance path is PLAY-only) and the finer cell
+     (self-own seek unchanged).
+4. Close conditions: H-S17 GREEN under fix / RED under kill-switch, flake-stable;
+   full gate green (14 scenarios); trees hash-match; PO live confirm on deployed
+   build; H-S17 permanent.
+
+**Phase-5 ledger note:** BL-10 is replay-mirror-frame family case #9 (F, G, I, J,
+BL-5, BL-6, BL-8, BL-9-play, BL-10) — the same unconsolidated root D-035 named:
+`applyReplayFrame` decides per-relationship behavior with scattered branches, and
+the coarser-panel column simply had no play-advance cell. The Phase-5 policy table
+gains a row; the quiet-period clock for scheduling Phase-5 resets with this defect.

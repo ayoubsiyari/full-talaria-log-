@@ -678,6 +678,23 @@
                         && ch._multichartFinerSamePairPanelSelfOwns()) {
                         ch._mcFinerOwnerActiveReplayCatchUp = !!args.isPlaying;
                         forceReplaySeek(ch, ts, false);
+                    } else if (args.isPlaying
+                        && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE)) {
+                        // BL-10 (D-037): a COARSER same-pair panel (not a finer self-
+                        // owner) had NO play-advance cell here — it froze while the host
+                        // played on ("host runs alone"), violating the shared-playhead
+                        // invariant. During PLAY ONLY, advance this panel's playhead +
+                        // forming candle on its OWN coarser master via the COALESCED
+                        // seek: one seek per rAF no matter how many 1m host frames
+                        // arrive, so the coarse panel repaints at its own cadence and
+                        // never reslices per 1m tick (the BL-5 storm). scheduleCoalesced
+                        // Seek already routes through the BL-5 coarse-host-switch guard
+                        // (PAUSED-only — returns false during play, so it does NOT re-
+                        // freeze here) and the BL-8 paused-aligned guard; paused/scrub
+                        // behaviour is unchanged (those take the replayTick path, not
+                        // this branch). Kill-switch:
+                        // __TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE.
+                        scheduleCoalescedSeek(ch, ts);
                     }
                 } catch (_) {}
                 return;
