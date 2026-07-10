@@ -1423,6 +1423,11 @@ async function readPanelFollow(page, id) {
       priceOffset: Number(ch.priceOffset),
       autoScale: ch.autoScale,
       renders: ch._mcDiag ? (Number(ch._mcDiag.renders) || 0) : 0,
+      // Deterministic follow-render counter (panel-cmd-bridge maybePanelPlayViewportFollow):
+      // increments once per follow render actually issued past the cost guard.
+      followRenders: Number(ch._mcPlayFollowRenders) || 0,
+      dpr: (typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0)
+        ? window.devicePixelRatio : 1,
     };
   }).catch(() => null);
 }
@@ -1713,6 +1718,61 @@ async function dragPanelWhileStreaming(page, id, startTs, opts = {}) {
   return ts;
 }
 
+/**
+ * Stream M host PLAY frames that DO NOT advance the playhead (re-emit the SAME
+ * timestamp with isPlaying:true). The leading-edge follow target is therefore
+ * unchanged frame-to-frame — a genuinely stationary / sub-pixel advance. Under
+ * the cost guard this must cost ZERO follow renders (proving the guard does
+ * something); with the guard OFF it renders once per frame.
+ */
+async function streamStationaryPlayFrames(page, ts, frames, opts = {}) {
+  const { perFrameMs = 18 } = opts;
+  await setHostReplayPlaying(page, true);
+  await hostReplaySeek(page, ts);
+  for (let i = 0; i < frames; i++) {
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+    await sleep(perFrameMs);
+  }
+  return ts;
+}
+
+/** Light read of one panel's live offsetX + follow-render counter (per-frame sampling). */
+async function readPanelOffsetSample(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    return {
+      offsetX: Number(ch.offsetX),
+      followRenders: Number(ch._mcPlayFollowRenders) || 0,
+      dataLen: Array.isArray(ch.data) ? ch.data.length : 0,
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Stream N host PLAY frames (advancing the playhead one host bar per frame) while
+ * SAMPLING the panel's live offsetX after each frame. Returns { ts, samples } where
+ * samples[i] = { offsetX, followRenders, dataLen }. Used to assert the eased follow
+ * offset advances MONOTONICALLY across bar-boundary seams (no backward jitter).
+ */
+async function streamPlayFramesSamplingOffset(page, id, startTs, frames, stepMs, opts = {}) {
+  const { perFrameMs = 18 } = opts;
+  await setHostReplayPlaying(page, true);
+  let ts = startTs;
+  const samples = [];
+  for (let i = 0; i < frames; i++) {
+    ts += stepMs;
+    await hostReplaySeek(page, ts);
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+    await sleep(perFrameMs);
+    const s = await readPanelOffsetSample(page, id);
+    if (s) samples.push(s);
+  }
+  return { ts, samples };
+}
+
 async function hS19(ctx) {
   return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
     const { page } = boot;
@@ -1733,19 +1793,26 @@ async function hS19(ctx) {
     checks.check('H-S19 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
     if (!entered.ok) return checks;
 
-    // B (dragged) + C (idle) are COARSER (5m) than the host (1m): the coarse
+    // B (dragged) + C (idle) are COARSER (1h) than the host (1m): the coarse
     // same-pair play-advance routes through scheduleCoalescedSeek →
-    // maybePanelPlayViewportFollow (the BL-11 follow, the BL-12 cost source). D
-    // stays same-TF (1m). All sync OFF → user-chosen independent TF.
-    await panelCmd(page, 'B', 'setTimeframe', { tf: '5m' }).catch(() => {});
-    await panelCmd(page, 'C', 'setTimeframe', { tf: '5m' }).catch(() => {});
+    // maybePanelPlayViewportFollow (the BL-11 follow, the BL-12/BL-13 cost source).
+    // D stays same-TF (1m). All sync OFF → user-chosen independent TF.
+    // 1h (60 host frames/candle) — NOT 5m — because D-041 redefined the coalesce
+    // unit from one CANDLE-WIDTH to one DEVICE PIXEL: at 5m the leading edge moves
+    // >1 device pixel PER host frame, so the (correct, host-parity) follow now
+    // repaints every frame and there is nothing left to coalesce; the sub-pixel
+    // coalesce only engages on a genuinely coarse panel (1h → ~0.12 px/frame),
+    // where guard-ON (coalesced) stays ≪ guard-OFF (per-frame) so the cell still
+    // FLIPS on the cost-guard kill-switch.
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await panelCmd(page, 'C', 'setTimeframe', { tf: '1h' }).catch(() => {});
     await sleep(1800);
     const bSetup = await readPanel(page, 'B');
     const cSetup = await readPanel(page, 'C');
     const hostSetup = await readHost(page);
     const setupOk = !!(bSetup && cSetup && hostSetup
-      && bSetup.tf === '5m' && cSetup.tf === '5m' && hostSetup.tf === '1m');
-    checks.check('H-S19 setup: B/C coarser (5m) vs host (1m)', setupOk,
+      && bSetup.tf === '1h' && cSetup.tf === '1h' && hostSetup.tf === '1m');
+    checks.check('H-S19 setup: B/C coarser (1h) vs host (1m)', setupOk,
       `B.tf=${bSetup?.tf} C.tf=${cSetup?.tf} host.tf=${hostSetup?.tf}`);
     if (!setupOk) return checks;
 
@@ -1807,9 +1874,14 @@ async function hS19(ctx) {
     // cost as a DETERMINISTIC counter delta (no wall-clock timing — D-039 rule).
     const idleFollowCost = idleRendersDefault - idleRendersFollowOff;
     const dragFollowCost = playDragRenders - playDragRendersFollowOff;
-    // < N: GREEN coalesces the follow to ~one render per formed coarse candle
-    // (N/5 ≈ 24 at 5m/1m); RED renders ~1:1 with host frames (≈ N). The bound
-    // sits between so the cell FLIPS: GREEN passes, kill-switch RED fails.
+    // D-041 reconciliation of the (formerly ≤60 candle-width) idle bound: GREEN now
+    // coalesces the follow to ~one render per DEVICE-PIXEL COLUMN the leading edge
+    // crosses (1h → ~0.12 px/frame → a new column only every ~8 frames, so ≈ N/8 ≈
+    // 15 over N=120); kill-switch RED (guard OFF) renders ~1:1 with host frames (≈ N).
+    // The bound sits between so the cell still FLIPS: GREEN passes, RED fails. (At the
+    // former 5m the fix correctly repaints every frame — >1 px/frame — so there is no
+    // sub-pixel coalesce to assert; the device-pixel smoothness itself is proved by
+    // H-S19b.)
     const IDLE_COALESCE_BOUND = 60;
 
     // Sanity: the follow-off baseline actually rendered (non-vacuous) and the
@@ -1820,7 +1892,7 @@ async function hS19(ctx) {
 
     // CORE (idle coalesce cell — the RED→GREEN flip): the BL-11 follow's per-frame
     // render cost on a NOT-dragged coarse panel must be COALESCED (render only when
-    // the leading edge moves ≥1 candle-width). GREEN ≪ N; kill-switch RED ≈ N.
+    // the leading edge crosses ≥1 DEVICE PIXEL — D-041). GREEN ≪ N; kill-switch RED ≈ N.
     checks.check('H-S19 idle-panel follow render cost coalesced (<< N host play-frames)',
       idleFollowCost <= IDLE_COALESCE_BOUND,
       `idleFollowCost=${idleFollowCost} (default=${idleRendersDefault} followOff=${idleRendersFollowOff}) `
@@ -1837,12 +1909,13 @@ async function hS19(ctx) {
       `dragFollowCost=${dragFollowCost} (playDrag=${playDragRenders} followOff=${playDragRendersFollowOff}) `
       + `pausedDragRef=${pausedDragRenders} bound=${IDLE_COALESCE_BOUND}`);
 
-    notes.push('H-S19 (BL-12, D-039): same-pair 2x2, all sync OFF, host 1m, panels B/C set to 5m (coarse — '
-      + 'the BL-11 follow path). Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, N=' + N + ' frames). '
+    notes.push('H-S19 (BL-12 D-039, idle bound reconciled under BL-13 D-041): same-pair 2x2, all sync OFF, host 1m, '
+      + 'panels B/C set to 1h (coarse — the BL-11 follow path; 1h not 5m so the D-041 sub-pixel coalesce engages). '
+      + 'Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, N=' + N + ' frames). '
       + 'DETERMINISTIC render COUNTERS only (ch._mcDiag.renders), never wall-clock. '
       + 'COST MATRIX (renders / ' + N + ' play-frames): '
       + `idle-panel(C) follow-on=${idleRendersDefault} follow-off=${idleRendersFollowOff} `
-      + `→ idleFollowCost=${idleFollowCost} (RED≈N per-frame; GREEN≪N coalesced ~N/5). `
+      + `→ idleFollowCost=${idleFollowCost} (RED≈N per-frame; GREEN≪N coalesced to ~1/device-pixel-column ≈ N/8). `
       + `dragged-panel(B) play-drag follow-on=${playDragRenders} follow-off=${playDragRendersFollowOff} `
       + `→ dragFollowCost=${dragFollowCost}. paused-drag reference=${pausedDragRenders}. `
       + `host(A) unchanged (same-TF, follows via forceSamePairParentDataMirror, not this path). `
@@ -1852,6 +1925,211 @@ async function hS19(ctx) {
       + `so the follow is disengaged during the gesture (dragFollowCost≈0 in RED and GREEN) — the measurable `
       + `render regression is the IDLE per-frame follow render (fixed by coalescing, part b); part (a) is the `
       + `ratified interaction-suspend guard. Fix behind __TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD (default ON).`);
+    return checks;
+  });
+}
+
+// ── H-S19b ───────────────────────────────────────────────────────────────
+// BL-13 (D-040): CORRECTS H-S19's cost guard (BL-12/D-039). Part (b) of the
+// guard coalesced the play-follow render with a CANDLE-WIDTH threshold (skip
+// render while |target-offsetX| < candleWidth). candleWidth is MANY device
+// pixels when zoomed in, so an idle/scrolling panel repainted only ~once per
+// formed candle → playback looked chunky / "stuck then jumps", not smooth like
+// the host (which repaints every frame). D-040 ruling: the coalesce threshold
+// must be ~1 DEVICE PIXEL (a new pixel column) — repaint whenever the follow
+// moves the viewport into a new device-pixel column; only genuinely SUB-PIXEL
+// advances cost zero renders. Same cost guard, same flag
+// (__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD) — no new flag.
+//
+// MEASUREMENT (D-040 anti-flake): DETERMINISTIC COUNTERS ONLY, never wall-clock.
+// The engine counts every follow render actually issued (ch._mcPlayFollowRenders,
+// read as followRenders). Over N host play-frames on a NOT-dragged, NOT-idle
+// (scrolling) coarse panel:
+//   • pixelColumnsCrossed = round(|ΔoffsetX| · devicePixelRatio) — the device-
+//     pixel columns the viewport swept while following the playhead.
+//   • candlesCrossed      = round(|ΔoffsetX| / candleWidth) — the coarse
+//     candle-width buckets swept (what the b90 threshold coalesces to).
+// SMOOTH (D-040): followRenders ≈ pixelColumnsCrossed (two-sided, ±SMALL).
+//   RED b90 (candle-width): followRenders ≈ candlesCrossed ≪ pixelColumnsCrossed
+//     → fails the LOWER bound (chunky).
+//   RED guard-off (bugswitch): followRenders = N (per-frame) > pixelColumnsCrossed
+//     → fails the UPPER bound (max renders).
+// SUB-PIXEL/STATIONARY: a same-ts advance yields 0 follow renders (guard still
+// provably does something).
+async function hS19b(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S19b replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S19b replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // Panel C is COARSER (1h) than the host (1m): 60 host frames per panel candle,
+    // so the leading-edge follow advances the viewport by candleWidth/60 device px
+    // per frame — comfortably SUB-pixel per frame. That guarantees the smooth-fix
+    // follow render count can track pixelColumnsCrossed WITHOUT the once-per-frame
+    // cap masking the difference from the chunky candle-width baseline.
+    await panelCmd(page, 'C', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1800);
+    const cSetup = await readPanel(page, 'C');
+    const hostSetup = await readHost(page);
+    const setupOk = !!(cSetup && hostSetup && cSetup.tf === '1h' && hostSetup.tf === '1m');
+    checks.check('H-S19b setup: panel C coarser (1h) vs host (1m)', setupOk,
+      `C.tf=${cSetup?.tf} host.tf=${hostSetup?.tf}`);
+    if (!setupOk) return checks;
+
+    const stepMs = 60_000;
+    // Warm up enough host frames to finish the boot's backward-history loads AND
+    // park the viewport at the leading edge, so the MEASURED window is a settled
+    // forward play (data grows only from forming-bar seams — no prepend-induced
+    // renders that would inflate the follow-render count).
+    const WARMUP = 120;
+    const N = 360; // 6 coarse (1h) candles worth of settled host 1m frames
+    const STATIONARY = 60;
+
+    let ts = ts0;
+    ts = await streamPlayFramesNoDrag(page, ts, WARMUP, stepMs);
+    await sleep(400);
+
+    // ── SCROLLING cell (the SMOOTHNESS + MONOTONICITY measurement) ──
+    // Stream N settled play-frames SAMPLING the panel's live offsetX + follow-render
+    // counter each frame. Compute pixelColumnsCrossed and followRenders over the SAME
+    // window (host-parity smoothness), and assert the eased offset is MONOTONIC across
+    // bar-boundary SEAMS (no backward jitter — the worst felt defect).
+    const cCandle0 = await readPanel(page, 'C');
+    const dpr = Number(cCandle0?.dpr) || (await readPanelFollow(page, 'C'))?.dpr || 1;
+    const candleWidth = Number(cCandle0?.candleWidth) || 0;
+
+    const scrollRun = await streamPlayFramesSamplingOffset(page, 'C', ts, N, stepMs);
+    ts = scrollRun.ts;
+    await sleep(300);
+    const samples = scrollRun.samples.filter((s) => s && Number.isFinite(s.offsetX));
+    const offSamples = samples.map((s) => s.offsetX);
+    const dataLenSamples = samples.map((s) => s.dataLen);
+    const seamCount = dataLenSamples.reduce((acc, v, i) =>
+      acc + (i > 0 && v > dataLenSamples[i - 1] ? 1 : 0), 0);
+
+    const offsetStart = offSamples.length ? offSamples[0] : NaN;
+    const offsetEnd = offSamples.length ? offSamples[offSamples.length - 1] : NaN;
+    const dOffset = (Number.isFinite(offsetStart) && Number.isFinite(offsetEnd))
+      ? Math.abs(offsetEnd - offsetStart) : 0;
+    const pixelColumnsCrossed = Math.round(dOffset * dpr);
+    const candlesCrossed = candleWidth > 0 ? Math.round(dOffset / candleWidth) : 0;
+    const followRendersScroll = samples.length
+      ? (Number(samples[samples.length - 1].followRenders) || 0) - (Number(samples[0].followRenders) || 0)
+      : 0;
+
+    // Non-increasing within float epsilon (offsetX grows MORE NEGATIVE toward the
+    // leading edge); a real rewind is a fraction of a candle (≫ eps), so backward
+    // jitter is caught crisply.
+    const MONO_EPS = 0.05;
+    let backwardSteps = 0;
+    let worstBackward = 0;
+    for (let i = 1; i < offSamples.length; i++) {
+      const delta = offSamples[i] - offSamples[i - 1]; // forward follow = negative
+      if (delta > MONO_EPS) { backwardSteps++; worstBackward = Math.max(worstBackward, delta); }
+    }
+
+    // ── SUB-PIXEL/STATIONARY cell: same-ts frames → 0 follow renders ──
+    const beforeStat = await readPanelFollow(page, 'C');
+    await streamStationaryPlayFrames(page, ts, STATIONARY);
+    await sleep(200);
+    const afterStat = await readPanelFollow(page, 'C');
+    const followRendersStationary = (Number(afterStat?.followRenders) || 0)
+      - (Number(beforeStat?.followRenders) || 0);
+
+    // ── PAUSE-MID-BAR cell: pause with the forming bar partly filled → the eased
+    // offset (a pure function of the frozen replay timestamp) must FREEZE exactly
+    // where it is, with NO snap to a bar boundary. Verify it falls out (no snap
+    // logic added). Advance a partial candle, then stop play and re-read. ──
+    const partialFrames = 25; // < 60 → mid-bar (1h panel)
+    let tsPause = await streamPlayFramesNoDrag(page, ts, partialFrames, stepMs);
+    await sleep(150);
+    const beforePause = await readPanelOffsetSample(page, 'C');
+    await setHostReplayPlaying(page, false);
+    await broadcastCmd(page, 'replayTick', { timestamp: tsPause });
+    await sleep(600);
+    const afterPause = await readPanelOffsetSample(page, 'C');
+    const pauseDrift = (beforePause && afterPause
+      && Number.isFinite(beforePause.offsetX) && Number.isFinite(afterPause.offsetX))
+      ? Math.abs(afterPause.offsetX - beforePause.offsetX) : NaN;
+    ts = tsPause;
+    await setHostReplayPlaying(page, true);
+
+    // ±SMALL: the device-pixel-column render count equals the number of distinct
+    // columns the monotonic offset swept, ±rounding/boundary. Kept a small ABSOLUTE
+    // constant per D-040 (no proportional fudge). RED margins are order-of-magnitude,
+    // so the constant only tightens GREEN.
+    const SMALL = 12;
+
+    // Non-vacuity: the panel actually scrolled a meaningful device-pixel distance
+    // that is MANY candle-widths (so the candle-width baseline is provably ≪ the
+    // pixel-column count and the ±SMALL band is not the whole signal).
+    checks.check('H-S19b setup non-vacuous: panel scrolled many device-pixel columns',
+      pixelColumnsCrossed >= 2 * SMALL && candlesCrossed >= 3
+      && pixelColumnsCrossed >= 4 * Math.max(1, candlesCrossed),
+      `pixelColumnsCrossed=${pixelColumnsCrossed} candlesCrossed=${candlesCrossed} `
+      + `dOffset=${dOffset.toFixed(2)} candleWidth=${candleWidth} dpr=${dpr} SMALL=${SMALL}`);
+
+    // CORE D-040 (SMOOTH): follow renders ≈ pixel-columns crossed (host parity).
+    // LOWER bound (fails on b90 candle-width → chunky): renders ≥ pixelColumns − SMALL.
+    checks.check('H-S19b scrolling follow is SMOOTH (renders >= pixel-columns-crossed - SMALL)',
+      followRendersScroll >= pixelColumnsCrossed - SMALL,
+      `followRendersScroll=${followRendersScroll} pixelColumnsCrossed=${pixelColumnsCrossed} `
+      + `candlesCrossed=${candlesCrossed} SMALL=${SMALL} N=${N}`);
+    // UPPER bound (fails guard-off → per-frame max): renders ≤ pixelColumns + SMALL.
+    checks.check('H-S19b scrolling follow is BOUNDED (renders <= pixel-columns-crossed + SMALL)',
+      followRendersScroll <= pixelColumnsCrossed + SMALL,
+      `followRendersScroll=${followRendersScroll} pixelColumnsCrossed=${pixelColumnsCrossed} `
+      + `SMALL=${SMALL} N=${N}`);
+
+    // Guard still DOES something: a sub-pixel/stationary advance costs 0 renders.
+    checks.check('H-S19b sub-pixel/stationary advance costs ZERO follow renders',
+      followRendersStationary === 0,
+      `followRendersStationary=${followRendersStationary} over ${STATIONARY} same-ts frames`);
+
+    // MONOTONICITY across the bar-boundary seam (D-041 constraint 3 — the assertion
+    // that matters most): the eased offset must never rewind/jitter backward. Backward
+    // jitter is a worse felt defect than the original chunkiness.
+    checks.check('H-S19b eased follow offset is MONOTONIC across bar-boundary seams (no backward jitter)',
+      offSamples.length > 0 && seamCount >= 1 && backwardSteps === 0,
+      `backwardSteps=${backwardSteps} worstBackward=${worstBackward.toFixed(3)}px seams=${seamCount} `
+      + `samples=${offSamples.length} MONO_EPS=${MONO_EPS}`);
+
+    // PAUSE-MID-BAR freezes the eased fraction exactly (no snap to a bar boundary).
+    checks.check('H-S19b PAUSE mid-bar freezes the eased offset exactly (no snap)',
+      Number.isFinite(pauseDrift) && pauseDrift <= MONO_EPS,
+      `pauseDrift=${pauseDrift} (beforePause=${beforePause?.offsetX} afterPause=${afterPause?.offsetX}) `
+      + `MONO_EPS=${MONO_EPS}`);
+
+    notes.push('H-S19b (BL-13, D-041): same-pair 2x2, all sync OFF, host 1m, panel C set to 1h (coarse - the '
+      + 'BL-11 follow path, 60 host frames/candle). Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, N=' + N
+      + ' scrolling frames). DETERMINISTIC follow-render COUNTER + per-frame offsetX sampling only, never wall-clock. '
+      + 'CONTINUOUS eased leading-edge follow (D-041): continuousOffsetX = quantizedOffsetX - fraction*candleSpacing, '
+      + 'fraction = (replayTimestamp - formingBarStartTs)/barDurationMs (pure function of the shared playhead ts). '
+      + `MEASURED (fix): followRendersScroll=${followRendersScroll} vs pixelColumnsCrossed=${pixelColumnsCrossed} `
+      + `vs candlesCrossed=${candlesCrossed} (candleWidth=${candleWidth}px dpr=${dpr}); `
+      + `SUB-PIXEL/STATIONARY followRenders=${followRendersStationary} (0 - guard still coalesces); `
+      + `MONOTONIC backwardSteps=${backwardSteps} worstBackward=${worstBackward.toFixed(3)}px over ${seamCount} seams; `
+      + `PAUSE-MID-BAR drift=${pauseDrift} (frozen, no snap). `
+      + 'RED b90 (bar-quantized candle-width threshold, verified NO-OP): followRenders~candlesCrossed<<pixelColumnsCrossed '
+      + 'chunky, fails the LOWER (smoothness) bound. RED guard-off '
+      + '(--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD): followRenders=N per-frame > pixelColumnsCrossed '
+      + 'fails the UPPER bound AND stationary!=0. GREEN (continuous eased fix): followRenders~pixelColumnsCrossed '
+      + '(host-parity smooth), stationary=0, monotonic across seams, pause freezes. SAME flag '
+      + '__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD (default ON) - no new flag.');
     return checks;
   });
 }
@@ -1874,6 +2152,7 @@ export function scenarioList() {
     { id: 'H-S17', title: 'coarser same-pair panel advances playhead on play (BL-10)', run: hS17 },
     { id: 'H-S18', title: 'panels auto-follow playhead viewport on play (BL-11)', run: hS18 },
     { id: 'H-S19', title: 'play-follow cost guard: idle coalesce + drag suspend (BL-12)', run: hS19 },
+    { id: 'H-S19b', title: 'play-follow smoothness: device-pixel coalesce (BL-13)', run: hS19b },
   ];
 }
 

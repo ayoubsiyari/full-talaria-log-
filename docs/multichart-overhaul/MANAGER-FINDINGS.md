@@ -2542,6 +2542,120 @@ not-dragging (idle) cell, plus the paused reference and host.
 play must be as smooth as dragging while stopped; a not-dragged coarse panel must still follow the playhead
 (no marching off-screen), paused/scrub and price-axis independence unchanged.
 
+## 6cf. BL-13 — play-follow smoothness: continuous sub-candle leading-edge follow (D-040 → D-041, b91)
+
+**DEFECT (BL-13 / D-040).** After BL-12/D-039 the not-dragged coarse panel followed the
+playhead but its follow render was **coalesced at one CANDLE-WIDTH**, so on a zoomed-in
+coarse panel the viewport sat frozen for a whole forming candle then **JUMPED one
+`candleSpacing`** ("stuck then jumps group-by-group") — chunky, not host-parity smooth.
+D-040 asked to change the coalesce unit from one candle-width to **~1 device pixel**.
+
+**PREMISE CORRECTION → D-041 (accepted).** The threshold swap alone was a **verified
+no-op**. The BL-11 follow target is `replay-system.js:getReplayAutoScrollState` →
+`offsetX = -scrollPosition · candleSpacing`, and `scrollPosition` is derived from
+`data.length` — i.e. the target is **BAR-QUANTIZED**: it only moves when a whole candle
+forms. Comparing that discrete target against the current offset in device pixels vs
+candle-width changes nothing — the target itself never moves sub-candle, so H-S19b stayed
+RED (`followRenders ≈ candlesCrossed ≪ pixelColumnsCrossed`) regardless of the threshold
+unit. Director **D-041, Option A**: implement a genuine **continuous sub-candle
+leading-edge follow** under the SAME flag `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD`.
+
+**MECHANISM (D-041, `panel-cmd-bridge.js:maybePanelPlayViewportFollow` + new
+`_panelPlayFollowContinuousOffsetX`; `chart.js` untouched).** During PLAY, ease the
+bar-quantized leading edge forward by the forming candle's fractional progress, derived
+**purely from the SHARED PLAYHEAD TIMESTAMP** (never `Date.now()` / rAF / animation-tick):
+
+```
+fraction          = clamp01( (rs.replayTimestamp − formingBarStartTs) / barDurationMs )
+continuousOffsetX = quantizedOffsetX − fraction · candleSpacing      // offsetX grows more
+                                                                     // negative → leading edge
+```
+
+Repaint **only when `continuousOffsetX` crosses into a new DEVICE-PIXEL COLUMN**
+(`Math.round(target·dpr) !== Math.round(applied·dpr)`); a sub-pixel / stationary / paused
+advance stays in the same column → **ZERO renders** (the guard still coalesces). Two
+subtleties that made it exact:
+- **Coalesce baseline = last APPLIED eased offset tracked on the chart
+  (`ch._mcPlayFollowAppliedOffsetX`), NOT the live `ch.offsetX`.** The per-frame seek
+  (`goToReplayTimestamp`/mirror) runs *before* this callback and nudges `ch.offsetX`
+  between frames; comparing against the live offset re-crossed the same pixel column
+  ~twice → ~2× render count. Tracking the applied value gives a clean **1 render per
+  device-pixel column**. On a coalesced (skip) frame the viewport is re-pinned to the
+  applied offset (no repaint) so it stays exactly where the last paint left it.
+- **Render once at the eased value:** `syncReplayViewportToPlayhead({render:false})`
+  applies the BL-2b-safe forceRecenter (Y-scale skip, offset gating) without painting,
+  then we override `offsetX = continuousOffsetX` and paint once.
+
+**MONOTONICITY / SEAM (D-041 constraint 3 — the assertion that matters most).** At the
+bar-boundary seam the pre-seam limit `q − candleSpacing` equals the post-seam value
+`q_next − 0` (because `data.length++` shifts `q` by exactly one `candleSpacing` as
+`fraction` resets to 0), so the ease is **C0-continuous and MONOTONIC across the seam** —
+no rewind, jitter, or double-count. Backward jitter would be a worse felt defect than the
+original chunkiness; H-S19b asserts `backwardSteps === 0` over ≥1 seam. **PAUSE mid-bar**
+freezes the fraction exactly (the offset is a pure function of the frozen timestamp) — no
+snap logic added; it falls out (`pauseDrift = 0`, offset stays a mid-bar value).
+
+**REPRO — H-S19b (RED-first, DETERMINISTIC counters + per-frame offsetX sampling; NO
+wall-clock).** Same-pair 2×2, all sync OFF, host 1m, panel C = **1h** (coarse — 60 host
+frames/candle → ~0.12 px/frame, sub-pixel). Real PLAY fan-out (`replayFrame isPlaying=true`,
+1m/frame, N=360 settled frames after a 120-frame warmup that drains boot history loads).
+Deterministic follow-render counter `ch._mcPlayFollowRenders`.
+
+- **GREEN (fix):** `followRendersScroll = 42` vs `pixelColumnsCrossed = 42` vs
+  `candlesCrossed = 7` (candleWidth 6px, dpr 1) — per-frame delta histogram `{0:317, 1:42}`
+  (never >1/frame); `stationary = 0`; `backwardSteps = 0` over 6 seams; `pauseDrift = 0`.
+  Flake-stable **GREEN ×2**.
+- **RED — b90 (bar-quantized candle-width threshold, verified no-op):**
+  `followRenders ≈ candlesCrossed ≪ pixelColumnsCrossed` → fails the LOWER (smoothness)
+  bound (chunky).
+- **RED — kill-switch `--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` (guard
+  OFF):** `followRendersScroll = 359` (per-frame) ≫ `pixelColumnsCrossed + SMALL` → fails
+  the UPPER bound **AND** `stationary = 60 ≠ 0`. Flake-stable **RED ×2**.
+
+**KILL-SWITCH A/B (`__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD`, N=360 scroll / 60
+stationary).** Guard **OFF** = unconditional per-frame follow render: scroll `359`,
+stationary `60`. Guard **ON** (fix) = renders ≈ device-pixel columns crossed: scroll `42`
+(= `pixelColumnsCrossed`), stationary `0`. The guard converts a per-frame repaint into a
+per-device-pixel-column repaint while keeping the motion host-parity smooth.
+
+**H-S19 RECONCILED (stale ≤60 idle bound).** D-041 redefines the coalesce unit from one
+candle-width to one device pixel, so at the old 5m panel the leading edge moves **>1 device
+pixel per host frame** and the (correct) follow now repaints every frame — nothing left to
+coalesce, so `idleFollowCost = 124 > 60`. Reconciliation: move H-S19's idle/drag panels to
+**1h** (where the sub-pixel coalesce genuinely engages) and reframe the bound as
+"~1 render per device-pixel column ≈ N/8" (still ≤60). Result: default **GREEN
+`idleFollowCost = 19`**, kill-switch **RED `124`** — the D-039 RED↔GREEN flip is preserved,
+drag-suspend (part a) unchanged (`dragFollowCost` bounded). The device-pixel *smoothness*
+itself is proved by H-S19b, not H-S19.
+
+**VERIFICATION.** H-S19b GREEN ×2 under fix / RED ×2 under the kill-switch (flake-stable).
+H-S17 (BL-10), H-S18 (BL-11), H-S13 (paused independence), H-S8 (host play) all still GREEN.
+Full `npm run gate` **GREEN — 17 scenarios, 0 known-failing tracked, no regressions**.
+Engine change applied **BYTE-IDENTICALLY** to both trees'
+`chart/multichart-prod/panel-cmd-bridge.js` — SHA256
+`B930BC8C8ADDA22ABB849A76C04EFA5297C166D442A760A9354E1CC3DC45F5A8` (equal). `node --check`
+clean on all edited `.js`. Build bumped **b90 → 20260707b91** (uniform `SW_VERSION` +
+`__TALARIA_CHART_BUILD_ID` across dist-v9/live/legacy/embed in both trees; no b90
+stragglers).
+
+**STATE-MATRIX (D-035 rule; D-041 continuity + cost column — renders per device-pixel
+column; ✓ = holds).**
+
+| Cell | State | Continuity | Cost (guard ON vs OFF) | Behavior |
+|---|---|---|---|---|
+| **Steady play [CALLED-OUT]** | eased forward follow | monotonic, offset ∝ shared timestamp | **ON ≈ pixelColumnsCrossed (42/360)** vs **OFF ≈ N (359/360)** | Repaint per device-pixel column; sub-pixel = ZERO. Host-parity smooth. THE FIX. |
+| **Seam (forming bar completes) [CALLED-OUT]** | eased crosses bar boundary | `q − candleSpacing` == `q_next − 0` ⇒ **no rewind/jitter/double-count** (`backwardSteps=0`) | folded into steady cost | C0-continuous by construction; the worst felt defect is structurally excluded. |
+| **Pause mid-bar [CALLED-OUT]** | timestamp frozen | fraction frozen ⇒ **offset frozen, NO snap** (`pauseDrift=0`) | 0 (play-only path not entered) | Falls out of the pure-timestamp formula; no snap logic added. |
+| **Scrub (paused seek)** | paused | quantized static-mirror offset (play-only ease not active) | 0 follow renders | Unchanged — scrub uses the paused mirror path, not `maybePanelPlayViewportFollow`. |
+| **Drag-disengage [CALLED-OUT]** | active interaction | follow SUSPENDED (`userHasPanned` + `_isUserInteractingWithChart`) | ≈0 in BOTH (part a) | Unchanged from D-039; never fights the drag / BL-6 recenter. |
+| **B-FIX-C left-prepend while easing** | backward history load lands mid-ease | applied-offset baseline + auto-scroll gate ⇒ **no double-shift** | folded into steady cost | H-S18 (d) already bounds the left-prepend compensation (`offsetToTarget` bounded); the eased follow rides the same gate. |
+| **Host (tile A)** | unchanged | n/a (not an iframe panel) | n/a | Same-TF host follows via the engine's own auto-scroll; never enters `panel-cmd-bridge.js`. |
+
+**PENDING:** PO live re-test on deployed **b91** — coarse panel + play, all sync off:
+motion must be visibly smooth (no candle-by-candle jumps) with **no backward jitter at the
+candle seam**; pausing mid-candle must freeze in place (no snap to a boundary); paused/scrub
+and price-axis independence unchanged.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

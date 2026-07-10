@@ -1876,3 +1876,92 @@ trees hash-match; PO live confirm — specifically "drag during play feels like 
 while paused"; H-S19 permanent). **Phase-5 ledger:** case #11 — the policy table
 needs a COST column per cell, not just behavior. Quiet-period clock resets; the
 D-038 instruction stands — Phase-5 design doc gets written in parallel NOW.
+
+---
+
+## D-040 — REOPEN GRANTED: BL-13 (chunky panel playback) — a D-039 SPEC DEFECT, owned (2026-07-10)
+
+**Attribution correction first: this one is on the Director.** D-039's fix direction
+was internally inconsistent — it said "render only when the follow moves the viewport
+by ≥1 candle-width" AND "a playhead advancing within the same pixel column should
+cost zero renders" in the same sentence. Those are different units (a candle can be
+many device pixels when zoomed in). The worker implemented the coarser reading
+literally and correctly; the chunky playback is the spec's fault, not the
+implementation's. Standing rule from this: **Director/manager specs with numeric
+thresholds must give exactly ONE unit**; if a spec offers two readings, the worker
+must bounce it back, not pick one.
+
+**Rulings:**
+1. **Threshold correction APPROVED:** coalesce at ~1 device pixel (new pixel column),
+   host-parity smoothness, sub-pixel advances still zero renders. This is the
+   reading D-039 intended.
+2. **The higher render bound is RATIFIED** (D-039 cost-column rule): during active
+   scroll the idle-follow render count rises from ~28 toward renders ≈ pixel-columns
+   crossed — that IS the cost of smooth playback and is accepted. H-S19b's bound is
+   expressed exactly that way: renders ≤ pixel-columns-crossed + small constant,
+   AND idle/sub-pixel advances still == 0 (the guard must still prove it does
+   something).
+3. **Same flag, not a sibling.** This is a corrected implementation of the SAME cost
+   guard, not a new behavior — `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` keeps
+   governing it. Flag proliferation is its own hazard (Item-1 lesson) and Phase-5
+   subsumes this whole column anyway; "smoothness vs cost" does not need independent
+   revert once the threshold is in the intended unit.
+4. Standard sequence otherwise: H-S19b RED-first (deterministic counters, cadence
+   asserted against pixel-column crossings, flake-stable), kill-switch A/B causal,
+   BL-10/BL-11 stay green, play-only, X-viewport-only, drag-suspend (BL-12 part a)
+   untouched. PO live confirm wording: "panel playback scrolls as smoothly as the
+   host's."
+
+**Phase-5 ledger:** case #12 — and the sharpest argument yet for the policy table:
+three consecutive reopens (BL-11 → 12 → 13) are one feature (panel viewport follow)
+being specified cell by cell through production. The Phase-5 design doc (D-038/D-039
+instruction) should now include the follow-behavior column COMPLETE — behavior + cost
++ threshold units per cell — so this column stops being discovered incrementally.
+
+---
+
+## D-041 — D-040 premise corrected; Option A (continuous sub-candle follow) APPROVED (2026-07-10)
+
+The worker stopping on an honest blocker instead of shipping a fake green, and the
+manager refusing to authorize a mechanism change to an approved fix — both correct.
+This is the escalation path working as designed.
+
+**Premise correction accepted.** The follow target is bar-quantized (advances only on
+candle formation), so D-040's threshold swap is a verified no-op (followRenders 8→8,
+flake-stable, root-caused). The host only looks smooth because at 1m it forms a
+candle every frame. The manager's key argument is also accepted: D-040's ratified
+cost model (renders ≈ pixel-columns-crossed) already PRESUPPOSED sub-candle viewport
+motion — Option A is the faithful completion of D-040's intent, not new scope.
+
+**Option A APPROVED** — continuous sub-candle leading-edge follow for panels during
+play, same flag (`__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD`), same worker resumed
+(it found the root itself — no contaminated-theory concern, D-028 rule 4 does not
+apply). Constraints, in addition to everything standing (PLAY-only, X-only, BL-2b
+price independence, BL-10/BL-11 + drag-suspend green, H-S19b RED-first):
+
+1. **The eased offset must be derived from the SHARED PLAYHEAD TIMESTAMP** (fraction
+   of the forming coarse bar elapsed), never from wall-clock animation ticks. This
+   keeps it deterministic (harness-assertable), keeps panels in lockstep with the
+   host by construction, and makes pause behavior automatic.
+2. **Pause mid-bar freezes the fractional offset exactly where it is** — no snap to
+   bar boundary, no continued easing. State-matrix must include this cell, plus:
+   scrub (follow logic per BL-11 contract, no easing artifacts), drag-disengage
+   (unchanged), and the B-FIX-C left-prepend cell (a history load landing while the
+   eased follow is active — no double-shift).
+3. **H-S19b gains a monotonicity assertion:** during steady play the panel's follow
+   offset advances monotonically (no backward jitter at bar boundaries — the moment
+   the forming bar completes and a new one opens is the seam where easing math
+   typically double-counts or rewinds).
+4. Renders bound as already ratified: ≈ pixel-columns-crossed ± constant; sub-pixel
+   and idle still zero.
+
+Tree state acknowledged (mid-task, no-op edit in one tree only, nothing shipped, b90
+unaffected) — the worker's first act on resume is to revert the no-op edit so the
+diff contains only the real mechanism. Close conditions: standard + PO live wording
+unchanged ("panel playback scrolls as smoothly as the host's").
+
+**Phase-5 ledger:** the §3a follow column gains the CONTINUITY cell (target
+quantization + easing source), and a design lesson worth recording: when a spec sets
+a smoothness bar, the DIAG must first verify the data source can express it — the
+quantized target would have been visible in one read of
+`getReplayAutoScrollState()` before any threshold work.

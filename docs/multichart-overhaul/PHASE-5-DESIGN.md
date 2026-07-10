@@ -10,7 +10,7 @@
 ## 1. Why consolidate
 
 Every defect in one specific family has been fixed with an individually-correct,
-kill-switchable guard. As of D-039 the family has **12 cases**:
+kill-switchable guard. As of D-040 the family has **13 cases**:
 
 | # | Case | Kill-switch | One-line behaviour it patches |
 |---|---|---|---|
@@ -25,7 +25,8 @@ kill-switchable guard. As of D-039 the family has **12 cases**:
 | 9 | BL-9-play | (narrowed BL-9 scope) | make the BL-9 continuation **paused-only** |
 | 10 | BL-10 | `__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE` | advance **playing coarse** panel playhead + forming candle |
 | 11 | BL-11 | `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW` | **playing** panel viewport follows the playhead |
-| 12 | BL-12 | `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` *(in progress)* | **cost** of BL-11 follow: suspend during user drag, coalesce render to ≥1 candle-width move |
+| 12 | BL-12 | `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` | **cost** of BL-11 follow: suspend during user drag, coalesce render |
+| 13 | BL-13 | `__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` *(same flag; in progress)* | **threshold unit** of BL-12 coalesce: device-pixel column, not candle-width (smoothness) |
 
 Also adjacent (price-axis dimension of the same frame): **BL-2b**
 `__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE`.
@@ -42,17 +43,35 @@ carries **three coupled payloads** at once —
 across `applyReplayFrame`, `scheduleCoalescedSeek`, `replayTick`, and their
 guards. Each new combination (relationship × state × sync) that lacked a branch
 produced a new BL-N. BL-6 fell out of BL-5, BL-9-play out of BL-9, BL-11 out of
-BL-10, **BL-12 out of BL-11** — all **"missing complement"** errors: a guard
-handled one mode and silently did the wrong thing in the adjacent mode.
+BL-10, **BL-12 out of BL-11, BL-13 out of BL-12** — all **"missing complement"**
+errors: a guard handled one mode and silently did the wrong thing in the adjacent
+mode. In fact **BL-11 → BL-12 → BL-13 are one feature** — *panel viewport follow
+during play* — being specified cell-by-cell through production reopens (D-038 →
+D-039 → D-040). That is the sharpest argument for Phase-5: a single feature should
+be specified once, completely, not discovered one reopen at a time. Its complete
+column is written out in **§3a** so it stops leaking.
 
-**BL-12 adds a second lesson (D-039):** a cell can be *behaviourally* correct yet
-*cost* wrong. BL-11 correctly made playing panels follow the playhead, but did it
-with an unconditional per-frame recenter+render — right behaviour, wrong cost, and
-the cost regressed drag smoothness during play. D-038 forced the drag-disengage
-correctness cell but not its cost cell; that escape is why the D-035 rule is now
-extended: **any fix that adds per-frame work must state render/work cost per cell,
-not just behaviour.** Consequently the Phase-5 policy table needs a **cost column
-per cell**, not only an adopt/ignore behaviour — see §3.
+**BL-12/BL-13 add two more lessons:**
+- **(D-039) cost is a first-class cell property.** BL-11 correctly made playing
+  panels follow the playhead, but with an unconditional per-frame recenter+render —
+  right behaviour, wrong cost, regressing drag smoothness. The D-035 rule is
+  extended: **any fix that adds per-frame work must state render/work cost per
+  cell, not just behaviour** → the policy table needs a **cost column** (§3).
+- **(D-040) numeric thresholds carry exactly one unit.** D-039's fix direction
+  said "≥1 candle-width" and "same pixel column = zero renders" in one sentence —
+  two different units (a candle spans many device pixels when zoomed in). The
+  coarser reading shipped and playback went chunky. Corrected to **device-pixel
+  column**. Standing rule: a spec threshold gets **one unit**, and a worker handed a
+  two-unit threshold **bounces it back** rather than guessing → the policy table
+  needs a **threshold-unit column** (§3a).
+- **(D-041) verify the data source can express the smoothness bar BEFORE tuning.**
+  The device-pixel threshold turned out to be a no-op because the follow target
+  (`getReplayAutoScrollState().offsetX`) is **bar-quantized** — it only moves once
+  per formed candle, so no pixel-level threshold could add smoothness. Real
+  smoothness required a new mechanism: a **continuous, timestamp-derived eased
+  leading-edge offset**. Standing rule: when a spec sets a smoothness/precision bar,
+  the diagnosis first checks the data source can *express* it (one read of the
+  source would have collapsed BL-13 and the D-041 re-ruling into a single step).
 
 Consolidation replaces the scattered branches with **one explicit policy table**
 that is total over the context space — so a missing cell is impossible by
@@ -94,21 +113,23 @@ MirrorPolicy = {
   seek:   'COALESCED' | 'FORCE' | 'NONE',
   // COST column (D-039): every cell declares its per-frame render budget, not
   // just behaviour. A cell that adopts a payload must also say WHEN it may repaint.
-  render: 'ON_MOVE_GE_1_CANDLE'   // coalesce: repaint only when the viewport actually
-                                  //   moves ≥1 candle-width (sub-pixel advance = 0 renders)
+  render: 'ON_MOVE_GE_1_PIXEL_COLUMN'  // coalesce: repaint only when the viewport moves into a
+                                  //   new device-pixel column (sub-pixel advance = 0 renders) — D-040 unit
         | 'SUSPEND_DURING_INTERACTION'  // no per-frame work on a panel the user is dragging
         | 'EVERY_FRAME'           // legacy/host cadence — must be justified, never a default
         | 'NONE',
 }
 ```
 
-The `render` field is the D-039 lesson made structural: BL-11's cell was
-`xView:FOLLOW_PLAYHEAD` with an implicit `render:EVERY_FRAME`, which was the cost
-regression. Under Phase-5 the same follow cell carries
-`render:ON_MOVE_GE_1_CANDLE` for idle panels and `SUSPEND_DURING_INTERACTION`
-while the panel is being dragged (BL-12). Cells are verified by the gate on
-**deterministic render counters** (renders per N host play-frames), never
-wall-clock frame-time (D-039 anti-flake rule).
+The `render` field is the D-039/D-040 lesson made structural: BL-11's cell was
+`xView:FOLLOW_PLAYHEAD` with an implicit `render:EVERY_FRAME` (cost regression,
+BL-12); BL-12's first coalesce used the wrong **unit** (candle-width → chunky,
+BL-13). The settled cell is `render:ON_MOVE_GE_1_PIXEL_COLUMN` for a scrolling
+panel and `SUSPEND_DURING_INTERACTION` while it is being dragged. Every cell
+carries an explicit **threshold unit** (here: 1 device pixel), and cells are
+verified by the gate on **deterministic render counters** — `renders ≈
+pixel-columns-crossed ± constant`, `0` for sub-pixel/idle — never wall-clock
+frame-time (D-039 anti-flake rule).
 
 Draft resolution (the authoritative table is finalized at implementation time
 against the then-current gate; cells marked ⟶BL cite the case that established
@@ -131,6 +152,38 @@ Notes embedded in the table:
   that was missing).
 - **Y-PRICE = INDEPENDENT everywhere** — BL-2b is lifted out of the branch logic
   into an invariant the table cannot override.
+
+## 3a. The panel-viewport-follow column — COMPLETE (per D-040)
+
+This is the one feature that BL-11/12/13 specified cell-by-cell. Written out fully
+here — **behaviour + cost + threshold unit per cell** — so the column is closed and
+never reopens for a missed cell. This is exactly the shape every Phase-5 policy
+cell must eventually carry.
+
+Feature: *how an iframe panel's TIME (X) viewport tracks the replay playhead.*
+Y-price is out of scope (BL-2b = INDEPENDENT, always). Applies to same-pair panels
+(SAME_TF / COARSER); FINER_SELFOWN and INDEPENDENT run their own engine follow.
+
+| State | Behaviour | Cost (renders) | Threshold unit | Case / kill-switch |
+|---|---|---|---|---|
+| **IDLE (no replay)** | no follow | 0 | — | n/a |
+| **PAUSED** | no follow; window preserved | 0 (no per-frame work) | — | BL-11 (play-only gate) |
+| **SCRUB (paused, user scrubbing)** | no auto-follow; user owns viewport | 0 follow renders (scrub renders are the user's) | — | BL-11 / BL-8 aligned-guard |
+| **PLAYING, steady (within a forming bar)** | **continuous eased leading-edge scroll**: offset = quantized − `fraction·candleSpacing`, `fraction = (replayTs − formingBarStartTs)/barDurationMs`, **derived from the shared playhead timestamp, never wall-clock**; repaint on each new device-pixel column | ≈ **pixel-columns crossed** (host-parity smooth) | **1 device pixel**; fraction in **timestamp** units | BL-13 / D-041 (continuity) |
+| **PLAYING, sub-pixel / same-pixel-column advance** | eased offset updates but **no render** | **0** (coalesced) | 1 device pixel | BL-12 coalesce + BL-13 unit |
+| **PLAYING, bar-boundary seam (forming bar completes → new opens)** | offset advances **monotonically** across the seam — no rewind / jitter / double-count | (continuous with steady cell) | timestamp-derived, so seam is continuous by construction | BL-13 / D-041 (monotonicity) |
+| **PAUSE mid-bar** | fractional offset **frozen exactly** (no snap to bar boundary) — falls out of timestamp derivation (ts frozen ⇒ offset frozen) | 0 | timestamp | BL-13 / D-041 |
+| **PLAYING, user actively dragging/panning/zooming this panel** | follow **suspended** for this panel (user has opted out until back at edge) | **0** follow renders on this panel | — (binary: interacting?) | BL-12 part (a) + BL-11 drag-disengage (D-038) |
+| **PLAYING, user has panned away from leading edge (not currently dragging)** | no snap-back; follow stays disengaged until panel returns to the edge | 0 follow renders | leading-edge test | BL-11 (D-038 drag-disengage parity) |
+| **COARSER panel, PLAYING** | advance playhead + forming candle (coalesced seek) THEN follow per rows above | seek: BL-10 coalesced; follow: as above | seek: coalesced rAF; follow: 1 device pixel | BL-10 advance + BL-11/12/13 follow |
+| **HOST (tile A)** | source of truth; renders every frame (its own contract, copied — not modified) | host cadence | — | unchanged |
+
+Verification contract for the whole column (all deterministic counters, never
+wall-clock — D-039): `renders ≈ pixelColumnsCrossed ± small constant` while
+scrolling; `renders == 0` for sub-pixel/idle/paused/suspended cells. Under Phase-5
+this entire table collapses to a single resolver output `{xView:'FOLLOW_PLAYHEAD',
+render:'ON_MOVE_GE_1_PIXEL_COLUMN' | 'SUSPEND_DURING_INTERACTION'}` keyed on state,
+retiring BL-11/12/13's three scattered code sites and their shared flag.
 
 ## 4. Proposed shape
 
@@ -179,6 +232,7 @@ Notes embedded in the table:
 
 - [x] BL-10 PO-confirmed on live build (b87) + independently verified.
 - [x] BL-11 fix landed + gate green (b88/b89) + PO-confirmed live (b89).
-- [ ] BL-12 closed (fix landed, gate green, PO-confirmed = "drag during play feels like drag while paused").
-- [ ] Quiet period holds: ≥1–2 weeks with no new replay-mirror-frame family defect. **Clock reset at D-039 (BL-12).**
+- [x] BL-12 fix landed + gate green (b90). *(Superseded in part by BL-13 — the coalesce unit was wrong; see below.)*
+- [ ] BL-13 closed (device-pixel-column threshold; fix landed, gate green, PO-confirmed = "panel playback scrolls as smoothly as the host's").
+- [ ] Quiet period holds: ≥1–2 weeks with no new replay-mirror-frame family defect. **Clock reset at D-040 (BL-13).**
 - [ ] Gate stable and green across the full scenario set at the start of the window.

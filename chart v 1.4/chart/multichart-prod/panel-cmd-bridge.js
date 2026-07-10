@@ -1522,18 +1522,67 @@
     //       semantically (userHasPanned), so the per-frame invocation is pure waste;
     //       skipping it guarantees the follow never fights the user's drag or the
     //       BL-6 recenter.
-    //   (b) COALESCE the idle-panel render: only recenter+render when the leading-edge
-    //       follow would move the viewport by >= 1 candle-width. A sub-candle-width
-    //       playhead advance (playhead moving within the same pixel column) costs ZERO
-    //       renders — renders drop from ~1:1-with-host-frames to ~1-per-formed-candle.
-    // Constraints preserved: BL-11 stays GREEN (a non-dragged playing panel still
-    // follows once the edge moves a candle); PLAY-ONLY; X/TIME-ONLY (resetPriceScale
-    // stays false — BL-2b price-axis independence intact).
+    //   (b) COALESCE the render at DEVICE-PIXEL granularity via a CONTINUOUS eased
+    //       leading-edge offset (BL-13 / D-041). The BL-11 leading-edge target
+    //       (getReplayAutoScrollState → offsetX = -scrollPosition·candleSpacing) is
+    //       BAR-QUANTIZED: it only moves when a whole candle forms, so a threshold in
+    //       device pixels vs candle-width is a verified NO-OP — on a coarse panel the
+    //       viewport sat frozen for a whole candle then JUMPED one candleSpacing
+    //       ("stuck then jumps group-by-group"), not smooth like the host. D-041 fix:
+    //       derive a CONTINUOUS sub-candle offset from the SHARED PLAYHEAD TIMESTAMP —
+    //         fraction = (replayTimestamp − formingBarStartTs) / barDurationMs  ∈ [0,1]
+    //         continuousOffsetX = quantizedOffsetX − fraction·candleSpacing
+    //       (NEVER wall-clock / rAF time — a pure function of the shared replay
+    //       timestamp, so it is deterministic, harness-assertable, in lockstep with the
+    //       host, and PAUSE freezes the fraction exactly where it is with no snap). Then
+    //       recenter+render ONLY when that continuous offset crosses into a NEW device-
+    //       pixel column; a genuinely SUB-PIXEL (or stationary/paused) advance costs
+    //       ZERO renders. At the bar-boundary seam the pre-seam limit (q − candleSpacing)
+    //       equals the post-seam value (q_next − 0), so the ease is MONOTONIC across the
+    //       seam — no rewind / backward jitter (a worse felt defect than the chunkiness).
+    // Constraints preserved: BL-11 stays GREEN (a non-dragged playing panel tracks the
+    // leading edge, now smoothly); PLAY-ONLY; X/TIME-ONLY (resetPriceScale stays false —
+    // BL-2b price-axis independence intact). chart.js untouched.
     function _panelPlayFollowLeadingEdgeOffsetX(ch, rs) {
         try {
             if (!rs || typeof rs.getReplayAutoScrollState !== 'function') return NaN;
             var st = rs.getReplayAutoScrollState(ch);
             return (st && Number.isFinite(st.offsetX)) ? st.offsetX : NaN;
+        } catch (_) { return NaN; }
+    }
+
+    // Continuous eased leading-edge offset (D-041). Pure function of the SHARED replay
+    // timestamp: eases the bar-quantized leading edge FORWARD by the forming candle's
+    // fractional progress so the viewport scrolls sub-candle (host-parity smooth) and
+    // reaches the next bar's quantized offset EXACTLY at the seam (monotonic, no rewind).
+    // Falls back to the quantized offset when the fraction can't be derived.
+    function _panelPlayFollowContinuousOffsetX(ch, rs) {
+        try {
+            var q = _panelPlayFollowLeadingEdgeOffsetX(ch, rs);
+            if (!Number.isFinite(q)) return NaN;
+            var data = Array.isArray(ch.data) ? ch.data : null;
+            if (!data || !data.length) return q;
+            var lastBarT = Number(data[data.length - 1].t);
+            var ts = (rs && Number.isFinite(Number(rs.replayTimestamp)))
+                ? Number(rs.replayTimestamp) : NaN;
+            if (!Number.isFinite(lastBarT) || !Number.isFinite(ts)) return q;
+            var barMs = (typeof ch.parseTimeframe === 'function')
+                ? Number(ch.parseTimeframe(ch.currentTimeframe)) : NaN;
+            if (!(Number.isFinite(barMs) && barMs > 0)) return q;
+            var frac = (ts - lastBarT) / barMs;
+            if (!Number.isFinite(frac)) return q;
+            if (frac < 0) frac = 0;
+            if (frac > 1) frac = 1;
+            var spacing = (typeof ch.getCandleSpacing === 'function')
+                ? Number(ch.getCandleSpacing()) : NaN;
+            if (!(Number.isFinite(spacing) && spacing > 0)) {
+                var cw = Number(ch.candleWidth);
+                var gap = Number(ch.candleGap);
+                spacing = (Number.isFinite(cw) ? cw : 6) + (Number.isFinite(gap) ? gap : 2);
+            }
+            // offsetX grows MORE NEGATIVE toward the leading edge; ease forward by
+            // frac·spacing so frac→1 lands exactly on the next bar's quantized offset.
+            return q - frac * spacing;
         } catch (_) { return NaN; }
     }
 
@@ -1562,27 +1611,48 @@
             // BL-12 (D-039) cost guard (default ON). Kill-switch reverts to per-frame.
             var costGuardOn = !(typeof window !== 'undefined'
                 && window.__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD);
+            // Continuous eased offset to apply this frame (D-041). NaN with the guard
+            // OFF → the kill-switch restores the raw per-frame quantized follow.
+            var easedOffsetX = NaN;
             if (costGuardOn) {
                 // (a) SUSPEND during active interaction on THIS panel (drag/pan/zoom).
                 if (typeof rs._isUserInteractingWithChart === 'function'
                     && rs._isUserInteractingWithChart(ch)) {
                     return;
                 }
-                // (b) COALESCE: skip the recenter+render when the leading-edge follow
-                //     would move the viewport by < 1 candle-width (sub-candle advance).
-                var target = _panelPlayFollowLeadingEdgeOffsetX(ch, rs);
+                // (b) CONTINUOUS eased leading-edge + DEVICE-PIXEL-COLUMN coalesce
+                //     (BL-13 / D-041): the follow target is bar-quantized, so we ease it
+                //     sub-candle from the shared playhead timestamp and repaint ONLY when
+                //     that eased offset crosses into a NEW device-pixel column. A sub-
+                //     pixel / stationary / paused advance stays in the same column → ZERO
+                //     renders (the guard still coalesces). Monotonic across the seam.
+                //
+                //     The coalesce baseline is the LAST APPLIED eased offset we tracked
+                //     on the chart — NOT the live ch.offsetX. The per-frame seek re-runs
+                //     goToReplayTimestamp/mirror BEFORE this callback and can nudge
+                //     ch.offsetX off the eased value between frames; comparing against
+                //     the live offset would then re-cross the same pixel column ~twice,
+                //     doubling the render count. Tracking the applied eased offset makes
+                //     the coalesce a clean 1-render-per-device-pixel-column.
+                var target = _panelPlayFollowContinuousOffsetX(ch, rs);
                 if (Number.isFinite(target)) {
-                    var candleW = Number(ch.candleWidth);
-                    if (!(Number.isFinite(candleW) && candleW > 0)) {
-                        candleW = (typeof ch.getCandleSpacing === 'function')
-                            ? ch.getCandleSpacing()
-                            : NaN;
-                    }
-                    var cur = Number(ch.offsetX);
-                    if (Number.isFinite(candleW) && candleW > 0 && Number.isFinite(cur)
-                        && Math.abs(target - cur) < candleW) {
+                    var dpr = (typeof window !== 'undefined'
+                        && Number.isFinite(window.devicePixelRatio)
+                        && window.devicePixelRatio > 0)
+                        ? window.devicePixelRatio
+                        : 1;
+                    var applied = Number(ch._mcPlayFollowAppliedOffsetX);
+                    if (Number.isFinite(applied)
+                        && Math.round(target * dpr) === Math.round(applied * dpr)) {
+                        // Same device-pixel column as the last applied eased offset →
+                        // SUB-PIXEL/stationary advance. Re-pin the viewport to the
+                        // applied offset (a seek may have nudged it) WITHOUT repainting,
+                        // so the coalesced frame stays exactly where the last paint left
+                        // it — then skip the render (guard still coalesces → ZERO cost).
+                        ch.offsetX = applied;
                         return;
                     }
+                    easedOffsetX = target;
                 }
             }
             // forceRecenter:true is required: syncReplayViewportToPlayhead's own
@@ -1592,7 +1662,29 @@
             // user did NOT move this panel (userHasPanned false, autoScroll on), so a
             // non-panned playing panel must track the leading edge exactly like host A.
             // resetPriceScale:false keeps X/time-only (BL-2b price-axis independence).
-            rs.syncReplayViewportToPlayhead(ch, { forceRecenter: true, resetPriceScale: false, render: true });
+            // Deterministic diagnostic: count every follow render actually issued
+            // (past the cost guard's coalesce/suspend). The harness asserts on this
+            // counter directly (renders ≈ device-pixel-columns crossed) rather than a
+            // noisy total-render subtraction — see H-S19 / H-S19b.
+            ch._mcPlayFollowRenders = (ch._mcPlayFollowRenders | 0) + 1;
+            // When easing is active, let sync apply the BL-2b-safe forceRecenter (Y-scale
+            // skip, offset gating) WITHOUT painting, then override offsetX to the eased
+            // sub-candle value and paint ONCE — so the viewport scrolls smoothly instead
+            // of snapping to the bar-quantized offset. Guard-off / fallback keeps the
+            // single quantized render.
+            var applyEase = Number.isFinite(easedOffsetX);
+            var applied = rs.syncReplayViewportToPlayhead(ch,
+                { forceRecenter: true, resetPriceScale: false, render: !applyEase });
+            if (applyEase && applied !== false) {
+                ch.offsetX = easedOffsetX;
+                if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                // Record the applied eased offset as the coalesce baseline for the next
+                // frame (device-pixel-column comparison above). Use the post-constrain
+                // value so any clamp is reflected.
+                ch._mcPlayFollowAppliedOffsetX = Number(ch.offsetX);
+                ch.renderPending = true;
+                if (typeof ch.render === 'function') ch.render();
+            }
         } catch (_) {}
     }
 
