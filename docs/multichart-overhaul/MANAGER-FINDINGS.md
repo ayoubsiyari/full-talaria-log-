@@ -3093,6 +3093,130 @@ the right edge with the wide-zoom empty future — the defect the fix removes.
 to 1D during replay lands deterministically (leftmost bar present, playhead at the right edge, no empty
 future) with follow engaged, and is left alone if the user is mid-gesture.
 
+## 6ck. D-046 / BL-18 — peer-refetch-on-TF-switch storm FIXED (2026-07-11, build 20260707b97)
+
+**PO symptom (HIGH-PRIORITY regression, live):** during active replay, switching ONE panel's timeframe
+(e.g. the HOST / panel A) caused **all other same-pair panels to re-fetch** their data — a cross-panel
+fetch storm. Core-invariant violation: switching one panel's TF must not make peers self-fetch (they mirror).
+
+### RED-first reproduction (harness)
+
+Built **H-S24** (`scenarios.mjs` + homepage mirror; registered in `known-failing.json` expectedTests
+21→22). A pre-fix probe swept the full switch × sync matrix during **active non-backtest replay** and
+isolated the reproducing cell exactly:
+
+| Switch under test | sync OFF | sync ON | peers self-fetch? |
+|---|---|---|---|
+| HOST fan-out 1m→1h (coarser) | 0 | 0 | no (mirror) |
+| HOST fan-out 1m→5m (coarser) | 0 | 0 | no (mirror) |
+| **HOST fan-out 1h→1m (FINER)** | **3** | **3** | **YES — storm** |
+| non-host panel B→1m OWN (host 1h) | 0 | 0 | no (only B acquires) |
+| non-host panel B→1d OWN (host 1m) | 0 | 0 | no (only B acquires) |
+
+**RED cell = host switches its own TF from COARSE→FINER and fans out.** RED (peers B=1 C=1 D=1) in
+**all** of sync{ON,OFF} × replay{paused,playing}; flake-stable. Other same-pair peers and the switching
+panel's own acquire are unaffected.
+
+### Root cause (exact path)
+
+On a host fan-out to a finer TF, the bridge's H-S6 **mirror-wait**
+(`panel-cmd-bridge.js` `case 'setTimeframe'` `__fromHostFanout` branch, ~line 2209) waits for the host to
+commit then calls `chart.js:_multichartMirrorHostTfSwitchIfReady`. That mirror **declined** at
+`chart.js:3264` because `_multichartFinerSamePairPanelSelfOwns` (`chart.js:3454`) read the host's **STALE
+committed-native**: `_readCommittedHostStateForFinerOwner` (`chart.js:3421`) prefers
+`host._mcCommittedNativeRawFetchTf`, which is only refreshed by `_emitMultichartHostDataCommit`
+(`chart.js:3727`) and is **NOT updated on a client-resample fan-out back to a finer TF** — so it still read
+`1h` while the live `host._nativeRawFetchTf` was already `1m`. The peer therefore wrongly concluded
+"finer-than-host / self-own", the mirror-wait fell through to `ch.setTimeframe(1m)` (`panel-cmd-bridge.js`
+~2240), which hit the **BL-15** finer branch (`chart.js:20799` →
+`_ensureFinerPanelOwnerCoversPlayhead(... forceAcquire ...)`) → **every peer self-fetched**. Instrumented
+trace: `mirror(1m)=>false selfOwn=true hostTf=1m hostNative=1m hostSwitching=false myTf=1h`.
+
+### Fix (minimal, gated, default ON)
+
+New kill-switch **`__TALARIA_MC_DISABLE_PEER_REFETCH_ON_TF_SWITCH_GUARD`** (default = fix ON), reverts
+independently of BL-15/BL-17. On an explicit HOST-originated fan-out the host is the single owner and every
+same-pair peer adopts the host TF by **mirroring**, so `_multichartMirrorHostTfSwitchIfReady` now takes an
+`options.fromHostFanout` and, when set (guard ON), **skips the finer-self-own decline** at `chart.js:3264`.
+The host-committed-TF + `_barsMatchTimeframe` cadence checks below it **still gate** the mirror (if the host
+truly cannot serve the finer bars, the mirror declines and we fall back cleanly). The bridge passes
+`{ fromHostFanout: true }` on its three fan-out mirror calls (`panel-cmd-bridge.js` ~2169, ~2196, ~2221).
+The acquire path stays reserved for a panel's **OWN** switch (direct panel-cmd, no `__fromHostFanout`) —
+BL-15/H-S21 and BL-17/H-S23 untouched.
+
+- **file:line of fix:** `chart v 1.4/chart/chart.js:3258` (`_multichartMirrorHostTfSwitchIfReady` +
+  `options.fromHostFanout` guard, ~3264); `chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js` (three
+  fan-out mirror calls pass `fromHostFanout`). Mirrored byte-identically to `homepage/public/chart/…`.
+- **regressing change:** BL-15 (D-043) `_ensureFinerPanelOwnerCoversPlayhead` finer replay-TF acquire, which
+  a host-originated fan-out could reach via the mirror-wait fallback when the host committed-native was stale.
+
+### State-matrix (H-S24, per cell: does any OTHER panel self-fetch? target = no)
+
+| switcher | relationship | replay | sync | other peers self-fetch |
+|---|---|---|---|---|
+| host (fan-out) | same-pair finer | paused | OFF | **0** (RED 3 under kill-switch) |
+| host (fan-out) | same-pair finer | paused | ON | **0** (RED 3) |
+| host (fan-out) | same-pair finer | playing | OFF | **0** (RED 3) |
+| host (fan-out) | same-pair coarser/equal | either | either | 0 (already mirrored pre-fix) |
+| non-host panel | same-pair (own switch) | paused | OFF | 0 (only switcher acquires, BL-15 intact) |
+| any | independent pair | — | — | own their data (excluded by mirror-wait `!_isIndependentMultichartPair()`) |
+
+Switching panel itself still acquires correctly (finer axis sane, coarser fast+full); BL-10
+coarser-play-advance unaffected.
+
+### Verification / report-back
+
+- **Reproduced: YES.** Peer fetch counts — **RED** (`--bugswitch=…PEER_REFETCH_ON_TF_SWITCH_GUARD`):
+  B=1 C=1 D=1 (peerFetch=3) in all three host-fan-out cells; **GREEN** (fix): B=0 C=0 D=0, all peers land on
+  1m with identical first/last bars and 60 000 ms cadence (`dataMatchesTf`).
+- **H-S24 RED vs GREEN, flake-stable ×3:** GREEN `PASS,PASS,PASS`; RED cells `FAIL-REAL-BUG` (own-switch cell
+  stays GREEN — correctly independent of this kill-switch).
+- **Full `npm run gate` — GREEN 22/22** (H-S2..H-S24). Regressions: none. Newly-fixed: none. Known-failing:
+  none. **H-S6 (host TF fan-out), H-S2/H-S3 (ownership), H-S21/H-S23 (own-switch acquire) all PASS.**
+- `node --check` clean on every edited JS in **both** trees; **lints clean**.
+- **SHA256 — every edited mirror pair byte-identical:**
+  `chart.js` = `1B8B04F666C1A4834C417EBF29AA20B64E07A29E28F2DF05E393B356DCFF0EAD`;
+  `multichart-prod/panel-cmd-bridge.js` = `CA1F6DBA73B1E9295138C42DCA72000A803DB3D0E038580F9494B03A41F3B7BB`;
+  `multichart-prod/harness/scenarios.mjs` = `970D53D6A4F9A676D38A5BF30D2CC9C6A2A71C01EFCF89E175D7115B4C30DE14`;
+  `multichart-prod/harness/known-failing.json` = `D0846720E1A4403C76AD9E10164641A843A86478D8E438CA9C1365936FEEC0AE`
+  (plus the b97 bump HTML/sw mirror pairs — all EQ=True).
+- **ONE build bump** b96 → `20260707b97` via `bump-dist-v9-cache.mjs`; **0 `20260707b96` stragglers** in
+  shipped files.
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only
+  the standard `SW_VERSION` cache-string bump).
+
+**PENDING:** PO live re-test on deployed **b97** — during active replay, switch the HOST (or any panel) from
+a coarse TF to a finer one; same-pair peers must adopt the new TF instantly by mirroring, with **no**
+cross-panel data re-fetch (network idle on peers).
+
+### Root disposition of the stale `_mcCommittedNativeRawFetchTf` (D-046 follow-up #1)
+
+The b97 guard routes **around** the stale marker on the fan-out mirror decision only; the marker itself
+(`host._mcCommittedNativeRawFetchTf`, sole writer `_emitMultichartHostDataCommit` `chart.js:3731`) stays
+stale after a client-resample fan-out back to a finer TF. That marker is the shared source read by
+`_readCommittedHostStateForFinerOwner` (`chart.js:3440`) → `_multichartFinerSamePairPanelSelfOwns`, which has
+**~20 consumers** (lazy-1m-master gate, viewport-load, replay-coverage, TF-switch begin, etc.), so the
+staleness is broader than the one path we guarded.
+
+**Should `_emitMultichartHostDataCommit` also fire on client-resample fan-out commits (fix at source)? Not
+as-is — and the reason is ledgered so nobody "fixes" it naively:** a full emit dispatches the
+`talariaMcHostDataCommit` event (`chart.js:3749`), which **every** finer-owner panel consumes via
+`_mcFinerPanelHostCommitHandler` → `_applyFinerPanelHostCommit` (`chart.js:3687`) → a **B8 owner handover /
+re-acquisition**. Firing the full commit on every resample fan-out would therefore trigger B8 handover
+fetches on every fan-out — re-introducing the exact cross-panel storm from a different door.
+
+**Recommended source cure (requires a Director ruling before shipping — NOT shipped):** split the commit into
+(a) a cheap **marker refresh** (`_mcCommittedNativeRawFetchTf` / `_mcCommittedTimeframe` /
+`_mcCommitGeneration`) and (b) the **handover-event dispatch**; fire only (a) on a client-resample fan-out so
+the marker is fresh for all ~20 consumers **without** any B8 handover. Until that lands, the b97 route-around
+is the mitigation for the one consumer (the fan-out mirror decision) proven to misfire; the remaining
+consumers read the marker predominantly during a panel's own operations and it self-corrects on the next real
+host commit, so the interim exposure is bounded — but this is a mitigation, not a cure.
+
+**LEDGER (do-not-regress):** do NOT call `_emitMultichartHostDataCommit()` on a resample fan-out to "fix" the
+staleness — it dispatches `talariaMcHostDataCommit` → `_applyFinerPanelHostCommit` → B8 handover fetches on
+every fan-out = storm. Split marker-refresh from event-dispatch instead.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

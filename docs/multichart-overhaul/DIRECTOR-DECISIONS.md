@@ -2114,3 +2114,82 @@ non-backtest replay, so we close this predicate once instead of a third reopen.
    H-S23 extension as proposed (leftEmpty===0 + playhead near right edge,
    deterministic sampling at settle), kill-switch as named, state-matrix with the
    dragged-during-acquire cell explicit.
+
+---
+
+## D-046 — D-045 execution ACCEPTED; BL-18 ratified RETROACTIVELY; process breach flagged (2026-07-11)
+
+### D-045 execution (§6cj, b96) — ACCEPTED, high quality
+Both fixes verified to spec. Two details deserve credit: the Fix-1 root analysis
+(`cache:'no-store'` bypasses the HTTP cache but NOT a navigation-fallback SW — hence
+fetching the concrete `/chart/sw.js` asset instead of the document) is exactly right
+and now documented for posterity; and Fix-2 honored all three D-045 constraints
+including naming the W1/W2 race and ledgering it known-deferred with the reason the
+ordering fix is not trivial (W2 legitimately awaits an async fetch). Gate 21/21.
+Pending: PO live on b96 (toast across a real deploy boundary; deterministic 1D landing).
+
+### BL-18 (§6cj-follow, b97) — RATIFIED RETROACTIVELY; the work is excellent, the process slipped
+The work: a PO-reported HIGH-PRIORITY regression (peers refetch on host coarse→finer
+fan-out), RED-first with a full switch×sync×replay matrix that isolated the exact
+cell, root named to the line (stale `_mcCommittedNativeRawFetchTf` misleading
+`_multichartFinerSamePairPanelSelfOwns` → mirror declines → fallback hits the BL-15
+acquire), minimal gated fix (`fromHostFanout` mirror option), regressing change
+honestly identified as BL-15, gate 22/22. As engineering: model execution.
+Ratified — a regression caused by our own change is in-scope per the D-039 precedent.
+
+**The breach:** the entry cites "D-046" — an ID this log had never issued — and the
+engine fix shipped without a reopen ruling or an ESC entry. This is the same pattern
+D-026 corrected (pre-assigned decision numbers) plus execution-before-ruling. The
+PO's fix-now urgency was almost certainly real; the correct path for that is a
+one-paragraph ESC entry with "PO authorizes immediate start, ruling to follow" —
+which takes two minutes and keeps the ledger authoritative. Manager: acknowledge in
+FINDINGS; next occurrence, the build waits for the ruling regardless of urgency.
+
+### Root disposition question (answer required before BL-18 closes)
+The fix routes AROUND the stale committed-native on fan-out; the staleness itself
+remains for every other consumer of `_readCommittedHostStateForFinerOwner`. Answer in
+one paragraph: should `_emitMultichartHostDataCommit` also fire on a client-resample
+fan-out commit (fixing staleness at source), and if not, WHY is routing-around safe
+for all remaining consumers? (Suspected reason to avoid it: a fresh commit event
+could trigger unwanted B8 owner/mirror handovers on every fan-out — if that is the
+reason, say so in the ledger so the next person doesn't "fix" it.)
+
+### Hygiene
+Section ID collision again: the BL-18 entry reuses "## 6ac" (already B-FIX-A's
+sign-off from 2026-07-05). Renumber to the next free ID (6ck) and fix any references.
+Close conditions pending: PO live on b96 (D-045 items) and b97 (peers no-refetch on
+finer fan-out).
+
+---
+
+## D-047 — Commit split APPROVED (marker refresh vs handover dispatch) (2026-07-11)
+
+The D-046 follow-up #1 answer (§6ck) is accepted — it is exactly the analysis that
+was asked for: a naive source fix (full emit on resample fan-out) would fire
+`talariaMcHostDataCommit` → `_applyFinerPanelHostCommit` → B8 handover fetches on
+every fan-out, reintroducing the storm through a different door. The do-not-regress
+ledger note is the right artifact.
+
+**The recommended source cure is APPROVED as a queued task (not fix-now):** split
+`_emitMultichartHostDataCommit` into (a) a cheap marker refresh
+(`_mcCommittedNativeRawFetchTf` / `_mcCommittedTimeframe`) and (b) the
+handover-event dispatch; fire only (a) on a client-resample fan-out commit so all
+~20 marker consumers read fresh state with zero handover side-effects. Constraints:
+
+1. **`_mcCommitGeneration` needs explicit analysis before code.** The generation is
+   consumed for stale-drop/cancellation (B8 handovers, hydration guards). Bumping it
+   on a marker-only refresh could invalidate in-flight work; NOT bumping it means
+   consumers see new TF markers under an old generation. The worker states which
+   consumers read the generation, picks one behavior, and justifies it in the
+   report — this is the one subtle risk in an otherwise mechanical split.
+2. **Contract assertion, H-S16 style:** after a client-resample fan-out, assert
+   `_mcCommittedNativeRawFetchTf === live _nativeRawFetchTf` (RED today, GREEN with
+   the split). Plus regressions: H-S24 green (no peer fetches on fan-out), B8
+   handover counters UNCHANGED across a fan-out (proving (b) did not fire), full
+   gate green.
+3. **Keep the b97 `fromHostFanout` route-around** — with fresh markers it becomes
+   mostly redundant, but its semantics ("host fan-out ⇒ peers mirror") are correct
+   independently and it is the belt while the split is the suspenders. Label both
+   in the flag inventory.
+4. Own kill-switch; timing after PO confirms b96/b97 — the interim exposure is
+   bounded (as §6ck argues), so this queues normally rather than jumping the line.
