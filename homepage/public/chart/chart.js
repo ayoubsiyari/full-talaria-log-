@@ -2951,6 +2951,14 @@ class Chart {
             // (BL-17/D-044) only requires an active replay + fileId.
             if (!nonBacktestReplay && !this.isBacktestMode) return false;
 
+            // FIX 2 (Director D-045): capture whether the user OWNS the viewport
+            // (panned away / auto-scroll off) BEFORE the commit. The synchronous
+            // TF-switch restore inside the hot-swap clears replay.userHasPanned, so
+            // the post-commit one-shot viewport clamp cannot read it afterwards —
+            // it must be snapshotted here to decide follow-anchor vs panned-preserve.
+            const _preAcquireUserOwnedViewport = !!(replay.userHasPanned
+                || replay.autoScrollEnabled === false);
+
             const tf = String(normalizedTf || '').toLowerCase().trim();
             const tfMs = this.parseTimeframe(tf);
             const nativeMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
@@ -3090,9 +3098,153 @@ class Chart {
                 sessionEndMs,
                 coarsePeriodExclusiveEndTs: null,
             });
+
+            // FIX 2 (D-045): one-shot, deterministic viewport clamp at acquire-commit
+            // (never continuous). Gated behind the SEPARATE kill-switch
+            // __TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP so it reverts
+            // independently of BL-17. Fixes the non-deterministic post-switch 1D
+            // landing (empty future / playhead off the right edge in the wide case).
+            this._multichartClampCoarseAcquireViewport({
+                userOwnedAtStart: _preAcquireUserOwnedViewport,
+            });
             return true;
         } catch (e) {
             console.warn('[multichart] panel coarse-display acquire failed', e);
+            return false;
+        }
+    }
+
+    /**
+     * FIX 2 (Director D-045): ONE-SHOT viewport clamp at BL-17 coarse-acquire commit.
+     *
+     * The post-switch 1D landing was NON-DETERMINISTIC across identical runs
+     * (candleWidth≈89 tight, playhead right-edge — fine — vs candleWidth≈6 wide,
+     * playhead ~80% across with ~36 days of EMPTY FUTURE/right space). Root race:
+     * after the coarse commit two writers set the viewport and whichever lands last
+     * wins —
+     *   (W1) the SYNCHRONOUS TF-switch restore inside _hotSwapBacktestReplayTimeframe:
+     *        _finishTfSwitchViewportRestore → _restoreOrJumpAfterTfSwitch →
+     *        _restoreTfSwitchViewport → replaySystem.syncReplayViewportToPlayhead
+     *        (chart.js:~29531, replay-system.js:syncReplayViewportToPlayhead). When
+     *        that right-edge sync path FALLS THROUGH to the bar-count restore
+     *        (chart.js:~29577/~29614) it lands WIDE and, critically, never sets
+     *        _chartViewRestored;
+     *   (W2) the DEFERRED post-switch snap + history-fill:
+     *        _deferBacktestTfSwitchFollowUp → _snapReplayViewportAfterTfSwitch
+     *        (chart.js:~8115 → ~21850, gated on !_chartViewRestored) and the
+     *        setTimeout _fillViewportHistoryAfterTfSwitch (chart.js:~29653).
+     * The follow-up is legitimately async (waits on the host backward fetch) so it
+     * is NOT trivially orderable before the restore — the CLAMP stands (D-045).
+     *
+     * This runs ONCE and writes the authoritative viewport deterministically, then
+     * sets _chartViewRestored=true so W2's snap skips. NEVER continuous.
+     *  (1) SKIP entirely when the user interacted with the panel mid-acquire
+     *      (replaySystem._isUserInteractingWithChart — the same drag/pan/zoom signal
+     *      the D-038/D-039 follow-disengage uses); the user's viewport wins.
+     *  (2) Right-anchor to the playhead ONLY when follow is engaged / at-edge
+     *      (reuse syncReplayViewportToPlayhead — deterministic, X/time-only,
+     *      resetPriceScale:false keeps BL-2b price-axis independence). If the panel
+     *      was panned into history, DO NOT recenter — clamp ONLY the empty-space
+     *      bounds (no empty left, no empty future) without moving the user's
+     *      position (a snap-back would be a worse defect).
+     * @param {{userOwnedAtStart?: boolean}} [ctx]
+     * @returns {boolean}
+     */
+    _multichartClampCoarseAcquireViewport(ctx = {}) {
+        // Deterministic diagnostic (H-S23 state-matrix reads .mode): disabled |
+        // skip-interaction | skip-inactive | right-edge | clamp-bounds.
+        this._mcCoarseAcquireClampDiag = { invoked: true, mode: 'disabled' };
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP) {
+                return false;
+            }
+            const replay = this.replaySystem;
+            if (!replay || !replay.isActive) { this._mcCoarseAcquireClampDiag.mode = 'skip-inactive'; return false; }
+            if (!Array.isArray(this.data) || this.data.length === 0) { this._mcCoarseAcquireClampDiag.mode = 'skip-inactive'; return false; }
+
+            // (1) User interacted with the panel MID-ACQUIRE → their viewport wins.
+            if (typeof replay._isUserInteractingWithChart === 'function'
+                && replay._isUserInteractingWithChart(this)) {
+                this._mcCoarseAcquireClampDiag.mode = 'skip-interaction';
+                return false;
+            }
+
+            const spacing = typeof this.getCandleSpacing === 'function'
+                ? this.getCandleSpacing() : 0;
+            if (!(spacing > 0)) { this._mcCoarseAcquireClampDiag.mode = 'skip-inactive'; return false; }
+            const m = this.margin || { l: 60, r: 60 };
+            const plotW = Math.max(1, this.w - m.l - m.r);
+            if (!(plotW > 0)) { this._mcCoarseAcquireClampDiag.mode = 'skip-inactive'; return false; }
+
+            // A stale TF-switch anchor lock (set when the restore took the bar-count
+            // path) would be reapplied by W2's history-fill and re-introduce the
+            // non-determinism — clear it so this clamp is the authoritative writer.
+            if (typeof this._clearTfSwitchAnchorLock === 'function') {
+                this._clearTfSwitchAnchorLock();
+            }
+
+            const userOwned = !!(ctx.userOwnedAtStart
+                || replay.userHasPanned || replay.autoScrollEnabled === false);
+
+            // (2a) Follow / at-edge → deterministic right-edge anchor (X/time only).
+            // Reuse syncReplayViewportToPlayhead for the deterministic follow offset +
+            // BL-2b price-independence handling (resetPriceScale:false), THEN tighten
+            // offsetX so the playhead/last bar sits HARD against the right plot edge
+            // (small fixed pad) instead of the ~10-20% ratio right-gap that
+            // getReplayAutoScrollState leaves. That ratio gap is fine at a tight zoom
+            // but becomes tens of empty-future candles at the wide (candleWidth≈6)
+            // landing — the exact D-045 defect. The tighten is the authoritative,
+            // deterministic write; candleWidth is untouched (no zoom change).
+            if (!userOwned && typeof replay.syncReplayViewportToPlayhead === 'function') {
+                const synced = replay.syncReplayViewportToPlayhead(this, {
+                    centerPlayhead: false,
+                    resetPriceScale: false,
+                    forceRecenter: true,
+                    render: false,
+                });
+                if (synced) {
+                    // Hard right-edge anchor: place the last (playhead) bar PAD candle
+                    // slots from the right plot edge. plotRight = w - m.r and
+                    // dataIndexToPixel(i) = m.l + i*spacing + offsetX, so
+                    //   offsetX = plotW - (len-1)*spacing - PAD*spacing.
+                    const RIGHT_EDGE_PAD_CANDLES = 1;
+                    const lastIdx = Math.max(0, this.data.length - 1);
+                    const anchoredOffset = plotW - (lastIdx * spacing)
+                        - (RIGHT_EDGE_PAD_CANDLES * spacing);
+                    if (Number.isFinite(anchoredOffset)) {
+                        this.offsetX = anchoredOffset;
+                        if (typeof this.constrainOffset === 'function') this.constrainOffset();
+                    }
+                    this._mcCoarseAcquireClampDiag.mode = 'right-edge';
+                    this._chartViewRestored = true;
+                    this.renderPending = true;
+                    if (typeof this.render === 'function') this.render();
+                    return true;
+                }
+            }
+
+            // (2b) Panned into history (or sync unavailable) → do NOT recenter. Clamp
+            // ONLY the empty-space bounds on the current offset so there is no empty
+            // left and no empty future, without moving the user's position (only the
+            // overshoot into the empty void is corrected; a valid in-history offset
+            // stays untouched).
+            let off = Number(this.offsetX);
+            if (!Number.isFinite(off)) return false;
+            const totalW = this.data.length * spacing;
+            const maxOffset = spacing * 2;                    // no empty LEFT beyond a small pad
+            const minOffset = plotW - totalW - spacing * 2;   // no empty FUTURE beyond a small pad
+            if (Number.isFinite(maxOffset) && off > maxOffset) off = maxOffset;
+            if (Number.isFinite(minOffset) && off < minOffset) off = minOffset;
+            this.offsetX = off;
+            if (typeof this.constrainOffset === 'function') this.constrainOffset();
+            this._mcCoarseAcquireClampDiag.mode = 'clamp-bounds';
+            this._chartViewRestored = true;
+            this.renderPending = true;
+            if (typeof this.render === 'function') this.render();
+            return true;
+        } catch (e) {
+            console.warn('[multichart] coarse-acquire viewport clamp failed', e);
             return false;
         }
     }

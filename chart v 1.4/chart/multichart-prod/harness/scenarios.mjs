@@ -2191,6 +2191,64 @@ async function readPanelDeep(page, id) {
 }
 
 /**
+ * H-S23 (D-045) deterministic viewport geometry for a panel, sampled at settle
+ * (no wall-clock). leftEmptyDays: pixelToDataIndex(margin.l) → its timestamp vs
+ * the first data bar (>0 ⇒ empty space before the leftmost bar). playhead-to-
+ * right-edge distance in candle-spacings: (plotRight − dataIndexToPixel(lastIdx))
+ * / spacing (the playhead is the last sliced bar during replay). Also reports the
+ * follow/at-edge state and the one-shot clamp diagnostic mode the engine records.
+ */
+async function readPanelViewportGeom(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch || !Array.isArray(ch.data) || !ch.data.length) return null;
+    const DAY = 86_400_000;
+    const m = ch.margin || { l: 60, r: 60 };
+    const plotRight = Number(ch.w) - (m.r || 0);
+    const spacing = typeof ch.getCandleSpacing === 'function'
+      ? Number(ch.getCandleSpacing())
+      : Number(ch.candleWidth) + (Number(ch.candleGap) || 2);
+    const leftIdx = typeof ch.pixelToDataIndex === 'function'
+      ? Number(ch.pixelToDataIndex(m.l || 0))
+      : null;
+    const firstT = Number(ch.data[0].t);
+    const lastIdx = ch.data.length - 1;
+    let leftEdgeTs = null;
+    if (leftIdx != null && Number.isFinite(leftIdx)
+      && typeof ch.estimateTimestampForDataIndex === 'function') {
+      leftEdgeTs = Number(ch.estimateTimestampForDataIndex(leftIdx));
+    }
+    const leftEmptyDays = (leftEdgeTs != null && Number.isFinite(leftEdgeTs))
+      ? Math.max(0, (firstT - leftEdgeTs) / DAY)
+      : null;
+    const playheadX = typeof ch.dataIndexToPixel === 'function'
+      ? Number(ch.dataIndexToPixel(lastIdx))
+      : null;
+    const playheadToRightEdgeSpacings = (playheadX != null && Number.isFinite(playheadX)
+      && Number.isFinite(spacing) && spacing > 0)
+      ? (plotRight - playheadX) / spacing
+      : null;
+    const rs = ch.replaySystem || null;
+    const followEngaged = !!(rs && rs.isActive && !rs.userHasPanned && rs.autoScrollEnabled !== false);
+    const clampDiag = ch._mcCoarseAcquireClampDiag || null;
+    return {
+      leftIdx,
+      leftEmptyDays,
+      spacing,
+      candleWidth: Number(ch.candleWidth),
+      playheadX,
+      plotRight,
+      playheadToRightEdgeSpacings,
+      followEngaged,
+      dataLen: ch.data.length,
+      clampMode: clampDiag ? String(clampDiag.mode) : null,
+    };
+  }).catch(() => null);
+}
+
+/**
  * Put the HOST (tile A) and every iframe panel into BACKTEST replay mode with a
  * shared session spanning the deep instrument — production runs BL-14 in backtest
  * (isBacktestMode true), which is what gates the §6c I1 high-limit exclusion and
@@ -2864,6 +2922,113 @@ async function hS23(ctx) {
       `before[${hostDeepBefore?.masterFirstT},${hostDeepBefore?.masterLastT},${hostDeepBefore?.masterLen}] `
       + `after[${hostDeepAfter?.masterFirstT},${hostDeepAfter?.masterLastT},${hostDeepAfter?.masterLen}]`);
 
+    // ── D-045 EXTENSION: post-acquire coarse-panel viewport clamp ──────────────
+    // Deterministic, sampled at settle (no wall-clock). Under the fix (clamp ON,
+    // default) the coarse 1D landing must have the LEFTMOST visible bar present
+    // (leftEmptyDays===0) AND, since the panel played no-drag before the switch
+    // (follow engaged / at-edge), the playhead must sit within ~3 candle-spacings
+    // of the right plot edge (no empty future / playhead not marched off-right).
+    // RED under --bugswitch=__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP
+    // (the racy wide landing puts the playhead far from the right edge / leaves a
+    // large empty-future gap). Fetch/seam assertions above stay intact.
+    const bGeom = await readPanelViewportGeom(page, 'B');
+    const RIGHT_EDGE_SPACING_BOUND = 3;
+    const clampOn = await page.evaluate(
+      () => !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP)
+    );
+    notes.push(`H-S23 CLAMP(D-045): clampOn=${clampOn} clampMode=${bGeom?.clampMode} `
+      + `leftEmptyDays=${bGeom && bGeom.leftEmptyDays != null ? bGeom.leftEmptyDays.toFixed(3) : 'n/a'} `
+      + `playheadToRightEdgeSpacings=${bGeom && bGeom.playheadToRightEdgeSpacings != null ? bGeom.playheadToRightEdgeSpacings.toFixed(2) : 'n/a'} `
+      + `candleWidth=${bGeom?.candleWidth?.toFixed?.(2)} followEngaged=${bGeom?.followEngaged} spacing=${bGeom?.spacing?.toFixed?.(2)}`);
+
+    checks.check('H-S23 (D-045) leftmost visible bar present (leftEmptyDays===0)',
+      !!(bGeom && bGeom.leftEmptyDays != null && bGeom.leftEmptyDays <= 1e-6),
+      `leftEmptyDays=${bGeom?.leftEmptyDays} leftIdx=${bGeom?.leftIdx}`);
+
+    checks.check('H-S23 (D-045) follow/at-edge: playhead within ~3 candle-spacings of right edge',
+      !!(bGeom && bGeom.followEngaged === true
+        && bGeom.playheadToRightEdgeSpacings != null
+        && bGeom.playheadToRightEdgeSpacings >= -RIGHT_EDGE_SPACING_BOUND
+        && bGeom.playheadToRightEdgeSpacings <= RIGHT_EDGE_SPACING_BOUND),
+      `followEngaged=${bGeom?.followEngaged} playheadToRightEdgeSpacings=${bGeom?.playheadToRightEdgeSpacings} `
+      + `bound=${RIGHT_EDGE_SPACING_BOUND}`);
+
+    checks.check('H-S23 (D-045) clamp took the deterministic right-edge path under the fix',
+      clampOn ? bGeom?.clampMode === 'right-edge' : bGeom?.clampMode === 'disabled',
+      `clampOn=${clampOn} clampMode=${bGeom?.clampMode}`);
+
+    // STATE-MATRIX CELL — DRAGGED-DURING-ACQUIRE (clamp skipped, user viewport
+    // preserved). A fresh boot reproduces the exact main flow (play 300 host 1m
+    // frames, then switch panel B to 1D — the coverage-gap coarse acquire), but
+    // this time with an ACTIVE drag gesture in progress on the panel — the SAME
+    // interaction signal (_isUserInteractingWithChart) the D-038/D-039 follow-
+    // disengage uses. NOTE: a type:'pan' drag is intentionally cancelled by
+    // _beginTimeframeSwitching (chart.js:~21087) at switch start, so the enduring
+    // in-flight gesture that a real user keeps HELD across the async acquire is an
+    // AXIS drag (type:'timeAxis'), which that cancel-list deliberately spares. The
+    // one-shot clamp MUST detect the live interaction and SKIP entirely
+    // (clampMode === 'skip-interaction'), leaving the user's viewport untouched.
+    // A fresh boot is used (not a re-switch on B) so the host 1m master is
+    // guaranteed bounded → the coarse-acquire gap path fires exactly as in the main
+    // cell rather than resampling from an already-wide master.
+    let dragCellMode = null;
+    let dragCellArmed = false;
+    const boot2 = await bootLayout(ctx.browser, ctx.srv,
+      { pair: 'same', panels: 4, tf: '1m', hostFile: 28, bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+    try {
+      const p2 = boot2.page;
+      await p2.setViewport({ width: 2600, height: 1400 });
+      await sleep(500);
+      await setSync(p2, false);
+      await setIntervalSync(p2, false);
+      await waitBootSettled(p2, ids, 30_000, boot2.getInFlightDataRequests);
+      const ts0b = await replayStartTs(p2);
+      if (ts0b != null) {
+        await hostReplayEnter(p2, ts0b);
+        await broadcastCmd(p2, 'replayEnter', { timestamp: ts0b });
+        await waitReplayQuiescent(p2, ids, ts0b, 20_000).catch(() => {});
+        let tsb = await streamPlayFramesNoDrag(p2, ts0b, 300, 60_000);
+        await setHostReplayPlaying(p2, false);
+        await broadcastCmd(p2, 'replayTick', { timestamp: tsb });
+        await hostReplaySeek(p2, tsb);
+        await sleep(1000);
+        // Arm the active pan gesture on panel B right before the switch so the
+        // clamp's interaction guard is live when it runs at acquire-commit.
+        dragCellArmed = await panelFrameMap(p2).B?.evaluate(() => {
+          const ch = window.chart;
+          if (!ch || !ch.replaySystem) return false;
+          // Live axis-drag gesture held across the acquire (survives the pan-drag
+          // cancel in _beginTimeframeSwitching) → _isUserInteractingWithChart===true.
+          ch.drag = { active: true, type: 'timeAxis' };
+          ch._mcCoarseAcquireClampDiag = null;
+          return true;
+        }).catch(() => false);
+
+        await panelCmd(p2, 'B', 'setTimeframe', { tf: '1d' }).catch(() => {});
+        const dragDeadline = Date.now() + 20_000;
+        while (Date.now() < dragDeadline) {
+          await sleep(300);
+          const bw = await readPanelDeep(p2, 'B');
+          const bwSnap = await readPanel(p2, 'B');
+          if (bw && bw.tf === '1d' && bw.dataLen > 0 && isPanelQuiescent(bwSnap)) break;
+        }
+        await sleep(500);
+        dragCellMode = await panelFrameMap(p2).B?.evaluate(() => {
+          const ch = window.chart;
+          const d = ch && ch._mcCoarseAcquireClampDiag;
+          if (ch) ch.drag = { active: false, type: null };
+          return d ? String(d.mode) : null;
+        }).catch(() => null);
+      }
+    } finally {
+      await boot2.close();
+    }
+    notes.push(`H-S23 STATE-MATRIX dragged-during-acquire: armed=${dragCellArmed} clampMode=${dragCellMode} `
+      + '(clamp SKIPPED → user viewport preserved)');
+    checks.check('H-S23 (D-045) dragged-during-acquire: clamp SKIPPED, user viewport preserved',
+      dragCellMode === 'skip-interaction',
+      `clampMode=${dragCellMode} (expected skip-interaction)`);
+
     // STATE-MATRIX (coarser-panel-during-PLAY): after the 1D acquisition the panel
     // must STILL advance its playhead on the newly acquired 1D data (BL-10).
     const bPlayStart = await readPanel(page, 'B');
@@ -2885,7 +3050,17 @@ async function hS23(ctx) {
       + `chunkWalk=${chunkWalk} seamCompared=${seamCompared} seamMismatches=${seamMismatches} `
       + `hostFetchDelta=${hostFetchDelta} hostMasterUnmutated=${hostMasterUnmutated}. RED (b94 / `
       + '--bugswitch=__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE): the non-backtest coarse switch bypasses the '
-      + 'isBacktestMode-gated acquire and walks the 2000-bar chunked backward path (contaminating the host 1m master).');
+      + 'isBacktestMode-gated acquire and walks the 2000-bar chunked backward path (contaminating the host 1m master). '
+      + 'D-045 EXTENSION: post-acquire coarse-panel viewport clamp (one-shot, at acquire-commit, gated behind '
+      + '__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP, default fix ON). GREEN (fix): leftmost visible bar '
+      + 'present (leftEmptyDays===0) AND, follow/at-edge, playhead within ~3 candle-spacings of the right plot edge '
+      + '(deterministic right-edge reuse of syncReplayViewportToPlayhead — not the racy bar-count restore). STATE-MATRIX: '
+      + 'follow/at-edge → right-edge anchor; dragged-during-acquire → clamp SKIPPED (user viewport preserved, clampMode='
+      + 'skip-interaction); panned-into-history → clamp empty-space bounds only, no recenter. RED under '
+      + '--bugswitch=__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP (racy wide landing: playhead marches off the '
+      + 'right edge with ~tens of days of empty future). Root race: synchronous _restoreTfSwitchViewport→'
+      + 'syncReplayViewportToPlayhead vs deferred _deferBacktestTfSwitchFollowUp→_snapReplayViewportAfterTfSwitch + '
+      + '_fillViewportHistoryAfterTfSwitch — not trivially orderable (async host backfill), so the clamp stands.');
     return checks;
   });
 }

@@ -13,11 +13,24 @@
  *
  * MECHANISM: the loaded build id is window.__TALARIA_CHART_BUILD_ID (embedded in
  * the host HTML head — the existing source of truth). The deployed build id is
- * read by fetching the current host document fresh (cache:'no-store' + a
- * cache-busting query) and extracting its __TALARIA_CHART_BUILD_ID. A confident,
- * non-empty MISMATCH shows the toast; a MATCH (or a network hiccup) shows
- * nothing. No new server endpoint / deploy config is introduced. Triggered on
- * window focus + a low-frequency safety-net interval.
+ * read by fetching a CONCRETE ASSET the service worker does NOT navigation-
+ * fallback-cache — /chart/sw.js, whose SW_VERSION ("talaria-chart-<build>") is
+ * kept in lockstep with the HTML build id by bump-dist-v9-cache.mjs — fresh
+ * (cache:'no-store' + a UNIQUE cache-busting query) and extracting its build id.
+ * A confident, non-empty MISMATCH shows the toast; a MATCH (or a network hiccup)
+ * shows nothing. No new server endpoint / deploy config is introduced.
+ * Triggered on window focus + a low-frequency safety-net interval.
+ *
+ * WHY NOT THE HOST DOCUMENT (b94 field failure): the previous version fetched the
+ * host document (location.pathname) with cache:'no-store'. cache:'no-store' only
+ * controls the HTTP cache — it does NOT bypass an active service worker. A caching
+ * SW with a navigation fallback serves the STALE cached index.html for ANY
+ * navigation-shaped URL regardless of query, so the staleness detector compared
+ * stale-vs-stale (b94==b94) and never fired. /chart/sw.js is a concrete .js asset
+ * (not a navigation), so it is never navigation-fallback-served; combined with a
+ * unique cache-buster + no-store the request reaches the network for the truly-
+ * deployed build id. The SW caching strategy is UNCHANGED (no postMessage
+ * handshake, no strategy edit).
  */
 (function (root) {
     'use strict';
@@ -54,22 +67,39 @@
         return v != null ? String(v).trim() : '';
     }
 
-    /** Extract a build id from host HTML text (assignment first, ?v= fallback). */
+    /**
+     * Extract a build id from deployed asset text. Order: sw.js SW_VERSION first
+     * (the marker we fetch), then the HTML __TALARIA_CHART_BUILD_ID assignment,
+     * then a ?v= asset fallback — so the parser works against sw.js OR a document.
+     */
     function parseBuildId(html) {
         if (!html) return '';
+        var sw = /SW_VERSION\s*=\s*['"]talaria-chart-([^'"]+)['"]/.exec(html);
+        if (sw && sw[1]) return sw[1].trim();
         var m = /__TALARIA_CHART_BUILD_ID\s*=\s*['"]([^'"]+)['"]/.exec(html);
         if (m && m[1]) return m[1].trim();
         var m2 = /\/chart\/[^"'?\s]+\?v=([^"'#\s&]+)/.exec(html);
         return m2 && m2[1] ? m2[1].trim() : '';
     }
 
-    /** Fetch the current host document fresh and return its build id ('' on failure). */
+    // Monotonic per-tab sequence so every version-check URL is unique even when
+    // two checks fire within the same millisecond (Date.now() alone can collide).
+    var _vrcSeq = 0;
+
+    /**
+     * Fetch the deployed build-id marker fresh and return its build id ('' on
+     * failure). Targets /chart/sw.js — a concrete asset the SW does NOT
+     * navigation-fallback-cache — with cache:'no-store' + a UNIQUE cache-buster so
+     * the request cannot be satisfied from the HTTP cache OR a caching SW and must
+     * reach the network for the truly-deployed build id.
+     */
     function fetchDeployedId() {
         var url;
+        var bust = '?__vrc=' + Date.now() + '-' + (++_vrcSeq);
         try {
-            url = root.location.origin + root.location.pathname + '?__vrc=' + Date.now();
+            url = root.location.origin + '/chart/sw.js' + bust;
         } catch (_) {
-            url = root.location.href;
+            url = '/chart/sw.js' + bust;
         }
         return fetch(url, { cache: 'no-store', credentials: 'same-origin' })
             .then(function (r) { return r && r.ok ? r.text() : ''; })
