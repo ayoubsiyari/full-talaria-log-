@@ -2973,6 +2973,126 @@ same-pair panel to 1D during replay: it must load promptly (one bounded fetch, n
 backfill), the host must stay untouched, and the coarse panel must keep advancing its playhead on
 play. Director ruling requested on the **flagged independent-pair big-coarser** path.
 
+## 6cj. D-045 — TWO approved fixes: reload-prompt SW-cache bypass + coarse-acquire viewport clamp (b96)
+
+Director decision **D-045** dispatched two approved fixes; one build bump **b95 → `20260707b96`** at the end.
+
+### FIX 1 — Reload-prompt version-check no longer reads through the SW cache (tooling/hygiene, NO gate scenario)
+
+**Mechanism + file:line.** `modules/talaria-version-reload.js` `fetchDeployedId()` (**:96–108**) now fetches
+the **concrete asset `/chart/sw.js`** (not the host document) with `cache:'no-store'` **plus a unique
+cache-buster** `?__vrc=<Date.now()>-<++seq>` (the monotonic per-tab `_vrcSeq` at **:87** guarantees a
+distinct URL even for two checks in the same millisecond). `parseBuildId()` (**:75–83**) extracts the
+build id from the marker: `SW_VERSION = "talaria-chart-<build>"` first (the sw.js marker, kept in
+lockstep with the HTML build id by `bump-dist-v9-cache.mjs`), then the HTML `__TALARIA_CHART_BUILD_ID`
+assignment, then a `?v=` fallback — so the same parser works against sw.js **or** a document.
+
+**Why the old fetch read stale.** The b94 version fetched the **host document** (`location.pathname`)
+with `cache:'no-store'`. `cache:'no-store'` only bypasses the **HTTP cache — it does NOT bypass an active
+service worker.** A caching SW with a **navigation fallback** serves the STALE cached `index.html` for
+**any navigation-shaped URL regardless of query**, so the detector compared **stale-vs-stale** (b94==b94)
+and never fired. `/chart/sw.js` is a concrete `.js` asset (not a navigation) → never navigation-fallback-
+served; combined with `no-store` + a unique buster the request must reach the network.
+
+**How the new fetch is proven to reach the network (live, real deploy boundary).** A standalone live
+harness (`harness/verify-fix1.mjs`, run once, not a gate scenario per Director) registers a **real caching
+SW** whose navigation fallback serves a stale shell (loaded build **`b95-STALE`**) for any navigation URL
+while passing concrete assets through, and serves a **newer deployed** marker `/chart/sw.js` →
+`talaria-chart-20260707b96-DEPLOYED`. Result **7/7**:
+- tab is running the stale SW-cached shell (loaded = `b95-STALE`);
+- **(A)** OLD document fetch is **MASKED** — reads `b95-STALE` (network truth was `b96-DEPLOYED`);
+- **(B)** NEW `/chart/sw.js` fetch **reaches the network** — reads `b96-DEPLOYED`; the **server logged the
+  GET `/chart/sw.js?__vrc=…` hit** (network reached, not cache);
+- **(B)** `check()` detects the mismatch and **shows the toast**;
+- **(C)** kill switch `__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT` still fully suppresses on a real
+  mismatch (returned=false, no DOM toast);
+- unique cache-buster → two concurrent checks use DISTINCT URLs.
+
+**Preserved behavior.** Host-only (`isPanel()` guard), dismissible toast, no auto-reload, kill switch
+default-ON, no false alarm on a network hiccup (empty deployed id → no toast). **No SW caching-strategy
+change:** `sw.js` diff is **version-string-only** (the standard `SW_VERSION` cache bump); the version-
+reload module is a client script, not the SW. Gate scenario **H-S22 still PASS**.
+
+### FIX 2 — Post-acquire coarse-panel viewport clamp (engine, gated, H-S23 extension)
+
+**Kill switch + file:line.** `__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP` (default = fix ON,
+SEPARATE flag, reverts independently of BL-17). One-shot clamp `_multichartClampCoarseAcquireViewport`
+(`chart.js:3153`), invoked **once at acquire-commit** in `_multichartPanelCoarseDisplayAcquire`
+(`chart.js:3107`, right after `_hotSwapBacktestReplayTimeframe`). Never continuous.
+
+**ONE-LINE named root race (guard used, ledgered known-deferred).** The non-deterministic landing is a
+race between **W1** the SYNCHRONOUS `_restoreTfSwitchViewport → syncReplayViewportToPlayhead`
+(`chart.js:29632/29663`) and **W2** the DEFERRED `_deferBacktestTfSwitchFollowUp →
+_snapReplayViewportAfterTfSwitch` + the `setTimeout` `_fillViewportHistoryAfterTfSwitch`
+(`chart.js:~29653`); because **W2 legitimately awaits the async host backward fetch it is NOT trivially
+orderable after W1**, so the **CLAMP GUARD stands** (no ordering fix) and the race is **ledgered here as
+known-deferred** (not silently papered over). The clamp writes the authoritative viewport once and sets
+`_chartViewRestored=true` so W2's snap skips.
+
+Constraint 2 nuance: the clamp reuses `syncReplayViewportToPlayhead` for the deterministic follow offset +
+BL-2b price-independence (`resetPriceScale:false`), THEN **tightens `offsetX` to a hard right-edge anchor**
+(`RIGHT_EDGE_PAD_CANDLES=1`; `offsetX = plotW − (len−1)·spacing − PAD·spacing`). Reason:
+`getReplayAutoScrollState` deliberately leaves a **~10–20 % ratio right-gap** — fine at a tight zoom, but
+**tens of empty-future candles at the wide `candleWidth≈6` landing** (the exact D-045 defect). candleWidth
+is left untouched (no zoom change); `constrainOffset` leaves the anchor within bounds (len ≫ 15).
+
+**State-matrix (incl. dragged-during-acquire).**
+
+| Panel state at acquire-commit | Clamp behavior | diag `.mode` |
+|---|---|---|
+| follow engaged / at-edge | right-edge anchor (reuse sync + right-edge tighten) | `right-edge` |
+| **dragged-during-acquire** (live axis gesture surviving `_beginTimeframeSwitching:21087`) | **SKIP entirely — user viewport wins** | `skip-interaction` |
+| panned into history (settled `userHasPanned` / follow off) | clamp empty-space bounds only, NO recenter | `clamp-bounds` |
+| kill switch ON / replay inactive / no data | no-op | `disabled` / `skip-inactive` |
+
+Note: a `type:'pan'` drag is intentionally cancelled by `_beginTimeframeSwitching` at switch start, so the
+enduring in-flight gesture a real user keeps HELD across the async acquire is an **axis drag** — H-S23's
+dragged-during-acquire cell arms `drag={active:true,type:'timeAxis'}` (which the cancel-list spares) and
+asserts `skip-interaction`.
+
+**H-S23 extension — RED vs GREEN numbers** (deterministic, sampled at settle, no wall-clock; existing
+fetch/seam assertions kept intact):
+
+| Metric | GREEN (fix ON) | RED (`--bugswitch=__TALARIA_MC_DISABLE_COARSE_PANEL_ACQUIRE_VIEWPORT_CLAMP`) |
+|---|---|---|
+| `leftEmptyDays` (leftmost visible bar present) | **0** | 0* |
+| playhead → right-edge (candle-spacings) | **1.00** (≤3) | **36.66** (FAIL) |
+| `candleWidth` at settle | **89** (tight) | **6** (wide, ~36 days empty future) |
+| clamp `.mode` (follow cell) | **right-edge** | disabled |
+| dragged-during-acquire `.mode` | **skip-interaction** | disabled |
+| H-S23 verdict | **PASS** | **FAIL-REAL-BUG** |
+
+\*RED still lands on real data at the left because it scrolls into history, but the playhead marches off
+the right edge with the wide-zoom empty future — the defect the fix removes.
+
+### Verification / report-back (both fixes)
+
+- **Full `npm run gate` — GREEN 21/21** (H-S2..H-S23; all prior BL scenarios H-S17/18/19/19b/20/21/22/23
+  PASS). **Known-failing baseline: none; regressions: none; newly-fixed: none.** In-gate H-S23 shows
+  `clampMode=right-edge leftEmptyDays=0 playheadToRightEdgeSpacings=1.00 candleWidth=89` and dragged-cell
+  `skip-interaction`.
+- `node --check` clean on every edited JS in **both** trees (`chart.js`, `talaria-version-reload.js`,
+  `scenarios.mjs`, `sw.js`, `dist-v9/sw.js`).
+- **SHA256 — every edited mirror pair byte-identical:**
+  `chart.js` = `21B7261F22C30917A9C881C15DD5F667D400575D2D9F28B04354B8FD634E4E89`;
+  `modules/talaria-version-reload.js` = `291BA837C0A611C5E8FEF3071D2B3B7976E8AE718DA98E17C2D4FB52949AAE0D`;
+  `multichart-prod/harness/scenarios.mjs` = `A2651FF467B44F1107A2CFA636AB393823CBD7ECADC057ABF48042626C2DE9D0`;
+  `sw.js` = `dist-v9/sw.js` = `A0C9225AFB640121C73E3CE59C1419E23918BD3F36F32976909508B3BB23C090`;
+  `dist-v9/index.html` = `2C56DEE417BB5E209FEF8DE8C43C3AB22A4D9EB87638587337965B3F2FA7878C`;
+  `legacy-index.html` = `F9D95C594B7DD670B51A10940E33714C8D050D96B09285739E7F6D045FB02ADD`;
+  `multichart-prod/chart-embed.html` = `9D5DA667270DBCE9073F81FE6D3A9412C20CE37E1EEF5EBCC9FF65A6C9E9E581`.
+  `known-failing.json` **untouched** (H-S23 already registered from D-044; still GREEN, no baseline change).
+- **ONE build bump** b95 → `20260707b96` via `bump-dist-v9-cache.mjs` (uniform `?v=` + `SW_VERSION` + embed
+  default across dist-v9 / live / legacy / embed in both trees); **0 `20260707b95` stragglers** in shipped
+  files (remaining matches are prior-build ledger history only).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only
+  the standard `SW_VERSION` cache-string bump); **B8 owner caps + §6c I1 embed high-limit exclusion intact.**
+
+**PENDING:** PO live re-test on deployed **b96** — (1) an old tab on a stale SW-cached bundle now shows the
+"new version — Reload" toast once b96 is deployed; (2) sync OFF, long 1m replay, switch a same-pair panel
+to 1D during replay lands deterministically (leftmost bar present, playhead at the right edge, no empty
+future) with follow engaged, and is left alone if the user is mid-gesture.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
