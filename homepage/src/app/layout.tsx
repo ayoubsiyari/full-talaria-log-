@@ -5,6 +5,7 @@ import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
 import SentryInit from "@/components/SentryInit";
+import ChunkReloadGuard from "@/components/ChunkReloadGuard";
 import { JsonLdScript } from "@/components/seo/JsonLdScript";
 import {
   buildPublicAlternates,
@@ -119,6 +120,7 @@ export default function RootLayout({
       <body className={`${zain.variable} font-sans antialiased`}>
         <LanguageProvider>
           <SentryInit />
+          <ChunkReloadGuard />
           {children}
           <CookieConsent />
         </LanguageProvider>

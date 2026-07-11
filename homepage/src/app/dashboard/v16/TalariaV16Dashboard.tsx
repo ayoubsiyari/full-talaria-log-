@@ -24,6 +24,7 @@ import { normalizeV16DashboardView } from "./v16DashboardRoutes";
 import { V16ProfilePortal } from "./V16ProfilePortal";
 import { V16SupportChatPopover } from "./V16SupportChatPopover";
 import V16DashboardLoading from "./V16DashboardLoading";
+import V16ErrorBoundary from "./V16ErrorBoundary";
 
 declare global {
   interface Window {
@@ -236,7 +237,9 @@ function TalariaV16DashboardReady({
           pointerEvents: boot.status === "ready" ? "auto" : "none",
         }}
       >
-        <TalariaV16 key="v16-embedded" />
+        <V16ErrorBoundary key={`v16-boundary-${v16View}`} isArabic={isArabic}>
+          <TalariaV16 key="v16-embedded" />
+        </V16ErrorBoundary>
       </div>
     </div>
   );
