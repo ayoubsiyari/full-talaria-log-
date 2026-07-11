@@ -118,6 +118,10 @@ function bumpChartEmbedHtml(buildId) {
     let before = fs.readFileSync(embedPath, "utf8");
     let after = before.replace(DEFAULT_BUILD_RE, `window.__TALARIA_CHART_BUILD_ID = p.get('v') || '${buildId}'`);
     after = after.replace(/(\/chart\/fonts\/talaria-fonts\.css)\?v=[^"']+/g, `$1?v=${buildId}`);
+    // Vendor libs (d3, lz-string) are hardcoded with ?v= in the embed shell
+    // (they load before __TALARIA_CHART_BUILD_ID-driven injection). Bump them
+    // too so every panel asset carries the current build id.
+    after = after.replace(/(\/chart\/vendor\/[^"'?]+)\?v=[^"']+/g, `$1?v=${buildId}`);
     if (after === before) continue;
     fs.writeFileSync(embedPath, after, "utf8");
     console.log("[bump-dist-v9-cache] Set embed default ?v=" + buildId + " in", embedPath);
