@@ -2055,3 +2055,33 @@ consistent with the standing rules). One correction and one constraint:
 
 Both items hold the Phase-5 quiet-period clock; Phase-5 stays parked. The clock
 restarts when BL-15 + BL-16 close PO-confirmed and no new felt defect follows.
+
+---
+
+## D-044 — REOPEN GRANTED: BL-17 — with a consolidation order (2026-07-11)
+
+Approved, but note what this is: BL-17 is exactly the scope confirmation D-043
+already ordered on BL-15 ("confirm the non-backtest-replay gate doesn't bypass the
+COARSER path too; if it does, fix it in the same change — it is the same gate").
+The diagnosis confirms it does. Therefore:
+
+- **If BL-15 is still in flight: BL-17 rides in the SAME change.** One gate
+  (`isBacktestMode`), one fix, one build — a finer switch and a coarser switch
+  during non-backtest replay both route to their already-sanctioned acquisition
+  paths (`_ensureFinerPanelOwnerCoversPlayhead` / BL-14's bounded coarse-acquire).
+  Two RED-first scenarios (finer axis-ratio + coarser fetch-bound), one
+  kill-switch, one state-matrix covering both directions. Do NOT ship two separate
+  builds each half-fixing the same gate.
+- **If BL-15 already landed without it:** separate gated fix as proposed, inheriting
+  D-042's hybrid constraints verbatim (zero-fetch resample of the host-covered
+  window + ONE bounded coarse fetch for the remainder, seam-asserted bar equality,
+  host fetch count unchanged, no host master mutation, no 2000-chunk walk with
+  serve.mjs as witness).
+
+Family: data-acquisition, agreed — no Phase-5 cell; holds the clock. Standard close
+conditions. One ledger lesson: BL-14/15/17 are three visits to the same
+`isBacktestMode` predicate — when the DIAG for BL-15 named that gate, the RIGHT move
+was to enumerate everything else it guards in one pass (the D-035 matrix logic
+applied to a predicate, not a fix). The manager should have the BL-15/17 worker do
+that enumeration NOW and report any remaining paths the gate relabels/starves under
+non-backtest replay, so we close this predicate once instead of a third reopen.

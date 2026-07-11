@@ -2918,18 +2918,38 @@ class Chart {
      *
      * Kill-switch: window.__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE (default
      * fix ON; disabling restores today's slow chunked path).
+     *
+     * BL-17 (D-044): the SAME machinery is reused for NON-backtest replay (the
+     * coarser sibling of BL-15's finer routing) via options.nonBacktestReplay. In
+     * that mode the isBacktestMode requirement is lifted (an active replay + fileId
+     * is enough) and a SEPARATE kill-switch
+     * (window.__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE) gates it, so the
+     * two paths revert independently. The backtest-session helpers are null-safe (no
+     * session in non-backtest replay) and _hotSwapBacktestReplayTimeframe already
+     * handles an active non-backtest replay master-replace — the hybrid shape
+     * (zero-fetch recent resample + one bounded coarse fetch + bar-equal seam) is
+     * identical, so no logic is duplicated.
      * @param {string} normalizedTf
+     * @param {{nonBacktestReplay?: boolean}} [options]
      * @returns {Promise<boolean>}
      */
-    async _multichartPanelCoarseDisplayAcquire(normalizedTf) {
+    async _multichartPanelCoarseDisplayAcquire(normalizedTf, options = {}) {
         try {
-            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE) {
-                return false;
+            const nonBacktestReplay = !!(options && options.nonBacktestReplay === true);
+            if (typeof window !== 'undefined') {
+                if (nonBacktestReplay) {
+                    if (window.__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE) return false;
+                } else if (window.__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE) {
+                    return false;
+                }
             }
             if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) return false;
             if (typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair()) return false;
             const replay = this.replaySystem;
-            if (!replay || !replay.isActive || !this.isBacktestMode || !this.currentFileId) return false;
+            if (!replay || !replay.isActive || !this.currentFileId) return false;
+            // Backtest replay requires isBacktestMode (D-042); the non-backtest sibling
+            // (BL-17/D-044) only requires an active replay + fileId.
+            if (!nonBacktestReplay && !this.isBacktestMode) return false;
 
             const tf = String(normalizedTf || '').toLowerCase().trim();
             const tfMs = this.parseTimeframe(tf);
@@ -20652,6 +20672,53 @@ class Chart {
                     console.warn('[multichart] finer panel replay TF acquire failed', e);
                     this._endTimeframeSwitching();
                 });
+            }
+
+            // BL-17 (D-044): NON-backtest replay, same-pair embed panel switching to
+            // a COARSER TF than the host's native (e.g. host 1m → panel 1D) after a
+            // long replay run. This is the coarser sibling of BL-15's finer routing —
+            // the SAME isBacktestMode gate above (which routes backtest coarse switches
+            // to BL-14's bounded hybrid coarse-acquire) is bypassed in non-backtest
+            // replay, so the panel used to fall through to the resample/relabel fallback
+            // below. A coarse resample of the bounded fine window is only a ~2-candle
+            // stub, so the coarse viewport then backfilled one 2000-bar page at a time —
+            // the slow ~51-fetch backward chunk-walk (the PO's "loading old data very
+            // slowly and laggily"). Route it to BL-14's sanctioned bounded HYBRID
+            // coarse-acquire instead, inheriting D-042's constraints VERBATIM: a
+            // ZERO-FETCH resample of the host-covered recent window from the host 1m
+            // master + ONE bounded coarse fetch for the older remainder + a bar-equal
+            // seam; the host master is read-only throughout. Only engage when a coverage
+            // GAP exists (the master cannot already span the coarse window — otherwise
+            // the fast client-resample below is correct). Kill-switch
+            // __TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE (default fix ON)
+            // restores today's chunk-walk. (Finer-direction routing is BL-15's separate
+            // flag; independent pairs keep their own-master resample.)
+            if (this.currentFileId
+                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE)
+                && typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()
+                && !(typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair())
+                && typeof this._multichartPanelCoarseDisplayAcquire === 'function'
+                && typeof this._multichartMasterCoversTimeframe === 'function'
+                && !this._multichartMasterCoversTimeframe(normalizedTf)) {
+                const coarseNativeMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
+                const coarseTargetMs = this.parseTimeframe(normalizedTf);
+                if (Number.isFinite(coarseTargetMs) && coarseTargetMs > coarseNativeMs) {
+                    return this._multichartPanelCoarseDisplayAcquire(normalizedTf, { nonBacktestReplay: true })
+                        .then((ok) => {
+                            if (!ok) {
+                                // Acquire could not land the coarse window (e.g. no candle
+                                // payload): KEEP the last-good frame and end the switch
+                                // rather than fall into the slow chunk-walk (same graceful
+                                // keep-last-good contract as BL-15's finer route).
+                                this._logTfSwitch('coarse-replay-acquire-failed-keep-last-good', { to: normalizedTf });
+                                this._endTimeframeSwitching();
+                            }
+                        })
+                        .catch((e) => {
+                            console.warn('[multichart] coarse panel replay TF acquire failed', e);
+                            this._endTimeframeSwitching();
+                        });
+                }
             }
 
             if (this._canClientResampleToTimeframe(normalizedTf)) {

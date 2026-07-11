@@ -2844,6 +2844,135 @@ trees — SHA256 `307BE729A3072D536AB78A768E093FC770E8BEF99AD2E54B99AF3560316D79
 `panel-cmd-bridge.js` untouched. Build bumped **b92 → 20260707b93** (uniform across
 dist-v9/live/legacy/embed + `SW_VERSION` in both trees; 0 b92 stragglers).
 
+## 6ci. BL-17 — coarser same-pair panel acquires bars on TF switch during NON-backtest replay (D-044, b95)
+
+**DEFECT (BL-17 / D-044, PO live-confirmed).** In a same-pair 2×2 multichart with **sync OFF**,
+switching a **PANEL** to a **COARSER** TF than the host's native (e.g. host 1m, panel → **1D**)
+**during (non-backtest) replay**, after a long fine replay run, **loads old data very slowly and
+laggily** — the coarser sibling of BL-15. Host is fine, sync is OFF. This is the third visit to the
+**same `isBacktestMode` gate** in `setTimeframe` (BL-14 fixed backtest coarse; BL-15 fixed
+non-backtest finer; BL-17 fixes non-backtest coarser).
+
+**ROOT CAUSE (verified).** The embed acquire branch that routes a backtest coarse switch to BL-14's
+bounded hybrid (`_multichartPanelCoarseDisplayAcquire`) is gated on
+`if (this.isBacktestMode && this.currentFileId)` (chart.js ~20590). A **non-backtest** replay panel
+skips that block entirely. A coarser (1D) target is **not** client-resamplable
+(`_canClientResampleToTimeframe` returns false for `newMs/rawMs > 6`, i.e. 1m→1D = ×1440), so it
+falls to the **replay resample/relabel fallback** → `replaySystem.onTimeframeChange` resamples the
+**bounded** fine window (~2000 1m bars ≈ 1.4 days) to a ~2-candle 1D stub, then backfills the 1D
+viewport **one 2000-bar backward `/candles` page at a time** — the slow **~51-fetch chunk-walk**, and
+(via same-pair pan-load delegation) it **mutates/contaminates the HOST 1m master**. Symptom differs
+from BL-15's malformed axis: the axis is sane; the defect is the chunk-walk (BL-14 class).
+
+**FIX (gated, chart.js).** In the non-backtest replay branch of `setTimeframe`, **immediately after
+BL-15's finer routing** and **before** the client-resample/relabel fallback (chart.js
+**~20657–20704**), route a **coarser-than-native same-pair embed panel** (embed, NOT independent,
+`coarseTargetMs > nativeMs`, and only when a coverage **gap** exists —
+`!_multichartMasterCoversTimeframe(normalizedTf)`) to BL-14's sanctioned bounded hybrid via a new
+call `_multichartPanelCoarseDisplayAcquire(normalizedTf, { nonBacktestReplay: true })`. On acquire
+failure it **keeps the last-good frame** and ends the switch (same graceful contract as BL-15) —
+never the slow chunk-walk. The acquire machinery was **reused, not duplicated** (chart.js
+**~2924–2960**): a `{ nonBacktestReplay }` option lifts the internal `isBacktestMode` requirement
+(now only `replay.isActive && currentFileId`) and selects the new kill-switch; the backtest-session
+helpers are null-safe (no session in non-backtest) and `_hotSwapBacktestReplayTimeframe` already
+handles an active non-backtest replay master-replace, so **no D-042 logic was re-implemented**. The
+D-042 hybrid shape is inherited **VERBATIM**: (i) **zero-fetch** resample of the host-covered recent
+window from the host 1m master, (ii) **ONE bounded** coarse `/smart` fetch for the older remainder
+(`COARSE_DISPLAY_BAR_CAP = 1500`), (iii) **bar-equal seam** (completed resampled 1D == native 1D by
+identical `floor(t/86400000)` bucketing); the **host master is read-only** throughout.
+
+**KILL-SWITCH (named up front): `__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE`** (default =
+**fix ON**; setting it restores today's chunk-walk). It is **SEPARATE** from BL-15's finer flag
+(`__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE`) and BL-14's backtest flag
+(`__TALARIA_MC_DISABLE_PANEL_COARSE_DISPLAY_ACQUIRE`) — the three revert independently.
+
+**FILE:LINE OF EACH CHANGE (both trees, byte-identical).**
+- `chart.js` **~20657** — new BL-17 non-backtest coarser routing branch in `setTimeframe`'s
+  `replaySystem.isActive` block (kill-switch + embed + not-independent + coarser + coverage-gap gate;
+  delegates to the acquire; keep-last-good on failure).
+- `chart.js` **~2924** — `_multichartPanelCoarseDisplayAcquire(normalizedTf, options)` gains the
+  `nonBacktestReplay` option: per-path kill-switch selection and the relaxed replay gate
+  (`isBacktestMode` no longer required when driven from the non-backtest entry).
+
+**TASK 2 — `isBacktestMode` PREDICATE ENUMERATION (D-044 ledger lesson; ONE pass over every path the
+`setTimeframe` replay-block gate guards + what it does under NON-backtest replay).** The governing
+gate is `if (this.isBacktestMode && this.currentFileId)` (chart.js ~20590), plus two adjacent
+`isBacktestMode` sub-gates in the same replay region (~20555, ~20578).
+
+| # | `isBacktestMode`-guarded path (backtest) | file:line | NON-backtest-replay behavior | Verdict |
+|---|---|---|---|---|
+| 1 | `_multichartMirrorHostTfSwitchIfReady` (same-pair embed instant host-clone) | ~20592 | Bypassed. Same-pair **coarser** now → **BL-17 bounded acquire**; same-TF → idempotency no-op; small coarser (ratio ≤6) → client-resample. | **CORRECT** (was chunk-walk for big-coarser; fixed by BL-17) |
+| 2 | `_isIndependentMultichartPair() && _independentPanelTimeframeSwitch` (own-master resample) | ~20596 | Bypassed. BL-17 **excludes** independent pairs (correct — NOT pulled into host resample). Small/equal coarser → client-resample OK. **BIG coarser (ratio>6)** → relabel fallback → `onTimeframeChange` resamples the panel's **own** bounded master → **chunk-walk on its OWN file**. | **FLAGGED** (see below) |
+| 3 | `_multichartReplayTimeframeSwitch` → `_tryMultichartEmbedBacktestTimeframeFastPath` → else `_refetchBacktestTimeframeCore` (same-pair embed main) | ~20600 | Bypassed. Same-pair **finer** → **BL-15** acquire; **coarser** → **BL-17** acquire; equal/covered → client-resample. | **CORRECT** (finer BL-15 + coarser BL-17 close it) |
+| 4 | Host (non-embed) `_applyBacktestTimeframeFromCache` → `_refetchBacktestTimeframe` | ~20602 | Bypassed. Host is **not** an embed panel, so it is **not** subject to the §6c I1 embed high-limit exclusion → its coarse history loads via the bulk path in one shot (PO-confirmed "host is fine"). | **CORRECT** (host unaffected) |
+| 5 | Playhead capture / BT-TF cache save `if (replayActive && isBacktestMode && currentFileId)` | ~20555 | Skipped in non-backtest (there is no BT-TF cache); playhead is captured inside the acquire/resample paths instead. | **CORRECT** (benign) |
+| 6 | Path-A live TF-cache skip-guard `!(replayActive && isBacktestMode && embed)` | ~20578 | In non-backtest embed the guard is false, so `_applyLiveTimeframeSwitchFromCache` **is** attempted first; it returns false for an uncached coarse target and falls through to BL-17. | **CORRECT** (falls through cleanly; verified — H-S23 GREEN reaches the acquire) |
+
+**FLAGGED FINDING (path #2 — NOT fixed here, for a Director ruling).** An **independent-pair** panel
+switching to a **big coarser** TF (ratio > 6) during **non-backtest** replay is, by code path, the
+same relabel-fallback that BL-17 fixes for same-pair — but on the **independent panel's own bounded
+master** (a *different owner*, not host contamination). It therefore **likely chunk-walks on its own
+file**. It is deliberately **out of BL-17 scope** (the state-matrix requires independent pairs stay
+on their own master and NOT be pulled into the host resample, which BL-17 honors by excluding them).
+Recommend a **dedicated RED scenario + Director ruling** before touching it — reported, not silently
+fixed, so the predicate can close cleanly. All same-pair and host paths (#1, #3, #4) are now closed;
+this is the one residual `isBacktestMode`-relabel/starve candidate under non-backtest replay.
+
+**RED-FIRST SCENARIO — H-S23** (registered in `scenarioList` + `known-failing.json` `expectedTests`;
+deterministic, NO wall-clock — serve.mjs per-hit API log + bar equality + diag counters). Same-pair
+2×2, all sync OFF, **NON-backtest** replay (`isBacktestMode=false`, asserted), host 1m, deep 400-day
+instrument (serve.mjs file 28). Enter paused replay, PLAY 300 host 1m frames (host 1m master →
+bounded window), then switch **panel B → 1D**. Asserts: bounded panel fetch (≤4), no 2000-chunk walk
+(≤2), seam bar-equality (completed resampled 1D == native 1D), host fetch delta 0, host master
+first/last/len unmutated, and BL-10 playhead advance on the acquired 1D data.
+
+| Metric | GREEN (fix, b95) | RED (`__TALARIA_MC_DISABLE_COARSE_PANEL_REPLAY_TF_ACQUIRE` / b94) |
+|---|---|---|
+| panel data fetches | **1** | **53–55** |
+| 2000-chunk backward `/candles` | **0** | **53–55** |
+| seam mismatches (completed 1D vs native) | **0** (298 compared) | **1** |
+| host fetch delta during switch | **0** | **+54…+56** |
+| host 1m master mutated | **no** (len 2000 → 2000) | **yes** (2000 → ~110000) |
+| coarse panel playhead still advances (BL-10) | **yes** (1783738980000 → 1783753380000) | n/a |
+
+**FLAKE-STABILITY.** RED **×3 = FAIL-REAL-BUG** (identical class each run: chunkWalk 53/55/53,
+hostFetchDelta 54/56/... , seamMismatch 1). GREEN ×1 PASS (and via full gate). Deterministic only.
+
+**STATE-MATRIX (D-035 rule; direction × replay-state × sync × panel-relationship). "unchanged" =
+byte-for-byte prior behavior; "THE FIX" = BL-17 bounded acquire.**
+
+| Panel relationship | Replay state | Sync | Behavior under BL-17 |
+|---|---|---|---|
+| **Same-pair COARSER (host 1m → panel 1D) [CALLED-OUT]** | **playing** | off | **THE FIX** — bounded acquire lands the 1D master; **BL-10 playhead + forming candle keep advancing on the newly acquired 1D data** (H-S23 asserts `replayTs` advances post-acquire; H-S17 still GREEN). |
+| Same-pair coarser | paused / idle | off | THE FIX — bounded acquire (zero-fetch recent + one bounded older fetch + bar-equal seam); no chunk-walk; host read-only. |
+| Same-pair coarser (small step, ratio ≤6, or master covers) | any | off | **unchanged** — fast client-resample (acquire declines via `_multichartMasterCoversTimeframe`). |
+| Same-pair coarser | any | **on** | **unchanged** — interval-sync fans the TF to all panels; the host owns acquisition; embed panels mirror. BL-17 gate is same-pair-embed-panel-initiated only. |
+| Same-pair FINER (BL-15) | any | off | **unchanged** — BL-15's `_ensureFinerPanelOwnerCoversPlayhead` (separate flag); BL-17 excludes finer (`coarseTargetMs > nativeMs`). H-S21 still GREEN. |
+| **Independent pair (other pair) [CALLED-OUT]** | any | any | **unchanged / NOT pulled into host resample** — BL-17 explicitly excludes `_isIndependentMultichartPair()`; keeps its own master. (Big-coarser-on-own-master chunk-walk = the FLAGGED finding above, out of scope.) |
+| Host (tile A) | any | any | **unchanged** — not an embed panel; host fetch delta 0, master unmutated (H-S23 asserts). |
+| Backtest replay (any direction) | any | any | **unchanged** — BL-14/BL-15 paths; the non-backtest option leaves the backtest gate + D-042 flag intact. H-S20 still GREEN. |
+
+**VERIFICATION.** Full `npm run gate` **GREEN — 21/21** (H-S2..H-S23; H-S8 host-play, H-S17 BL-10,
+H-S18 BL-11, H-S19/H-S19b BL-12/13, **H-S20 BL-14**, **H-S21 BL-15** all still PASS; 0 known-failing
+tracked, no regressions). `node --check` clean on the edited `chart.js` **and** `scenarios.mjs` in
+**both** trees (no ESLint config covers the static engine asset; `node --check` is the syntactic
+gate, matching prior BL entries). **ENGINE PARITY:** every edited mirror pair is **byte-identical**
+(SHA256): `chart.js` = `437136DA12A2B7EF170108D3CAF2F6C7435D05AE56C01B72580F3F19767668B8`;
+`multichart-prod/harness/scenarios.mjs` = `C0925A196A841099B486A2DEAECCD0ACC641DD5B73BF6BE8D1C1FD1276C7F08D`;
+`harness/known-failing.json` = `C103A7C47A4F6A6354DDD399CBB1B5BFD649D68965EB596CE16FB912599FD7F6`
+(plus the build-bumped `dist-v9/index.html`, `dist-v9/sw.js`, `sw.js`, `legacy-index.html`,
+`chart-embed.html` pairs all EQUAL). `panel-cmd-bridge.js` untouched. Build bumped **b94 →
+20260707b95** (uniform `?v=` + `SW_VERSION` + embed default across dist-v9/live/legacy/embed in both
+trees; **0 b94 stragglers**). **No security guard / SW-lifecycle logic / `gate.mjs` /
+`.github/workflows/security.yml` touched** (only the standard `SW_VERSION` cache-string bump); **B8
+owner caps and §6c I1 embed high-limit exclusion intact** — the BL-14 coarse fetch keeps its own
+explicit `COARSE_DISPLAY_BAR_CAP` bound and does not broaden the general embed bulk-fetch path.
+
+**PENDING:** PO live re-test on deployed **b95** — sync OFF, long fine (1m) replay run, switch a
+same-pair panel to 1D during replay: it must load promptly (one bounded fetch, no slow one-by-one
+backfill), the host must stay untouched, and the coarse panel must keep advancing its playhead on
+play. Director ruling requested on the **flagged independent-pair big-coarser** path.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
