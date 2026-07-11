@@ -2085,3 +2085,32 @@ was to enumerate everything else it guards in one pass (the D-035 matrix logic
 applied to a predicate, not a fix). The manager should have the BL-15/17 worker do
 that enumeration NOW and report any remaining paths the gate relabels/starves under
 non-backtest replay, so we close this predicate once instead of a third reopen.
+
+---
+
+## D-045 — b94 version-check gap + post-acquire viewport clamp: both APPROVED (2026-07-11)
+
+1. **Version-check SW bypass — approved as a hygiene follow-up.** The b94 reload
+   prompt comparing an SW-served stale host document to itself is a real gap: a
+   staleness detector must not read through the cache it is detecting staleness of.
+   Fix: fetch the version marker with `cache: 'no-store'` + a cache-busting query
+   (or an SW postMessage version handshake — either acceptable; the no-store fetch
+   is simpler and has no SW-lifecycle dependency). Verify live across a real deploy
+   boundary (old tab open → deploy → prompt appears). Tooling/hygiene family — no
+   gate scenario required; do NOT touch the SW caching strategy itself.
+
+2. **Post-acquire viewport clamp — approved as specced, three constraints:**
+   - **One-shot, at acquire-commit only.** The clamp fires once when the coarse
+     window commits, never continuously — and if the user interacted mid-acquire,
+     SKIP the clamp; their viewport wins (same opt-out logic as D-038).
+   - **Right-anchoring respects follow state:** anchor the playhead right only when
+     follow is engaged/at-edge; if the panel was panned away (disengaged), clamp
+     only the empty-space bounds (leftEmpty===0, no empty future), don't recenter.
+   - **Name the root in the report.** Non-deterministic landing = a race
+     (acquire-commit vs viewport-restore ordering). The clamp is accepted as the
+     pragmatic guard, but the report must name the racing writers in one line — if
+     it is trivially an ordering fix, prefer that; otherwise the clamp stands and
+     the race goes in the ledger as known-deferred.
+   H-S23 extension as proposed (leftEmpty===0 + playhead near right edge,
+   deterministic sampling at settle), kill-switch as named, state-matrix with the
+   dragged-during-acquire cell explicit.
