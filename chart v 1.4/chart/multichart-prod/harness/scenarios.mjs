@@ -3065,6 +3065,194 @@ async function hS23(ctx) {
   });
 }
 
+// ── H-S24 ────────────────────────────────────────────────────────────────
+// BL-18 (D-046): peer-refetch-on-TF-switch storm. During ACTIVE non-backtest
+// replay, when the HOST switches its own timeframe and fans that out to the
+// same-pair peers (interval fan-out), each peer must ADOPT the host's committed
+// TF by MIRRORING the host's bars — it must NOT self-fetch. The core invariant:
+// switching ONE panel's TF (here the host, whose switch fans out to peers) must
+// NOT cause the OTHER same-pair panels to re-fetch their data.
+//
+// REGRESSION: the just-shipped BL-15 finer-panel replay acquire
+// (_ensureFinerPanelOwnerCoversPlayhead, forceAcquire) is reserved for a panel's
+// OWN user-initiated switch to a TF finer than a genuinely-coarse host. On a
+// host fan-out back to a FINER TF (host 1h → 1m), the bridge mirror-wait's
+// _multichartMirrorHostTfSwitchIfReady declined because
+// _multichartFinerSamePairPanelSelfOwns read the host's STALE committed-native
+// (_mcCommittedNativeRawFetchTf still '1h' after a client-resample fan-out to
+// 1m) → the peer wrongly "self-owned finer", the mirror-wait fell through to
+// ch.setTimeframe(1m) → BL-15 self-acquire → EVERY peer self-fetched (the
+// cross-panel fetch storm the PO hit live). The fix routes the fan-out peer to
+// the mirror path (host is the single owner; peers clone its 1m bars), gated by
+// the NEW kill-switch __TALARIA_MC_DISABLE_PEER_REFETCH_ON_TF_SWITCH_GUARD
+// (default fix ON) so it reverts independently of BL-15/BL-17.
+//
+// DETERMINISTIC (no wall-clock): every assertion is per-panel diag.fetches /
+// bar equality / committed-cadence, sampled after the switch settles.
+// STATE-MATRIX: {sync OFF, sync ON} × replay {paused, playing} for the host
+// fan-out (the failing cells — RED in ALL under the kill-switch), plus a
+// non-host peer OWN switch cell (BL-15 self-acquire intact; peers unaffected).
+async function hS24(ctx) {
+  const checks = makeChecks();
+  const notes = [];
+  const ids = ['A', 'B', 'C', 'D'];
+  let inv;
+
+  // ── Host fan-out (coarse 1h → finer 1m) cells: peers must NOT self-fetch. ──
+  const cells = [
+    { sync: false, playing: false },
+    { sync: true, playing: false },
+    { sync: false, playing: true },
+  ];
+  for (const cell of cells) {
+    const tag = `sync${cell.sync ? 'ON' : 'OFF'}/${cell.playing ? 'playing' : 'paused'}`;
+    const boot = await bootLayout(ctx.browser, ctx.srv,
+      { pair: 'same', panels: 4, tf: '1m', bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+    try {
+      const { page } = boot;
+      await page.setViewport({ width: 2600, height: 1400 });
+      await sleep(400);
+      await setSync(page, cell.sync);
+      await setIntervalSync(page, cell.sync);
+      await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+
+      // Host coarse (1h) so a fan-out BACK to a finer 1m is the regression trigger.
+      await fanOutTf(page, '1h');
+      await sleep(2200);
+      const setupHost = await readAxis21(page, 'A');
+      const setupB = await readAxis21(page, 'B');
+      const setupOk = !!(setupHost && setupHost.tf === '1h' && setupB && setupB.tf === '1h');
+      checks.check(`H-S24 ${tag} setup: host 1h + peers mirror coarse 1h`, setupOk,
+        `host.tf=${setupHost?.tf} B.tf=${setupB?.tf}`);
+      if (!setupOk) continue;
+
+      const ts0 = await replayStartTs(page);
+      if (ts0 == null) { checks.check(`H-S24 ${tag} replay start ts resolvable`, false, 'no ts'); continue; }
+      await hostReplayEnter(page, ts0);
+      await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+      const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+      checks.check(`H-S24 ${tag} non-backtest replay entered + quiescent`, entered.ok, entered.detail);
+      if (!entered.ok) continue;
+
+      if (cell.playing) {
+        // Flip host + every peer into the PLAYING state so the switch happens
+        // during active play (the exact PO condition). Peers learn isPlaying via
+        // a replayFrame fan-out; host via its in-process flag.
+        await setHostReplayPlaying(page, true);
+        await broadcastCmd(page, 'replayFrame', { timestamp: ts0, hostTf: '1h', isPlaying: true });
+        await sleep(300);
+      }
+
+      // ── THE SWITCH UNDER TEST: host fan-out 1h → finer 1m. ──
+      await resetDiag(page);
+      ctx.srv.resetApiLog();
+      const hostBefore = await readHost(page);
+      await fanOutTf(page, '1m');
+      // Settle: poll until every panel commits 1m (bounded), no wall-clock pass.
+      const settleDeadline = Date.now() + 20_000;
+      let after = null;
+      while (Date.now() < settleDeadline) {
+        await sleep(250);
+        after = await readPanels(page);
+        const allOn1m = ids.every((i) => after[i] && after[i].tf === '1m');
+        const quiescent = ids.every((i) => isPanelQuiescent(after[i]));
+        if (allOn1m && quiescent) break;
+      }
+      await sleep(400);
+      after = await readPanels(page);
+
+      // CORE INVARIANT — peers B/C/D self-fetch count == 0 (they mirror).
+      const peerFetch = sumFetches(after, ['B', 'C', 'D']);
+      checks.check(`H-S24 ${tag} CORE: host TF fan-out → peers self-fetch == 0 (mirror, no storm)`,
+        peerFetch === 0,
+        `A=${after.A?.fetches} B=${after.B?.fetches} C=${after.C?.fetches} D=${after.D?.fetches} (RED under kill-switch: each peer=1)`);
+
+      // Peers actually ADOPTED finer 1m (mirror gave real data, not stale coarse).
+      const bAxis = await readAxis21(page, 'B');
+      const cAxis = await readAxis21(page, 'C');
+      const dAxis = await readAxis21(page, 'D');
+      const adopted = [bAxis, cAxis, dAxis].every((a) => a && a.tf === '1m' && a.dominantDelta === 60000 && a.dataMatchesTf);
+      checks.check(`H-S24 ${tag} peers adopted finer 1m via mirror (cadence==60s, not relabeled coarse)`,
+        adopted,
+        `B[${bAxis?.tf},${bAxis?.dominantDelta},${bAxis?.dataMatchesTf}] C[${cAxis?.tf},${cAxis?.dominantDelta}] D[${dAxis?.tf},${dAxis?.dominantDelta}]`);
+
+      // Mirror CORRECTNESS — all panels land on identical first/last bars.
+      const firsts = ids.map((i) => after[i]?.firstBarT);
+      const lasts = ids.map((i) => after[i]?.lastBarT);
+      checks.check(`H-S24 ${tag} all panels land on identical first bar`, allEqual(firsts), firsts.join(','));
+      checks.check(`H-S24 ${tag} all panels land on identical last bar`, allEqual(lasts), lasts.join(','));
+
+      notes.push(`H-S24 ${tag}: host fan-out 1h→1m during replay — peerFetch=${peerFetch} `
+        + `A.fetches ${hostBefore?.fetches}->${after.A?.fetches}; peers on [${ids.slice(1).map((i) => after[i]?.tf).join(',')}]`);
+    } finally {
+      inv = await invariantCheck(boot.page, boot);
+      await boot.close();
+    }
+  }
+
+  // ── STATE-MATRIX CELL: non-host peer's OWN switch (no fan-out) still self-
+  // acquires (BL-15 intact) and does NOT storm the OTHER peers. Host 1h, switch
+  // panel B → 1m via a DIRECT panel-cmd (no __fromHostFanout): B owns/acquires
+  // finer bars; A/C/D must not fetch. This proves the guard did not weaken the
+  // sanctioned own-switch acquire and that only the switching panel fetches. ──
+  {
+    const boot = await bootLayout(ctx.browser, ctx.srv,
+      { pair: 'same', panels: 4, tf: '1m', bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+    try {
+      const { page } = boot;
+      await page.setViewport({ width: 2600, height: 1400 });
+      await sleep(400);
+      await setSync(page, false);
+      await setIntervalSync(page, false);
+      await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+      await fanOutTf(page, '1h');
+      await sleep(2200);
+      const ts0 = await replayStartTs(page);
+      if (ts0 != null) {
+        await hostReplayEnter(page, ts0);
+        await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+        await waitReplayQuiescent(page, ids, ts0, 20_000).catch(() => {});
+        await resetDiag(page);
+        ctx.srv.resetApiLog();
+        const ownBefore = await readAxis21(page, 'B');
+        const finer = await switchTfDuringReplayAndSample(page, 'B', '1m', { ratioLimit: 2.0 });
+        const fin = finer.settled;
+        await sleep(600);
+        const after = await readPanels(page);
+
+        // The switching panel B DID acquire (BL-15 owner path incremented).
+        const ownerDelta = (fin?.ownerFetches || 0) - (ownBefore?.ownerFetches || 0);
+        checks.check('H-S24 own-switch: switching panel B self-acquires finer 1m (BL-15 intact)',
+          !!(fin && fin.tf === '1m' && fin.dataMatchesTf) && ownerDelta >= 1,
+          `B.tf=${fin?.tf} matches=${fin?.dataMatchesTf} ownerFetchDelta=${ownerDelta}`);
+
+        // The OTHER peers (A host + C + D) must NOT fetch on B's own switch.
+        const otherPeers = sumFetches(after, ['C', 'D']);
+        checks.check('H-S24 own-switch: OTHER same-pair peers (C,D) self-fetch == 0',
+          otherPeers === 0,
+          `A=${after.A?.fetches} C=${after.C?.fetches} D=${after.D?.fetches}`);
+
+        notes.push(`H-S24 own-switch: B->1m direct (no fanout) ownerFetchDelta=${ownerDelta} `
+          + `C.fetches=${after.C?.fetches} D.fetches=${after.D?.fetches}`);
+      }
+    } finally {
+      inv = await invariantCheck(boot.page, boot);
+      await boot.close();
+    }
+  }
+
+  notes.push('H-S24 (BL-18, D-046): same-pair 2x2, NON-backtest active replay. HOST switches its own TF and fans out '
+    + 'to same-pair peers (host 1h→1m, finer). RED (--bugswitch=__TALARIA_MC_DISABLE_PEER_REFETCH_ON_TF_SWITCH_GUARD): '
+    + 'every peer B/C/D self-fetches (peerFetch=3) because the bridge mirror-wait declines (stale host committed-native '
+    + '_mcCommittedNativeRawFetchTf reads 1h → peer wrongly self-owns finer → BL-15 _ensureFinerPanelOwnerCoversPlayhead '
+    + 'self-acquire). GREEN (fix): the fan-out mirror bypasses the finer-self-own decline (host is the single owner; the '
+    + 'host-committed-TF + bar-cadence checks still gate it), so peers MIRROR the host 1m bars (peerFetch=0). Reproduced '
+    + 'in ALL of sync{ON,OFF}×replay{paused,playing}. STATE-MATRIX: host/non-host switcher, same-pair coarser/finer/equal, '
+    + 'independent (excluded by the mirror-wait !_isIndependentMultichartPair() gate → own their data, unaffected); the '
+    + 'switching panel itself still acquires (BL-15/H-S21, BL-17/H-S23 intact); BL-10 coarser-play-advance unaffected.');
+  return { checks, inv, notes };
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -3088,6 +3276,7 @@ export function scenarioList() {
     { id: 'H-S21', title: 'finer same-pair panel acquires bars on TF switch during replay; atomic, sane axis (BL-15)', run: hS21 },
     { id: 'H-S22', title: 'host-only new-version reload prompt: build-id mismatch => toast, match => none (kill-switch gated)', run: hS22 },
     { id: 'H-S23', title: 'coarser same-pair panel bounded coarse-acquire on TF switch during NON-backtest replay; no chunk-walk (BL-17)', run: hS23 },
+    { id: 'H-S24', title: 'host TF fan-out during replay: same-pair peers mirror, do NOT self-fetch (BL-18)', run: hS24 },
   ];
 }
 

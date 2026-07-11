@@ -2166,7 +2166,7 @@
                             && sameTfHostWindowExtentDiffers(ch, tf);
                         if (shouldRemirrorSameTf) {
                             try {
-                                if (ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                                if (ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: true })) {
                                     setTimeout(function () {
                                         try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
                                     }, 0);
@@ -2193,7 +2193,7 @@
                             ch._warmBtTfCacheFromParent(tf);
                         }
                         if (typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
-                            && ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                            && ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: args.__fromHostFanout === true })) {
                             setTimeout(function () {
                                 try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
                             }, 0);
@@ -2218,7 +2218,7 @@
                                 if (typeof ch._warmBtTfCacheFromParent === 'function') {
                                     ch._warmBtTfCacheFromParent(tf);
                                 }
-                                if (ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                                if (ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: true })) {
                                     setTimeout(function () {
                                         try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
                                     }, 0);

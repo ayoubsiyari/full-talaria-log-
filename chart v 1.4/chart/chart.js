@@ -3255,13 +3255,32 @@ class Chart {
      * @param {string} normalizedTf
      * @returns {boolean}
      */
-    _multichartMirrorHostTfSwitchIfReady(normalizedTf) {
+    _multichartMirrorHostTfSwitchIfReady(normalizedTf, options = {}) {
         if (!this._isMultichartEmbedPanel()) return false;
         if (typeof this._isIndependentMultichartPair === 'function'
             && this._isIndependentMultichartPair()) {
             return false;
         }
-        if (this._multichartFinerSamePairPanelSelfOwns({ panelTimeframe: normalizedTf })) return false;
+        // PEER-REFETCH-ON-TF-SWITCH GUARD (D-046): an explicit HOST-originated TF
+        // fan-out means the host is the single owner and every same-pair peer
+        // adopts the host's committed TF by MIRRORING its bars (no self-fetch).
+        // The finer-self-own decline below is for a panel's OWN user-initiated
+        // switch to a TF finer than a genuinely-coarse host; on a host fan-out it
+        // MISFIRES because _readCommittedHostStateForFinerOwner can still report a
+        // STALE coarse host committed-native (a client-resample fan-out back to a
+        // finer TF does not refresh _mcCommittedNativeRawFetchTf), so the peer
+        // wrongly self-owns and drops into BL-15's _ensureFinerPanelOwnerCovers
+        // Playhead self-acquire → EVERY peer self-fetches (cross-panel storm).
+        // On a fan-out, skip the decline: the host-committed-TF + bar-cadence
+        // checks below still gate the mirror (if the host cannot actually serve
+        // the finer bars, _barsMatchTimeframe declines and we fall back cleanly).
+        // Reserves the acquire path for a panel's OWN switch (H-S21/H-S23 intact).
+        // Kill-switch __TALARIA_MC_DISABLE_PEER_REFETCH_ON_TF_SWITCH_GUARD (default
+        // fix ON) restores the pre-fix self-acquire storm.
+        const fromHostFanoutMirror = !!(options && options.fromHostFanout)
+            && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_PEER_REFETCH_ON_TF_SWITCH_GUARD);
+        if (!fromHostFanoutMirror
+            && this._multichartFinerSamePairPanelSelfOwns({ panelTimeframe: normalizedTf })) return false;
         const parent = this._multichartGetHostChart();
         if (!parent) return false;
         if (parent._timeframeSwitching || parent._pairSwitchLoading) return false;
