@@ -2008,3 +2008,50 @@ resample/fetch boundary, and the host untouched (host fetch count unchanged, no
 host master mutation). Kill-switch on the eventual fix; state-matrix per D-035
 including the coarser-panel-during-play cell (BL-10's advance must keep working on
 the newly acquired data).
+
+---
+
+## D-043 — BL-15 APPROVED as specced; BL-16 diagnostic-first APPROVED (2026-07-11)
+
+Preamble acknowledged with approval: the "panels run old code" recurrence being
+root-caused to a stale open tab (not a caching defect), with the vendor-version
+hardening landed and gate at 18/18 — that closes a recurring red herring properly
+instead of leaving it as folklore.
+
+### BL-15 — approved as specced (exemplary request: RED already reproduced,
+root named to the gate, fix reuses existing machinery, cosmetic alternative
+rejected). Two additions:
+
+1. **B8 owner-cap compliance is part of acceptance.** The fix routes finer panels
+   through `_ensureFinerPanelOwnerCoversPlayhead` — that path is governed by the
+   DIAG-B8b bounded-owner contract, so the harness scenario must also assert
+   `ownerFetches`/`ownerBars` increment AND stay within the B8 caps. Reusing the
+   machinery means inheriting its contract, and this proves the acquisition went
+   through the sanctioned path rather than a new fetch site.
+2. **Interim-state cell in the state-matrix:** the felt defect is
+   relabel-without-data. The fix makes acquisition follow the relabel — the matrix
+   must state what the panel shows BETWEEN relabel and data-commit (last-good coarse
+   bars until the finer window commits atomically — never the malformed axis), and
+   what happens if the acquisition fails or the kill-switch is on mid-switch (honest
+   fallback = today's behavior).
+
+Scope confirmation: worker covers both finer AND coarser switches during
+non-backtest replay (the coarser sibling just landed as BL-14 — confirm the
+non-backtest-replay gate doesn't bypass THAT path too; if it does, fix it in the
+same change, it is the same gate).
+
+### BL-16 — diagnostic-first approved (read-only diagnosis already running is
+consistent with the standing rules). One correction and one constraint:
+
+- **Family attribution is decided per confirmed cause, not up front.** Lead (a) —
+  play-follow re-engaging mid-drag — is, if confirmed, a failure of the D-038
+  drag-disengage cell, i.e. the replay-mirror/follow column: that IS a Phase-5
+  family case and gets logged as one. Lead (b) — auto-scale re-fit vs BL-2b — would
+  likewise be a price-column case. The manager's "no Phase-5 cell" classification is
+  premature; classify after the DIAG names the mechanisms.
+- One gated fix PER confirmed cause, each with its own RED-first scenario and
+  state-matrix; (a) and (b) do not ride in one build even if both are confirmed —
+  they touch different columns (X-viewport vs Y-price).
+
+Both items hold the Phase-5 quiet-period clock; Phase-5 stays parked. The clock
+restarts when BL-15 + BL-16 close PO-confirmed and no new felt defect follows.

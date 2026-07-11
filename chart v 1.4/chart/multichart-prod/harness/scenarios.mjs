@@ -2403,6 +2403,233 @@ async function hS20(ctx) {
   });
 }
 
+// ── H-S21 ──────────────────────────────────────────────────────────────
+// BL-15 (D-043): switching a SAME-PAIR embed panel to a FINER TF than the
+// coarse host DURING (non-backtest) replay used to RELABEL the coarse host
+// bars as the finer TF WITHOUT acquiring finer data. The time-axis tick
+// cadence (labelIntervalMs = labelInterval × parseTimeframe(finerTf)) then
+// marked EVERY coarse bar a "round" tick because the coarse spacing is an
+// exact multiple of labelIntervalMs → a label on every candle → a compressed
+// / scrollbar-like malformed time axis (the PO's report). Root: the embed
+// acquire branch in setTimeframe is gated on isBacktestMode, so a non-backtest
+// replay panel fell straight through to the relabel fallback.
+//
+// FIX (gated __TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE, default fix ON):
+// route a finer same-pair embed panel to its sanctioned bounded OWNER
+// acquisition (B8: _ensureFinerPanelOwnerCoversPlayhead → _fetchFinerPanelOwnerWindow,
+// per-request ≤5000 bars / ≤2000 during play, per-acquisition ≤10000), and
+// commit the finer window ATOMICALLY — the last-good coarse frame stays until
+// the finer bars land (B8 "no blank frame"), never showing the malformed axis.
+//
+// DETERMINISTIC (no wall-clock): the tick geometry comes from the engine's own
+// _buildTimeTicks; cadence from the committed bar deltas; the owner contract
+// from the ownerFetches/ownerBars diag counters.
+//   • finer cell RED→GREEN flip + kill-switch RED
+//   • data ACQUIRED not relabeled (bar spacing == new TF)
+//   • axis SANE at settle (tick-x strictly increasing, max/min spacing ≤ ~2)
+//   • axis SANE throughout the switch (interim never malformed — atomic commit)
+//   • B8 owner contract: ownerFetches incremented, ownerBars within cap
+//   • coarser cell (both directions): the coarse switch must NOT malform the
+//     axis (data resamples to a real coarse cadence). NOTE: non-backtest replay
+//     ALSO bypasses BL-14's coarse-display acquire via the same isBacktestMode
+//     gate, but the symptom there is a slow chunk-walk (many fetches), NOT a
+//     malformed axis, and that fix is a DIFFERENT method with backtest-session /
+//     hot-swap dependencies — reported as larger-than-same-fix (D-043 scope).
+
+/** Read one panel's real time-axis geometry + cadence + B8 owner counters. */
+async function readAxis21(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    const data = Array.isArray(ch.data) ? ch.data : [];
+    const tfMs = (typeof ch.parseTimeframe === 'function') ? Number(ch.parseTimeframe(ch.currentTimeframe)) : NaN;
+    // Dominant consecutive bar delta (the committed cadence). Weekend/holiday
+    // gaps are rare vs the modal step, so the mode is the true bar spacing.
+    const hist = {};
+    for (let i = 1; i < data.length; i++) { const d = data[i].t - data[i - 1].t; hist[d] = (hist[d] || 0) + 1; }
+    let dom = null; let domN = -1;
+    for (const k of Object.keys(hist)) if (hist[k] > domN) { domN = hist[k]; dom = Number(k); }
+    // Fresh full tick build (the geometry the engine would paint).
+    let xs = [];
+    try {
+      const built = (typeof ch._buildTimeTicks === 'function') ? ch._buildTimeTicks({ full: true }) : (ch._timeTicks || []);
+      xs = (Array.isArray(built) ? built : []).map((t) => Number(t.x)).filter(Number.isFinite);
+    } catch (_) { xs = []; }
+    const dxs = [];
+    for (let i = 1; i < xs.length; i++) dxs.push(xs[i] - xs[i - 1]);
+    const pos = dxs.filter((d) => d > 0);
+    const monotonic = xs.length >= 2 && dxs.every((d) => d > 0);
+    const ratio = pos.length >= 2 ? (Math.max(...pos) / Math.min(...pos)) : (xs.length < 2 ? null : 1);
+    const rs = ch.replaySystem || null;
+    const diag = ch._mcDiag || {};
+    return {
+      tf: String(ch.currentTimeframe || ''),
+      tfMs,
+      dataLen: data.length,
+      dominantDelta: dom,
+      dataMatchesTf: Number.isFinite(dom) && Number.isFinite(tfMs) && dom === tfMs,
+      tickCount: xs.length,
+      monotonic,
+      spacingRatio: ratio,
+      renderTf: (typeof ch._getRenderTimeframe === 'function') ? String(ch._getRenderTimeframe() || '') : '',
+      switching: !!ch._timeframeSwitching,
+      replayActive: !!(rs && rs.isActive),
+      replayTs: rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+      ownerFetches: Number(diag.ownerFetches) || 0,
+      ownerBars: Number(diag.ownerBars) || 0,
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Kick a panel TF switch DURING replay and SAMPLE the axis from switch-issue to
+ * settle, so both the interim frames AND the settled frame are asserted. Returns
+ * { settled, worstRatioSeen, sawMalformed, samples }. "Malformed" == a spacing
+ * ratio blow-up (>ratioLimit) — the compressed every-bar-labeled axis.
+ */
+async function switchTfDuringReplayAndSample(page, id, targetTf, opts = {}) {
+  const { ratioLimit = 2.0, budgetMs = 20_000 } = opts;
+  // Fire the production panel-cmd path WITHOUT awaiting so we can sample the
+  // interim; await it at the end.
+  const cmdPromise = panelCmd(page, id, 'setTimeframe', { tf: targetTf }).catch(() => {});
+  const deadline = Date.now() + budgetMs;
+  const samples = [];
+  let worstRatioSeen = 0;
+  let sawMalformed = false;
+  let settled = null;
+  const targetMs = { '1m': 60000, '5m': 300000, '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000 }[targetTf] || null;
+  while (Date.now() < deadline) {
+    const a = await readAxis21(page, id);
+    if (a) {
+      samples.push(a);
+      if (Number.isFinite(a.spacingRatio)) {
+        worstRatioSeen = Math.max(worstRatioSeen, a.spacingRatio);
+        if (a.spacingRatio > ratioLimit) sawMalformed = true;
+      }
+      // Settled == committed to target TF, cadence matches, not switching.
+      if (a.tf === targetTf && a.dataMatchesTf && !a.switching) { settled = a; break; }
+    }
+    await sleep(60);
+  }
+  await cmdPromise;
+  await sleep(300);
+  const final = await readAxis21(page, id);
+  return { settled: settled || final, final, worstRatioSeen, sawMalformed, samples };
+}
+
+async function hS21(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // ── FINER cell: host coarse (1h), switch panel B to 1m DURING replay. ──
+    await fanOutTf(page, '1h');
+    await sleep(2200);
+    const hostSetup = await readHost(page);
+    const bSetup = await readAxis21(page, 'B');
+    const finerSetupOk = !!(hostSetup && hostSetup.tf === '1h' && bSetup
+      && bSetup.tf === '1h' && bSetup.dataMatchesTf);
+    checks.check('H-S21 setup: host 1h + panel B mirrors coarse 1h (embed, same-pair)',
+      finerSetupOk, `host.tf=${hostSetup?.tf} B.tf=${bSetup?.tf} B.dominantDelta=${bSetup?.dominantDelta} B.matches=${bSetup?.dataMatchesTf}`);
+    if (!finerSetupOk) return checks;
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S21 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    // NON-backtest replay (isBacktestMode stays false — the exact PO topology).
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S21 non-backtest replay entered + quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    await resetDiag(page);
+    const ownerBefore = await readAxis21(page, 'B');
+    const finer = await switchTfDuringReplayAndSample(page, 'B', '1m', { ratioLimit: 2.0 });
+    const fin = finer.settled;
+
+    // (1) Data ACQUIRED, not relabeled: committed bar spacing == 1m.
+    checks.check('H-S21 finer: panel B data ACQUIRED at 1m (bar spacing==60s, not relabeled coarse)',
+      !!(fin && fin.tf === '1m' && fin.dominantDelta === 60000 && fin.dataMatchesTf),
+      `B.tf=${fin?.tf} dominantDelta=${fin?.dominantDelta} matches=${fin?.dataMatchesTf} dataLen=${fin?.dataLen}`);
+
+    // (2) Axis SANE at settle: strictly increasing ticks + spacing ratio <= ~2.
+    checks.check('H-S21 finer: settled time axis is SANE (ticks strictly increasing, max/min spacing ratio <= 2)',
+      !!(fin && fin.monotonic === true && Number.isFinite(fin.spacingRatio) && fin.spacingRatio <= 2.0),
+      `monotonic=${fin?.monotonic} spacingRatio=${fin?.spacingRatio} ticks=${fin?.tickCount} (RED today ~15)`);
+
+    // (3) INTERIM never malformed: no spacing-ratio blow-up at any sampled point
+    // from switch-issue to settle (atomic commit — last-good coarse until finer).
+    checks.check('H-S21 finer: axis NEVER malformed during the switch (atomic commit, no interim blow-up)',
+      finer.sawMalformed === false,
+      `sawMalformed=${finer.sawMalformed} worstRatioSeen=${finer.worstRatioSeen?.toFixed(2)} samples=${finer.samples.length}`);
+
+    // (4) B8 owner contract: acquisition went through the sanctioned bounded
+    // OWNER path (ownerFetches incremented) and stayed within the B8 cap.
+    const ownerFetchDelta = (fin?.ownerFetches || 0) - (ownerBefore?.ownerFetches || 0);
+    const ownerBarsDelta = (fin?.ownerBars || 0) - (ownerBefore?.ownerBars || 0);
+    checks.check('H-S21 finer: B8 owner contract — ownerFetches incremented (sanctioned bounded owner path)',
+      ownerFetchDelta >= 1,
+      `ownerFetchDelta=${ownerFetchDelta} (before=${ownerBefore?.ownerFetches} after=${fin?.ownerFetches})`);
+    const B8_ACQUISITION_CAP = 10000; // per-acquisition (two ≤5000 requests)
+    const B8_FETCH_CAP = 2;           // per acquisition
+    checks.check('H-S21 finer: B8 owner contract — bounded (ownerFetches<=2, ownerBars<=10000, no chunk-walk)',
+      ownerFetchDelta <= B8_FETCH_CAP && ownerBarsDelta > 0 && ownerBarsDelta <= B8_ACQUISITION_CAP,
+      `ownerFetchDelta=${ownerFetchDelta} ownerBarsDelta=${ownerBarsDelta} caps[fetch<=${B8_FETCH_CAP},bars<=${B8_ACQUISITION_CAP}]`);
+
+    // ── COARSER cell (both-direction coverage): a fresh boot, host 1m, switch
+    // B to 1D during replay. The coarse switch must NOT malform the axis (it
+    // resamples to a genuine 1D cadence). We do NOT assert a fetch bound here:
+    // the non-backtest coarse chunk-walk is a separately-scoped item (D-043). ──
+    const boot2 = await bootLayout(ctx.browser, ctx.srv, { pair: 'same', panels: 4, tf: '1m', bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+    try {
+      const p2 = boot2.page;
+      await p2.setViewport({ width: 2600, height: 1400 });
+      await sleep(400);
+      await setSync(p2, false);
+      await setIntervalSync(p2, false);
+      await waitBootSettled(p2, ids, 20_000, boot2.getInFlightDataRequests);
+      const ts0b = await replayStartTs(p2);
+      await hostReplayEnter(p2, ts0b);
+      await broadcastCmd(p2, 'replayEnter', { timestamp: ts0b });
+      await waitReplayQuiescent(p2, ids, ts0b, 15_000).catch(() => {});
+      const coarser = await switchTfDuringReplayAndSample(p2, 'B', '1d', { ratioLimit: 2.0, budgetMs: 25_000 });
+      const cf = coarser.settled;
+      checks.check('H-S21 coarser: panel B data at 1D (bar spacing==1 day, resampled cadence)',
+        !!(cf && cf.tf === '1d' && cf.dominantDelta === 86400000 && cf.dataMatchesTf),
+        `B.tf=${cf?.tf} dominantDelta=${cf?.dominantDelta} matches=${cf?.dataMatchesTf} dataLen=${cf?.dataLen}`);
+      checks.check('H-S21 coarser: time axis SANE (not malformed) throughout + at settle',
+        coarser.sawMalformed === false && !!(cf && cf.monotonic === true && cf.spacingRatio <= 2.0),
+        `sawMalformed=${coarser.sawMalformed} worstRatioSeen=${coarser.worstRatioSeen?.toFixed(2)} `
+        + `settled monotonic=${cf?.monotonic} spacingRatio=${cf?.spacingRatio}`);
+    } finally {
+      await boot2.close();
+    }
+
+    notes.push('H-S21 (BL-15, D-043): same-pair 2x2, sync OFF, NON-backtest replay. FINER: host 1h, switch panel B->1m '
+      + `mid-replay. RED (b92 / --bugswitch=__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE): coarse host bars are `
+      + `RELABELED 1m without acquiring finer data → tick on every coarse bar (spacingRatio~15). GREEN (fix): finer bars `
+      + `ACQUIRED via the B8 bounded owner path (ownerFetchDelta=${ownerFetchDelta} ownerBarsDelta=${ownerBarsDelta}), `
+      + `committed ATOMICALLY (last-good coarse until finer lands; interim sawMalformed=${finer.sawMalformed}, `
+      + `worstRatioSeen=${finer.worstRatioSeen?.toFixed(2)}), settled spacingRatio=${fin?.spacingRatio} cadence=${fin?.dominantDelta}ms. `
+      + 'INTERIM-STATE MATRIX: fix ON success → last-good coarse frame painted until finer window commits atomically (never '
+      + 'the malformed axis); fix ON acquire-FAIL → keep last-good coarse (switch aborted, no relabel, no malformed axis); '
+      + 'kill-switch ON → today\'s relabel (malformed) = RED. COARSER (host 1m, B->1D): axis stays SANE (resamples to a real '
+      + '1D cadence); NON-backtest replay ALSO bypasses BL-14 coarse-display acquire via the same isBacktestMode gate, but '
+      + 'that symptom is a slow chunk-walk (many fetches), NOT a malformed axis, and its fix is a different method with '
+      + 'backtest-session/hot-swap deps → reported as larger-than-same-fix (STOPPED before expanding per D-043).');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -2423,6 +2650,7 @@ export function scenarioList() {
     { id: 'H-S19', title: 'play-follow cost guard: idle coalesce + drag suspend (BL-12)', run: hS19 },
     { id: 'H-S19b', title: 'play-follow smoothness: device-pixel coalesce (BL-13)', run: hS19b },
     { id: 'H-S20', title: 'coarse (1D) panel display acquisition: bounded fetch + resample seam (BL-14)', run: hS20 },
+    { id: 'H-S21', title: 'finer same-pair panel acquires bars on TF switch during replay; atomic, sane axis (BL-15)', run: hS21 },
   ];
 }
 

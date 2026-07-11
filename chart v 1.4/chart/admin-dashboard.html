@@ -4857,6 +4857,7 @@ select { cursor:default; }
               <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()">Archive matched</button>
               <button type="button" class="btn sm danger" id="supportBulkDeleteBtn" onclick="supportDeleteTickets()" disabled title="Select a ticket type first">Delete by type</button>
               <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
+              <a class="btn sm" id="supportExportFullBtn" href="#" onclick="return supportExportFull(event)" title="ZIP with ticket titles, all messages, and image attachments">Export full (msgs + images)</a>
             </div>
             <div class="support-tools-sync">
               <button type="button" class="btn sm" onclick="supportAuditUserTickets(false)">Check sync</button>
@@ -6136,6 +6137,18 @@ function supportExportCsv(ev) {
   if (cat) params.set('category', cat);
   if (st) params.set('status', st);
   window.location.href = '/api/admin/support/export?' + params.toString();
+  return false;
+}
+
+function supportExportFull(ev) {
+  if (ev) ev.preventDefault();
+  const cat = ($('supportBulkCategory') && $('supportBulkCategory').value) ||
+    ($('supportFilterCategory') && $('supportFilterCategory').value) || '';
+  const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
+  const params = new URLSearchParams();
+  if (cat) params.set('category', cat);
+  if (st) params.set('status', st);
+  window.location.href = '/api/admin/support/export-full?' + params.toString();
   return false;
 }
 

@@ -14307,6 +14307,114 @@ async def admin_support_export(
         db.close()
 
 
+@app.get("/api/admin/support/export-full")
+async def admin_support_export_full(
+    request: Request,
+    category: str | None = None,
+    status: str | None = None,
+):
+    """Full ZIP export: ticket titles + every message + image attachments.
+
+    Contains:
+      * ``messages.csv`` — one row per message (ticket title, sender, body, image file).
+      * ``images/<ticket_ref>/<id>_<name>`` — every image attachment on disk.
+    """
+    _require_admin(request)
+    import io
+    import zipfile
+
+    db = SessionLocal()
+    try:
+        query = _support_exclude_archived(db.query(SupportThread))
+        if category:
+            query = query.filter(SupportThread.category == _support_validate_category(category))
+        if status:
+            query = query.filter(SupportThread.status == _support_validate_status(status))
+        threads = query.order_by(SupportThread.created_at.desc()).limit(5000).all()
+
+        csv_buf = io.StringIO()
+        w = csv.writer(csv_buf)
+        w.writerow(
+            [
+                "ticket_ref",
+                "ticket_id",
+                "subject",
+                "category",
+                "status",
+                "priority",
+                "requester_email",
+                "message_id",
+                "sender_name",
+                "sender_email",
+                "is_internal",
+                "created_at",
+                "body",
+                "image_file",
+            ]
+        )
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for t in threads:
+                ref = _support_ticket_ref(t.id)
+                requester = db.query(User).filter(User.id == t.user_id).first()
+                requester_email = requester.email if requester else ""
+                messages = (
+                    db.query(SupportMessage)
+                    .filter(SupportMessage.thread_id == t.id)
+                    .order_by(SupportMessage.created_at.asc(), SupportMessage.id.asc())
+                    .all()
+                )
+                for m in messages:
+                    sender = db.query(User).filter(User.id == m.sender_user_id).first()
+                    att = (
+                        db.query(SupportAttachment)
+                        .filter(SupportAttachment.message_id == m.id)
+                        .first()
+                    )
+                    image_file = ""
+                    if att:
+                        src = SUPPORT_UPLOAD_DIR / att.stored_name
+                        if src.is_file():
+                            safe_name = (att.original_name or att.stored_name)
+                            safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", safe_name)[:120] or att.stored_name
+                            arc_name = f"images/{ref}/{att.id}_{safe_name}"
+                            try:
+                                zf.write(src, arc_name)
+                                image_file = arc_name
+                            except OSError:
+                                image_file = ""
+                    w.writerow(
+                        [
+                            ref,
+                            t.id,
+                            (t.subject or "")[:500],
+                            t.category,
+                            t.status,
+                            t.priority,
+                            requester_email,
+                            m.id,
+                            (sender.name if sender else ""),
+                            (sender.email if sender else ""),
+                            "yes" if getattr(m, "is_internal", False) else "no",
+                            m.created_at.isoformat() if m.created_at else "",
+                            m.body or "",
+                            image_file,
+                        ]
+                    )
+            zf.writestr("messages.csv", csv_buf.getvalue())
+
+        zip_buf.seek(0)
+        fname = f"support-export-full-{category or 'all'}-{datetime.utcnow().strftime('%Y%m%d')}.zip"
+        return Response(
+            content=zip_buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    finally:
+        db.close()
+
+
 @app.get("/api/admin/support/agents")
 async def admin_support_agents(request: Request):
     _require_admin(request)

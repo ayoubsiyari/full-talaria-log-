@@ -3399,15 +3399,32 @@ class Chart {
     }
 
     async _ensureFinerPanelOwnerCoversPlayhead(ts, options = {}) {
-        if (!this._multichartFinerSamePairPanelSelfOwns()) return false;
+        // BL-15 (D-043): a same-pair embed panel switching to a FINER TF than the
+        // coarse host during replay routes HERE to acquire its own finer window via
+        // the sanctioned B8 bounded-owner fetch (per-request ≤5000 / ≤2000 during
+        // play, ≤10000 per acquisition), instead of relabeling coarse host bars —
+        // which produced a malformed every-bar-labeled time axis. Options for that
+        // TF-switch entry (default {} = the original host-commit-driven behavior):
+        //   • targetTimeframe — acquire for the picked TF even though currentTimeframe
+        //     may still be the coarse from-TF (we commit it below).
+        //   • forceAcquire — bypass the "already covers" early-return: a TF switch
+        //     always needs finer bars even if the coarse window's TIME RANGE spans
+        //     the playhead (coverage is range-based, not cadence-based).
+        //   • commitTimeframe — commit the TF label ATOMICALLY with the finer data
+        //     (B8 "no blank frame": the last-good coarse frame stays painted until
+        //     the finer bars land) and end the TF-switch freeze.
+        const optTargetTf = String((options && options.targetTimeframe) || '').toLowerCase().trim();
+        const selfOwnDetail = optTargetTf ? { panelTimeframe: optTargetTf } : null;
+        if (!this._multichartFinerSamePairPanelSelfOwns(selfOwnDetail)) return false;
         this._setFinerPanelSelfOwnerMode(true);
         const target = Number(ts);
-        if (this._finerPanelOwnedWindowCovers(target)) return true;
+        const forceAcquire = !!(options && options.forceAcquire);
+        if (!forceAcquire && this._finerPanelOwnedWindowCovers(target)) return true;
         if (this._mcDiag) this._mcDiag.boundedMisses++;
         const fileId = String(this.currentFileId || '').trim();
         if (!fileId) return false;
         const session = this.backtestingSession || {};
-        const tf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+        const tf = this._normalizeBacktestTimeframe(optTargetTf || this.currentTimeframe) || '1m';
         let result = null;
         try {
             result = await this._fetchFinerPanelOwnerWindow(
@@ -3422,8 +3439,16 @@ class Chart {
             return false;
         }
         if (!this._smartResponseHasPayload(result)) return false;
-        if (!this._multichartFinerSamePairPanelSelfOwns()) return false;
+        if (!this._multichartFinerSamePairPanelSelfOwns(selfOwnDetail)) return false;
+        // ── ATOMIC COMMIT — the old (coarse) data arrays stay untouched (and, under
+        // a TF switch, still painted behind the switch freeze) until this point. ──
         this._nativeRawFetchTf = result.nativeRawFetchTf || tf;
+        if (options && options.commitTimeframe) {
+            // Label commit only (no render / no data mutation) — flips currentTimeframe
+            // to the finer TF immediately before the finer bars are ingested, so the
+            // pair (label, data) is never observable in a mismatched state.
+            this._commitTimeframeChange(tf);
+        }
         this._ingestSmartWindowResult(result, {
             skipIndicators: true,
             skipFitToView: true,
@@ -3446,6 +3471,10 @@ class Chart {
             } else if (typeof this.replaySystem.updateChartData === 'function') {
                 this.replaySystem.updateChartData(false);
             }
+        }
+        if (options && options.commitTimeframe) {
+            try { this._finishTfSwitchViewportRestore(); } catch (_vp) { /* ignore */ }
+            this._endTimeframeSwitching();
         }
         if (typeof this.render === 'function') this.render();
         return this._finerPanelOwnedWindowCovers(target);
@@ -20579,6 +20608,50 @@ class Chart {
                         console.warn('[backtest] TF cache restore failed, refetching', e);
                         return this._refetchBacktestTimeframe(normalizedTf);
                     });
+            }
+
+            // BL-15 (D-043): NON-backtest replay, same-pair embed panel switching to
+            // a FINER TF than the coarse host. The embed acquire branch ABOVE is gated
+            // on isBacktestMode, so a non-backtest replay panel used to fall straight
+            // through to the client-resample / relabel fallback below — and because a
+            // coarse master cannot be client-resampled to a finer TF, it RELABELED the
+            // coarse host bars as the finer TF WITHOUT acquiring finer data. The time
+            // axis then marked every coarse bar a "round" tick (coarse spacing is an
+            // exact multiple of the finer labelIntervalMs) → a label on every candle =
+            // a compressed / scrollbar-like malformed axis. Route the finer same-pair
+            // panel to its sanctioned bounded OWNER acquisition (B8) instead, committing
+            // the finer window ATOMICALLY (last-good coarse frame stays until it lands).
+            // Kill-switch __TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE (default fix
+            // ON) restores today's relabel. (Coarser-direction acquisition during
+            // non-backtest replay is a separately-scoped item — see D-043 findings.)
+            if (this.currentFileId
+                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE)
+                && typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()
+                && !(typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair())
+                && typeof this._multichartFinerSamePairPanelSelfOwns === 'function'
+                && this._multichartFinerSamePairPanelSelfOwns({ panelTimeframe: normalizedTf })
+                && typeof this._ensureFinerPanelOwnerCoversPlayhead === 'function') {
+                const finerPlayheadMs = typeof this._captureReplayPlayheadMs === 'function'
+                    ? this._captureReplayPlayheadMs(this.replaySystem)
+                    : Number(this.replaySystem.replayTimestamp);
+                const finerWasPlaying = !!this.replaySystem.isPlaying;
+                return this._ensureFinerPanelOwnerCoversPlayhead(finerPlayheadMs, {
+                    targetTimeframe: normalizedTf,
+                    forceAcquire: true,
+                    commitTimeframe: true,
+                    activeReplayCatchUp: finerWasPlaying,
+                }).then((ok) => {
+                    if (!ok) {
+                        // Acquisition could not land the finer window: KEEP the last-good
+                        // coarse frame (do NOT relabel to the malformed axis) and end the
+                        // switch. The panel stays on its previous (coarse) TF cleanly.
+                        this._logTfSwitch('finer-replay-acquire-failed-keep-last-good', { to: normalizedTf });
+                        this._endTimeframeSwitching();
+                    }
+                }).catch((e) => {
+                    console.warn('[multichart] finer panel replay TF acquire failed', e);
+                    this._endTimeframeSwitching();
+                });
             }
 
             if (this._canClientResampleToTimeframe(normalizedTf)) {
