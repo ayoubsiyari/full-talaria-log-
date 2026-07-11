@@ -2752,6 +2752,98 @@ on all edited `.js`. Only the `chart v 1.4` harness got scenario/serve edits (H-
 + `hostFile` param). Build bumped **b91 → 20260707b92** (uniform `SW_VERSION` +
 `__TALARIA_CHART_BUILD_ID` across dist-v9/live/legacy/embed in both trees; no b91 stragglers).
 
+## 6ch. BL-15 — finer same-pair panel acquires bars on TF switch during NON-backtest replay (D-043, b93)
+
+**DEFECT (BL-15 / D-043, the PO's malformed-axis report).** In a same-pair 2×2 multichart with
+**sync OFF**, switching a PANEL to a **finer** TF than the coarse host (e.g. host 1h, panel → 1m)
+**during (non-backtest) replay** rendered the panel's **TIME (X) AXIS malformed** — compressed /
+scrollbar-like, a label on every candle — while host + peers looked normal.
+
+**ROOT CAUSE (verified, `chart.js setTimeframe`).** The multichart-embed **acquire** branch that
+refetches/resamples panel data on a replay TF switch is gated on `if (this.isBacktestMode && this.currentFileId)`
+(chart.js ~20590). A panel in **non-backtest** replay skips that branch entirely and falls through
+to the client-resample / relabel fallback. `_canClientResampleToTimeframe('1m')` is **false** for a
+coarser (1h) master (cannot upsample a coarse master to a finer TF), so it dropped to
+`_commitTimeframeChange('1m')` — **relabeling the coarse 1h bars as 1m WITHOUT acquiring finer data.**
+The axis then computes `labelIntervalMs = labelInterval × parseTimeframe('1m')`; the committed bars
+are 1h-spaced = an exact multiple of that interval, so **every coarse bar lands on a "round" tick →
+a label on every candle → the compressed/malformed axis**. Probe evidence (non-backtest replay,
+host 1h → B 1m): `currentTimeframe='1m'` but `dominantBarDelta=3,600,000ms (1h)`, `dataMatchesTf=false`,
+tick `spacingRatio ≈ 15`, `ownerFetches=0`. The previously-suspected replay-follow kill-switches
+(`__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD`, `__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW`) were
+**exonerated** — the malformation reproduces while PAUSED and persists with those flags toggled.
+
+**FIX (gated, chart.js ~20613–20655 + `_ensureFinerPanelOwnerCoversPlayhead` ~3401).** In the
+non-backtest replay branch, **before** the relabel fallback, when
+`currentFileId && _isMultichartEmbedPanel() && !_isIndependentMultichartPair()
+&& _multichartFinerSamePairPanelSelfOwns({panelTimeframe: normalizedTf})`, route to the sanctioned
+**B8 bounded-owner** acquisition `_ensureFinerPanelOwnerCoversPlayhead(playhead, {targetTimeframe,
+forceAcquire:true, commitTimeframe:true, activeReplayCatchUp})` so the panel **fetches its own finer
+window** instead of relabeling coarse bars. Gated behind new kill-switch
+**`__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE`** (default = **fix ON**). The cosmetic
+axis-masking alternative was rejected — the felt defect is relabel-without-data, so the fix makes the
+**data follow the relabel**.
+
+**B8 BOUNDED-OWNER CONTRACT (D-043 #1) — PROVEN.** The acquisition goes through the sanctioned owner
+primitive `_fetchFinerPanelOwnerWindow` (per DIAG-B8b §2: per-request ≤ **5000** bars / ≤ **2000**
+during active play, ≤ **10000** per acquisition). H-S21 asserts the `ownerFetches`/`ownerBars` diag
+counters: **GREEN `ownerFetchDelta=1`, `ownerBarsDelta=5000`** (one bounded owner fetch, exactly at
+the 5000 request cap, well within the 10000 acquisition cap; **no chunk-walk**). RED (kill-switch):
+`ownerFetchDelta=0` (never acquired). I1 single-owner + the B8 caps are untouched — no blanket
+bulk-fetch re-enable.
+
+**INTERIM-STATE MATRIX CELL (D-043 #2) — atomic commit.** The commit is **atomic**: the old (coarse)
+data arrays stay untouched — and, behind the TF-switch freeze, still painted (`_getRenderTimeframe()`
+returns the coarse `_switchingFromTimeframe` while bars don't match the destination) — until the finer
+window is ingested. `_commitTimeframeChange(tf)` (label only, no render / no data mutation) fires
+**synchronously immediately before** `_ingestSmartWindowResult` (data), so the `(label, data)` pair is
+never observable in a mismatched state, then `_endTimeframeSwitching()` lifts the freeze on the correct
+frame. Matrix:
+
+| Case | What the panel shows |
+| --- | --- |
+| **Fix ON, acquire succeeds** | last-good **coarse** frame painted until the finer window commits **atomically**; then the correct finer axis. **Never** the malformed every-bar axis. |
+| **Fix ON, acquire FAILS** | keep the **last-good coarse** frame; the switch is **aborted** (TF label NOT flipped, `_endTimeframeSwitching()` on the coarse frame) — **no relabel, no malformed axis**. |
+| **Kill-switch ON** (`__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE`) | today's relabel behavior (malformed axis) — the RED reference. |
+
+H-S21 samples the axis **from switch-issue to settle** and asserts `sawMalformed=false` throughout
+(not just at the settled end): **GREEN `worstRatioSeen=1.00`**; RED `worstRatioSeen=15.00`.
+
+**COARSER-PATH SCOPE FINDING (D-043 #3) — STOPPED before expanding (same gate, NOT same fix).**
+Confirmed empirically: non-backtest replay **also** bypasses BL-14's coarser acquire
+(`_multichartPanelCoarseDisplayAcquire`) via the **same `isBacktestMode` gate**. BUT the **symptom
+differs**: a coarser switch (host 1m → panel 1D) in non-backtest replay produces a **SANE axis** —
+`onTimeframeChange` resamples the loaded fine window to a **genuine 1D cadence** (`dominantDelta=86,400,000`,
+`dataMatchesTf=true`, `spacingRatio ≈ 1.03`) — its defect is instead a **slow ~51-fetch backward
+chunk-walk** ("candles load one by one"), i.e. the BL-14 class, **not** the malformed axis.
+`_multichartPanelCoarseDisplayAcquire` is a **different method** with its own `isBacktestMode` guard
+and **backtest-session / `_hotSwapBacktestReplayTimeframe`** dependencies; making it work in
+non-backtest replay is **larger than the finer route** and a different failure mode. Per the D-043
+HARD RULE ("if the coarser-path scope check reveals something larger than 'same fix,' STOP and report
+before expanding"), the coarser acquisition was **NOT** implemented here — flagged for a separate
+task. H-S21 still **covers both directions**: the coarser cell asserts the axis stays sane (regression
+guard) but does **not** assert a coarse fetch bound.
+
+**RED-FIRST SCENARIO H-S21** (registered in `scenarioList` + `known-failing.json` `expectedTests`).
+Deterministic (no wall-clock): after a TF switch during non-backtest replay it asserts (finer) data
+**acquired not relabeled** (`dominantDelta==60000`), settled axis **sane** (ticks strictly increasing,
+max/min spacing ratio ≤ 2), **interim never malformed**, and the **B8 owner contract**; plus a coarser
+axis-sanity cell. **RED flake-stable** across 3 runs (identical: `spacingRatio=15.000…`, `ownerFetches=0`).
+
+**KILL-SWITCH A/B (`__TALARIA_MC_DISABLE_FINER_PANEL_REPLAY_TF_ACQUIRE`).**
+
+| | data cadence | `dataMatchesTf` | tick `spacingRatio` | interim `sawMalformed` | `ownerFetchDelta` | `ownerBarsDelta` |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Fix ON (b93)** | 60000ms (1m) | true | **1.00** | **false** | **1** | **5000** |
+| **Kill-switch ON / b92** | 3,600,000ms (1h) | false | **15.00** | true | 0 | 0 |
+
+**VERIFICATION.** Full `npm run gate` **GREEN — 19/19** (H-S2..H-S21; BL-10→BL-14 = H-S17/H-S18/H-S19/H-S19b/H-S20
+and H-S8 all still PASS; no regressions, 0 known-failing tracked). `node --check` clean on the edited
+`chart.js` (both trees). **ENGINE PARITY:** the `chart.js` change applied **BYTE-IDENTICALLY** to both
+trees — SHA256 `307BE729A3072D536AB78A768E093FC770E8BEF99AD2E54B99AF3560316D79A3` (equal);
+`panel-cmd-bridge.js` untouched. Build bumped **b92 → 20260707b93** (uniform across
+dist-v9/live/legacy/embed + `SW_VERSION` in both trees; 0 b92 stragglers).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

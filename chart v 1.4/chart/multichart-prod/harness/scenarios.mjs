@@ -2630,6 +2630,85 @@ async function hS21(ctx) {
   });
 }
 
+// ── H-S22 ──────────────────────────────────────────────────────────────────
+// Host-only "new version available — Reload" prompt (UX hygiene; kill switch
+// __TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT, default ON). Deterministic: no
+// timers asserted. The module (talaria-version-reload.js) fetches the current
+// host document fresh and extracts its __TALARIA_CHART_BUILD_ID (the deployed
+// id), comparing it to window.__TALARIA_CHART_BUILD_ID (the loaded id).
+//   • loaded === deployed  → NO prompt.
+//   • loaded !== deployed  → prompt shown (dismissible, Reload = hard reload).
+//   • kill switch set       → NO prompt even on mismatch.
+// The scenario drives check() directly against three controlled states; the
+// deployed id is read from the real fetch/parse path (no mocked network), and
+// only the loaded id / kill switch are varied — so a build-id MISMATCH is what
+// triggers the toast and a MATCH is what suppresses it.
+async function hS22(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    // Load the REAL host-only module from the canonical tree, then disable its
+    // auto focus/interval poller so every assertion below is state-driven only.
+    await page.addScriptTag({ url: '/chart/modules/talaria-version-reload.js' });
+    await page.waitForFunction(() => !!window.__TalariaVersionReload, { timeout: 10_000 });
+    await page.evaluate(() => { try { window.__TalariaVersionReload.stop(); } catch (_) {} });
+
+    const attrSel = await page.evaluate(() => '[' + window.__TalariaVersionReload._attr + ']');
+    const toastShown = () => page.evaluate((sel) => !!document.querySelector(sel), attrSel);
+
+    // Deployed id from the real fetch+parse path (harness host serves it).
+    const deployed = await page.evaluate(() => window.__TalariaVersionReload.fetchDeployedId());
+    checks.check('H-S22 deployed build id parsed from host document', typeof deployed === 'string' && deployed.length > 0,
+      `deployed=${JSON.stringify(deployed)}`);
+
+    const killFlag = await page.evaluate(() => !!window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT);
+
+    // (1) MATCH: loaded === deployed → no prompt.
+    await page.evaluate((d) => { window.__TalariaVersionReload.clear(); window.__TALARIA_CHART_BUILD_ID = d; }, deployed);
+    const matchShown = await page.evaluate(() => window.__TalariaVersionReload.check());
+    const matchDom = await toastShown();
+    checks.check('H-S22 build-id MATCH => no reload prompt',
+      matchShown === false && matchDom === false,
+      `returned=${matchShown} dom=${matchDom} killFlag=${killFlag}`);
+
+    // (2) MISMATCH: loaded !== deployed → prompt shown. Asserted UNCONDITIONALLY
+    // (the feature contract), so a globally-injected kill switch turns this RED —
+    // that is the harness's RED proof for the kill switch.
+    await page.evaluate((d) => { window.__TalariaVersionReload.clear(); window.__TALARIA_CHART_BUILD_ID = d + '-OLD'; }, deployed);
+    const mismatchShown = await page.evaluate(() => window.__TalariaVersionReload.check());
+    const mismatchDom = await toastShown();
+    checks.check('H-S22 build-id MISMATCH => reload prompt shown (feature ON)',
+      mismatchShown === true && mismatchDom === true,
+      `returned=${mismatchShown} dom=${mismatchDom} killFlag=${killFlag}`);
+
+    // (3) EXPLICIT KILL SWITCH: set the flag, keep the mismatch → no prompt.
+    await page.evaluate((d) => {
+      window.__TalariaVersionReload.clear();
+      window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = true;
+      window.__TALARIA_CHART_BUILD_ID = d + '-OLD';
+    }, deployed);
+    const killedShown = await page.evaluate(() => window.__TalariaVersionReload.check());
+    const killedDom = await toastShown();
+    checks.check('H-S22 kill switch => no reload prompt even on MISMATCH',
+      killedShown === false && killedDom === false,
+      `returned=${killedShown} dom=${killedDom}`);
+
+    // Clean up mutated globals + any lingering toast for H-INV.
+    await page.evaluate(() => {
+      try { window.__TalariaVersionReload.clear(); } catch (_) {}
+      try { delete window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT; } catch (_) { window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = false; }
+    });
+
+    notes.push('H-S22 (UX hygiene): host-only "new version available — Reload" toast. Kill switch '
+      + '__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT (default ON). Deterministic build-id compare: deployed id '
+      + `("${deployed}") is read from the real fetch/parse of the host document; MATCH => no toast, MISMATCH => toast, `
+      + 'kill switch => no toast. RED under --bugswitch=__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT (mismatch sub-check '
+      + 'expects a prompt but the switch suppresses it). No timers asserted; additive UI only (no SW/security change).');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -2651,6 +2730,7 @@ export function scenarioList() {
     { id: 'H-S19b', title: 'play-follow smoothness: device-pixel coalesce (BL-13)', run: hS19b },
     { id: 'H-S20', title: 'coarse (1D) panel display acquisition: bounded fetch + resample seam (BL-14)', run: hS20 },
     { id: 'H-S21', title: 'finer same-pair panel acquires bars on TF switch during replay; atomic, sane axis (BL-15)', run: hS21 },
+    { id: 'H-S22', title: 'host-only new-version reload prompt: build-id mismatch => toast, match => none (kill-switch gated)', run: hS22 },
   ];
 }
 

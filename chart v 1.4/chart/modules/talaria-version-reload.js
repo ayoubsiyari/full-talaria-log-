@@ -1,0 +1,276 @@
+/**
+ * talaria-version-reload.js — host-only "A new version is available — Reload" prompt.
+ *
+ * When a newer chart build has been deployed while this tab stays open on an
+ * older build, show a small, non-intrusive, DISMISSIBLE toast on the HOST page
+ * (never inside a multichart panel iframe) with a Reload button that does a hard
+ * reload. Additive UI only — it does not steal focus, block interaction, or
+ * auto-reload. This retires the recurring "panels run old cached code after a
+ * deploy" stale-tab problem.
+ *
+ * KILL SWITCH: window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT === true fully
+ * disables the feature (no polling, no fetch, no toast). Default = feature ON.
+ *
+ * MECHANISM: the loaded build id is window.__TALARIA_CHART_BUILD_ID (embedded in
+ * the host HTML head — the existing source of truth). The deployed build id is
+ * read by fetching the current host document fresh (cache:'no-store' + a
+ * cache-busting query) and extracting its __TALARIA_CHART_BUILD_ID. A confident,
+ * non-empty MISMATCH shows the toast; a MATCH (or a network hiccup) shows
+ * nothing. No new server endpoint / deploy config is introduced. Triggered on
+ * window focus + a low-frequency safety-net interval.
+ */
+(function (root) {
+    'use strict';
+    var doc = root.document;
+    if (!doc) return;
+
+    var TOAST_KEY = 'talaria-version-reload';
+    var TOAST_ATTR = 'data-talaria-version-reload';
+    // Low-frequency safety-net poll (window focus is the primary trigger).
+    var POLL_MS = 15 * 60 * 1000;
+
+    function killed() {
+        return !!root.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT;
+    }
+
+    // HOST-only: never run inside a multichart panel iframe.
+    function isPanel() {
+        try {
+            if (root.__TALARIA_EMBED_LITE) return true;
+            var p = new URLSearchParams(root.location.search);
+            if (p.get('multichart') === '1') return true;
+        } catch (_) { /* ignore */ }
+        try {
+            if (root.top && root.top !== root.self) return true;
+        } catch (_) {
+            // Cross-origin framing throws — treat as framed → do not show.
+            return true;
+        }
+        return false;
+    }
+
+    function loadedBuildId() {
+        var v = root.__TALARIA_CHART_BUILD_ID;
+        return v != null ? String(v).trim() : '';
+    }
+
+    /** Extract a build id from host HTML text (assignment first, ?v= fallback). */
+    function parseBuildId(html) {
+        if (!html) return '';
+        var m = /__TALARIA_CHART_BUILD_ID\s*=\s*['"]([^'"]+)['"]/.exec(html);
+        if (m && m[1]) return m[1].trim();
+        var m2 = /\/chart\/[^"'?\s]+\?v=([^"'#\s&]+)/.exec(html);
+        return m2 && m2[1] ? m2[1].trim() : '';
+    }
+
+    /** Fetch the current host document fresh and return its build id ('' on failure). */
+    function fetchDeployedId() {
+        var url;
+        try {
+            url = root.location.origin + root.location.pathname + '?__vrc=' + Date.now();
+        } catch (_) {
+            url = root.location.href;
+        }
+        return fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+            .then(function (r) { return r && r.ok ? r.text() : ''; })
+            .then(function (t) { return parseBuildId(t); })
+            .catch(function () { return ''; });
+    }
+
+    // Deployed id the user explicitly dismissed → do not re-nag for the same id.
+    var _dismissedFor = null;
+
+    function toastStack() {
+        return root.__TalariaToastStack || null;
+    }
+
+    function clearToast() {
+        var ts = toastStack();
+        if (ts && typeof ts.clearPinned === 'function') {
+            try { ts.clearPinned(TOAST_KEY); } catch (_) { /* ignore */ }
+        }
+        var existing = doc.querySelector('[' + TOAST_ATTR + ']');
+        if (existing && existing.parentNode) {
+            try { existing.parentNode.removeChild(existing); } catch (_) { /* ignore */ }
+        }
+    }
+
+    function hardReload() {
+        try {
+            var u = new URL(root.location.href);
+            u.searchParams.set('__vr', String(Date.now()));
+            root.location.replace(u.toString());
+        } catch (_) {
+            try { root.location.reload(); } catch (__) { /* ignore */ }
+        }
+    }
+
+    function buildToastEl(deployedId) {
+        var light = doc.body && doc.body.classList.contains('light-mode');
+        var wrap = doc.createElement('div');
+        wrap.setAttribute(TOAST_ATTR, deployedId || '1');
+        wrap.setAttribute('role', 'status');
+        Object.assign(wrap.style, {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            background: light ? '#E8EBF6' : '#0F1119',
+            border: '1px solid ' + (light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)'),
+            color: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
+            fontFamily: "'Exo 2',sans-serif",
+            fontSize: '11px',
+            fontWeight: '600',
+            padding: '6px 8px 6px 14px',
+            borderRadius: '2px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.55)',
+            maxWidth: 'min(92vw, 380px)',
+            boxSizing: 'border-box',
+            pointerEvents: 'auto',
+        });
+
+        var stripe = doc.createElement('div');
+        Object.assign(stripe.style, {
+            position: 'absolute',
+            left: '0',
+            top: '0',
+            bottom: '0',
+            width: '3px',
+            pointerEvents: 'none',
+            background: 'linear-gradient(180deg,transparent,' + (light ? '#2F55E8' : '#4A6AFF') + ',transparent)',
+        });
+        wrap.appendChild(stripe);
+
+        var label = doc.createElement('span');
+        label.textContent = 'A new version is available';
+        label.style.pointerEvents = 'none';
+        wrap.appendChild(label);
+
+        var reload = doc.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Reload';
+        Object.assign(reload.style, {
+            cursor: 'pointer',
+            font: 'inherit',
+            fontWeight: '700',
+            color: '#ffffff',
+            background: light ? '#2F55E8' : '#4A6AFF',
+            border: '0',
+            borderRadius: '2px',
+            padding: '3px 10px',
+            pointerEvents: 'auto',
+        });
+        reload.addEventListener('click', function () { hardReload(); });
+        wrap.appendChild(reload);
+
+        var dismiss = doc.createElement('button');
+        dismiss.type = 'button';
+        dismiss.setAttribute('aria-label', 'Dismiss');
+        dismiss.textContent = '\u00D7';
+        Object.assign(dismiss.style, {
+            cursor: 'pointer',
+            font: 'inherit',
+            fontSize: '14px',
+            lineHeight: '1',
+            color: 'inherit',
+            background: 'transparent',
+            border: '0',
+            opacity: '0.7',
+            padding: '2px 4px',
+            pointerEvents: 'auto',
+        });
+        dismiss.addEventListener('click', function () {
+            _dismissedFor = deployedId || null;
+            clearToast();
+        });
+        wrap.appendChild(dismiss);
+
+        return wrap;
+    }
+
+    function showToast(deployedId) {
+        var el = buildToastEl(deployedId);
+        var ts = toastStack();
+        if (ts && typeof ts.setPinned === 'function') {
+            ts.setPinned(TOAST_KEY, el);
+        } else {
+            // Fallback fixed placement if the shared toast stack isn't present.
+            Object.assign(el.style, {
+                position: 'fixed',
+                left: '50%',
+                bottom: '18px',
+                transform: 'translateX(-50%)',
+                zIndex: '100060',
+            });
+            doc.body.appendChild(el);
+        }
+        return el;
+    }
+
+    /**
+     * Compare loaded vs deployed build id.
+     * @returns {Promise<boolean>} true when the prompt is shown for a confident
+     * mismatch; false when versions match, feature is disabled, or there is no
+     * confident comparison (missing id / network hiccup).
+     */
+    function check() {
+        if (killed() || isPanel()) { clearToast(); return Promise.resolve(false); }
+        var loaded = loadedBuildId();
+        if (!loaded) return Promise.resolve(false);
+        return fetchDeployedId().then(function (deployed) {
+            if (killed() || isPanel()) { clearToast(); return false; }
+            if (!deployed) return false;                    // no false alarm on network hiccup
+            if (deployed === loaded) { clearToast(); return false; }
+            if (deployed === _dismissedFor) return false;   // user already dismissed this id
+            showToast(deployed);
+            return true;
+        }).catch(function () { return false; });
+    }
+
+    var _pollTimer = null;
+    var _started = false;
+
+    function onVisibility() {
+        if (doc.visibilityState === 'visible') check();
+    }
+
+    function start() {
+        if (_started || killed() || isPanel()) return;
+        _started = true;
+        try { root.addEventListener('focus', check); } catch (_) { /* ignore */ }
+        try { doc.addEventListener('visibilitychange', onVisibility); } catch (_) { /* ignore */ }
+        try { _pollTimer = root.setInterval(check, POLL_MS); } catch (_) { /* ignore */ }
+        // Deferred initial check so it never blocks or steals boot.
+        try { root.setTimeout(check, 4000); } catch (_) { /* ignore */ }
+    }
+
+    function stop() {
+        _started = false;
+        try { root.removeEventListener('focus', check); } catch (_) { /* ignore */ }
+        try { doc.removeEventListener('visibilitychange', onVisibility); } catch (_) { /* ignore */ }
+        if (_pollTimer) {
+            try { root.clearInterval(_pollTimer); } catch (_) { /* ignore */ }
+            _pollTimer = null;
+        }
+    }
+
+    root.__TalariaVersionReload = {
+        check: check,
+        start: start,
+        stop: stop,
+        clear: clearToast,
+        fetchDeployedId: fetchDeployedId,
+        parseBuildId: parseBuildId,
+        _key: TOAST_KEY,
+        _attr: TOAST_ATTR,
+    };
+
+    // Auto-start unless disabled. Wait for the DOM so document.body + the shared
+    // toast stack exist.
+    if (!killed()) {
+        if (doc.readyState === 'loading') {
+            doc.addEventListener('DOMContentLoaded', start);
+        } else {
+            start();
+        }
+    }
+})(typeof window !== 'undefined' ? window : globalThis);
