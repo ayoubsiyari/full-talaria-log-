@@ -2193,3 +2193,27 @@ handover-event dispatch; fire only (a) on a client-resample fan-out commit so al
    in the flag inventory.
 4. Own kill-switch; timing after PO confirms b96/b97 — the interim exposure is
    bounded (as §6ck argues), so this queues normally rather than jumping the line.
+
+---
+
+## D-048 — CLOSURE PROTOCOL: fixed acceptance list replaces open-ended testing (2026-07-11)
+
+Context: PO raised timeline concern ("95% two days ago, still not done"). Audit
+finding, for the record: every reopen since D-032 (BL-8 through BL-18) traces to a
+PO-reported live symptom or a regression from fixing one — no manager-invented
+work. The timeline stretches because "done" has implicitly meant "the PO stops
+finding bugs," which has no finish line. This decision replaces it:
+
+1. **PO writes the ACCEPTANCE LIST** (8–12 real workflows, concrete steps). This
+   is the release finish line. File: `docs/multichart-overhaul/ACCEPTANCE.md`.
+2. **One structured acceptance session** on the current build once b96/b97 are
+   PO-confirmed. On-list failures: fixed under standing discipline (RED-first,
+   gated, ratchet). Off-list observations: backlog, NOT fixed pre-release.
+3. **List passes end-to-end ⇒ overhaul DECLARED CLOSED and released.** The gate
+   (22 scenarios) is the permanent regression lock.
+4. Post-release maintenance schedule (not blockers): D-047 commit-split, Phase-5
+   mirror-policy consolidation, deferred backlog (BL-1/2/3/4, Phase-3 polish).
+
+Manager instruction: no new fix work outside on-list failures once the acceptance
+session starts, except a PO-declared showstopper via ESC. The scope guard from
+D-032/D-033 applies to the letter.
