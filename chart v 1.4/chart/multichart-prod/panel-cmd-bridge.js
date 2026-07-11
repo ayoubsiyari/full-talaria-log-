@@ -1251,19 +1251,64 @@
                 if (rangeSyncOn && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
                     ch.candleWidth = pc.candleWidth;
                 }
-                var followSt = (typeof rs.getReplayAutoScrollState === 'function')
-                    ? rs.getReplayAutoScrollState(ch)
-                    : null;
-                if (followSt && Number.isFinite(followSt.offsetX)) {
-                    ch.offsetX = followSt.offsetX;
-                } else if (rangeSyncOn && Number.isFinite(payload.hostOffsetX)) {
-                    ch.offsetX = Number(payload.hostOffsetX);
-                } else if (rangeSyncOn && Number.isFinite(pc.offsetX)) {
-                    ch.offsetX = pc.offsetX;
-                } else if (Number.isFinite(prevOffsetX)) {
-                    ch.offsetX = prevOffsetX;
+                // FIX A (A7/A8/A11 same-TF eased follow, X-jump): a same-pair SAME-TF
+                // panel followed the playhead here with the BAR-QUANTIZED offset from
+                // getReplayAutoScrollState — offsetX froze within a candle then leapt
+                // exactly one candleSpacing per bar (_mcPlayFollowRenders stayed 0),
+                // because BL-13's continuous eased sub-candle follow
+                // (_panelPlayFollowContinuousOffsetX) was only wired into the coarse
+                // maybePanelPlayViewportFollow path, never this same-TF one. With sync
+                // OFF and following the playhead, apply that EXISTING eased sub-candle
+                // offset (SAME helper, no new easing math) with the SAME device-pixel-
+                // column coalesce used elsewhere so this path scrolls host-parity
+                // smooth. Kill-switch __TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW
+                // (default = fix ON) reverts to the quantized follow. Range-synced /
+                // coarser / finer / independent paths untouched (gated on !rangeSyncOn
+                // and this same-TF call site only).
+                var samePairEasedOn = !rangeSyncOn
+                    && !(typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW);
+                var easedOffsetX = samePairEasedOn
+                    ? _panelPlayFollowContinuousOffsetX(ch, rs)
+                    : NaN;
+                if (Number.isFinite(easedOffsetX)) {
+                    var dprSt = (typeof window !== 'undefined'
+                        && Number.isFinite(window.devicePixelRatio)
+                        && window.devicePixelRatio > 0)
+                        ? window.devicePixelRatio
+                        : 1;
+                    var appliedSt = Number(ch._mcPlayFollowAppliedOffsetX);
+                    if (Number.isFinite(appliedSt)
+                        && Math.round(easedOffsetX * dprSt) === Math.round(appliedSt * dprSt)) {
+                        // Same device-pixel column as the last applied eased offset —
+                        // sub-pixel/stationary/paused advance. Re-pin without repaint
+                        // (the mirror already rendered this frame) so the coalesce is a
+                        // clean 1-render-per-device-pixel-column.
+                        ch.offsetX = appliedSt;
+                        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                    } else {
+                        ch.offsetX = easedOffsetX;
+                        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        ch._mcPlayFollowAppliedOffsetX = Number(ch.offsetX);
+                        ch._mcPlayFollowRenders = (ch._mcPlayFollowRenders | 0) + 1;
+                        ch.renderPending = true;
+                        if (typeof ch.render === 'function') ch.render();
+                    }
+                } else {
+                    var followSt = (typeof rs.getReplayAutoScrollState === 'function')
+                        ? rs.getReplayAutoScrollState(ch)
+                        : null;
+                    if (followSt && Number.isFinite(followSt.offsetX)) {
+                        ch.offsetX = followSt.offsetX;
+                    } else if (rangeSyncOn && Number.isFinite(payload.hostOffsetX)) {
+                        ch.offsetX = Number(payload.hostOffsetX);
+                    } else if (rangeSyncOn && Number.isFinite(pc.offsetX)) {
+                        ch.offsetX = pc.offsetX;
+                    } else if (Number.isFinite(prevOffsetX)) {
+                        ch.offsetX = prevOffsetX;
+                    }
+                    if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
                 }
-                if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
             } else {
                 var passiveFollow = !rs.userHasPanned
                     && ch._multichartVisibleRangeSyncOn !== false;

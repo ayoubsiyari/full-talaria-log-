@@ -3253,6 +3253,177 @@ async function hS24(ctx) {
   return { checks, inv, notes };
 }
 
+// ── H-S25 ────────────────────────────────────────────────────────────────
+// FIX A (A7/A8/A11, X-jump): during replay PLAY with sync OFF, a same-pair
+// SAME-TF panel follows the host playhead through
+// applyReplayFrame → forceSamePairParentDataMirror. That path applied the
+// BAR-QUANTIZED leading-edge offset (getReplayAutoScrollState): offsetX froze
+// within a candle then leapt exactly one candleSpacing when a bar formed
+// (_mcPlayFollowRenders stayed 0) — BL-13's continuous eased sub-candle follow
+// (_panelPlayFollowContinuousOffsetX) was only wired into the COARSE
+// maybePanelPlayViewportFollow path, never this same-TF one. The fix applies
+// that SAME eased helper here (no new easing math) with the SAME device-pixel-
+// column coalesce. Kill-switch (RED): __TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW.
+//
+// DETERMINISTIC (no wall-clock): drive SUB-CANDLE host play frames (advance the
+// shared playhead timestamp in K steps per host candle WITHOUT forming a new bar
+// mid-candle) and SAMPLE the panel's live offsetX + follow-render counter each
+// substep. The eased offset is a pure function of the shared replay timestamp,
+// so the substep motion is fully reproducible.
+//   • GREEN (fix): offsetX changes on > 60% of sub-candle steps, each step moves
+//     only ~1 device pixel (≪ candleSpacing), and _mcPlayFollowRenders grows.
+//   • RED (kill-switch): offsetX changes on exactly ~1/K of steps (once per bar
+//     seam), each such change == candleSpacing, and _mcPlayFollowRenders stays 0.
+
+/**
+ * Stream SUB-CANDLE host PLAY frames on a SAME-TF panel. For each of `candles`
+ * host candles we emit `substeps` frames whose shared timestamp advances a
+ * fraction of one candle WITHOUT forming a new bar (host stays on the same bar
+ * within a candle; a new bar only forms at each candle boundary). Samples the
+ * panel's live offsetX + follow-render counter after every substep. Pure
+ * function of the shared replay timestamp → deterministic, no wall-clock.
+ */
+async function streamSubCandlePlaySampling(page, id, ts0, candles, substeps, candleMs, opts = {}) {
+  // The iframe replayFrame bus coalesces frames at rAF granularity (only the last
+  // frame per rAF applies). Pace slower than one rAF AND settle before sampling so
+  // each sub-candle frame flushes deterministically (else the shared replay
+  // timestamp read back races the coalesce and looks non-monotonic).
+  const { perFrameMs = 110, settleMs = 60 } = opts;
+  await setHostReplayPlaying(page, true);
+  const samples = [];
+  let lastTs = ts0;
+  for (let c = 0; c < candles; c++) {
+    for (let s = 0; s < substeps; s++) {
+      const ts = ts0 + c * candleMs + Math.round((s * candleMs) / substeps);
+      await hostReplaySeek(page, ts);
+      await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+      await sleep(perFrameMs);
+      const smp = await readPanelOffsetSample(page, id);
+      if (smp) samples.push({ offsetX: smp.offsetX, followRenders: smp.followRenders, dataLen: smp.dataLen, ts, c, s });
+      await sleep(settleMs);
+      lastTs = ts;
+    }
+  }
+  return { samples, lastTs };
+}
+
+async function hS25(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S25 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S25 replay entered + paused/quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // Panel B stays SAME-TF (1m) as the host — the forceSamePairParentDataMirror
+    // follow path under test. All sync OFF (independent viewport, follows only the
+    // shared playhead). Measure its candle-spacing to size the sub-candle steps so
+    // the eased leading edge advances ~0.7 device px per substep (comfortably
+    // sub-pixel-ish so the device-pixel coalesce still repaints > 60% of steps).
+    const bSetup = await readPanelFollow(page, 'B');
+    const hostSetup = await readPanelFollow(page, 'A');
+    const spacing = Number(bSetup?.spacing);
+    const dpr = Number(bSetup?.dpr) || 1;
+    const setupOk = !!(bSetup && hostSetup && bSetup.tf === '1m' && hostSetup.tf === '1m'
+      && bSetup.replayActive && Number.isFinite(spacing) && spacing > 0);
+    checks.check('H-S25 setup: panel B same-TF (1m) as host, replay active, spacing resolved',
+      setupOk, `B.tf=${bSetup?.tf} host.tf=${hostSetup?.tf} spacing=${spacing} dpr=${dpr}`);
+    if (!setupOk) return checks;
+
+    const candleMs = 60_000;
+    // ~0.7 device px per substep → most substeps cross a NEW device-pixel column
+    // (changedFraction > 60%) while each applied step stays ~1 device px.
+    const substeps = Math.max(6, Math.min(48, Math.round((spacing * dpr) / 0.7)));
+    // First candle is a play-entry warm-up (viewport settles onto the leading edge);
+    // measure the SETTLED forward-play candles after it (H-S19b does the same).
+    const warmupCandles = 1;
+    const measuredCandles = 4;
+    const candles = warmupCandles + measuredCandles;
+    const candleSpacingDevicePx = spacing * dpr;
+
+    await resetDiag(page);
+    const before = await readPanelOffsetSample(page, 'B');
+    const run = await streamSubCandlePlaySampling(page, 'B', ts0, candles, substeps, candleMs);
+    await sleep(300);
+    const after = await readPanelOffsetSample(page, 'B');
+
+    // Drop the warm-up candle's samples; measure the settled forward-play window.
+    const samples = run.samples.filter((s) => s && Number.isFinite(s.offsetX)).slice(warmupCandles * substeps);
+    const off = samples.map((s) => s.offsetX);
+    // Per-substep device-pixel deltas (0 on a coalesced/held step; a full
+    // candleSpacing at a quantized leap under the kill-switch).
+    const deltas = [];
+    for (let i = 1; i < off.length; i++) deltas.push(Math.abs(off[i] - off[i - 1]) * dpr);
+    const EPS_DEV = 0.25; // ignore sub-quarter-pixel float noise as "no change"
+    const changedCount = deltas.filter((d) => d > EPS_DEV).length;
+    const changedFraction = deltas.length ? changedCount / deltas.length : 0;
+    const maxStepDeviceDelta = deltas.length ? Math.max(...deltas) : 0;
+    const meanChangedDelta = changedCount
+      ? deltas.filter((d) => d > EPS_DEV).reduce((a, b) => a + b, 0) / changedCount
+      : 0;
+    const followRendersDelta = (Number(after?.followRenders) || 0) - (Number(before?.followRenders) || 0);
+    if (process.env.HS25_DUMP) {
+      console.log('HS25_DUMP offsets=' + off.map((v) => v.toFixed(2)).join(','));
+      console.log('HS25_DUMP deltas=' + deltas.map((v) => v.toFixed(2)).join(','));
+      console.log('HS25_DUMP dataLen=' + samples.map((s) => s.dataLen).join(','));
+    }
+
+    // Non-vacuity: the panel actually advanced across the play window (bars grew).
+    const advanced = !!(before && after && Number.isFinite(before.dataLen)
+      && Number.isFinite(after.dataLen) && after.dataLen > before.dataLen);
+    checks.check('H-S25 non-vacuous: panel B advanced bars across the sub-candle play window',
+      advanced && off.length >= measuredCandles * substeps - substeps,
+      `dataLen ${before?.dataLen}->${after?.dataLen} samples(measured)=${off.length} substeps/candle=${substeps} measuredCandles=${measuredCandles}`);
+
+    // CORE 1 (RED→GREEN): offsetX changes on a MAJORITY of sub-candle steps
+    // (smooth follow). RED (kill-switch) leaps once per bar (~1/substeps).
+    checks.check('H-S25 offsetX changes on > 60% of sub-candle steps (eased, not bar-quantized)',
+      changedFraction > 0.6,
+      `changedFraction=${changedFraction.toFixed(3)} changed=${changedCount}/${deltas.length} `
+      + `(RED ~1/${substeps}=${(1 / substeps).toFixed(3)})`);
+
+    // CORE 2 (RED→GREEN): each step moves ~1 device px (sub-candle), NEVER a full
+    // candleSpacing leap. Two-sided: absolute smoothness bound + strictly-sub-candle.
+    checks.check('H-S25 per-step |Δoffset| ~1 device px (<< candleSpacing; no per-bar leap)',
+      maxStepDeviceDelta <= 2.5 && maxStepDeviceDelta <= candleSpacingDevicePx * 0.5,
+      `maxStepDeviceDelta=${maxStepDeviceDelta.toFixed(3)}px meanChanged=${meanChangedDelta.toFixed(3)}px `
+      + `candleSpacingDevicePx=${candleSpacingDevicePx.toFixed(3)} (RED per-change==candleSpacing)`);
+
+    // CORE 3 (RED→GREEN): the eased follow actually issued renders (past the
+    // coalesce). RED (kill-switch) never enters the eased branch → counter frozen.
+    checks.check('H-S25 _mcPlayFollowRenders grew (eased follow rendered; RED keeps it 0)',
+      followRendersDelta > 0,
+      `followRendersDelta=${followRendersDelta} (before=${before?.followRenders} after=${after?.followRenders})`);
+
+    notes.push('H-S25 (FIX A, A7/A8/A11 same-TF eased follow / X-jump): same-pair 2x2, all sync OFF, host 1m, '
+      + 'panel B SAME-TF (1m). Paused replay entered, then SUB-CANDLE real PLAY (' + measuredCandles + ' measured host '
+      + 'candles after ' + warmupCandles + ' warm-up x ' + substeps + ' substeps, shared playhead ts advanced '
+      + 'fractionally, no mid-candle bar formation). '
+      + 'DETERMINISTIC offsetX + follow-render COUNTER sampling only, never wall-clock. '
+      + 'forceSamePairParentDataMirror now applies the EXISTING eased helper _panelPlayFollowContinuousOffsetX '
+      + '(no new easing math) + device-pixel-column coalesce. '
+      + `MEASURED (fix): changedFraction=${changedFraction.toFixed(3)} maxStepDeviceDelta=${maxStepDeviceDelta.toFixed(3)}px `
+      + `meanChangedDelta=${meanChangedDelta.toFixed(3)}px candleSpacingDevicePx=${candleSpacingDevicePx.toFixed(2)} `
+      + `followRendersDelta=${followRendersDelta}. RED (--bugswitch=__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW): `
+      + 'offsetX changes on ~1/' + substeps + ' steps, each == candleSpacing, followRenders stays 0. GREEN: eased '
+      + 'sub-candle motion, ~1 device px/step, followRenders>0. PAUSED / range-synced / coarser / finer / independent '
+      + 'paths untouched (gated on play + !rangeSync + this same-TF call site).');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -3277,6 +3448,7 @@ export function scenarioList() {
     { id: 'H-S22', title: 'host-only new-version reload prompt: build-id mismatch => toast, match => none (kill-switch gated)', run: hS22 },
     { id: 'H-S23', title: 'coarser same-pair panel bounded coarse-acquire on TF switch during NON-backtest replay; no chunk-walk (BL-17)', run: hS23 },
     { id: 'H-S24', title: 'host TF fan-out during replay: same-pair peers mirror, do NOT self-fetch (BL-18)', run: hS24 },
+    { id: 'H-S25', title: 'same-TF panel play follow is eased sub-candle, not bar-quantized X-jump (Fix A)', run: hS25 },
   ];
 }
 

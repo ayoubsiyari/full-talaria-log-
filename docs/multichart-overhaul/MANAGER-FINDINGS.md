@@ -3217,6 +3217,95 @@ host commit, so the interim exposure is bounded — but this is a mitigation, no
 staleness — it dispatches `talariaMcHostDataCommit` → `_applyFinerPanelHostCommit` → B8 handover fetches on
 every fan-out = storm. Split marker-refresh from event-dispatch instead.
 
+## 6cl. A7/A8/A11 batch — Fix A (same-TF play-follow X-jump) SHIPPED; Fix B (coarse follow Y-rescale) NOT-REPRODUCIBLE (D-048, build 20260707b98)
+
+**What changed / proof / what PO tests:**
+1. **Shipped Fix A only** — same-TF same-pair panels now follow the playhead with the EXISTING eased
+   sub-candle offset instead of the bar-quantized one (X no longer freezes-then-leaps 1 candleSpacing/bar).
+   Kill-switch `__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW` (default = fix ON).
+2. **Proof:** new **H-S25** RED-first, flake-stable ×3 — GREEN `PASS×3` (eased motion, ~1 device-px/step,
+   `_mcPlayFollowRenders>0`); RED (`--bugswitch=…SAMETF_PANEL_PLAY_EASED_FOLLOW`) `FAIL×3`
+   (`changedFraction=0.077`≈1/13 steps, each step `|Δ|=candleSpacing=7.002px`, `followRenders=0`). Full
+   `npm run gate` **GREEN 23/23** (22→23; all prior BL scenarios PASS).
+3. **PO tests:** during replay PLAY with sync OFF, a same-pair SAME-TF panel should scroll the play viewport
+   **smoothly** in lock-step with the host (no per-bar horizontal jump).
+
+### Fix B reported NOT-REPRODUCIBLE (per the "do not force it" clause) — Fix B code REVERTED, H-S26 REMOVED
+
+The Y-rescale defect (coarser same-pair panel's Y span ballooning ~292% during the BL-11 follow recenter)
+**does not reproduce in the harness**. A follow-attributability probe on the coarse panel's `yScale` domain
+span across 75 host play-frames returned a **byte-identical** trajectory in all three configurations —
+fix ON, fix OFF (`--bugswitch=…COARSE_PANEL_FOLLOW_YHOLD`), and follow entirely disabled
+(`__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW`):
+
+```
+span[C] = 0.01062, 0.04159, 0.04159, 0.04159, …  (identical across all 3 configs)
+```
+
+The span makes a **single monotone step to steady-state on the first play frame and never moves again** — a
+first-frame acquire/seek settling artifact (the panel's initial narrow view widening to its true 1h window),
+**not** the transient "balloon-then-settle" the DIAG describes. Because the harness fully settles the coarse
+acquire **before** play, it never exercises the "refit while still acquiring history during play" window that
+the live defect lives in. The candidate Fix B (freeze `autoScale` across the follow recenter) therefore
+changed **nothing** measurable in the harness, so shipping it would be an unverifiable, un-RED-backed change.
+Per the standing directive it was **reverted** and **H-S26 was removed** (scenario + `known-failing.json`
+registration, both trees). **This points to a live layout the harness does not cover** (a coarse panel whose
+history is still acquiring at the instant PLAY begins); recommend a follow-up that either (a) extends the
+harness to enter PLAY *during* coarse acquire, or (b) re-scopes Fix B to the acquire-render path once a
+reproducing harness cell exists.
+
+### RULE 4 — state-matrix (before code), verified against the DIAG (no contradicting cell)
+
+Per cell: **X behavior · Y behavior · which fix touches**. Sync OFF unless noted.
+
+| relationship | replay | X behavior | Y behavior | fix touching |
+|---|---|---|---|---|
+| **same-TF** | **playing** | was bar-quantized leap/bar → **now eased sub-candle** | tracks host (benign) | **Fix A (X only)** |
+| same-TF | paused | BL-8 dedup viewport hold (unchanged) | host-tracked (unchanged) | none (gated on play) |
+| same-TF | either, **sync ON** | range-synced adopt host offset (unchanged) | unchanged | none (gated `!rangeSync`) |
+| coarser | playing | BL-11 eased follow recenter (unchanged) | live: refit balloon (**target of Fix B**) | Fix B — **NOT SHIPPED** (not reproducible) |
+| coarser | paused | unchanged | unchanged | none |
+| finer | either | unchanged (BL-15 acquire) | unchanged | none |
+| independent | either | own viewport (unchanged) | own axis (unchanged) | none |
+
+No cell that the DIAG marks untouched (paused same-TF, range-synced, finer, independent, any coarser/finer X)
+is altered by Fix A. Fix A is gated on **play + `!rangeSyncOn` + this same-TF `forceSamePairParentDataMirror`
+call site**; every other path falls through to the original quantized/prev-offset branch unchanged.
+
+### Fix A — implementation (helper reuse, no new easing math)
+
+- **file:line:** `chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js:1254-1300`
+  (`forceSamePairParentDataMirror` follow block). Reuses the EXISTING
+  `_panelPlayFollowContinuousOffsetX(ch, rs)` (defined `:1604`, same helper BL-13 wired into
+  `maybePanelPlayViewportFollow`) at `:1272` — **no new easing math**. Applies the same
+  device-pixel-column coalesce (`Math.round(offset*dpr)` compare against `_mcPlayFollowAppliedOffsetX`) used
+  elsewhere; bumps `_mcPlayFollowRenders` and repaints once per device-pixel column; sub-pixel/stationary
+  frames re-pin without repaint. Falls back to the original `getReplayAutoScrollState` quantized / hostOffset
+  / prevOffset chain when the eased offset is non-finite or the kill-switch is ON.
+- **kill-switch:** `__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW` (default = fix ON; ON-flag reverts to
+  the bar-quantized follow). Mirrored byte-identically to `homepage/public/chart/…`.
+
+### Verification / report-back
+
+- **RED vs GREEN, flake-stable ×3 (H-S25):** GREEN `PASS,PASS,PASS`; RED `FAIL,FAIL,FAIL`
+  (`changedFraction=0.077`, `maxStepDeviceDelta=7.002px==candleSpacing`, `followRendersDelta=0`).
+- **Full `npm run gate` — GREEN 23/23** (H-S2..H-S25). Regressions: none. Known-failing: none. All prior
+  BL-10..BL-18 scenarios (H-S17/18/19/19b/20/21/23/24 + H-S22) PASS.
+- `node --check` clean on every edited JS in **both** trees; JSON parses; lints clean.
+- **SHA256 — every edited mirror pair byte-identical (EQ=True):**
+  `multichart-prod/panel-cmd-bridge.js` = `40B8F633B7C24C962463C12DF14CA783CEE3A3823F7CC24FAE140E842E8CA92E`;
+  `multichart-prod/harness/scenarios.mjs` = `98DF69FDF130574792E62AACD2AB6EAA2A27E23D0758B29072257A9B22D665A7`;
+  `multichart-prod/harness/known-failing.json` = `F1B313691CF7422CB5982637A21582822EC90B53CBA8EB0572855327D0C8770C`
+  (plus all b98-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — all EQ=True).
+- **ONE build bump** b97 → `20260707b98` via `bump-dist-v9-cache.mjs`; **0 `20260707b97` stragglers** repo-wide.
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string bump).
+
+**PENDING:** PO live re-test on deployed **b98** — (1) A7/A8/A11 same-TF: during replay PLAY (sync OFF) a
+same-pair SAME-TF panel must scroll smoothly with the host, no per-bar X jump. (2) Fix B (coarse Y-rescale) is
+**NOT in b98** — the coarse-panel Y balloon is a harness-uncovered layout (PLAY starting mid-acquire); needs a
+reproducing harness cell before a scoped fix ships.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
