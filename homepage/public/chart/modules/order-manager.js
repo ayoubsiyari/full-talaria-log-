@@ -18871,18 +18871,19 @@ class OrderManager {
                         entryInput.value = formattedPrice;
                         // Don't dispatch event here - we'll calculate manually below
                     }
+                    let draggedEntryLevel = null;
                     
                     // Sync to the correct multi-entry level (not always index 0)
                     if (self.isMultiEntryMode && self.multiEntryLevels.length > 0) {
-                        const level = (lineData.multiEntryLevelId != null
+                        draggedEntryLevel = (lineData.multiEntryLevelId != null
                             ? self.multiEntryLevels.find((l) => l && l.id === lineData.multiEntryLevelId)
                             : null)
                             || self._multiEntrySortedPricedLevels()[0]
                             || self.multiEntryLevels[0];
-                        if (level) {
-                            level.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
-                            lineData.multiEntryLevelId = level.id;
-                            const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${level.id}"][data-field="price"]`);
+                        if (draggedEntryLevel) {
+                            draggedEntryLevel.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
+                            lineData.multiEntryLevelId = draggedEntryLevel.id;
+                            const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${draggedEntryLevel.id}"][data-field="price"]`);
                             if (priceInput) priceInput.value = self.formatPrice(newPrice);
                         }
                         self._syncSplitEntriesFromMultiEntryLevels();
@@ -18900,8 +18901,8 @@ class OrderManager {
                             pipSize: self.pipSize || 0.0001,
                             fallback: self.orderType || 'limit',
                         });
-                        if (level) {
-                            level.orderType = newOrderType;
+                        if (draggedEntryLevel) {
+                            draggedEntryLevel.orderType = newOrderType;
                         }
                         
                         // Update order type if changed
