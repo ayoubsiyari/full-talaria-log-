@@ -82,11 +82,14 @@ export const DEFAULT_BUG_SWITCHES = [
 ];
 
 export async function bootLayout(browser, srv, opts = {}) {
-  const { pair = 'same', panels = 4, tf = '1m', bug = false, bugSwitches = null } = opts;
+  const { pair = 'same', panels = 4, tf = '1m', bug = false, bugSwitches = null, hostFile = null } = opts;
   const params = new URLSearchParams();
   params.set('pair', pair);
   params.set('panels', String(panels));
   params.set('tf', tf);
+  // Optional: pick the HOST/same-pair instrument (default 25). H-S20 uses the
+  // deep 400-day instrument (28) to get a coarse-viewport vs fine-master gap.
+  if (hostFile != null) params.set('hostFile', String(hostFile));
   const hostUrl = `${srv.url}/harness/host.html?${params.toString()}`;
 
   const page = await browser.newPage();

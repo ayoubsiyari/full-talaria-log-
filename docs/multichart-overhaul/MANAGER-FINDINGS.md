@@ -3774,6 +3774,108 @@ debounce are all identical. No contradiction.
 - **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
   standard `SW_VERSION` cache-string + `?v=` bump).
 
+## 6ct. Residual open-multichart first-render SLIDE fixed: ONE authoritative boot anchor (the index pin); competing getReplayAutoScrollState / center-playhead commit suppressed during boot settle (build 20260707b105, gate 28→29)
+
+MANAGER: gated, RED-first fix for the PO-reported, felt residual defect — after b102 (host boot re-anchor)
+and b103 (peer boot re-anchor) removed the big first-render SNAP, a SMALL left/right SLIDE remained when
+opening the multichart panels on first render. Root cause was pre-diagnosed (verified RED, not re-diagnosed).
+
+**Lead (what changed / proof / what PO tests):**
+1. **Root cause (two competing boot offset commits):** b102/b103 index-pin the right edge on the frozen boot
+   resize (`offsetX = plotW − (rightIdx+1)*spacing`), but a LATER boot commit (fired at `allDataReady`)
+   re-applies `getReplayAutoScrollState`, which anchors with a DIFFERENT formula — a ~20% replay right-gap
+   (`replayRightPaddingRatio = 0.2`, `replay-system.js` ~2632) — moving offsetX to a SECOND position on first
+   reveal. Boot therefore had TWO competing offset commits with different math → the felt slide. Competing
+   (second) commit sites: `MultichartGrid.jsx` ~2336 `goToReplayTimestamp(...,{preserveVisibleWindow:false})`
+   → `updateChartData(autoScroll=true)`; `MultichartGrid.jsx` ~957/987 `alignHostChartForMultichart`'s
+   `syncReplayViewportToPlayhead({centerPlayhead:true})`; `chart.js` ~17232 `fitToView` replay branch;
+   `chart.js` ~4983 `loadMultichartPanelFromHost` `_resetViewportToDefault` fallback; plus a ≤0.5px rounding
+   discontinuity because `chart.js` `_multichartMirrorViewportFromHost` (~4239) did NOT `Math.round` while
+   b102/b103 do.
+2. **What changed (5 scoped sites; new kill-switch `__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT`, default unset =
+   fix ON; edited `chart.js` regions SHA256-identical across both trees; `MultichartGrid.jsx` is single-source
+   under `talaria-design/src` and is compiled into `dist-v9/assets/talaria-v9-live.js`):**
+   - **Guard helper** — `chart.js` `_mcBootSingleCommitActive()` and an equivalent inline
+     `mcBootSingleCommitActive(ch)` in `MultichartGrid.jsx`: active when the kill-switch is NOT set AND boot is
+     still settling — `_multichartSkipResizeOffsetAdjust` OR `_isMultichartBootViewportLocked()` OR the grid's
+     `isMultichartBootSettling()` (`window.__multichartBootRevealAfter`) OR within `_multichartViewportSettleUntil`.
+   - **(1) `MultichartGrid.jsx` ~2336** — call `goToReplayTimestamp(hrs.replayTimestamp,{preserveVisibleWindow:
+     bootSingleCommit})` so the slice is still revealed up to the playhead (playhead/data correct) but the
+     auto-scroll offset rewrite is NOT re-run during boot.
+   - **(2) `MultichartGrid.jsx` ~943 `alignHostChartForMultichart`** — during boot skip the
+     `syncReplayViewportToPlayhead({centerPlayhead:true})` offset rewrite (both the non-backtest and backtest
+     branches) and reveal WITHOUT auto-scroll (`goToReplayTimestamp` preserve), relying on the index pin. The
+     existing `userHasPanned` early-exit is preserved and takes precedence.
+   - **(3) `chart.js` ~17232 `fitToView` replay branch** — when `_mcBootSingleCommitActive()`, `return` before
+     the `getReplayAutoScrollState` offset set (let the index pin stand).
+   - **(4) `chart.js` ~4983 `loadMultichartPanelFromHost`** — when boot single-commit is active AND the panel
+     already holds a valid index-pinned viewport (`_countVisiblePlotBars() > 0`), skip the
+     `_resetViewportToDefault` auto-scroll fallback (prefer the index pin).
+   - **(5) `chart.js` ~4239 `_multichartMirrorViewportFromHost`** — `Math.round(plotW − (rightIdx+1)*spacing)`
+     to match b102/b103 (removes the ≤0.5px discontinuity).
+3. **Kill-switch / site:** `__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT` (default unset = fix ON / single boot
+   commit; set = legacy/RED two-commit slide). All five sites gated behind the same switch (site 5 rounding is
+   unconditional — it only removes a sub-pixel gap and cannot regress).
+4. **PO tests:** open the multichart layout (same-pair 2×2) during replay — the panels must fade in already
+   positioned and NOT slide left/right on first render; live resize, pan, replay play-follow, single-chart, and
+   a user-panned tile are unaffected.
+
+**RULE 4 — STATE MATRIX (before code, no contradiction):**
+
+| cell | before (b104) | after (b105, fix ON) |
+| --- | --- | --- |
+| boot-settle multichart + replay-autoscroll SECOND commit | index pin then a later getReplayAutoScrollState re-apply (≠ formula) moves offsetX → felt slide | second commit suppressed; index pin is the ONE anchor from first paint through reveal (the ONLY changed cell) |
+| live resize (not boot-settle) | pixel / index-pin realign | unchanged (`_mcBootSingleCommitActive()` false post-boot) |
+| pan / `userHasPanned` tile | early-exit constrain+render | unchanged (early-exit preserved, takes precedence) |
+| replay play-follow | `syncReplayViewportToPlayhead` follow | unchanged (not a boot-settle path; guard false) |
+| single-chart | `fitToView` / auto-scroll as today | unchanged (no multichart boot flags → guard false) |
+| playhead / data correctness | revealed via `updateChartData` | unchanged (`preserveVisibleWindow` only drops the offset rewrite, still reveals the slice) |
+
+Only the boot-settle multichart + replay-autoscroll second-commit cell changes; live resize, pan, play-follow,
+single-chart and `userHasPanned` are all identical. No contradiction.
+
+### Verification / report-back
+- **H-S31 (new, id 31) RED vs GREEN, flake-stable ×3:** GREEN (`--only=H-S31 --runs=3`) `PASS,PASS,PASS`; RED
+  (`--bugswitch=__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT --runs=3`) `FAIL,FAIL,FAIL` = `FAIL-REAL-BUG`.
+  Deterministic (no wall-clock): same-pair 2×2, paused replay, default candleWidth (=6), dataLen=2000. Spans the
+  FULL boot commit sequence in-frame (pre-split auto-scroll → freeze+resize b102/b103 index pin → post-mirror →
+  post-allDataReady align via `fitToView` (the competing commit) → post-forceInitialSync `fitToView` re-apply →
+  final), probed in the HOST main frame AND each peer (B/C/D) embed frame.
+  - **GREEN:** HOST `preSplit=−7940.3 → indexPin=−8144 → align=−8144 → final=−8144`, **maxDriftFromPin = 0.0px**,
+    **reanchorPasses = 1** (only the index pin, no later commit); PEER-B/C/D drift = 0.0px, passes = 1. The
+    competing auto-scroll target (−8255.4) is **111.4px** off the pin (non-vacuous — the second commit WOULD
+    move it).
+  - **RED:** the post-allDataReady `fitToView` re-applies `getReplayAutoScrollState` → offsetX moves to −8255.4
+    (**maxDriftFromPin = 111.4px**, `reanchorPasses = 2`) on HOST and every peer → a SECOND commit →
+    `FAIL-REAL-BUG`.
+- **Full `npm run gate` — GREEN 28→29** (H-S2..H-S31). Regressions: none. Known-failing: none. Prior scenarios
+  all PASS — **H-S17/S21/S23/S24/S25/S26/S27/S28/S29/S30 explicitly PASS**. (H-S19, a CPU-load-sensitive render-
+  cost guard, flaked once under a saturated first gate run — `dragFollowCost=186` vs bound 60 — then passed
+  cleanly ×3 in isolation and on the clean gate re-run; not on any edited path.)
+- `node --check` clean on **both** `chart.js` trees and `scenarios.mjs`; `known-failing.json` parses; the
+  `talaria-design` bundle rebuilt via `npm run build:live` (esbuild minifies the local helper name, but the
+  compiled `dist-v9/assets/talaria-v9-live.js` carries `__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT` +
+  `preserveVisibleWindow:<var>` — the MultichartGrid change is in the served output). ReadLints clean on every
+  edited file.
+- **SHA256 — every edited/bumped source↔mirror pair byte-identical (EQ=True):**
+  `chart.js` = `0167AC84855C21262825A7C12BC18BA6E9735D952450B65745BD059BEB05A5DB`;
+  `dist-v9/assets/talaria-v9-live.js` = `581B4F27C723BB7E4FC08E57BA99720BEC0EC34FC03CC6C829FF1D280FA06681`;
+  `dist-v9/index.html` = `D1CF04D1C2C9B30493A86C0E9F0414CE31ABC317E17D0CE9CA865401963E1F00`;
+  `chart/sw.js` = `dist-v9/sw.js` = `93E9E24D4D603243B2DD6EF4FB6714ACC14335B386FD55CD8FFB0CC8378B9AFA`;
+  `legacy-index.html` = `AF542CD19E5B573D803C8CC17D5EC6637F1E02751AEFEB5723DA5AB5495D97E8`;
+  `multichart-prod/chart-embed.html` = `FE735D88E9955E4361A61398E18437EF91AFD0C4FBE55AD8FF5CB1824418018F`;
+  `harness/scenarios.mjs` = `1DF8C541AB28E89CAB08F58DBA3AB1E94B8F032A11E13621668D2BDFDAAA3727`;
+  `harness/known-failing.json` = `4B5E98F9D49FFC6566806B10A6FC869FC295AB112FA6549AD3001122E2045D5C`.
+  (The gate runs the canonical harness tree under `chart v 1.4/.../harness`; the homepage copy is now synced to
+  match by `build:live`.)
+- **ONE build bump** b104 → `20260707b105` via `bump-dist-v9-cache.mjs` (pinned `BUILD_ID`); **0
+  `20260707b104` stragglers** in shipped files (only this findings doc retains historical b104 text).
+- **`MultichartGrid.jsx` rebuild required + landed:** it is NOT mirrored (single source) but IS compiled into
+  the served `dist-v9` bundle; `npm run build:live` rebuilt `talaria-v9-live.js` (both trees, SHA-identical) and
+  synced it to `homepage/public`.
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string + `?v=` bump).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

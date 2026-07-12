@@ -4159,6 +4159,584 @@ async function hS29(ctx) {
   });
 }
 
+// ── H-S30 ────────────────────────────────────────────────────────────────
+// §6cs HOST step-forward-spam refetch storm. On the HOST chart during PAUSED
+// replay entered at (near) session start, the loaded playhead prefix is short:
+// getReplayAutoScrollState returns a POSITIVE offsetX, so constrainOffset's
+// replayNearLeft/replayNearEmptyLeft branch fires checkViewportLoadMore(
+// 'backward', true) — a force=true probe that BYPASSES the 80ms replay debounce.
+// Rapidly spamming "step forward" (rs.requestStepForward()) therefore kicks off
+// overlapping backward /bars fetches whose completion restores a STALE
+// currentIndex captured at fetch start (min(max(replayIndex+uniqueNew,0),len-1)),
+// blindly overwriting steps that advanced during the in-flight fetch → the host
+// visibly jumps BACKWARD, refetches history, and gets stuck loading. The
+// .finally rAF re-chains constrainOffset + _scheduleReplayPanLoadLeft, making the
+// backward refetch self-sustaining. Peers are unaffected (sync OFF, own file).
+//
+// FIX (default ON; kill-switch __TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD):
+//   1) replay-system marks a 150ms manual-step burst window per step;
+//   2) chart.js skips the paused backward load-more probe during the burst;
+//   3) chart.js skips the post-fetch backward re-chain during the burst;
+//   4) chart.js hardens the backward-fetch currentIndex restore to max(fetch-
+//      start-relative, CURRENT) so concurrent steps are never regressed.
+// Only the manual-step-burst HOST cell changes; playhead advance, play mode,
+// peer mirroring, lazy-1m-master hydration, and the non-forced debounce are all
+// untouched.
+//
+// DETERMINISTIC (no wall-clock assertions): loop rs.requestStepForward() N=25
+// times SYNCHRONOUSLY in the host main frame, flush microtasks, then settle on
+// the real in-flight/_panLoading signals (waitBootSettled). Fetch counts come
+// from serve.mjs's per-hit log via resetApiLog()/countFetchesByFile (the same
+// approach as H-S5/H-S14/H-S16). A one-time lazy-1m-master hydration is
+// tolerated on the first burst (≤1 host fetch); the REPEAT burst must be 0.
+//   GREEN (fix ON):  repeat-burst host fetches == 0; peer B fetches == 0;
+//                    replayTimestamp strictly advanced ~N 4h buckets; currentIndex
+//                    strictly increased; no backward offsetX jump; _panLoading
+//                    false after settle.
+//   RED   (kill on): backward /bars storm (host fetches > 0 on repeat), stale-
+//                    index backward jump, and/or stuck _panLoading → FAIL-REAL-BUG.
+// Per-step playhead advance for the host step-spam scenario. The host runs at 1m
+// (see hS30 comment): stepForward advances one 1m bar, so replayTimestamp moves
+// STEP_MS per manual step. (The defect is TF-agnostic; 1m is the only TF whose
+// synthetic extent exceeds the load window, so it's the only one that keeps a
+// real backward coverage gap — coarse TFs fully load in this harness.)
+const STEP_MS_S30 = 60_000;
+const HOST_FILE_S30 = HOST_FILE; // file 25 (90-day 1m series >> 2000-bar window)
+
+/** Capture the host replay step-spam state (main frame, in-process host). */
+const STEP_SPAM_SNAP_FN = () => {
+  const ch = window.chart;
+  const rs = ch && ch.replaySystem;
+  if (!ch || !rs) return null;
+  const spacing = (typeof ch.getCandleSpacing === 'function')
+    ? Number(ch.getCandleSpacing())
+    : (Number(ch.candleWidth) + (Number(ch.candleGap) || 2));
+  const full = Array.isArray(rs.fullRawData) ? rs.fullRawData : [];
+  const cur = ch._serverCursors || null;
+  const m = ch.margin || { l: 60, r: 60 };
+  const cw = Math.max(1, Number(ch.w) - (m.l || 0) - (m.r || 0));
+  const maxOffset = cw - Math.max(0, (ch.timeScale?.rightOffsetCandles ?? 15)) * spacing;
+  const nearThreshold = Math.max(200, Math.min(600, cw * 0.3));
+  return {
+    replayTs: Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+    currentIndex: Number(rs.currentIndex),
+    offsetX: Number(ch.offsetX),
+    spacing,
+    dataLen: Array.isArray(ch.data) ? ch.data.length : 0,
+    fullLen: full.length,
+    masterFirstT: full.length ? Number(full[0].t) : null,
+    masterLastT: full.length ? Number(full[full.length - 1].t) : null,
+    hasMoreLeft: cur ? cur.hasMoreLeft !== false : null,
+    panLoading: !!ch._panLoading,
+    isPlaying: !!rs.isPlaying,
+    isActive: !!rs.isActive,
+    tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+    w: Number(ch.w),
+    nearLeftArmed: Number(ch.offsetX) > maxOffset - nearThreshold
+      || (spacing > 0 && Number(ch.offsetX) > maxOffset - spacing * 8),
+  };
+};
+
+/**
+ * Deterministic post-spam drain: poll until the HOST is quiescent — no data
+ * request in flight AND host._panLoading === false, stable across two reads.
+ * Hard budget → returns {ok:false} with the observed state (never passes by
+ * timing). Under the RED storm _panLoading stays stuck true and fetches keep
+ * arriving, so this never settles → the bug is caught.
+ */
+async function waitHostReplayQuiet(page, budgetMs, getInFlight) {
+  const deadline = Date.now() + budgetMs;
+  let prevQuiet = false;
+  let last = null;
+  while (Date.now() < deadline) {
+    const panLoading = await page.evaluate(() => !!(window.chart && window.chart._panLoading)).catch(() => true);
+    const inFlight = Number(getInFlight()) || 0;
+    const quiet = !panLoading && inFlight === 0;
+    last = { panLoading, inFlight };
+    if (quiet && prevQuiet) return { ok: true, detail: `host quiet (inFlight=${inFlight})`, ...last };
+    prevQuiet = quiet;
+    await sleep(150);
+  }
+  return { ok: false, detail: `host never quiescent within ${budgetMs}ms — panLoading=${last?.panLoading} inFlight=${last?.inFlight}`, ...last };
+}
+
+/**
+ * Deterministically reproduce the step-forward-spam race in ONE synchronous page
+ * turn: (1) pin the playhead to a SHORT display prefix at the left edge of the
+ * loaded window (currentIndex = prefixIdx) and re-anchor — this arms the
+ * replayNearLeft force-backward probe; (2) loop rs.requestStepForward() N times
+ * SYNCHRONOUSLY (so any backward fetch kicked off by step 1 is still in flight —
+ * its stale-index `.then` cannot land until we yield); (3) flush microtasks so
+ * the in-flight fetch's `.then`/`.finally` (the stale-index overwrite + re-chain)
+ * runs, then snapshot. Returns the pre-spam, post-sync (before any .then), and
+ * post-microtask playhead so the caller can see the backward jump.
+ */
+async function spamStepForwardBurst(page, n, prefixIdx) {
+  return page.evaluate(async (count, pfx) => {
+    const ch = window.chart;
+    const rs = ch && ch.replaySystem;
+    if (!rs || typeof rs.requestStepForward !== 'function') return { ok: false, reason: 'no replaySystem.requestStepForward' };
+    const full = Array.isArray(rs.fullRawData) ? rs.fullRawData : [];
+    if (full.length < pfx + count + 4) return { ok: false, reason: `master too short: ${full.length}` };
+    const snap = () => ({
+      idx: Number(rs.currentIndex),
+      ts: Number(rs.replayTimestamp),
+      offsetX: Number(ch.offsetX),
+      panLoading: !!ch._panLoading,
+      dataLen: Array.isArray(ch.data) ? ch.data.length : 0,
+      nearLeftArmed: (() => {
+        const m = ch.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, Number(ch.w) - (m.l || 0) - (m.r || 0));
+        const sp = (typeof ch.getCandleSpacing === 'function') ? Number(ch.getCandleSpacing()) : Number(ch.candleWidth);
+        const maxOffset = cw - Math.max(0, (ch.timeScale?.rightOffsetCandles ?? 15)) * sp;
+        const th = Math.max(200, Math.min(600, cw * 0.3));
+        return Number(ch.offsetX) > maxOffset - th || (sp > 0 && Number(ch.offsetX) > maxOffset - sp * 8);
+      })(),
+    });
+    // (1) Pin a SHORT display prefix at the loaded-window start and re-anchor so
+    //     getReplayAutoScrollState returns a positive offsetX (replayNearLeft
+    //     armed). This is a deterministic stand-in for "paused replay at session
+    //     start with a short prefix" that survives the async left-fill (which
+    //     would otherwise lengthen the prefix before we can spam). Mark the burst
+    //     BEFORE this re-anchor, exactly as production's first requestStepForward
+    //     does before its own updateChartData → so the guard (fix ON) suppresses
+    //     THIS arming probe too, while the kill-switch (RED) lets it fire.
+    const priorAutoScroll = rs.autoScrollEnabled;
+    const priorLock = rs._viewportLockForPlayback;
+    const priorPanned = rs.userHasPanned;
+    rs.autoScrollEnabled = true; // production replay default; needed so the short-
+                                 // prefix re-anchor actually moves offsetX right.
+    rs._viewportLockForPlayback = false; // don't let a stale playback lock suppress
+    rs.userHasPanned = false;            // the right-anchor (paused manual step).
+    rs._mcManualStepBurstUntil = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() + 150 : Date.now() + 150;
+    rs.currentIndex = pfx;
+    if (full[pfx]) rs.replayTimestamp = Number(full[pfx].t);
+    // Right-anchor the short prefix exactly as replay does → positive offsetX with
+    // empty space on the LEFT, satisfying replayNearLeft/replayNearEmptyLeft. Slice
+    // + resample first (updateChartData(false)) so getReplayAutoScrollState reads
+    // the SHORT display prefix, then pin the positive offset it computes.
+    try {
+      rs.updateChartData(false);
+      const st = typeof rs.getReplayAutoScrollState === 'function' ? rs.getReplayAutoScrollState(ch) : null;
+      if (st && Number.isFinite(Number(st.offsetX))) ch.offsetX = Number(st.offsetX);
+    } catch (_e) {}
+    const armed = snap();
+    // (2) Synchronous spam — no await between steps, so an in-flight backward
+    //     fetch cannot resolve mid-burst.
+    for (let i = 0; i < count; i++) rs.requestStepForward();
+    const afterSync = snap();
+    // (3) Let the in-flight fetch's .then (stale-index overwrite) + .finally
+    //     (re-chain) run.
+    for (let k = 0; k < 12; k++) await Promise.resolve();
+    const afterMicro = snap();
+    if (priorAutoScroll !== undefined) rs.autoScrollEnabled = priorAutoScroll;
+    rs._viewportLockForPlayback = priorLock;
+    rs.userHasPanned = priorPanned;
+    return { ok: true, armed, afterSync, afterMicro };
+  }, n, prefixIdx);
+}
+
+async function hS30(ctx) {
+  // Host = file 25 @ 1m. The 90-day synthetic 1m series (129,600 bars) far
+  // exceeds the 2000-bar load window, so the replay master stays BOUNDED with a
+  // real backward coverage gap (hasMoreLeft true) that survives boot — the exact
+  // condition the storm needs. Coarse TFs (4h/1d) fully load (≤2400 bars) and
+  // boot backfills them, so hasMoreLeft goes false and no backward fetch can ever
+  // fire; 1m is the only harness TF that keeps the gap. The DEFECT mechanism
+  // (short display prefix → positive offsetX → force-backward probe that bypasses
+  // the 80ms debounce → stale-index regression + self-sustaining re-chain) is
+  // TF-agnostic. Peer B is the independent instrument (file 27) @ 1h.
+  return runWith(ctx, { pair: 'independent', panels: 4, tf: '1m', hostFile: 25 }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const N = 25;
+
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // Peer B → its own instrument (file 27) at a DIFFERENT tf (1h). Sync OFF, so
+    // this is an independent user choice, not a fan-out. B must never fetch
+    // during the host step-spam window.
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+
+    // Enter replay PAUSED. The burst driver then pins a short display prefix at
+    // the loaded-window start per phase (see spamStepForwardBurst) so the
+    // replayNearLeft force-backward probe is armed the instant we spam.
+    const enterTs = await replayStartTs(page);
+    checks.check('H-S30 replay ts resolvable', enterTs != null, `enterTs=${enterTs}`);
+    if (enterTs == null) return checks;
+    await hostReplayEnter(page, enterTs);
+    await sleep(1000);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const before = await page.evaluate(STEP_SPAM_SNAP_FN);
+    const bBefore = await readPanel(page, 'B');
+    const setupOk = !!(before && before.isActive && !before.isPlaying && before.replayTs != null
+      && before.tf === '1m' && bBefore && bBefore.tf === '1h');
+    checks.check('H-S30 setup: host paused-replay 1m, peer B 1h, sync OFF',
+      setupOk, `host tf=${before?.tf} active=${before?.isActive} playing=${before?.isPlaying} `
+        + `replayTs=${before?.replayTs} idx=${before?.currentIndex} spacing=${before?.spacing?.toFixed?.(2)} `
+        + `w=${before?.w} fullLen=${before?.fullLen} hasMoreLeft=${before?.hasMoreLeft} B.tf=${bBefore?.tf}`);
+    if (!setupOk) return checks;
+
+    // Non-vacuous trigger condition: older 1m history must remain to fetch
+    // (hasMoreLeft) — otherwise the force-backward probe returns nothing and the
+    // scenario would prove nothing (both modes trivially quiet). The short-prefix
+    // arming (replayNearLeft) is done + asserted inside each burst.
+    checks.check('H-S30 trigger available: host replay master has older history to fetch (hasMoreLeft)',
+      before.hasMoreLeft === true,
+      `hasMoreLeft=${before.hasMoreLeft} masterFirstT=${before.masterFirstT} fullLen=${before.fullLen}`);
+
+    const PREFIX_IDX = 2; // very short display prefix at the loaded-window start
+
+    // ── Phase 1 (may include a one-time lazy-master hydration): burst N steps. ──
+    ctx.srv.resetApiLog();
+    await resetDiag(page);
+    const r1 = await spamStepForwardBurst(page, N, PREFIX_IDX);
+    checks.check('H-S30 phase-1 burst issued', r1.ok, r1.reason || '');
+    if (!r1.ok) return checks;
+    const settle1 = await waitHostReplayQuiet(page, 25_000, boot.getInFlightDataRequests);
+    const after1 = await page.evaluate(STEP_SPAM_SNAP_FN);
+    const host1 = countFetchesByFile(ctx.srv.getApiLog())[HOST_FILE_S30] || 0;
+    const peerB1 = countFetchesByFile(ctx.srv.getApiLog())[IND_FILE] || 0;
+
+    // ── Phase 2 (REPEAT — hydration already done): burst N more steps. ──
+    ctx.srv.resetApiLog();
+    await resetDiag(page);
+    const r2 = await spamStepForwardBurst(page, N, PREFIX_IDX);
+    checks.check('H-S30 phase-2 burst issued', r2.ok, r2.reason || '');
+    if (!r2.ok) return checks;
+    const settle2 = await waitHostReplayQuiet(page, 25_000, boot.getInFlightDataRequests);
+    const after2 = await page.evaluate(STEP_SPAM_SNAP_FN);
+    const host2 = countFetchesByFile(ctx.srv.getApiLog())[HOST_FILE_S30] || 0;
+    const peerB2 = countFetchesByFile(ctx.srv.getApiLog())[IND_FILE] || 0;
+
+    // Non-vacuous: the burst actually advanced the playhead N steps synchronously.
+    checks.check('H-S30 non-vacuous: synchronous burst advanced playhead ~N steps (both phases)',
+      r1.afterSync.idx - r1.armed.idx === N && r2.afterSync.idx - r2.armed.idx === N,
+      `p1 idx ${r1.armed.idx}->${r1.afterSync.idx} p2 idx ${r2.armed.idx}->${r2.afterSync.idx} (N=${N})`);
+    // Non-vacuous: the short prefix genuinely ARMED the replayNearLeft branch (the
+    // force-backward probe would fire), so RED can actually reproduce the storm.
+    checks.check('H-S30 non-vacuous: short prefix armed the replayNearLeft backward probe (both phases)',
+      r1.armed.nearLeftArmed === true && r2.armed.nearLeftArmed === true,
+      `p1 armed offsetX=${r1.armed.offsetX?.toFixed(1)} nearLeft=${r1.armed.nearLeftArmed}; `
+        + `p2 armed offsetX=${r2.armed.offsetX?.toFixed(1)} nearLeft=${r2.armed.nearLeftArmed}`);
+
+    // ── CORE assertions (GREEN pass / RED fail) ──
+    // 1) No refetch storm: the repeat burst must issue ZERO host data fetches
+    //    (phase-1 tolerates ≤1 one-time lazy-master hydration baseline).
+    checks.check('H-S30 CORE: repeat-burst host(file25) data fetches == 0 (no backward refetch storm)',
+      host2 === 0, `phase2 host fetches=${host2} (phase1=${host1}, one-time lazy-master tolerance ≤1)`);
+    checks.check('H-S30 phase-1 host fetches ≤1 (one-time lazy-master hydration baseline only)',
+      host1 <= 1, `phase1 host fetches=${host1}`);
+    checks.check('H-S30 CORE: peer B(file27) fetches == 0 during host spam (both bursts)',
+      peerB1 === 0 && peerB2 === 0, `peerB phase1=${peerB1} phase2=${peerB2}`);
+
+    // 2) No stale-index BACKWARD JUMP: after the in-flight backward fetch's .then
+    //    runs (microtask flush), the playhead must NOT regress below where the
+    //    synchronous burst advanced it. In RED the stale overwrite snaps it back.
+    const noJump1 = Number(r1.afterMicro.ts) >= Number(r1.afterSync.ts);
+    const noJump2 = Number(r2.afterMicro.ts) >= Number(r2.afterSync.ts);
+    checks.check('H-S30 CORE: no stale-index backward jump (playhead not regressed post-fetch)',
+      noJump1 && noJump2,
+      `p1 ts sync=${r1.afterSync.ts} micro=${r1.afterMicro.ts} (Δ=${r1.afterMicro.ts - r1.afterSync.ts}); `
+        + `p2 ts sync=${r2.afterSync.ts} micro=${r2.afterMicro.ts} (Δ=${r2.afterMicro.ts - r2.afterSync.ts})`);
+
+    // 3) replayTimestamp strictly advanced across the whole scenario (playhead
+    //    moved forward, never net-regressed).
+    const tsAdvanced = after2.replayTs != null && before.replayTs != null
+      && Number(r1.afterMicro.ts) > Number(r1.armed.ts)
+      && Number(r2.afterMicro.ts) > Number(r2.armed.ts);
+    checks.check('H-S30 CORE: replayTimestamp strictly advanced each burst',
+      tsAdvanced, `p1 ${r1.armed.ts}->${r1.afterMicro.ts}; p2 ${r2.armed.ts}->${r2.afterMicro.ts}`);
+
+    // replayTs advanced ~N 1m buckets per burst (playhead advanced by the N steps).
+    const buckets1 = (Number(r1.afterMicro.ts) - Number(r1.armed.ts)) / STEP_MS_S30;
+    const buckets2 = (Number(r2.afterMicro.ts) - Number(r2.armed.ts)) / STEP_MS_S30;
+    checks.check('H-S30 CORE: replayTs advanced ~N 1m buckets per burst (±2, not regressed)',
+      Math.abs(buckets1 - N) <= 2 && Math.abs(buckets2 - N) <= 2,
+      `phase1 buckets=${buckets1.toFixed(2)} phase2 buckets=${buckets2.toFixed(2)} (N=${N})`);
+
+    // 4) Not stuck loading: host quiescent (_panLoading false, no in-flight) after
+    //    each burst settles.
+    checks.check('H-S30 CORE: host _panLoading === false after settle (not stuck loading)',
+      after2.panLoading === false && settle1.ok && settle2.ok,
+      `after1.panLoading=${after1.panLoading} after2.panLoading=${after2.panLoading} `
+        + `settle1=${settle1.ok} settle2=${settle2.ok}`);
+
+    // 5) No backward offsetX jump on the repeat burst (§6cs literal invariant:
+    //    offsetX >= offsetXBefore - spacing; discriminating side is the upper
+    //    bound — a regression re-anchors a shorter prefix → offset snaps positive).
+    const spc = Number(before.spacing) || 7;
+    const offNoJump2 = Number(r2.afterMicro.offsetX) <= Number(r2.afterSync.offsetX) + spc;
+    checks.check('H-S30 CORE: no backward offsetX jump on repeat burst',
+      offNoJump2,
+      `offsetX sync=${r2.afterSync.offsetX?.toFixed(1)} micro=${r2.afterMicro.offsetX?.toFixed(1)} (spacing=${spc.toFixed(2)})`);
+
+    // Peer B untouched by the host spam (independent, sync OFF).
+    const bAfter = await readPanel(page, 'B');
+    checks.check('H-S30 peer B fetch count unchanged (independent, sync OFF)',
+      (peerB1 + peerB2) === 0,
+      `B.fetches ${bBefore?.fetches} -> ${bAfter?.fetches}; file27 hits=${peerB1 + peerB2}`);
+
+    notes.push(`H-S30 (§6cs HOST step-forward-spam refetch storm): independent 2x2, sync OFF, host file25 tf1m `
+      + `paused replay, per-burst short display prefix pinned at loaded-window start (idx ${PREFIX_IDX}, hasMoreLeft=`
+      + `${before.hasMoreLeft}), peer B file27 tf1h. Two synchronous rs.requestStepForward()×${N} bursts. `
+      + `host(file25) fetches phase1=${host1} (one-time lazy-master ≤1) phase2=${host2} (repeat, must be 0); `
+      + `peerB(file27) fetches phase1=${peerB1} phase2=${peerB2}. Playhead ts per burst: `
+      + `p1 armed=${r1.armed.ts} sync=${r1.afterSync.ts} postFetch=${r1.afterMicro.ts} (Δ=${r1.afterMicro.ts - r1.afterSync.ts}); `
+      + `p2 armed=${r2.armed.ts} sync=${r2.afterSync.ts} postFetch=${r2.afterMicro.ts} (Δ=${r2.afterMicro.ts - r2.afterSync.ts}); `
+      + `+${buckets1.toFixed(1)}/+${buckets2.toFixed(1)} 1m-buckets; _panLoading after=${after2.panLoading}. `
+      + `Note: only 1m keeps a real backward coverage gap in this harness (coarse TFs ≤2400 bars fully load & boot-`
+      + `backfill → hasMoreLeft false); the DEFECT (short-prefix force-backward probe bypassing the 80ms debounce + `
+      + `stale-index overwrite of steps advanced mid-fetch + self-sustaining .finally re-chain) is TF-agnostic. `
+      + `Kill-switch __TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD RED: backward /bars storm + stale-index backward `
+      + `jump (postFetch ts < sync ts) + stuck loading → FAIL-REAL-BUG.`);
+    return checks;
+  });
+}
+
+// ── H-S31 ────────────────────────────────────────────────────────────────
+// §6ct RESIDUAL OPEN-MULTICHART FIRST-RENDER horizontal SLIDE. After b102 (host
+// boot re-anchor) and b103 (peer boot re-anchor) removed the big first-render
+// SNAP, a SMALL left/right SLIDE remained when opening the multichart panels on
+// first render. Root cause: b102/b103 index-pin the right edge on the frozen
+// boot resize (`offsetX = plotW - (rightIdx+1)*spacing`), but a LATER boot commit
+// (fired at allDataReady) re-applies getReplayAutoScrollState, which anchors with
+// a DIFFERENT formula (a ~20% replay right-gap, `replayRightPaddingRatio=0.2`),
+// moving offsetX to a SECOND position on first reveal. Boot therefore had TWO
+// competing offset commits with different math → the slide.
+//
+// FIX (default ON, new kill-switch __TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT):
+// ONE authoritative boot anchor — the index pin — from first paint through
+// reveal. During boot settle the competing getReplayAutoScrollState / center-
+// playhead commits are suppressed (chart.js fitToView + loadMultichartPanelFrom-
+// Host, MultichartGrid goToReplayTimestamp + alignHostChartForMultichart), and
+// the mirror path Math.rounds the pin to match b102/b103.
+//
+// DETERMINISTIC (no wall-clock): spans the FULL boot commit sequence in-frame
+// (not just one resize) — pre-split (auto-scroll) → freeze+resize b102/b103 index
+// pin → post-mirror → post-allDataReady align (fitToView, the competing commit)
+// → post-forceInitialSync (fitToView re-apply) → final pre-reveal. Every value
+// derives only from the seeded synthetic data extent + margins + widths. Probed
+// in the HOST main frame AND in each peer (B/C/D) embed frame.
+//   GREEN (fix ON):  every sampled commit after the index pin lands on the pin
+//                    (<1px of FINAL); exactly ONE offset-changing commit after
+//                    pre-split (the index pin); host + each peer reanchorPasses<=1.
+//   RED   (kill on): the post-allDataReady commit re-applies getReplayAutoScroll-
+//                    State and moves offsetX by ≈ the replay right-gap (tens to
+//                    ~120px) off the pin → a SECOND commit → FAIL-REAL-BUG.
+const S31_DISABLE_FLAG = '__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT';
+
+/**
+ * In-frame probe (host main frame or peer embed frame) that walks the full boot
+ * commit sequence and samples offsetX at each stage. Read-only w.r.t. data:
+ * mutates only boot flags + viewport, all restored before return. `role` is
+ * 'host' (arms the multichart-grid shape the host re-anchor branch gates on) or
+ * 'peer' (tags the doc as an embed + arms the boot viewport lock, exactly as
+ * H-S29 does for the peer branch).
+ */
+const S31_PROBE_FN = (disableFlag, role) => {
+  const ch = window.chart;
+  if (!ch || !Array.isArray(ch.data) || !ch.data.length) return { ok: false, reason: 'chart not painted' };
+  const rs = ch.replaySystem;
+  if (!rs || !rs.isActive) return { ok: false, reason: 'replay not active' };
+  if (typeof rs.getReplayAutoScrollState !== 'function') return { ok: false, reason: 'no getReplayAutoScrollState' };
+  const wrapper = document.getElementById('chartWrapper');
+  if (!wrapper) return { ok: false, reason: 'no chartWrapper' };
+  const m = ch.margin || { l: 60, r: 60 };
+  const fixDisabled = !!window[disableFlag];
+
+  // ── role setup (restored on exit) ──
+  const priorGrid = window.__multichartGrid;
+  const priorEmbed = document.documentElement.classList.contains('multichart-embed');
+  const priorPositioned = ch._multichartBootViewportPositioned;
+  const priorSettleUntil = ch._multichartViewportSettleUntil;
+  const priorSkip = ch._multichartSkipResizeOffsetAdjust;
+  const priorRestored = ch._chartViewRestored;
+  const priorPanned = rs.userHasPanned;
+  const priorAuto = rs.autoScrollEnabled;
+  const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+  if (role === 'host') {
+    window.__multichartGrid = priorGrid || { getPanelIds: function () { return ['A', 'B', 'C', 'D']; } };
+  } else {
+    if (!priorEmbed) document.documentElement.classList.add('multichart-embed');
+    ch._multichartBootViewportPositioned = true;
+    ch._multichartViewportSettleUntil = nowMs + 60_000;
+  }
+  // Paused, auto-scroll on, not panned → pre-split establishes an auto-scroll
+  // anchor (the same viewport the pre-split single/host chart shows).
+  rs.userHasPanned = false;
+  rs.autoScrollEnabled = true;
+
+  const spacing = (typeof ch.getCandleSpacing === 'function') ? ch.getCandleSpacing() : ch.candleWidth;
+  const rightIdx0 = (typeof ch.getVisibleEndIndex === 'function') ? ch.getVisibleEndIndex() : (ch.data.length - 1);
+  const preCandleWidth = Number(ch.candleWidth);
+
+  // ── STAGE 0: pre-split (full width, replay auto-scroll) ──
+  const st0 = rs.getReplayAutoScrollState(ch);
+  if (st0 && Number.isFinite(st0.offsetX)) {
+    ch.offsetX = st0.offsetX;
+    if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+  }
+  const preW = ch.w;
+  const offPreSplit = Number(ch.offsetX);
+  const rendersBefore = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+  // ── STAGE 1: freeze + shrink full→half + resize() → b102/b103 index pin ──
+  ch._multichartSkipResizeOffsetAdjust = true;
+  const postW = Math.max(200, Math.round(preW / 2));
+  const h = Math.round(wrapper.getBoundingClientRect().height) || ch.h;
+  wrapper.style.right = 'auto';
+  wrapper.style.bottom = 'auto';
+  wrapper.style.width = postW + 'px';
+  wrapper.style.height = h + 'px';
+  ch._lastResizeDpr = 0;
+  ch.resize();
+  const paintW = ch.w;
+  const offIndexPin = Number(ch.offsetX);
+  const postCandleWidth = Number(ch.candleWidth);
+  const rendersAfter = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+  // Canonical index-pin target (drift-free) == the ONE authoritative boot anchor.
+  const plotWpost = Math.max(1, paintW - (m.l || 0) - (m.r || 0));
+  const ri = Math.max(0, Math.min(rightIdx0, ch.data.length - 1));
+  const indexPinTarget = Math.round(plotWpost - (ri + 1) * spacing);
+  // The competing auto-scroll target at the NEW (half) width — the SECOND commit.
+  const stHalf = rs.getReplayAutoScrollState(ch);
+  const autoScrollTargetHalf = (stHalf && Number.isFinite(stHalf.offsetX)) ? Number(stHalf.offsetX) : null;
+
+  // ── STAGE 2: post-mirror (sample; host does not mirror, peer already pinned) ──
+  const offPostMirror = Number(ch.offsetX);
+
+  // ── STAGE 3: post-allDataReady align — the competing commit, via fitToView
+  //    (guarded chart.js site 3). GREEN suppresses; RED re-applies auto-scroll. ──
+  ch._chartViewRestored = false;
+  if (typeof ch.fitToView === 'function') ch.fitToView();
+  const offPostAlign = Number(ch.offsetX);
+
+  // ── STAGE 4: post-forceInitialSync (a second fitToView re-apply) ──
+  ch._chartViewRestored = false;
+  if (typeof ch.fitToView === 'function') ch.fitToView();
+  const offPostForceSync = Number(ch.offsetX);
+
+  // ── STAGE 5: final pre-reveal ──
+  const offFinal = Number(ch.offsetX);
+
+  // ── restore all mutated state (nothing leaks into H-INV / later reads) ──
+  if (priorSkip === undefined) { try { delete ch._multichartSkipResizeOffsetAdjust; } catch (_) {} }
+  else ch._multichartSkipResizeOffsetAdjust = priorSkip;
+  ch._chartViewRestored = priorRestored;
+  rs.userHasPanned = priorPanned;
+  rs.autoScrollEnabled = priorAuto;
+  if (role === 'host') {
+    if (priorGrid === undefined) { try { delete window.__multichartGrid; } catch (_) { window.__multichartGrid = undefined; } }
+  } else {
+    if (!priorEmbed) document.documentElement.classList.remove('multichart-embed');
+    if (priorPositioned === undefined) { try { delete ch._multichartBootViewportPositioned; } catch (_) {} }
+    else ch._multichartBootViewportPositioned = priorPositioned;
+    if (priorSettleUntil === undefined) { try { delete ch._multichartViewportSettleUntil; } catch (_) {} }
+    else ch._multichartViewportSettleUntil = priorSettleUntil;
+  }
+
+  // ── derived ──
+  const samplesAfterPin = [offPostMirror, offPostAlign, offPostForceSync, offFinal];
+  const maxDriftFromPin = Math.max.apply(null, samplesAfterPin.map(function (v) { return Math.abs(v - offIndexPin); }));
+  const seq = [offPreSplit, offIndexPin, offPostMirror, offPostAlign, offPostForceSync, offFinal];
+  let reanchorPasses = 0;
+  for (let i = 1; i < seq.length; i++) if (Math.abs(seq[i] - seq[i - 1]) > 1) reanchorPasses++;
+  const autoScrollVsPin = (autoScrollTargetHalf != null) ? (autoScrollTargetHalf - offIndexPin) : null;
+  return {
+    ok: true, role, fixDisabled,
+    preW, postW, paintW, preCandleWidth, postCandleWidth,
+    spacing, rightIdx: ri, dataLen: ch.data.length,
+    rendersBefore, rendersAfter,
+    offPreSplit, offIndexPin, offPostMirror, offPostAlign, offPostForceSync, offFinal,
+    indexPinTarget, autoScrollTargetHalf, autoScrollVsPin,
+    maxDriftFromPin, reanchorPasses,
+  };
+};
+
+function s31AssertProbe(checks, tag, p) {
+  checks.check(`H-S31 ${tag} probe constructed (replay-active frozen boot)`, p && p.ok, p ? (p.reason || '') : 'no probe');
+  if (!p || !p.ok) return false;
+  // ── Setup / non-vacuous (pass in BOTH modes) ──
+  checks.check(`H-S31 ${tag} setup: cell shrank on boot (full→multi)`,
+    p.preW > p.postW && (p.preW - p.postW) > 50,
+    `preW=${p.preW} postW=${p.postW} paintW=${p.paintW}`);
+  checks.check(`H-S31 ${tag} setup: candleWidth unchanged across boot resize`,
+    p.preCandleWidth === p.postCandleWidth,
+    `pre=${p.preCandleWidth} post=${p.postCandleWidth}`);
+  checks.check(`H-S31 ${tag} setup: at least one paint on the boot resize`,
+    p.rendersAfter - p.rendersBefore >= 1,
+    `renders ${p.rendersBefore}→${p.rendersAfter}`);
+  checks.check(`H-S31 ${tag} non-vacuous: competing auto-scroll commit separated from index pin`,
+    p.autoScrollVsPin != null && Math.abs(p.autoScrollVsPin) > 5,
+    `indexPin=${p.offIndexPin} autoScrollHalf=${p.autoScrollTargetHalf} |Δ|=${p.autoScrollVsPin == null ? 'n/a' : Math.abs(p.autoScrollVsPin).toFixed(1)}px`);
+  // ── CORE (GREEN pass / RED fail) ──
+  checks.check(`H-S31 ${tag} CORE: every boot commit after the index pin lands on the pin (<1px of FINAL)`,
+    p.maxDriftFromPin < 1,
+    `maxDriftFromPin=${p.maxDriftFromPin.toFixed(1)}px (pin=${p.offIndexPin} mirror=${p.offPostMirror} align=${p.offPostAlign} forceSync=${p.offPostForceSync} final=${p.offFinal})`);
+  checks.check(`H-S31 ${tag} CORE: exactly ONE offset-changing commit after pre-split (index pin); reanchorPasses<=1`,
+    p.reanchorPasses <= 1,
+    `reanchorPasses=${p.reanchorPasses} preSplit=${p.offPreSplit} pin=${p.offIndexPin} align=${p.offPostAlign} (fixDisabled=${p.fixDisabled})`);
+  return true;
+}
+
+async function hS31(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // Enter replay PAUSED on host + peers so getReplayAutoScrollState (the
+    // competing commit's formula) is meaningful in every frame.
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S31 replay entered (paused) on host + peers', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // HOST probe (main frame) — the definitive discriminator.
+    const host = await page.evaluate(S31_PROBE_FN, S31_DISABLE_FLAG, 'host');
+    s31AssertProbe(checks, 'HOST', host);
+
+    // PEER probes (each embed frame) — the b103 peer analogue must be single-commit too.
+    const frames = panelFrameMap(page);
+    const peers = {};
+    for (const pid of ['B', 'C', 'D']) {
+      if (frames[pid]) peers[pid] = await frames[pid].evaluate(S31_PROBE_FN, S31_DISABLE_FLAG, 'peer');
+    }
+    for (const pid of ['B', 'C', 'D']) {
+      if (peers[pid]) s31AssertProbe(checks, `PEER-${pid}`, peers[pid]);
+    }
+
+    const okHost = host && host.ok;
+    notes.push(`H-S31 (§6ct residual open-multichart first-render slide): same-pair 2x2, paused replay, `
+      + `default candleWidth. Boot commit sequence sampled (pre-split→b102/b103 index pin→mirror→post-allDataReady `
+      + `align(fitToView)→forceInitialSync→final). `
+      + (okHost
+        ? `HOST: preSplit=${host.offPreSplit} indexPin=${host.offIndexPin} align=${host.offPostAlign} final=${host.offFinal}; `
+          + `maxDriftFromPin=${host.maxDriftFromPin.toFixed(1)}px; reanchorPasses=${host.reanchorPasses}; competing `
+          + `auto-scroll target=${host.autoScrollTargetHalf} (|Δ vs pin|=${host.autoScrollVsPin == null ? 'n/a' : Math.abs(host.autoScrollVsPin).toFixed(1)}px). `
+        : `HOST probe failed (${host && host.reason}). `)
+      + ['B', 'C', 'D'].map((pid) => {
+        const p = peers[pid];
+        if (!p) return `PEER-${pid}: (no frame)`;
+        if (!p.ok) return `PEER-${pid}: (${p.reason})`;
+        return `PEER-${pid}: drift=${p.maxDriftFromPin.toFixed(1)}px passes=${p.reanchorPasses}`;
+      }).join('; ') + '. '
+      + `Kill-switch ${S31_DISABLE_FLAG} RED: the post-allDataReady commit re-applies getReplayAutoScrollState `
+      + `(~20% replay right-gap) → offsetX moves off the pin (tens→~120px), a SECOND commit → FAIL-REAL-BUG.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4188,6 +4766,8 @@ export function scenarioList() {
     { id: 'H-S27', title: 'finer-self-owner (peer finer than host NATIVE) play viewport follows leading edge, not frozen (A7 §6co)', run: hS27 },
     { id: 'H-S28', title: 'boot host single→multi cell-resize re-anchors on first paint (no first-render shake) (§6cq)', run: hS28 },
     { id: 'H-S29', title: 'boot peer layout-settle cell-resize re-anchors on first paint (no residual peer shake) (§6cr)', run: hS29 },
+    { id: 'H-S30', title: 'HOST step-forward-spam does not refetch/jump-backward/stall during paused replay (§6cs)', run: hS30 },
+    { id: 'H-S31', title: 'boot single-commit: index pin is the only boot anchor; no residual open-multichart first-render slide (§6ct)', run: hS31 },
   ];
 }
 
