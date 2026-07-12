@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="heroui-style-20260712b">
+<meta name="x-admin-build" content="heroui-admin-gaps-20260712c">
 <title>Talaria — Admin Dashboard</title>
 <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260624b151">
 <style>
@@ -3001,6 +3001,49 @@ select { cursor: default; }
   </div>
 </div>
 
+<!-- Canned replies manager -->
+<div class="modal-overlay" id="cannedRepliesModal">
+  <div class="modal" style="max-width:640px">
+    <h2>Canned replies</h2>
+    <p style="font-size:12px;color:var(--text-muted);margin:-8px 0 14px;line-height:1.45">Macros inserted into ticket replies. Inactive macros stay listed here but are hidden from the insert dropdown.</p>
+    <div class="form-grid" style="margin-bottom:14px">
+      <input type="hidden" id="cannedEditId" value="">
+      <div class="field fg-full"><label>Title</label><input type="text" id="cannedTitle" maxlength="200" placeholder="e.g. Reset password steps"></div>
+      <div class="field"><label>Category (optional)</label>
+        <select id="cannedCategory">
+          <option value="">Any</option>
+          <option value="billing">Billing</option>
+          <option value="account">Account</option>
+          <option value="access">Access</option>
+          <option value="bug">Bug</option>
+          <option value="error">Error</option>
+          <option value="feature">Feature request</option>
+          <option value="modifications">Modifications</option>
+          <option value="suggestions">Suggestions / Features</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field"><label>Sort order</label><input type="number" id="cannedSortOrder" value="0" style="width:100px"></div>
+      <div class="field fg-full"><label>Body</label><textarea id="cannedBody" rows="5" placeholder="Reply text…"></textarea></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:default"><input type="checkbox" id="cannedActive" checked> Active</label></div>
+    </div>
+    <div class="modal-actions" style="margin-bottom:16px">
+      <button type="button" class="btn" onclick="resetCannedForm()">Clear</button>
+      <button type="button" class="btn primary" onclick="saveCannedReply()">Save macro</button>
+    </div>
+    <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm)">
+      <table>
+        <thead><tr><th>Title</th><th>Category</th><th>Active</th><th></th></tr></thead>
+        <tbody id="cannedRepliesBody"></tbody>
+      </table>
+      <div class="empty-state" id="cannedRepliesEmpty" style="display:none;padding:20px"><p>No macros yet</p></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCannedRepliesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── App Shell ──────────────────────────────── -->
 <div class="app" id="appShell" style="display:none">
   <!-- Sidebar -->
@@ -3384,6 +3427,7 @@ select { cursor: default; }
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             <div class="card-title">Users</div>
             <span class="card-badge" id="userCountBadge">0</span>
+            <button type="button" class="btn sm" onclick="exportUsersCsv()" title="Download users as CSV" style="margin-left:auto">Export CSV</button>
           </div>
           <div class="card-body" style="padding:0">
             <div style="display:flex;gap:6px;padding:14px 20px 0;flex-wrap:wrap">
@@ -4498,7 +4542,7 @@ select { cursor: default; }
             <!-- Action: archive stale sessions -->
             <div class="card" style="margin:16px 0 12px;background:var(--panel);padding:12px;border:1px solid var(--border)">
               <div style="font-weight:600;margin-bottom:6px">Archive stale sessions</div>
-              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Compress <code>state_json</code> for inactive, large sessions to a gzip file on disk. The session row stays; run "Restore" (backend endpoint) if a user opens it again.</p>
+              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Compress <code>state_json</code> for inactive, large sessions to a gzip file on disk. The session row stays; use <strong>Restore archived session</strong> below to bring state back.</p>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
                 <label style="font-size:12px;display:flex;align-items:center;gap:4px">older than
                   <input type="number" id="archSessionsDays" value="90" min="1" max="3650" style="width:64px" class="input sm">
@@ -4515,6 +4559,19 @@ select { cursor: default; }
                 <button type="button" class="btn sm danger" id="archSessionsExecBtn" onclick="runArchiveStaleSessions(false)" disabled title="Run a dry-run first to unlock">Execute</button>
               </div>
               <div id="archSessionsResult" style="font-size:12px;color:var(--text-muted)"></div>
+            </div>
+
+            <!-- Action: restore archived session -->
+            <div class="card" style="margin:0 0 12px;background:var(--panel);padding:12px;border:1px solid var(--border)">
+              <div style="font-weight:600;margin-bottom:6px">Restore archived session</div>
+              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Pull gzip'd <code>state_json</code> from <code>uploads/session_archive/</code> back into the DB. Skips if the session already has live state (&gt;64&nbsp;B).</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">Session ID
+                  <input type="number" id="restoreSessionId" min="1" placeholder="e.g. 1234" style="width:100px" class="input sm">
+                </label>
+                <button type="button" class="btn sm primary" onclick="runRestoreArchivedSession()">Restore</button>
+              </div>
+              <div id="restoreSessionResult" style="font-size:12px;color:var(--text-muted)"></div>
             </div>
 
             <!-- Action: prune old support attachments -->
@@ -5011,6 +5068,7 @@ select { cursor: default; }
                     <select id="supportCannedSelect" onchange="supportInsertCanned(this)">
                       <option value="">Canned reply…</option>
                     </select>
+                    <button type="button" class="btn sm" onclick="openCannedRepliesModal()" title="Create, edit, or delete canned replies">Manage macros</button>
                   </div>
                   <div class="support-activity" id="supportTicketActivity" style="display:none"></div>
                 </div>
@@ -5053,6 +5111,18 @@ select { cursor: default; }
           </div>
           <div class="card-body" style="font-size:13px;line-height:1.55;color:var(--text-secondary)">
             <p style="margin:0 0 12px">Append-only trail: mutating <code style="font-size:11px">/api/admin/*</code> requests plus structured entries from high-risk handlers. Reads such as this page are not auto-logged.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-raised)">
+              <div style="flex:1;min-width:180px">
+                <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">Retention prune</div>
+                <div style="font-size:11px;color:var(--text-muted)">Delete audit rows older than N days (dry-run first). Min 30 days.</div>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Older than (days)
+                <input type="number" id="auditPruneDays" value="365" min="30" max="3650" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--bg);color:var(--text);width:88px;font-size:12px" />
+              </label>
+              <button type="button" class="btn sm" onclick="runAuditLogPrune(true)">Dry-run</button>
+              <button type="button" class="btn sm danger" id="auditPruneExecBtn" onclick="runAuditLogPrune(false)" disabled title="Run a dry-run first">Execute prune</button>
+              <span id="auditPruneResult" style="font-size:12px;color:var(--text-muted);width:100%"></span>
+            </div>
             <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px">
               <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Action contains
                 <input type="text" id="auditFilterAction" placeholder="ban, delete…" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);min-width:120px;font-size:12px" />
@@ -5271,6 +5341,7 @@ select { cursor: default; }
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <div class="card-title">Default New User Settings</div>
+            <button type="button" class="btn sm primary" onclick="saveDefaultUserSettings()" style="margin-left:auto">Save defaults</button>
           </div>
           <div class="card-body">
             <div class="form-grid">
@@ -5281,7 +5352,21 @@ select { cursor: default; }
                 <input type="number" id="settDefaultAccessDays" min="0" value="0" style="width:100px" placeholder="0 = unlimited">
               </div>
             </div>
-            <p style="font-size:11px;color:var(--text-muted);margin-top:12px">These defaults are used when creating new users. Set access days to 0 for unlimited access.</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:12px">Saved in this browser and applied when you open Create User. Set access days to 0 for unlimited.</p>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            <div class="card-title">Backtest sessions kill switch</div>
+            <button type="button" class="btn sm" onclick="loadBacktestSessionsMode()" style="margin-left:auto">Refresh</button>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Global ON/OFF for saved backtest / trading sessions for non-admin users (also mirrored in Dashboard page access → Sessions).</p>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <button type="button" class="btn sm" id="backtestSessionsToggleBtn" onclick="toggleBacktestSessionsMode()">—</button>
+              <span id="backtestSessionsHint" style="font-size:12px;color:var(--text-muted)">Loading…</span>
+            </div>
           </div>
         </div>
         <div class="card" style="margin-top:16px">
@@ -6145,8 +6230,9 @@ function supportOnRequesterChange() {
 async function loadSupportCannedReplies() {
   try {
     const data = await api('/api/admin/support/canned-replies');
-    supportCannedReplies = (data.replies || []).filter(r => r.is_active !== false);
+    supportCannedReplies = data.replies || [];
     supportRefreshCannedSelect();
+    renderCannedRepliesTable();
   } catch (e) { /* ignore */ }
 }
 
@@ -6155,13 +6241,14 @@ function supportRefreshCannedSelect() {
   if (!sel) return;
   const th = supportFindThread(selectedSupportId);
   const cat = th && th.category ? th.category : '';
-  const matched = supportCannedReplies.filter(function (r) {
+  const active = supportCannedReplies.filter(function (r) { return r.is_active !== false; });
+  const matched = active.filter(function (r) {
     return !r.category || r.category === cat;
   });
-  const rest = supportCannedReplies.filter(function (r) {
+  const rest = active.filter(function (r) {
     return r.category && r.category !== cat;
   });
-  const list = matched.length ? matched.concat(rest) : supportCannedReplies;
+  const list = matched.length ? matched.concat(rest) : active;
   sel.innerHTML = '<option value="">Canned reply…</option>' +
     list.map(function (r) {
       const hint = r.category && r.category !== cat ? ' [' + r.category + ']' : '';
@@ -6177,6 +6264,107 @@ function supportInsertCanned(sel) {
   const ta = $('supportInput');
   if (ta) ta.value = (ta.value ? ta.value + '\n\n' : '') + row.body;
   sel.value = '';
+}
+
+function openCannedRepliesModal() {
+  resetCannedForm();
+  renderCannedRepliesTable();
+  const m = $('cannedRepliesModal');
+  if (m) m.classList.add('open');
+  loadSupportCannedReplies();
+}
+
+function closeCannedRepliesModal() {
+  const m = $('cannedRepliesModal');
+  if (m) m.classList.remove('open');
+}
+
+function resetCannedForm() {
+  if ($('cannedEditId')) $('cannedEditId').value = '';
+  if ($('cannedTitle')) $('cannedTitle').value = '';
+  if ($('cannedBody')) $('cannedBody').value = '';
+  if ($('cannedCategory')) $('cannedCategory').value = '';
+  if ($('cannedSortOrder')) $('cannedSortOrder').value = '0';
+  if ($('cannedActive')) $('cannedActive').checked = true;
+}
+
+function renderCannedRepliesTable() {
+  const body = $('cannedRepliesBody');
+  const empty = $('cannedRepliesEmpty');
+  if (!body) return;
+  const rows = supportCannedReplies.slice().sort(function (a, b) {
+    return (a.sort_order || 0) - (b.sort_order || 0) || (a.id || 0) - (b.id || 0);
+  });
+  if (!rows.length) {
+    body.innerHTML = '';
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  body.innerHTML = rows.map(function (r) {
+    return '<tr>' +
+      '<td style="font-weight:600">' + esc(r.title || '') + '</td>' +
+      '<td>' + esc(r.category || 'Any') + '</td>' +
+      '<td>' + (r.is_active !== false ? '<span class="badge badge-active">On</span>' : '<span class="badge badge-user">Off</span>') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button type="button" class="btn sm" onclick="editCannedReply(' + r.id + ')">Edit</button> ' +
+        '<button type="button" class="btn sm danger" onclick="deleteCannedReply(' + r.id + ')">Delete</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+function editCannedReply(id) {
+  const row = supportCannedReplies.find(function (r) { return r.id === id; });
+  if (!row) return;
+  $('cannedEditId').value = String(row.id);
+  $('cannedTitle').value = row.title || '';
+  $('cannedBody').value = row.body || '';
+  $('cannedCategory').value = row.category || '';
+  $('cannedSortOrder').value = String(row.sort_order != null ? row.sort_order : 0);
+  $('cannedActive').checked = row.is_active !== false;
+}
+
+async function saveCannedReply() {
+  const title = ($('cannedTitle').value || '').trim();
+  const body = ($('cannedBody').value || '').trim();
+  if (!title || !body) return toast('Title and body are required', 'err');
+  const payload = {
+    title: title,
+    body: body,
+    category: ($('cannedCategory').value || '').trim() || null,
+    is_active: !!$('cannedActive').checked,
+    sort_order: parseInt($('cannedSortOrder').value, 10) || 0,
+  };
+  const editId = parseInt(($('cannedEditId').value || ''), 10);
+  try {
+    if (editId) {
+      await api('/api/admin/support/canned-replies/' + editId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      toast('Macro updated', 'ok');
+    } else {
+      await api('/api/admin/support/canned-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      toast('Macro created', 'ok');
+    }
+    resetCannedForm();
+    await loadSupportCannedReplies();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteCannedReply(id) {
+  if (!confirm('Delete this canned reply?')) return;
+  try {
+    await api('/api/admin/support/canned-replies/' + id, { method: 'DELETE' });
+    toast('Macro deleted', 'ok');
+    if (parseInt(($('cannedEditId').value || ''), 10) === id) resetCannedForm();
+    await loadSupportCannedReplies();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 let supportThreadsTotal = 0;
@@ -7207,6 +7395,7 @@ function navigate(section) {
   if (section === 'affiliates') loadAffiliates();
   if (section === 'bulk-email') { loadUsers().then(() => renderBulkEmailPanel()); }
   if (section === 'settings') updateSettingsPage();
+  if (section === 'users') applyDefaultUserSettingsToForm();
   if (section === 'support') {
     loadSupport();
     supportStartPoll();
@@ -7557,6 +7746,7 @@ let insightsOverviewCache = null;
       refreshFirstrateNightlyHealth().catch(function (e) { console.error('refreshFirstrateNightlyHealth', e); }),
       refreshDailySyncOverview().catch(function (e) { console.error('refreshDailySyncOverview', e); }),
     ]);
+    try { applyDefaultUserSettingsToForm(); } catch (e) { console.error('applyDefaultUserSettingsToForm', e); }
     try { seedDefaultInstrumentPairsIfNeeded(); } catch (e) { console.error('seedDefaultInstrumentPairsIfNeeded', e); }
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
@@ -7670,6 +7860,37 @@ async function loadUsers() {
     renderUsers();
     renderOverview();
   } catch (e) { toast('Failed to load users: ' + e.message, 'err'); }
+}
+
+function _csvEscape(v) {
+  const s = v == null ? '' : String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportUsersCsv() {
+  if (!allUsers.length) {
+    toast('No users loaded — open Users first', 'err');
+    return;
+  }
+  const headers = [
+    'id', 'name', 'email', 'role', 'status', 'is_active', 'max_sessions',
+    'session_count', 'trading_sessions_count', 'has_journal_access',
+    'group_id', 'group_name', 'is_mentorship', 'invited',
+    'access_expires_at', 'last_active_at', 'created_at',
+  ];
+  const lines = [headers.join(',')];
+  allUsers.forEach(function (u) {
+    lines.push(headers.map(function (h) { return _csvEscape(u[h]); }).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'talaria-users-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  toast('Exported ' + allUsers.length + ' users', 'ok');
 }
 
 const bulkEmailSelected = new Set();
@@ -7880,6 +8101,7 @@ async function createUser() {
     await api('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     toast('User created', 'ok');
     $('newName').value = ''; $('newEmail').value = ''; $('newPassword').value = '';
+    applyDefaultUserSettingsToForm();
     await loadUsers();
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -13134,6 +13356,11 @@ async function runArchiveStaleSessions(dryRun) {
       _archSessionsLastPlan = data;
       const btn = document.getElementById('archSessionsExecBtn');
       if (btn) { btn.disabled = (data.would_archive_count || 0) === 0; }
+      // Prefill restore field with first sample id when present
+      const sample = (data.sample || [])[0];
+      if (sample && sample.session_id && $('restoreSessionId') && !$('restoreSessionId').value) {
+        $('restoreSessionId').value = String(sample.session_id);
+      }
     } else {
       _archSessionsLastPlan = null;
       const btn = document.getElementById('archSessionsExecBtn');
@@ -13143,6 +13370,30 @@ async function runArchiveStaleSessions(dryRun) {
   } catch (e) {
     const host = document.getElementById('archSessionsResult');
     if (host) host.innerHTML = `<span style="color:var(--danger,#ef4444)">Failed: ${esc(e?.message || e)}</span>`;
+  }
+}
+
+async function runRestoreArchivedSession() {
+  const sid = parseInt(($('restoreSessionId') && $('restoreSessionId').value) || '', 10);
+  const host = $('restoreSessionResult');
+  if (!sid) {
+    toast('Enter a session ID', 'err');
+    return;
+  }
+  if (!confirm('Restore archived state for session #' + sid + '?\n\nFails if the session already has live state.')) return;
+  if (host) host.innerHTML = 'Restoring…';
+  try {
+    const data = await api('/api/admin/system/restore-archived-session/' + sid, { method: 'POST' });
+    const bytes = data.restored_human || (data.restored_bytes != null ? data.restored_bytes + ' B' : '—');
+    if (host) {
+      host.innerHTML = '<span style="color:#10b981;font-weight:600">RESTORED</span> · session #' +
+        esc(String(data.session_id || sid)) + ' · ' + esc(String(bytes));
+    }
+    toast('Session #' + sid + ' restored', 'ok');
+    refreshStorageHealth();
+  } catch (e) {
+    if (host) host.innerHTML = '<span style="color:var(--danger)">Failed: ' + esc(e.message || e) + '</span>';
+    toast(e.message || 'Restore failed', 'err');
   }
 }
 
@@ -14242,7 +14493,149 @@ function updateSettingsPage() {
   $('settTotalDs').textContent = allDatasets.length;
   $('settActiveSess').textContent = allSessions.length;
   $('settServerTime').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+  loadDefaultUserSettingsIntoForm();
   loadPlatformSections();
+  loadBacktestSessionsMode();
+}
+
+var ADM_DEFAULT_USER_KEY = 'talaria_admin_default_user_v1';
+var backtestSessionsEnabled = true;
+var _auditPruneLastPlan = null;
+
+function loadDefaultUserSettingsIntoForm() {
+  try {
+    var raw = localStorage.getItem(ADM_DEFAULT_USER_KEY);
+    if (!raw) return;
+    var d = JSON.parse(raw);
+    if ($('settDefaultMaxSessions') && d.max_sessions != null) {
+      $('settDefaultMaxSessions').value = String(Math.max(1, parseInt(d.max_sessions, 10) || 1));
+    }
+    if ($('settDefaultAccessDays') && d.access_days != null) {
+      $('settDefaultAccessDays').value = String(Math.max(0, parseInt(d.access_days, 10) || 0));
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function saveDefaultUserSettings() {
+  var maxS = Math.max(1, parseInt(($('settDefaultMaxSessions') && $('settDefaultMaxSessions').value) || '1', 10) || 1);
+  var days = Math.max(0, parseInt(($('settDefaultAccessDays') && $('settDefaultAccessDays').value) || '0', 10) || 0);
+  try {
+    localStorage.setItem(ADM_DEFAULT_USER_KEY, JSON.stringify({ max_sessions: maxS, access_days: days }));
+    toast('Defaults saved for this browser', 'ok');
+    applyDefaultUserSettingsToForm();
+  } catch (e) { toast('Could not save defaults', 'err'); }
+}
+
+function applyDefaultUserSettingsToForm() {
+  var maxS = 1;
+  var days = 0;
+  try {
+    var raw = localStorage.getItem(ADM_DEFAULT_USER_KEY);
+    if (raw) {
+      var d = JSON.parse(raw);
+      if (d.max_sessions != null) maxS = Math.max(1, parseInt(d.max_sessions, 10) || 1);
+      if (d.access_days != null) days = Math.max(0, parseInt(d.access_days, 10) || 0);
+    }
+  } catch (e) { /* ignore */ }
+  if ($('settDefaultMaxSessions')) $('settDefaultMaxSessions').value = String(maxS);
+  if ($('settDefaultAccessDays')) $('settDefaultAccessDays').value = String(days);
+  if ($('newMaxSessions')) $('newMaxSessions').value = String(maxS);
+  var container = $('createAccessMode');
+  if (!container) return;
+  var mode = days > 0 ? 'days' : 'unlimited';
+  createAccessModeVal = mode;
+  container.querySelectorAll('button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  if ($('createAccessDateField')) $('createAccessDateField').style.display = mode === 'date' ? '' : 'none';
+  if ($('createAccessDaysField')) $('createAccessDaysField').style.display = mode === 'days' ? '' : 'none';
+  if (mode === 'days' && $('newAccessDays')) $('newAccessDays').value = String(days);
+}
+
+function renderBacktestSessionsMode() {
+  var btn = $('backtestSessionsToggleBtn');
+  var hint = $('backtestSessionsHint');
+  if (btn) {
+    btn.textContent = backtestSessionsEnabled ? 'ON' : 'OFF';
+    btn.style.background = backtestSessionsEnabled ? 'var(--accent)' : '';
+    btn.style.color = backtestSessionsEnabled ? '#fff' : '';
+  }
+  if (hint) {
+    hint.textContent = backtestSessionsEnabled
+      ? 'Non-admin users can create and open backtest sessions.'
+      : 'Backtest sessions are disabled for non-admin users.';
+  }
+}
+
+async function loadBacktestSessionsMode() {
+  try {
+    var data = await api('/api/admin/platform/backtest-sessions');
+    backtestSessionsEnabled = data.enabled !== false;
+  } catch (e) { /* keep prior */ }
+  renderBacktestSessionsMode();
+}
+
+async function toggleBacktestSessionsMode() {
+  var next = !backtestSessionsEnabled;
+  if (!confirm((next ? 'Enable' : 'Disable') + ' backtest sessions for non-admin users?')) return;
+  try {
+    var data = await api('/api/admin/platform/backtest-sessions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    });
+    backtestSessionsEnabled = data.enabled !== false;
+    // Keep platform sections Sessions toggle in sync when present
+    if (platformSections) platformSections.sessions = backtestSessionsEnabled;
+    renderPlatformSections();
+    renderBacktestSessionsMode();
+    toast('Backtest sessions ' + (backtestSessionsEnabled ? 'enabled' : 'disabled'), 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function runAuditLogPrune(dryRun) {
+  var days = parseInt(($('auditPruneDays') && $('auditPruneDays').value) || '365', 10) || 365;
+  if (days < 30) {
+    toast('Minimum retention is 30 days', 'err');
+    return;
+  }
+  if (!dryRun) {
+    if (!_auditPruneLastPlan || !_auditPruneLastPlan.would_delete) {
+      toast('Run a dry-run first', 'err');
+      return;
+    }
+    if (!confirm('Permanently delete ' + _auditPruneLastPlan.would_delete + ' audit log row(s) older than ' + days + ' days?\n\nThis cannot be undone.')) return;
+  }
+  var host = $('auditPruneResult');
+  try {
+    var data = await api('/api/admin/audit-log/prune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ older_than_days: days, dry_run: !!dryRun }),
+    });
+    if (dryRun) {
+      _auditPruneLastPlan = data;
+      var btn = $('auditPruneExecBtn');
+      if (btn) btn.disabled = !(data.would_delete > 0);
+      if (host) {
+        host.innerHTML = '<span style="color:#f59e0b;font-weight:600">DRY-RUN</span> · would delete <b>' +
+          esc(String(data.would_delete || 0)) + '</b> rows (cutoff ' + esc(data.cutoff_utc || '') + ')';
+      }
+    } else {
+      _auditPruneLastPlan = null;
+      var btn2 = $('auditPruneExecBtn');
+      if (btn2) btn2.disabled = true;
+      if (host) {
+        host.innerHTML = '<span style="color:#10b981;font-weight:600">DONE</span> · deleted <b>' +
+          esc(String(data.deleted || 0)) + '</b> rows';
+      }
+      toast('Pruned ' + (data.deleted || 0) + ' audit rows', 'ok');
+      loadAuditLog(true);
+    }
+  } catch (e) {
+    if (host) host.innerHTML = '<span style="color:var(--danger)">Failed: ' + esc(e.message || e) + '</span>';
+    toast(e.message || 'Prune failed', 'err');
+  }
 }
 
 // ── Dashboard sidebar page toggles ──
