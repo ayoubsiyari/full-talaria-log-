@@ -952,9 +952,21 @@ function alignHostChartForMultichart(ch, mgr) {
             if (typeof ch.render === "function") ch.render();
             return;
         }
+        // §6ct BOOT SINGLE-COMMIT: during boot settle the b102/b103 index pin is
+        // the ONE authoritative boot anchor. Skip the centerPlayhead offset
+        // rewrite below (a competing SECOND commit that produces the felt slide on
+        // first reveal) and reveal data WITHOUT auto-scrolling — let the index pin
+        // stand. Post-boot this is false and the align recenters exactly as before.
+        // The userHasPanned early-exit above is preserved and takes precedence.
+        const bootSingleCommit = mcBootSingleCommitActive(ch);
         const inBacktest = !!(ch.isBacktestMode && ch.backtestingSession);
         if (!inBacktest || !rs) {
             if (rs && rs.isActive && typeof rs.syncReplayViewportToPlayhead === "function") {
+                if (bootSingleCommit) {
+                    if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+                    if (typeof ch.render === "function") ch.render();
+                    return;
+                }
                 rs.syncReplayViewportToPlayhead(ch, {
                     centerPlayhead: true,
                     resetPriceScale: !bootSoft,
@@ -981,10 +993,15 @@ function alignHostChartForMultichart(ch, mgr) {
             rs.enterReplayMode(enterOpts);
         } else if (rs.isActive && Number.isFinite(playheadMs)
             && typeof rs.goToReplayTimestamp === "function") {
-            rs.goToReplayTimestamp(playheadMs);
+            // Reveal the slice at the playhead, but preserve the index-pin offset
+            // during boot settle (no auto-scroll rewrite).
+            rs.goToReplayTimestamp(playheadMs, { preserveVisibleWindow: bootSingleCommit });
         }
 
-        if (typeof rs.syncReplayViewportToPlayhead === "function") {
+        if (bootSingleCommit) {
+            if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+            if (typeof ch.render === "function") ch.render();
+        } else if (typeof rs.syncReplayViewportToPlayhead === "function") {
             rs.syncReplayViewportToPlayhead(ch, {
                 centerPlayhead: true,
                 resetPriceScale: !bootSoft,
@@ -1005,6 +1022,41 @@ function isMultichartBootSettling() {
         if (typeof window !== "undefined"
             && Number.isFinite(window.__multichartBootRevealAfter)
             && performance.now() < window.__multichartBootRevealAfter) {
+            return true;
+        }
+    } catch (_) {}
+    return false;
+}
+
+/**
+ * §6ct BOOT SINGLE-COMMIT guard (MultichartGrid side, mirrors chart.js
+ * `_mcBootSingleCommitActive`). True while the multichart boot viewport is still
+ * SETTLING and the kill-switch is unset. While active the ONE authoritative boot
+ * anchor is the b102/b103 index pin, so the boot-commit sites here suppress the
+ * competing getReplayAutoScrollState / center-playhead offset rewrite (the felt
+ * open-multichart slide). Default ON; kill-switch
+ * __TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT reverts to the legacy two-commit slide.
+ * Post-boot (flags cleared / settle window elapsed) this is false, so live
+ * resize, pan, play-follow, single-chart and the userHasPanned path are intact.
+ */
+function mcBootSingleCommitActive(ch) {
+    try {
+        if (typeof window !== "undefined" && window.__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT) {
+            return false;
+        }
+    } catch (_) { return false; }
+    if (isMultichartBootSettling()) return true;
+    if (!ch) return false;
+    if (ch._multichartSkipResizeOffsetAdjust) return true;
+    try {
+        if (typeof ch._isMultichartBootViewportLocked === "function"
+            && ch._isMultichartBootViewportLocked()) {
+            return true;
+        }
+    } catch (_) {}
+    try {
+        if (Number.isFinite(ch._multichartViewportSettleUntil)
+            && performance.now() < ch._multichartViewportSettleUntil) {
             return true;
         }
     } catch (_) {}
@@ -2333,12 +2385,22 @@ export default function MultichartGrid({
                     const masterReaches = mLast && Number.isFinite(mLast.t)
                         && mLast.t >= hrs.replayTimestamp;
                     if (behind && masterReaches) {
+                        // §6ct BOOT SINGLE-COMMIT: reveal the data slice up to the
+                        // playhead, but during boot settle do NOT let this re-run
+                        // getReplayAutoScrollState — that is the competing SECOND
+                        // offset commit (a ~20% replay right-gap, different from the
+                        // b102/b103 index pin) that produces the felt slide on first
+                        // reveal. preserveVisibleWindow:true keeps updateChartData
+                        // revealing the slice (playhead/data correct) while leaving
+                        // the index-pin offset untouched. Post-boot this is inert
+                        // (preserveVisibleWindow:false), preserving prior behavior.
+                        const bootSingleCommit = mcBootSingleCommitActive(hostCh);
                         if (typeof hrs.goToReplayTimestamp === "function") {
                             hrs.goToReplayTimestamp(hrs.replayTimestamp, {
-                                preserveVisibleWindow: false,
+                                preserveVisibleWindow: bootSingleCommit,
                             });
                         } else if (typeof hrs.updateChartData === "function") {
-                            hrs.updateChartData();
+                            hrs.updateChartData(!bootSingleCommit);
                         }
                         if (typeof hostCh.render === "function") hostCh.render();
                     }

@@ -4236,7 +4236,11 @@ class Chart {
                     ? parent.getVisibleEndIndex()
                     : parent.data.length - 1;
                 rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
-                this.offsetX = plotW - (rightIdx + 1) * spacing;
+                // §6ct rounding unify: b102/b103 index pins Math.round this same
+                // formula; the mirror path did not, leaving a ≤0.5px offsetX
+                // discontinuity between the resize pin and the mirror commit that
+                // reads as a hairline slide. Round here to match (paint-once).
+                this.offsetX = Math.round(plotW - (rightIdx + 1) * spacing);
             } else {
                 const ppm = parent.margin || { l: 60, r: 60 };
                 const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
@@ -4980,7 +4984,18 @@ class Chart {
                     && typeof this._tryExtendReplayMasterFromParent === 'function') {
                     try { this._tryExtendReplayMasterFromParent(); } catch (_extMc) { /* ignore */ }
                 }
-                if (!mirroredHostViewport && typeof this._resetViewportToDefault === 'function') {
+                // §6ct BOOT SINGLE-COMMIT: during boot settle, if this panel already
+                // holds a valid index-pinned viewport (from the b102/b103 resize
+                // re-anchor), PREFER that single authoritative anchor and skip the
+                // _resetViewportToDefault auto-scroll fallback — its getReplayAuto-
+                // ScrollState re-apply is the competing SECOND commit that produces
+                // the felt slide on first reveal. Post-boot / no pinned viewport this
+                // is inert and the fallback runs exactly as before.
+                const bootHasPinnedViewport = typeof this._mcBootSingleCommitActive === 'function'
+                    && this._mcBootSingleCommitActive()
+                    && typeof this._countVisiblePlotBars === 'function'
+                    && this._countVisiblePlotBars() > 0;
+                if (!mirroredHostViewport && !bootHasPinnedViewport && typeof this._resetViewportToDefault === 'function') {
                     // Pair switch / independent panel: default right-anchored view.
                     this._resetViewportToDefault({
                         centerPlayhead: false,
@@ -17230,6 +17245,14 @@ class Chart {
         // spans the full loaded history (years of FX range) while the playhead price sits near the top.
         const replay = this.replaySystem;
         if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            // §6ct BOOT SINGLE-COMMIT: during boot settle the b102/b103 index pin
+            // is the ONE authoritative anchor. Skip this getReplayAutoScrollState
+            // re-apply (a DIFFERENT ~20% replay right-gap formula) so we don't move
+            // offsetX to a second position on first reveal (the felt slide) — let
+            // the index pin stand. Post-boot this guard is inert (unchanged).
+            if (typeof this._mcBootSingleCommitActive === 'function' && this._mcBootSingleCommitActive()) {
+                return;
+            }
             const st = replay.getReplayAutoScrollState(this);
             if (st && Number.isFinite(st.offsetX)) {
                 this.offsetX = st.offsetX;
@@ -17712,6 +17735,45 @@ class Chart {
             ? performance.now()
             : Date.now();
         return now < until;
+    }
+
+    /**
+     * §6ct BOOT SINGLE-COMMIT guard: true while the multichart boot viewport is
+     * still SETTLING (and the kill-switch is unset). During this window the ONE
+     * authoritative boot anchor is the b102/b103 drift-free index pin; any LATER
+     * boot commit that re-applies getReplayAutoScrollState (the ~20% replay right-
+     * gap formula) would move offsetX to a SECOND position on first reveal — the
+     * felt open-multichart horizontal SLIDE. When active, callers skip that second
+     * offset rewrite so first paint == final offset. Default ON; kill-switch
+     * __TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT reverts to the legacy two-commit
+     * (slide) behavior. Post-boot (flags cleared / settle window elapsed) this
+     * returns false, so live resize, pan, play-follow and single-chart are
+     * untouched.
+     */
+    _mcBootSingleCommitActive() {
+        if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT) {
+            return false;
+        }
+        if (this._multichartSkipResizeOffsetAdjust) return true;
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return true;
+        }
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        try {
+            if (typeof window !== 'undefined'
+                && Number.isFinite(window.__multichartBootRevealAfter)
+                && now < window.__multichartBootRevealAfter) {
+                return true;
+            }
+        } catch (_) { /* ignore */ }
+        if (Number.isFinite(this._multichartViewportSettleUntil)
+            && now < this._multichartViewportSettleUntil) {
+            return true;
+        }
+        return false;
     }
 
     /** Embed boot: bars are positioned — block resize/sync passes from re-anchoring. */

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="heroui-admin-gaps-20260712c">
+<meta name="x-admin-build" content="heroui-overview-live-20260712d">
 <title>Talaria — Admin Dashboard</title>
 <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260624b151">
 <style>
@@ -3044,6 +3044,18 @@ select { cursor: default; }
   </div>
 </div>
 
+<!-- Overview feature detail modal -->
+<div class="modal-overlay" id="overviewFeatureModal">
+  <div class="modal" style="max-width:720px">
+    <h2 id="overviewFeatureTitle">Overview</h2>
+    <div id="overviewFeatureBody" style="font-size:13px;line-height:1.55;color:var(--text-secondary);max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="$('overviewFeatureModal').classList.remove('open')">Close</button>
+      <button class="btn primary" id="overviewFeatureActionBtn" style="display:none" type="button">Open</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── App Shell ──────────────────────────────── -->
 <div class="app" id="appShell" style="display:none">
   <!-- Sidebar -->
@@ -3151,52 +3163,80 @@ select { cursor: default; }
       <!-- ════════ OVERVIEW SECTION ════════ -->
       <div class="section active" id="sec-overview">
         <div class="adm-overview">
-        <p class="adm-overview-lead">Command center and future-feature map (from <code style="font-size:11px">backtest_admin_dashboard_components</code> layout). KPIs use live data where wired; other tiles jump to tools or show a roadmap notice (mock).</p>
+        <p class="adm-overview-lead">Command center — KPIs and tiles use live platform data. Open a tile for detail panels (roles, billing, queue, engagement, funnel).</p>
         <div class="adm-kpi-row" id="overviewKpiRow"></div>
+
+        <div class="grid-2" id="overviewLivePanels" style="margin-bottom:22px;gap:12px">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Billing snapshot</div><button type="button" class="btn sm" onclick="navigate('subscriptions')">Open</button></div>
+            <div class="card-body" id="overviewBillingPanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Roles &amp; access</div><button type="button" class="btn sm" onclick="navigate('users')">Users</button></div>
+            <div class="card-body" id="overviewRolesPanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Engagement (DAU / WAU / MAU)</div><button type="button" class="btn sm" onclick="showOverviewFeature('engagement')">Details</button></div>
+            <div class="card-body" id="overviewEngagementPanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Job queue &amp; engine</div><button type="button" class="btn sm" onclick="showOverviewFeature('queue')">Details</button></div>
+            <div class="card-body" id="overviewQueuePanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Retention funnel</div><button type="button" class="btn sm" onclick="showOverviewFeature('funnel')">Details</button></div>
+            <div class="card-body" id="overviewFunnelPanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Instruments &amp; activity</div><button type="button" class="btn sm" onclick="showOverviewFeature('instruments')">Details</button></div>
+            <div class="card-body" id="overviewInstrumentsPanel" style="font-size:13px;color:var(--text-secondary)">Loading…</div>
+          </div>
+        </div>
+
         <div class="adm-section-kicker">User management</div>
         <div class="adm-roadmap-grid adm-g3">
           <button type="button" class="adm-map-card" onclick="navigate('users')" title="Open User Management">
-            <span class="adm-bdg adm-bdg-core">Core</span>
+            <span class="adm-bdg adm-bdg-core">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">User list &amp; search</div>
-            <div class="adm-map-desc">Searchable table, filters, bulk actions — live in Users.</div>
+            <div class="adm-map-desc">Searchable table, filters, export CSV — live in Users.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="navigate('users')" title="Open User Management">
-            <span class="adm-bdg adm-bdg-core">Core</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('profile')" title="User profile &amp; monitor">
+            <span class="adm-bdg adm-bdg-core">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">User profile &amp; detail</div>
-            <div class="adm-map-desc">Account, subscription hooks, sessions — use Users + edit modal (dedicated profile page: roadmap).</div>
+            <div class="adm-map-desc">Pick a user to open the live monitor (sessions, timeline, Stripe).</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Roles &amp; permissions')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-important">Important</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('roles')" title="Roles &amp; permissions">
+            <span class="adm-bdg adm-bdg-important">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Roles &amp; permissions</div>
-            <div class="adm-map-desc">Admin / moderator / analyst matrix — mock; wire later.</div>
+            <div class="adm-map-desc">Admin / user counts, journal access, module grants — live snapshot.</div>
           </button>
         </div>
 
         <div class="adm-section-kicker">Subscription &amp; billing</div>
         <div class="adm-roadmap-grid adm-g4">
           <button type="button" class="adm-map-card" onclick="navigate('subscriptions')" title="Open Subscriptions">
-            <span class="adm-bdg adm-bdg-revenue">Revenue</span>
+            <span class="adm-bdg adm-bdg-revenue">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Plan management</div>
             <div class="adm-map-desc">Plans, Stripe IDs, trials — live in Subscriptions.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('MRR &amp; churn dashboards')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-revenue">Revenue</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('billing')" title="MRR &amp; churn">
+            <span class="adm-bdg adm-bdg-revenue">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">MRR &amp; churn</div>
-            <div class="adm-map-desc">ARR, churn, LTV charts — mock dashboards (partial stats in Subscriptions).</div>
+            <div class="adm-map-desc">MTD revenue, active/canceled mix, past-due — from subscription stats.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('payments')" title="Open Payments">
-            <span class="adm-bdg adm-bdg-revenue">Revenue</span>
+            <span class="adm-bdg adm-bdg-revenue">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Invoices &amp; payments</div>
             <div class="adm-map-desc">Payment history &amp; reconciliation — live in Payments.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('subscriptions')" title="Open Subscriptions (coupons)">
-            <span class="adm-bdg adm-bdg-marketing">Marketing</span>
+            <span class="adm-bdg adm-bdg-marketing">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Coupons &amp; discounts</div>
             <div class="adm-map-desc">Promo codes &amp; Stripe coupons — live under Subscriptions.</div>
@@ -3205,123 +3245,117 @@ select { cursor: default; }
 
         <div class="adm-section-kicker">Backtest engine monitoring</div>
         <div class="adm-roadmap-grid adm-g3">
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Job queue monitor')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-core">Core</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('queue')" title="Job queue monitor">
+            <span class="adm-bdg adm-bdg-core">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Job queue monitor</div>
-            <div class="adm-map-desc">Pending / running / failed jobs — mock queue UI.</div>
+            <div class="adm-map-desc">Binary builds + FirstRate imports — pipeline diagnostics.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="navigate('insights')" title="Analytics &amp; VPS">
-            <span class="adm-bdg adm-bdg-core">Core</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('engine')" title="Engine performance">
+            <span class="adm-bdg adm-bdg-core">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Engine performance</div>
-            <div class="adm-map-desc">CPU, memory, charts — partial in Analytics &amp; VPS; deeper perf: roadmap.</div>
+            <div class="adm-map-desc">CPU, memory, disk — host metrics (also in Analytics &amp; VPS).</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('datasets'); setDsHubTab('registry')" title="Dataset registry &amp; health">
-            <span class="adm-bdg adm-bdg-ops">Ops</span>
+            <span class="adm-bdg adm-bdg-ops">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Data feed health</div>
-            <div class="adm-map-desc">Registry, gaps, rebuild — start in Dataset registry + Datasets.</div>
+            <div class="adm-map-desc">Registry, gaps, rebuild — Dataset registry + Datasets.</div>
           </button>
         </div>
 
         <div class="adm-section-kicker">Platform analytics</div>
         <div class="adm-roadmap-grid adm-g3">
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Usage &amp; engagement (DAU/MAU)')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-analytics">Analytics</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('engagement')" title="Usage &amp; engagement">
+            <span class="adm-bdg adm-bdg-analytics">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Usage &amp; engagement</div>
-            <div class="adm-map-desc">DAU/MAU, adoption heatmaps — mock.</div>
+            <div class="adm-map-desc">DAU/WAU/MAU from last activity + journal trade stats when available.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Strategy &amp; instrument stats')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-analytics">Analytics</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('instruments')" title="Strategy &amp; instrument stats">
+            <span class="adm-bdg adm-bdg-analytics">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Strategy &amp; instrument stats</div>
-            <div class="adm-map-desc">Most-backtested symbols — mock.</div>
+            <div class="adm-map-desc">Top journal symbols / dataset catalog counts.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Retention &amp; funnel')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-growth">Growth</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('funnel')" title="Retention &amp; funnel">
+            <span class="adm-bdg adm-bdg-growth">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Retention &amp; funnel</div>
-            <div class="adm-map-desc">Signup → paid cohorts — mock.</div>
+            <div class="adm-map-desc">Signup → journal access → active sub — live funnel.</div>
           </button>
         </div>
 
         <div class="adm-section-kicker">Content &amp; configuration</div>
         <div class="adm-roadmap-grid adm-g4">
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Broker integrations')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-config">Config</span>
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('brokers')" title="Broker integrations">
+            <span class="adm-bdg adm-bdg-config">Info</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Broker integrations</div>
-            <div class="adm-map-desc">Enable brokers, API health — mock.</div>
+            <div class="adm-map-desc">Status of data vendors (FirstRate / Dukascopy / Yahoo / Binance).</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('settings')" title="Settings">
-            <span class="adm-bdg adm-bdg-important">Config</span>
+            <span class="adm-bdg adm-bdg-important">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Feature flags</div>
-            <div class="adm-map-desc">Rollouts by cohort — use Settings today; full flag matrix: roadmap.</div>
+            <div class="adm-map-desc">Platform section toggles + backtest kill switch in Settings.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('bulk-email')" title="Bulk email">
-            <span class="adm-bdg adm-bdg-config">Config</span>
+            <span class="adm-bdg adm-bdg-marketing">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Email templates</div>
-            <div class="adm-map-desc">Transactional sends — partial via Bulk email; template editor: roadmap.</div>
+            <div class="adm-map-title">Email campaigns</div>
+            <div class="adm-map-desc">Bulk HTML email to selected users.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('datasets')" title="Dataset Management">
-            <span class="adm-bdg adm-bdg-config">Config</span>
+            <span class="adm-bdg adm-bdg-ops">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Instruments &amp; markets</div>
-            <div class="adm-map-desc">Datasets, imports, schedules — live in Datasets.</div>
+            <div class="adm-map-title">Market data hub</div>
+            <div class="adm-map-desc">Import, schedule, sync, maintenance.</div>
           </button>
         </div>
 
-        <div class="adm-section-kicker">Support &amp; moderation</div>
-        <div class="adm-roadmap-grid adm-g3">
+        <div class="adm-section-kicker">Trust &amp; operations</div>
+        <div class="adm-roadmap-grid adm-g4">
           <button type="button" class="adm-map-card" onclick="navigate('support')" title="Support">
-            <span class="adm-bdg adm-bdg-support">Support</span>
+            <span class="adm-bdg adm-bdg-support">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Support tickets</div>
-            <div class="adm-map-desc">Queue, SLA — live in Support.</div>
+            <div class="adm-map-title">Support desk</div>
+            <div class="adm-map-desc">Tickets, SLA, canned replies.</div>
           </button>
           <button type="button" class="adm-map-card" onclick="navigate('audit-log')" title="Open Audit log">
-            <span class="adm-bdg adm-bdg-compliance">Compliance</span>
+            <span class="adm-bdg adm-bdg-compliance">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Audit log</div>
-            <div class="adm-map-desc">Admin mutations and structured actions — live.</div>
+            <div class="adm-map-desc">Admin mutations + retention prune.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Abuse &amp; fraud detection')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-trust">Trust</span>
+          <button type="button" class="adm-map-card" onclick="navigate('security-monitor')" title="Security monitor">
+            <span class="adm-bdg adm-bdg-ops">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Abuse &amp; fraud detection</div>
-            <div class="adm-map-desc">Chargebacks, trial abuse — mock.</div>
+            <div class="adm-map-title">Abuse &amp; fraud signals</div>
+            <div class="adm-map-desc">Live edge security telemetry, IP block, force-logout.</div>
+          </button>
+          <button type="button" class="adm-map-card" onclick="navigate('insights')" title="Analytics &amp; VPS">
+            <span class="adm-bdg adm-bdg-ops">Live</span>
+            <div class="adm-ico-slot" aria-hidden="true"></div>
+            <div class="adm-map-title">VPS &amp; storage ops</div>
+            <div class="adm-map-desc">Metrics, disk health, archive/restore sessions.</div>
           </button>
         </div>
 
-        <div class="adm-section-kicker">System health &amp; infra</div>
-        <div class="adm-roadmap-grid adm-g4">
-          <button type="button" class="adm-map-card" onclick="navigate('insights')" title="Analytics &amp; VPS">
-            <span class="adm-bdg adm-bdg-ops">Ops</span>
-            <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Server metrics</div>
-            <div class="adm-map-desc">CPU, memory, latency — partial in Analytics &amp; VPS.</div>
-          </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Error &amp; crash log')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-ops">Ops</span>
-            <div class="adm-ico-slot" aria-hidden="true"></div>
-            <div class="adm-map-title">Error &amp; crash log</div>
-            <div class="adm-map-desc">Sentry/Datadog stream — mock.</div>
-          </button>
-          <button type="button" class="adm-map-card" onclick="adminRoadmapStub('Rate limits &amp; quotas')" title="Roadmap">
-            <span class="adm-bdg adm-bdg-important">Ops</span>
+        <div class="adm-section-kicker">Limits &amp; schedules</div>
+        <div class="adm-roadmap-grid adm-g2">
+          <button type="button" class="adm-map-card" onclick="showOverviewFeature('quotas')" title="Rate limits &amp; quotas">
+            <span class="adm-bdg adm-bdg-important">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Rate limits &amp; quotas</div>
-            <div class="adm-map-desc">Per-user backtest caps — mock.</div>
+            <div class="adm-map-desc">Per-user device / session / ticker caps — edit in Users.</div>
           </button>
-          <button type="button" class="adm-map-card" onclick="navigate('datasets')" title="Dataset schedules">
-            <span class="adm-bdg adm-bdg-important">Ops</span>
+          <button type="button" class="adm-map-card" onclick="navigate('datasets'); setDsHubTab('schedule')" title="Dataset schedules">
+            <span class="adm-bdg adm-bdg-important">Live</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Scheduled jobs</div>
-            <div class="adm-map-desc">FirstRate schedule + nightly jobs — Datasets → Schedule tab.</div>
+            <div class="adm-map-desc">FirstRate schedule + nightly jobs — Datasets → Schedule.</div>
           </button>
         </div>
 
@@ -3353,9 +3387,9 @@ select { cursor: default; }
                 <div class="qa-icon" style="background:var(--ok-subtle);color:var(--ok)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
                 <div><div class="qa-label">View Live Sessions</div><div class="qa-desc">Monitor and manage active connections</div></div>
               </button>
-              <button class="quick-action" onclick="navigate('users')">
-                <div class="qa-icon" style="background:var(--warn-subtle);color:var(--warn)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
-                <div><div class="qa-label">Manage Users</div><div class="qa-desc">Edit permissions, ban, or kick users</div></div>
+              <button class="quick-action" onclick="navigate('security-monitor')">
+                <div class="qa-icon" style="background:var(--warn-subtle);color:var(--warn)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+                <div><div class="qa-label">Security monitor</div><div class="qa-desc">Live attacks, IP blocks, integrity</div></div>
               </button>
             </div>
           </div>
@@ -7396,6 +7430,7 @@ function navigate(section) {
   if (section === 'bulk-email') { loadUsers().then(() => renderBulkEmailPanel()); }
   if (section === 'settings') updateSettingsPage();
   if (section === 'users') applyDefaultUserSettingsToForm();
+  if (section === 'overview') { renderOverview(); loadOverviewLiveData(); }
   if (section === 'support') {
     loadSupport();
     supportStartPoll();
@@ -7751,6 +7786,7 @@ let insightsOverviewCache = null;
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
       renderOverview();
+      loadOverviewLiveData();
     } catch (e) {
       console.error('renderOverview', e);
     }
@@ -7800,12 +7836,193 @@ setupAccessMode('editAccessMode', 'editAccessDateField', 'editAccessDaysField', 
 // ═══════════════════════════════════════════════════════════
 //  OVERVIEW
 // ═══════════════════════════════════════════════════════════
+let overviewPipeline = null;
+let overviewMetrics = null;
+let overviewJournal = null;
+let overviewTopSymbols = null;
+
+function _overviewMetricsSummary(m) {
+  if (!m || m.agent_available === false) return null;
+  const cpu = m.cpu && m.cpu.percent != null ? m.cpu.percent + '%' : '—';
+  const mem = m.memory && m.memory.percent != null ? m.memory.percent + '%' : '—';
+  const disk0 = (m.disks && m.disks[0]) || null;
+  const disk = disk0 && disk0.percent != null ? disk0.percent + '%' : '—';
+  const tops = (m.top_processes && m.top_processes.by_cpu) || [];
+  return { cpu: cpu, mem: mem, disk: disk, tops: tops };
+}
+
+function _ovPct(part, whole) {
+  if (!whole) return '0%';
+  return ((part / whole) * 100).toFixed(1) + '%';
+}
+
+function _ovStatRow(label, value, sub) {
+  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-subtle)">' +
+    '<div><div style="font-weight:600;color:var(--text)">' + esc(label) + '</div>' +
+    (sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + esc(sub) + '</div>' : '') +
+    '</div><div style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)">' + value + '</div></div>';
+}
+
+function computeOverviewEngagement() {
+  const now = Date.now();
+  const d1 = now - 864e5, d7 = now - 7 * 864e5, d30 = now - 30 * 864e5;
+  let dau = 0, wau = 0, mau = 0;
+  allUsers.forEach(function (u) {
+    const t = u.last_active_at ? new Date(u.last_active_at).getTime() : 0;
+    if (!t) return;
+    if (t >= d1) dau++;
+    if (t >= d7) wau++;
+    if (t >= d30) mau++;
+  });
+  return { dau: dau, wau: wau, mau: mau };
+}
+
+function computeOverviewBilling() {
+  const s = subStats || {};
+  const active = Number(s.active_subscriptions || 0);
+  const canceled = Number(s.canceled_subscriptions || 0);
+  const denom = active + canceled;
+  const churn = denom ? (canceled / denom) * 100 : 0;
+  return {
+    mrr: Number(s.mrr || 0),
+    revenue: Number(s.total_revenue || 0),
+    active: active,
+    canceled: canceled,
+    churn: churn,
+    pastDue: Number(s.needs_payment_count || 0),
+    journalUsers: Number(s.journal_access_users || 0),
+    plans: Number(s.active_plans || 0),
+    payments: Number(s.payment_count || 0),
+  };
+}
+
+function computeOverviewRoles() {
+  const admins = allUsers.filter(function (u) { return u.role === 'admin'; });
+  const users = allUsers.filter(function (u) { return u.role !== 'admin'; });
+  const journal = allUsers.filter(function (u) { return !!u.has_journal_access; });
+  const banned = allUsers.filter(function (u) { return u.status === 'banned'; });
+  const mentorship = allUsers.filter(function (u) { return !!u.is_mentorship; });
+  return {
+    admins: admins.length,
+    users: users.length,
+    journal: journal.length,
+    banned: banned.length,
+    mentorship: mentorship.length,
+    adminList: admins.slice(0, 12),
+  };
+}
+
+function computeOverviewFunnel() {
+  const total = allUsers.length;
+  const active = allUsers.filter(function (u) { return u.status === 'active'; }).length;
+  const journal = allUsers.filter(function (u) { return !!u.has_journal_access; }).length;
+  const billing = computeOverviewBilling();
+  return {
+    total: total,
+    active: active,
+    journal: journal,
+    paid: billing.active,
+    pastDue: billing.pastDue,
+  };
+}
+
+function renderOverviewPanels() {
+  const billing = computeOverviewBilling();
+  const roles = computeOverviewRoles();
+  const eng = computeOverviewEngagement();
+  const funnel = computeOverviewFunnel();
+  const bEl = $('overviewBillingPanel');
+  if (bEl) {
+    bEl.innerHTML =
+      _ovStatRow('MTD revenue (MRR proxy)', '$' + billing.mrr.toLocaleString()) +
+      _ovStatRow('Churn mix', billing.churn.toFixed(1) + '%', billing.canceled + ' canceled / ' + (billing.active + billing.canceled) + ' ended+active') +
+      _ovStatRow('Active subscriptions', String(billing.active)) +
+      _ovStatRow('Past due / unpaid', String(billing.pastDue)) +
+      _ovStatRow('Lifetime revenue', '$' + billing.revenue.toLocaleString());
+  }
+  const rEl = $('overviewRolesPanel');
+  if (rEl) {
+    rEl.innerHTML =
+      _ovStatRow('Admins', String(roles.admins)) +
+      _ovStatRow('Users', String(roles.users)) +
+      _ovStatRow('Journal access', String(roles.journal)) +
+      _ovStatRow('Mentorship', String(roles.mentorship)) +
+      _ovStatRow('Banned', String(roles.banned)) +
+      '<p style="margin:10px 0 0;font-size:11px;color:var(--text-muted)">Role model is admin/user today. Module grants are edited per user.</p>';
+  }
+  const eEl = $('overviewEngagementPanel');
+  if (eEl) {
+    let extra = '';
+    if (overviewJournal && overviewJournal.trades) {
+      extra = _ovStatRow('Journal trades (today)', String(overviewJournal.trades.today || 0)) +
+        _ovStatRow('Journal trades (7d)', String(overviewJournal.trades.this_week || 0));
+    }
+    eEl.innerHTML =
+      _ovStatRow('DAU (24h last_active)', String(eng.dau)) +
+      _ovStatRow('WAU (7d)', String(eng.wau)) +
+      _ovStatRow('MAU (30d)', String(eng.mau)) +
+      _ovStatRow('Live chart sessions', String(allSessions.length)) +
+      extra;
+  }
+  const qEl = $('overviewQueuePanel');
+  if (qEl) {
+    if (!overviewPipeline && !overviewMetrics) {
+      qEl.textContent = 'Loading pipeline…';
+    } else {
+      const q = (overviewPipeline && overviewPipeline.binary_queue) || {};
+      const depth = overviewPipeline ? (overviewPipeline.binary_queue_depth || 0) : 0;
+      const fr = overviewPipeline ? ((overviewPipeline.firstrate_active_jobs || []).length) : 0;
+      const warns = overviewPipeline ? ((overviewPipeline.warnings || []).length) : 0;
+      let m = '';
+      const ms = _overviewMetricsSummary(overviewMetrics);
+      if (ms) {
+        m = _ovStatRow('CPU', esc(String(ms.cpu))) + _ovStatRow('Memory', esc(String(ms.mem))) + _ovStatRow('Disk', esc(String(ms.disk)));
+      }
+      qEl.innerHTML =
+        _ovStatRow('Binary queue depth', String(depth), 'queued ' + (q.queued || 0) + ' · processing ' + (q.processing || 0) + ' · failed ' + (q.failed || 0)) +
+        _ovStatRow('FirstRate active imports', String(fr)) +
+        _ovStatRow('Pipeline warnings', String(warns)) +
+        m;
+    }
+  }
+  const fEl = $('overviewFunnelPanel');
+  if (fEl) {
+    fEl.innerHTML =
+      _ovStatRow('All users', String(funnel.total)) +
+      _ovStatRow('Active accounts', String(funnel.active), _ovPct(funnel.active, funnel.total)) +
+      _ovStatRow('Journal access', String(funnel.journal), _ovPct(funnel.journal, funnel.total)) +
+      _ovStatRow('Active subscriptions', String(funnel.paid), _ovPct(funnel.paid, funnel.total)) +
+      _ovStatRow('Past due', String(funnel.pastDue));
+  }
+  const iEl = $('overviewInstrumentsPanel');
+  if (iEl) {
+    const dsCount = allDatasets.length;
+    const backtests = allUsers.reduce(function (s, u) { return s + (Number(u.trading_sessions_count) || 0); }, 0);
+    let symHtml = '';
+    if (overviewTopSymbols && overviewTopSymbols.length) {
+      symHtml = '<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Top journal symbols</div>' +
+        overviewTopSymbols.slice(0, 5).map(function (s) {
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0"><span>' + esc(s.symbol || '—') +
+            '</span><span>' + esc(String(s.trades || 0)) + ' trades</span></div>';
+        }).join('');
+    } else {
+      symHtml = '<p style="margin:8px 0 0;font-size:11px;color:var(--text-muted)">Journal symbol stats unavailable (journal API offline or empty).</p>';
+    }
+    iEl.innerHTML =
+      _ovStatRow('Datasets', String(dsCount)) +
+      _ovStatRow('Backtest sessions (all users)', String(backtests)) +
+      symHtml;
+  }
+}
+
 function renderOverview() {
   const total = allUsers.length;
   const active = allUsers.filter(u => u.status === 'active').length;
   const liveCount = allSessions.length;
-  const mrrVal = subStats.mrr != null ? Number(subStats.mrr) : 0;
-  const mrrStr = '$' + mrrVal.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const billing = computeOverviewBilling();
+  const mrrStr = '$' + billing.mrr.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const backtests = allUsers.reduce(function (s, u) { return s + (Number(u.trading_sessions_count) || 0); }, 0);
+  const eng = computeOverviewEngagement();
 
   const kpi = $('overviewKpiRow');
   if (kpi) {
@@ -7818,36 +8035,240 @@ function renderOverview() {
     <div class="adm-kpi">
       <div class="adm-kpi-label">Active sessions</div>
       <div class="adm-kpi-value">${liveCount.toLocaleString()}</div>
-      <div class="adm-kpi-sub ok">Live connections now</div>
+      <div class="adm-kpi-sub ok">Live connections now · DAU ${eng.dau}</div>
     </div>
     <div class="adm-kpi">
       <div class="adm-kpi-label">Backtests run</div>
-      <div class="adm-kpi-value">98,540</div>
-      <div class="adm-kpi-sub muted">Mock platform counter</div>
+      <div class="adm-kpi-value">${backtests.toLocaleString()}</div>
+      <div class="adm-kpi-sub ok">TradingSession rows (all users)</div>
     </div>
     <div class="adm-kpi">
       <div class="adm-kpi-label">MRR</div>
       <div class="adm-kpi-value">${mrrStr}</div>
-      <div class="adm-kpi-sub warn">Stripe snapshot · trend TBD</div>
+      <div class="adm-kpi-sub ${billing.churn >= 40 ? 'warn' : 'ok'}">Churn mix ${billing.churn.toFixed(1)}% · ${billing.active} active subs</div>
     </div>`;
   }
 
+  renderOverviewPanels();
+
   const recent = allSessions.slice(0, 8);
-  if (recent.length === 0) {
-    $('recentSessionsList').innerHTML = '<div class="empty-state"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><p>No active sessions</p></div>';
-  } else {
-    $('recentSessionsList').innerHTML = recent.map(s => {
-      const diff = (Date.now() - new Date(s.last_active_at).getTime()) / 1000;
-      const dotClass = diff < 120 ? 'online' : diff < 600 ? 'idle' : 'stale';
-      return `<div class="session-row">
-        <div class="session-dot ${dotClass}"></div>
-        <div class="session-info">
-          <div class="session-name">${esc(s.user_name || 'Unknown')}</div>
-          <div class="session-meta">${esc(s.ip_address || '—')} · ${timeAgo(s.last_active_at)}</div>
-        </div>
-      </div>`;
-    }).join('');
+  const list = $('recentSessionsList');
+  if (list) {
+    if (recent.length === 0) {
+      list.innerHTML = '<div class="empty-state"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><p>No active sessions</p></div>';
+    } else {
+      list.innerHTML = recent.map(s => {
+        const diff = (Date.now() - new Date(s.last_active_at).getTime()) / 1000;
+        const dotClass = diff < 120 ? 'online' : diff < 600 ? 'idle' : 'stale';
+        return `<div class="session-row">
+          <div class="session-dot ${dotClass}"></div>
+          <div class="session-info">
+            <div class="session-name">${esc(s.user_name || 'Unknown')}</div>
+            <div class="session-meta">${esc(s.ip_address || '—')} · ${timeAgo(s.last_active_at)}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
   }
+}
+
+async function loadOverviewLiveData() {
+  try {
+    overviewPipeline = await api('/api/admin/datasets/pipeline-diagnostics');
+  } catch (e) { overviewPipeline = null; }
+  try {
+    overviewMetrics = await api('/api/admin/system/metrics');
+  } catch (e) { overviewMetrics = null; }
+  try {
+    overviewJournal = await journalApi('/journal/api/admin/analytics/overview');
+  } catch (e) { overviewJournal = null; }
+  try {
+    const sym = await journalApi('/journal/api/admin/analytics/top-symbols?limit=8');
+    overviewTopSymbols = (sym && sym.symbols) || [];
+  } catch (e) { overviewTopSymbols = []; }
+  renderOverview();
+}
+
+function openOverviewFeatureModal(title, html, actionLabel, actionFn) {
+  const modal = $('overviewFeatureModal');
+  const t = $('overviewFeatureTitle');
+  const body = $('overviewFeatureBody');
+  const btn = $('overviewFeatureActionBtn');
+  if (t) t.textContent = title;
+  if (body) body.innerHTML = html;
+  if (btn) {
+    if (actionLabel && actionFn) {
+      btn.style.display = '';
+      btn.textContent = actionLabel;
+      btn.onclick = function () {
+        modal.classList.remove('open');
+        actionFn();
+      };
+    } else {
+      btn.style.display = 'none';
+      btn.onclick = null;
+    }
+  }
+  if (modal) modal.classList.add('open');
+}
+
+function showOverviewFeature(key) {
+  const billing = computeOverviewBilling();
+  const roles = computeOverviewRoles();
+  const eng = computeOverviewEngagement();
+  const funnel = computeOverviewFunnel();
+  if (key === 'profile') {
+    const picks = allUsers.filter(function (u) { return u.status === 'active'; }).slice(0, 15);
+    const html = '<p style="margin:0 0 12px">Open the live user monitor (sessions, timeline, Stripe). Select a user:</p>' +
+      (picks.length ? picks.map(function (u) {
+        return '<button type="button" class="btn sm" style="margin:0 8px 8px 0" onclick="$(\'overviewFeatureModal\').classList.remove(\'open\');openUserMonitor(' +
+          u.id + ')">' + esc(u.name || u.email || ('#' + u.id)) + '</button>';
+      }).join('') : '<p>No users loaded.</p>');
+    openOverviewFeatureModal('User profile & detail', html, 'All users', function () { navigate('users'); });
+    return;
+  }
+  if (key === 'roles') {
+    const adminRows = roles.adminList.map(function (u) {
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--border-subtle)">' + esc(u.name || '') +
+        ' <span style="color:var(--text-muted)">' + esc(u.email || '') + '</span></div>';
+    }).join('') || '<p>No admins found.</p>';
+    openOverviewFeatureModal('Roles & permissions',
+      _ovStatRow('Admins', String(roles.admins)) +
+      _ovStatRow('Users', String(roles.users)) +
+      _ovStatRow('Journal access', String(roles.journal)) +
+      _ovStatRow('Mentorship', String(roles.mentorship)) +
+      '<div style="margin-top:14px;font-weight:600;color:var(--text)">Admin accounts</div>' + adminRows +
+      '<p style="margin-top:12px;font-size:12px;color:var(--text-muted)">Full RBAC (moderator/analyst) is not in the product yet. Today: role=admin|user + per-user module grants + Settings section toggles.</p>',
+      'Manage users', function () { navigate('users'); });
+    return;
+  }
+  if (key === 'billing') {
+    openOverviewFeatureModal('MRR & churn',
+      _ovStatRow('MTD revenue', '$' + billing.mrr.toLocaleString()) +
+      _ovStatRow('Lifetime revenue', '$' + billing.revenue.toLocaleString()) +
+      _ovStatRow('Active subscriptions', String(billing.active)) +
+      _ovStatRow('Canceled', String(billing.canceled)) +
+      _ovStatRow('Churn mix', billing.churn.toFixed(1) + '%', 'canceled / (active + canceled)') +
+      _ovStatRow('Past due / unpaid', String(billing.pastDue)) +
+      _ovStatRow('Active plans', String(billing.plans)) +
+      _ovStatRow('Succeeded payments', String(billing.payments)),
+      'Subscriptions', function () { navigate('subscriptions'); });
+    return;
+  }
+  if (key === 'queue') {
+    const q = (overviewPipeline && overviewPipeline.binary_queue) || {};
+    const building = (overviewPipeline && overviewPipeline.building_datasets) || [];
+    const warns = (overviewPipeline && overviewPipeline.warnings) || [];
+    const fr = (overviewPipeline && overviewPipeline.firstrate_active_jobs) || [];
+    let html = _ovStatRow('Binary depth', String(overviewPipeline ? overviewPipeline.binary_queue_depth || 0 : '—'),
+      'queued ' + (q.queued || 0) + ' · processing ' + (q.processing || 0) + ' · done ' + (q.done || q.completed || 0) + ' · failed ' + (q.failed || 0)) +
+      _ovStatRow('FirstRate active', String(fr.length)) +
+      _ovStatRow('Building datasets', String(building.length));
+    if (building.length) {
+      html += '<div style="margin-top:10px;font-weight:600;color:var(--text)">Building now</div>' +
+        building.slice(0, 8).map(function (b) {
+          return '<div style="padding:4px 0;font-size:12px">' + esc(b.original_name || ('#' + b.file_id)) +
+            ' · ' + esc(String(b.binary_status || '')) +
+            (b.ready_timeframes != null ? (' · TF ' + b.ready_timeframes + '/' + (b.total_timeframes || 9)) : '') +
+            '</div>';
+        }).join('');
+    }
+    if (warns.length) {
+      html += '<div style="margin-top:10px;font-weight:600;color:var(--warn)">Warnings</div>' +
+        warns.slice(0, 6).map(function (w) { return '<div style="padding:4px 0;font-size:12px">' + esc(w) + '</div>'; }).join('');
+    }
+    if (!overviewPipeline) html = '<p>Pipeline diagnostics unavailable. Open Datasets → Sync / Maintenance.</p>';
+    openOverviewFeatureModal('Job queue monitor', html, 'Datasets', function () { navigate('datasets'); setTimeout(function () { setDsHubTab('sync'); }, 50); });
+    return;
+  }
+  if (key === 'engine') {
+    let html = '';
+    const ms = _overviewMetricsSummary(overviewMetrics);
+    if (ms) {
+      html =
+        _ovStatRow('CPU', esc(String(ms.cpu))) +
+        _ovStatRow('Memory', esc(String(ms.mem))) +
+        _ovStatRow('Disk', esc(String(ms.disk)));
+      if (ms.tops && ms.tops.length) {
+        html += '<div style="margin-top:10px;font-weight:600;color:var(--text)">Top CPU processes</div>' +
+          ms.tops.slice(0, 6).map(function (p) {
+            return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span>' +
+              esc(p.name || '?') + '</span><span>' + esc(String(p.cpu_percent != null ? p.cpu_percent + '%' : '')) + '</span></div>';
+          }).join('');
+      }
+    } else {
+      html = '<p>Host metrics unavailable. Open Analytics &amp; VPS.</p>';
+    }
+    openOverviewFeatureModal('Engine performance', html, 'Analytics & VPS', function () { navigate('insights'); });
+    return;
+  }
+  if (key === 'engagement') {
+    let html =
+      _ovStatRow('DAU', String(eng.dau), 'Users with last_active in 24h') +
+      _ovStatRow('WAU', String(eng.wau)) +
+      _ovStatRow('MAU', String(eng.mau)) +
+      _ovStatRow('Live sessions', String(allSessions.length));
+    if (overviewJournal && overviewJournal.users) {
+      html += _ovStatRow('New users today (journal)', String(overviewJournal.users.new_today || 0)) +
+        _ovStatRow('New users 7d', String(overviewJournal.users.new_this_week || 0));
+    }
+    if (overviewJournal && overviewJournal.trades) {
+      html += _ovStatRow('Trades today', String(overviewJournal.trades.today || 0)) +
+        _ovStatRow('Win rate', String(overviewJournal.trades.win_rate || 0) + '%');
+    }
+    openOverviewFeatureModal('Usage & engagement', html, 'Live sessions', function () { navigate('sessions'); });
+    return;
+  }
+  if (key === 'instruments') {
+    const backtests = allUsers.reduce(function (s, u) { return s + (Number(u.trading_sessions_count) || 0); }, 0);
+    let html = _ovStatRow('Datasets', String(allDatasets.length)) +
+      _ovStatRow('Backtest sessions', String(backtests));
+    if (overviewTopSymbols && overviewTopSymbols.length) {
+      html += '<div style="margin-top:12px;font-weight:600;color:var(--text)">Top journal symbols</div>' +
+        overviewTopSymbols.map(function (s) {
+          return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle)">' +
+            '<span>' + esc(s.symbol || '—') + '</span><span>' + esc(String(s.trades || 0)) + ' · WR ' +
+            esc(String(s.win_rate || 0)) + '% · PnL ' + esc(String(s.total_pnl || 0)) + '</span></div>';
+        }).join('');
+    } else {
+      html += '<p style="margin-top:10px">No journal symbol stats yet.</p>';
+    }
+    openOverviewFeatureModal('Strategy & instrument stats', html, 'Datasets', function () { navigate('datasets'); });
+    return;
+  }
+  if (key === 'funnel') {
+    openOverviewFeatureModal('Retention & funnel',
+      _ovStatRow('Signed up', String(funnel.total)) +
+      _ovStatRow('Active accounts', String(funnel.active), _ovPct(funnel.active, funnel.total)) +
+      _ovStatRow('Journal unlocked', String(funnel.journal), _ovPct(funnel.journal, funnel.total)) +
+      _ovStatRow('Paying / active sub', String(funnel.paid), _ovPct(funnel.paid, funnel.total)) +
+      _ovStatRow('Past due', String(funnel.pastDue)),
+      'Subscriptions', function () { navigate('subscriptions'); });
+    return;
+  }
+  if (key === 'brokers') {
+    openOverviewFeatureModal('Broker / data vendors',
+      '<p style="margin:0 0 10px">Talaria ingests market data via vendor pipelines (not retail broker OAuth yet):</p>' +
+      _ovStatRow('FirstRate FX', 'Datasets → Import / Schedule / Sync') +
+      _ovStatRow('Dukascopy', 'Datasets → Import') +
+      _ovStatRow('Yahoo CME', 'Datasets → Import') +
+      _ovStatRow('Binance', 'Datasets → Import') +
+      '<p style="margin-top:12px;font-size:12px;color:var(--text-muted)">Broker account linking for live trading is not shipped. Use Datasets for feed health.</p>',
+      'Open Datasets', function () { navigate('datasets'); });
+    return;
+  }
+  if (key === 'quotas') {
+    const avgDev = allUsers.length ? (allUsers.reduce(function (s, u) { return s + (Number(u.max_sessions) || 1); }, 0) / allUsers.length).toFixed(1) : '—';
+    openOverviewFeatureModal('Rate limits & quotas',
+      '<p style="margin:0 0 10px">Per-user caps are enforced server-side. Edit them on each user.</p>' +
+      _ovStatRow('Users', String(allUsers.length)) +
+      _ovStatRow('Avg max devices', String(avgDev)) +
+      _ovStatRow('Platform section toggles', 'Settings') +
+      _ovStatRow('Backtest kill switch', 'Settings'),
+      'Users', function () { navigate('users'); });
+    return;
+  }
+  adminRoadmapStub(key);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -13605,6 +14026,7 @@ async function loadSubStats() {
   try {
     subStats = await api('/api/admin/subscriptions/stats');
     renderSubStats();
+    try { renderOverview(); } catch (e) {}
   } catch (e) {}
 }
 

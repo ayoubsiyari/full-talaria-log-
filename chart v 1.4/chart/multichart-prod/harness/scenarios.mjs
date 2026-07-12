@@ -4500,6 +4500,243 @@ async function hS30(ctx) {
   });
 }
 
+// ── H-S31 ────────────────────────────────────────────────────────────────
+// §6ct RESIDUAL OPEN-MULTICHART FIRST-RENDER horizontal SLIDE. After b102 (host
+// boot re-anchor) and b103 (peer boot re-anchor) removed the big first-render
+// SNAP, a SMALL left/right SLIDE remained when opening the multichart panels on
+// first render. Root cause: b102/b103 index-pin the right edge on the frozen
+// boot resize (`offsetX = plotW - (rightIdx+1)*spacing`), but a LATER boot commit
+// (fired at allDataReady) re-applies getReplayAutoScrollState, which anchors with
+// a DIFFERENT formula (a ~20% replay right-gap, `replayRightPaddingRatio=0.2`),
+// moving offsetX to a SECOND position on first reveal. Boot therefore had TWO
+// competing offset commits with different math → the slide.
+//
+// FIX (default ON, new kill-switch __TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT):
+// ONE authoritative boot anchor — the index pin — from first paint through
+// reveal. During boot settle the competing getReplayAutoScrollState / center-
+// playhead commits are suppressed (chart.js fitToView + loadMultichartPanelFrom-
+// Host, MultichartGrid goToReplayTimestamp + alignHostChartForMultichart), and
+// the mirror path Math.rounds the pin to match b102/b103.
+//
+// DETERMINISTIC (no wall-clock): spans the FULL boot commit sequence in-frame
+// (not just one resize) — pre-split (auto-scroll) → freeze+resize b102/b103 index
+// pin → post-mirror → post-allDataReady align (fitToView, the competing commit)
+// → post-forceInitialSync (fitToView re-apply) → final pre-reveal. Every value
+// derives only from the seeded synthetic data extent + margins + widths. Probed
+// in the HOST main frame AND in each peer (B/C/D) embed frame.
+//   GREEN (fix ON):  every sampled commit after the index pin lands on the pin
+//                    (<1px of FINAL); exactly ONE offset-changing commit after
+//                    pre-split (the index pin); host + each peer reanchorPasses<=1.
+//   RED   (kill on): the post-allDataReady commit re-applies getReplayAutoScroll-
+//                    State and moves offsetX by ≈ the replay right-gap (tens to
+//                    ~120px) off the pin → a SECOND commit → FAIL-REAL-BUG.
+const S31_DISABLE_FLAG = '__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT';
+
+/**
+ * In-frame probe (host main frame or peer embed frame) that walks the full boot
+ * commit sequence and samples offsetX at each stage. Read-only w.r.t. data:
+ * mutates only boot flags + viewport, all restored before return. `role` is
+ * 'host' (arms the multichart-grid shape the host re-anchor branch gates on) or
+ * 'peer' (tags the doc as an embed + arms the boot viewport lock, exactly as
+ * H-S29 does for the peer branch).
+ */
+const S31_PROBE_FN = (disableFlag, role) => {
+  const ch = window.chart;
+  if (!ch || !Array.isArray(ch.data) || !ch.data.length) return { ok: false, reason: 'chart not painted' };
+  const rs = ch.replaySystem;
+  if (!rs || !rs.isActive) return { ok: false, reason: 'replay not active' };
+  if (typeof rs.getReplayAutoScrollState !== 'function') return { ok: false, reason: 'no getReplayAutoScrollState' };
+  const wrapper = document.getElementById('chartWrapper');
+  if (!wrapper) return { ok: false, reason: 'no chartWrapper' };
+  const m = ch.margin || { l: 60, r: 60 };
+  const fixDisabled = !!window[disableFlag];
+
+  // ── role setup (restored on exit) ──
+  const priorGrid = window.__multichartGrid;
+  const priorEmbed = document.documentElement.classList.contains('multichart-embed');
+  const priorPositioned = ch._multichartBootViewportPositioned;
+  const priorSettleUntil = ch._multichartViewportSettleUntil;
+  const priorSkip = ch._multichartSkipResizeOffsetAdjust;
+  const priorRestored = ch._chartViewRestored;
+  const priorPanned = rs.userHasPanned;
+  const priorAuto = rs.autoScrollEnabled;
+  const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+  if (role === 'host') {
+    window.__multichartGrid = priorGrid || { getPanelIds: function () { return ['A', 'B', 'C', 'D']; } };
+  } else {
+    if (!priorEmbed) document.documentElement.classList.add('multichart-embed');
+    ch._multichartBootViewportPositioned = true;
+    ch._multichartViewportSettleUntil = nowMs + 60_000;
+  }
+  // Paused, auto-scroll on, not panned → pre-split establishes an auto-scroll
+  // anchor (the same viewport the pre-split single/host chart shows).
+  rs.userHasPanned = false;
+  rs.autoScrollEnabled = true;
+
+  const spacing = (typeof ch.getCandleSpacing === 'function') ? ch.getCandleSpacing() : ch.candleWidth;
+  const rightIdx0 = (typeof ch.getVisibleEndIndex === 'function') ? ch.getVisibleEndIndex() : (ch.data.length - 1);
+  const preCandleWidth = Number(ch.candleWidth);
+
+  // ── STAGE 0: pre-split (full width, replay auto-scroll) ──
+  const st0 = rs.getReplayAutoScrollState(ch);
+  if (st0 && Number.isFinite(st0.offsetX)) {
+    ch.offsetX = st0.offsetX;
+    if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+  }
+  const preW = ch.w;
+  const offPreSplit = Number(ch.offsetX);
+  const rendersBefore = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+  // ── STAGE 1: freeze + shrink full→half + resize() → b102/b103 index pin ──
+  ch._multichartSkipResizeOffsetAdjust = true;
+  const postW = Math.max(200, Math.round(preW / 2));
+  const h = Math.round(wrapper.getBoundingClientRect().height) || ch.h;
+  wrapper.style.right = 'auto';
+  wrapper.style.bottom = 'auto';
+  wrapper.style.width = postW + 'px';
+  wrapper.style.height = h + 'px';
+  ch._lastResizeDpr = 0;
+  ch.resize();
+  const paintW = ch.w;
+  const offIndexPin = Number(ch.offsetX);
+  const postCandleWidth = Number(ch.candleWidth);
+  const rendersAfter = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+  // Canonical index-pin target (drift-free) == the ONE authoritative boot anchor.
+  const plotWpost = Math.max(1, paintW - (m.l || 0) - (m.r || 0));
+  const ri = Math.max(0, Math.min(rightIdx0, ch.data.length - 1));
+  const indexPinTarget = Math.round(plotWpost - (ri + 1) * spacing);
+  // The competing auto-scroll target at the NEW (half) width — the SECOND commit.
+  const stHalf = rs.getReplayAutoScrollState(ch);
+  const autoScrollTargetHalf = (stHalf && Number.isFinite(stHalf.offsetX)) ? Number(stHalf.offsetX) : null;
+
+  // ── STAGE 2: post-mirror (sample; host does not mirror, peer already pinned) ──
+  const offPostMirror = Number(ch.offsetX);
+
+  // ── STAGE 3: post-allDataReady align — the competing commit, via fitToView
+  //    (guarded chart.js site 3). GREEN suppresses; RED re-applies auto-scroll. ──
+  ch._chartViewRestored = false;
+  if (typeof ch.fitToView === 'function') ch.fitToView();
+  const offPostAlign = Number(ch.offsetX);
+
+  // ── STAGE 4: post-forceInitialSync (a second fitToView re-apply) ──
+  ch._chartViewRestored = false;
+  if (typeof ch.fitToView === 'function') ch.fitToView();
+  const offPostForceSync = Number(ch.offsetX);
+
+  // ── STAGE 5: final pre-reveal ──
+  const offFinal = Number(ch.offsetX);
+
+  // ── restore all mutated state (nothing leaks into H-INV / later reads) ──
+  if (priorSkip === undefined) { try { delete ch._multichartSkipResizeOffsetAdjust; } catch (_) {} }
+  else ch._multichartSkipResizeOffsetAdjust = priorSkip;
+  ch._chartViewRestored = priorRestored;
+  rs.userHasPanned = priorPanned;
+  rs.autoScrollEnabled = priorAuto;
+  if (role === 'host') {
+    if (priorGrid === undefined) { try { delete window.__multichartGrid; } catch (_) { window.__multichartGrid = undefined; } }
+  } else {
+    if (!priorEmbed) document.documentElement.classList.remove('multichart-embed');
+    if (priorPositioned === undefined) { try { delete ch._multichartBootViewportPositioned; } catch (_) {} }
+    else ch._multichartBootViewportPositioned = priorPositioned;
+    if (priorSettleUntil === undefined) { try { delete ch._multichartViewportSettleUntil; } catch (_) {} }
+    else ch._multichartViewportSettleUntil = priorSettleUntil;
+  }
+
+  // ── derived ──
+  const samplesAfterPin = [offPostMirror, offPostAlign, offPostForceSync, offFinal];
+  const maxDriftFromPin = Math.max.apply(null, samplesAfterPin.map(function (v) { return Math.abs(v - offIndexPin); }));
+  const seq = [offPreSplit, offIndexPin, offPostMirror, offPostAlign, offPostForceSync, offFinal];
+  let reanchorPasses = 0;
+  for (let i = 1; i < seq.length; i++) if (Math.abs(seq[i] - seq[i - 1]) > 1) reanchorPasses++;
+  const autoScrollVsPin = (autoScrollTargetHalf != null) ? (autoScrollTargetHalf - offIndexPin) : null;
+  return {
+    ok: true, role, fixDisabled,
+    preW, postW, paintW, preCandleWidth, postCandleWidth,
+    spacing, rightIdx: ri, dataLen: ch.data.length,
+    rendersBefore, rendersAfter,
+    offPreSplit, offIndexPin, offPostMirror, offPostAlign, offPostForceSync, offFinal,
+    indexPinTarget, autoScrollTargetHalf, autoScrollVsPin,
+    maxDriftFromPin, reanchorPasses,
+  };
+};
+
+function s31AssertProbe(checks, tag, p) {
+  checks.check(`H-S31 ${tag} probe constructed (replay-active frozen boot)`, p && p.ok, p ? (p.reason || '') : 'no probe');
+  if (!p || !p.ok) return false;
+  // ── Setup / non-vacuous (pass in BOTH modes) ──
+  checks.check(`H-S31 ${tag} setup: cell shrank on boot (full→multi)`,
+    p.preW > p.postW && (p.preW - p.postW) > 50,
+    `preW=${p.preW} postW=${p.postW} paintW=${p.paintW}`);
+  checks.check(`H-S31 ${tag} setup: candleWidth unchanged across boot resize`,
+    p.preCandleWidth === p.postCandleWidth,
+    `pre=${p.preCandleWidth} post=${p.postCandleWidth}`);
+  checks.check(`H-S31 ${tag} setup: at least one paint on the boot resize`,
+    p.rendersAfter - p.rendersBefore >= 1,
+    `renders ${p.rendersBefore}→${p.rendersAfter}`);
+  checks.check(`H-S31 ${tag} non-vacuous: competing auto-scroll commit separated from index pin`,
+    p.autoScrollVsPin != null && Math.abs(p.autoScrollVsPin) > 5,
+    `indexPin=${p.offIndexPin} autoScrollHalf=${p.autoScrollTargetHalf} |Δ|=${p.autoScrollVsPin == null ? 'n/a' : Math.abs(p.autoScrollVsPin).toFixed(1)}px`);
+  // ── CORE (GREEN pass / RED fail) ──
+  checks.check(`H-S31 ${tag} CORE: every boot commit after the index pin lands on the pin (<1px of FINAL)`,
+    p.maxDriftFromPin < 1,
+    `maxDriftFromPin=${p.maxDriftFromPin.toFixed(1)}px (pin=${p.offIndexPin} mirror=${p.offPostMirror} align=${p.offPostAlign} forceSync=${p.offPostForceSync} final=${p.offFinal})`);
+  checks.check(`H-S31 ${tag} CORE: exactly ONE offset-changing commit after pre-split (index pin); reanchorPasses<=1`,
+    p.reanchorPasses <= 1,
+    `reanchorPasses=${p.reanchorPasses} preSplit=${p.offPreSplit} pin=${p.offIndexPin} align=${p.offPostAlign} (fixDisabled=${p.fixDisabled})`);
+  return true;
+}
+
+async function hS31(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // Enter replay PAUSED on host + peers so getReplayAutoScrollState (the
+    // competing commit's formula) is meaningful in every frame.
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S31 replay entered (paused) on host + peers', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // HOST probe (main frame) — the definitive discriminator.
+    const host = await page.evaluate(S31_PROBE_FN, S31_DISABLE_FLAG, 'host');
+    s31AssertProbe(checks, 'HOST', host);
+
+    // PEER probes (each embed frame) — the b103 peer analogue must be single-commit too.
+    const frames = panelFrameMap(page);
+    const peers = {};
+    for (const pid of ['B', 'C', 'D']) {
+      if (frames[pid]) peers[pid] = await frames[pid].evaluate(S31_PROBE_FN, S31_DISABLE_FLAG, 'peer');
+    }
+    for (const pid of ['B', 'C', 'D']) {
+      if (peers[pid]) s31AssertProbe(checks, `PEER-${pid}`, peers[pid]);
+    }
+
+    const okHost = host && host.ok;
+    notes.push(`H-S31 (§6ct residual open-multichart first-render slide): same-pair 2x2, paused replay, `
+      + `default candleWidth. Boot commit sequence sampled (pre-split→b102/b103 index pin→mirror→post-allDataReady `
+      + `align(fitToView)→forceInitialSync→final). `
+      + (okHost
+        ? `HOST: preSplit=${host.offPreSplit} indexPin=${host.offIndexPin} align=${host.offPostAlign} final=${host.offFinal}; `
+          + `maxDriftFromPin=${host.maxDriftFromPin.toFixed(1)}px; reanchorPasses=${host.reanchorPasses}; competing `
+          + `auto-scroll target=${host.autoScrollTargetHalf} (|Δ vs pin|=${host.autoScrollVsPin == null ? 'n/a' : Math.abs(host.autoScrollVsPin).toFixed(1)}px). `
+        : `HOST probe failed (${host && host.reason}). `)
+      + ['B', 'C', 'D'].map((pid) => {
+        const p = peers[pid];
+        if (!p) return `PEER-${pid}: (no frame)`;
+        if (!p.ok) return `PEER-${pid}: (${p.reason})`;
+        return `PEER-${pid}: drift=${p.maxDriftFromPin.toFixed(1)}px passes=${p.reanchorPasses}`;
+      }).join('; ') + '. '
+      + `Kill-switch ${S31_DISABLE_FLAG} RED: the post-allDataReady commit re-applies getReplayAutoScrollState `
+      + `(~20% replay right-gap) → offsetX moves off the pin (tens→~120px), a SECOND commit → FAIL-REAL-BUG.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4530,6 +4767,7 @@ export function scenarioList() {
     { id: 'H-S28', title: 'boot host single→multi cell-resize re-anchors on first paint (no first-render shake) (§6cq)', run: hS28 },
     { id: 'H-S29', title: 'boot peer layout-settle cell-resize re-anchors on first paint (no residual peer shake) (§6cr)', run: hS29 },
     { id: 'H-S30', title: 'HOST step-forward-spam does not refetch/jump-backward/stall during paused replay (§6cs)', run: hS30 },
+    { id: 'H-S31', title: 'boot single-commit: index pin is the only boot anchor; no residual open-multichart first-render slide (§6ct)', run: hS31 },
   ];
 }
 
