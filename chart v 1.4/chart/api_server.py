@@ -1408,6 +1408,10 @@ SEC_AUTOBLOCK_WINDOW_SEC = int(os.getenv("SECURITY_AUTOBLOCK_WINDOW_SEC", "900")
 SEC_AUTOBLOCK_HOURS = int(os.getenv("SECURITY_AUTOBLOCK_HOURS", "6") or "6")
 SEC_BLOCKLIST_TTL_SEC = float(os.getenv("SECURITY_BLOCKLIST_TTL_SEC", "15") or "15")
 SEC_ALERT_THROTTLE_SEC = float(os.getenv("SECURITY_ALERT_THROTTLE_SEC", "300") or "300")
+# Spike alert: many suspicious (non-info) events in a short window means an attack
+# in progress (brute force / scan storm) even when no single event is "critical".
+SEC_SPIKE_THRESHOLD = int(os.getenv("SECURITY_SPIKE_THRESHOLD", "25") or "25")
+SEC_SPIKE_WINDOW_SEC = float(os.getenv("SECURITY_SPIKE_WINDOW_SEC", "120") or "120")
 # IPs that are never blocked (auto or manual enforcement) — protects admin/office
 # IPs from self-lockout. Comma-separated. Private IPs are always exempt too.
 SEC_IP_ALLOWLIST = {
@@ -1416,6 +1420,7 @@ SEC_IP_ALLOWLIST = {
 
 _sec_fail_counts: dict[str, deque] = {}          # ip -> recent auth/ratelimit failure timestamps
 _sec_alert_last: dict[str, float] = {}           # alert-key -> last sent monotonic ts
+_sec_event_window: deque = deque()               # monotonic ts of recent non-info events (spike detector)
 _sec_blockhit_last: dict[str, float] = {}        # ip -> last "blocked hit" logged ts (throttle noise)
 _sec_blocklist_cache: dict = {"at": 0.0, "ips": {}}  # {ip: blocked_until|None}
 
@@ -1588,6 +1593,30 @@ def record_security_event(
                 body=f"type={event_type} ip={ip} path={path} status={status_code} details={details_s}",
                 key=f"crit:{event_type}",
             )
+        # Aggregate "spike" alert: a burst of suspicious (non-info) events signals an
+        # attack in progress (brute force / scan storm) even without a critical event.
+        elif sev != "info":
+            try:
+                nowm = time.monotonic()
+                _sec_event_window.append(nowm)
+                cutoff = nowm - SEC_SPIKE_WINDOW_SEC
+                while _sec_event_window and _sec_event_window[0] < cutoff:
+                    _sec_event_window.popleft()
+                if len(_sec_event_window) >= SEC_SPIKE_THRESHOLD:
+                    _security_alert(
+                        subject=(
+                            f"[Talaria security] event spike: "
+                            f"{len(_sec_event_window)} events in {int(SEC_SPIKE_WINDOW_SEC)}s"
+                        ),
+                        body=(
+                            f"Possible attack in progress. Latest: type={event_type} "
+                            f"ip={ip} path={path} status={status_code}. "
+                            f"Open the admin dashboard → Security monitor."
+                        ),
+                        key="spike",
+                    )
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -24980,6 +25009,24 @@ async def _firstrate_scheduler_app_startup():
                 print(f"⚠️ QuestDB schema init failed: {exc}")
         if APP_ROLE == "worker":
             _start_firstrate_scheduler_thread()
+        # Crash/restart notifier: containers auto-restart (restart: unless-stopped),
+        # so a fresh startup that you didn't trigger means it crashed. Env-gated —
+        # only sends if SECURITY_ALERT_EMAIL / Slack is configured. Also fires on
+        # normal deploys (expected). Throttled to avoid crash-loop spam.
+        try:
+            import socket as _socket
+            host = _socket.gethostname()
+            _security_alert(
+                subject=f"[Talaria] service started ({APP_ROLE}) on {host}",
+                body=(
+                    f"The API service ({APP_ROLE}) started at {datetime.utcnow().isoformat()}Z "
+                    f"on host={host} pid={os.getpid()}. If you did not deploy just now, it "
+                    f"likely crashed and auto-restarted — check the server and logs."
+                ),
+                key="startup",
+            )
+        except Exception:
+            pass
 
     threading.Thread(target=_bootstrap, daemon=True, name="app-startup").start()
 
