@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="heroui-style-20260712a">
+<meta name="x-admin-build" content="heroui-style-20260712b">
 <title>Talaria — Admin Dashboard</title>
 <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260624b151">
 <style>
 :root {
-  /* HeroUI dark — violet primary (aligned with admin-design) */
+  /* HeroUI dark — Talaria blue primary */
   --bg: #0a0a0b;
   --bg-elevated: #111113;
   --surface: #18181b;
@@ -18,24 +18,24 @@
   --glass-highlight: rgba(255, 255, 255, 0.06);
   --border: rgba(255, 255, 255, 0.1);
   --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-active: rgba(149, 74, 232, 0.4);
+  --border-active: rgba(78, 140, 255, 0.45);
   --text: #fafafa;
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
-  --accent: #954ae8;
-  --accent-hover: #a855f7;
-  --accent-subtle: rgba(149, 74, 232, 0.15);
-  --accent-glow: rgba(149, 74, 232, 0.2);
-  --violet: #c4b5fd;
-  --violet-subtle: rgba(196, 181, 253, 0.12);
+  --accent: #4e8cff;
+  --accent-hover: #7ea8ff;
+  --accent-subtle: rgba(78, 140, 255, 0.15);
+  --accent-glow: rgba(78, 140, 255, 0.22);
+  --violet: #7ea8ff;
+  --violet-subtle: rgba(126, 168, 255, 0.12);
   --ok: #17c964;
   --ok-subtle: rgba(23, 201, 100, 0.14);
   --warn: #f5a524;
   --warn-subtle: rgba(245, 165, 36, 0.14);
   --danger: #f31260;
   --danger-subtle: rgba(243, 18, 96, 0.14);
-  --blue: #006fee;
-  --blue-subtle: rgba(0, 111, 238, 0.14);
+  --blue: #4e8cff;
+  --blue-subtle: rgba(78, 140, 255, 0.14);
   --sidebar-w: 240px;
   --header-h: 56px;
   --radius: 14px;
@@ -54,8 +54,8 @@ body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background-color: var(--bg);
   background-image:
-    radial-gradient(ellipse 90% 50% at 0% 0%, rgba(149, 74, 232, 0.08), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(0, 111, 238, 0.05), transparent 50%);
+    radial-gradient(ellipse 90% 50% at 0% 0%, rgba(78, 140, 255, 0.1), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(126, 168, 255, 0.06), transparent 50%);
   background-attachment: fixed;
   color: var(--text);
   overflow: hidden;
@@ -546,7 +546,7 @@ button.adm-map-card {
   box-shadow: none;
 }
 button.adm-map-card:hover {
-  border-color: rgba(149, 74, 232, 0.35);
+  border-color: rgba(78, 140, 255, 0.35);
   background: var(--surface-raised);
   box-shadow: var(--shadow-md);
 }
@@ -822,8 +822,8 @@ select { cursor: default; }
 .um-ts-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.45; }
 .um-kpis-inline { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; }
 .um-kpis-inline span {
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(78, 140, 255, 0.25);
   padding: 4px 8px;
   border-radius: 6px;
   color: var(--text-secondary);
@@ -1124,10 +1124,10 @@ select { cursor: default; }
   border-bottom: 1px solid var(--border);
 }
 .fr-bulk-action-btn.popular {
-  background: linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1));
-  border-color: rgba(139,92,246,.3); color: var(--accent-hover);
+  background: var(--accent-subtle);
+  border-color: rgba(78, 140, 255, 0.35); color: var(--accent-hover);
 }
-.fr-bulk-action-btn.popular:hover { background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(59,130,246,.15)); }
+.fr-bulk-action-btn.popular:hover { background: rgba(78, 140, 255, 0.25); }
 .fr-bulk-action-btn.popular svg { color: #fbbf24; }
 .fr-bulk-toolbar-right { margin-left: auto; }
 .fr-bulk-filter { width: 160px; font-size: 11px; padding: 5px 10px; border-radius: var(--radius-xs); }
@@ -1377,7 +1377,7 @@ select { cursor: default; }
 }
 .dr-registry-wrap th { color: var(--text-muted); font-weight: 600; font-size: 11px; white-space: nowrap; }
 .dr-registry-main { cursor:default; }
-.dr-registry-main:hover td { background: rgba(139,92,246,.06); }
+.dr-registry-main:hover td { background: var(--accent-subtle); }
 .dr-registry-detail td {
   padding: 0 !important; background: rgba(0,0,0,.14); border-bottom: 1px solid var(--border);
 }
@@ -1540,8 +1540,8 @@ select { cursor: default; }
 /* ── Scrollbar ──────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(149, 74, 232, 0.25); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(149, 74, 232, 0.4); }
+::-webkit-scrollbar-thumb { background: rgba(78, 140, 255, 0.25); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(78, 140, 255, 0.4); }
 
 /* ── Access Denied ──────────────────────────────── */
 #accessDenied {
@@ -2307,11 +2307,11 @@ select { cursor: default; }
   cursor: pointer;
 }
 .support-composer-note:has(input:checked) {
-  border-color: rgba(167, 139, 250, 0.4);
-  background: rgba(167, 139, 250, 0.12);
-  color: #d8b4fe;
+  border-color: rgba(78, 140, 255, 0.4);
+  background: rgba(78, 140, 255, 0.12);
+  color: var(--accent-hover);
 }
-.support-composer-note input { accent-color: var(--violet); margin: 0; }
+.support-composer-note input { accent-color: var(--accent); margin: 0; }
 .support-file-hint {
   font-size: 12px;
   color: var(--text-muted);
@@ -2398,7 +2398,7 @@ select { cursor: default; }
   padding: 10px 12px 12px;
 }
 .support-stats-section.focus {
-  border-color: rgba(149, 74, 232, 0.35);
+  border-color: rgba(78, 140, 255, 0.35);
   background: var(--accent-subtle);
 }
 .support-stats-section-hdr {
@@ -2475,7 +2475,7 @@ select { cursor: default; }
 .support-stats-focus-card.resolve { border-color: rgba(52, 211, 153, 0.28); }
 .support-stats-focus-card.modifications { border-color: rgba(234, 179, 8, 0.32); }
 .support-stats-focus-card.feature { border-color: rgba(34, 197, 94, 0.32); }
-.support-stats-focus-card.suggestions { border-color: rgba(168, 85, 247, 0.32); }
+.support-stats-focus-card.suggestions { border-color: rgba(78, 140, 255, 0.35); }
 .support-stats-focus-card.total-resolve { border-color: rgba(56, 189, 248, 0.32); }
 .support-stats-focus-card.verdict-yes { border-color: rgba(34, 197, 94, 0.35); }
 .support-stats-focus-card.verdict-no { border-color: rgba(239, 68, 68, 0.35); }
@@ -2557,7 +2557,7 @@ select { cursor: default; }
 .support-stats-focus-card.resolve .focus-value { color: var(--ok); }
 .support-stats-focus-card.modifications .focus-value { color: #fde047; }
 .support-stats-focus-card.feature .focus-value { color: #86efac; }
-.support-stats-focus-card.suggestions .focus-value { color: #d8b4fe; }
+.support-stats-focus-card.suggestions .focus-value { color: var(--accent-hover); }
 .support-stats-focus-card.total-resolve .focus-value { color: #7dd3fc; }
 .support-stats-focus-top .focus-meta {
   font-size: 10px;
@@ -2582,7 +2582,7 @@ select { cursor: default; }
 .support-stats-bar.resolve > span { background: linear-gradient(90deg, #10b981, #34d399); }
 .support-stats-bar.modifications > span { background: linear-gradient(90deg, #ca8a04, #fde047); }
 .support-stats-bar.feature > span { background: linear-gradient(90deg, #16a34a, #86efac); }
-.support-stats-bar.suggestions > span { background: linear-gradient(90deg, #9333ea, #d8b4fe); }
+.support-stats-bar.suggestions > span { background: linear-gradient(90deg, #4e8cff, #7ea8ff); }
 .support-stats-bar.total-resolve > span { background: linear-gradient(90deg, #0284c7, #7dd3fc); }
 .support-stats-bar.queue > span { background: linear-gradient(90deg, #d97706, #fbbf24); }
 .support-stats-dual-pct {
@@ -2678,15 +2678,15 @@ select { cursor: default; }
   vertical-align:middle;
 }
 .support-cat-billing { background:rgba(59,130,246,.18); color:#93c5fd; border-color:rgba(59,130,246,.35); }
-.support-cat-account { background:rgba(139,92,246,.18); color:#c4b5fd; border-color:rgba(139,92,246,.35); }
+.support-cat-account { background:rgba(78,140,255,.18); color:#7ea8ff; border-color:rgba(78,140,255,.35); }
 .support-cat-access { background:rgba(6,182,212,.18); color:#67e8f9; border-color:rgba(6,182,212,.35); }
 .support-cat-bug { background:rgba(239,68,68,.18); color:#fca5a5; border-color:rgba(239,68,68,.35); }
 .support-cat-error { background:rgba(249,115,22,.18); color:#fdba74; border-color:rgba(249,115,22,.35); }
 .support-cat-feature { background:rgba(34,197,94,.18); color:#86efac; border-color:rgba(34,197,94,.35); }
 .support-cat-modifications { background:rgba(234,179,8,.2); color:#fde047; border-color:rgba(234,179,8,.4); }
-.support-cat-suggestions { background:rgba(168,85,247,.2); color:#d8b4fe; border-color:rgba(168,85,247,.4); }
+.support-cat-suggestions { background:rgba(126,168,255,.2); color:#93c5fd; border-color:rgba(126,168,255,.4); }
 .support-cat-other { background:rgba(107,114,128,.18); color:#d1d5db; border-color:rgba(107,114,128,.35); }
-.support-msg.internal { border-left:3px solid #a78bfa; opacity:.95; }
+.support-msg.internal { border-left:3px solid var(--accent-hover); opacity:.95; }
 .support-activity { font-size:11px; color:var(--text-muted); max-height:120px; overflow-y:auto; margin-top:10px; padding-top:8px; border-top:1px solid var(--border-subtle); }
 .support-activity div { padding:4px 0; border-bottom:1px solid var(--border); }
 .support-msg {
@@ -2706,7 +2706,7 @@ select { cursor: default; }
 .support-msg.from-admin {
   align-self: flex-end;
   background: var(--accent-subtle);
-  border: 1px solid rgba(139,92,246,.25);
+  border: 1px solid rgba(78,140,255,.3);
 }
 .support-msg .support-msg-hdr {
   font-size: 11px;
@@ -4231,7 +4231,7 @@ select { cursor: default; }
                 <option value="stale">stale only</option>
                 <option value="missing">missing only</option>
               </select>
-              <button type="button" class="btn sm" onclick="_openBulkManage('stock')" style="margin-left:auto;font-size:11px;white-space:nowrap;background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(59,130,246,.08));border-color:rgba(139,92,246,.25);color:var(--accent-hover)" title="Open bulk dataset management to view/delete stocks">
+              <button type="button" class="btn sm" onclick="_openBulkManage('stock')" style="margin-left:auto;font-size:11px;white-space:nowrap;background:linear-gradient(135deg,rgba(78,140,255,.12),rgba(59,130,246,.08));border-color:rgba(78,140,255,.25);color:var(--accent-hover)" title="Open bulk dataset management to view/delete stocks">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:3px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Manage datasets
               </button>
             </div>
@@ -7840,7 +7840,7 @@ function renderUsers() {
         <button type="button" class="btn sm primary" onclick="openUserMonitor(${u.id})" title="Sessions, trades, replay, analytics">Monitor</button>
         <button class="btn sm" onclick="openEditModal(${u.id})">Edit</button>
         <button class="btn sm primary" onclick="kickUser(${u.id},'${esc(u.name)}')" ${u.session_count ? '' : 'disabled'}>Kick</button>
-        ${u.role !== 'admin' ? `<button class="btn sm" style="border-color:rgba(139,92,246,.3);color:var(--accent)" onclick="openAssignSubModal(${u.id},'${esc(u.name)}')" title="Grant manual subscription (e.g. checkout failed)">Manual sub</button>` : ''}
+        ${u.role !== 'admin' ? `<button class="btn sm" style="border-color:rgba(78,140,255,.3);color:var(--accent)" onclick="openAssignSubModal(${u.id},'${esc(u.name)}')" title="Grant manual subscription (e.g. checkout failed)">Manual sub</button>` : ''}
         ${banBtn}
         <button class="btn sm danger" onclick="deleteUser(${u.id},'${esc(u.name)}')">Del</button>
       </div></td>
@@ -8445,7 +8445,7 @@ function renderCohortList() {
   }
   host.innerHTML = mtCohorts.map(function (c) {
     const active = c.id === mtSelectedId;
-    return '<button type="button" onclick="selectCohort(' + c.id + ')" style="display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border:1px solid ' + (active ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (active ? 'var(--accent-subtle,rgba(139,92,246,.12))' : 'transparent') + ';cursor:pointer;color:var(--text)">' +
+    return '<button type="button" onclick="selectCohort(' + c.id + ')" style="display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border:1px solid ' + (active ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (active ? 'var(--accent-subtle,rgba(78,140,255,.12))' : 'transparent') + ';cursor:pointer;color:var(--text)">' +
       '<div style="font-size:13px;font-weight:600">' + esc(c.name) + '</div>' +
       '<div style="font-size:11px;color:var(--text-muted)">' + c.member_count + ' member' + (c.member_count === 1 ? '' : 's') + '</div>' +
       '</button>';
@@ -8826,7 +8826,7 @@ function renderDatasetTable() {
     const total = ds.total_timeframes || 0;
     const isActive = s.is_active !== false && s.is_active !== 0;
     const stateColor = isActive ? 'var(--ok)' : 'var(--text-muted)';
-    const sel = ds.id === selectedDsId ? 'background:rgba(139,92,246,.06)' : '';
+    const sel = ds.id === selectedDsId ? 'background:rgba(78,140,255,.06)' : '';
     return `<tr style="cursor:default;${sel}" onclick="selectDs(allDatasets.find(d=>d.id===${ds.id}))">
       <td style="font-size:12px;color:var(--text-muted)">${ds.id}</td>
       <td style="font-weight:600">${esc(name)}</td>
@@ -8897,7 +8897,7 @@ function drHealthBadgeStyle(health) {
   const palette = {
     healthy: { label: 'Healthy', fg: '#34d399', bg: 'rgba(52,211,153,.18)' },
     partial: { label: 'Partial', fg: '#fbbf24', bg: 'rgba(251,191,36,.15)' },
-    building: { label: 'Building', fg: '#a78bfa', bg: 'rgba(139,92,246,.22)' },
+    building: { label: 'Building', fg: '#7ea8ff', bg: 'rgba(78,140,255,.22)' },
     failed: { label: 'Build failed', fg: '#f87171', bg: 'rgba(248,113,113,.18)' },
     integrity_issues: { label: 'Integrity', fg: '#f87171', bg: 'rgba(248,113,113,.18)' },
     empty: { label: 'Empty', fg: 'var(--text-muted)', bg: 'rgba(148,163,184,.12)' },
@@ -11939,7 +11939,7 @@ function _renderFirstrateNightlyHealth() {
             '<br>' + jobBit +
           '</div>' +
           (fixBtns ? '<div style="display:flex;gap:6px;margin-top:6px">' + fixBtns + '</div>' : '') +
-          '<div style="margin-top:6px"><button type="button" class="btn sm" data-fr-manage-class="' + c.asset_class + '" style="font-size:10px;padding:3px 8px;opacity:.8;border-color:rgba(139,92,246,.2)" title="View all ' + c.asset_class + ' tickers and bulk-delete unwanted ones">Manage ' + c.ticker_count + ' tickers</button></div>' +
+          '<div style="margin-top:6px"><button type="button" class="btn sm" data-fr-manage-class="' + c.asset_class + '" style="font-size:10px;padding:3px 8px;opacity:.8;border-color:rgba(78,140,255,.2)" title="View all ' + c.asset_class + ' tickers and bulk-delete unwanted ones">Manage ' + c.ticker_count + ' tickers</button></div>' +
         '</div>'
       );
     }).join('') || '<p style="color:var(--text-muted);font-size:12px;grid-column:1/-1;margin:0">No FirstRate-classified datasets detected yet.</p>';
@@ -13489,7 +13489,7 @@ function renderSubscriptions() {
         ${hasCustomer ? `<button class="btn sm" type="button" onclick="stripePortalForUser(${uid})" title="Create Stripe billing portal link">Portal</button>` : ''}
         ${hasCustomer ? `<button class="btn sm" type="button" onclick="showStripeInvoices(${uid})" title="List recent Stripe invoices">Invoices</button>` : ''}
         ${extBtns}
-        <button type="button" class="btn sm" style="border-color:rgba(139,92,246,.3);color:var(--accent)" onclick="openAssignSubModal(${uid},'${esc(s.user_name)}')" title="Add or stack a manual subscription">Manual sub</button>
+        <button type="button" class="btn sm" style="border-color:rgba(78,140,255,.3);color:var(--accent)" onclick="openAssignSubModal(${uid},'${esc(s.user_name)}')" title="Add or stack a manual subscription">Manual sub</button>
       </div></td>
     </tr>`;
   }).join('');

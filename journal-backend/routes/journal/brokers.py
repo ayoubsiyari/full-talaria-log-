@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 import requests as http_req
 from flask import request, jsonify
-from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from models import db, BrokerConnection, JournalEntry, Profile
 from . import journal_bp
@@ -338,6 +338,7 @@ SYNCERS = {
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @journal_bp.route("/broker/list", methods=["GET"])
+@jwt_required()
 def broker_list():
     user_id = int(get_jwt_identity())
     conns = BrokerConnection.query.filter_by(user_id=user_id).order_by(BrokerConnection.created_at.desc()).all()
@@ -345,6 +346,7 @@ def broker_list():
 
 
 @journal_bp.route("/broker/connect", methods=["POST"])
+@jwt_required()
 def broker_connect():
     user_id = int(get_jwt_identity())
     data = request.get_json(silent=True) or {}
@@ -403,6 +405,7 @@ def broker_connect():
 
 
 @journal_bp.route("/broker/<int:conn_id>", methods=["DELETE"])
+@jwt_required()
 def broker_delete(conn_id: int):
     user_id = int(get_jwt_identity())
     conn = BrokerConnection.query.filter_by(id=conn_id, user_id=user_id).first()
@@ -414,6 +417,7 @@ def broker_delete(conn_id: int):
 
 
 @journal_bp.route("/broker/<int:conn_id>/sync", methods=["POST"])
+@jwt_required()
 def broker_sync(conn_id: int):
     user_id = int(get_jwt_identity())
     conn = BrokerConnection.query.filter_by(id=conn_id, user_id=user_id).first()
