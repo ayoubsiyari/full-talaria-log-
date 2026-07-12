@@ -12484,6 +12484,44 @@ class OrderManager {
         return numeric.toFixed(precision);
     }
 
+    _isSltpRenderFixEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_SLTP_RENDER_FIX;
+    }
+
+    _isSltpParseFixEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_SLTP_PARSE_FIX;
+    }
+
+    _shouldRenderSltpPrice(price) {
+        const n = Number(price);
+        if (!Number.isFinite(n) || n <= 0) return false;
+        if (!this._isSltpRenderFixEnabled()) {
+            return n >= 10;
+        }
+        return true;
+    }
+
+    _parseSltpInputPrice(rawValue, fallback = 0) {
+        if (!this._isSltpParseFixEnabled()) {
+            return parseFloat(rawValue || fallback || 0) || 0;
+        }
+        const raw = String(rawValue ?? '').trim();
+        if (raw === '') return Number(fallback) || 0;
+        const parsed = Number.parseFloat(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : (Number(fallback) || 0);
+    }
+
+    _shouldDeferSltpInputRecalc(inputId, rawValue) {
+        if (!this._isSltpParseFixEnabled()) return false;
+        if (inputId !== 'slPrice' && inputId !== 'tpPrice') return false;
+        const raw = String(rawValue ?? '').trim();
+        if (raw === '') return false;
+        if (raw === '.') return true;
+        if (!raw.includes('.')) return false;
+        const parsed = Number.parseFloat(raw);
+        return (!Number.isFinite(parsed) || parsed === 0) && /^0*\.?0*$/.test(raw);
+    }
+
     formatQuantity(value) {
         // Handle null/undefined
         if (value === null || value === undefined || value === '') {
@@ -15045,6 +15083,7 @@ class OrderManager {
             const input = document.getElementById(id);
             if (input) {
                 input.oninput = () => {
+                    const deferSltpRecalc = this._shouldDeferSltpInputRecalc(id, input.value);
                     if (id === 'orderEntryPrice') {
                         this.syncDefaultTargetsToEntry();
                         this._autoDetectOrderTypeFromEntry();
@@ -15052,7 +15091,7 @@ class OrderManager {
                     }
                     if (id === 'tpPrice') {
                         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || '0');
-                        const tpValue = parseFloat(input.value || '0');
+                        const tpValue = this._parseSltpInputPrice(input.value, 0);
                         const precision = this.getPricePrecision(entryPrice || tpValue || 0);
                         const epsilon = Math.pow(10, -(precision + 1));
                         if (!entryPrice || Math.abs(tpValue - entryPrice) > epsilon) {
@@ -15061,7 +15100,7 @@ class OrderManager {
                     }
                     if (id === 'slPrice') {
                         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || '0');
-                        const slValue = parseFloat(input.value || '0');
+                        const slValue = this._parseSltpInputPrice(input.value, 0);
                         const precision = this.getPricePrecision(entryPrice || slValue || 0);
                         const epsilon = Math.pow(10, -(precision + 1));
                         if (!entryPrice || Math.abs(slValue - entryPrice) > epsilon) {
@@ -15069,10 +15108,15 @@ class OrderManager {
                         }
                     }
                     // If entry/SL changes, recalculate position size
-                    if (id === 'orderEntryPrice' || id === 'slPrice') {
+                    if ((id === 'orderEntryPrice' || id === 'slPrice') && !deferSltpRecalc) {
                         this.calculatePositionFromRisk();
                         // Reset and reinitialize trailing if active
                         this.resetTrailingOnPriceChange();
+                    }
+                    if (deferSltpRecalc) {
+                        this.updatePlaceButtonText();
+                        this.syncSelectedRiskRewardDrawingFromPanelDebounced();
+                        return;
                     }
                     this.calculateAdvancedRiskReward();
                     this.updatePlaceButtonText();
@@ -15571,7 +15615,7 @@ class OrderManager {
         
         // Calculate TP price (use the first non-zero value)
         if (tpEnabled) {
-            const tpPriceInput = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            const tpPriceInput = this._parseSltpInputPrice(document.getElementById('tpPrice')?.value, 0);
             
             if (tpPriceInput > 0) {
                 tpPrice = tpPriceInput;
@@ -17842,7 +17886,7 @@ class OrderManager {
         }
         
         if (slEnabled) {
-            const slPriceInput = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const slPriceInput = this._parseSltpInputPrice(document.getElementById('slPrice')?.value, 0);
             
             if (slPriceInput > 0) {
                 slPrice = slPriceInput;
@@ -17985,7 +18029,7 @@ class OrderManager {
             // (entry-anchored layout in positionPreviewLabel).
             // Multi-entry: always draw full SL/TP lines at their prices when set (badges on avg entry are easy to miss).
             if (slEnabled) {
-                if (slPrice > 0 && (this.slManuallyPositioned || this.isMultiEntryMode)) {
+                if (this._shouldRenderSltpPrice(slPrice) && (this._isSltpRenderFixEnabled() || this.slManuallyPositioned || this.isMultiEntryMode)) {
                     this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
                     if (this.previewLines.sl) {
                         this.previewLines.sl.targetPrice = slPrice;
@@ -17997,7 +18041,7 @@ class OrderManager {
             }
 
             if (tpEnabled) {
-                if (tpPrice > 0 && (this.tpManuallyPositioned || this.isMultiEntryMode)) {
+                if (this._shouldRenderSltpPrice(tpPrice) && (this._isSltpRenderFixEnabled() || this.tpManuallyPositioned || this.isMultiEntryMode)) {
                     this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
                     if (this.previewLines.tp) {
                         this.previewLines.tp.targetPrice = tpPrice;
@@ -18012,7 +18056,7 @@ class OrderManager {
         // Multi-TP mode: SL was not drawn in the branch above — draw it here.
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             if (slEnabled) {
-                if (this.slManuallyPositioned && slPrice > 0) {
+                if (this._shouldRenderSltpPrice(slPrice) && (this._isSltpRenderFixEnabled() || this.slManuallyPositioned)) {
                     this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
                     if (this.previewLines.sl) {
                         this.previewLines.sl.targetPrice = slPrice;

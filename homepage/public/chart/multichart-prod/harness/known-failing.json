@@ -30,7 +30,12 @@
     "H-S30",
     "H-S31",
     "H-S32",
-    "H-S33"
+    "H-S33",
+    "H-S34",
+    "H-S35"
   ],
-  "knownFailing": {}
+  "knownFailing": {
+    "H-S34": "T0 step 2 tracked-red: selection-desync - cross-panel placement leaves previous panel selected",
+    "H-S35": "T0 step 2 tracked-red: stale-quick-menu - cross-panel placement leaves previous panel toolbar visible"
+  }
 }

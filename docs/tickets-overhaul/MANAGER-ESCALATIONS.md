@@ -90,3 +90,93 @@ ROOT-CAUSES RC-4 cites `order-manager.js:16626-16643` as the host order rail; th
 
 **Director ruling:** D-002 (2026-07-12)  
 **Outcome:** Contract table ratified (panel-local selection/draw/indicator/pan; parent-owned focus/quick-menu/settings/replay-transport/order-rail/context-menu). Drawing-sync default ON confirmed intentional — TAL-01495 fix gates cross-symbol ghost-apply only. Rows 2 and 11 proceed by RED-isolation/measurement probe and return to Director with results before their fixes dispatch. Step 2 scope = retest survivors ∩ contract rows. Stale RC-4 citation footnoted. Lane 2 step 2 authorized.
+
+---
+
+## ESC-003 — T1 first build GREEN: request T1 step 4 authorization
+
+**Date:** 2026-07-12  
+**Track:** T1 step 3 → step 4 (Lane 1)  
+**RC:** RC-1  
+**Urgency:** Lane 1 idles until step 4 is authorized (heaviest lane, 60%+ of ticket volume).
+
+### First-build result (D-001 exit criteria — ALL MET)
+Worker 2 delivered `worker-reports/T1-step3-lifecycle-impl-report.md`. Manager verification of the evidence:
+
+| Exit criterion (D-001) | Result |
+|---|---|
+| H-S32 (first-click-fails) GREEN | PASS ×3 runs |
+| H-S33 (ghost-after-delete) GREEN | PASS ×3 runs |
+| Kill-switch A/B turns both RED | FAIL ×3 with `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` set |
+| Full gate clean | 31 scenarios pass, 0 known-failing, 0 regressions |
+| Migration steps 1–3 only (no 4–7) | Confirmed — no object-tree / manager-flags / `Chart.selectedDrawing` retirement / per-tool migration |
+| RC-2 / RC-3 kept out | Confirmed |
+| Both trees byte-identical | SHA256 MATCH on all 10 paired files |
+| State matrix delivered | 16-cell matrix (single/multi × 4 actions × settings open/closed) |
+| I11 (no mirror-frame guards) | Held |
+
+Mechanism is correct per D-001: first-click routes through `toolSelected` on placement-complete (`drawing-tools-manager.js:6441,6829`) and armed-tool select (`:3556`); ghost-after-delete routes through `toolDeleted` driving all subscriber teardown (`:10693`) — not per-path patches.
+
+Build id bumped to `20260712b1` (see note below).
+
+### Decision requested
+**Authorize T1 step 4** — migration steps 4–7 (object tree, manager selection/hover/edit flags → store, retire legacy `Chart.selectedDrawing`/`Chart.drawings` index stack, per-tool classes subscribe to store for chrome). This is where selection-desync (43) and stale-quick-menu (24) families fully close.
+
+### Manager recommendation
+Authorize step 4, **conditional on PO live-confirmation of the first build on `20260712b1`** (first-click works, no ghost-after-delete, kill-switch A/B reproduces live). Live-check runs in parallel so Lane 1 doesn't idle; if the live-check fails, step 4 pauses and we re-escalate. Suggest the four-family suites (add selection-desync + stale-quick-menu RED coverage — being staged in Lane 4) as the step-4 acceptance contract, matching the TRACKS T1 exit.
+
+### Note for the ledger (build-id coordination — not a decision)
+Lanes bumped build id independently: T4 → `20260707b106`, T1 → `20260712b1`. Files are disjoint, so the current tree carries both fixes under the latest id `20260712b1`. Going forward the canonical build id is `20260712b1`; future bumps continue from there. Flagging so the naming lineage is on record.
+
+---
+
+## ESC-004 — T3 rows 2 & 11 isolation checkpoint (D-002 retained checkpoint)
+
+**Date:** 2026-07-12  
+**Track:** T3 step 2 → step 3 (Lane 2)  
+**RC:** RC-4  
+**Urgency:** D-002 requires these findings return to the Director before either fix is dispatched. Lane 2 idles until ruled.
+
+Worker 3 delivered `worker-reports/T3-step2-row2-row11-isolation-report.md` (probe `t3-row2-row11-probe.mjs`; I9 intact — not promoted to gate).
+
+### Row 2 — Ctrl-select collapse (TAL-01498): new mechanism implicated
+The RED reproduces (panel B ends `selectedIds: []`), and it implicates **exactly one** mechanism — but **neither of the two D-002 candidates**:
+- Candidate (a) inbound coordinate decoration wrong-frame — **ruled out**: panel-B geometry stays separated (center distance 321.77px before *and* after; distinct incoming x-ranges preserved).
+- Candidate (b) parent focus-cleanup racing the guard — **ruled out**: no `clearDrawingUiOnOtherPanels` / `deselectDrawingsOnNonFocusedPanels` fired during the failure (only `panel-focus` messages).
+- **Implicated:** local panel Ctrl-click **double-toggle** — the same drawing id is `selectDrawing`-selected then immediately `selectDrawing`-toggled back out within one interaction (`c-local-double-toggle`, `localDoubleToggle: true`). Fix would target row 2's panel-local selection dispatch (consistent with the ratified panel-local ownership).
+
+**Decision requested:** acknowledge the updated mechanism and authorize a step-3 gated fix on the panel-local Ctrl-click selection path (single select-vs-toggle decision per interaction).
+
+### Row 11 — Pan bounds (TAL-01491): not reproducible in harness
+Measurement probe found host and iframe **effective plot rects identical** (both `584×870`, canvas `639×900`, margins equal; only the expected -641px column offset differs). `offsetX` host −13448.008 vs iframe −13425, candleSpacing 7.002 both. **No plot-rect geometry violation exists in the harness topology** — so the probe does not justify any host-only geometry fix or offset constant.
+
+**Decision requested:** rule on disposition — (i) request a PO live drag-trace (pointerdown/move/up + offsetX deltas) in the exact production layout TAL-01491 was filed against, then re-probe; or (ii) treat TAL-01491 as a retest-close candidate pending the PO retest. Manager recommends **(i)** — capture the live trace before closing, since the harness can neither reproduce nor exonerate it.
+
+### Note
+Both rows are the D-002 retained checkpoint; all other step-3 rows proceed without Director involvement once the PO retest defines the survivor set.
+
+---
+
+## ESC-003 — RESOLVED
+
+**Director ruling:** D-003 (2026-07-12)  
+**Outcome:** First build accepted. T1 step 4 authorized conditional-parallel (PO live-confirm `20260712b1` while worker proceeds; failed live check pauses step 4). Added constraint: **step 6 (retire legacy `Chart.selectedDrawing`/`Chart.drawings`) is its own gated commit + own kill-switch**, separable from 4/5/7. Build-id lineage ratified at `20260712b1`; future bumps route through the Manager. Lane 1 unblocked.
+
+## ESC-004 — RESOLVED
+
+**Director ruling:** D-004 (2026-07-12)  
+**Outcome:** Row 2 fix authorized on the implicated mechanism (panel-local select-vs-toggle per pointer interaction; host Ctrl-click cell untouched; probe RED promoted to gate). Row 11 gets no fix on current evidence — drag-trace folds into the PO retest row; no repro (build id confirmed) = retest-close, repro = bring trace back before any fix; host offset constant explicitly banned. Lane 2 step 3 (Row 2) unblocked.
+
+---
+
+## ESC-003 — RESOLVED
+
+**Director ruling:** D-003 (2026-07-12)  
+**Outcome:** First build accepted. Step 4 authorized, conditional-parallel on PO live-confirmation of `20260712b1`. Constraint added: migration step 6 (legacy `Chart.selectedDrawing` retirement) lands as its own gated commit with its own kill-switch, independently revertible; steps 4/5/7 may share one build. Acceptance contract = four family suites + gate + state matrix + 10-ticket spot-check. Build-id lineage ratified at `20260712b1`; future bumps coordinated through the Manager.
+
+---
+
+## ESC-004 — RESOLVED
+
+**Director ruling:** D-004 (2026-07-12)  
+**Outcome:** Row 2 — updated mechanism (local Ctrl-click double-toggle) acknowledged; gated fix authorized on the panel-local selection dispatch (one select-vs-toggle decision per interaction), plain-click and single-chart cells unchanged, probe RED promoted to gate with the fix. Row 11 — disposition (i): drag-trace folded into the existing PO retest row using the ticket's exact layout; no repro with build-id confirmed → retest-close; repro → targeted probe before any fix. No host offset constant on current evidence.

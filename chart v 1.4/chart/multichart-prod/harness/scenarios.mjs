@@ -4836,6 +4836,73 @@ async function hS33(ctx) {
   });
 }
 
+// ── H-S34 ────────────────────────────────────────────────────────────────
+// selection-desync (TAL-00157 / TAL-01405 family): place a drawing on the
+// host, then place one on panel B. The newest panel interaction must be the
+// single selected owner; host selection chrome must clear.
+async function hS34(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(600);
+
+    const hostTool = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    checks.check('H-S34 setup: host trendline placed', hostTool && hostTool.id, hostTool ? hostTool.id : 'null');
+    await sleep(200);
+    const panelTool = await placeTool(page, 'B', 'rectangle', await defaultRectanglePoints(page, 'B'));
+    checks.check('H-S34 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
+    await sleep(400);
+
+    const host = await readInteractiveState(page, 'A');
+    const panel = await readInteractiveState(page, 'B');
+    const totalSelected = (host?.selectedIds?.length || 0) + (panel?.selectedIds?.length || 0);
+    checks.check(
+      'H-S34 CORE: exactly one selected drawing globally after cross-panel placement',
+      totalSelected === 1 && host?.selectedIds?.length === 0 && panel?.selectedIds?.[0] === panelTool.id,
+      `A.selected=${JSON.stringify(host?.selectedIds)} B.selected=${JSON.stringify(panel?.selectedIds)} expected B=${panelTool.id}`,
+    );
+    checks.check(
+      'H-S34 CORE: previous panel selection chrome cleared',
+      !host?.toolbarVisible && (host?.axisHighlightCount || 0) === 0,
+      `A.toolbarVisible=${host?.toolbarVisible} A.axisHighlightCount=${host?.axisHighlightCount}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S35 ────────────────────────────────────────────────────────────────
+// stale-quick-menu (TAL-00157 / TAL-01499 family): after a newer panel draws
+// a tool, only that live selection may own a floating toolbar / quick menu.
+async function hS35(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(600);
+
+    const hostTool = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    checks.check('H-S35 setup: host trendline placed', hostTool && hostTool.id, hostTool ? hostTool.id : 'null');
+    await sleep(200);
+    const panelTool = await placeTool(page, 'B', 'rectangle', await defaultRectanglePoints(page, 'B'));
+    checks.check('H-S35 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
+    await sleep(400);
+
+    const host = await readInteractiveState(page, 'A');
+    const panel = await readInteractiveState(page, 'B');
+    const visibleToolbars = [
+      host?.toolbarVisible ? `A:${host.toolbarDrawingId}` : null,
+      panel?.toolbarVisible ? `B:${panel.toolbarDrawingId}` : null,
+    ].filter(Boolean);
+    checks.check(
+      'H-S35 CORE: quick menu owner matches live panel-B selection only',
+      visibleToolbars.length === 1
+        && visibleToolbars[0] === `B:${panelTool.id}`
+        && panel?.selectedIds?.[0] === panelTool.id,
+      `visibleToolbars=${visibleToolbars.join(',') || '(none)'} A.selected=${JSON.stringify(host?.selectedIds)} B.selected=${JSON.stringify(panel?.selectedIds)}`,
+    );
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4869,6 +4936,8 @@ export function scenarioList() {
     { id: 'H-S31', title: 'boot single-commit: index pin is the only boot anchor; no residual open-multichart first-render slide (§6ct)', run: hS31 },
     { id: 'H-S32', title: 'first-click-fails: single click selects trendline + shows Quick Menu (TAL-00322 family)', run: hS32 },
     { id: 'H-S33', title: 'ghost-after-delete: settings delete leaves no labels/dialog/observers (TAL-00157 family)', run: hS33 },
+    { id: 'H-S34', title: 'selection-desync: cross-panel placement leaves exactly one selected owner (TAL-00157/TAL-01405 family)', run: hS34 },
+    { id: 'H-S35', title: 'stale-quick-menu: cross-panel placement clears previous quick menu owner (TAL-00157/TAL-01499 family)', run: hS35 },
   ];
 }
 
