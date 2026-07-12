@@ -5149,6 +5149,280 @@ async function hS39(ctx) {
   });
 }
 
+async function defaultVolumeAnchorPoints(page, pointCount = 1) {
+  return page.evaluate((n) => {
+    const ch = window.chart;
+    const len = Array.isArray(ch?.data) ? ch.data.length : 0;
+    const pickOffFiveMinuteBoundary = (startFraction) => {
+      const start = Math.max(10, Math.floor(len * startFraction));
+      for (let i = start; i < Math.min(len - 1, start + 120); i++) {
+        const t = Number(ch.data[i]?.t);
+        if (Number.isFinite(t) && t % (5 * 60 * 1000) !== 0) return i;
+      }
+      return start;
+    };
+    const first = pickOffFiveMinuteBoundary(0.30);
+    const second = Math.max(first + 10, pickOffFiveMinuteBoundary(0.45));
+    const a = ch.data[first];
+    const b = ch.data[second];
+    if (n === 1) return [{ x: first, y: Number(a.c) }];
+    return [
+      { x: first, y: Number(a.h) },
+      { x: second, y: Number(b.l) },
+    ];
+  }, pointCount);
+}
+
+async function readAnchorSnapshot(page, ref) {
+  const id = typeof ref === 'string' ? ref : ref.id;
+  return page.evaluate((drawId) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const drawing = dm && dm.drawings.find((d) => d && String(d.id) === String(drawId));
+    if (!drawing) return { ok: false, reason: 'drawing not found' };
+    const points = (drawing.points || []).map((p) => {
+      const idx = Math.round(Number(p.x));
+      const bar = Array.isArray(ch.data) ? ch.data[idx] : null;
+      const pixelX = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(idx) : null;
+      return {
+        x: Number(p.x),
+        y: Number(p.y),
+        idx,
+        timestamp: bar ? Number(bar.t) : null,
+        barOpen: bar ? Number(bar.o) : null,
+        barHigh: bar ? Number(bar.h) : null,
+        barLow: bar ? Number(bar.l) : null,
+        barClose: bar ? Number(bar.c) : null,
+        pixelX: Number.isFinite(pixelX) ? pixelX : null,
+      };
+    });
+    return {
+      ok: true,
+      type: drawing.type,
+      tf: ch.currentTimeframe,
+      dataLen: Array.isArray(ch.data) ? ch.data.length : 0,
+      firstT: Array.isArray(ch.data) && ch.data[0] ? Number(ch.data[0].t) : null,
+      lastT: Array.isArray(ch.data) && ch.data.length ? Number(ch.data[ch.data.length - 1].t) : null,
+      points,
+    };
+  }, id);
+}
+
+async function switchHostTimeframeAndReadAnchor(page, ref, tf = '5m') {
+  await hostSetTimeframe(page, tf);
+  const deadline = Date.now() + 10_000;
+  let snap = null;
+  while (Date.now() < deadline) {
+    snap = await readAnchorSnapshot(page, ref);
+    if (snap && snap.ok && snap.tf === tf && snap.dataLen > 0) return snap;
+    await sleep(150);
+  }
+  return snap;
+}
+
+function assertAnchorTimestampsStable(checks, label, before, after) {
+  const beforePoints = before?.points || [];
+  const afterPoints = after?.points || [];
+  const details = beforePoints.map((p, i) => {
+    const q = afterPoints[i] || {};
+    return `p${i}: beforeT=${p.timestamp} afterT=${q.timestamp} beforeY=${p.y} afterY=${q.y}`;
+  }).join('; ');
+  const ok = beforePoints.length > 0
+    && beforePoints.length === afterPoints.length
+    && beforePoints.every((p, i) => afterPoints[i]
+      && Number(afterPoints[i].timestamp) === Number(p.timestamp)
+      && Number(afterPoints[i].y) === Number(p.y));
+  return checks.check(label, ok, details || 'no anchor points');
+}
+
+// ── H-S40 ────────────────────────────────────────────────────────────────
+// RC-3 / anchoring: anchored VWAP must stay anchored to the same timestamp +
+// price when the bar-index basis changes via timeframe switch.
+async function hS40(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(500);
+
+    const placed = await placeTool(page, 'A', 'anchored-vwap', await defaultVolumeAnchorPoints(page, 1));
+    checks.check('H-S40 setup: anchored VWAP placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(250);
+    const before = await readAnchorSnapshot(page, placed);
+    checks.check('H-S40 setup: captured 1m timestamp+price anchor', before?.ok && before.points.length === 1,
+      `before=${JSON.stringify(before?.points)}`);
+    const after = await switchHostTimeframeAndReadAnchor(page, placed, '5m');
+    checks.check('H-S40 probe: switched host timeframe to 5m', after?.ok && after.tf === '5m',
+      `tf=${after?.tf} dataLen=${after?.dataLen}`);
+    assertAnchorTimestampsStable(checks, 'H-S40 CORE: anchored VWAP anchor survives TF switch', before, after);
+    return checks;
+  });
+}
+
+// ── H-S41 ────────────────────────────────────────────────────────────────
+// RC-3 / anchoring: fixed range volume profile range endpoints must stay on
+// the same timestamp+price anchors across a timeframe basis change.
+async function hS41(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(500);
+
+    const placed = await placeTool(page, 'A', 'fixed-range-volume-profile', await defaultVolumeAnchorPoints(page, 2));
+    checks.check('H-S41 setup: fixed range volume profile placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(250);
+    const before = await readAnchorSnapshot(page, placed);
+    checks.check('H-S41 setup: captured 1m range anchors', before?.ok && before.points.length === 2,
+      `before=${JSON.stringify(before?.points)}`);
+    const after = await switchHostTimeframeAndReadAnchor(page, placed, '5m');
+    checks.check('H-S41 probe: switched host timeframe to 5m', after?.ok && after.tf === '5m',
+      `tf=${after?.tf} dataLen=${after?.dataLen}`);
+    assertAnchorTimestampsStable(checks, 'H-S41 CORE: fixed range volume profile anchors survive TF switch', before, after);
+    return checks;
+  });
+}
+
+// ── H-S42 ────────────────────────────────────────────────────────────────
+// RC-3 / anchoring: anchored volume profile must keep its anchor timestamp +
+// price across a timeframe basis change.
+async function hS42(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(500);
+
+    const placed = await placeTool(page, 'A', 'anchored-volume-profile', await defaultVolumeAnchorPoints(page, 1));
+    checks.check('H-S42 setup: anchored volume profile placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(250);
+    const before = await readAnchorSnapshot(page, placed);
+    checks.check('H-S42 setup: captured 1m timestamp+price anchor', before?.ok && before.points.length === 1,
+      `before=${JSON.stringify(before?.points)}`);
+    const after = await switchHostTimeframeAndReadAnchor(page, placed, '5m');
+    checks.check('H-S42 probe: switched host timeframe to 5m', after?.ok && after.tf === '5m',
+      `tf=${after?.tf} dataLen=${after?.dataLen}`);
+    assertAnchorTimestampsStable(checks, 'H-S42 CORE: anchored volume profile anchor survives TF switch', before, after);
+    return checks;
+  });
+}
+
+function drawingClientCenters(drawings) {
+  return (drawings || [])
+    .filter((d) => d && d.client && Number.isFinite(d.client.cx) && Number.isFinite(d.client.cy))
+    .map((d) => ({
+      id: d.id,
+      x: Math.round(d.client.cx),
+      y: Math.round(d.client.cy),
+    }));
+}
+
+async function readPanelDrawingGeometry(page, panelId) {
+  const frames = panelFrameMap(page);
+  const frame = frames[panelId];
+  if (!frame) return { ok: false, reason: `missing frame ${panelId}` };
+  return frame.evaluate(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return { ok: false, reason: 'missing drawingManager' };
+    const drawings = (dm.drawings || []).map((d) => {
+      let client = null;
+      try {
+        const node = d.group && d.group.node && d.group.node();
+        if (node && node.getBoundingClientRect) {
+          const r = node.getBoundingClientRect();
+          client = {
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+            cx: r.left + r.width / 2,
+            cy: r.top + r.height / 2,
+          };
+        }
+      } catch (_) {}
+      return {
+        id: String(d.id),
+        type: d.type || null,
+        selected: !!d.selected,
+        points: Array.isArray(d.points) ? d.points.map((p) => ({ x: p && p.x, y: p && p.y })) : [],
+        client,
+      };
+    });
+    return {
+      ok: true,
+      selectedIds: (dm.selectedDrawings || []).map((d) => d && String(d.id)).filter(Boolean),
+      drawings,
+    };
+  });
+}
+
+async function frameRectForPanel(page, panelId) {
+  return page.evaluate((pid) => {
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    for (const el of frames) {
+      try {
+        const u = new URL(el.src, location.href);
+        if (u.searchParams.get('panelId') === pid) {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, width: r.width, height: r.height };
+        }
+      } catch (_) {}
+    }
+    return null;
+  }, panelId);
+}
+
+// ── H-S43 ────────────────────────────────────────────────────────────────
+// TAL-01498 / T3 row 2: Ctrl-select in panel B must add two drawings exactly
+// once. The RED was a panel-local double-toggle: canvas capture selected a
+// drawing and the same interaction immediately toggled it back out.
+async function hS43(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+
+    const pts1 = await defaultTrendlinePoints(page, 'A');
+    const pts2 = pts1.map((p, i) => ({ x: p.x + 35, y: p.y - (i === 0 ? 0.0012 : 0.001) }));
+    const first = await placeTool(page, 'A', 'trendline', pts1);
+    checks.check('H-S43 setup: first synced trendline placed on host', first && first.id, first ? first.id : 'null');
+    await sleep(250);
+    const second = await placeTool(page, 'A', 'trendline', pts2);
+    checks.check('H-S43 setup: second synced trendline placed on host', second && second.id, second ? second.id : 'null');
+    await sleep(600);
+
+    const before = await readPanelDrawingGeometry(page, 'B');
+    checks.check('H-S43 setup: panel B received two drawings', before?.ok && before.drawings.length >= 2,
+      `count=${before?.drawings?.length || 0} reason=${before?.reason || ''}`);
+    const centers = drawingClientCenters(before?.drawings).slice(0, 2);
+    checks.check('H-S43 setup: panel B drawing centers are clickable', centers.length === 2,
+      `centers=${JSON.stringify(centers)}`);
+    if (centers.length !== 2) return checks;
+
+    const frameRect = await frameRectForPanel(page, 'B');
+    checks.check('H-S43 setup: panel B iframe rect resolved', !!frameRect, JSON.stringify(frameRect || null));
+    if (!frameRect) return checks;
+
+    await page.keyboard.down('Control');
+    try {
+      for (const c of centers) {
+        await page.mouse.click(Math.round(frameRect.left + c.x), Math.round(frameRect.top + c.y), { delay: 30 });
+        await sleep(180);
+      }
+    } finally {
+      await page.keyboard.up('Control');
+    }
+    await sleep(250);
+
+    const after = await readPanelDrawingGeometry(page, 'B');
+    const expected = centers.map((c) => String(c.id)).sort();
+    const actual = (after?.selectedIds || []).map(String).sort();
+    checks.check(
+      'H-S43 CORE: panel-B Ctrl-select selects both drawings once (no double-toggle)',
+      expected.length === 2 && actual.length === 2 && expected.every((id, i) => id === actual[i]),
+      `selected=${JSON.stringify(after?.selectedIds)} expected=${JSON.stringify(expected)}`,
+    );
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -5188,6 +5462,10 @@ export function scenarioList() {
     { id: 'H-S37', title: 'order TP line remains stable across replay redraw (TAL-00752#3)', run: hS37 },
     { id: 'H-S38', title: 'invalidation: style color commit repaints by next frame without follow-up click (RC-2)', run: hS38 },
     { id: 'H-S39', title: 'invalidation: style width commit repaints by next frame without follow-up click (RC-2)', run: hS39 },
+    { id: 'H-S40', title: 'anchoring: anchored VWAP timestamp+price survives timeframe switch (RC-3)', run: hS40 },
+    { id: 'H-S41', title: 'anchoring: fixed range volume profile endpoints survive timeframe switch (RC-3)', run: hS41 },
+    { id: 'H-S42', title: 'anchoring: anchored volume profile timestamp+price survives timeframe switch (RC-3)', run: hS42 },
+    { id: 'H-S43', title: 'panel Ctrl-select selects two drawings once; no iframe double-toggle (TAL-01498)', run: hS43 },
   ];
 }
 

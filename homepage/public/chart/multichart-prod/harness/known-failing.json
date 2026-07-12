@@ -36,12 +36,17 @@
     "H-S36",
     "H-S37",
     "H-S38",
-    "H-S39"
+    "H-S39",
+    "H-S40",
+    "H-S41",
+    "H-S42",
+    "H-S43"
   ],
   "knownFailing": {
-    "H-S34": "T0 step 2 tracked-red: selection-desync - cross-panel placement leaves previous panel selected",
-    "H-S35": "T0 step 2 tracked-red: stale-quick-menu - cross-panel placement leaves previous panel toolbar visible",
     "H-S38": "T0 step 3 tracked-red: RC-2 style color commit does not repaint by next frame",
-    "H-S39": "T0 step 3 tracked-red: RC-2 style width commit does not repaint by next frame"
+    "H-S39": "T0 step 3 tracked-red: RC-2 style width commit does not repaint by next frame",
+    "H-S40": "T0 step 4 tracked-red: RC-3 anchored VWAP shifts timestamp anchor across timeframe switch",
+    "H-S41": "T0 step 4 tracked-red: RC-3 fixed range volume profile shifts endpoint anchors across timeframe switch",
+    "H-S42": "T0 step 4 tracked-red: RC-3 anchored volume profile shifts timestamp anchor across timeframe switch"
   }
 }

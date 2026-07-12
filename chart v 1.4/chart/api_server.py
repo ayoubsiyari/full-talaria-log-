@@ -3261,7 +3261,7 @@ async def auth_middleware(request: Request, call_next):
             if user_boot and (user_boot.role or "") != "admin":
                 db_boot = SessionLocal()
                 try:
-                    if not _platform_section_enabled(db_boot, "resources"):
+                    if not _user_may_use_platform_section(user_boot, db_boot, "resources"):
                         return RedirectResponse(
                             url="/dashboard/?view=dashboard&disabled=resources"
                         )
@@ -3297,7 +3297,7 @@ async def auth_middleware(request: Request, call_next):
         if platform_section and (user.role or "") != "admin":
             db_gate = SessionLocal()
             try:
-                if not _platform_section_enabled(db_gate, platform_section):
+                if not _user_may_use_platform_section(user, db_gate, platform_section):
                     label = PLATFORM_SECTION_LABELS.get(platform_section, platform_section.title())
                     detail = {
                         "code": "platform_section_disabled",
@@ -15472,7 +15472,7 @@ async def ws_support(websocket: WebSocket):
     if (user.role or "") != "admin":
         db_gate = SessionLocal()
         try:
-            if not _platform_section_enabled(db_gate, "support"):
+            if not _user_may_use_platform_section(user, db_gate, "support"):
                 await websocket.close(code=4403)
                 return
         finally:

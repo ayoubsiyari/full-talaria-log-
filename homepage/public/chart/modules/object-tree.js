@@ -13,6 +13,7 @@ class ObjectTreeManager {
         this.currentPanel = null;
         
         this.init();
+        this.subscribeToLifecycleStore();
     }
 
     /**
@@ -26,6 +27,17 @@ class ObjectTreeManager {
         
         this.setupEventListeners();
         console.log('✅ Object Tree Manager initialized');
+    }
+
+    subscribeToLifecycleStore() {
+        const store = this.drawingManager && this.drawingManager.lifecycleStore;
+        if (!store || typeof store.on !== 'function') return;
+        this._unsubscribeLifecycle = [
+            store.on('toolSelected', () => this.refresh()),
+            store.on('toolDeselected', () => this.refresh()),
+            store.on('toolDeleted', () => this.refresh()),
+            store.on('toolHidden', () => this.refresh()),
+        ];
     }
 
     /**
@@ -284,8 +296,12 @@ class ObjectTreeManager {
         item.className = 'object-tree-item';
         item.dataset.drawingId = drawing.id;
         
-        // Check if selected
-        if (this.drawingManager.selectedDrawing === drawing) {
+        // Check if selected via lifecycle store first; legacy manager state is fallback only.
+        const storeSelected = this.drawingManager.lifecycleStore
+            && typeof this.drawingManager.lifecycleStore.getSelectedDrawing === 'function'
+            ? this.drawingManager.lifecycleStore.getSelectedDrawing()
+            : null;
+        if ((storeSelected && storeSelected === drawing) || (!storeSelected && this.drawingManager.selectedDrawing === drawing)) {
             item.classList.add('selected');
         }
         
@@ -459,7 +475,18 @@ class ObjectTreeManager {
      * Select a drawing
      */
     selectDrawing(drawing) {
-        if (this.drawingManager && typeof this.drawingManager.selectDrawing === 'function') {
+        if (!this.drawingManager) return;
+        if (this.drawingManager.lifecycleStore && typeof this.drawingManager._emitToolLifecycle === 'function') {
+            const emitted = this.drawingManager._emitToolLifecycle('toolSelected', {
+                drawing,
+                source: 'object-tree',
+            });
+            if (emitted) {
+                this.refresh();
+                return;
+            }
+        }
+        if (typeof this.drawingManager.selectDrawing === 'function') {
             this.drawingManager.selectDrawing(drawing);
             this.refresh();
         }
@@ -530,6 +557,13 @@ class ObjectTreeManager {
 
         if (typeof this.drawingManager.toggleHide === 'function') {
             this.drawingManager.toggleHide(drawing);
+            if (typeof this.drawingManager._emitToolLifecycle === 'function') {
+                this.drawingManager._emitToolLifecycle('toolHidden', {
+                    drawing,
+                    hidden: drawing.hidden === true || drawing.visible === false,
+                    source: 'object-tree',
+                });
+            }
         } else {
             const currentlyHidden = drawing.hidden === true || drawing.visible === false;
             drawing.hidden = !currentlyHidden;

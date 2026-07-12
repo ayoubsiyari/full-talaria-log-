@@ -124,6 +124,35 @@ Result:
 
 ## Additional verification
 
+### Current-tree re-verification (2026-07-12)
+
+Command:
+
+```powershell
+node "chart v 1.4/chart/multichart-prod/harness/run.mjs" --only=H-S36,H-S37
+```
+
+Result:
+
+- `FINAL H-S36 PASS`
+- `FINAL H-S37 PASS`
+
+Kill-switch proof, current tree:
+
+```powershell
+node "chart v 1.4/chart/multichart-prod/harness/run.mjs" --only=H-S37 --bugswitch=__TALARIA_DISABLE_TP_REPLAY_FLICKER_FIX
+```
+
+Result:
+
+- `FINAL H-S37 FAIL-REAL-BUG`
+- failing detail: `sameNodeAfterRedraw=false (drawSLTPLines removes/recreates TP DOM)`
+
+Current disposition:
+
+- `TAL-00752#21` / `H-S36`: PASS on the corrected replay-master diagnostic; no mirror-frame policy mechanism observed, and no additional fix applied.
+- `TAL-00752#3` / `H-S37`: fixed as RC-5-owned TP visual lifecycle; kill-switch still restores RED.
+
 Syntax:
 
 ```powershell
@@ -139,9 +168,9 @@ Lints:
 
 Byte identity:
 
-- `order-manager.js` canonical/public SHA-256 match: `5EB2D0055AB3E934E50046AADEB56B23BEEF07FCA3D1C90B3720FCB26443FE59`
-- `scenarios.mjs` canonical/public SHA-256 match: `CD3FBC3CB88E0091526F59A28EE9E97EF7C01319D917A5545E7E289A2B60D5D8`
-- `known-failing.json` canonical/public SHA-256 match: `05526B816B30CB9BEFB65735F4B55CC769A7D87E628EE2E0F83D59AACBF50758`
+- `order-manager.js` canonical/public SHA-256 match: `E7A5AEC4FCB67B2541A1C5F35C87422EA7B63B2D4E76E3FDE5C6A700BD8969A2`
+- `scenarios.mjs` canonical/public SHA-256 match: `46D6127CCFB2C0EBE9FE303738D87B8C11244F9690C7CE5F9D453F2A90E634F1`
+- `known-failing.json` canonical/public SHA-256 match: `A66C71365BE4F169D678EB914C4BF984E2AEF3F84BAB3BE2C329B62C94314CF9`
 
 ## Files changed
 

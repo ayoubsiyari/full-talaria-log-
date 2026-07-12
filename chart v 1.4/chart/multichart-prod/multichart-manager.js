@@ -736,6 +736,51 @@
         }
     };
 
+    MultichartManager.prototype._clearHostDrawingUi = function () {
+        try {
+            const ch = global.chart;
+            const dm = ch && ch.drawingManager;
+            if (dm && typeof dm.deselectAll === 'function') {
+                dm.deselectAll({ fromCanvasBackground: true });
+            }
+            if (dm && dm.contextMenu && typeof dm.contextMenu.hide === 'function') {
+                dm.contextMenu.hide();
+            }
+            if (ch && typeof ch.hideContextMenu === 'function') {
+                ch.hideContextMenu();
+            }
+        } catch (_) {}
+    };
+
+    MultichartManager.prototype.deselectDrawingsOnNonFocusedPanels = function (focusedId) {
+        const source = focusedId || null;
+        const jobs = [];
+        for (const c of this.charts.values()) {
+            if (!c || c.id === source) continue;
+            if (c.host) {
+                this._clearHostDrawingUi();
+            } else {
+                jobs.push(this.sendCommand(c.id, 'deselectDrawings', {}).catch(() => null));
+            }
+        }
+        return Promise.all(jobs);
+    };
+
+    MultichartManager.prototype.clearDrawingUiOnOtherPanels = function (sourceId) {
+        const source = sourceId || null;
+        const jobs = [];
+        for (const c of this.charts.values()) {
+            if (!c || c.id === source) continue;
+            if (c.host) {
+                this._clearHostDrawingUi();
+            } else {
+                this.sendCommandNoReply(c.id, 'deselectDrawings', {});
+                this.sendCommandNoReply(c.id, 'closeDrawingSettings', {});
+            }
+        }
+        return Promise.all(jobs);
+    };
+
     MultichartManager.prototype.sendCommand = function (panelId, cmd, args) {
         const self = this;
         return new Promise(function (resolve, reject) {
@@ -932,6 +977,23 @@
                     try { this.onPanelFocus(sourceId); } catch (e) {
                         this._log('warn', 'onPanelFocus threw: ' + (e && e.message || e));
                     }
+                }
+                return;
+
+            case 'multichart-clear-drawing-ui':
+                if (sourceId && typeof this.clearDrawingUiOnOtherPanels === 'function') {
+                    this.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
+                }
+                return;
+
+            case 'multichart-drawing-selected':
+                try {
+                    if (typeof global !== 'undefined') {
+                        global.__v9DrawingSelectionGuardUntil = performance.now() + 300;
+                    }
+                } catch (_) {}
+                if (sourceId && typeof this.clearDrawingUiOnOtherPanels === 'function') {
+                    this.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
                 }
                 return;
 

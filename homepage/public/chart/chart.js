@@ -18946,14 +18946,31 @@ class Chart {
                 }
             }
             
+            const legacySelectionRetired = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2);
+            const dm = this.drawingManager;
+
             // Escape - deselect tool
             if (e.key === 'Escape') {
-                this.setTool('cursor');
-                this.selectedDrawing = null;
-                this.hideContextMenu();
+                if (legacySelectionRetired && dm) {
+                    if (typeof dm.deselectAll === 'function') dm.deselectAll({ fromCanvasBackground: true });
+                    if (typeof dm.clearTool === 'function') dm.clearTool();
+                } else {
+                    this.setTool('cursor');
+                    this.selectedDrawing = null;
+                    this.hideContextMenu();
+                }
             }
             // Delete/Backspace - delete selected drawing
-            if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedDrawing !== null) {
+            if (legacySelectionRetired && dm && (e.key === 'Delete' || e.key === 'Backspace')) {
+                const selected = Array.isArray(dm.selectedDrawings) ? dm.selectedDrawings.slice() : [];
+                if (selected.length > 0) {
+                    selected.forEach(drawing => dm.deleteDrawing(drawing));
+                    e.preventDefault();
+                    return;
+                }
+            }
+            if (!legacySelectionRetired && (e.key === 'Delete' || e.key === 'Backspace') && this.selectedDrawing !== null) {
                 const deletedDrawing = this.drawings[this.selectedDrawing];
                 this.drawings.splice(this.selectedDrawing, 1);
                 this.selectedDrawing = null;
@@ -32566,6 +32583,10 @@ class Chart {
             if (this.drawingManager && (this.drawingManager.currentTool || this.drawingManager.drawingState?.isDrawing)) {
                 return;
             }
+
+            if (this.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                return;
+            }
             
             const [x, y] = this._eventCanvasLocalXY(event);
             
@@ -32790,6 +32811,9 @@ class Chart {
         
         // Handle clicks on the SVG for drawing selection
         this.svg.on('click', (event) => {
+            if (this.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                return;
+            }
             
             // SKIP if click originated from toolbar or UI elements
             if (event.target.closest('.tool-btn') || 
@@ -33759,6 +33783,9 @@ class Chart {
                 element.on('click', (event) => {
                     event.stopPropagation(); // Prevent bubbling
                     
+                    if (chart.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                        return;
+                    }
                     
                     // Don't change selection if we just finished dragging
                     if (hasMoved) {
@@ -33785,6 +33812,9 @@ class Chart {
                 element.on('contextmenu', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    if (chart.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                        return;
+                    }
                     if (chart.shouldSuppressRightClickContextMenu(event)) {
                         return;
                     }

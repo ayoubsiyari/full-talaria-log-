@@ -2308,6 +2308,12 @@ class DrawingToolsManager {
                             event.stopImmediatePropagation();
                         }
                         this.selectDrawing(ctrlBest, true);
+                        if (isMultichartIframeEmbed()) {
+                            this._suppressNextIframeCtrlSelectToggle = {
+                                id: ctrlBest && ctrlBest.id != null ? String(ctrlBest.id) : null,
+                                until: performance.now() + 80,
+                            };
+                        }
                         suppressNextCanvasClick = true;
                     }
                     return;
@@ -3486,6 +3492,9 @@ class DrawingToolsManager {
             if (clearActiveTool && this.currentTool) {
                 this.clearTool(true);
             }
+            if (this.chart && typeof this.chart._requestMultichartClearDrawingUiOnOtherPanels === 'function') {
+                this.chart._requestMultichartClearDrawingUiOnOtherPanels();
+            }
             this.selectDrawing(drawing, false, { allowWhileArmed: true, suppressToolbar });
             if (this.chart && typeof this.chart.scheduleRender === 'function') {
                 this.chart.scheduleRender();
@@ -3539,6 +3548,24 @@ class DrawingToolsManager {
                 window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
             } catch (_) { /* ignore */ }
         });
+
+        store.on('toolDeselected', () => {
+            if (this.objectTreeManager && typeof this.objectTreeManager.refresh === 'function') {
+                this.objectTreeManager.refresh();
+            }
+        });
+
+        store.on('toolEditStarted', ({ drawing }) => {
+            if (drawing && this.settingsPanel) {
+                this.settingsPanel.currentDrawing = drawing;
+            }
+        });
+
+        store.on('toolEditEnded', ({ drawing }) => {
+            if (!drawing || (this.settingsPanel && this.settingsPanel.currentDrawing === drawing)) {
+                if (this.settingsPanel) this.settingsPanel.currentDrawing = null;
+            }
+        });
     }
 
     _selectExistingDrawingViaLifecycle(event) {
@@ -3567,6 +3594,10 @@ class DrawingToolsManager {
 
     _bindLifecycleSettingsSurface(drawing) {
         if (!this._isToolLifecycleV2Enabled() || !this.settingsPanel || !drawing) return;
+        this._emitToolLifecycle('toolEditStarted', {
+            drawing,
+            source: 'settings-surface',
+        });
         this.settingsPanel.currentDrawing = drawing;
         this.settingsPanel.pendingChanges = {};
         this.settingsPanel.onDelete = (drawingToDelete) => {
@@ -9648,6 +9679,20 @@ class DrawingToolsManager {
         if (addToSelection && this._isDrawingGeometryMoveActive()) {
             return;
         }
+        if (addToSelection && isMultichartIframeEmbed() && this._suppressNextIframeCtrlSelectToggle) {
+            const suppress = this._suppressNextIframeCtrlSelectToggle;
+            const sameDrawing = drawing && drawing.id != null && suppress.id === String(drawing.id);
+            const stillFresh = typeof performance !== 'undefined' && performance.now() <= suppress.until;
+            const alreadySelected = sameDrawing && Array.isArray(this.selectedDrawings)
+                && this.selectedDrawings.includes(drawing);
+            if (sameDrawing && stillFresh && alreadySelected) {
+                this._suppressNextIframeCtrlSelectToggle = null;
+                return;
+            }
+            if (!stillFresh) {
+                this._suppressNextIframeCtrlSelectToggle = null;
+            }
+        }
         // If eraser mode is active, delete the drawing instead of selecting
         if (this.eraserMode) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
@@ -9821,6 +9866,11 @@ class DrawingToolsManager {
         });
         this.selectedDrawing = null;
         this.selectedDrawings = [];
+        if (!forSelectionChange) {
+            this._emitToolLifecycle('toolDeselected', {
+                source: fromCanvasBackground ? 'canvas-background' : 'manager-deselect',
+            });
+        }
         this.toolbar.hide(); // Hide toolbar
         if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
             this.settingsPanel.hide();
