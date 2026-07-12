@@ -4,12 +4,14 @@ Dependency map:
 
 ```
 T0 (registry + harness scaffolding)  ──┬─→ T1 (lifecycle controller) ─→ T2 (invalidation sweep) ─→ T5 (anchoring) ─→ T6 (indicators adopt)
-                                       ├─→ T3 (multichart parity)  [independent until Phase C]
+                                       ├─→ T3 (multichart parity, retest-first) ─→ T8 (Phase-5 mirror-policy + plan-1 debt)
                                        └─→ T4 (order-entry model)  [fully independent]
 T7 (backlog sweep + closure) runs last, consumes everything.
 ```
 
-Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3. Lane 3 = T4. Lane 4 = T0, then becomes the verification/harness lane supporting the others.
+Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8 (sequential — both live in the panel/replay bridge area; running them in parallel would collide in `panel-cmd-bridge.js` / `sync-bridge.js`). Lane 3 = T4. Lane 4 = T0, then becomes the verification/harness lane supporting the others.
+
+**Standing rule for Lane 2 (from the plan-1 journey report):** the guard tail is closed; it must not grow. If a T3 diagnostic traces a defect to mirror-frame application policy (which parts of data/X/Y a panel adopts), that row is **deferred into T8** and fixed by the policy table — not by adding guard #21. The Manager enforces this at dispatch.
 
 ---
 
@@ -40,11 +42,12 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3. Lan
 
 **Problem:** the July-4 batch (TAL-01480…01502): panels lack Quick Menu, Ctrl-select, correct drawing target, isolated indicator state, and repaint-without-click.
 **Approach:**
-1. Write the **interaction-parity contract** (mirrors the data-ownership contract that closed the data overhaul): for each surface — selection, quick menu, settings, keyboard shortcuts, focus, indicator enable-state — name the owner (panel-local vs host-forwarded) and the transport. Director approves the table.
-2. RED-first harness scenarios per contract row, reusing the existing panel harness topology. Priority rows from tickets: repaint-on-command (01484/01490), drawing-targets-focused-panel (01495), Ctrl-select-in-panel (01498), quick-menu-in-panel (01499), indicator-state-isolation (01500/01501).
+0. **Retest-first triage (mandatory step, before any diagnostic or fix).** Plan 1 closed on build `20260707b105` *after* this batch was filed; several of these tickets are likely already fixed as side effects of the data/viewport/boot work (strongest candidates: TAL-01480 re-render on same symbol, TAL-01502 first-boot price mismatch — both smell like the b102–b105 boot-commit fixes; TAL-01484/01490 repaint-on-command *may* be covered by the boot/settle work). Tester retests every multichart ticket in the registry **on b105 or later, with build id confirmed on every frame** (plan-1 lesson: stale tabs burned more time than any real bug). Only tickets that reproduce enter steps 1–3.
+1. Write the **interaction-parity contract** (mirrors the data-ownership contract that closed plan 1): for each surface — selection, quick menu, settings, keyboard shortcuts, focus, indicator enable-state — name the owner (panel-local vs host-forwarded) and the transport. Director approves the table.
+2. RED-first harness scenarios per surviving contract row, reusing the existing 29-scenario panel harness topology. Likely-surviving rows (interaction-layer, untouched by plan 1): drawing-targets-focused-panel (01495), Ctrl-select-in-panel (01498), quick-menu-in-panel (01499), indicator-state-isolation (01500/01501), drag-stops-at-frame-box (01491).
 3. One gated fix per row.
-**Constraint:** the data-overhaul gate (I9) stays green; anything touching sync/replay buses escalates first.
-**Exit:** contract rows GREEN; the July-4 batch dispositioned with tester confirmation.
+**Constraints:** the plan-1 gate (29 scenarios) stays green (I9). Anything whose mechanism is mirror-frame application policy is deferred to T8 per the Lane-2 standing rule — T3 fixes interaction surfaces only, it does not add replay-frame guards.
+**Exit:** every multichart registry row dispositioned as retest-closed / fixed-in-T3 / deferred-to-T8; contract rows GREEN; tester confirmation on a named build.
 
 ## T4 — Order-entry state model (RC-5) (Lane 3, parallel)
 
@@ -68,6 +71,21 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3. Lan
 2. Apply T2's invalidation assertion to indicator setters.
 3. Perf follow-up (separate, Director-gated): incremental tail recompute during replay instead of full recompute per frame (`chart-indicators-full.js:7814`); only after correctness suites are green.
 **Exit:** indicator symptom rows in registry dispositioned; replay indicator staleness scenarios GREEN.
+
+## T8 — Phase-5 mirror-policy consolidation + plan-1 deferred debt (RC-8) (Lane 2, after T3)
+
+**Problem:** plan 1 closed its defect list but deferred its structural root: ~20 scattered guards compensate for the over-fused replay mirror frame (data + X + Y in one broadcast). The plan-1 journey report's own recommendation is to do this next, in a quiet period, under the green gate — that quiet period is now, and T3's retest-triage will have just confirmed the terrain is stable.
+**Approach (design-first, Director approves before impl):**
+1. **Policy-table design doc:** enumerate the full matrix (TF relation: same/coarser/finer/independent × replay: playing/paused/off × sync: on/off per axis) and specify, per cell, adopt-data / adopt-X / adopt-Y. The existing guards *are* the spec — extract each guard's decision into its cell; conflicts or gaps escalate to the Director. The 29 GREEN scenarios are the acceptance contract: behavior must be identical before/after.
+2. **Implement** the single frame-application policy function behind `__TALARIA_DISABLE_MIRROR_POLICY_V2`; migrate consumers guard-by-guard (each migration gated, gate re-run); retire superseded guards and their kill-switches only after their scenarios pass through the policy path.
+3. **Plan-1 debt rides along** (from journey report §7, folded in per its recommendation §9.2):
+   - Finer-owner marker refresh done properly per the D-047 spec (replace the `fromHostFanout` route-around).
+   - Strip the `__TALARIA_BL2B_PRICE_PROBE` probe + `__talariaBl2b*` call sites from the engine.
+   - RED scenarios for the ~17 kill-switches with no dedicated coverage + BL-16 (do this **first** within T8 — it hardens the acceptance contract before the refactor).
+   - Delete or mark-unmaintained the legacy `multichart/` dev-shell tree.
+   - PO explicitly confirms or re-raises the BL-2b residual Y-nudge; record terminal status.
+**Constraint:** zero behavior change is the goal — this is a consolidation, not a fix. Any cell whose policy-table value differs from shipped behavior is an escalation, not a silent correction.
+**Exit:** policy function live, superseded guards retired, gate GREEN (29 + new coverage scenarios), kill-switch inventory shrunk, all five debt items terminal.
 
 ## T7 — Backlog sweep + closure (all lanes converge)
 

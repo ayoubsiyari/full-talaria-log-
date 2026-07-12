@@ -1,0 +1,937 @@
+bug_ref,ticket_ref,cluster,symptom_family,rc_guess,status,tester_quote,notes
+TAL-00118#1,TAL-00118,chart_core_ui,first-click-fails,RC-1,user_replied,In input > show price doesn't work,auto-split: one bug per short thread
+TAL-00157#1,TAL-00157,chart_core_ui,ghost-after-delete,RC-1,user_replied,Delete box from settings leaves price/time labels on chart,
+TAL-00157#2,TAL-00157,chart_core_ui,label-mis-anchor,RC-3,user_replied,Current price label displayed far right instead of at price number start,
+TAL-00157#3,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Grid lines render above candles while panning chart,
+TAL-00157#4,TAL-00157,chart_core_ui,drag-mis-anchor,RC-3,user_replied,Tool anchored at candle edge jumps to previous candle middle on click,
+TAL-00157#5,TAL-00157,chart_core_ui,selection-menu-desync,RC-1,user_replied,Ctrl+drag loses selection but Quick Menu stays visible and settings inaccessible,
+TAL-00157#6,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Candles become slightly blurred while a tool is selected,
+TAL-00157#7,TAL-00157,chart_core_ui,drag-mis-anchor,RC-3,user_replied,Moving one box drags other tools and the chart together,
+TAL-00157#8,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Screenshot glitch when moving tools,
+TAL-00157#9,TAL-00157,chart_core_ui,label-mis-anchor,RC-3,user_replied,Price/time labels do not follow tool while dragging; crosshair stuck at old position,
+TAL-00157#10,TAL-00157,chart_core_ui,selection-menu-desync,RC-1,user_replied,Ctrl hides price/time labels but Quick Menu remains editable without selection,
+TAL-00157#11,TAL-00157,chart_core_ui,label-mis-anchor,RC-3,user_replied,Clicking chart reveals candles through price label overlay,
+TAL-00157#12,TAL-00157,chart_core_ui,indicator-lifecycle,RC-6,user_replied,Indicator pane shifts when moving chart with stacked indicators,
+TAL-00157#13,TAL-00157,chart_core_ui,indicator-lifecycle,RC-6,user_replied,Dragging indicator price label collapses/displaces chart pane,
+TAL-00157#14,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Candle colors and gaps glitch when chart viewport is very small,
+TAL-00157#15,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Zoom in/out causes chart rendering glitches,
+TAL-00157#16,TAL-00157,chart_core_ui,replay-interaction,RC-8,user_replied,Replay playback does not update certain chart elements,
+TAL-00157#17,TAL-00157,chart_core_ui,label-mis-anchor,RC-3,user_replied,Labels hidden until options clicked even when label toggles exist,Arabic: labels should show on click without enabling options first
+TAL-00157#18,TAL-00157,chart_core_ui,replay-interaction,RC-8,user_replied,Roll Back advances groups of candles instead of one candle at a time,
+TAL-00157#19,TAL-00157,chart_core_ui,replay-interaction,RC-8,user_replied,Seconds hand not working when replay is enabled,
+TAL-00157#20,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Week opening gap renders incorrect red candlestick when scrolling back,
+TAL-00157#21,TAL-00157,chart_core_ui,slow-interaction,RC-2,user_replied,Chart shows excessive gaps in candle display,
+TAL-00157#22,TAL-00157,chart_core_ui,multichart-parity,RC-4,user_replied,Price mismatch when switching 15m to 1m timeframe,
+TAL-00157#23,TAL-00157,chart_core_ui,replay-interaction,RC-8,user_replied,Replay slow unless user keeps clicking chart button,
+TAL-00157#24,TAL-00157,chart_core_ui,label-mis-anchor,RC-3,user_replied,Price label snaps back when dragged during replay,Arabic: dragging price label while replay on returns to previous position
+TAL-00227#1,TAL-00227,chart_core_ui,slow-interaction,RC-1,user_replied,Clone & Copy and paste don't work,auto-split: one bug per short thread
+TAL-00284#1,TAL-00284,chart_core_ui,quick-menu-defect,RC-1,user_replied,"If you are on any item in the Quick Menu and press the Esc key, the item will remain marked if I open the Quick Menu again in the same tool.",auto-split: one bug per short thread
+TAL-00351#1,TAL-00351,chart_core_ui,slow-interaction,RC-1,user_replied,This box is unnecessary. You can replace it with the background option and adjust the background color.,auto-split: one bug per short thread
+TAL-00427#1,TAL-00427,chart_core_ui,indicator-lifecycle,RC-6,user_replied,this indicator not work,auto-split: one bug per short thread
+TAL-00812#1,TAL-00812,chart_core_ui,quick-menu-defect,RC-1,resolved,this sholud be behind tickets,auto-split: one bug per short thread
+TAL-00813#1,TAL-00813,chart_core_ui,slow-interaction,RC-1,resolved,لما اضغظ على القفل اللي عايسار ما بيتلون في الكويك منيو,auto-split: one bug per short thread
+TAL-00814#1,TAL-00814,chart_core_ui,slow-interaction,RC-1,user_replied,why this name?,auto-split: one bug per short thread
+TAL-00816#1,TAL-00816,chart_core_ui,stuck-until-click,RC-2,resolved,stuck on screen move with screen,auto-split: one bug per short thread
+TAL-00820#1,TAL-00820,chart_core_ui,slow-interaction,RC-1,resolved,can't open anything in FAQ,auto-split: one bug per short thread
+TAL-00821#1,TAL-00821,chart_core_ui,slow-interaction,RC-1,user_replied,make it white,auto-split: one bug per short thread
+TAL-00823#1,TAL-00823,chart_core_ui,selection-menu-desync,RC-1,resolved,copy/copy line not works ولما اضغط على اغلاق x وارجع اعمل سكرين رح يضل العلامة على الاغلاق باللون الاحمر,auto-split: one bug per short thread
+TAL-00824#1,TAL-00824,chart_core_ui,slow-interaction,RC-1,resolved,add alert systm plz,auto-split: one bug per short thread
+TAL-00825#1,TAL-00825,chart_core_ui,slow-interaction,RC-1,resolved,لما اعمل كومبير واسحب الشارت لفوق بيتحرك معي الزوج التاني وبيضل معلق على الشاشة,auto-split: one bug per short thread
+TAL-00826#1,TAL-00826,chart_core_ui,slow-interaction,RC-1,resolved,لما اضيف تايم فريم ما بيضغط على تثبيت البين رغم انو التايم فريم الموجود بيتثبت عادي,auto-split: one bug per short thread
+TAL-00827#1,TAL-00827,chart_core_ui,slow-interaction,RC-1,resolved,"When a comparison symbol is added between EUR and GBP, the comparison should be displayed correctly",auto-split: one bug per short thread
+TAL-00829#1,TAL-00829,chart_core_ui,slow-interaction,RC-1,resolved,لما امسك اداة واحركها الماوس يسبقها ببضع اجزاء من الثانية,auto-split: one bug per short thread
+TAL-00831#1,TAL-00831,chart_core_ui,stuck-until-click,RC-2,resolved,"Margin field stuck at 1000.00% regardless of leverage setting — confirmed unchanged across 1:100, 1:500, and 1:50 (other fields like P&L and ratio update correctly, isolating the issue to this one field).",auto-split: one bug per short thread
+TAL-00832#1,TAL-00832,chart_core_ui,slow-interaction,RC-1,resolved,"After changing 3 settings and refreshing the browser, settings revert to previous/default values instead of persisting — fails to restore the user's selected configuration on reload. test ID : P3-0050",auto-split: one bug per short thread
+TAL-00833#1,TAL-00833,chart_core_ui,slow-interaction,RC-1,resolved,can't edit shorcuts,auto-split: one bug per short thread
+TAL-00834#1,TAL-00834,chart_core_ui,stuck-until-click,RC-2,user_replied,لما اضغط عليها اول مرة بتكون صح لكن لما اضغط تاني لازم توديني على اليوم التاني مش يمشي شمعة شمعة مثلا ضغطت على لندن مرتين ورا بعض بيصير يمشي شمعة شمعة,auto-split: one bug per short thread
+TAL-00836#1,TAL-00836,chart_core_ui,label-mis-anchor,RC-3,user_replied,"When I press Ctrl, it returns to its previous location.",auto-split: one bug per short thread
+TAL-00837#1,TAL-00837,chart_core_ui,stuck-until-click,RC-2,resolved,"When I click on any box, the checkmark remains stuck on it despite my repeated clicks.",auto-split: one bug per short thread
+TAL-00838#1,TAL-00838,chart_core_ui,stuck-until-click,RC-2,resolved,"When I click on any box, the checkmark remains stuck on it despite my repeated clicks.",auto-split: one bug per short thread
+TAL-00841#1,TAL-00841,chart_core_ui,label-mis-anchor,RC-3,user_replied,لما تمسك اي اداة من الطرف وتحركها رح يضل ليبل السعر على نفس المكان,auto-split: one bug per short thread
+TAL-00842#1,TAL-00842,chart_core_ui,slow-interaction,RC-1,resolved,not works from one click make it better,auto-split: one bug per short thread
+TAL-00848#1,TAL-00848,chart_core_ui,slow-interaction,RC-1,resolved,Chart clipping is not applied consistently across all timeframes When the chart is cropped and the timeframe is switched the chart reverts back to its original state,auto-split: one bug per short thread
+TAL-00850#1,TAL-00850,chart_core_ui,quick-menu-defect,RC-1,resolved,"Removing items from the object tree does not function correctly for all tools, and some tools are not deleted as expected",auto-split: one bug per short thread
+TAL-00860#1,TAL-00860,chart_core_ui,label-mis-anchor,RC-3,resolved,The price label color is linked to the border color and cannot be modified independently,auto-split: one bug per short thread
+TAL-00881#1,TAL-00881,chart_core_ui,quick-menu-defect,RC-1,resolved,"When a template is saved for one tool, it incorrectly appears in other tools as well When a template is saved from the main menu, it does not show up in the quick menu Templates saved from the tool's main menu persist after a page refresh. ",auto-split: one bug per short thread
+TAL-00883#1,TAL-00883,chart_core_ui,slow-interaction,RC-1,resolved,النقطة الرابعى بتختفي لما احرك الاداة وبعدها ترجع,auto-split: one bug per short thread
+TAL-00885#1,TAL-00885,chart_core_ui,slow-interaction,RC-1,user_replied,ما بقدر احط ارقام واعدل عليها لانها بالعربي خليهم انجليزي,auto-split: one bug per short thread
+TAL-00886#1,TAL-00886,chart_core_ui,indicator-lifecycle,RC-6,user_replied,Rename drawing in settings or tree. Custom name shows in Objects Tree. fail not work,auto-split: one bug per short thread
+TAL-00888#1,TAL-00888,chart_core_ui,order-entry,RC-5,resolved,The indicator disappears when zooming out in some cases when switching timeframes Move the SMA-based ma from the input menu to the style menu remove line dash option from input menu,auto-split: one bug per short thread
+TAL-00890#1,TAL-00890,chart_core_ui,drag-mis-anchor,RC-3,resolved,Whenever I move the chart forward it disappears under the marked point,auto-split: one bug per short thread
+TAL-00891#1,TAL-00891,chart_core_ui,order-entry,RC-5,resolved,The indicator disappears when zooming out in some cases when switching timeframes Move the EMA-based ma from the input menu to the style menu remove line dash option,auto-split: one bug per short thread
+TAL-00892#1,TAL-00892,chart_core_ui,order-entry,RC-5,resolved,The indicator disappears when zooming out in some cases when switching timeframes,auto-split: one bug per short thread
+TAL-00902#1,TAL-00902,chart_core_ui,indicator-lifecycle,RC-6,resolved,The indicator disappears when zooming out Please add the RSI-based ma to the Style menu so it can be controlled from the Smoothing menu and remove the RSI-based MA line dash option,auto-split: one bug per short thread
+TAL-00909#1,TAL-00909,chart_core_ui,slow-interaction,RC-1,resolved,هدول العامودين مربوطين ببعض,auto-split: one bug per short thread
+TAL-00911#1,TAL-00911,chart_core_ui,label-mis-anchor,RC-3,resolved,لما يكون الوثت بيتحرك بالثواني خليه يتحرك من عند الساعة كمان بيكون احلا واحسن 2- لما اشغل ريبلاي عن طريق التيك باي تيك بيتغير الوقت ويصير بالثواني بس اضغط على الشاشة بيرجع لدقيقة مفروض يضل الوقت زي ما هو,auto-split: one bug per short thread
+TAL-00916#1,TAL-00916,chart_core_ui,slow-interaction,RC-1,resolved,Set step TF Auto / 1m / 5m. Step size changes accordingly. not work,auto-split: one bug per short thread
+TAL-00918#1,TAL-00918,chart_core_ui,slow-interaction,RC-1,resolved,not work,auto-split: one bug per short thread
+TAL-00921#1,TAL-00921,chart_core_ui,slow-interaction,RC-1,resolved,بدها تحسين فيها اخطاء جايبلي زوج ابصر من وين خليه على قد الجلسة اللي فيها بس,auto-split: one bug per short thread
+TAL-00922#1,TAL-00922,chart_core_ui,slow-interaction,RC-2,resolved,"30 min: pan, zoom, draw, 5 orders, replay, 3 TF changes. No crash, freeze, or memory leak symptoms. بيصير لاق لما اشغل مهام كثيرة ولما اغير فريم بيتغير التاريخ",auto-split: one bug per short thread
+TAL-00924#1,TAL-00924,chart_core_ui,slow-interaction,RC-2,resolved,"When I add more than one chart and place orders, there's a glitch and lag.",auto-split: one bug per short thread
+TAL-00954#1,TAL-00954,chart_core_ui,indicator-lifecycle,RC-6,resolved,"When I place the cross on the indicator, the values ​​don't appear.",auto-split: one bug per short thread
+TAL-00980#1,TAL-00980,chart_core_ui,slow-interaction,RC-1,resolved,session linked,auto-split: one bug per short thread
+TAL-00990#1,TAL-00990,chart_core_ui,indicator-lifecycle,RC-6,resolved,"I am missing alot of Forex symbols, we also should have indices in forex, US100, US500, US30, german dax, Nikki, DAX etc, also bitcoin and Etherium CFDs EURUSD GBPUSD AUDUSD NZDUSD USDCAD USDCHF USDJPY EURJPY GBPJPY AUDJPY NZDJPY CADJPY CHF",auto-split: one bug per short thread
+TAL-00991#1,TAL-00991,chart_core_ui,slow-interaction,RC-1,resolved,use the complete list of the futures tickers in this list https://help.myfundedfutures.com/en/articles/9735811-futures-instrument-list,auto-split: one bug per short thread
+TAL-00993#1,TAL-00993,chart_core_ui,slow-interaction,RC-1,resolved,"This list changes width when hovering on its rows, it should have fixed dimensions short cuts are totally wrong",auto-split: one bug per short thread
+TAL-00994#1,TAL-00994,chart_core_ui,slow-interaction,RC-1,resolved,Percision should always be correct for whatever symbol the user choose,auto-split: one bug per short thread
+TAL-00995#1,TAL-00995,chart_core_ui,slow-interaction,RC-1,resolved,Please no glow around the text no info box when hovering this should not take you anywhere when clicking on it,auto-split: one bug per short thread
+TAL-01001#1,TAL-01001,chart_core_ui,order-entry,RC-5,user_replied,"When I enter a number in the entry field, let me add a number for the stop loss, target, and exit using the arrow, instead of starting from zero. Let it start from the number in the entry field.",auto-split: one bug per short thread
+TAL-01002#1,TAL-01002,chart_core_ui,replay-interaction,RC-8,user_replied,"The strategy filter does not appear in the backtest session; it only appears in live journals, even though a strategy exists in the backtest session.",auto-split: one bug per short thread
+TAL-01021#1,TAL-01021,chart_core_ui,order-entry,RC-5,user_replied,There is a big difference between the data in the chart and the trades,auto-split: one bug per short thread
+TAL-01022#1,TAL-01022,chart_core_ui,replay-interaction,RC-8,resolved,"When I refresh and select a source like Journal, it takes me back to the first source in the list (backtest).",auto-split: one bug per short thread
+TAL-01023#1,TAL-01023,chart_core_ui,slow-interaction,RC-1,resolved,held same for all trades,auto-split: one bug per short thread
+TAL-01025#1,TAL-01025,chart_core_ui,slow-interaction,RC-1,resolved,make stop red color target green,auto-split: one bug per short thread
+TAL-01028#1,TAL-01028,chart_core_ui,slow-interaction,RC-1,resolved,"When I activiate it and press short, it becomes inactive.",auto-split: one bug per short thread
+TAL-01029#1,TAL-01029,chart_core_ui,slow-interaction,RC-1,user_replied,not work yet,auto-split: one bug per short thread
+TAL-01030#1,TAL-01030,chart_core_ui,order-entry,RC-5,resolved,Import valid CSV. ما بيظهر الا بعد ما اعمل ريفريش,auto-split: one bug per short thread
+TAL-01032#1,TAL-01032,chart_core_ui,slow-interaction,RC-1,user_replied,خلي كل سورس الو id يبدأ من 1,auto-split: one bug per short thread
+TAL-01033#1,TAL-01033,chart_core_ui,slow-interaction,RC-1,resolved,ما بقدر افتح الصور,auto-split: one bug per short thread
+TAL-01034#1,TAL-01034,chart_core_ui,slow-interaction,RC-1,user_replied,trade take time to appear,auto-split: one bug per short thread
+TAL-01035#1,TAL-01035,chart_core_ui,order-entry,RC-5,user_replied,ما بقدر اعدل الصفقة ابدا,auto-split: one bug per short thread
+TAL-01036#1,TAL-01036,chart_core_ui,slow-interaction,RC-1,user_replied,بس اغير السورس بيظهر صفقات السورس في سورس تاني,auto-split: one bug per short thread
+TAL-01037#1,TAL-01037,chart_core_ui,slow-interaction,RC-1,resolved,لما ادخل صفقة بدون وقت خروج او سعر خروج بيجيبلي ربح 1 خليه صفر,auto-split: one bug per short thread
+TAL-01040#1,TAL-01040,chart_core_ui,slow-interaction,RC-1,resolved,"The filter is applied to active sessions, but one of my sessions has recorded profits and losses and is still not appearing in the list. Please review the filtering logic",auto-split: one bug per short thread
+TAL-01055#1,TAL-01055,chart_core_ui,slow-interaction,RC-1,resolved,"When clicking to open trade details, it sometimes opens upward instead of opening the trade information downward as expected",auto-split: one bug per short thread
+TAL-01056#1,TAL-01056,chart_core_ui,slow-interaction,RC-1,resolved,"If this option is selected and “Go” is pressed, it is applied, but no warning is shown indicating that no session has been selected",auto-split: one bug per short thread
+TAL-01057#1,TAL-01057,chart_core_ui,slow-interaction,RC-1,resolved,This error occurred while using the source list,auto-split: one bug per short thread
+TAL-01058#1,TAL-01058,chart_core_ui,slow-interaction,RC-1,resolved,"If only one digit is entered in the day or month field, it reverts to the same value. The full value must be entered for it to be accepted. It should be more flexible than this",auto-split: one bug per short thread
+TAL-01059#1,TAL-01059,chart_core_ui,slow-interaction,RC-1,resolved,The time in Trade duration setting needs more options and should be made clearer,auto-split: one bug per short thread
+TAL-01060#1,TAL-01060,chart_core_ui,slow-interaction,RC-1,resolved,trade scope I cannot select any of the available options,auto-split: one bug per short thread
+TAL-01061#1,TAL-01061,chart_core_ui,slow-interaction,RC-1,resolved,This error appears every time I click on the Trade menu.,auto-split: one bug per short thread
+TAL-01063#1,TAL-01063,chart_core_ui,slow-interaction,RC-1,user_replied,لا تخلي ايام المستقبل تكون موجودة واقدر احددها بالنسبة للجورنال,auto-split: one bug per short thread
+TAL-01066#1,TAL-01066,chart_core_ui,slow-interaction,RC-1,resolved,Why don't we make this menu fixed and have the trades scroll underneath it when scrolling up or down?,auto-split: one bug per short thread
+TAL-01067#1,TAL-01067,chart_core_ui,slow-interaction,RC-1,resolved,There are similar options on the same page,auto-split: one bug per short thread
+TAL-01068#1,TAL-01068,chart_core_ui,slow-interaction,RC-1,user_replied,"When switching between these options, no change occurs",auto-split: one bug per short thread
+TAL-01069#1,TAL-01069,chart_core_ui,slow-interaction,RC-1,resolved,"The menu is supposed to open downward from the button, but sometimes it opens upward instead. It should always open downward from the button in all cases.",auto-split: one bug per short thread
+TAL-01070#1,TAL-01070,chart_core_ui,slow-interaction,RC-1,resolved,The animation for opening trade details needs improvement.,auto-split: one bug per short thread
+TAL-01071#1,TAL-01071,chart_core_ui,slow-interaction,RC-1,resolved,"QTY HELD NET P&L R PLANNED RR After sorting the behavior for each option should be as follows: first sort from highest to lowest, then from lowest to highest, then return to default.",auto-split: one bug per short thread
+TAL-01072#1,TAL-01072,chart_core_ui,stuck-until-click,RC-2,resolved,"After deleting all sessions and refreshing, the trading page gets stuck on loading",auto-split: one bug per short thread
+TAL-01073#1,TAL-01073,chart_core_ui,slow-interaction,RC-1,resolved,"When exporting trades and then importing them back, some parameters do not work correctly in the trades after import",auto-split: one bug per short thread
+TAL-01074#1,TAL-01074,chart_core_ui,slow-interaction,RC-1,resolved,I cannot select a single number to edit it.,auto-split: one bug per short thread
+TAL-01075#1,TAL-01075,chart_core_ui,slow-interaction,RC-1,resolved,This button needs to be more obvious to the user so it is clear that it is editable.,auto-split: one bug per short thread
+TAL-01076#1,TAL-01076,chart_core_ui,selection-menu-desync,RC-1,resolved,"When the button is pressed, it should select the item, and when pressed again, it should deselect it",auto-split: one bug per short thread
+TAL-01077#1,TAL-01077,chart_core_ui,slow-interaction,RC-1,resolved,"If I export trades and then import the same file, the parameters differ across pages, but the number of trades remains the same on trades page",auto-split: one bug per short thread
+TAL-01078#1,TAL-01078,chart_core_ui,slow-interaction,RC-1,resolved,"If I create a new session and import the trades file, some values are displayed incorrectly, and some filters do not work properly or behave inconsistently.",auto-split: one bug per short thread
+TAL-01079#1,TAL-01079,chart_core_ui,slow-interaction,RC-1,resolved,"There are two warning messages, one at the top and one at the bottom. The one at the bottom conflicts with the dashboard section at the bottom of the page",auto-split: one bug per short thread
+TAL-01080#1,TAL-01080,chart_core_ui,slow-interaction,RC-1,resolved,The 50 MB image has been uploaded successfully,auto-split: one bug per short thread
+TAL-01081#1,TAL-01081,chart_core_ui,slow-interaction,RC-1,resolved,"After importing previously exported trades, some fields are empty when opening the trade details",auto-split: one bug per short thread
+TAL-01082#1,TAL-01082,chart_core_ui,slow-interaction,RC-1,resolved,"When configuring the trade settings, then navigating to the Tags step and returning, the date becomes incorrect. Leave part of the position open will only be effective when using the journal",auto-split: one bug per short thread
+TAL-01083#1,TAL-01083,chart_core_ui,slow-interaction,RC-1,resolved,"This button changes size across the Trades, Sessions, and Strategies lists. It would be better if it had a consistent size across all lists",auto-split: one bug per short thread
+TAL-01084#1,TAL-01084,chart_core_ui,slow-interaction,RC-1,resolved,"when I click “Add Trade,” it opens the “Create Journal” screen instead. the Add Trade” and “Import Trade” buttons should be disabled until a journal is created, and only become active afterward",auto-split: one bug per short thread
+TAL-01095#1,TAL-01095,chart_core_ui,slow-interaction,RC-1,resolved,"Memory usage is around 800 MB even without using the chart, along with some errors appearing",auto-split: one bug per short thread
+TAL-01099#1,TAL-01099,chart_core_ui,slow-interaction,RC-1,resolved,not work,auto-split: one bug per short thread
+TAL-01101#1,TAL-01101,chart_core_ui,slow-interaction,RC-1,resolved,لما احط الماوس على الاكس واضغط على Esc بيضل علامة على الاكس بس افتح الاعدادات تاني,auto-split: one bug per short thread
+TAL-01102#1,TAL-01102,chart_core_ui,label-mis-anchor,RC-3,resolved,"When I click on the chart, the time label changes.",auto-split: one bug per short thread
+TAL-01106#1,TAL-01106,chart_core_ui,selection-menu-desync,RC-1,resolved,"When selecting the EUR pair and then clicking on the GBP pair, the EUR selection gets deselected automatically. I then have to click the GBP pair again to select it. This is incorrect behavior; the selection should switch directly without r",auto-split: one bug per short thread
+TAL-01107#1,TAL-01107,chart_core_ui,slow-interaction,RC-1,resolved,"I can’t select numbers to edit them or delete them. When I try to click on a number, it doesn’t let me change or remove it properly. This makes it impossible to edit values normally",auto-split: one bug per short thread
+TAL-01108#1,TAL-01108,chart_core_ui,slow-interaction,RC-1,resolved,This list is not working on the Trades page,auto-split: one bug per short thread
+TAL-01109#1,TAL-01109,chart_core_ui,slow-interaction,RC-1,user_replied,"If I click “Add Trade” or edit a trade, then press the browser back button, it takes me outside the app to the browser’s default page instead of returning me to the previous page inside the app",auto-split: one bug per short thread
+TAL-01127#1,TAL-01127,chart_core_ui,drag-mis-anchor,RC-3,user_replied,There is a lock on the left side of the chart. When I try to move the chart back to the left the Auto Rescale Chart button keeps appearing repeatedly,auto-split: one bug per short thread
+TAL-01147#1,TAL-01147,chart_core_ui,slow-interaction,RC-2,resolved,"When switching from a higher timeframe to a lower timeframe and using these tools, the platform freezes",auto-split: one bug per short thread
+TAL-01157#1,TAL-01157,chart_core_ui,visibility-toggle,RC-2,resolved,Reminder about the visibility settings,auto-split: one bug per short thread
+TAL-01159#1,TAL-01159,chart_core_ui,slow-interaction,RC-1,resolved,resize the screen,auto-split: one bug per short thread
+TAL-01186#1,TAL-01186,chart_core_ui,slow-interaction,RC-1,resolved,ما لازم يكون في دقيقة وانا ع فريم دقيقة وتيك باي تيك,auto-split: one bug per short thread
+TAL-01187#1,TAL-01187,chart_core_ui,slow-interaction,RC-2,resolved,EU have no flag,auto-split: one bug per short thread
+TAL-01225#1,TAL-01225,chart_core_ui,slow-interaction,RC-1,resolved,Changing the font size also changes the position of the text,auto-split: one bug per short thread
+TAL-01226#1,TAL-01226,chart_core_ui,order-entry,RC-5,resolved,"Background, border, and wrap text are not working",auto-split: one bug per short thread
+TAL-01227#1,TAL-01227,chart_core_ui,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01231#1,TAL-01231,chart_core_ui,slow-interaction,RC-1,resolved,wrap text are not working properly,auto-split: one bug per short thread
+TAL-01232#1,TAL-01232,chart_core_ui,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01239#1,TAL-01239,chart_core_ui,slow-interaction,RC-1,resolved,This message appears when refreshing the page,auto-split: one bug per short thread
+TAL-01243#1,TAL-01243,chart_core_ui,slow-interaction,RC-1,resolved,Changing between candle types causes a difference in the displayed price,auto-split: one bug per short thread
+TAL-01247#1,TAL-01247,chart_core_ui,order-entry,RC-5,resolved,SMA-Based MA we need to move it from Inputs to Style,auto-split: one bug per short thread
+TAL-01248#1,TAL-01248,chart_core_ui,order-entry,RC-5,resolved,SMA-Based MA style line not working,auto-split: one bug per short thread
+TAL-01250#1,TAL-01250,chart_core_ui,order-entry,RC-5,resolved,The EMA-Based MA option should be moved from the Inputs section to the Style section,auto-split: one bug per short thread
+TAL-01252#1,TAL-01252,chart_core_ui,ghost-after-delete,RC-1,resolved,"When hiding the EMA line, a point remains on the chart, which keeps appearing and disappearing with each click on the chart.",auto-split: one bug per short thread
+TAL-01253#1,TAL-01253,chart_core_ui,label-mis-anchor,RC-3,resolved,The price label position is changing repeatedly and is not stable,auto-split: one bug per short thread
+TAL-01254#1,TAL-01254,chart_core_ui,order-entry,RC-5,resolved,"The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01255#1,TAL-01255,chart_core_ui,label-mis-anchor,RC-3,resolved,"The price label is continuously shifting, and the control point is not aligned correctly",auto-split: one bug per short thread
+TAL-01256#1,TAL-01256,chart_core_ui,label-mis-anchor,RC-3,resolved,"The price label keeps moving repeatedly The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01257#1,TAL-01257,chart_core_ui,label-mis-anchor,RC-3,resolved,The price label keeps moving repeatedly The Style and Thickness menus are expected to open downward instead of opening upward,auto-split: one bug per short thread
+TAL-01270#1,TAL-01270,chart_core_ui,indicator-lifecycle,RC-6,resolved,"fter removing the indicator, the divergence lines are still left displayed on the chart.",auto-split: one bug per short thread
+TAL-01271#1,TAL-01271,chart_core_ui,indicator-lifecycle,RC-6,resolved,"When hiding the indicator, the divergence lines remain visible inside the indicator container and also on the chart Having the divergence lines only inside the indicator container would be better, as displaying them on the chart as well may",auto-split: one bug per short thread
+TAL-01281#1,TAL-01281,chart_core_ui,slow-interaction,RC-1,resolved,"Whenever I change the candle type, the selected setting is not saved. After refreshing the page, it automatically switches back to Heikin Ashi candles.",auto-split: one bug per short thread
+TAL-01283#1,TAL-01283,chart_core_ui,slow-interaction,RC-1,resolved,Match the news schedule to your time zone.,auto-split: one bug per short thread
+TAL-01301#1,TAL-01301,chart_core_ui,slow-interaction,RC-1,resolved,Error,auto-split: one bug per short thread
+TAL-01306#1,TAL-01306,chart_core_ui,slow-interaction,RC-1,resolved,Selecting tools and drawings with the Ctrl key is not working properly.,auto-split: one bug per short thread
+TAL-01313#1,TAL-01313,chart_core_ui,slow-interaction,RC-1,resolved,التوقيت غير متطابق في الشارتين يعني اني اذا مشرت بشارت الناسداك مثلا و ردت افتح شارت الي اس نصير عندي مشكلة,auto-split: one bug per short thread
+TAL-01328#1,TAL-01328,chart_core_ui,visibility-toggle,RC-2,resolved,"Minutes range from 1 to 59 weeks from 1 to 52 and months from 1 to 12. If minutes are set from 1 to 60 and visibility is hidden only on the 1-hour timeframe, it is expected not to disappear because it will still be visible on the 60-minute ",auto-split: one bug per short thread
+TAL-01352#1,TAL-01352,chart_core_ui,slow-interaction,RC-1,resolved,مشكلة بتحديد التوقيت يعني من اخلي الكراوزر على توقيت معين على الناسداك ما يطلعلي نفس التوقيت على الي اس,auto-split: one bug per short thread
+TAL-01353#1,TAL-01353,chart_core_ui,slow-interaction,RC-1,resolved,الشارتين ما يمشن مع بعض في التشغيل يعني يتحرك زوج الاخر واقف ما بيتحرك,auto-split: one bug per short thread
+TAL-01355#1,TAL-01355,chart_core_ui,slow-interaction,RC-2,resolved,"When I press Ctrl, the selection doesn't work and it freezes.",auto-split: one bug per short thread
+TAL-01356#1,TAL-01356,chart_core_ui,drag-mis-anchor,RC-3,resolved,"When zooming in and out, keep the last candle as a stable base; that's where the zooming in/out should occur, as shown in the video.",auto-split: one bug per short thread
+TAL-01357#1,TAL-01357,chart_core_ui,label-mis-anchor,RC-3,resolved,"When I click on any drawn tool, the time label changes.",auto-split: one bug per short thread
+TAL-01371#1,TAL-01371,chart_core_ui,slow-interaction,RC-1,resolved,"The time system needs to be fixed. I am on the 15-minute timeframe and fully zoomed in, but the time axis at the bottom should display 15-minute intervals",auto-split: one bug per short thread
+TAL-01373#1,TAL-01373,chart_core_ui,label-mis-anchor,RC-3,resolved,"When I click on ""apply default"", the price and time labels disappear even though I selected the tool.",auto-split: one bug per short thread
+TAL-01374#1,TAL-01374,chart_core_ui,quick-menu-defect,RC-1,resolved,"When I move the mouse quickly over the Quick Menu, a checkmark appears on any option.",auto-split: one bug per short thread
+TAL-01383#1,TAL-01383,chart_core_ui,drag-mis-anchor,RC-3,resolved,"When I draw a tool, copy it, and paste it, then I draw another tool in a different location, lock it, and copy and paste it, it will move to the location of the previous tool.",auto-split: one bug per short thread
+TAL-01384#1,TAL-01384,chart_core_ui,slow-interaction,RC-1,resolved,"Don't let me be able to use shortcuts while I'm in settings, like undo.",auto-split: one bug per short thread
+TAL-01385#1,TAL-01385,chart_core_ui,slow-interaction,RC-1,resolved,ما بتظهر كل الاعدادات لما اضغط مرتين وتكون الادة قريبة من الشريط السفلي كل الادوات نفس المشكلة,auto-split: one bug per short thread
+TAL-01407#1,TAL-01407,chart_core_ui,slow-interaction,RC-1,pending,"OHLC is small and needs a little expansion. When the crossover is on a green candle, it will turn green. When it's on a red candle, it will turn red. Regarding the change that occurs from the candle's opening to its closing, when it's red i",auto-split: one bug per short thread
+TAL-01408#1,TAL-01408,chart_core_ui,quick-menu-defect,RC-1,resolved,"When I click on the blue dots, the quick menu doesn't appear. It should appear when I click",auto-split: one bug per short thread
+TAL-01409#1,TAL-01409,chart_core_ui,quick-menu-defect,RC-1,resolved,"When I click on the blue dots, the quick menu doesn't appear. It should appear when I click",auto-split: one bug per short thread
+TAL-01410#1,TAL-01410,chart_core_ui,quick-menu-defect,RC-1,resolved,"When I click on the blue dots, the quick menu doesn't appear. It should appear when I click",auto-split: one bug per short thread
+TAL-01411#1,TAL-01411,chart_core_ui,quick-menu-defect,RC-1,resolved,"When I click on the blue dots, the quick menu doesn't appear. It should appear when I click",auto-split: one bug per short thread
+TAL-01413#1,TAL-01413,chart_core_ui,slow-interaction,RC-1,resolved,"You don't need to press the arrow to delete, hide, or activate the magnet. Just set it to a primary option; when you press it, it will activate. For example: Delete: Set ""Delete everything primary."" Hide: Set ""Hide everything primary."" Magn",auto-split: one bug per short thread
+TAL-01414#1,TAL-01414,chart_core_ui,first-click-fails,RC-1,resolved,"The first time it moves one candle at a time, but then it starts moving two candles at a time.",auto-split: one bug per short thread
+TAL-01446#1,TAL-01446,chart_core_ui,slow-interaction,RC-1,resolved,"Each candle on timeframes of 1H and above intersects with the vertical grid line, while on timeframes below 1H, not all candles align or intersect with the vertical grid lines",auto-split: one bug per short thread
+TAL-01450#1,TAL-01450,chart_core_ui,drag-mis-anchor,RC-3,resolved,"Normal crosshair movement should remain unchanged across all charts. Snap should only affect drawing operations. The other charts should synchronize their snap position according to the active chart and the selected candle reference (Open, ",auto-split: one bug per short thread
+TAL-01452#1,TAL-01452,chart_core_ui,drag-mis-anchor,RC-3,resolved,"When dragging the chart forward, the other chart starts repeatedly moving up and down",auto-split: one bug per short thread
+TAL-01494#1,TAL-01494,chart_core_ui,slow-interaction,RC-1,open,لما اضغط مرتين على النقاط الزرقاء بتظهر الاعدادات لجزء من الثانية وتختفي,auto-split: one bug per short thread
+TAL-01547#1,TAL-01547,chart_core_ui,slow-interaction,RC-1,resolved,"When I add a new journal source, it remains linked to the old source, but the new one is visible.",auto-split: one bug per short thread
+TAL-01548#1,TAL-01548,chart_core_ui,slow-interaction,RC-1,resolved,Enabling or disabling this option makes no difference,auto-split: one bug per short thread
+TAL-00043#1,TAL-00043,drawing_tools,label-mis-anchor,RC-3,user_replied,Labels (Price & Time) in highlighter not works,auto-split: one bug per short thread
+TAL-00054#1,TAL-00054,drawing_tools,drag-mis-anchor,RC-3,user_replied,- the Style of line doesn't work,auto-split: one bug per short thread
+TAL-00055#1,TAL-00055,drawing_tools,quick-menu-defect,RC-1,user_replied,labels : time & price not have background,auto-split: one bug per short thread
+TAL-00106#1,TAL-00106,drawing_tools,first-click-fails,RC-1,user_replied,Background don't work,auto-split: one bug per short thread
+TAL-00117#1,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Extend Right does not work on first click,
+TAL-00117#2,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Pearson's R toggle does not work on first click,
+TAL-00117#3,TAL-00117,drawing_tools,visibility-toggle,RC-2,user_replied,Middle line hide toggle does not hide line on click,
+TAL-00117#4,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Upper/Lower background toggles do not work on first click,
+TAL-00117#5,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Labels toggle does not work on first click,
+TAL-00117#6,TAL-00117,drawing_tools,drag-mis-anchor,RC-3,user_replied,Regression channel can be dragged past last candle,
+TAL-00117#7,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Style menu options require double-click + OK to apply,
+TAL-00117#8,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Input deviation value requires multiple entries to stick,
+TAL-00117#9,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Apply default in template does not update input values,
+TAL-00117#10,TAL-00117,drawing_tools,label-mis-anchor,RC-3,user_replied,Price label at placement point instead of midline start/end,
+TAL-00117#11,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Input source dropdown does not change on first try,
+TAL-00117#12,TAL-00117,drawing_tools,first-click-fails,RC-1,user_replied,Apply default does not refresh input field values,
+TAL-00123#1,TAL-00123,drawing_tools,first-click-fails,RC-1,user_replied,input > Show price don't work,auto-split: one bug per short thread
+TAL-00148#1,TAL-00148,drawing_tools,first-click-fails,RC-1,user_replied,in Style > Value and Percent don't work,auto-split: one bug per short thread
+TAL-00150#1,TAL-00150,drawing_tools,first-click-fails,RC-1,user_replied,In Style > Levels Value and Percent don't work,auto-split: one bug per short thread
+TAL-00156#1,TAL-00156,drawing_tools,label-mis-anchor,RC-3,user_replied,"If I click once on any option in style or text, the change will not be applied unless I click more than once.",auto-split: one bug per short thread
+TAL-00226#1,TAL-00226,drawing_tools,first-click-fails,RC-1,user_replied,Tools don't work fron first click,auto-split: one bug per short thread
+TAL-00228#1,TAL-00228,drawing_tools,selection-menu-desync,RC-1,user_replied,Cannot edit/drag Fib timezone after placement; chart pan blocked over tool,
+TAL-00228#2,TAL-00228,drawing_tools,quick-menu-defect,RC-1,user_replied,Quick menu only dismisses when clicking far from menu,
+TAL-00228#3,TAL-00228,drawing_tools,stuck-until-click,RC-2,user_replied,Tool drawn after last candle does not appear,
+TAL-00228#4,TAL-00228,drawing_tools,first-click-fails,RC-1,user_replied,Style/input toggles require multiple clicks on first use,
+TAL-00228#5,TAL-00228,drawing_tools,quick-menu-defect,RC-1,user_replied,Labels controls split across Style and Input menus inconsistently,
+TAL-00228#6,TAL-00228,drawing_tools,quick-menu-defect,RC-1,user_replied,Cannot enter negative level values below zero,
+TAL-00228#7,TAL-00228,drawing_tools,quick-menu-defect,RC-1,user_replied,Level stepper cannot go below level 1,
+TAL-00228#8,TAL-00228,drawing_tools,drag-mis-anchor,RC-3,user_replied,Vertical fib levels cannot be moved after placement,
+TAL-00228#9,TAL-00228,drawing_tools,stuck-until-click,RC-2,user_replied,Vertical tool hidden when drawn in same grid cell background,
+TAL-00228#10,TAL-00228,drawing_tools,label-mis-anchor,RC-3,user_replied,Level numbers misaligned when repositioning levels,Arabic: moving level up shows line in middle; below hides numbers
+TAL-00228#11,TAL-00228,drawing_tools,quick-menu-defect,RC-1,user_replied,Apply default + immediate widget delete does not persist changes,
+TAL-00246#1,TAL-00246,drawing_tools,quick-menu-defect,RC-1,user_replied,The settings menu doesn't appear when I click on the line. I have to click on the widget itself for the menu to appear.,auto-split: one bug per short thread
+TAL-00248#1,TAL-00248,drawing_tools,first-click-fails,RC-1,user_replied,this tool don't work from first click,auto-split: one bug per short thread
+TAL-00252#1,TAL-00252,drawing_tools,slow-interaction,RC-1,user_replied,This button don't work & this button in style and input,auto-split: one bug per short thread
+TAL-00253#1,TAL-00253,drawing_tools,first-click-fails,RC-1,user_replied,theis tool don't work from first click,auto-split: one bug per short thread
+TAL-00257#1,TAL-00257,drawing_tools,first-click-fails,RC-1,user_replied,this tool don't work from first click,auto-split: one bug per short thread
+TAL-00259#1,TAL-00259,drawing_tools,first-click-fails,RC-1,user_replied,if i enabled Background from style then delete the tool and draw it again< this button don't work from first click,auto-split: one bug per short thread
+TAL-00271#1,TAL-00271,drawing_tools,first-click-fails,RC-1,user_replied,Gann fan controls do not work on first click,
+TAL-00271#2,TAL-00271,drawing_tools,label-mis-anchor,RC-3,user_replied,Level numbers move when panning chart right,
+TAL-00271#3,TAL-00271,drawing_tools,first-click-fails,RC-1,user_replied,Cannot delete/edit numbers or add levels on first click,
+TAL-00271#4,TAL-00271,drawing_tools,quick-menu-defect,RC-1,user_replied,Saved settings not applied when drawing second Gann fan,
+TAL-00271#5,TAL-00271,drawing_tools,visibility-toggle,RC-2,user_replied,Part of Gann fan disappears when panning to chart right edge,
+TAL-00271#6,TAL-00271,drawing_tools,quick-menu-defect,RC-1,user_replied,Apply default glitches font thickness and background toggle state,
+TAL-00271#7,TAL-00271,drawing_tools,quick-menu-defect,RC-1,user_replied,Missing level controls compared to Gann box tool,
+TAL-00271#8,TAL-00271,drawing_tools,visibility-toggle,RC-2,user_replied,Apply default hides price/time labels despite being enabled,
+TAL-00271#9,TAL-00271,drawing_tools,label-mis-anchor,RC-3,user_replied,Fibonacci-style level numbers follow chart pan instead of anchoring to blue points,Arabic: same as fib — numbers move with chart
+TAL-00271#10,TAL-00271,drawing_tools,label-mis-anchor,RC-3,user_replied,Level numbers must stay fixed at anchor points while panning,
+TAL-00273#1,TAL-00273,drawing_tools,quick-menu-defect,RC-1,user_replied,backround tool not work,auto-split: one bug per short thread
+TAL-00276#1,TAL-00276,drawing_tools,first-click-fails,RC-1,user_replied,"If I draw the tool for the first time, it won't look like a note because there's no line or anything; it will appear as regular text.",auto-split: one bug per short thread
+TAL-00281#1,TAL-00281,drawing_tools,stuck-until-click,RC-2,user_replied,this don't work,auto-split: one bug per short thread
+TAL-00283#1,TAL-00283,drawing_tools,quick-menu-defect,RC-1,user_replied,when choose the white backgroung and text color the text won't be white,auto-split: one bug per short thread
+TAL-00285#1,TAL-00285,drawing_tools,stuck-until-click,RC-2,user_replied,"When I type and move the tool, it glitches.",auto-split: one bug per short thread
+TAL-00289#1,TAL-00289,drawing_tools,stuck-until-click,RC-2,user_replied,"When I select a specific color in the Style menu and then move to another option in the menu, the color option remains stuck on the screen.",auto-split: one bug per short thread
+TAL-00292#1,TAL-00292,drawing_tools,label-mis-anchor,RC-3,user_replied,"When I click Apply default and try to change the line color, the line and labels are linked together.",auto-split: one bug per short thread
+TAL-00296#1,TAL-00296,drawing_tools,stuck-until-click,RC-2,user_replied,when i select a specific colore in the style menu and then move to another option in the menu the colore option remains stuck on the screen,auto-split: one bug per short thread
+TAL-00301#1,TAL-00301,drawing_tools,first-click-fails,RC-1,user_replied,when click on this the tool disappear,auto-split: one bug per short thread
+TAL-00321#1,TAL-00321,drawing_tools,first-click-fails,RC-1,user_replied,these don't work from first click,auto-split: one bug per short thread
+TAL-00322#1,TAL-00322,drawing_tools,quick-menu-defect,RC-1,user_replied,Quick menu tools do not work on first use,
+TAL-00322#2,TAL-00322,drawing_tools,quick-menu-defect,RC-1,user_replied,Double-click shows wrong quick interface (text/volume profile),
+TAL-00322#3,TAL-00322,drawing_tools,stuck-until-click,RC-2,user_replied,Moved anchored VWAP stays hidden until user taps screen,
+TAL-00322#4,TAL-00322,drawing_tools,drag-mis-anchor,RC-3,user_replied,Tool can be placed after the last candle on chart,
+TAL-00322#5,TAL-00322,drawing_tools,first-click-fails,RC-1,user_replied,Quick menu color/lock/delete do not work on first attempt,
+TAL-00322#6,TAL-00322,drawing_tools,first-click-fails,RC-1,user_replied,Label toggles require input menu before they activate from quick menu,
+TAL-00322#7,TAL-00322,drawing_tools,quick-menu-defect,RC-1,user_replied,Quick Menu stacks above settings dialog instead of below,
+TAL-00322#8,TAL-00322,drawing_tools,ghost-after-delete,RC-1,user_replied,Delete from settings removes tool but settings dialog remains,
+TAL-00322#9,TAL-00322,drawing_tools,slow-interaction,RC-2,user_replied,Chart pan becomes very slow and candle-by-candle when quick menu enabled,
+TAL-00322#10,TAL-00322,drawing_tools,quick-menu-defect,RC-1,user_replied,No reset or apply-default button in settings,
+TAL-00322#11,TAL-00322,drawing_tools,label-mis-anchor,RC-3,user_replied,Price/time labels do not work for anchored VWAP,
+TAL-00322#12,TAL-00322,drawing_tools,label-mis-anchor,RC-3,user_replied,Price label stays at click point instead of on VWAP line center,
+TAL-00322#13,TAL-00322,drawing_tools,label-mis-anchor,RC-3,user_replied,Price label should anchor at VWAP line end not beginning,
+TAL-00322#14,TAL-00322,drawing_tools,visibility-toggle,RC-2,user_replied,Visibility toggle does not restore hidden timeframe,
+TAL-00322#15,TAL-00322,drawing_tools,first-click-fails,RC-1,user_replied,First click does not show VWAP line; requires second click,
+TAL-00322#16,TAL-00322,drawing_tools,quick-menu-defect,RC-1,user_replied,No style/thickness controls for VWAP line,
+TAL-00322#17,TAL-00322,drawing_tools,stuck-until-click,RC-2,user_replied,Dragging control point 2 hides VWAP until placed elsewhere,Control point 1 drag works; point 2 hides line during drag
+TAL-00323#1,TAL-00323,drawing_tools,quick-menu-defect,RC-1,user_replied,Quick Menu remains stacked above settings after drawing volume profile,
+TAL-00323#2,TAL-00323,drawing_tools,drag-mis-anchor,RC-3,user_replied,Repositioned volume profile snaps back after reopening settings,
+TAL-00323#3,TAL-00323,drawing_tools,quick-menu-defect,RC-1,user_replied,Double-click quick interface hides text and volume profile controls,
+TAL-00323#4,TAL-00323,drawing_tools,first-click-fails,RC-1,user_replied,Fixed range volume profile controls do not work on first click,
+TAL-00323#5,TAL-00323,drawing_tools,first-click-fails,RC-1,user_replied,Tick-per-rows selection reverts to numbers-of-rows on OK,
+TAL-00323#6,TAL-00323,drawing_tools,quick-menu-defect,RC-1,user_replied,Style color picker stays stuck on screen when switching menu tabs,
+TAL-00323#7,TAL-00323,drawing_tools,quick-menu-defect,RC-1,user_replied,Numeric input field loses text on edit; only arrow keys work,
+TAL-00323#8,TAL-00323,drawing_tools,selection-menu-desync,RC-1,user_replied,Cannot pan chart when clicking on placed volume profile body,
+TAL-00323#9,TAL-00323,drawing_tools,drag-mis-anchor,RC-3,user_replied,Extend-right should stop at last candle not extend indefinitely,
+TAL-00323#10,TAL-00323,drawing_tools,label-mis-anchor,RC-3,user_replied,Price label placed at tool corners instead of high/low volume nodes,
+TAL-00323#11,TAL-00323,drawing_tools,selection-menu-desync,RC-1,user_replied,After closing settings cannot draw another tool until crosshair selected,
+TAL-00323#12,TAL-00323,drawing_tools,ghost-after-delete,RC-1,user_replied,Delete tool while settings open removes shape but settings remain,Arabic: delete while settings open leaves settings dialog
+TAL-00323#13,TAL-00323,drawing_tools,drag-mis-anchor,RC-3,user_replied,Cannot drag volume profile body to new location after placement,Arabic: body drag does not move tool
+TAL-00323#14,TAL-00323,drawing_tools,first-click-fails,RC-1,user_replied,First click does not show move handles on volume profile,
+TAL-00323#15,TAL-00323,drawing_tools,label-mis-anchor,RC-3,user_replied,Price label should stay fixed at corner 1/2 not follow placement click,
+TAL-00428#1,TAL-00428,drawing_tools,label-mis-anchor,RC-3,user_replied,these don't work,auto-split: one bug per short thread
+TAL-00539#1,TAL-00539,drawing_tools,slow-interaction,RC-1,resolved,"When opening the background menu to change the color, it appears behind the main menu When copying and pasting the tool, it gets pasted in the same position and overlaps on itself, and sometimes its shape changes The endpoint has not been a",auto-split: one bug per short thread
+TAL-00809#1,TAL-00809,drawing_tools,quick-menu-defect,RC-1,resolved,quick menu away from chart or too;,auto-split: one bug per short thread
+TAL-00822#1,TAL-00822,drawing_tools,slow-interaction,RC-1,user_replied,لا تخلي السهم دائما خليه بس يظهر الانديكتور,auto-split: one bug per short thread
+TAL-00835#1,TAL-00835,drawing_tools,slow-interaction,RC-1,resolved,"When I select Arrow cursor, simply clicking on any tool will display the cursor.",auto-split: one bug per short thread
+TAL-00839#1,TAL-00839,drawing_tools,slow-interaction,RC-1,resolved,لما بعمل نسخ لصق بيتغير مكان اللصق وبيظهر بمكان تاني او مكان سابق,auto-split: one bug per short thread
+TAL-00840#1,TAL-00840,drawing_tools,visibility-toggle,RC-2,resolved,لما اخلي الاداة تظهر لفريم واحد فقط بعدين اضغط على apply default ما بيرجع الاعدادات لباقي التايم فريم,auto-split: one bug per short thread
+TAL-00843#1,TAL-00843,drawing_tools,slow-interaction,RC-1,resolved,When copying and pasting the tool the drawing is sometimes affected and the shape of its edges changes unexpectedly The endpoint behavior also needs improvement,auto-split: one bug per short thread
+TAL-00844#1,TAL-00844,drawing_tools,slow-interaction,RC-1,resolved,"After cropping the chart any drawings located beyond the crop point remain hidden and cannot be accessed, selected or edited",auto-split: one bug per short thread
+TAL-00845#1,TAL-00845,drawing_tools,slow-interaction,RC-1,resolved,"If the website cache and data are cleared, all saved templates are deleted as well",auto-split: one bug per short thread
+TAL-00846#1,TAL-00846,drawing_tools,slow-interaction,RC-1,resolved,When copying and pasting the tool the drawing is sometimes affected and the shape of its edges changes unexpectedly The endpoint behavior also needs improvement,auto-split: one bug per short thread
+TAL-00847#1,TAL-00847,drawing_tools,slow-interaction,RC-1,resolved,The maximum value requires adjustment so that it aligns with the minimum value,auto-split: one bug per short thread
+TAL-00849#1,TAL-00849,drawing_tools,slow-interaction,RC-1,resolved,When the tool is locked and the page is refreshed the lock state is removed,auto-split: one bug per short thread
+TAL-00851#1,TAL-00851,drawing_tools,selection-menu-desync,RC-1,resolved,"When all options are deselected, the menu should automatically close",auto-split: one bug per short thread
+TAL-00852#1,TAL-00852,drawing_tools,slow-interaction,RC-1,resolved,"The text positioning on the line requires correction, as the text box within the settings incorrectly inherits the same text styling/effects",auto-split: one bug per short thread
+TAL-00853#1,TAL-00853,drawing_tools,slow-interaction,RC-1,resolved,"When tools are locked, it becomes difficult to select them with a single click",auto-split: one bug per short thread
+TAL-00854#1,TAL-00854,drawing_tools,drag-mis-anchor,RC-3,resolved,Holding or dragging a locked tool causes noticeable chart lag during movement,auto-split: one bug per short thread
+TAL-00855#1,TAL-00855,drawing_tools,slow-interaction,RC-1,resolved,"When a tool with a background is locked, the background color slightly shifts or its opacity changes unexpectedly",auto-split: one bug per short thread
+TAL-00856#1,TAL-00856,drawing_tools,slow-interaction,RC-1,resolved,"The center handle should only control movement, not simultaneous movement and resizing",auto-split: one bug per short thread
+TAL-00857#1,TAL-00857,drawing_tools,selection-menu-desync,RC-1,resolved,When all options are deselected from the show info menu should automatically close,auto-split: one bug per short thread
+TAL-00858#1,TAL-00858,drawing_tools,drag-mis-anchor,RC-3,resolved,"The input levels have control issues, where each level affects another level incorrectly. The level ordering is also incorrect. Additionally, when moving two points in the level value, they move as a single unit on the chart",auto-split: one bug per short thread
+TAL-00859#1,TAL-00859,drawing_tools,selection-menu-desync,RC-1,resolved,"when adjusting two points in the level value, they move together as a single entity on the chart",auto-split: one bug per short thread
+TAL-00861#1,TAL-00861,drawing_tools,label-mis-anchor,RC-3,resolved,The price label color is linked to the border color and cannot be modified independently,auto-split: one bug per short thread
+TAL-00862#1,TAL-00862,drawing_tools,drag-mis-anchor,RC-3,resolved,"when adjusting two points in the level value, they move together as a single entity on the chart",auto-split: one bug per short thread
+TAL-00863#1,TAL-00863,drawing_tools,slow-interaction,RC-1,resolved,When selecting Value and Percentage and then choosing Value nothing changes,auto-split: one bug per short thread
+TAL-00864#1,TAL-00864,drawing_tools,drag-mis-anchor,RC-3,resolved,The Extend Right and Extend Left options are not available,auto-split: one bug per short thread
+TAL-00865#1,TAL-00865,drawing_tools,drag-mis-anchor,RC-3,resolved,When selecting Value and Percentage and then choosing Value nothing changes The Extend Right and Extend Left options are not available,auto-split: one bug per short thread
+TAL-00866#1,TAL-00866,drawing_tools,drag-mis-anchor,RC-3,resolved,When selecting Value and Percentage and then choosing Value nothing changes The Extend Right and Extend Left options are not available,auto-split: one bug per short thread
+TAL-00867#1,TAL-00867,drawing_tools,slow-interaction,RC-1,resolved,The Level Value Bottom option is not working,auto-split: one bug per short thread
+TAL-00868#1,TAL-00868,drawing_tools,slow-interaction,RC-1,resolved,"When I enable the background option, the background doesn't appear unless I specify a color.",auto-split: one bug per short thread
+TAL-00869#1,TAL-00869,drawing_tools,slow-interaction,RC-1,user_replied,بس اضغط على هاد العلامة تتفعل الباك جراوند تلقائي,auto-split: one bug per short thread
+TAL-00870#1,TAL-00870,drawing_tools,ghost-after-delete,RC-1,resolved,these not work from quick manu,auto-split: one bug per short thread
+TAL-00871#1,TAL-00871,drawing_tools,slow-interaction,RC-2,resolved,"When I click ""apply default"", the flag disappears.",auto-split: one bug per short thread
+TAL-00872#1,TAL-00872,drawing_tools,first-click-fails,RC-1,user_replied,"When I click ""apply default,"" the image disappears from the settings but remains on the chart.",auto-split: one bug per short thread
+TAL-00873#1,TAL-00873,drawing_tools,slow-interaction,RC-1,resolved,The Level Value Bottom option is not working,auto-split: one bug per short thread
+TAL-00874#1,TAL-00874,drawing_tools,slow-interaction,RC-1,resolved,Remove the level postion,auto-split: one bug per short thread
+TAL-00875#1,TAL-00875,drawing_tools,slow-interaction,RC-1,resolved,Delete the level position,auto-split: one bug per short thread
+TAL-00876#1,TAL-00876,drawing_tools,slow-interaction,RC-1,resolved,Delete the level position,auto-split: one bug per short thread
+TAL-00877#1,TAL-00877,drawing_tools,slow-interaction,RC-1,resolved,Tool selection needs improvement,auto-split: one bug per short thread
+TAL-00878#1,TAL-00878,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic text formatting do not work correctly in Arabic and require fixing,auto-split: one bug per short thread
+TAL-00879#1,TAL-00879,drawing_tools,quick-menu-defect,RC-1,resolved,all text tools after refresh the saved templets delete,auto-split: one bug per short thread
+TAL-00880#1,TAL-00880,drawing_tools,label-mis-anchor,RC-3,resolved,"When I zoom in, the blue dots increase; let them stay constant.",auto-split: one bug per short thread
+TAL-00882#1,TAL-00882,drawing_tools,first-click-fails,RC-1,user_replied,same bugs of fixed VP,auto-split: one bug per short thread
+TAL-00884#1,TAL-00884,drawing_tools,quick-menu-defect,RC-1,resolved,The italic option is not available in the quick menu Is it possible to add an option to hide the main line while keeping only the label visible,auto-split: one bug per short thread
+TAL-00896#1,TAL-00896,drawing_tools,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00898#1,TAL-00898,drawing_tools,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00899#1,TAL-00899,drawing_tools,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out switching timeframes, and moving the chart background checkbox dont work",auto-split: one bug per short thread
+TAL-00904#1,TAL-00904,drawing_tools,slow-interaction,RC-1,resolved,"When unchecking the Coppock Curve line and then re-enabling it via the checkbox, the line does not work again",auto-split: one bug per short thread
+TAL-00938#1,TAL-00938,drawing_tools,indicator-lifecycle,RC-6,resolved,"When I pin any indicator and then refresh the page, the pinned item disappears.",auto-split: one bug per short thread
+TAL-00943#1,TAL-00943,drawing_tools,slow-interaction,RC-1,resolved,this not work,auto-split: one bug per short thread
+TAL-00953#1,TAL-00953,drawing_tools,indicator-lifecycle,RC-6,resolved,"When I hide the indicator and then bring it back, it doesn't return; it stays hidden.",auto-split: one bug per short thread
+TAL-00960#1,TAL-00960,drawing_tools,slow-interaction,RC-1,resolved,not same,auto-split: one bug per short thread
+TAL-01100#1,TAL-01100,drawing_tools,slow-interaction,RC-1,resolved,النقطة الاخيرة بتختفي,auto-split: one bug per short thread
+TAL-01120#1,TAL-01120,drawing_tools,selection-menu-desync,RC-1,resolved,"When selecting an Tools right-clicking the mouse does not deselect it instead, it opens a menu",auto-split: one bug per short thread
+TAL-01121#1,TAL-01121,drawing_tools,drag-mis-anchor,RC-3,resolved,"When selecting the cursor/pointer, it snaps to the vertical grid lines whenever it gets close to them.",auto-split: one bug per short thread
+TAL-01122#1,TAL-01122,drawing_tools,slow-interaction,RC-1,resolved,Why does the line start from the triangle’s tip instead of starting from the end of the triangle (the endpoint)?,auto-split: one bug per short thread
+TAL-01123#1,TAL-01123,drawing_tools,slow-interaction,RC-1,resolved,"When zooming in or out, the endpoint moves",auto-split: one bug per short thread
+TAL-01124#1,TAL-01124,drawing_tools,drag-mis-anchor,RC-3,resolved,"When using copy-paste and clone, the endpoints of the lines sometimes stick together.",auto-split: one bug per short thread
+TAL-01125#1,TAL-01125,drawing_tools,drag-mis-anchor,RC-3,resolved,When locking the tool and dragging it to the left then releasing it the tool and the chart turn into a straight line,auto-split: one bug per short thread
+TAL-01126#1,TAL-01126,drawing_tools,slow-interaction,RC-1,resolved,"Bring Forward, Bring Back, and Object Tree are not working",auto-split: one bug per short thread
+TAL-01128#1,TAL-01128,drawing_tools,slow-interaction,RC-1,resolved,"When I copy and paste or clone an object, the tool lines become linked to each other",auto-split: one bug per short thread
+TAL-01129#1,TAL-01129,drawing_tools,drag-mis-anchor,RC-3,resolved,"When dragging and dropping the chart to the left, the chart moves along with the tools downward, as shown in the image",auto-split: one bug per short thread
+TAL-01130#1,TAL-01130,drawing_tools,slow-interaction,RC-2,resolved,When locking a tool and holding it while moving it strong lag occurs,auto-split: one bug per short thread
+TAL-01131#1,TAL-01131,drawing_tools,visibility-toggle,RC-2,resolved,"**Translation:** When selecting from the Show Info list, if I try to hide the menu by clicking inside the main menu box, it does not disappear unless I click multiple times.",auto-split: one bug per short thread
+TAL-01132#1,TAL-01132,drawing_tools,slow-interaction,RC-1,resolved,"If I try to hide the Show Info using the checkbox, the menu appears briefly and then disappears",auto-split: one bug per short thread
+TAL-01133#1,TAL-01133,drawing_tools,slow-interaction,RC-1,resolved,The Arabic text has an issue with horizontal alignment,auto-split: one bug per short thread
+TAL-01134#1,TAL-01134,drawing_tools,slow-interaction,RC-1,resolved,The Arabic text has an issue with center alignment,auto-split: one bug per short thread
+TAL-01135#1,TAL-01135,drawing_tools,slow-interaction,RC-1,resolved,The spacing between the line and the text is not equal,auto-split: one bug per short thread
+TAL-01136#1,TAL-01136,drawing_tools,slow-interaction,RC-1,resolved,The issue with Shift and the line has not been resolved yet,auto-split: one bug per short thread
+TAL-01137#1,TAL-01137,drawing_tools,slow-interaction,RC-1,resolved,"The Arabic text has an issue with center, vertical, and horizontal alignment.",auto-split: one bug per short thread
+TAL-01138#1,TAL-01138,drawing_tools,slow-interaction,RC-1,resolved,"The Arabic text has an issue with center, vertical, and horizontal alignment.",auto-split: one bug per short thread
+TAL-01139#1,TAL-01139,drawing_tools,slow-interaction,RC-1,resolved,"The Arabic text has an issue with center, vertical, and horizontal alignment, as well as rotation",auto-split: one bug per short thread
+TAL-01140#1,TAL-01140,drawing_tools,slow-interaction,RC-1,resolved,The Arabic text has an issue with center and vertical and horeizntal alignment,auto-split: one bug per short thread
+TAL-01141#1,TAL-01141,drawing_tools,slow-interaction,RC-1,resolved,The Arabic text has an issue with center and vertical and horeizntal alignment,auto-split: one bug per short thread
+TAL-01142#1,TAL-01142,drawing_tools,slow-interaction,RC-1,user_replied,Control points after extend,auto-split: one bug per short thread
+TAL-01143#1,TAL-01143,drawing_tools,slow-interaction,RC-1,resolved,"If I make changes to the tools and then click outside the main menu box, the settings are saved as if I had pressed save",auto-split: one bug per short thread
+TAL-01144#1,TAL-01144,drawing_tools,slow-interaction,RC-1,resolved,"The Arabic text has an issue with center, vertical, and horizontal alignment",auto-split: one bug per short thread
+TAL-01145#1,TAL-01145,drawing_tools,label-mis-anchor,RC-3,resolved,There is a problem with the time label,auto-split: one bug per short thread
+TAL-01146#1,TAL-01146,drawing_tools,label-mis-anchor,RC-3,user_replied,A white background appears when the price and time labels are enabled,auto-split: one bug per short thread
+TAL-01148#1,TAL-01148,drawing_tools,slow-interaction,RC-1,resolved,"When opening the template menu and then clicking inside the main menu box, the menu does not close; I have to close it using the X button.",auto-split: one bug per short thread
+TAL-01149#1,TAL-01149,drawing_tools,slow-interaction,RC-1,resolved,"When hovering with the mouse, control points appear. When clicking the tool, the control points shift from their position when the tool is locked, the control points do not change their positions",auto-split: one bug per short thread
+TAL-01150#1,TAL-01150,drawing_tools,drag-mis-anchor,RC-3,resolved,"""When the tool is locked and moved, the chart does not move",auto-split: one bug per short thread
+TAL-01151#1,TAL-01151,drawing_tools,drag-mis-anchor,RC-3,resolved,"""When the tool is locked and moved, the chart does not move",auto-split: one bug per short thread
+TAL-01152#1,TAL-01152,drawing_tools,slow-interaction,RC-1,resolved,"When the keyboard is set to Arabic input, shortcuts like Undo and Redo do not work unless it is switched to English input",auto-split: one bug per short thread
+TAL-01153#1,TAL-01153,drawing_tools,drag-mis-anchor,RC-3,resolved,All tools are snapping to the grid lines,auto-split: one bug per short thread
+TAL-01154#1,TAL-01154,drawing_tools,slow-interaction,RC-1,resolved,"The Arabic text has an issue with center, vertical, and horizontal alignment",auto-split: one bug per short thread
+TAL-01155#1,TAL-01155,drawing_tools,slow-interaction,RC-1,resolved,"If I try to hide the Show Info using the checkbox, the menu appears briefly and then disappears",auto-split: one bug per short thread
+TAL-01156#1,TAL-01156,drawing_tools,slow-interaction,RC-1,resolved,"If I delete tools using the Delete Drawing option or the Delete All Objects option, Undo restores previously deleted tools instead of restoring the last deleted one",auto-split: one bug per short thread
+TAL-01160#1,TAL-01160,drawing_tools,slow-interaction,RC-1,resolved,make it clear,auto-split: one bug per short thread
+TAL-01163#1,TAL-01163,drawing_tools,slow-interaction,RC-1,user_replied,I can't delete or edit the color values,auto-split: one bug per short thread
+TAL-01164#1,TAL-01164,drawing_tools,quick-menu-defect,RC-1,resolved,"When I move the tools and then click on them, the quick menu moves as well",auto-split: one bug per short thread
+TAL-01165#1,TAL-01165,drawing_tools,slow-interaction,RC-1,resolved,"When I click Save As and start typing immediately, the text appears on the chart. It would be better if, after clicking Save As the typing automatically went into the text input box instead.",auto-split: one bug per short thread
+TAL-01166#1,TAL-01166,drawing_tools,slow-interaction,RC-1,resolved,"When I hide all the lines, one line remains visible",auto-split: one bug per short thread
+TAL-01167#1,TAL-01167,drawing_tools,slow-interaction,RC-1,resolved,"When I change the value by two points, the line on the chart moves by only one point",auto-split: one bug per short thread
+TAL-01168#1,TAL-01168,drawing_tools,slow-interaction,RC-1,resolved,Not all thickness options are working,auto-split: one bug per short thread
+TAL-01169#1,TAL-01169,drawing_tools,slow-interaction,RC-1,resolved,Not all Style options are working.,auto-split: one bug per short thread
+TAL-01170#1,TAL-01170,drawing_tools,slow-interaction,RC-1,resolved,"If the tool is locked and I use Copy & Paste or Clone, the duplicated tool is also locked. This behavior is inconsistent with the other tools",auto-split: one bug per short thread
+TAL-01171#1,TAL-01171,drawing_tools,slow-interaction,RC-1,resolved,"Why not changing the position of the centre line from the Style settings, just like the input?",auto-split: one bug per short thread
+TAL-01172#1,TAL-01172,drawing_tools,slow-interaction,RC-1,resolved,Switching between lower and upper in the Style and Input menu,auto-split: one bug per short thread
+TAL-01173#1,TAL-01173,drawing_tools,slow-interaction,RC-1,resolved,Adjusting the position of the middle line in the Style menu,auto-split: one bug per short thread
+TAL-01174#1,TAL-01174,drawing_tools,slow-interaction,RC-1,resolved,"When I change the value by two points, the line on the chart moves by only one point",auto-split: one bug per short thread
+TAL-01175#1,TAL-01175,drawing_tools,slow-interaction,RC-1,resolved,"The names are different for the same function. When I change it in the Style settings, it does not update in the Inputs",auto-split: one bug per short thread
+TAL-01176#1,TAL-01176,drawing_tools,slow-interaction,RC-1,resolved,Adjusting the position of the middle line in the Style menu.,auto-split: one bug per short thread
+TAL-01177#1,TAL-01177,drawing_tools,slow-interaction,RC-1,resolved,Not all thickness and style options are working.,auto-split: one bug per short thread
+TAL-01178#1,TAL-01178,drawing_tools,slow-interaction,RC-1,resolved,The blue control points do not appear when hovering the mouse over the tool or selection,auto-split: one bug per short thread
+TAL-01179#1,TAL-01179,drawing_tools,quick-menu-defect,RC-1,resolved,"When changing the color from the quick menu, the middle line does not change color",auto-split: one bug per short thread
+TAL-01180#1,TAL-01180,drawing_tools,slow-interaction,RC-1,resolved,"When I uncheck the level in the Inputs, I can still open the color in the Style settings and edit it",auto-split: one bug per short thread
+TAL-01181#1,TAL-01181,drawing_tools,slow-interaction,RC-1,resolved,The type menu in the Inputs is not working properly,auto-split: one bug per short thread
+TAL-01182#1,TAL-01182,drawing_tools,slow-interaction,RC-1,resolved,"When I change the value by two points, the line on the chart moves by only one point.",auto-split: one bug per short thread
+TAL-01183#1,TAL-01183,drawing_tools,slow-interaction,RC-1,resolved,There is no style and thickness option for levels,auto-split: one bug per short thread
+TAL-01184#1,TAL-01184,drawing_tools,slow-interaction,RC-1,resolved,"This option represents the price and the percentage, not the value and percentage.",auto-split: one bug per short thread
+TAL-01188#1,TAL-01188,drawing_tools,slow-interaction,RC-1,resolved,"When changing the tool’s color while drawing it, another one appears in the default color then it changes to a different color",auto-split: one bug per short thread
+TAL-01189#1,TAL-01189,drawing_tools,slow-interaction,RC-1,resolved,The trend line has no style or thickness options,auto-split: one bug per short thread
+TAL-01190#1,TAL-01190,drawing_tools,slow-interaction,RC-1,resolved,"style menu / Level Values This option represents price and Value, not value and percentage",auto-split: one bug per short thread
+TAL-01191#1,TAL-01191,drawing_tools,slow-interaction,RC-1,resolved,"This option represents price and Value, not value and percentage",auto-split: one bug per short thread
+TAL-01192#1,TAL-01192,drawing_tools,slow-interaction,RC-1,resolved,"This option represents price and Value, not value and percentage",auto-split: one bug per short thread
+TAL-01193#1,TAL-01193,drawing_tools,slow-interaction,RC-1,resolved,The trend line has no style or thickness options,auto-split: one bug per short thread
+TAL-01194#1,TAL-01194,drawing_tools,slow-interaction,RC-1,resolved,I can’t change the value to zero,auto-split: one bug per short thread
+TAL-01195#1,TAL-01195,drawing_tools,slow-interaction,RC-1,resolved,The values at the bottom are not clear,auto-split: one bug per short thread
+TAL-01196#1,TAL-01196,drawing_tools,slow-interaction,RC-1,resolved,There is no background option in the style,auto-split: one bug per short thread
+TAL-01197#1,TAL-01197,drawing_tools,slow-interaction,RC-1,resolved,"When the values are equal, the lines overlap each other. The adjusted line should remain in the same position, but be hidden. When the other line’s value is modified or hidden, the adjusted line should automatically appear",auto-split: one bug per short thread
+TAL-01198#1,TAL-01198,drawing_tools,slow-interaction,RC-1,resolved,The values are not clear and need to be adjusted,auto-split: one bug per short thread
+TAL-01199#1,TAL-01199,drawing_tools,slow-interaction,RC-1,resolved,"This option represents price and Value, not value and percentage",auto-split: one bug per short thread
+TAL-01200#1,TAL-01200,drawing_tools,slow-interaction,RC-1,resolved,There are no negative values in the bar calculation,auto-split: one bug per short thread
+TAL-01202#1,TAL-01202,drawing_tools,slow-interaction,RC-1,resolved,The values are not clear and need to be adjusted,auto-split: one bug per short thread
+TAL-01203#1,TAL-01203,drawing_tools,slow-interaction,RC-1,resolved,The value and percentage should be displayed when selected,auto-split: one bug per short thread
+TAL-01204#1,TAL-01204,drawing_tools,slow-interaction,RC-1,resolved,Remove right and left extend,auto-split: one bug per short thread
+TAL-01205#1,TAL-01205,drawing_tools,slow-interaction,RC-1,resolved,"Remove the left and right extend, and remove the level position",auto-split: one bug per short thread
+TAL-01206#1,TAL-01206,drawing_tools,slow-interaction,RC-1,resolved,The level numbers are overlapping,auto-split: one bug per short thread
+TAL-01207#1,TAL-01207,drawing_tools,slow-interaction,RC-1,resolved,The level value needs to be fixed,auto-split: one bug per short thread
+TAL-01208#1,TAL-01208,drawing_tools,slow-interaction,RC-1,resolved,"This option represents price and Value, not value and percentage",auto-split: one bug per short thread
+TAL-01209#1,TAL-01209,drawing_tools,slow-interaction,RC-1,resolved,"When adjusting the value, not all levels change.",auto-split: one bug per short thread
+TAL-01210#1,TAL-01210,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01211#1,TAL-01211,drawing_tools,order-entry,RC-5,resolved,"Background, border, and wrap text are not working properly sometimes",auto-split: one bug per short thread
+TAL-01212#1,TAL-01212,drawing_tools,slow-interaction,RC-1,resolved,Horizontal alignment changes the position of the text on the chart,auto-split: one bug per short thread
+TAL-01213#1,TAL-01213,drawing_tools,slow-interaction,RC-1,resolved,Changing the font size also changes the position of the text,auto-split: one bug per short thread
+TAL-01214#1,TAL-01214,drawing_tools,slow-interaction,RC-1,resolved,The control point is far from the text,auto-split: one bug per short thread
+TAL-01215#1,TAL-01215,drawing_tools,order-entry,RC-5,resolved,"When selecting the text, the control point appears first, and then the border appears afterward.",auto-split: one bug per short thread
+TAL-01216#1,TAL-01216,drawing_tools,order-entry,RC-5,resolved,"Background, border, and wrap text are not working properly",auto-split: one bug per short thread
+TAL-01217#1,TAL-01217,drawing_tools,slow-interaction,RC-1,resolved,Horizontal alignment changes the position of the text on the chart,auto-split: one bug per short thread
+TAL-01218#1,TAL-01218,drawing_tools,slow-interaction,RC-1,resolved,Changing the font size also changes the position of the text,auto-split: one bug per short thread
+TAL-01219#1,TAL-01219,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01220#1,TAL-01220,drawing_tools,order-entry,RC-5,resolved,"Background, border, are not working properly",auto-split: one bug per short thread
+TAL-01221#1,TAL-01221,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01222#1,TAL-01222,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01223#1,TAL-01223,drawing_tools,order-entry,RC-5,resolved,"Background, border, and wrap text are not working properly",auto-split: one bug per short thread
+TAL-01224#1,TAL-01224,drawing_tools,slow-interaction,RC-1,resolved,Changing the font size also changes the position of the text,auto-split: one bug per short thread
+TAL-01228#1,TAL-01228,drawing_tools,slow-interaction,RC-1,resolved,Bold and italic are not working,auto-split: one bug per short thread
+TAL-01229#1,TAL-01229,drawing_tools,order-entry,RC-5,resolved,"Background, border, are not working properly",auto-split: one bug per short thread
+TAL-01230#1,TAL-01230,drawing_tools,label-mis-anchor,RC-3,resolved,"Label Background, border, are not working properly",auto-split: one bug per short thread
+TAL-01233#1,TAL-01233,drawing_tools,slow-interaction,RC-1,resolved,Xabcd pattern,auto-split: one bug per short thread
+TAL-01234#1,TAL-01234,drawing_tools,label-mis-anchor,RC-3,resolved,There are too few blue control points. We need more control points to be added 😂😂 We only need one control point at the beginning of the indicator,auto-split: one bug per short thread
+TAL-01261#1,TAL-01261,drawing_tools,label-mis-anchor,RC-3,resolved,"Can we move the basis line to the middle between the upper and lower bands The price label keeps moving repeatedly, and the control point is not in the correct position. The price label position is changing repeatedly and is not stable",auto-split: one bug per short thread
+TAL-01262#1,TAL-01262,drawing_tools,label-mis-anchor,RC-3,resolved,The price label keeps moving repeatedly,auto-split: one bug per short thread
+TAL-01278#1,TAL-01278,drawing_tools,slow-interaction,RC-1,resolved,"The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01292#1,TAL-01292,drawing_tools,slow-interaction,RC-1,resolved,"If there is no main menu style, line style and thickness are useless",auto-split: one bug per short thread
+TAL-01293#1,TAL-01293,drawing_tools,drag-mis-anchor,RC-3,resolved,The Volume Profile indicator disappears and reappears repeatedly while dragging or moving the chart,auto-split: one bug per short thread
+TAL-01294#1,TAL-01294,drawing_tools,slow-interaction,RC-1,resolved,"If there is no main menu style, line style and thickness are useless",auto-split: one bug per short thread
+TAL-01297#1,TAL-01297,drawing_tools,slow-interaction,RC-1,resolved,"When changing timeframes, the website completely hangs and becomes extremely heavy for several seconds",auto-split: one bug per short thread
+TAL-01298#1,TAL-01298,drawing_tools,order-entry,RC-5,resolved,The line style settings are not working properly. Changing the line style has no effect.,auto-split: one bug per short thread
+TAL-01299#1,TAL-01299,drawing_tools,label-mis-anchor,RC-3,resolved,The line style settings are not working properly. Changing the line style has no effect show label not working,auto-split: one bug per short thread
+TAL-01303#1,TAL-01303,drawing_tools,slow-interaction,RC-1,resolved,"When drawing with the brush tool, a gap appears in the line",auto-split: one bug per short thread
+TAL-01304#1,TAL-01304,drawing_tools,drag-mis-anchor,RC-3,resolved,"When using clone or copy-paste, the edges of the drawings overlap and stick together",auto-split: one bug per short thread
+TAL-01305#1,TAL-01305,drawing_tools,slow-interaction,RC-1,resolved,The text section is not working properly in all its options.,auto-split: one bug per short thread
+TAL-01307#1,TAL-01307,drawing_tools,drag-mis-anchor,RC-3,resolved,"When moving the line from the control point, the text stays in place, and when I release it, the text then snaps to the line. When moving the chart to the right or left, the text moves along the line with the chart",auto-split: one bug per short thread
+TAL-01308#1,TAL-01308,drawing_tools,visibility-toggle,RC-2,resolved,"When I hide the tool in Visibility and then show it again, it does not reappear",auto-split: one bug per short thread
+TAL-01309#1,TAL-01309,drawing_tools,visibility-toggle,RC-2,resolved,"When I hide the tool in Visibility and then show it again, it does not reappear",auto-split: one bug per short thread
+TAL-01310#1,TAL-01310,drawing_tools,slow-interaction,RC-1,resolved,The text overlaps with the line.,auto-split: one bug per short thread
+TAL-01311#1,TAL-01311,drawing_tools,slow-interaction,RC-1,user_replied,"There is a problem with the text in vertical mode horizontal alignment, And with italics",auto-split: one bug per short thread
+TAL-01312#1,TAL-01312,drawing_tools,slow-interaction,RC-1,resolved,There is a problem with the text in vertical alignment,auto-split: one bug per short thread
+TAL-01314#1,TAL-01314,drawing_tools,slow-interaction,RC-1,resolved,"When adjusting the control point, the text moves as well",auto-split: one bug per short thread
+TAL-01315#1,TAL-01315,drawing_tools,slow-interaction,RC-1,resolved,"There is a problem with the text in vertical and horizontal alignment, as well as with italics.",auto-split: one bug per short thread
+TAL-01316#1,TAL-01316,drawing_tools,multichart-parity,RC-4,resolved,"When selecting an option from the ""Show Info"" menu, I have to click multiple times inside the menu before it closes When I uncheck ""Show Info"", the panel briefly appears and then disappears.",auto-split: one bug per short thread
+TAL-01317#1,TAL-01317,drawing_tools,slow-interaction,RC-1,resolved,The text overlaps eith the line,auto-split: one bug per short thread
+TAL-01318#1,TAL-01318,drawing_tools,slow-interaction,RC-1,resolved,There should be some padding between the line and the text above it,auto-split: one bug per short thread
+TAL-01319#1,TAL-01319,drawing_tools,slow-interaction,RC-1,resolved,The text bold effect is not consistent—the edges are not as bold as the middle,auto-split: one bug per short thread
+TAL-01320#1,TAL-01320,drawing_tools,slow-interaction,RC-1,resolved,The text overlaps the line,auto-split: one bug per short thread
+TAL-01321#1,TAL-01321,drawing_tools,slow-interaction,RC-1,resolved,The text bold effect is not consistent—the edges are not as bold as the middle There should be some padding between the line and the text above it,auto-split: one bug per short thread
+TAL-01322#1,TAL-01322,drawing_tools,slow-interaction,RC-1,resolved,The text overlaps the line.,auto-split: one bug per short thread
+TAL-01323#1,TAL-01323,drawing_tools,slow-interaction,RC-1,resolved,The italic effect needs to be fixed,auto-split: one bug per short thread
+TAL-01324#1,TAL-01324,drawing_tools,slow-interaction,RC-1,resolved,The italic effect needs to be fixed The text overlaps the line,auto-split: one bug per short thread
+TAL-01325#1,TAL-01325,drawing_tools,slow-interaction,RC-1,resolved,"When I cut the name, I can’t type again",auto-split: one bug per short thread
+TAL-01326#1,TAL-01326,drawing_tools,slow-interaction,RC-1,resolved,"When using the extend function, control points should also appear here",auto-split: one bug per short thread
+TAL-01327#1,TAL-01327,drawing_tools,slow-interaction,RC-1,resolved,Italic is not working,auto-split: one bug per short thread
+TAL-01329#1,TAL-01329,drawing_tools,slow-interaction,RC-1,resolved,Tool selection needs improvement,auto-split: one bug per short thread
+TAL-01330#1,TAL-01330,drawing_tools,label-mis-anchor,RC-3,resolved,"When hiding the border, the price and time labels also disappear",auto-split: one bug per short thread
+TAL-01331#1,TAL-01331,drawing_tools,multichart-parity,RC-4,resolved,"When selecting an option from the ""Show Info"" menu, I have to click multiple times inside the menu before it closes When I uncheck ""Show Info"", the panel briefly appears and then disappears",auto-split: one bug per short thread
+TAL-01332#1,TAL-01332,drawing_tools,slow-interaction,RC-1,resolved,"Text alignment above, below, and in the middle of the lines.",auto-split: one bug per short thread
+TAL-01333#1,TAL-01333,drawing_tools,slow-interaction,RC-1,resolved,"Text alignment above, below, and in the middle of the lines.",auto-split: one bug per short thread
+TAL-01334#1,TAL-01334,drawing_tools,slow-interaction,RC-1,resolved,The text position needs to be fixed.,auto-split: one bug per short thread
+TAL-01335#1,TAL-01335,drawing_tools,slow-interaction,RC-1,resolved,The italic needs to be fixed,auto-split: one bug per short thread
+TAL-01336#1,TAL-01336,drawing_tools,slow-interaction,RC-1,resolved,The text position needs to be fixed.,auto-split: one bug per short thread
+TAL-01337#1,TAL-01337,drawing_tools,label-mis-anchor,RC-3,resolved,The labels overlap each other,auto-split: one bug per short thread
+TAL-01338#1,TAL-01338,drawing_tools,slow-interaction,RC-1,resolved,Remove the level position.,auto-split: one bug per short thread
+TAL-01339#1,TAL-01339,drawing_tools,label-mis-anchor,RC-3,resolved,The labels overlap each other.,auto-split: one bug per short thread
+TAL-01340#1,TAL-01340,drawing_tools,slow-interaction,RC-1,resolved,"When I set opacity to 100%, the level disappears and I can’t control its color",auto-split: one bug per short thread
+TAL-01341#1,TAL-01341,drawing_tools,slow-interaction,RC-1,resolved,The right-click options should not be like this,auto-split: one bug per short thread
+TAL-01342#1,TAL-01342,drawing_tools,quick-menu-defect,RC-1,resolved,Clicking the tool does not open the quick menu or even the main menu,auto-split: one bug per short thread
+TAL-01343#1,TAL-01343,drawing_tools,order-entry,RC-5,resolved,"When clicking the text, the border appears with a delay",auto-split: one bug per short thread
+TAL-01344#1,TAL-01344,drawing_tools,order-entry,RC-5,resolved,"When enabling wrap text, the border becomes larger",auto-split: one bug per short thread
+TAL-01345#1,TAL-01345,drawing_tools,quick-menu-defect,RC-1,resolved,"When locking a tool, the quick menu should show that the lock button is enabled",auto-split: one bug per short thread
+TAL-01346#1,TAL-01346,drawing_tools,slow-interaction,RC-1,resolved,"When I double-click to type inside the tool, moving the mouse outside the tool cancels the selection",auto-split: one bug per short thread
+TAL-01347#1,TAL-01347,drawing_tools,slow-interaction,RC-1,resolved,"When I double-click to type inside the tool, moving the mouse outside the tool cancels the selection",auto-split: one bug per short thread
+TAL-01348#1,TAL-01348,drawing_tools,slow-interaction,RC-1,resolved,"When typing inside the tool, the tool name also changes",auto-split: one bug per short thread
+TAL-01349#1,TAL-01349,drawing_tools,slow-interaction,RC-1,resolved,I can upload images up to 50 MB,auto-split: one bug per short thread
+TAL-01350#1,TAL-01350,drawing_tools,visibility-toggle,RC-2,resolved,It would be possible to add a checkbox to show/hide the line only,auto-split: one bug per short thread
+TAL-01351#1,TAL-01351,drawing_tools,slow-interaction,RC-1,resolved,I cannot rescale the tool,auto-split: one bug per short thread
+TAL-01354#1,TAL-01354,drawing_tools,slow-interaction,RC-1,user_replied,في فراغ في نهاية الخط,auto-split: one bug per short thread
+TAL-01359#1,TAL-01359,drawing_tools,slow-interaction,RC-1,resolved,لازم يكون نقاط نهاية وبداية للخط,auto-split: one bug per short thread
+TAL-01375#1,TAL-01375,drawing_tools,slow-interaction,RC-1,resolved,"The ones without an arrow, when I click on them, the arrow area remains without a background.",auto-split: one bug per short thread
+TAL-01415#1,TAL-01415,drawing_tools,selection-menu-desync,RC-1,resolved,من الافضل تشيل هاد لانها بتسبب مشاكل خلي مثل قبل بدونها,auto-split: one bug per short thread
+TAL-01421#1,TAL-01421,drawing_tools,slow-interaction,RC-2,resolved,"fix the flags of the news, the euro flags are wrong",auto-split: one bug per short thread
+TAL-01451#1,TAL-01451,drawing_tools,drag-mis-anchor,RC-3,resolved,"Before and during rendering, the grid lines shift relative to the candles. Since each candle is associated with a fixed timestamp, the grid lines should remain consistently aligned with the candles. they visibly move during rendering or cha",auto-split: one bug per short thread
+TAL-01472#1,TAL-01472,drawing_tools,drag-mis-anchor,RC-3,open,The control issue when dragging with the mouse to select tools has not been resolved,auto-split: one bug per short thread
+TAL-00329#1,TAL-00329,indicators,label-mis-anchor,RC-3,user_replied,The price next to the indicator should move with the crosshair or price movement.,auto-split: one bug per short thread
+TAL-00350#1,TAL-00350,indicators,ghost-after-delete,RC-6,user_replied,Indicator name label remains after indicator deleted,
+TAL-00350#2,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Indicator price label does not update until replay icon clicked,
+TAL-00350#3,TAL-00350,indicators,label-mis-anchor,RC-6,user_replied,Need price labels only; time labels unwanted on indicators,
+TAL-00350#4,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Drawings render above indicator pane and price labels,
+TAL-00350#5,TAL-00350,indicators,visibility-toggle,RC-6,user_replied,Hide cursor on timeframe affects whole screen not just timeframe,
+TAL-00350#6,TAL-00350,indicators,visibility-toggle,RC-6,user_replied,Restoring hidden indicator loses name and value until pane divider moved,
+TAL-00350#7,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Indicator value does not update on hover without chart click,
+TAL-00350#8,TAL-00350,indicators,quick-menu-defect,RC-6,user_replied,News menu hover shows news list unexpectedly,
+TAL-00350#9,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Indicator pane divider drag gets stuck,
+TAL-00350#10,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Remove indicator magnet so divider drag is not blocked,
+TAL-00350#11,TAL-00350,indicators,indicator-lifecycle,RC-6,user_replied,Indicators disappear on zoom out + chart click,Arabic: zoom out then click chart hides indicators
+TAL-00376#1,TAL-00376,indicators,indicator-lifecycle,RC-6,user_replied,no need to STYLE delete it,auto-split: one bug per short thread
+TAL-00377#1,TAL-00377,indicators,slow-interaction,RC-2,user_replied,"The upward arrow is green, while the downward arrow is red; make it so.",auto-split: one bug per short thread
+TAL-00384#1,TAL-00384,indicators,label-mis-anchor,RC-3,user_replied,could u make price label with movement of price,auto-split: one bug per short thread
+TAL-00391#1,TAL-00391,indicators,label-mis-anchor,RC-3,user_replied,"When I turn off the MACD button, the value next to the cursor glitches. Supposedly, when I hide the MACD, only the MACD value disappears, and the signal value remains the same color.",auto-split: one bug per short thread
+TAL-00392#1,TAL-00392,indicators,label-mis-anchor,RC-3,user_replied,"When I turn off this option, the line disappears, but the price label or the price next to the indicator name does not disappears.",auto-split: one bug per short thread
+TAL-00413#1,TAL-00413,indicators,label-mis-anchor,RC-3,user_replied,these don't works,auto-split: one bug per short thread
+TAL-00422#1,TAL-00422,indicators,indicator-lifecycle,RC-6,user_replied,this indicator don't work nothing to show,auto-split: one bug per short thread
+TAL-00443#1,TAL-00443,indicators,stuck-until-click,RC-2,user_replied,the value stuck on 0,auto-split: one bug per short thread
+TAL-00448#1,TAL-00448,indicators,label-mis-anchor,RC-3,user_replied,this don't work and there's no style and thickness in VI+ like VI-,auto-split: one bug per short thread
+TAL-00451#1,TAL-00451,indicators,stuck-until-click,RC-2,user_replied,"When I enable Reply, the value should change with the movement of the candles, but it's stuck.",auto-split: one bug per short thread
+TAL-00454#1,TAL-00454,indicators,indicator-lifecycle,RC-6,user_replied,"When I hide the indicator and then tap it again, it doesn't reappear.",auto-split: one bug per short thread
+TAL-00455#1,TAL-00455,indicators,indicator-lifecycle,RC-6,user_replied,these don't works,auto-split: one bug per short thread
+TAL-00488#1,TAL-00488,indicators,indicator-lifecycle,RC-6,user_replied,"When it drops below 70, nothing changes.",auto-split: one bug per short thread
+TAL-00501#1,TAL-00501,indicators,indicator-lifecycle,RC-6,user_replied,this not work,auto-split: one bug per short thread
+TAL-00818#1,TAL-00818,indicators,drag-mis-anchor,RC-3,resolved,لما اضيف اكثر من 10 مؤشرات بس اجي اضيف 11 بيصير علامة كأنه تم اضافته لكن ما بينضاف ما تخلي يجي عليه علامة ولا اقدر اضيف بعد 10,auto-split: one bug per short thread
+TAL-00828#1,TAL-00828,indicators,indicator-lifecycle,RC-6,resolved,لما اعمل زوم ان واوت بيختفي وبيرجع,auto-split: one bug per short thread
+TAL-00893#1,TAL-00893,indicators,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out, switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00894#1,TAL-00894,indicators,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out, switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00895#1,TAL-00895,indicators,order-entry,RC-5,resolved,"The indicator disappears in some cases when zooming out, switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00897#1,TAL-00897,indicators,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00900#1,TAL-00900,indicators,indicator-lifecycle,RC-6,resolved,"The indicator disappears in some cases when zooming out switching timeframes, and moving the chart",auto-split: one bug per short thread
+TAL-00901#1,TAL-00901,indicators,indicator-lifecycle,RC-6,resolved,indicator disappears when zooming out in some cases when switching timeframes,auto-split: one bug per short thread
+TAL-00903#1,TAL-00903,indicators,indicator-lifecycle,RC-6,resolved,"When the cursor is inside the indicator box it changes to the move cursor Double-clicking does not open the indicator settings Accessing the options to open settings, hide or delete the indicator is difficult because the clickable area is h",auto-split: one bug per short thread
+TAL-00906#1,TAL-00906,indicators,indicator-lifecycle,RC-6,resolved,The line style and thickness settings are missing,auto-split: one bug per short thread
+TAL-00944#1,TAL-00944,indicators,indicator-lifecycle,RC-6,resolved,these not the same value,auto-split: one bug per short thread
+TAL-00946#1,TAL-00946,indicators,order-entry,RC-5,resolved,range should be like average true range كبيرة كتير هي,auto-split: one bug per short thread
+TAL-00949#1,TAL-00949,indicators,indicator-lifecycle,RC-6,resolved,خلي الالوان فوق صفر اخضر وتحته احمر,auto-split: one bug per short thread
+TAL-00955#1,TAL-00955,indicators,indicator-lifecycle,RC-6,resolved,no value here,auto-split: one bug per short thread
+TAL-00956#1,TAL-00956,indicators,indicator-lifecycle,RC-6,resolved,style no need no value show,auto-split: one bug per short thread
+TAL-01235#1,TAL-01235,indicators,indicator-lifecycle,RC-6,resolved,ما بقدر احرك بين المؤشرات الا اول مؤشر فوق,auto-split: one bug per short thread
+TAL-01236#1,TAL-01236,indicators,slow-interaction,RC-2,resolved,The indicator causes chart rendering lag when it is first added to the chart and when the timeframe is changed.,auto-split: one bug per short thread
+TAL-01237#1,TAL-01237,indicators,drag-mis-anchor,RC-3,resolved,"When changing the timeframe, the indicator shifts from its position and then quickly snaps back onto the chart",auto-split: one bug per short thread
+TAL-01238#1,TAL-01238,indicators,indicator-lifecycle,RC-6,resolved,The indicator disappears after refreshing the page,auto-split: one bug per short thread
+TAL-01240#1,TAL-01240,indicators,drag-mis-anchor,RC-3,resolved,"When the site data is cleared, the favorite indicators are removed, and a message appears saying there is no data for the chart",auto-split: one bug per short thread
+TAL-01241#1,TAL-01241,indicators,indicator-lifecycle,RC-6,resolved,"After saving the template, it disappears when the page is refreshed",auto-split: one bug per short thread
+TAL-01242#1,TAL-01242,indicators,indicator-lifecycle,RC-6,resolved,"When leaving the chart idle, these numbers keep moving",auto-split: one bug per short thread
+TAL-01244#1,TAL-01244,indicators,indicator-lifecycle,RC-6,resolved,Some indicators stop rendering beyond a certain point and fail to render completely,auto-split: one bug per short thread
+TAL-01245#1,TAL-01245,indicators,indicator-lifecycle,RC-6,resolved,"When adding indicators to the chart, they do not apply immediately; they only appear after slightly moving the chart",auto-split: one bug per short thread
+TAL-01246#1,TAL-01246,indicators,drag-mis-anchor,RC-3,resolved,"When adding indicators and then refreshing the page, I cannot delete them unless I move the chart",auto-split: one bug per short thread
+TAL-01249#1,TAL-01249,indicators,indicator-lifecycle,RC-6,resolved,"When a specific timeframe is hidden, its settings should remain visible and not be removed",auto-split: one bug per short thread
+TAL-01251#1,TAL-01251,indicators,order-entry,RC-5,resolved,The EMA-Based MA line style is not working,auto-split: one bug per short thread
+TAL-01258#1,TAL-01258,indicators,label-mis-anchor,RC-3,resolved,"The price label keeps moving repeatedly, and the control point is not in the correct position. The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01259#1,TAL-01259,indicators,label-mis-anchor,RC-3,resolved,The price label keeps moving repeatedly Can we move the basis line to the middle between the upper and lower bands,auto-split: one bug per short thread
+TAL-01260#1,TAL-01260,indicators,stuck-until-click,RC-2,resolved,"When deleting an old indicator and adding a new one, the old indicator remains stuck on the chart",auto-split: one bug per short thread
+TAL-01263#1,TAL-01263,indicators,indicator-lifecycle,RC-6,user_replied,"The Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01264#1,TAL-01264,indicators,indicator-lifecycle,RC-6,resolved,"When I rescale the indicator, I cannot reset it",auto-split: one bug per short thread
+TAL-01265#1,TAL-01265,indicators,indicator-lifecycle,RC-6,resolved,Double-clicking inside the indicator container opens the settings. Why doesn’t a click on the indicator itself inside the container trigger the settings instead,auto-split: one bug per short thread
+TAL-01266#1,TAL-01266,indicators,indicator-lifecycle,RC-6,resolved,"The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01267#1,TAL-01267,indicators,indicator-lifecycle,RC-6,resolved,Could a small top margin be added to improve access to the indicator settings and prevent the indicator from overlapping with the settings icon,auto-split: one bug per short thread
+TAL-01268#1,TAL-01268,indicators,indicator-lifecycle,RC-6,resolved,"After rescaling the indicator from the price scale, I cannot adjust it manually",auto-split: one bug per short thread
+TAL-01269#1,TAL-01269,indicators,indicator-lifecycle,RC-6,resolved,"When I rescale the indicator, I cannot reset it After rescaling the indicator from the price scale, I cannot adjust it manually When double-clicking inside the indicator container, the settings open. Why isn’t it opened by clicking directly",auto-split: one bug per short thread
+TAL-01272#1,TAL-01272,indicators,indicator-lifecycle,RC-6,resolved,"The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01273#1,TAL-01273,indicators,indicator-lifecycle,RC-6,resolved,"From color #0 to color #3, if there is no main menu style, we will not benefit from the style and thickness options",auto-split: one bug per short thread
+TAL-01274#1,TAL-01274,indicators,indicator-lifecycle,RC-6,resolved,"When the chart is moved, this part of the indicator becomes hidden",auto-split: one bug per short thread
+TAL-01275#1,TAL-01275,indicators,indicator-lifecycle,RC-6,resolved,"The Style and Thickness dropdown menus should open downward, not upward",auto-split: one bug per short thread
+TAL-01276#1,TAL-01276,indicators,indicator-lifecycle,RC-6,resolved,"The Style and Thickness dropdown menus should open downward, not upward.",auto-split: one bug per short thread
+TAL-01277#1,TAL-01277,indicators,multichart-parity,RC-4,resolved,"When an indicator is configured to be visible on a specific timeframe, it should not be fully removed instead, it would be better if it only disappears from the indicator container",auto-split: one bug per short thread
+TAL-01279#1,TAL-01279,indicators,indicator-lifecycle,RC-6,resolved,"The Style and Thickness dropdown menus should open downward, not upward.",auto-split: one bug per short thread
+TAL-01280#1,TAL-01280,indicators,indicator-lifecycle,RC-6,resolved,"There is an issue with the indicator, and I am unable to control the chart",auto-split: one bug per short thread
+TAL-01282#1,TAL-01282,indicators,indicator-lifecycle,RC-6,resolved,"When rescaling indicators, they overlap with each other",auto-split: one bug per short thread
+TAL-01285#1,TAL-01285,indicators,label-mis-anchor,RC-3,resolved,"Hiding the indicator is not working, and the price label keeps moving repeatedly.",auto-split: one bug per short thread
+TAL-01286#1,TAL-01286,indicators,indicator-lifecycle,RC-6,resolved,لما اعمل اخفاء للمؤشرات ما بيتم اخفائهم الا اضغط على الشاشة,auto-split: one bug per short thread
+TAL-01287#1,TAL-01287,indicators,order-entry,RC-5,resolved,"When the color opacity slider overlaps with the container border, it becomes unclickable and cannot be adjusted",auto-split: one bug per short thread
+TAL-01288#1,TAL-01288,indicators,indicator-lifecycle,RC-6,resolved,"Modifying the Zero line input value fails to update the line itself, but it immediately impacts the indicator behavior",auto-split: one bug per short thread
+TAL-01289#1,TAL-01289,indicators,stuck-until-click,RC-2,resolved,"Removing an indicator from the main menu fails to delete it, and it stays stuck on the chart view",auto-split: one bug per short thread
+TAL-01290#1,TAL-01290,indicators,indicator-lifecycle,RC-6,resolved,Line style and thickness settings are useless unless the main style option is enabled,auto-split: one bug per short thread
+TAL-01291#1,TAL-01291,indicators,quick-menu-defect,RC-1,resolved,"When closing the indicator from the main menu, its settings menu remains open",auto-split: one bug per short thread
+TAL-01295#1,TAL-01295,indicators,slow-interaction,RC-2,resolved,Platform freezes when enabling ICT Kill Zones indicator,auto-split: one bug per short thread
+TAL-01296#1,TAL-01296,indicators,slow-interaction,RC-2,resolved,"Whenever I enable indicators (especially the ICT indicators), the website suffers from huge lag, becomes very heavy, and completely freezes for several seconds before recovering",auto-split: one bug per short thread
+TAL-01300#1,TAL-01300,indicators,indicator-lifecycle,RC-6,resolved,"The indicator does not appear, and a “Failed to fetch” message shows next to it",auto-split: one bug per short thread
+TAL-01302#1,TAL-01302,indicators,order-entry,RC-5,resolved,"When drawing on the chart or placing orders, moving the chart downward causes the drawings to appear above the indicator",auto-split: one bug per short thread
+TAL-01473#1,TAL-01473,indicators,indicator-lifecycle,RC-6,resolved,What is the purpose of this menu?,auto-split: one bug per short thread
+TAL-00473#1,TAL-00473,journal_app,replay-interaction,RC-8,user_replied,"When I change the color of any session, Frankfurt and Sydney disappear.",auto-split: one bug per short thread
+TAL-00908#1,TAL-00908,journal_app,slow-interaction,RC-7,resolved,Add notes on trade card → save. Notes persist after reload. note not saved,auto-split: one bug per short thread
+TAL-00975#1,TAL-00975,journal_app,order-entry,RC-5,pending,PNL wrong,auto-split: one bug per short thread
+TAL-00976#1,TAL-00976,journal_app,slow-interaction,RC-7,resolved,the photos don't show,auto-split: one bug per short thread
+TAL-00977#1,TAL-00977,journal_app,slow-interaction,RC-7,resolved,Search emoji picker. not work,auto-split: one bug per short thread
+TAL-00978#1,TAL-00978,journal_app,slow-interaction,RC-7,resolved,I can't add more than 6 frames unless I write the frame and add it. result: Blocked at 6 max.,auto-split: one bug per short thread
+TAL-00979#1,TAL-00979,journal_app,slow-interaction,RC-7,resolved,لما احذف القروبات واكون فقي الصفخى تحت ما بقدر اسحب الرول لفوق لازم اضيف قروب عشان اشوف القروب كامل,auto-split: one bug per short thread
+TAL-00981#1,TAL-00981,journal_app,slow-interaction,RC-7,resolved,"The entire data range is calculated, not just the number of days.",auto-split: one bug per short thread
+TAL-00982#1,TAL-00982,journal_app,slow-interaction,RC-7,resolved,"It's available in all markets, although I've specified it only for futures.",auto-split: one bug per short thread
+TAL-00983#1,TAL-00983,journal_app,slow-interaction,RC-7,resolved,"When refreshing the page while the Strategies view is selected, the Create Strategy screen briefly appears first, then disappears and the strategy cards are displayed. This causes a noticeable UI flicker. The rendering and loading of data i",auto-split: one bug per short thread
+TAL-00984#1,TAL-00984,journal_app,slow-interaction,RC-7,resolved,"After changing the screen resolution, the double-click action on a strategy card no longer opens the strategy settings as expected. After changing the screen resolution, clicking the three-dot menu (...) on a strategy card does not open the",auto-split: one bug per short thread
+TAL-00985#1,TAL-00985,journal_app,slow-interaction,RC-7,resolved,Browser zoom out significantly reduces text readability. UI scaling and font rendering need improvement to ensure text remains clear and readable at lower zoom levels,auto-split: one bug per short thread
+TAL-00986#1,TAL-00986,journal_app,slow-interaction,RC-7,resolved,When selecting a strategy template and then choosing Create New Strategy the settings from the previously selected template are not cleared,auto-split: one bug per short thread
+TAL-00987#1,TAL-00987,journal_app,slow-interaction,RC-7,resolved,"If a space is entered before or after a search term, the results disappear and no matches are returned. Search queries should automatically trim leading and trailing spaces so that results remain consistent regardless of accidental whitespa",auto-split: one bug per short thread
+TAL-00988#1,TAL-00988,journal_app,slow-interaction,RC-7,resolved,"Tags are displayed in a list depending on the length of the tag text. If the strategy name is long, it becomes unreadable and can only be viewed by entering the strategy edit screen",auto-split: one bug per short thread
+TAL-00989#1,TAL-00989,journal_app,label-mis-anchor,RC-3,resolved,The label should be changed from “Copy” to “Duplicate” to make the action clearer and more understandable,auto-split: one bug per short thread
+TAL-00992#1,TAL-00992,journal_app,slow-interaction,RC-7,resolved,droplists should all follow our design style (MFE drop list) also the cursor should never turn into a finger,auto-split: one bug per short thread
+TAL-00997#1,TAL-00997,journal_app,slow-interaction,RC-7,resolved,nothing work here,auto-split: one bug per short thread
+TAL-00999#1,TAL-00999,journal_app,slow-interaction,RC-7,resolved,The settings access from the three-dot menu position need to be optimized for better usability,auto-split: one bug per short thread
+TAL-01000#1,TAL-01000,journal_app,multichart-parity,RC-4,resolved,"When opening Settings from the three-dot menu and selecting Dashboard from the dropdown list, the dashboard metrics and values do not appear inside the panel. The dashboard opens, but the expected data and readings are missing.",auto-split: one bug per short thread
+TAL-01003#1,TAL-01003,journal_app,slow-interaction,RC-7,resolved,"If you select the timeframe option, you can choose from 6 different timeframes. if you use the custom timeframe feature, you can select an unlimited number of timeframes and there are no limits on the number of minutes you can enter",auto-split: one bug per short thread
+TAL-01004#1,TAL-01004,journal_app,slow-interaction,RC-7,resolved,"When editing a strategy or creating a new one, if the name already exists, the system should display a warning indicating that the name is duplicated.",auto-split: one bug per short thread
+TAL-01005#1,TAL-01005,journal_app,slow-interaction,RC-7,resolved,"If I can select all pairs from this list across all markets, why am I required to select the market in the dropdown above it?",auto-split: one bug per short thread
+TAL-01006#1,TAL-01006,journal_app,slow-interaction,RC-7,resolved,The text is not displayed with each line separated from the other,auto-split: one bug per short thread
+TAL-01007#1,TAL-01007,journal_app,slow-interaction,RC-7,resolved,"The emoji filter is not working. Also, when typing a category name, the emoji disappears instead of remaining visible or being properly associated with the category.",auto-split: one bug per short thread
+TAL-01008#1,TAL-01008,journal_app,slow-interaction,RC-7,resolved,The names of the selected trading pairs are not displayed,auto-split: one bug per short thread
+TAL-01009#1,TAL-01009,journal_app,slow-interaction,RC-7,resolved,"If I select symbols from the Forex market and then switch the market type to Futures using the dropdown above, the previously selected symbols remain unchanged instead of updating according to the newly selected market.",auto-split: one bug per short thread
+TAL-01010#1,TAL-01010,journal_app,slow-interaction,RC-7,resolved,"When editing a strategy, the images do not appear in the image list. Additionally, clicking on an image to preview or view it does not display anything",auto-split: one bug per short thread
+TAL-01011#1,TAL-01011,journal_app,slow-interaction,RC-2,resolved,"The Community list cannot be selected or accessed. there is no option to sort or organize strategies based on available data. It would be useful to have sorting options such as strategy name, creation date, last modified date, performance m",auto-split: one bug per short thread
+TAL-01012#1,TAL-01012,journal_app,slow-interaction,RC-7,resolved,"When uploading an image larger than 5 MB, or an image format that is not supported by the platform, no warning or error message is displayed to inform the user that the uploaded image does not meet the platform's requirements.",auto-split: one bug per short thread
+TAL-01013#1,TAL-01013,journal_app,slow-interaction,RC-2,resolved,"A 50 MB image was uploaded in this section, which caused the platform to become slow and lag after the upload.",auto-split: one bug per short thread
+TAL-01014#1,TAL-01014,journal_app,slow-interaction,RC-7,resolved,When the user starts typing the existing placeholder text should be cleared automatically,auto-split: one bug per short thread
+TAL-01015#1,TAL-01015,journal_app,slow-interaction,RC-7,resolved,"When all groups are deleted, there is no minimum group requirement enforced. The Add Group button disappears completely, making it impossible to create a new group. If I navigate to the General Info section and then return, the deleted grou",auto-split: one bug per short thread
+TAL-01017#1,TAL-01017,journal_app,label-mis-anchor,RC-3,resolved,The group labels need to be fixed,auto-split: one bug per short thread
+TAL-01018#1,TAL-01018,journal_app,slow-interaction,RC-7,resolved,This menu disappears when scrolling down the list,auto-split: one bug per short thread
+TAL-01019#1,TAL-01019,journal_app,slow-interaction,RC-7,resolved,"When duplicating a strategy and then refreshing, it disappears",auto-split: one bug per short thread
+TAL-01020#1,TAL-01020,journal_app,slow-interaction,RC-7,resolved,"When selecting text with the mouse and then releasing it outside the menu, the menu disappears.",auto-split: one bug per short thread
+TAL-01024#1,TAL-01024,journal_app,order-entry,RC-5,resolved,"I entered a short position, hit my stop loss, and lost $100. When I checked my trades, I saw a $100 profit, even though it was a losing trade.",auto-split: one bug per short thread
+TAL-01026#1,TAL-01026,journal_app,slow-interaction,RC-7,user_replied,%لما اخلص جلسة التادول والايام بيصير 99 مش complete,auto-split: one bug per short thread
+TAL-01027#1,TAL-01027,journal_app,slow-interaction,RC-7,resolved,"When the same option is available and I select it on any tag, it will select them all.",auto-split: one bug per short thread
+TAL-01031#1,TAL-01031,journal_app,slow-interaction,RC-7,resolved,"When I imported 500 trades, it stopped opening. So now there are 700 trades.",auto-split: one bug per short thread
+TAL-01038#1,TAL-01038,journal_app,slow-interaction,RC-7,resolved,"The filter is applied to sessions that have not started yet, but I have a session with recorded profits and losses that is still being filtered incorrectly. Please review the filter logic.",auto-split: one bug per short thread
+TAL-01039#1,TAL-01039,journal_app,slow-interaction,RC-7,resolved,This list does not behave correctly in this scenario and requires a fix,auto-split: one bug per short thread
+TAL-01041#1,TAL-01041,journal_app,order-entry,RC-5,resolved,"The card sorting system needs improvement. When sorting by duration, the cards should be ordered from the longest duration to the shortest in descending order. The same consistent sorting behavior should apply to all other sorting types as ",auto-split: one bug per short thread
+TAL-01042#1,TAL-01042,journal_app,slow-interaction,RC-7,resolved,The way numbers are distributed and displayed under the “All” filter appears inconsistent and needs improvement. The sorting/organization logic should be reviewed,auto-split: one bug per short thread
+TAL-01043#1,TAL-01043,journal_app,slow-interaction,RC-7,resolved,It may be possible to replace this list with a sorting menu similar to the one used in the card menu,auto-split: one bug per short thread
+TAL-01044#1,TAL-01044,journal_app,slow-interaction,RC-7,resolved,"Does the duplicate function give you a fresh session with the same settings, or does it simply clone the session as it is without any changes?",auto-split: one bug per short thread
+TAL-01045#1,TAL-01045,journal_app,slow-interaction,RC-7,resolved,"When hovering the mouse over the “Save trade” option, the tooltip remains visible on the chart even after saving",auto-split: one bug per short thread
+TAL-01046#1,TAL-01046,journal_app,slow-interaction,RC-7,resolved,Why don’t we make hiding and showing the balance possible by clicking on the balance itself?,auto-split: one bug per short thread
+TAL-01047#1,TAL-01047,journal_app,first-click-fails,RC-1,resolved,The dashboard button does not work correctly on the first click,auto-split: one bug per short thread
+TAL-01048#1,TAL-01048,journal_app,slow-interaction,RC-7,resolved,When the name is long…,auto-split: one bug per short thread
+TAL-01049#1,TAL-01049,journal_app,slow-interaction,RC-7,resolved,Why does this button take me to the strategy list instead of opening the strategy creation menu directly?,auto-split: one bug per short thread
+TAL-01050#1,TAL-01050,journal_app,slow-interaction,RC-7,resolved,"When clicking on the session, the settings menu opens",auto-split: one bug per short thread
+TAL-01051#1,TAL-01051,journal_app,slow-interaction,RC-7,resolved,"A limit should be set for the description, along with manual control over the text input area size",auto-split: one bug per short thread
+TAL-01052#1,TAL-01052,journal_app,slow-interaction,RC-7,resolved,Only two pairs can be added,auto-split: one bug per short thread
+TAL-01053#1,TAL-01053,journal_app,slow-interaction,RC-7,resolved,"It takes a negative value and also accepts zero, but inside the session the value becomes 10,000",auto-split: one bug per short thread
+TAL-01054#1,TAL-01054,journal_app,slow-interaction,RC-7,resolved,"When editing the session from Standard mode to Prop Firm mode, manual chart cutting is still working.",auto-split: one bug per short thread
+TAL-01064#1,TAL-01064,journal_app,stuck-until-click,RC-2,resolved,لا تخليني احط رقم سالب,auto-split: one bug per short thread
+TAL-01065#1,TAL-01065,journal_app,slow-interaction,RC-7,open,لو تضيف زر دخول السيشن بدل ما يروح على خانة سيشن عشان يعمل باك تيست بيسهل عليه,auto-split: one bug per short thread
+TAL-01085#1,TAL-01085,journal_app,slow-interaction,RC-7,resolved,"When duplicating a session, it is created with the same name.",auto-split: one bug per short thread
+TAL-01086#1,TAL-01086,journal_app,slow-interaction,RC-7,resolved,It is possible to replace Asset with Market,auto-split: one bug per short thread
+TAL-01087#1,TAL-01087,journal_app,label-mis-anchor,RC-3,resolved,It is possible to improve the info label,auto-split: one bug per short thread
+TAL-01088#1,TAL-01088,journal_app,first-click-fails,RC-1,resolved,"On the first click to open the dashboard, it briefly navigates to the dashboard page and then quickly returns to the sessions page. Repeating this action on all sessions causes the same behavior consistently",auto-split: one bug per short thread
+TAL-01089#1,TAL-01089,journal_app,slow-interaction,RC-7,pending,"If I click anywhere in the session with the mouse, the settings window opens",auto-split: one bug per short thread
+TAL-01090#1,TAL-01090,journal_app,slow-interaction,RC-7,resolved,"It would be better to remove the height adjustment arrows and set a fixed value between 4–6. I suggest using 5, as it will be a good space and at the same time sufficient for 500 characters",auto-split: one bug per short thread
+TAL-01091#1,TAL-01091,journal_app,slow-interaction,RC-7,resolved,"I can only add two pairs, while the random option is giving me three pairs",auto-split: one bug per short thread
+TAL-01092#1,TAL-01092,journal_app,slow-interaction,RC-7,resolved,YTD is not available.,auto-split: one bug per short thread
+TAL-01093#1,TAL-01093,journal_app,slow-interaction,RC-7,resolved,Funded crypto accounts also available,auto-split: one bug per short thread
+TAL-01094#1,TAL-01094,journal_app,stuck-until-click,RC-2,resolved,"When creating a futures account, it gets stuck on instant",auto-split: one bug per short thread
+TAL-01098#1,TAL-01098,journal_app,slow-interaction,RC-7,resolved,"When I scroll down and up quickly with the mouse, their positions change.",auto-split: one bug per short thread
+TAL-01110#1,TAL-01110,journal_app,slow-interaction,RC-7,resolved,"If I click “New Session” or “Dashboard”, then press the browser back button, it takes me outside the app to the browser’s default page instead of returning to the previous page inside the app",auto-split: one bug per short thread
+TAL-01111#1,TAL-01111,journal_app,slow-interaction,RC-7,resolved,"When switching between the Strategies page and the Sessions page, the size of this button changes. This is inconsistent and should be fixed so the button size remains the same across both pages",auto-split: one bug per short thread
+TAL-01112#1,TAL-01112,journal_app,slow-interaction,RC-7,resolved,What if I have capital distributed across multiple markets? It would be a good addition to manage my capital from a single journal.,auto-split: one bug per short thread
+TAL-01113#1,TAL-01113,journal_app,slow-interaction,RC-7,resolved,"If I click on “Build Strategy”, “New Session”, or “Edit”, then press the browser back button, it takes me outside the app to the browser’s default page instead of returning to the previous page within the app",auto-split: one bug per short thread
+TAL-01114#1,TAL-01114,journal_app,slow-interaction,RC-7,resolved,The position where the menu opens needs to be adjusted,auto-split: one bug per short thread
+TAL-01115#1,TAL-01115,journal_app,slow-interaction,RC-7,resolved,The position of the three-dot menu needs to be adjusted,auto-split: one bug per short thread
+TAL-01117#1,TAL-01117,journal_app,slow-interaction,RC-7,resolved,There is no sorting button here like the other pages.,auto-split: one bug per short thread
+TAL-01118#1,TAL-01118,journal_app,slow-interaction,RC-7,resolved,This button is not on the other pages. It is not available as a separate button elsewhere because it is included as part of a menu under the highlighted menu shown in the image,auto-split: one bug per short thread
+TAL-01119#1,TAL-01119,journal_app,slow-interaction,RC-7,resolved,We can change this word from Market to Symbol,auto-split: one bug per short thread
+TAL-01161#1,TAL-01161,journal_app,slow-interaction,RC-7,resolved,should fillter control all,auto-split: one bug per short thread
+TAL-01448#1,TAL-01448,journal_app,slow-interaction,RC-7,user_replied,"When I delete a session, the total trade time changes to seconds and then the calculation returns to normal.",auto-split: one bug per short thread
+TAL-01449#1,TAL-01449,journal_app,slow-interaction,RC-7,resolved,لما يكون السيشن تحت واضغط على الثلاث نقاط ببين الاعدادات تحت الشريط السفلي,auto-split: one bug per short thread
+TAL-01503#1,TAL-01503,journal_app,slow-interaction,RC-7,resolved,"When you switch from Card to Row, the position of the text in the middle of the screen changes.",auto-split: one bug per short thread
+TAL-01504#1,TAL-01504,journal_app,slow-interaction,RC-7,resolved,لما ابحث ما بيبحث عن اسم الايموجي نفسه بل بيبحث عن اسم المجموعة نفسها,auto-split: one bug per short thread
+TAL-01505#1,TAL-01505,journal_app,slow-interaction,RC-7,resolved,"In the strategy flow field, the and/or fields are attached to the one next to them, and they become consistent when a new condition is added.",auto-split: one bug per short thread
+TAL-01506#1,TAL-01506,journal_app,slow-interaction,RC-7,resolved,The line that appears and disappears is inconsistent in the center of the box. I have ADHD.,auto-split: one bug per short thread
+TAL-01507#1,TAL-01507,journal_app,slow-interaction,RC-7,resolved,"Don't activate the ""add"" button until you reach 10 tags.",auto-split: one bug per short thread
+TAL-01508#1,TAL-01508,journal_app,ghost-after-delete,RC-1,resolved,"When I modify a condition or add a new condition and modify it, the text usually remains on one line. Sometimes it's on more than one line.",auto-split: one bug per short thread
+TAL-01509#1,TAL-01509,journal_app,slow-interaction,RC-7,resolved,خلي الاسماء في النص متناسقة,auto-split: one bug per short thread
+TAL-01510#1,TAL-01510,journal_app,slow-interaction,RC-7,resolved,جودة الصور ضعيفة,auto-split: one bug per short thread
+TAL-01511#1,TAL-01511,journal_app,replay-interaction,RC-8,resolved,"When I copy a strategy, it doesn't necessarily give me the same results in backtesting. Each strategy must be separate from the others.",auto-split: one bug per short thread
+TAL-01512#1,TAL-01512,journal_app,slow-interaction,RC-7,resolved,"When I added the strategy, it brought up the previous strategies and the session and placed them on the new strategy.",auto-split: one bug per short thread
+TAL-01515#1,TAL-01515,journal_app,slow-interaction,RC-7,resolved,"When I delete a group and add it again, the group locations change.",auto-split: one bug per short thread
+TAL-01516#1,TAL-01516,journal_app,slow-interaction,RC-7,resolved,all markets,auto-split: one bug per short thread
+TAL-01517#1,TAL-01517,journal_app,slow-interaction,RC-7,resolved,This bug occurs when scrolling down,auto-split: one bug per short thread
+TAL-01518#1,TAL-01518,journal_app,slow-interaction,RC-7,resolved,"The Markets dropdown should automatically reflect the markets of the selected symbols. Since I intend to use the market selection as a filter later, it shouldn't require manual configuration.",auto-split: one bug per short thread
+TAL-01519#1,TAL-01519,journal_app,replay-interaction,RC-8,user_replied,The limit for the number of pairs I’m allowed to add is no longer visible here,auto-split: one bug per short thread
+TAL-01520#1,TAL-01520,journal_app,slow-interaction,RC-7,resolved,"The maximum for the hour timeframe must be set to 24 hours. When the user enters a value higher than the allowed limit, a warning message must be displayed so they know what the maximum allowed value is",auto-split: one bug per short thread
+TAL-01521#1,TAL-01521,journal_app,slow-interaction,RC-7,resolved,We don’t need the word “Auto” in this list. Removing it will improve the appearance of the menu,auto-split: one bug per short thread
+TAL-01522#1,TAL-01522,journal_app,slow-interaction,RC-7,open,Part of the menu is hidden in this area,auto-split: one bug per short thread
+TAL-01523#1,TAL-01523,journal_app,slow-interaction,RC-7,resolved,"When adding a new group from the option at the top, they are not aligned at the same level",auto-split: one bug per short thread
+TAL-01524#1,TAL-01524,journal_app,slow-interaction,RC-7,resolved,"When adding a group from the bottom menu, I cannot scroll up.",auto-split: one bug per short thread
+TAL-01525#1,TAL-01525,journal_app,slow-interaction,RC-7,resolved,"When adding a menu from the top, a blank space appears at the bottom. This space disappears when scrolling",auto-split: one bug per short thread
+TAL-01526#1,TAL-01526,journal_app,slow-interaction,RC-7,resolved,Why do empty groups appear in the summary?,auto-split: one bug per short thread
+TAL-01527#1,TAL-01527,journal_app,slow-interaction,RC-7,user_replied,"What is the purpose of the zoom option? You can choose a fixed width ratio between 55% and 65%, with no option to adjust it. This would be better",auto-split: one bug per short thread
+TAL-01528#1,TAL-01528,journal_app,slow-interaction,RC-7,resolved,"This option is for the symbol. You can also add the market, which would make it clearer for the user",auto-split: one bug per short thread
+TAL-01529#1,TAL-01529,journal_app,multichart-parity,RC-4,resolved,"When hovering with the mouse over this menu, a panel should appear showing the full description",auto-split: one bug per short thread
+TAL-01530#1,TAL-01530,journal_app,slow-interaction,RC-7,resolved,"The design is consistent when switching between menus, but the sizes are different",auto-split: one bug per short thread
+TAL-01531#1,TAL-01531,journal_app,slow-interaction,RC-7,resolved,"In Community Strategy there is a filter option. Why not add it to My Strategy as well, but on the left side instead of next to the search box?",auto-split: one bug per short thread
+TAL-01532#1,TAL-01532,journal_app,slow-interaction,RC-7,resolved,Some menus only allow 2 MB while others allow 5 MB. I think it would be better to unify the limits across the whole site,auto-split: one bug per short thread
+TAL-01533#1,TAL-01533,journal_app,slow-interaction,RC-7,resolved,"When I scroll down and then move the mouse, it resets",auto-split: one bug per short thread
+TAL-01534#1,TAL-01534,journal_app,slow-interaction,RC-7,resolved,Add padding on the sides,auto-split: one bug per short thread
+TAL-01535#1,TAL-01535,journal_app,slow-interaction,RC-7,resolved,Strategy Name or just Name it can be improved to make it clearer,auto-split: one bug per short thread
+TAL-01537#1,TAL-01537,journal_app,slow-interaction,RC-2,open,"The Community section needs further improvement, such as adding options like the list below: * View full strategy details * View clear and reliable statistics * Ability to copy the strategy directly to the user’s account * Easy modification",auto-split: one bug per short thread
+TAL-01538#1,TAL-01538,journal_app,slow-interaction,RC-7,resolved,"Why does duplicating a strategy copy the same parameters, and why does it not show that it has been modified after editing",auto-split: one bug per short thread
+TAL-01539#1,TAL-01539,journal_app,slow-interaction,RC-7,resolved,It should be unified across all options in the Trade page and the Session page. ▲▼ Default ▲ = Ascending (smallest to largest) ▼ = Descending (largest to smallest),auto-split: one bug per short thread
+TAL-01540#1,TAL-01540,journal_app,slow-interaction,RC-7,resolved,Replacing it with the name would be better and clearer,auto-split: one bug per short thread
+TAL-01541#1,TAL-01541,journal_app,slow-interaction,RC-7,resolved,بياخد شوية وقت ليظهر الداتا,auto-split: one bug per short thread
+TAL-01542#1,TAL-01542,journal_app,slow-interaction,RC-7,resolved,Missing trading pairs,auto-split: one bug per short thread
+TAL-01543#1,TAL-01543,journal_app,slow-interaction,RC-7,resolved,There is an issue with the trading pairs and the time,auto-split: one bug per short thread
+TAL-01544#1,TAL-01544,journal_app,slow-interaction,RC-7,user_replied,Duplicate option is missing,auto-split: one bug per short thread
+TAL-01545#1,TAL-01545,journal_app,slow-interaction,RC-7,open,"When a dropdown menu is open, clicking outside of it should close the menu",auto-split: one bug per short thread
+TAL-01546#1,TAL-01546,journal_app,slow-interaction,RC-7,resolved,The stock pairs list in the strategy does not match the pairs available in the session,auto-split: one bug per short thread
+TAL-01549#1,TAL-01549,journal_app,slow-interaction,RC-7,resolved,لما اضيف استراتيجية طويلة بيطلع الكلام برا المربع,auto-split: one bug per short thread
+TAL-01550#1,TAL-01550,journal_app,slow-interaction,RC-7,resolved,لازم يكتب ارقام بس مش e-+ في كل البوكسات بيكتب هيك,auto-split: one bug per short thread
+TAL-01551#1,TAL-01551,journal_app,slow-interaction,RC-7,resolved,"I can't see these columns from the bottom up, but I can see them from the top down.",auto-split: one bug per short thread
+TAL-01552#1,TAL-01552,journal_app,slow-interaction,RC-7,resolved,ليش بيصير ارشيف بدل الحذف؟,auto-split: one bug per short thread
+TAL-01553#1,TAL-01553,journal_app,slow-interaction,RC-7,resolved,when put (A) it's look exiting and it's not,auto-split: one bug per short thread
+TAL-01554#1,TAL-01554,journal_app,slow-interaction,RC-7,resolved,The name is not clear,auto-split: one bug per short thread
+TAL-01555#1,TAL-01555,journal_app,slow-interaction,RC-7,resolved,Session,auto-split: one bug per short thread
+TAL-01556#1,TAL-01556,journal_app,slow-interaction,RC-7,open,الرقم هاد كبير حاول تصغره بما يناسب,auto-split: one bug per short thread
+TAL-01557#1,TAL-01557,journal_app,slow-interaction,RC-7,open,لما احط ماركت بدون ما اضيف اي زوج واضغط التالي بس ارجع على الصفحة السابقة بيختفي الماركت اللي حددته,auto-split: one bug per short thread
+TAL-01558#1,TAL-01558,journal_app,slow-interaction,RC-7,open,خلي المربع ما يظهر على اي ديسكريبشن خليه يظهر على الديسكريبشن اللي بيكون طويل جدا ومش ظاهر كله مثل الاستراتيجية الاولى,auto-split: one bug per short thread
+TAL-00887#1,TAL-00887,multichart_layouts,selection-menu-desync,RC-1,resolved,Load saved layout. All objects restore. not work,auto-split: one bug per short thread
+TAL-00914#1,TAL-00914,multichart_layouts,first-click-fails,RC-1,resolved,Data loading is slow the first time a new layout is selected and needs optimization,auto-split: one bug per short thread
+TAL-00915#1,TAL-00915,multichart_layouts,slow-interaction,RC-2,resolved,The rendering performance is slow and needs optimization,auto-split: one bug per short thread
+TAL-00917#1,TAL-00917,multichart_layouts,multichart-parity,RC-4,resolved,"Switching symbols in a sub-chart with “Symbol On” enabled causes the chart to revert to the original symbol, leading to candle mismatch and incorrect symbol synchronization across layouts",auto-split: one bug per short thread
+TAL-00919#1,TAL-00919,multichart_layouts,multichart-parity,RC-4,resolved,not work,auto-split: one bug per short thread
+TAL-00920#1,TAL-00920,multichart_layouts,multichart-parity,RC-4,resolved,The candle type change in the sub-chart is not functioning correctly,auto-split: one bug per short thread
+TAL-00923#1,TAL-00923,multichart_layouts,multichart-parity,RC-4,resolved,"When candles are aligned on the same level, changing the timeframe causes the candles to shift position",auto-split: one bug per short thread
+TAL-00925#1,TAL-00925,multichart_layouts,multichart-parity,RC-4,resolved,The chart disappears when opening the menus highlighted with arrows on the image,auto-split: one bug per short thread
+TAL-00926#1,TAL-00926,multichart_layouts,drag-mis-anchor,RC-3,resolved,quick bar don't show when open more than 1 layouts,auto-split: one bug per short thread
+TAL-00927#1,TAL-00927,multichart_layouts,multichart-parity,RC-4,resolved,لما اغير الفريمات في كل لايوت بيصير شبكات هيك,auto-split: one bug per short thread
+TAL-00928#1,TAL-00928,multichart_layouts,multichart-parity,RC-4,resolved,"When I add an indicator and open 2 layouts, the indicator is duplicated on the same chart.",auto-split: one bug per short thread
+TAL-00929#1,TAL-00929,multichart_layouts,drag-mis-anchor,RC-3,resolved,"In some cases, the candles do not align correctly. when double-clicking the date scale line to reset the chart view, the chart continues to move and behave as if it is still rendering data in the hidden/off-screen area, resulting in unexpec",auto-split: one bug per short thread
+TAL-00930#1,TAL-00930,multichart_layouts,multichart-parity,RC-4,resolved,"Refreshing the page causes all charts to disappear, and the layout resets to a single chart",auto-split: one bug per short thread
+TAL-00931#1,TAL-00931,multichart_layouts,multichart-parity,RC-4,resolved,Load saved layout. not work,auto-split: one bug per short thread
+TAL-00932#1,TAL-00932,multichart_layouts,replay-interaction,RC-8,resolved,"When Replay Mode is activated on the same symbol and the same chart position, the candles are displayed in incorrect positions on the chart, causing alignment and rendering issues",auto-split: one bug per short thread
+TAL-00934#1,TAL-00934,multichart_layouts,multichart-parity,RC-4,resolved,"When I draw on any panel other than the main one, it doesn't draw.",auto-split: one bug per short thread
+TAL-00935#1,TAL-00935,multichart_layouts,multichart-parity,RC-4,resolved,The indicator menu don't disappear when I'm in the main panel and click on the second panel unless I click on the main panel again.,auto-split: one bug per short thread
+TAL-00936#1,TAL-00936,multichart_layouts,multichart-parity,RC-4,resolved,"Resetting the chart view from the Date Scale line on a sub-chart causes chart synchronization and alignment issues, while performing the reset from the primary chart works correctly without any problems",auto-split: one bug per short thread
+TAL-00937#1,TAL-00937,multichart_layouts,multichart-parity,RC-4,resolved,Moving the a sub-chart does not affect or synchronize with the main chart,auto-split: one bug per short thread
+TAL-00939#1,TAL-00939,multichart_layouts,slow-interaction,RC-2,resolved,"When moving synchronized charts together, performance is sometimes smooth and responsive especially in zoomed-out view with no noticeable lag overall there is still intermittent lag during chart movement",auto-split: one bug per short thread
+TAL-00940#1,TAL-00940,multichart_layouts,slow-interaction,RC-2,resolved,Switching the timeframe in a single layout triggers a full re-render of the remaining layouts resulting in redundant data loading and reduced performance,auto-split: one bug per short thread
+TAL-00941#1,TAL-00941,multichart_layouts,multichart-parity,RC-4,resolved,"Compare symbols (candle/line mode) misbehave during zooming and panning, causing them to disappear misalign",auto-split: one bug per short thread
+TAL-00942#1,TAL-00942,multichart_layouts,multichart-parity,RC-4,resolved,Candle data is misaligned and does not match the expected positions,auto-split: one bug per short thread
+TAL-00945#1,TAL-00945,multichart_layouts,stuck-until-click,RC-2,resolved,"This error has appeared multiple times, and the platform keeps freezing or glitching",auto-split: one bug per short thread
+TAL-00947#1,TAL-00947,multichart_layouts,multichart-parity,RC-4,resolved,"Clicking on a layout causes unintended changes to the grid lines and time axis, resulting in inconsistent chart display settings",auto-split: one bug per short thread
+TAL-00948#1,TAL-00948,multichart_layouts,slow-interaction,RC-2,resolved,Switching the layout display mode from vertical to horizontal and changing the symbol causes the site to freeze,auto-split: one bug per short thread
+TAL-00950#1,TAL-00950,multichart_layouts,multichart-parity,RC-4,resolved,There is an issue with taking screenshots in multi-layout mode,auto-split: one bug per short thread
+TAL-00951#1,TAL-00951,multichart_layouts,multichart-parity,RC-4,resolved,"When copying the image link, it copies the full website URL instead of the direct image link",auto-split: one bug per short thread
+TAL-00952#1,TAL-00952,multichart_layouts,multichart-parity,RC-4,resolved,The “Copy Image” function only captures the main chart instead of the selected or intended chart in multi-layout mode,auto-split: one bug per short thread
+TAL-00957#1,TAL-00957,multichart_layouts,stuck-until-click,RC-2,resolved,"Dragging to rescale from the date rescale area on the main chart has a limited control range. If the mouse is released outside the active area and then returns to the chart, the rescale interaction remains stuck and continues to affect the ",auto-split: one bug per short thread
+TAL-00958#1,TAL-00958,multichart_layouts,multichart-parity,RC-4,resolved,"Adding an indicator to one chart does not propagate it to other charts, and the indicator is not properly aligned with the chart data",auto-split: one bug per short thread
+TAL-00959#1,TAL-00959,multichart_layouts,multichart-parity,RC-4,resolved,Selecting Clear all does not fully clear the chart. Two indicators remain visible while the indicators panel incorrectly indicates that all indicators have been deleted,auto-split: one bug per short thread
+TAL-00961#1,TAL-00961,multichart_layouts,slow-interaction,RC-2,resolved,There is a glitch in the date and time scale,auto-split: one bug per short thread
+TAL-00962#1,TAL-00962,multichart_layouts,multichart-parity,RC-4,resolved,"Crosshair/chart synchronization is inconsistent. Moving the mouse on another chart does not always align to the most recent candle, and the synchronization point changes between different candles each time",auto-split: one bug per short thread
+TAL-00963#1,TAL-00963,multichart_layouts,multichart-parity,RC-4,resolved,Undo and Redo do not work on sub-charts. They only function correctly on the main chart,auto-split: one bug per short thread
+TAL-00964#1,TAL-00964,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When moving the favourite tools panel between charts, there is noticeable lag and difficulty in dragging the panel smoothly",auto-split: one bug per short thread
+TAL-00965#1,TAL-00965,multichart_layouts,multichart-parity,RC-4,resolved,"Right-click and Escape key properly deactivate drawing tools on the main chart, but this functionality does not work on sub-charts, where the active tool stays selected",auto-split: one bug per short thread
+TAL-00966#1,TAL-00966,multichart_layouts,multichart-parity,RC-4,resolved,"When selecting a drawing tool and moving between charts, the mouse cursor incorrectly changes to a vertical zoom/resize icon instead of the expected tool cursor",auto-split: one bug per short thread
+TAL-00967#1,TAL-00967,multichart_layouts,drag-mis-anchor,RC-3,resolved,"If a drawing tool is locked from one chart and then moved from another chart, its position changes incorrectly",auto-split: one bug per short thread
+TAL-00968#1,TAL-00968,multichart_layouts,multichart-parity,RC-4,resolved,The Hide All does not hide elements across all charts simultaneously and only affects the active chart,auto-split: one bug per short thread
+TAL-00969#1,TAL-00969,multichart_layouts,slow-interaction,RC-2,resolved,Drawing on multiple charts causes noticeable lag in chart movement and tool interaction. The lag becomes significantly worse when a drawing tool is locked,auto-split: one bug per short thread
+TAL-00970#1,TAL-00970,multichart_layouts,multichart-parity,RC-4,resolved,"Switching timeframes causes the chart to shift unpredictably, resulting in unstable and inconsistent movement",auto-split: one bug per short thread
+TAL-00971#1,TAL-00971,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When drawing a tool after candles, the tool is temporarily rendered on other charts at the last candle position. After finishing the drawing, the tool then moves to its correct position",auto-split: one bug per short thread
+TAL-00972#1,TAL-00972,multichart_layouts,multichart-parity,RC-4,resolved,"When selecting a drawing tool and clicking on a chart, or switching between charts, the grid lines and date scale change unexpectedly",auto-split: one bug per short thread
+TAL-00973#1,TAL-00973,multichart_layouts,drag-mis-anchor,RC-3,resolved,"After selecting the arrow cursor tool and dragging to pan the chart, the cursor intermittently flickers between the move icon and the arrow icon instead of staying consistent",auto-split: one bug per short thread
+TAL-00974#1,TAL-00974,multichart_layouts,multichart-parity,RC-4,resolved,"The problem happens repeatedly and leads to the platform freezing and high system resource usage, causing my computer to heat up significantly. It appears to be triggered by actions such as changing the timeframe and switching the trading s",auto-split: one bug per short thread
+TAL-01016#1,TAL-01016,multichart_layouts,multichart-parity,RC-4,resolved,The group layout is not aligned in a single straight line; it needs to be fixed.,auto-split: one bug per short thread
+TAL-01105#1,TAL-01105,multichart_layouts,slow-interaction,RC-2,resolved,very lag,auto-split: one bug per short thread
+TAL-01116#1,TAL-01116,multichart_layouts,multichart-parity,RC-4,resolved,The position of this button needs to be adjusted to match the layout and design of the other pages,auto-split: one bug per short thread
+TAL-01185#1,TAL-01185,multichart_layouts,multichart-parity,RC-4,resolved,"When I enlarge and then reduce the size of a chart, the second chart doesn't change unless I click on it with the mouse.",auto-split: one bug per short thread
+TAL-01360#1,TAL-01360,multichart_layouts,slow-interaction,RC-2,resolved,"There is noticeable lag and the animation is not smooth when opening the Layouts menu. When opening the Layouts menu, the Time Scale overlaps with the Price Scale. The main chart moves multiple times when the Layouts menu is opened before f",auto-split: one bug per short thread
+TAL-01362#1,TAL-01362,multichart_layouts,slow-interaction,RC-2,resolved,Rendering is very slow when changing the timeframe and needs optimization,auto-split: one bug per short thread
+TAL-01363#1,TAL-01363,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When working with different timeframes, the charts move irregularly during auto-scaling or when the chart is moved manually",auto-split: one bug per short thread
+TAL-01364#1,TAL-01364,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When dragging the chart from the left side toward the right and releasing the mouse button outside the chart area, then moving the cursor back over the chart, the chart still behaves as if the mouse button is being held down and continues m",auto-split: one bug per short thread
+TAL-01365#1,TAL-01365,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When dragging the chart with the mouse, there is a lock in this specific area shown in the image. There should not be a lock when dragging the chart with the mouse.",auto-split: one bug per short thread
+TAL-01366#1,TAL-01366,multichart_layouts,multichart-parity,RC-4,resolved,"When using different timeframes, moving one chart causes the other chart to reset automatically or disappear from the layout",auto-split: one bug per short thread
+TAL-01367#1,TAL-01367,multichart_layouts,multichart-parity,RC-4,resolved,"When double-clicking repeatedly on the layout, the charts move in an unexpected way",auto-split: one bug per short thread
+TAL-01368#1,TAL-01368,multichart_layouts,multichart-parity,RC-4,resolved,Double-clicking in this area resets the chart,auto-split: one bug per short thread
+TAL-01369#1,TAL-01369,multichart_layouts,multichart-parity,RC-4,resolved,Sometimes manual rescaling does not work,auto-split: one bug per short thread
+TAL-01370#1,TAL-01370,multichart_layouts,multichart-parity,RC-4,resolved,"The charts respond every time I rescale them, but they do not settle into a fixed position",auto-split: one bug per short thread
+TAL-01372#1,TAL-01372,multichart_layouts,multichart-parity,RC-4,resolved,"When drawing on one chart, some drawings appear differently on another chart. Some drawings are duplicated excessively, as shown in the image. When opening the layout, I cannot access the tool settings on the main chart",auto-split: one bug per short thread
+TAL-01376#1,TAL-01376,multichart_layouts,multichart-parity,RC-4,resolved,"Symbols are enabled and the charts are synchronized, but when clicking on Layouts the pair name is not matching correctly",auto-split: one bug per short thread
+TAL-01377#1,TAL-01377,multichart_layouts,multichart-parity,RC-4,resolved,The menu is not available in the other layout,auto-split: one bug per short thread
+TAL-01378#1,TAL-01378,multichart_layouts,multichart-parity,RC-4,resolved,Why does the shortcut include “.csv”?,auto-split: one bug per short thread
+TAL-01379#1,TAL-01379,multichart_layouts,multichart-parity,RC-4,resolved,"When selecting a layout and clicking “Hide”, it should hide the tools or indicators only inside that specific layout. When clicking “Hide All”, it should hide everything across all layouts. The same behavior should apply to deletion",auto-split: one bug per short thread
+TAL-01380#1,TAL-01380,multichart_layouts,multichart-parity,RC-4,resolved,"When changing the candle type, the change is applied only to the main chart, regardless of whether the charts are displaying the same symbol or different symbols",auto-split: one bug per short thread
+TAL-01381#1,TAL-01381,multichart_layouts,label-mis-anchor,RC-3,resolved,date label need to be fixed,auto-split: one bug per short thread
+TAL-01382#1,TAL-01382,multichart_layouts,multichart-parity,RC-4,resolved,There is a discrepancy in the candles,auto-split: one bug per short thread
+TAL-01386#1,TAL-01386,multichart_layouts,multichart-parity,RC-4,resolved,I am unable to select the tools on the main chart,auto-split: one bug per short thread
+TAL-01387#1,TAL-01387,multichart_layouts,multichart-parity,RC-4,resolved,"When I refresh the page, it resets and only one layout remains.",auto-split: one bug per short thread
+TAL-01388#1,TAL-01388,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When moving a parallel channel on the chart, it does not move on the other chart",auto-split: one bug per short thread
+TAL-01389#1,TAL-01389,multichart_layouts,multichart-parity,RC-4,resolved,"If I am using a single layout and the drawing synchronization option is enabled, then when I switch back to a 2-layout view, all the drawings appear there as well",auto-split: one bug per short thread
+TAL-01390#1,TAL-01390,multichart_layouts,drag-mis-anchor,RC-3,resolved,"In Replay mode, the indicator does not move along with the chart",auto-split: one bug per short thread
+TAL-01391#1,TAL-01391,multichart_layouts,drag-mis-anchor,RC-3,resolved,"On the Price Scale and Date Scale, if I click and drag with the mouse, then release the mouse button outside the chart area and move the cursor back onto the chart, it behaves as if I am still dragging",auto-split: one bug per short thread
+TAL-01392#1,TAL-01392,multichart_layouts,multichart-parity,RC-4,resolved,"When the chart is rendering and an indicator is applied, the tools drawn on the chart move along with the rendering process.",auto-split: one bug per short thread
+TAL-01393#1,TAL-01393,multichart_layouts,slow-interaction,RC-2,resolved,"When refreshing the page or switching to a higher timeframe, the chart re-renders from scratch, and the rendering process is slow",auto-split: one bug per short thread
+TAL-01394#1,TAL-01394,multichart_layouts,label-mis-anchor,RC-3,resolved,The crosshair label changes its color and appearance in some cases,auto-split: one bug per short thread
+TAL-01395#1,TAL-01395,multichart_layouts,slow-interaction,RC-2,resolved,"When opening a layout, the site freezes completely",auto-split: one bug per short thread
+TAL-01396#1,TAL-01396,multichart_layouts,label-mis-anchor,RC-3,resolved,There is an inconsistency in the crosshair label between layouts,auto-split: one bug per short thread
+TAL-01397#1,TAL-01397,multichart_layouts,multichart-parity,RC-4,resolved,"When changing the selected symbol for a layout, it often does not respond until after several attempts. In some cases, only the symbol name changes, while the chart itself does not update",auto-split: one bug per short thread
+TAL-01398#1,TAL-01398,multichart_layouts,multichart-parity,RC-4,resolved,"When trying to resize some layouts, this icon appears, and I am no longer able to resize the Chart",auto-split: one bug per short thread
+TAL-01399#1,TAL-01399,multichart_layouts,multichart-parity,RC-4,resolved,"When switching to a higher timeframe, the chart re-renders",auto-split: one bug per short thread
+TAL-01400#1,TAL-01400,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When magnetic snapping is disabled, the crosshair should not snap to candles and should move freely. When enabled it should snap to candles correctly. candle snapping behavior should be consistent and identical across all layouts.",auto-split: one bug per short thread
+TAL-01401#1,TAL-01401,multichart_layouts,label-mis-anchor,RC-3,resolved,The label appears as if it is highlighted,auto-split: one bug per short thread
+TAL-01402#1,TAL-01402,multichart_layouts,multichart-parity,RC-4,resolved,"When an object is locked in one layout, it can still be moved from another layout",auto-split: one bug per short thread
+TAL-01403#1,TAL-01403,multichart_layouts,multichart-parity,RC-4,resolved,When resizing a tool while it is locked,auto-split: one bug per short thread
+TAL-01404#1,TAL-01404,multichart_layouts,multichart-parity,RC-4,resolved,"Every time I click resize between layouts, the main chart responds and its position changes",auto-split: one bug per short thread
+TAL-01405#1,TAL-01405,multichart_layouts,selection-menu-desync,RC-1,resolved,"When selecting tools and then deselecting, the other chart shifts from its position",auto-split: one bug per short thread
+TAL-01406#1,TAL-01406,multichart_layouts,multichart-parity,RC-4,resolved,Old tools appear on the layout even though I started with a new chart,auto-split: one bug per short thread
+TAL-01412#1,TAL-01412,multichart_layouts,multichart-parity,RC-4,resolved,"When switching between candle types, the chart changes its position",auto-split: one bug per short thread
+TAL-01417#1,TAL-01417,multichart_layouts,multichart-parity,RC-4,resolved,"When I click Compare Symbol on the main chart, the symbol is added immediately. when using another layout, a selection menu opens instead. After choosing a symbol from that menu, the comparison is applied to the main chart instead of the se",auto-split: one bug per short thread
+TAL-01418#1,TAL-01418,multichart_layouts,multichart-parity,RC-4,resolved,"In this menu, the close button does not work, and the symbol search is also not functioning",auto-split: one bug per short thread
+TAL-01420#1,TAL-01420,multichart_layouts,multichart-parity,RC-4,resolved,grid lines moving when openning the layout,auto-split: one bug per short thread
+TAL-01422#1,TAL-01422,multichart_layouts,multichart-parity,RC-4,resolved,"When clicking the button to enable or disable a symbol, the chart moves unexpectedly. Toggling the symbol should not change the chart's position or cause any movement",auto-split: one bug per short thread
+TAL-01423#1,TAL-01423,multichart_layouts,multichart-parity,RC-4,resolved,"When changing the symbol name does not update in some layouts. after switching to another layout and then returning, the correct symbol name appears and matches the layout",auto-split: one bug per short thread
+TAL-01424#1,TAL-01424,multichart_layouts,multichart-parity,RC-4,resolved,This bar does not have the same visual effect as the other bar,auto-split: one bug per short thread
+TAL-01425#1,TAL-01425,multichart_layouts,drag-mis-anchor,RC-3,resolved,"This bar can be selected by dragging with the mouse. When switching layouts, it remains selected, but the selection color changes",auto-split: one bug per short thread
+TAL-01426#1,TAL-01426,multichart_layouts,multichart-parity,RC-4,user_replied,"When adding a Compare Symbol from the main chart, it is added immediately as expected. However, when using another layout and adding a Compare Symbol, this popup appears. The Close button in the popup does not work, and selecting a symbol f",auto-split: one bug per short thread
+TAL-01427#1,TAL-01427,multichart_layouts,multichart-parity,RC-4,resolved,"In some layouts, the price scale and date scale do not work.",auto-split: one bug per short thread
+TAL-01428#1,TAL-01428,multichart_layouts,multichart-parity,RC-4,resolved,There is an issue with the date scale,auto-split: one bug per short thread
+TAL-01429#1,TAL-01429,multichart_layouts,multichart-parity,RC-4,resolved,"When opening the layout menu, there is an issue with the price scale",auto-split: one bug per short thread
+TAL-01430#1,TAL-01430,multichart_layouts,multichart-parity,RC-4,resolved,"When the main layouts menu is open, and I click on the chart and then click the price scale or date scale, an issue occurs with the time scaling",auto-split: one bug per short thread
+TAL-01431#1,TAL-01431,multichart_layouts,multichart-parity,RC-4,resolved,"When opening the layouts menu, the main chart moves differently compared to the other layouts",auto-split: one bug per short thread
+TAL-01432#1,TAL-01432,multichart_layouts,multichart-parity,RC-4,resolved,"When opening the layouts menu, the main chart drawing moves differently compared to the other layouts",auto-split: one bug per short thread
+TAL-01433#1,TAL-01433,multichart_layouts,label-mis-anchor,RC-3,resolved,"The label starts from a specific point with an incorrect shape, and when moving to the left, it starts to take its correct form",auto-split: one bug per short thread
+TAL-01434#1,TAL-01434,multichart_layouts,multichart-parity,RC-4,resolved,"When switching between layouts, the symbol name changes, and the menu shifts left and right",auto-split: one bug per short thread
+TAL-01435#1,TAL-01435,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When adding the compare symbol, the chart and logo move forward, and when it is hidden or deleted, they return to their original position. The price scale of the compare symbol takes up space in the layout. Why isn’t it added as a layer on ",auto-split: one bug per short thread
+TAL-01436#1,TAL-01436,multichart_layouts,multichart-parity,RC-4,resolved,"When hiding the indicator, the menu does not return to its position unless you click on the layout",auto-split: one bug per short thread
+TAL-01437#1,TAL-01437,multichart_layouts,multichart-parity,RC-4,resolved,Candle and time mismatch,auto-split: one bug per short thread
+TAL-01438#1,TAL-01438,multichart_layouts,multichart-parity,RC-4,resolved,The crosshair does not lock onto the latest candle; it keeps shifting depending on how fast the mouse is moved.,auto-split: one bug per short thread
+TAL-01439#1,TAL-01439,multichart_layouts,multichart-parity,RC-4,resolved,"When changing the crosshair settings, the changes are not applied across all layouts",auto-split: one bug per short thread
+TAL-01440#1,TAL-01440,multichart_layouts,drag-mis-anchor,RC-3,open,Why isn’t the crosshair snap to candles linked to the magnetic snap option?,auto-split: one bug per short thread
+TAL-01441#1,TAL-01441,multichart_layouts,multichart-parity,RC-4,resolved,"When enabling the Symbol option, it does not respond immediately",auto-split: one bug per short thread
+TAL-01442#1,TAL-01442,multichart_layouts,multichart-parity,RC-4,resolved,The drawings are duplicated in the Object Tree,auto-split: one bug per short thread
+TAL-01443#1,TAL-01443,multichart_layouts,quick-menu-defect,RC-1,resolved,"Some tools cannot open their main settings menu, either by double-clicking or through the quick menu. In other layouts, I am unable to select them at all",auto-split: one bug per short thread
+TAL-01444#1,TAL-01444,multichart_layouts,multichart-parity,RC-4,resolved,"When moving the Brush or Highlight tool in another layout, its shape changes unexpectedly",auto-split: one bug per short thread
+TAL-01445#1,TAL-01445,multichart_layouts,multichart-parity,RC-4,resolved,"In some cases, changing the time frame does not respond",auto-split: one bug per short thread
+TAL-01447#1,TAL-01447,multichart_layouts,multichart-parity,RC-4,resolved,"This area is considered an intersection zone between price and time. The intersection box can potentially be used for other things as well, but that will be explored later",auto-split: one bug per short thread
+TAL-01453#1,TAL-01453,multichart_layouts,multichart-parity,RC-4,resolved,The date line changes when clicking on the chart,auto-split: one bug per short thread
+TAL-01454#1,TAL-01454,multichart_layouts,multichart-parity,RC-4,resolved,"When switching to a new layout, this menu briefly appears in an incorrect state before updating to its final state.",auto-split: one bug per short thread
+TAL-01455#1,TAL-01455,multichart_layouts,slow-interaction,RC-2,resolved,"During rendering, the chart loads candle by candle instead of rendering the entire visible area at once.",auto-split: one bug per short thread
+TAL-01456#1,TAL-01456,multichart_layouts,slow-interaction,RC-2,resolved,"There is a mismatch in the candles at the end of the chart. Additionally, the rendering performance is slow and needs optimization.",auto-split: one bug per short thread
+TAL-01457#1,TAL-01457,multichart_layouts,slow-interaction,RC-2,resolved,"When changing the timeframe in one layout, the other layouts re-render and this causes a chart glitch",auto-split: one bug per short thread
+TAL-01458#1,TAL-01458,multichart_layouts,multichart-parity,RC-4,resolved,"This menu used to interact with the candle colors, and it worked much better in that state",auto-split: one bug per short thread
+TAL-01459#1,TAL-01459,multichart_layouts,multichart-parity,RC-4,resolved,Changing the timeframe causes issues in the chart.,auto-split: one bug per short thread
+TAL-01460#1,TAL-01460,multichart_layouts,multichart-parity,RC-4,resolved,"Sometimes, moving the chart causes it to re-render again",auto-split: one bug per short thread
+TAL-01461#1,TAL-01461,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When dragging the chart with the mouse to the left, it snaps back to the original position",auto-split: one bug per short thread
+TAL-01462#1,TAL-01462,multichart_layouts,slow-interaction,RC-2,resolved,There is lag when moving the chart while it is rendering,auto-split: one bug per short thread
+TAL-01463#1,TAL-01463,multichart_layouts,multichart-parity,RC-4,resolved,"When moving the chart in the first layout, the other charts also react and move accordingly",auto-split: one bug per short thread
+TAL-01464#1,TAL-01464,multichart_layouts,multichart-parity,RC-4,resolved,"When adding the same symbol to another layout, both layouts re-render again",auto-split: one bug per short thread
+TAL-01465#1,TAL-01465,multichart_layouts,multichart-parity,RC-4,resolved,"The middle chart was rapidly moving up and down during rendering. When moving the chart on its left into the hidden area, the movement stops Note: the same symbol is used A short video has been sent to the developer to illustrate the issue",auto-split: one bug per short thread
+TAL-01466#1,TAL-01466,multichart_layouts,multichart-parity,RC-4,resolved,"In the layout, after resetting the chart, the grid lines behave inconsistently: when moving the chart, they disappear in some layouts but not in others",auto-split: one bug per short thread
+TAL-01467#1,TAL-01467,multichart_layouts,replay-interaction,RC-8,resolved,"When pressing the replay button, some charts re-render from scratch",auto-split: one bug per short thread
+TAL-01468#1,TAL-01468,multichart_layouts,multichart-parity,RC-4,resolved,"When enabling symbol from the layout menu, the charts do not automatically sync or match",auto-split: one bug per short thread
+TAL-01469#1,TAL-01469,multichart_layouts,multichart-parity,RC-4,resolved,When changing the timeframe,auto-split: one bug per short thread
+TAL-01470#1,TAL-01470,multichart_layouts,multichart-parity,RC-4,resolved,"When changing the timeframe, the chart does not update correctly, while the grid lines change",auto-split: one bug per short thread
+TAL-01471#1,TAL-01471,multichart_layouts,replay-interaction,RC-8,resolved,"When running replay on a single layout, the grid lines keep moving continuously",auto-split: one bug per short thread
+TAL-01474#1,TAL-01474,multichart_layouts,multichart-parity,RC-4,resolved,The “Interval” option in the layout menu is not working,auto-split: one bug per short thread
+TAL-01475#1,TAL-01475,multichart_layouts,multichart-parity,RC-4,resolved,Difference between the timeframe and the time displayed at the bottom of the chart,auto-split: one bug per short thread
+TAL-01476#1,TAL-01476,multichart_layouts,replay-interaction,RC-8,resolved,"When replay is enabled, the main chart re-renders and shifts from left to right, while the other charts do not participate in the replay",auto-split: one bug per short thread
+TAL-01477#1,TAL-01477,multichart_layouts,stuck-until-click,RC-2,resolved,"When moving the crosshair between layouts, it remains stuck on the other layout when the crosshair is disabled",auto-split: one bug per short thread
+TAL-01478#1,TAL-01478,multichart_layouts,replay-interaction,RC-8,resolved,"When using the same symbol on the same timeframe, Replay does not work on the sub-chart.",auto-split: one bug per short thread
+TAL-01479#1,TAL-01479,multichart_layouts,drag-mis-anchor,RC-3,resolved,"After stopping Replay and changing the timeframe of the layout where Replay was not working, the chart suddenly jumped once, and the candles became misaligned with the other charts",auto-split: one bug per short thread
+TAL-01480#1,TAL-01480,multichart_layouts,drag-mis-anchor,RC-3,open,"Main chart issues: Re-rendering issues: Re-rendering occurs on the same symbol, whether using the same timeframe, different timeframes, or during Replay. Replay issues: On the same symbol, whether using the same timeframes or different time",auto-split: one bug per short thread
+TAL-01481#1,TAL-01481,multichart_layouts,drag-mis-anchor,RC-3,resolved,"When I enable Reply and the two charts move together, the arrow appears on the second chart even though they are moving together.",auto-split: one bug per short thread
+TAL-01482#1,TAL-01482,multichart_layouts,multichart-parity,RC-4,pending,هل لازم يكونو في كل شارت الاخبار؟ ولا بيكفي الاساسي,auto-split: one bug per short thread
+TAL-01483#1,TAL-01483,multichart_layouts,multichart-parity,RC-4,resolved,"When I zoom in/out, it only works on the chart I've selected, not both charts. However, if I have data range enabled, both charts must zoom in and out together.",auto-split: one bug per short thread
+TAL-01484#1,TAL-01484,multichart_layouts,stuck-until-click,RC-2,open,"When I have all the options enabled and I zoom in or out, for example, or reset the chart, the action only happens when I tap the screen.",auto-split: one bug per short thread
+TAL-01485#1,TAL-01485,multichart_layouts,stuck-until-click,RC-2,resolved,"When I switch between two charts and the crosshire gets stuck, it's annoying.",auto-split: one bug per short thread
+TAL-01486#1,TAL-01486,multichart_layouts,multichart-parity,RC-4,resolved,"When I have two different charts and I click on the symbol option, it takes a long time for the second chart to change and become the same symbol.",auto-split: one bug per short thread
+TAL-01487#1,TAL-01487,multichart_layouts,stuck-until-click,RC-2,resolved,"When I have two different charts and click on the symbol option, the symbol changes on the chart but it doesn't change in the market at the top left.",auto-split: one bug per short thread
+TAL-01488#1,TAL-01488,multichart_layouts,stuck-until-click,RC-2,open,"When I enable Reply and press Ctrl+R, the chart glitch persists for the first few times until I click on the chart.",auto-split: one bug per short thread
+TAL-01489#1,TAL-01489,multichart_layouts,stuck-until-click,RC-2,open,"When there's more than one layout and you tap the screen, the second layout glitch occurs. When I tap Reply or switch between layouts, this bug will appear.",auto-split: one bug per short thread
+TAL-01490#1,TAL-01490,multichart_layouts,stuck-until-click,RC-2,open,"When I move the main chart and click the blue arrow, the second chart doesn't revert to the original chart unless I click on the chart.",auto-split: one bug per short thread
+TAL-01491#1,TAL-01491,multichart_layouts,drag-mis-anchor,RC-3,open,"If you hold the chart and move it outside the outline frame, it will stop moving on the primary chart. However, if you move it from the secondary chart, it will move outside the outline frame normally.",auto-split: one bug per short thread
+TAL-01493#1,TAL-01493,multichart_layouts,multichart-parity,RC-4,resolved,لما احط شارتين مختلفين وانتقل الى الشارت الاساسي رح يتغير اسمو مثل الشارت الاساسي لكن لما ارجع للشارت التاني ما بيتغير اسمو وبيضل مثل ما هو,auto-split: one bug per short thread
+TAL-01495#1,TAL-01495,multichart_layouts,multichart-parity,RC-4,open,"When each symbol is on a chart and I run the drawing function and draw a rectangle , it appears in the remaining symbols and then disappears.",auto-split: one bug per short thread
+TAL-01496#1,TAL-01496,multichart_layouts,slow-interaction,RC-2,open,"When I enable the data range option and click on any chart, glitches occur in the chart and their positions change.",auto-split: one bug per short thread
+TAL-01497#1,TAL-01497,multichart_layouts,slow-interaction,RC-2,resolved,"When I have two different charts open and use replay when I click on the first chart and then switch back to the second, the price freezes for a few seconds on the second chart.",auto-split: one bug per short thread
+TAL-01498#1,TAL-01498,multichart_layouts,multichart-parity,RC-4,open,"When I select the tools using Ctrl in the main chart, it selects them normally. However, in the other layouts, it groups them all in one place.",auto-split: one bug per short thread
+TAL-01499#1,TAL-01499,multichart_layouts,quick-menu-defect,RC-1,open,"When there is more than one chart and you draw any tool, the Quick Menu does not appear immediately after drawing the tool. When there is only one chart, the Quick Menu appears after drawing the tool.",auto-split: one bug per short thread
+TAL-01500#1,TAL-01500,multichart_layouts,first-click-fails,RC-1,open,"When I put the indicator on layout 1 and move to layout 2, the indicator appears, but when I click on the indicator, it does not appear that they are turned on the first time. I have to click again until it shows that they are working",auto-split: one bug per short thread
+TAL-01501#1,TAL-01501,multichart_layouts,multichart-parity,RC-4,open,"When I add indicators to the second chart and then delete them, when I switch to layout1, the indicators I deleted from the second chart will reappear.",auto-split: one bug per short thread
+TAL-01502#1,TAL-01502,multichart_layouts,multichart-parity,RC-4,open,"When I first place two charts, the price won't be the same, but the candlestick pattern will be the same.",auto-split: one bug per short thread
+TAL-01536#1,TAL-01536,multichart_layouts,multichart-parity,RC-4,open,"When switching between pages and returning to the Strategies page, there is a noticeable difference in design. Some additions, such as parameters, could improve the page’s layout and make it more user-friendly compared to the current versio",auto-split: one bug per short thread
+TAL-00703#1,TAL-00703,orders,drag-mis-anchor,RC-3,resolved,"When using the manual forward step, the chart jumps forward by an entire year with a single click instead of moving incrementally The trade was activated on May 22, but the trade log shows the activation date as May 26. The recorded trade d",auto-split: one bug per short thread
+TAL-00704#1,TAL-00704,orders,order-entry,RC-5,user_replied,The Take Profit is not recorded on the candle that actually reaches the target level Instead it is recorded on the next candle,auto-split: one bug per short thread
+TAL-00749#1,TAL-00749,orders,order-entry,RC-5,user_replied,Always enable the stop-loss option as soon as you open the chart.,auto-split: one bug per short thread
+TAL-00752#1,TAL-00752,orders,order-entry,RC-5,user_replied,Stop order entry line shown in red with multiple orders,
+TAL-00752#2,TAL-00752,orders,order-entry,RC-5,user_replied,Deleting first multi-entry leaves second entry price stuck at 0.00,
+TAL-00752#3,TAL-00752,orders,order-entry,RC-5,user_replied,TP/SL connector line flickers/disappears each replay candle,
+TAL-00752#4,TAL-00752,orders,order-entry,RC-5,user_replied,Replay + drag limit order glitches stop loss position,
+TAL-00752#5,TAL-00752,orders,order-entry,RC-5,user_replied,Keyboard chart move triggers order entry glitch during replay,Arabic: moving chart from keyboard causes glitch
+TAL-00752#6,TAL-00752,orders,order-entry,RC-5,user_replied,Average entry stuck on first entry when second moved below first,
+TAL-00752#7,TAL-00752,orders,order-entry,RC-5,user_replied,Risk split stays 50 after deleting extra entry instead of reverting to 100,
+TAL-00752#8,TAL-00752,orders,order-entry,RC-5,user_replied,Lot size glitches when changed via arrow input,
+TAL-00752#9,TAL-00752,orders,order-entry,RC-5,user_replied,Second entry preview appears at TP screen instead of below/above price for limit,
+TAL-00752#10,TAL-00752,orders,order-entry,RC-5,user_replied,Closing order via X button is difficult / unreliable,
+TAL-00752#11,TAL-00752,orders,order-entry,RC-5,user_replied,Pending limit order SL cannot be above entry until after placement,
+TAL-00752#12,TAL-00752,orders,order-entry,RC-5,user_replied,Trailing zero in SL/TP parsing zeroes lot size,
+TAL-00752#13,TAL-00752,orders,order-entry,RC-5,user_replied,1RR order entry displayed in red incorrectly,
+TAL-00752#14,TAL-00752,orders,order-entry,RC-5,user_replied,Cancel order leaves menu active; entry price does not track price movement,
+TAL-00752#15,TAL-00752,orders,order-entry,RC-5,user_replied,Cannot change SL/TP from order panel controls,
+TAL-00752#16,TAL-00752,orders,order-entry,RC-5,user_replied,PNL shows profit while price below long entry after TP1 hit,
+TAL-00752#17,TAL-00752,orders,order-entry,RC-5,user_replied,SL/TP lines not rendered when value is below 10,
+TAL-00752#18,TAL-00752,orders,order-entry,RC-5,user_replied,Moving second entry mutates limit order to market order,
+TAL-00752#19,TAL-00752,orders,order-entry,RC-5,user_replied,SL/TP arrow drag starts from zero instead of entry price,
+TAL-00752#20,TAL-00752,orders,order-entry,RC-5,user_replied,Multiple entries require repeated X clicks to close,
+TAL-00752#21,TAL-00752,orders,order-entry,RC-5,user_replied,Replay fill occurs on wrong candle vs entry candle,
+TAL-00752#22,TAL-00752,orders,order-entry,RC-5,user_replied,Stacked multi-entry orders get stuck when moved on top of each other,
+TAL-00760#1,TAL-00760,orders,order-entry,RC-5,resolved,"Why am I unable to click on the trade and edit it? I should be able to move the stop loss, adjust the take profit levels, change their size and position, and also add additional targets if needed There are also too many clickable elements (",auto-split: one bug per short thread
+TAL-00774#1,TAL-00774,orders,order-entry,RC-5,user_replied,"When using multiple take-profit targets, the target levels overlap and intersect with each other on the chart",auto-split: one bug per short thread
+TAL-00810#1,TAL-00810,orders,order-entry,RC-5,resolved,Target hit detection need improvement,auto-split: one bug per short thread
+TAL-00811#1,TAL-00811,orders,order-entry,RC-5,resolved,The commission does not take the value entered in the session,auto-split: one bug per short thread
+TAL-00817#1,TAL-00817,orders,order-entry,RC-5,resolved,لما اكون مفعل السبريد واحط الهدف عند 70 مثلا بس السعر يطلع فوق الهدف بعدد نقاط السبريد بيجيب الهدف لكن بيجيبلي في الكارد الهدف اللي عند افتتاح الشمعة اللي جابت الهدف والخروج كذلك من المفترض ان يجيبلي الهدف هو الخروج وليس افتتاح الشمعة,auto-split: one bug per short thread
+TAL-00830#1,TAL-00830,orders,order-entry,RC-5,resolved,لما اضغط على وضع اوردر بيظهر جزء من الثانية وبيرجع للسعر الحالي,auto-split: one bug per short thread
+TAL-00889#1,TAL-00889,orders,order-entry,RC-5,resolved,"I placed two take-profit orders (TPs), the first at $2500 and the second at $5000. The price reached the first target and the card order reached $5000 (PNL) even though it was $2500. The number of contracts was then reduced, but the PNL was",auto-split: one bug per short thread
+TAL-00905#1,TAL-00905,orders,slow-interaction,RC-7,resolved,"When unchecking the OnBalance Volume line and then re-enabling it via the checkbox, the line does not work again.",auto-split: one bug per short thread
+TAL-00907#1,TAL-00907,orders,order-entry,RC-5,resolved,الحين ما بقدر ادخل صفقة رغم انه الحساب فيه رصيد لكن بيجبلي المارجن ملكود هل هاد صحيح؟,auto-split: one bug per short thread
+TAL-00998#1,TAL-00998,orders,order-entry,RC-5,user_replied,خلي لون صفر ابيض مش احمر واخضر,auto-split: one bug per short thread
+TAL-01062#1,TAL-01062,orders,order-entry,RC-5,resolved,"Don't let me enter more than 5 numbers in the entry and SL/TP fields. And in the lot field, don't let me enter more than 3. And don't let me enter a negative number.",auto-split: one bug per short thread
+TAL-01104#1,TAL-01104,orders,order-entry,RC-5,resolved,لما اكون فاتح صفقات واعمل ريفريش بيختفو الصفقات,auto-split: one bug per short thread
+TAL-01162#1,TAL-01162,orders,slow-interaction,RC-7,resolved,on add trade manual,auto-split: one bug per short thread
+TAL-01361#1,TAL-01361,orders,order-entry,RC-5,open,بعد ما الغيت الاوردرات الليميت ظهر الهدف والستوب,auto-split: one bug per short thread
+TAL-01513#1,TAL-01513,orders,order-entry,RC-5,resolved,خليهم رقم واحد او اثنين بعد النقطة خلي بينهم تناسق مش واحد 3 ارقام بعد النقطة والتاني رقم,auto-split: one bug per short thread
+TAL-01514#1,TAL-01514,orders,slow-interaction,RC-7,resolved,هل الصفر يعتبر غير مربح؟,auto-split: one bug per short thread
+TAL-00245#1,TAL-00245,replay,first-click-fails,RC-1,user_replied,Cannot change price line count or add level on first click in input,
+TAL-00245#2,TAL-00245,replay,first-click-fails,RC-1,user_replied,Fib speed fan controls do not work on first click,
+TAL-00245#3,TAL-00245,replay,quick-menu-defect,RC-1,user_replied,Reset button missing or non-functional,
+TAL-00245#4,TAL-00245,replay,stuck-until-click,RC-2,user_replied,Vertically drawn fan invisible until moved again,
+TAL-00245#5,TAL-00245,replay,visibility-toggle,RC-2,user_replied,Time level colors toggle does not work,Arabic: time level colors not working
+TAL-00245#6,TAL-00245,replay,ghost-after-delete,RC-1,user_replied,Apply default hides background in widget but ghost remains on chart text,
+TAL-00245#7,TAL-00245,replay,visibility-toggle,RC-2,user_replied,Grid shown on chart while grid enable is off in widget,
+TAL-00245#8,TAL-00245,replay,label-mis-anchor,RC-3,user_replied,Level numbers move with chart pan instead of staying fixed,Arabic: numbers should stay fixed on left
+TAL-00245#9,TAL-00245,replay,quick-menu-defect,RC-1,user_replied,Apply default sets incorrect thickness in style menu,
+TAL-00245#10,TAL-00245,replay,label-mis-anchor,RC-3,user_replied,Tool near bottom bar renders below screen edge,
+TAL-00245#11,TAL-00245,replay,quick-menu-defect,RC-1,user_replied,Second drawn tool does not inherit first tool saved settings template,
+TAL-00815#1,TAL-00815,replay,replay-interaction,RC-8,resolved,الريبلاي بالعافية بيتحرك,auto-split: one bug per short thread
+TAL-00819#1,TAL-00819,replay,drag-mis-anchor,RC-3,resolved,sdaf,auto-split: one bug per short thread
+TAL-00910#1,TAL-00910,replay,replay-interaction,RC-8,resolved,حطيت الاعدادات وما اشتغلو مثل عدد العقود 4 دروداون نهاية اليوم خسارة كلية 2000 من المفروض انو يجيب زي كارد بروسس شو صار بالحساب وهيك وتم تخطي الحساب او اختراقه وهيك,auto-split: one bug per short thread
+TAL-00912#1,TAL-00912,replay,replay-interaction,RC-8,resolved,when click space and play replay it should type play when pause type paused لا تخلي الاثنين نفس الشي paused,auto-split: one bug per short thread
+TAL-00913#1,TAL-00913,replay,replay-interaction,RC-8,resolved,"When I press the ""Step forward one bar"" button (Shift+→ or .), and activate the tick-by-tick reply, the reply starts and then goes back a few candles.",auto-split: one bug per short thread
+TAL-00933#1,TAL-00933,replay,replay-interaction,RC-8,resolved,4-panel + replay play. no 1 don't move with 2-3-4,auto-split: one bug per short thread
+TAL-00996#1,TAL-00996,replay,replay-interaction,RC-8,resolved,"the mode window should disappear when i click anywhere outside it, also double the speed for the tick mode",auto-split: one bug per short thread
+TAL-01096#1,TAL-01096,replay,label-mis-anchor,RC-3,resolved,"When I enable Reply and double-tap the price label, a glitch occurs.",auto-split: one bug per short thread
+TAL-01097#1,TAL-01097,replay,stuck-until-click,RC-2,user_replied,"When tick-by-tick is at a speed of 30, it moves smoothly. But if you raise it above 30, it starts moving candle by candle and gets stuck.",auto-split: one bug per short thread
+TAL-01103#1,TAL-01103,replay,slow-interaction,RC-2,resolved,"There's a difference between running Reply without clicking on the chart (it's a bit slow) and running Reply while holding down the chart (it's very, very fast).",auto-split: one bug per short thread
+TAL-01158#1,TAL-01158,replay,replay-interaction,RC-8,resolved,when we switch to prop should be like this Backtest-Prop,auto-split: one bug per short thread
+TAL-01201#1,TAL-01201,replay,replay-interaction,RC-8,resolved,The Fib speed fan needs proper level adjustment,auto-split: one bug per short thread
+TAL-01284#1,TAL-01284,replay,replay-interaction,RC-8,resolved,"When I enable Reply, the candle's end time isn't correct. Meaning the candle's time isn't finished.",auto-split: one bug per short thread
+TAL-01358#1,TAL-01358,replay,replay-interaction,RC-8,resolved,"When I zoom in and out, the screen stops moving with the replay. Is it possible to make it like fxreplay?",auto-split: one bug per short thread
+TAL-01416#1,TAL-01416,replay,label-mis-anchor,RC-3,resolved,"When I enable Reply and scroll back on the chart, then double-tap the price label, the chart starts moving on its own and freezes up and down.",auto-split: one bug per short thread
+TAL-01419#1,TAL-01419,replay,replay-interaction,RC-8,resolved,لما امشي السعر كم يوم وبعدين اضغط refresh بيرجع السعر لليوم السابق,auto-split: one bug per short thread
+TAL-01492#1,TAL-01492,replay,label-mis-anchor,RC-3,open,"When I enable Reply and have any tool drawn on the chart, but I click on the price label, the tool freezes and won't return to its place unless I click on the chart.",auto-split: one bug per short thread

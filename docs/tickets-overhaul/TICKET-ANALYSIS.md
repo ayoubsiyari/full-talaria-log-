@@ -62,6 +62,8 @@ Filed on b9x builds *after* the data/viewport overhaul went green. All are about
 
 This matches the code-scan finding that panels run a degraded interaction stack (host order rail vs iframe focus, per-panel drawings with monkey-patched sync, settings forwarded to parent shell). The overhaul fixed data ownership; **interaction ownership was never specified**.
 
+**Update (post plan-1 closure):** plan 1 closed on build `20260707b105`, *after* this batch was filed, and its closing polish (b102–b105 boot-commit fixes) plausibly resolved several of these as side effects (TAL-01480, 01502, possibly 01484/01490). Track T3 therefore begins with a mandatory retest-triage of every multichart ticket on b105+ (build id confirmed per frame) before any new work.
+
 ## 5. Longest reopen loops (the bug-loop cases to learn from)
 
 | Ticket | Subject | Days active | Msgs | Status |

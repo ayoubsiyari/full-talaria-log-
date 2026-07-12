@@ -227,10 +227,14 @@ class DrawingToolsManager {
         this.textEditor = new InlineTextEditor();
         this.contextMenu = new DrawingContextMenu();
         this.toolbar = new DrawingToolbar();
+        this.lifecycleStore = (typeof window !== 'undefined' && typeof window.ToolLifecycleStore === 'function')
+            ? new window.ToolLifecycleStore(this)
+            : null;
         window.drawingToolbar = this.toolbar; // Expose for global openColorPicker function
         
         // Link toolbar to settings panel for restoration
         this.settingsPanel.toolbarManager = this.toolbar;
+        this._installToolLifecycleStoreSubscribers();
         this.pendingEmojiOptions = null;
         this.currentEmojiOptions = null;
 
@@ -3463,6 +3467,120 @@ class DrawingToolsManager {
         return true;
     }
 
+    _isToolLifecycleV2Enabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2);
+    }
+
+    _emitToolLifecycle(eventName, detail = {}) {
+        if (!this.lifecycleStore || !this._isToolLifecycleV2Enabled()) return false;
+        return this.lifecycleStore.emit(eventName, detail);
+    }
+
+    _installToolLifecycleStoreSubscribers() {
+        const store = this.lifecycleStore;
+        if (!store || this._toolLifecycleSubscribersInstalled) return;
+        this._toolLifecycleSubscribersInstalled = true;
+
+        store.on('toolSelected', ({ drawing, source, clearActiveTool = false, suppressToolbar = false }) => {
+            if (!drawing || !this.drawings || !this.drawings.includes(drawing)) return;
+            if (clearActiveTool && this.currentTool) {
+                this.clearTool(true);
+            }
+            this.selectDrawing(drawing, false, { allowWhileArmed: true, suppressToolbar });
+            if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                this.chart.scheduleRender();
+            }
+            if (source === 'placement-complete' && this.objectTreeManager) {
+                this.objectTreeManager.refresh();
+            }
+        });
+
+        store.on('toolDeleted', ({ drawing }) => {
+            const deletedId = drawing && drawing.id != null ? String(drawing.id) : null;
+
+            if (this.settingsPanel) {
+                const currentId = this.settingsPanel.currentDrawing && this.settingsPanel.currentDrawing.id != null
+                    ? String(this.settingsPanel.currentDrawing.id)
+                    : null;
+                if (!deletedId || currentId === deletedId || document.querySelector('.tv-settings-modal')) {
+                    if (typeof this.settingsPanel.hide === 'function') {
+                        this.settingsPanel.hide();
+                    }
+                    this.settingsPanel.currentDrawing = null;
+                    this.settingsPanel.pendingChanges = {};
+                }
+            }
+
+            if (this.contextMenu && typeof this.contextMenu.hide === 'function') {
+                this.contextMenu.hide();
+            }
+            if (this.toolbar && typeof this.toolbar.hide === 'function') {
+                this.toolbar.hide();
+            }
+
+            if (this.chart?.svg) {
+                this.chart.svg.selectAll('.drawings-labels [data-id="' + deletedId + '"]').remove();
+                this.chart.svg.selectAll('.axis-highlight-group').remove();
+                this.chart.svg.selectAll('.axis-highlight-price').remove();
+                this.chart.svg.selectAll('.axis-highlight-price-text').remove();
+                this.chart.svg.selectAll('.axis-highlight-time').remove();
+                this.chart.svg.selectAll('.axis-highlight-time-text').remove();
+                this.chart.svg.selectAll('[class*="axis-highlight"]').remove();
+            }
+            if (this.labelsGroup && !this.labelsGroup.empty()) {
+                this.labelsGroup.selectAll('[data-id="' + deletedId + '"]').remove();
+            }
+            if (this.chart && typeof this.chart.clearAxisHighlightZones === 'function') {
+                this.chart.clearAxisHighlightZones();
+            }
+
+            notifyMultichartParentSelectionCleared(this.chart);
+            try {
+                window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
+            } catch (_) { /* ignore */ }
+        });
+    }
+
+    _selectExistingDrawingViaLifecycle(event) {
+        if (!this._isToolLifecycleV2Enabled() || !event || event.button !== 0 || event.shiftKey || event.altKey) {
+            return false;
+        }
+        const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+        let hits = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true }) || [];
+        const topLabel = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
+        if (topLabel && !hits.includes(topLabel)) {
+            hits = [topLabel, ...hits];
+        }
+        const drawing = hits.find((d) => d && !d.locked);
+        if (!drawing) return false;
+        const handled = this._emitToolLifecycle('toolSelected', {
+            drawing,
+            source: 'select-existing-while-armed',
+            clearActiveTool: true,
+        });
+        if (handled) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        return handled;
+    }
+
+    _bindLifecycleSettingsSurface(drawing) {
+        if (!this._isToolLifecycleV2Enabled() || !this.settingsPanel || !drawing) return;
+        this.settingsPanel.currentDrawing = drawing;
+        this.settingsPanel.pendingChanges = {};
+        this.settingsPanel.onDelete = (drawingToDelete) => {
+            const requested = drawingToDelete || this.settingsPanel.currentDrawing || drawing;
+            const requestedId = requested && requested.id != null ? String(requested.id) : null;
+            const liveDrawing = requestedId && Array.isArray(this.drawings)
+                ? this.drawings.find((d) => d && String(d.id) === requestedId)
+                : requested;
+            if (liveDrawing) {
+                this.deleteDrawing(liveDrawing);
+            }
+        };
+    }
+
     /**
      * Handle mouse down event
      */
@@ -3595,6 +3713,10 @@ class DrawingToolsManager {
                     }
                 }
             }
+            return;
+        }
+
+        if (this.currentTool && this._selectExistingDrawingViaLifecycle(event)) {
             return;
         }
         
@@ -6316,7 +6438,14 @@ class DrawingToolsManager {
             const persistentTools = ['brush', 'highlighter'];
             const willKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
             if (!willKeepTool) {
-                this.selectDrawing(drawing, false, { allowWhileArmed: true });
+                const selectedViaLifecycle = this._emitToolLifecycle('toolSelected', {
+                    drawing,
+                    source: 'placement-complete',
+                    allowWhileArmed: true,
+                });
+                if (!selectedViaLifecycle) {
+                    this.selectDrawing(drawing, false, { allowWhileArmed: true });
+                }
             }
         }
         
@@ -6697,27 +6826,34 @@ class DrawingToolsManager {
             && this._isPersistentFreehandTool(drawing.type);
 
         if (!keepFreehandToolArmed) {
-            // Auto-select the newly drawn shape to show resize handles immediately
-            this.drawings.forEach(d => {
-                if (d !== drawing) d.deselect();
+            const selectedViaLifecycle = this._emitToolLifecycle('toolSelected', {
+                drawing,
+                source: 'placement-complete',
+                allowWhileArmed: true,
             });
+            if (!selectedViaLifecycle) {
+                // Auto-select the newly drawn shape to show resize handles immediately
+                this.drawings.forEach(d => {
+                    if (d !== drawing) d.deselect();
+                });
 
-            drawing.select();
-            this.selectedDrawing = drawing;
-            this.selectedDrawings = [drawing];
-            this.renderDrawing(drawing);
+                drawing.select();
+                this.selectedDrawing = drawing;
+                this.selectedDrawings = [drawing];
+                this.renderDrawing(drawing);
 
-            if (drawing.group && this.toolbar) {
-                try {
-                    const node = drawing.group.node();
-                    const bbox = node ? node.getBBox() : null;
-                    if (bbox && bbox.width > 0) {
-                        const svgRect = this.svg.node().getBoundingClientRect();
-                        const x = svgRect.left + bbox.x + (bbox.width / 2);
-                        const y = svgRect.top + bbox.y;
-                        this.toolbar.show(drawing, x, y);
-                    }
-                } catch (e) {}
+                if (drawing.group && this.toolbar) {
+                    try {
+                        const node = drawing.group.node();
+                        const bbox = node ? node.getBBox() : null;
+                        if (bbox && bbox.width > 0) {
+                            const svgRect = this.svg.node().getBoundingClientRect();
+                            const x = svgRect.left + bbox.x + (bbox.width / 2);
+                            const y = svgRect.top + bbox.y;
+                            this.toolbar.show(drawing, x, y);
+                        }
+                    } catch (e) {}
+                }
             }
         } else {
             this.drawings.forEach((d) => {
@@ -9954,6 +10090,7 @@ class DrawingToolsManager {
             const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
             if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
                 const hostId = grid.hostPanelId || 'A';
+                this._bindLifecycleSettingsSurface(drawing);
                 grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
                 return;
             }
@@ -9965,6 +10102,7 @@ class DrawingToolsManager {
             try {
                 const handled = v9Open(drawing, x, y);
                 if (handled) {
+                    this._bindLifecycleSettingsSurface(drawing);
                     if (this.toolbar && typeof this.toolbar.hide === 'function') this.toolbar.hide();
                     if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
                         this.settingsPanel.hide();
@@ -9994,6 +10132,7 @@ class DrawingToolsManager {
                 const grid = window.__multichartGrid;
                 if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
                     const hostId = grid.hostPanelId || 'A';
+                    this._bindLifecycleSettingsSurface(drawing);
                     grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
                 }
             } catch (_grid) { /* ignore */ }
@@ -10550,6 +10689,11 @@ class DrawingToolsManager {
                     this.selectedDrawing = this.selectedDrawings[this.selectedDrawings.length - 1] || null;
                 }
             }
+
+            this._emitToolLifecycle('toolDeleted', {
+                drawing,
+                source: 'deleteDrawing',
+            });
 
             const hasRemainingSelection =
                 !!this.selectedDrawing ||

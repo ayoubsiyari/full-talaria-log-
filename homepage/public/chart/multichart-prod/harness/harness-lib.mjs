@@ -99,6 +99,21 @@ export async function bootLayout(browser, srv, opts = {}) {
   let inFlightDataRequestCount = 0;
 
   const switches = bug ? (bugSwitches && bugSwitches.length ? bugSwitches : DEFAULT_BUG_SWITCHES) : [];
+  await page.evaluateOnNewDocument(() => {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (/^u\d+_chart_drawings_/.test(key) || /^chart_drawings_/.test(key))) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => {
+        localStorage.removeItem(key);
+        localStorage.removeItem(`${key}_meta`);
+      });
+    } catch (_) {}
+  });
   if (switches.length) {
     // Runs in EVERY document (host + each iframe) before its own scripts,
     // so the engine sees the flags before chart.js constructs a chart.

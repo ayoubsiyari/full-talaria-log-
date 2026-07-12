@@ -27,18 +27,22 @@ This runs the same operating model that closed the multichart data overhaul (`do
 - Both engine trees (`chart v 1.4/chart/` and `homepage/public/chart/`) byte-identical after every change; build id bumped.
 - Manager verifies worker output independently; workers never self-certify.
 
-**Standing corrections (lessons from the multichart run — these are rules, not suggestions):**
+**Standing corrections (lessons from the multichart run and its journey report — these are rules, not suggestions):**
 1. **Fix-by-root-cause, not fix-by-ticket.** A worker task cites an RC and a symptom *family*; closing 1 task should close 10–40 tickets. Dispatching one worker per ticket is forbidden — that is the exact loop that produced this history.
 2. **Scope freeze per track.** New defects found mid-track are logged to the registry and batched; they do not preempt the current task unless the Director rules them blocking. (This was D-048's lesson: reactive intake stretched a 95%-done task by a week.)
 3. **Closure protocol from day one.** A ticket closes only when the tester confirms on a named build. `user_replied` is an SLA state with an owner, never a terminal state.
 4. **Timebox diagnostics.** A diagnostic task returns in ≤1 worker-session with either a verified mechanism or a documented dead end + next probe. No open-ended investigation tasks.
+5. **Build-id verification is step 0 of every live retest** — the tester confirms the build id on every frame (host + panels) before reporting. Stale open tabs were plan 1's single biggest time sink (false "fix didn't work" reports across BL-14/16/17).
+6. **Ownership beats guarding.** Plan 1's central technical finding: durable wins changed *who owns what*; fragile tails came from guarding shared state. When a diagnostic offers both a guard and an ownership change, the ownership change wins unless the Director rules otherwise. The plan-1 guard tail specifically is frozen — it is retired by T8, never extended.
+7. **State-matrix per fix and one-unit-per-threshold** are retained verbatim from plan 1 — both demonstrably reduced pop-outs (BL-13 was caused by a two-unit spec sentence).
+8. **Proactive matrix sweeps over PO discovery.** Plan 1's defects were mostly found by the PO live-testing, harness-codified after the fact. Here, Lane 4 writes the family scenarios *before* fixes land (T0), and each track's exit includes a combination sweep of its state matrix, so the tester's role shifts to confirmation.
 
 ## Team assembly
 
 Same Manager, same worker pool, expanded to **4 parallel lanes** (the tracks are chosen to not share code paths — see `TRACKS.md` for the dependency map):
 
 - **Lane 1 (heaviest):** RC-1 + RC-2 — shared tool lifecycle & invalidation contract. One senior worker sequence; this lane is long-lived and everything in the drawing/indicator clusters depends on it.
-- **Lane 2:** RC-4 — multichart interaction parity. Independent of Lane 1 until the parity contract adopts the shared lifecycle (Phase C).
+- **Lane 2:** RC-4 then RC-8 — multichart interaction parity (T3, retest-first), then the Phase-5 mirror-policy consolidation plus plan-1 deferred debt (T8). Sequential because both live in the panel/replay bridge code.
 - **Lane 3:** RC-5 — order-entry state model. Fully independent module (`order-manager.js`).
 - **Lane 4:** RC-7 — harness extension + per-bug registry extraction. Starts first; other lanes consume its scenarios.
 
@@ -46,19 +50,20 @@ RC-3 (anchoring) queues behind Lane 1 in the same lane; RC-6 (indicators) queues
 
 ## Priority order (Director ruling, already made)
 
-1. **Phase A — Foundation (Lane 4 + Lane 1 start):** per-bug registry, interactive harness scenarios for the top symptom families, then the shared lifecycle controller (RC-1) and invalidation contract (RC-2). This is where 60%+ of all tickets live.
-2. **Phase B — Parallel tracks (Lanes 2, 3):** multichart interaction parity (RC-4) and order-entry state model (RC-5).
-3. **Phase C — Convergence:** anchoring unification (RC-3), indicator lifecycle adoption (RC-6), then the backlog sweep: remaining unresolved tickets triaged against the landed root fixes — most should already be fixed; what remains gets targeted work.
+1. **Phase A — Foundation (Lane 4 + Lane 1 start):** per-bug registry, interactive harness scenarios for the top symptom families, then the shared lifecycle controller (RC-1) and invalidation contract (RC-2). This is where 60%+ of all tickets live. Lane 2 runs its cheap first step in parallel: the T3 retest-triage of all multichart tickets against build b105 — plan 1 likely already fixed several.
+2. **Phase B — Parallel tracks (Lanes 2, 3):** multichart interaction parity fixes for surviving tickets (RC-4) and order-entry state model (RC-5).
+3. **Phase C — Convergence:** anchoring unification (RC-3), indicator lifecycle adoption (RC-6), and the Phase-5 mirror-policy consolidation + plan-1 debt (RC-8, T8) in Lane 2's quiet period.
 4. **Phase D — Closure:** tester re-verification sweep of all 126 unresolved tickets on one named build, closure protocol executed, final report.
 
 Journal/dashboard cluster (133 tickets) is explicitly **out of scope** for this overhaul — different codebase (`journal-backend`, homepage React), different team assignment later. The Director will not allow scope mixing.
 
 ## Success criteria (Definition of Done)
 
-1. All four symptom-family harness suites GREEN and in the ratchet gate (first-click, stale-observer/ghost, invalidation, panel-parity).
+1. All four symptom-family harness suites GREEN and in the ratchet gate (first-click, stale-observer/ghost, invalidation, panel-parity), and plan 1's 29-scenario gate still GREEN throughout.
 2. The 126 unresolved tickets dispositioned: tester-confirmed-fixed on a named build, or explicitly deferred by Director ruling with reason.
-3. Zero new per-tool patches for RC-1/RC-2 symptom families after the controller lands (enforced in review by the Manager).
-4. Kill-switch inventory updated; both trees byte-identical; final state-matrix published in MANAGER-FINDINGS.
+3. Zero new per-tool patches for RC-1/RC-2 symptom families after the controller lands, and zero new mirror-frame guards ever (enforced in review by the Manager; the guard class is retired by T8).
+4. T8 terminal: mirror policy consolidated, superseded guards retired, plan-1's five written debt items (marker refresh, probe strip, coverage scenarios, legacy tree, BL-2b Y-nudge confirmation) each at a terminal status.
+5. Kill-switch inventory updated (net smaller than at plan-1 closure); both trees byte-identical; final state-matrix published in MANAGER-FINDINGS.
 
 ## How to start (Manager's first message)
 

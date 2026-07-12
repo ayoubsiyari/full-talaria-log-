@@ -9,6 +9,117 @@ const MAX_ENTRY_LEVELS = 4;
 // localStorage key for the no-session runtime order fallback (must match chart.js).
 const ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';
 
+/** RC-5: default ON — recompute aggregates from entry list; kill-switch restores legacy deltas. */
+function _orderAggregatesV2Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_AGGREGATES_V2;
+}
+
+function _oeaLevelRiskUsd(level, opts, allLevels) {
+    const mode = opts.positionSizeMode || 'risk-usd';
+    const pipSize = opts.pipSize || 0.0001;
+    const pipVal = opts.pipValuePerLot || 10;
+    const slPrice = opts.slPrice || 0;
+    if (mode === 'lot-size') {
+        const slPips = (slPrice > 0 && level.price > 0) ? Math.abs(level.price - slPrice) / pipSize : 0;
+        return (level.amount || 0) * slPips * pipVal;
+    }
+    if (mode === 'risk-percent') {
+        const totalRiskUsd = (opts.balance || 100000) * ((opts.riskPercent || 1) / 100);
+        const sumW = allLevels.reduce((s, l) => s + (l.amount || 0), 0);
+        if (sumW <= 0 || !Number.isFinite(totalRiskUsd)) return 0;
+        return totalRiskUsd * ((level.amount || 0) / sumW);
+    }
+    return level.amount || 0;
+}
+
+function _oeaCalcLevelLotSizeNumeric(level, opts, allLevels) {
+    if (!level || !level.price || level.price <= 0) return 0;
+    const ps = opts.pipSize || 0.0001;
+    const pv = opts.pipValuePerLot || 10;
+    const mode = opts.positionSizeMode || 'risk-usd';
+    if (mode === 'lot-size') return Math.max(0, Number(level.amount) || 0);
+    const slPrice = opts.slPrice || 0;
+    if (!slPrice || slPrice <= 0) return 0;
+    const slPips = Math.abs(level.price - slPrice) / ps;
+    if (slPips <= 0) return 0;
+    const riskUsd = _oeaLevelRiskUsd(level, opts, allLevels);
+    const v = riskUsd / (slPips * pv);
+    return Number.isFinite(v) ? v : 0;
+}
+
+function _oeaSortPricedLevels(levels, opts) {
+    const valid = (levels || []).filter((l) => l && l.price > 0);
+    const side = (opts.side || 'BUY').toUpperCase();
+    return [...valid].sort((a, b) => (side === 'SELL' ? b.price - a.price : a.price - b.price));
+}
+
+/**
+ * RC-5 pure aggregate model — recompute average, risk split, per-leg type/PNL from entries[].
+ * @param {Array<{id:number,price:number,amount:number,orderType?:string}>} entries
+ * @param {object} opts
+ */
+function computeOrderEntryAggregates(entries, opts = {}) {
+    const sorted = _oeaSortPricedLevels(entries, opts);
+    if (sorted.length === 0) {
+        return {
+            averageEntry: 0, totalLots: 0, minEntry: 0, maxEntry: 0,
+            riskSplit: [], legs: [], mainLegId: null, riskSplitSum: 0,
+        };
+    }
+    const totalAmount = sorted.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    const target = opts.positionSizeMode === 'risk-percent' ? 100 : (opts.totalRiskTarget || totalAmount);
+    const riskSplit = sorted.map((l, i) => {
+        let pct = totalAmount > 0
+            ? Math.round((l.amount / totalAmount) * 100)
+            : Math.round(100 / sorted.length);
+        return { id: l.id, percentage: pct, amount: l.amount, isMain: i === 0 };
+    });
+    const pctSum = riskSplit.reduce((s, r) => s + r.percentage, 0);
+    if (pctSum !== Math.round(target) && riskSplit.length > 0) {
+        riskSplit[riskSplit.length - 1].percentage += Math.round(target) - pctSum;
+    }
+    let totalWeighted = 0;
+    let totalLots = 0;
+    for (const l of sorted) {
+        const lots = _oeaCalcLevelLotSizeNumeric(l, opts, sorted);
+        if (lots > 0) {
+            totalWeighted += l.price * lots;
+            totalLots += lots;
+        }
+    }
+    let averageEntry = 0;
+    if (totalLots > 0) averageEntry = totalWeighted / totalLots;
+    else if (totalAmount > 0) {
+        averageEntry = sorted.reduce((s, l) => s + l.price * (Number(l.amount) || 0), 0) / totalAmount;
+    } else {
+        averageEntry = sorted.reduce((s, l) => s + l.price, 0) / sorted.length;
+    }
+    const prices = sorted.map((l) => l.price);
+    const minEntry = Math.min(...prices);
+    const maxEntry = Math.max(...prices);
+    const mark = opts.markPrice ?? opts.currentPrice ?? 0;
+    const side = (opts.side || 'BUY').toUpperCase();
+    const legs = sorted.map((l, i) => {
+        const lots = _oeaCalcLevelLotSizeNumeric(l, opts, sorted);
+        const rs = riskSplit.find((r) => r.id === l.id);
+        const orderType = l.orderType || (opts.mainOrderType || 'limit');
+        let pnlAtMark = 0;
+        if (lots > 0 && mark > 0) {
+            const diff = side === 'BUY' ? mark - l.price : l.price - mark;
+            pnlAtMark = (diff / (opts.pipSize || 0.0001)) * (opts.pipValuePerLot || 10) * lots;
+        }
+        return {
+            id: l.id, price: l.price, amount: l.amount,
+            percentage: rs ? rs.percentage : 0, orderType, lots, pnlAtMark, isMain: i === 0,
+        };
+    });
+    return {
+        averageEntry, totalLots, minEntry, maxEntry, riskSplit, legs,
+        mainLegId: sorted[0].id,
+        riskSplitSum: riskSplit.reduce((s, r) => s + r.percentage, 0),
+    };
+}
+
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -18676,6 +18787,8 @@ class OrderManager {
                     }
                     
                     // Auto-detect order type based on entry position relative to current price
+                    // RC-5 V2: order type is fixed at leg creation — never mutate on drag (TAL-00752).
+                    if (!_orderAggregatesV2Enabled()) {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || null;
                     
@@ -18720,6 +18833,7 @@ class OrderManager {
                             const newY = parseFloat(newTransform?.match(/translate\([^,]+,\s*([\d.]+)/)?.[1] || 0);
                             lineData.labelGroup.attr('transform', `translate(${savedX}, ${newY})`);
                         }
+                    }
                     }
                     
                     // Entry-anchored badges: full X+Y reflow beside entry tag (replay ticks won't snap back).
@@ -18804,6 +18918,8 @@ class OrderManager {
                     }
                     
                     // Auto-detect order type based on price
+                    // RC-5 V2: preserve per-leg orderType on drag (TAL-00752 limit→stop mutation).
+                    if (!_orderAggregatesV2Enabled()) {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || 0;
                     if (currentPrice > 0) {
@@ -18825,6 +18941,7 @@ class OrderManager {
                             self.renderPreviewLabel(lineData, clampedY);
                             self.adjustPreviewLineForLabel(lineData);
                         }
+                    }
                     }
                     
                     self.calculateAdvancedRiskReward();
@@ -20639,9 +20756,82 @@ class OrderManager {
         ));
     }
 
+    /** Build opts for computeOrderEntryAggregates (RC-5 V2). */
+    _buildOrderEntryAggregateOpts() {
+        const candle = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+        const currentPrice = candle?.c || candle?.close || 0;
+        const mode = this.positionSizeMode || 'risk-usd';
+        let totalRiskTarget = 0;
+        if (mode === 'risk-usd') {
+            totalRiskTarget = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        } else if (mode === 'risk-percent') {
+            totalRiskTarget = 100;
+        } else if (mode === 'lot-size') {
+            totalRiskTarget = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
+        }
+        return {
+            side: this.orderSide,
+            slPrice: parseFloat(document.getElementById('slPrice')?.value || 0),
+            pipSize: this.pipSize || 0.0001,
+            pipValuePerLot: this.pipValuePerLot || 10,
+            positionSizeMode: mode,
+            totalRiskTarget,
+            currentPrice,
+            markPrice: currentPrice,
+            mainOrderType: this.orderType,
+            balance: this.balance,
+            riskPercent: parseFloat(document.getElementById('riskAmountPercent')?.value || 0),
+        };
+    }
+
+    /**
+     * RC-5 V2: recompute splitEntries / main entry from multiEntryLevels via pure function.
+     * Preserves per-leg orderType once set (no mutation on drag).
+     */
+    _applyOrderEntryAggregatesV2() {
+        if (!_orderAggregatesV2Enabled() || !this.isMultiEntryMode) return false;
+        const levels = this.multiEntryLevels || [];
+        const opts = this._buildOrderEntryAggregateOpts();
+        const agg = computeOrderEntryAggregates(levels, opts);
+        const sorted = this._multiEntrySortedPricedLevels();
+        if (sorted.length <= 1) {
+            this.splitEntries = [];
+            this.splitEntriesEnabled = false;
+            if (sorted.length === 1) {
+                const mainInput = document.getElementById('orderEntryPrice');
+                if (mainInput) mainInput.value = this.formatPrice(sorted[0].price);
+            }
+            return true;
+        }
+        const mainInput = document.getElementById('orderEntryPrice');
+        if (mainInput) mainInput.value = this.formatPrice(sorted[0].price);
+        for (const leg of agg.legs) {
+            const lvl = levels.find((l) => l.id === leg.id);
+            if (lvl && !lvl.orderType) lvl.orderType = leg.orderType;
+        }
+        this.splitEntries = [];
+        for (const leg of agg.legs) {
+            if (leg.isMain) continue;
+            this.splitEntries.push({
+                id: this.splitEntryIdCounter++,
+                price: parseFloat(leg.price.toFixed(this.getPricePrecision())),
+                percentage: leg.percentage,
+                orderType: leg.orderType,
+                multiEntryLevelId: leg.id,
+                lineData: null
+            });
+        }
+        this.splitEntriesEnabled = this.splitEntries.length > 0;
+        return true;
+    }
+
     /** Keep splitEntries + #orderEntryPrice aligned with multiEntryLevels without a full preview redraw. */
     _syncSplitEntriesFromMultiEntryLevels() {
         if (!this.isMultiEntryMode) return;
+        if (_orderAggregatesV2Enabled()) {
+            this._applyOrderEntryAggregatesV2();
+            return;
+        }
         const sorted = this._multiEntrySortedPricedLevels();
         if (sorted.length <= 1) {
             this.splitEntries = [];
@@ -20694,6 +20884,10 @@ class OrderManager {
      * Calculate weighted average entry price
      */
     _calcMultiEntryAvgPrice() {
+        if (_orderAggregatesV2Enabled() && this.isMultiEntryMode) {
+            const agg = computeOrderEntryAggregates(this.multiEntryLevels || [], this._buildOrderEntryAggregateOpts());
+            if (agg.averageEntry > 0) return agg.averageEntry;
+        }
         const levels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
         if (levels.length === 0) return 0;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
@@ -21183,13 +21377,10 @@ class OrderManager {
     syncMultiEntryToSplitEntries() {
         if (!this.isMultiEntryMode) return;
 
-        // Clear existing split entries
-        this.splitEntries = [];
-        this.splitEntriesEnabled = false;
-
         const validLevels = this.multiEntryLevels.filter(l => l.price > 0);
         if (validLevels.length <= 1) {
-            // Single valid level — use as main entry, no splits needed
+            this.splitEntries = [];
+            this.splitEntriesEnabled = false;
             if (validLevels.length === 1) {
                 const mainInput = document.getElementById('orderEntryPrice');
                 if (mainInput) mainInput.value = this.formatPrice(validLevels[0].price);
@@ -21199,6 +21390,20 @@ class OrderManager {
             this.updatePlaceButtonText();
             return;
         }
+
+        if (_orderAggregatesV2Enabled()) {
+            this._ensureDefaultSlForMultiEntry();
+            this._applyOrderEntryAggregatesV2();
+            this.updateMultiEntrySummary();
+            this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            return;
+        }
+
+        // Clear existing split entries
+        this.splitEntries = [];
+        this.splitEntriesEnabled = false;
 
         // BUY: lowest price is main entry; SELL: highest — matches V9 row sort + reward ladder.
         const sorted = [...validLevels].sort((a, b) => {

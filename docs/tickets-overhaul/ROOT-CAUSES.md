@@ -28,7 +28,9 @@ Each RC below is a *mechanism*, not a symptom. It is derived from two independen
 ## RC-4 — Multichart panels run a second-class interaction stack
 
 **Evidence (tickets):** entire July-4 batch (TAL-01480…01502): Quick Menu absent on panels, Ctrl-select fails on second chart, drawings land on the wrong panel, indicator enable-state leaks across layouts, panel repaints only on click.
-**Evidence (code):** panels are iframes with monkey-patched drawing sync (`sync-bridge.js:1544-1558`), settings forwarded to parent (`embed-bridge.js:186-249`), host-focused order rail (`order-manager.js:16626-16643`); the data/viewport overhaul (docs/multichart-overhaul) fixed data ownership but interaction ownership was never specified.
+**Evidence (code):** panels are iframes with monkey-patched drawing sync (`sync-bridge.js:1544-1558`), settings forwarded to parent (`embed-bridge.js:186-249`), host-focused order rail (`order-manager.js:16626-16643`)¹; the data/viewport overhaul (docs/multichart-overhaul) fixed data ownership but interaction ownership was never specified.
+
+> ¹ *Correction (D-002):* the `order-manager.js:16626-16643` citation went stale (now TP-render HTML). Current evidence: `order-manager.js:7750-7756`, `13374-13430`; `MultichartGrid.jsx:5013-5015`, `5272-5276`, `5905-5914`.
 **Mechanism:** every interactive feature was built host-first; panel support is a per-feature afterthought bridged over postMessage, so each feature fails differently inside panels.
 **Root fix direction:** an **interaction-parity contract** for panels (which surface owns: selection, quick menu, settings, keyboard, focus) analogous to the data-ownership contract that closed the multichart data work. RED-first harness scenarios per contract row; reuse the existing harness at `chart v 1.4/chart/multichart-prod/harness/`.
 
@@ -49,3 +51,11 @@ Each RC below is a *mechanism*, not a symptom. It is derived from two independen
 
 **Evidence:** `chart-regression-cases.js` cases array is empty; multichart harness covers viewport/data only; 96 tickets stranded in `user_replied`; 55 reopen loops; multi-bug threads marked resolved wholesale.
 **Root fix direction:** (a) per-bug registry extracted from threads (one row per bug, not per ticket); (b) harness scenarios for interactive flows (place/select/edit/delete tool, order entry sequences, panel interaction) — RED-first before each fix; (c) closure = tester-confirmed on a named build, nothing else.
+
+---
+
+## RC-8 — Over-fused replay mirror frame (inherited from plan 1; diagnosed there, deferred as Phase-5)
+
+**Evidence (plan-1 journey report, `docs/multichart-overhaul/DIRECTOR-JOURNEY-REPORT.md` §2b, §7.1):** the replay "mirror frame" bundles data + X-viewport + Y-price into one broadcast; every panel type must selectively adopt or ignore parts of it depending on (TF relation × replay state × sync state). Because no single policy decides this, every novel combination exposed a new cell needing its own guard — the entire BL-5…BL-19 + b98–b105 tail (~20 gated guards). Each guard is individually correct; collectively they are policy-by-accumulation.
+**Mechanism:** the next untested (TF × replay × sync) combination can still expose a new cell. The 29-scenario gate will catch it after the fact, but the root stays open until the policy is consolidated.
+**Root fix direction:** Phase-5 as specced in plan 1 — one frame-application policy function (inputs: TF relation, replay state, sync flags; outputs: adopt-data / adopt-X / adopt-Y decisions) replacing the scattered guards, landed under the existing green gate during a quiet period. Plan-1's written deferred debt rides with it: the finer-owner marker-refresh proper fix (D-047 spec — shipped fix is a route-around), stripping the `__TALARIA_BL2B_PRICE_PROBE` debug surface from the engine, RED scenarios for the ~17 uncovered kill-switches + BL-16, deleting or marking the legacy `multichart/` dev-shell tree, and explicit PO confirmation of the BL-2b Y-nudge status.

@@ -433,6 +433,7 @@ const ENGINE_MODULE_PATHS = [
   '/chart/modules/color-picker.js',
   '/chart/modules/drawing-toolbar.js',
   '/chart/modules/undo-redo-manager.js',
+  '/chart/modules/tool-lifecycle-store.js',
   '/chart/modules/drawing-tools-manager.js',
   '/chart/modules/favorites-manager.js',
   '/chart/modules/keyboard-shortcuts.js',
@@ -472,7 +473,7 @@ function hostPageHtml(query) {
   if (pair === 'independent' && fileIds.B != null) fileIds.B = independentFileId;
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260707b105';
+  const buildId = '20260712b1';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 

@@ -50,6 +50,21 @@ import {
   isPanelQuiescent,
   sleep,
 } from './harness-lib.mjs';
+import {
+  placeTool,
+  selectTool,
+  openSettings,
+  deleteTool,
+  deleteToolViaSettings,
+  deselectAllViaCanvas,
+  readInteractiveState,
+  readRenderCount,
+  assertCanvasRepainted,
+  assertMenuState,
+  assertNoGhostAfterDelete,
+  defaultTrendlinePoints,
+  defaultRectanglePoints,
+} from './interactive-helpers.mjs';
 
 const HOST_FILE = '25';
 const IND_FILE = '27';
@@ -4756,6 +4771,71 @@ async function hS31(ctx) {
   });
 }
 
+// ── H-S32 ────────────────────────────────────────────────────────────────
+// first-click-fails (TAL-00322 family): place trendline, re-arm the draw
+// tool (common post-placement state), single-click the existing stroke once —
+// selection + Quick Menu must transition on the FIRST click (currently no-ops
+// while placement mode is active).
+async function hS32(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(400);
+    const pts = await defaultTrendlinePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'trendline', pts);
+    checks.check('H-S32 setup: trendline placed', placed && placed.id, placed ? placed.id : 'null');
+    const armed = await page.evaluate(() => {
+      const dm = window.chart.drawingManager;
+      dm.setTool('trendline');
+      return dm.currentTool;
+    });
+    checks.check('H-S32 setup: draw tool re-armed after placement', armed === 'trendline', `tool=${armed}`);
+    const beforeSel = await readInteractiveState(page, 'A');
+    checks.check('H-S32 setup: not selected before probe click', beforeSel && beforeSel.selectedIds.length === 0,
+      `selected=${JSON.stringify(beforeSel?.selectedIds)}`);
+    const rendersBefore = await readRenderCount(page, 'A');
+    const clickRes = await selectTool(page, 'A', placed, { click: true });
+    checks.check('H-S32 probe: single click dispatched', clickRes && clickRes.ok, clickRes?.reason || '');
+    await sleep(200);
+    const after = await readInteractiveState(page, 'A');
+    const rendersAfter = await readRenderCount(page, 'A');
+    assertCanvasRepainted(checks, 'H-S32 selection click schedules repaint', rendersBefore, rendersAfter);
+    assertMenuState(checks, 'H-S32 CORE: first click selects drawing + shows Quick Menu', {
+      selectedIds: [placed.id],
+      toolbarVisible: true,
+    }, after);
+    return checks;
+  });
+}
+
+// ── H-S33 ────────────────────────────────────────────────────────────────
+// ghost-after-delete (TAL-00157 family): place rectangle, open settings,
+// delete — no residual labels/settings/axis-highlight observers.
+async function hS33(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(400);
+    const pts = await defaultRectanglePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'rectangle', pts);
+    checks.check('H-S33 setup: rectangle placed', placed && placed.id, placed ? placed.id : 'null');
+    const openRes = await openSettings(page, 'A', placed);
+    checks.check('H-S33 setup: settings opened', openRes && openRes.ok, openRes?.reason || '');
+    await sleep(250);
+    const beforeDel = await readInteractiveState(page, 'A');
+    checks.check('H-S33 setup: settings visible before delete', beforeDel && beforeDel.settingsOpen,
+      `settingsOpen=${beforeDel?.settingsOpen}`);
+    const delRes = await deleteToolViaSettings(page, 'A', placed);
+    checks.check('H-S33 probe: delete invoked', delRes && delRes.ok, delRes?.reason || '');
+    await sleep(300);
+    const after = await readInteractiveState(page, 'A');
+    checks.check('H-S33 CORE: drawing removed from store', after && after.drawingCount === 0,
+      `drawingCount=${after?.drawingCount}`);
+    assertNoGhostAfterDelete(checks, 'H-S33 CORE: no ghost artifacts after delete', placed, after);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4787,6 +4867,8 @@ export function scenarioList() {
     { id: 'H-S29', title: 'boot peer layout-settle cell-resize re-anchors on first paint (no residual peer shake) (§6cr)', run: hS29 },
     { id: 'H-S30', title: 'HOST step-forward-spam does not refetch/jump-backward/stall during paused replay (§6cs)', run: hS30 },
     { id: 'H-S31', title: 'boot single-commit: index pin is the only boot anchor; no residual open-multichart first-render slide (§6ct)', run: hS31 },
+    { id: 'H-S32', title: 'first-click-fails: single click selects trendline + shows Quick Menu (TAL-00322 family)', run: hS32 },
+    { id: 'H-S33', title: 'ghost-after-delete: settings delete leaves no labels/dialog/observers (TAL-00157 family)', run: hS33 },
   ];
 }
 

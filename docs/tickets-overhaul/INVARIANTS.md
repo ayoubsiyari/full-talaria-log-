@@ -12,8 +12,15 @@ These are non-negotiable. A worker that cannot satisfy one must STOP and report 
 - **I6 — Anchors are timestamp+price.** New or modified drawing/annotation code must anchor by timestamp+price resolved through the shared resolve path. Introducing new bar-index or pixel anchors is forbidden.
 - **I7 — Every state mutation ends in an invalidation.** Any setter that changes render-relevant state either schedules a render or carries a comment explaining which subsequent event repaints. "It repaints when the user clicks" is a bug, not an explanation.
 - **I8 — Both engine trees byte-identical** (`chart v 1.4/chart/**` and `homepage/public/chart/**`) after every landed change; build id bumped; stale-tab guidance unchanged.
-- **I9 — Preserve the multichart overhaul's green gate.** The existing harness ratchet (`chart v 1.4/chart/multichart-prod/harness/`) must stay green. A task that needs to change an existing scenario's assertion escalates first.
+- **I9 — Preserve the multichart overhaul's green gate.** The existing harness ratchet (`chart v 1.4/chart/multichart-prod/harness/`, 29 scenarios at plan-1 closure) must stay green. A task that needs to change an existing scenario's assertion escalates first.
 - **I10 — Security rules stand.** Nothing in `.cursor/rules/security-and-supply-chain.mdc` may be weakened to make a test or build pass. No new dependencies without explicit Manager approval and registry verification.
+- **I11 — The mirror-frame guard tail is frozen.** No new guards on the replay mirror-frame application path (`applyReplayFrame` / seek / follow family in `panel-cmd-bridge.js`, and their `chart.js` predicates). If your mechanism lands there, the fix belongs to T8's policy table — stop and report. Ownership changes beat guards everywhere else too: if a diagnostic offers both, propose the ownership change.
+- **I12 — Thresholds carry exactly one unit.** Any numeric threshold in a spec or fix names a single unit (device pixels, bars, ms, …). A spec sentence readable in two units is bounced back before implementation (plan-1 BL-13 lesson).
+
+## Live-test invariants
+
+- **L1 — Build id confirmed on every frame before any live verdict.** Host and all panels must report the expected build id before a retest result (pass or fail) is recorded. A "fix didn't work" without build-id confirmation is invalid evidence (plan-1's biggest time sink was stale open tabs).
+- **L2 — Edit only production trees.** The legacy `chart v 1.4/chart/multichart/` dev-shell is not production (`multichart-prod/` is). Until T8 deletes or marks it, any worker finding themselves editing under `multichart/` must stop — wrong tree.
 
 ## Process invariants
 
