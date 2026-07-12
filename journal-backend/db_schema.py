@@ -24,6 +24,12 @@ def ensure_users_schema(app) -> None:
                     conn.execute(
                         text(
                             "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "platform_section_grants TEXT"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
                             "public_id VARCHAR(20)"
                         )
                     )
@@ -276,6 +282,13 @@ def ensure_users_schema(app) -> None:
                             text(
                                 "ALTER TABLE users ADD COLUMN "
                                 "dashboard_module_grants TEXT"
+                            )
+                        )
+                    if "platform_section_grants" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "platform_section_grants TEXT"
                             )
                         )
                     if "public_id" not in cols:

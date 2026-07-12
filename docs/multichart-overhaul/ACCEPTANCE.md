@@ -1,12 +1,24 @@
 # Multichart Overhaul — Acceptance List (D-048 closure protocol)
 
-**Status: DRAFT proposed by the manager — awaiting PO edits/approval.**
-This list is the RELEASE FINISH LINE. Once b96/b97 are PO-confirmed, we run ONE structured
-acceptance session against the current build. On-list failures are fixed under standing discipline
-(RED-first, gated, gate-ratcheted). Off-list observations go to backlog, NOT fixed pre-release.
-**List passes end-to-end ⇒ overhaul DECLARED CLOSED and released.**
+**Status: PO-CONFIRMED PASS end-to-end on build `20260707b105` — overhaul DECLARED CLOSED and released (D-048 clause 3, 2026-07-12).**
+This list is the RELEASE FINISH LINE. The single structured acceptance session was run against the current build.
+On-list failures are fixed under standing discipline (RED-first, gated, gate-ratcheted); off-list observations go to
+backlog, NOT fixed pre-release. **List passed end-to-end ⇒ overhaul DECLARED CLOSED and released.** See D-048 CLOSURE
+in `DIRECTOR-DECISIONS.md` and §6cu in `MANAGER-FINDINGS.md`.
 
-Build under test: `20260707b97` (or later). Confirm on every frame: console `__TALARIA_CHART_BUILD_ID`.
+Build under test: **`20260707b105`** (PO-confirmed). Confirm on every frame: console `__TALARIA_CHART_BUILD_ID`.
+
+**Acceptance verdict (PO-confirmed on b105): A1–A13 all PASS.**
+
+| Item | Verdict (b105) | Item | Verdict (b105) |
+| --- | --- | --- | --- |
+| A1 | PASS | A8 | PASS |
+| A2 | PASS | A9 | PASS |
+| A3 | PASS | A10 | PASS |
+| A4 | PASS | A11 | PASS |
+| A5 | PASS | A12 | PASS |
+| A6 | PASS | A13 | PASS |
+| A7 | PASS | | |
 
 Preconditions for the session:
 - Clean load: unregister SWs → clear site data → close all tabs → reopen → confirm build id.

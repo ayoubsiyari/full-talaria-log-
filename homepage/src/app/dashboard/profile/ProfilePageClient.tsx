@@ -301,6 +301,26 @@ function ProfilePageInner({ v16Embed = false }: { v16Embed?: boolean }) {
     }
   };
 
+  const [signingOut, setSigningOut] = React.useState(false);
+  const handleSignOut = React.useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      /* ignore — always clear client state + redirect */
+    }
+    try {
+      localStorage.removeItem("token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("talaria_current_user");
+      localStorage.removeItem("is_admin");
+    } catch {
+      /* ignore */
+    }
+    window.location.href = "/login/";
+  }, [signingOut]);
+
   if (!user) {
     return (
       <div className={`prof-settings${v16Embed ? " prof-settings--v16-embed" : ""}`}>
@@ -378,6 +398,26 @@ function ProfilePageInner({ v16Embed = false }: { v16Embed?: boolean }) {
               {isArabic ? "الخطط والأسعار" : "Plans & pricing"}
             </Link>
           </div>
+
+          <button
+            type="button"
+            className="prof-settings__nav-item prof-settings__signout"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 8, color: "#ff8a9a" }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {signingOut
+              ? isArabic
+                ? "جارٍ تسجيل الخروج…"
+                : "Signing out…"
+              : isArabic
+                ? "تسجيل الخروج"
+                : "Sign out"}
+          </button>
         </aside>
 
         <main className="prof-settings__main">

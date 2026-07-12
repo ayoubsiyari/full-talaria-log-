@@ -1516,6 +1516,11 @@ ledger per D-028).
 
 ## D-032 — Multichart overhaul CLOSED at core-complete; polish + backlog deferred (2026-07-07)
 
+> **⚠ SUPERSEDED (cross-reference, do not delete):** D-032's "CLOSED at core-complete" (build **b76**)
+> was later **reopened** by backlog items **BL-8..BL-18**, so this closure is no longer the final word.
+> The **authoritative final closure** of the multichart overhaul is **D-048** (build **20260707b105**).
+> Read D-032 as a historical mid-point checkpoint, not a second/duplicate close.
+
 ### Decision (PO/Director ruling)
 Declare the core multichart overhaul **DONE and CLOSED** at D-031's fully-green state. Do NOT start
 D-030 step 4 (Phase-3 polish) or step 5 (backlog BL-1/BL-2/BL-4) now — both are deferred until a future
@@ -2217,3 +2222,23 @@ finding bugs," which has no finish line. This decision replaces it:
 Manager instruction: no new fix work outside on-list failures once the acceptance
 session starts, except a PO-declared showstopper via ESC. The scope guard from
 D-032/D-033 applies to the letter.
+
+### D-048 CLOSURE — overhaul DECLARED CLOSED on b105 (2026-07-12)
+
+The acceptance list (A1–A13, `ACCEPTANCE.md`) was PO-confirmed **PASS end-to-end on
+build `20260707b105`**. Per D-048 clause 3, the multichart overhaul is therefore
+**DECLARED CLOSED and released**.
+
+- **Closing polish batch landed** (all RED-first, gated, gate-ratcheted, one build
+  bump each): b101 reload-prompt SW hard-escape; b102 boot host first-render shake;
+  b103 boot peer first-render shake; b104 host step-spam refetch guard; b105 boot
+  single-commit residual first-render slide.
+- **Gate is the permanent regression lock: 29 scenarios GREEN** (H-S2..H-S31,
+  incl. H-S19b), 0 known-failing, 0 regressions. This closure batch was harness +
+  docs only (H-S19 flake-harden) — **no served asset changed, build id stays b105**.
+- **Off-list PO observations → backlog, NOT fixed pre-release** (D-048 clause 2).
+- **Deferred maintenance backlog (not release blockers):** Phase-5 mirror-policy
+  consolidation; the finer-owner refetch fix (specced, NOT shipped); plus the
+  standing D-047 commit-split and prior deferred backlog (BL-1/2/3/4, Phase-3 polish).
+- The overhaul now operates under **standing discipline** (RED-first, gated, ratchet)
+  for any future maintenance; no open-ended testing thread remains.

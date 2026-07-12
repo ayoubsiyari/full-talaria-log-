@@ -957,6 +957,7 @@ class User(Base):
     max_supporting_tickers_per_session = Column(Integer, default=5, nullable=False, server_default="5")
     has_journal_access = Column(Boolean, default=False)
     dashboard_module_grants = Column(Text, nullable=True)  # JSON: {"journal": true, ...}
+    platform_section_grants = Column(Text, nullable=True)  # JSON per-user page override: {"trades": true, ...}
     stripe_customer_id = Column(String, nullable=True)
     country = Column(String(100), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -1852,6 +1853,7 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_journal_access BOOLEAN DEFAULT FALSE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS dashboard_module_grants TEXT"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS platform_section_grants TEXT"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
@@ -11113,6 +11115,54 @@ def _set_user_module_grants(user: User, grants) -> None:
     )
 
 
+def _parse_user_section_grants(user: User):
+    raw = getattr(user, "platform_section_grants", None)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+def normalize_section_grants(raw) -> dict:
+    """Per-user page overrides. Grant-only: keep known sections explicitly set True.
+
+    A True value force-opens that page for the user even when the section is
+    globally OFF. Absent/false keys fall back to the global switch — this can
+    never hide a globally-enabled page, so it only ever widens access.
+    """
+    if isinstance(raw, str) and raw.strip():
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = None
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, bool] = {}
+    for key, val in raw.items():
+        sk = str(key).strip().lower()
+        if sk in PLATFORM_SECTION_KEYS and val is True:
+            out[sk] = True
+    return out
+
+
+def _set_user_section_grants(user: User, grants) -> None:
+    normalized = normalize_section_grants(grants)
+    user.platform_section_grants = (
+        json.dumps(normalized, separators=(",", ":")) if normalized else None
+    )
+
+
+def _user_section_grant_on(user: User, section: str) -> bool:
+    return bool(normalize_section_grants(_parse_user_section_grants(user)).get(section))
+
+
 def _is_pricing_renewal_path(path: str | None) -> bool:
     """Allow sign-in without active entitlement only when returning to pricing to renew."""
     if not path or not path.startswith("/") or path.startswith("//"):
@@ -11662,6 +11712,7 @@ def _user_public_dict_impl(user: User, db=None):
         "is_waitlisted": bool(getattr(user, "is_waitlisted", False)),
         "manual_full_access": bool(getattr(user, "has_journal_access", False)),
         "module_grants": grants or {},
+        "platform_section_grants": normalize_section_grants(_parse_user_section_grants(user)),
         "has_journal_access": journal_entitled,
         "has_active_subscription": subscription_entitled,
         "has_dashboard_access": has_dashboard_access,
@@ -11758,6 +11809,10 @@ def _user_may_use_platform_section(user: User, db, section: str) -> bool:
     if (user.role or "") == "admin":
         return True
     if section not in PLATFORM_SECTION_KEYS:
+        return True
+    # Per-user grant-only override: force-open a page for this user (e.g. tester /
+    # support) even when the global switch is OFF. Never hides a globally-on page.
+    if _user_section_grant_on(user, section):
         return True
     return _platform_section_enabled(db, section)
 
@@ -16056,6 +16111,7 @@ class _UpdateUserIn(BaseModel):
     is_active: bool | None = None
     has_journal_access: bool | None = None
     dashboard_module_grants: dict | None = None
+    platform_section_grants: dict | None = None
     access_expires_at: str | None = None
     access_days: int | None = None
     password: str | None = None
@@ -16127,6 +16183,8 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
             _set_user_module_grants(user, payload.dashboard_module_grants)
             if normalize_module_grants(payload.dashboard_module_grants):
                 user.has_journal_access = False
+        if payload.platform_section_grants is not None:
+            _set_user_section_grants(user, payload.platform_section_grants)
         db.commit()
         db.refresh(user)
         return {"user": _user_public_dict(user, db=db)}

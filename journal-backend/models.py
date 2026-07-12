@@ -76,6 +76,8 @@ class User(db.Model):
     has_journal_access = db.Column(db.Boolean, default=False)
     # Admin partial grants when user lacks full subscription (JSON object string).
     dashboard_module_grants = db.Column(db.Text, nullable=True)
+    # Per-user page override (grant-only): force-open pages even when globally OFF.
+    platform_section_grants = db.Column(db.Text, nullable=True)
     group_id = db.Column(db.Integer, db.ForeignKey('journal_groups.id'), nullable=True)
     country = db.Column(db.String(100), nullable=True)
     phone = db.Column(db.String(50), nullable=True)

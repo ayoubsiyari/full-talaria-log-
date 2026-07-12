@@ -2801,6 +2801,15 @@ select { cursor: default; }
           <button type="button" class="btn sm" onclick="setAllEditModules(false)">Clear sections</button>
         </div>
       </div>
+      <div class="field fg-full" style="margin-top:4px;border-top:1px solid var(--border);padding-top:12px">
+        <label style="display:block;font-weight:600;margin-bottom:2px">Page access override <span style="font-weight:400;color:var(--text-muted)">(per user)</span></label>
+        <p style="font-size:11px;color:var(--text-muted);margin:2px 0 10px">Force-open sidebar pages for <strong>this user only</strong>, even when the page is globally OFF in Settings. Leave unchecked to follow the global switch. This never hides a page that is globally ON. Use it for testers / support who need to see pages normal users can't.</p>
+        <div id="editSectionGrants" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn sm" onclick="setAllEditSections(true)">Enable all pages</button>
+          <button type="button" class="btn sm" onclick="setAllEditSections(false)">Clear pages</button>
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
@@ -8779,6 +8788,31 @@ function setAllEditModules(on) {
   });
 }
 
+// Per-user page (platform section) overrides — mirror the global Settings pages.
+const PLATFORM_SECTION_CATALOG = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'trades', label: 'Trades' },
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'strategies', label: 'Strategies' },
+  { key: 'resources', label: 'Resources' },
+  { key: 'support', label: 'Support' },
+];
+
+function renderEditSectionGrantInputs(sectionsMap) {
+  const host = $('editSectionGrants');
+  if (!host) return;
+  host.innerHTML = PLATFORM_SECTION_CATALOG.map(function (s) {
+    const on = !!(sectionsMap && sectionsMap[s.key]);
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary)">' +
+      '<input type="checkbox" class="edit-sec-cb" data-sec="' + esc(s.key) + '"' + (on ? ' checked' : '') + ' />' +
+      '<span>' + esc(s.label) + '</span></label>';
+  }).join('');
+}
+
+function setAllEditSections(on) {
+  document.querySelectorAll('.edit-sec-cb').forEach(function (el) { el.checked = !!on; });
+}
+
 document.addEventListener('change', function (e) {
   if (e.target && e.target.id === 'editFullJournalAccess') {
     document.querySelectorAll('.edit-mod-cb').forEach(function (el) {
@@ -8812,6 +8846,7 @@ function openEditModal(userId) {
   const fullAccess = !!user.manual_full_access;
   if ($('editFullJournalAccess')) $('editFullJournalAccess').checked = fullAccess;
   renderEditModuleGrantInputs(mods);
+  renderEditSectionGrantInputs(user.platform_section_grants || {});
   $('editModalTitle').textContent = `Edit: ${user.name}`;
   $('editUserModal').classList.add('open');
 }
@@ -8860,6 +8895,12 @@ async function saveUser() {
     body.has_journal_access = true;
     body.dashboard_module_grants = null;
   }
+  const sectionGrants = {};
+  document.querySelectorAll('.edit-sec-cb').forEach(function (el) {
+    const k = el.getAttribute('data-sec');
+    if (k && el.checked) sectionGrants[k] = true;
+  });
+  body.platform_section_grants = sectionGrants;
   try {
     await api(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     toast('User updated — they should refresh the dashboard (or log in again) to apply access.', 'ok');

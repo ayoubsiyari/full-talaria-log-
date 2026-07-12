@@ -3876,6 +3876,71 @@ single-chart and `userHasPanned` are all identical. No contradiction.
 - **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
   standard `SW_VERSION` cache-string + `?v=` bump).
 
+## 6cu. CLOSURE — overhaul DECLARED CLOSED on b105; H-S19 flake-hardened; harness mirror reconciled (D-048, 2026-07-12)
+
+MANAGER: closure batch, harness + docs ONLY — **no engine/runtime change, no served-asset change, build id stays
+`20260707b105`** (D-048 clause 3 released the overhaul; ACCEPTANCE A1–A13 PO-confirmed PASS on b105).
+
+- **Final build id:** `20260707b105` (unchanged — this batch touched only the regression harness + these docs, which
+  per D-048/the build-id policy do NOT require a bump; `bump-dist-v9-cache.mjs` NOT run).
+- **Gate scenario count:** **29 scenarios GREEN** (H-S2, H-S3, H-S5–H-S8, H-S10–H-S18, **H-S19**, **H-S19b**,
+  H-S20–H-S31). `npm run gate` verdict: `PASS: no new regressions; 0 known-failing tracked` — 0 regressions, 0
+  known-failing, every prior scenario still PASS. The gate is the permanent regression lock (D-048 clause 3).
+- **Harness-mirror reconcile:** `homepage/public/chart/multichart-prod/harness/` **IS a maintained mirror** of the
+  canonical `chart v 1.4/chart/multichart-prod/harness/` (the gate runs the canonical copy via `node gate.mjs`).
+  Audit found 9/10 files already byte-identical (`known-failing.json`, `gate.mjs`, `harness-lib.mjs`, `run.mjs`,
+  `serve.mjs`, `confirm-host.mjs`, `probe-1m-axis.mjs`, `package.json`, `package-lock.json`); only `scenarios.mjs`
+  was stale because the (interrupted) H-S19 harden had landed on canonical only. **Action:** synced canonical
+  `scenarios.mjs` → mirror; the pair is now byte-identical
+  (`SHA256 = F8441404C326CE742EB5EE5403E46FEE04A47E173D1EF7E29B71A82EB61BC99A` on BOTH trees, EQ=True). No new
+  harness invented; `gate.mjs`/`known-failing.json` already matched and were left untouched.
+- **H-S19 flake-harden (D-048, anti-flake rule 4.2b):** H-S19 flaked once under a CPU-saturated gate (observed 186
+  renders vs bound 60) then passed ×3 isolated. Root cause: the idle cell bounded the RAW total-render delta
+  (`ch._mcDiag.renders`) by a fixed constant, but that counter ALSO ticks the eased follow's per-rAF catch-up
+  renders whose COUNT is a function of wall-clock elapsed per streamed frame → load-sensitive. **Fix (test-only, no
+  engine change):** assert the DETERMINISTIC follow-render counter (`ch._mcPlayFollowRenders`, incremented once per
+  follow render issued past the cost guard ≈ once per device-pixel column crossed) against the device-pixel columns
+  the leading edge actually swept (`pixelColumnsCrossed = round(|ΔoffsetX|·dpr)`) over the SAME window — a pure
+  function of viewport travel, never a wall-clock window (identical model to H-S19b). Driving is deterministic:
+  fixed WARMUP=60 + N=300 dispatched play frames, poll-to-quiescence. Intent preserved (idle/sub-pixel ⇒ coalesced;
+  active scroll ≈ pixel-columns + small ABSOLUTE constant SMALL=12), NOT weakened to a vacuous pass.
+  - **×5 flake proof:** `node run.mjs --only=H-S19,H-S19b --runs=5` → H-S19 `PASS,PASS,PASS,PASS,PASS`; H-S19b
+    `PASS,PASS,PASS,PASS,PASS`. Stable measured values (idle `followRenders≈34–35` vs `pixelColumnsCrossed≈34–35`;
+    A/B follow-off counter flat at 0; drag-suspend 0 vs 0).
+  - **RED / non-vacuity proof:** `--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD` → H-S19 idle coalesce
+    bound FAILS (`idleFollowRenders=299` vs `pixelColumnsCrossed=35`, SMALL=12) → verdict `FAIL-REAL-BUG`; H-S19b
+    also `FAIL-REAL-BUG` (scroll UPPER bound `359` vs `42`; stationary `60` ≠ 0). Guard kill-switch still bites.
+
+### Verification / report-back
+- `node --check` clean on the edited canonical `scenarios.mjs` (exit 0); ReadLints clean on the edited file.
+- **SHA256 reconciled harness pair identical (EQ=True):** `harness/scenarios.mjs` =
+  `F8441404C326CE742EB5EE5403E46FEE04A47E173D1EF7E29B71A82EB61BC99A` on canonical AND homepage mirror. Other harness
+  files were already EQ (unchanged this batch).
+- **Build id stays `20260707b105`** — no served asset changed (harness + docs only). **No engine runtime logic
+  touched** (chart.js / replay-system.js / panel-cmd-bridge.js / sync-bridge.js / embed-bridge.js /
+  MultichartGrid.jsx all unchanged; the `_mcPlayFollowRenders` counter the test reads already existed in
+  panel-cmd-bridge.js). **`.github/workflows/security.yml`, `gate.mjs`, and SW-lifecycle logic NOT touched.**
+
+## 6cv. Post-closure audit backlog (deferred items surfaced by the b105 hygiene pass, docs-only)
+
+Recorded so the audit findings aren't lost. **None worked here** — each needs its own gated task (and, where
+noted, a build bump + gate re-run) under standing rules. No engine/build/gate change made by this note.
+
+1. **Leftover BL-2b price probe in shipped engine.** `__TALARIA_BL2B_PRICE_PROBE` install block sits in
+   `chart/chart.js` (~lines 2–50) with `__talariaBl2b*` call sites in `modules/replay-system.js`,
+   `multichart-prod/panel-cmd-bridge.js`, and `sync-bridge.js`. It was kept gated for Item-2 isolation but Item-2 is
+   closed — strip it. **Needs a build bump + full gate re-run** (touches served engine, both trees).
+2. **Legacy `multichart/` dev-shell tree drift.** The legacy `multichart/` dev shell drifts from the production
+   `multichart-prod/` tree, creating an edit-on-the-wrong-tree hazard. Resolve by deleting it or marking it clearly
+   unmaintained.
+3. **Gate coverage gaps (candidates for the Phase-5 coverage pass).**
+   - **BL-16 (drag-during-play)** has no dedicated scenario — only incidental coverage inside `H-S18`.
+   - ~17 older kill-switches lack dedicated RED scenarios: `B-FIX-F`, `B-FIX-G`, `B-FIX-I`, `B-FIX-J`, `BL-5`,
+     panel price-independence, display-tf-master, high-limit-bulk, tf-switch-fill-storm, etc. Add dedicated
+     RED scenarios so each guard is provably load-bearing.
+
+---
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

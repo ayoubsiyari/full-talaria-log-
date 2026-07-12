@@ -205,7 +205,8 @@ retiring BL-11/12/13's three scattered code sites and their shared flag.
 1. Land the resolver + appliers **behind the master kill-switch OFF by default**
    (table inert) — pure addition, zero behaviour change; gate must stay 15/15.
 2. Flip the master switch ON in the harness only; prove **cell-by-cell parity**:
-   every existing H-S scenario (H-S2…H-S18) stays GREEN with the table driving.
+   every existing H-S scenario (now `H-S2`…`H-S31`, incl. `H-S19b` and the newer
+   `H-S20`–`H-S31`; the range was `H-S2`…`H-S18` when this doc was written) stays GREEN with the table driving.
    Any diff is a table bug, fixed before proceeding.
 3. Flip default ON in the engine; keep the old paths one release behind the
    master switch for rollback.

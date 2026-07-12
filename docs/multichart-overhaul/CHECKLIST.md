@@ -14,8 +14,8 @@ Use this checklist for any change that touches multichart behavior, harness wiri
 npm run gate
 ```
 
-   - The current accepted baseline is three tracked failures: `H-S2`, `H-S3`, and `H-S6`.
-   - Any non-baseline failure is a regression. Any baseline test that turns green means `known-failing.json` is stale and must be ratcheted down in the same change.
+   - **Current gate state (post-closure, b105):** 29 scenarios GREEN (`H-S2`..`H-S31`, incl. `H-S19b`), **0 known-failing**. The former baseline failures `H-S2`, `H-S3`, and `H-S6` are all green.
+   - Any failure is now a regression. If any scenario is added to `known-failing.json`, it must be justified in the same change; a baseline test that turns green means `known-failing.json` is stale and must be ratcheted down in the same change.
 
 3. If engine files changed, mirrored copies match.
    - Canonical chart engine files live under `chart v 1.4/chart/**`.
@@ -64,4 +64,4 @@ diff -qr "chart v 1.4/chart/multichart-prod" "homepage/public/chart/multichart-p
 
 ## CI Gate
 
-Pull requests touching `chart v 1.4/chart/**` or `chart v 1.4/talaria-design/src/Multichart*` run the multichart harness workflow. The workflow calls `npm run gate`, so it allows the current three tracked failures but blocks new regressions and stale baselines.
+Pull requests touching `chart v 1.4/chart/**` or `chart v 1.4/talaria-design/src/Multichart*` run the multichart harness workflow. The workflow calls `npm run gate`, which now expects all 29 scenarios (`H-S2`..`H-S31`, incl. `H-S19b`) green with 0 known-failing, and blocks new regressions and stale baselines.

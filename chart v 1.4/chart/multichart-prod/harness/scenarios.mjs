@@ -1659,12 +1659,6 @@ async function setEngineFlagAll(page, flag, on) {
   }
 }
 
-/** Read one panel's deterministic render counter (ch._mcDiag.renders). */
-async function readPanelRenders(page, id) {
-  const p = await readPanel(page, id);
-  return p ? (Number(p.renders) || 0) : 0;
-}
-
 /**
  * Stream N real host PLAY frames (replayFrame {isPlaying:true}), advancing the
  * host playhead one host bar per frame, WITHOUT any user gesture. Paced so one
@@ -1819,113 +1813,138 @@ async function hS19(ctx) {
 
     // Bound the play window strictly inside the loaded replay master.
     const stepMs = 60_000;
-    const N = 120;
+    // ±SMALL: absolute rounding/boundary slack on the device-pixel-column render
+    // count (same constant + model as H-S19b). Kept a small ABSOLUTE constant per
+    // the D-039/D-041 anti-flake rule — the RED margins are order-of-magnitude so
+    // this only tightens GREEN, never loosens it into a vacuous pass.
+    const SMALL = 12;
 
-    // ── Cell 1: IDLE-PANEL renders over N play-frames (panel C, never dragged) ──
-    // Measured three ways for RED-first + causal A/B attribution:
-    //   (i)  follow default (today's build = RED; fix reverts under new flag)
-    //   (ii) BL-11 follow disabled (__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW)
-    // proving the excess renders come from the BL-11 follow.
+    // D-048 FLAKE HARDEN (anti-flake rule 4.2b): the idle cell formerly bounded the
+    // RAW total-render delta (ch._mcDiag.renders) by a fixed constant (60). That
+    // total counter ALSO ticks the eased follow's per-rAF catch-up renders, whose
+    // COUNT is a function of WALL-CLOCK elapsed per streamed frame — a CPU-saturated
+    // gate runner packs more rAF renders into each frame's settle window (observed
+    // 186 vs bound 60), then passes in isolation. The fix asserts the DETERMINISTIC
+    // follow-render COUNTER (ch._mcPlayFollowRenders — incremented once per follow
+    // render issued PAST the cost guard, i.e. ~once per device-pixel column crossed)
+    // against the device-pixel COLUMNS the leading edge actually swept
+    // (pixelColumnsCrossed) — a pure function of viewport travel, NOT a wall-clock
+    // window. Identical model to H-S19b; load-insensitive by construction.
+
+    // Warm up so the boot backward-history loads finish and the viewport parks at
+    // the leading edge; the MEASURED window is then a settled forward play whose only
+    // data growth is forming-bar seams (no prepend-induced follow renders).
+    const WARMUP = 60;
     let ts = ts0;
-    await resetDiag(page);
-    ts = await streamPlayFramesNoDrag(page, ts, N, stepMs);
+    ts = await streamPlayFramesNoDrag(page, ts, WARMUP, stepMs);
     await sleep(400);
-    const idleRendersDefault = await readPanelRenders(page, 'C');
 
-    // A/B: disable the BL-11 follow entirely, re-measure the idle cost.
-    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
-    await resetDiag(page);
-    ts = await streamPlayFramesNoDrag(page, ts, N, stepMs);
+    const cGeom = await readPanel(page, 'C');
+    const cFollow0 = await readPanelFollow(page, 'C');
+    const dpr = Number(cFollow0?.dpr) || 1;
+    const candleWidth = Number(cGeom?.candleWidth) || 0;
+
+    // ── Cell 1: IDLE-PANEL follow-render cost over N settled play-frames (panel C,
+    // never dragged). Sample offsetX + the follow-render counter each frame so the
+    // cost is measured against pixel-columns-crossed over the SAME window. ──
+    const N = 300; // 5 coarse (1h) candles of settled host 1m frames — enough travel
+    const idleRun = await streamPlayFramesSamplingOffset(page, 'C', ts, N, stepMs);
+    ts = idleRun.ts;
+    // Poll to quiescence: let any in-flight eased follow render settle so the counter
+    // reflects columns crossed, not the instant we happened to sample.
     await sleep(400);
-    const idleRendersFollowOff = await readPanelRenders(page, 'C');
+    const idleSamples = idleRun.samples.filter((s) => s && Number.isFinite(s.offsetX));
+    const idleOffStart = idleSamples.length ? idleSamples[0].offsetX : NaN;
+    const idleOffEnd = idleSamples.length ? idleSamples[idleSamples.length - 1].offsetX : NaN;
+    const idleDOffset = (Number.isFinite(idleOffStart) && Number.isFinite(idleOffEnd))
+      ? Math.abs(idleOffEnd - idleOffStart) : 0;
+    const pixelColumnsCrossed = Math.round(idleDOffset * dpr);
+    const candlesCrossed = candleWidth > 0 ? Math.round(idleDOffset / candleWidth) : 0;
+    const idleFollowRenders = idleSamples.length
+      ? (Number(idleSamples[idleSamples.length - 1].followRenders) || 0)
+        - (Number(idleSamples[0].followRenders) || 0)
+      : 0;
+
+    // A/B attribution: disable the BL-11 follow entirely; the follow-render counter
+    // must stay FLAT, proving the idle renders come from the BL-11 follow path.
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
+    const abBefore = await readPanelFollow(page, 'C');
+    ts = await streamPlayFramesNoDrag(page, ts, 60, stepMs);
+    await sleep(300);
+    const abAfter = await readPanelFollow(page, 'C');
+    const idleFollowRendersNoFollow = (Number(abAfter?.followRenders) || 0)
+      - (Number(abBefore?.followRenders) || 0);
     await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', false);
 
-    // ── Cell 2: PLAY-DRAG renders (panel B dragged WHILE play streams) ──
-    await resetDiag(page);
-    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: true });
+    // ── Cell 2: PLAY-DRAG (panel B dragged WHILE play streams) — the follow must be
+    // SUSPENDED during the active gesture (userHasPanned), adding no follow renders. ──
+    const bDragBefore = await readPanelFollow(page, 'B');
+    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: 60, stepMs, playing: true });
     await sleep(300);
-    const playDragRenders = await readPanelRenders(page, 'B');
-    const bAfterDrag = await readPanelFollow(page, 'B');
+    const bDragAfter = await readPanelFollow(page, 'B');
+    const playDragFollowRenders = (Number(bDragAfter?.followRenders) || 0)
+      - (Number(bDragBefore?.followRenders) || 0);
 
-    // A/B: play-drag with the BL-11 follow disabled.
+    // Re-park B at the edge, then the paused-drag reference (same gesture, STOPPED).
     await setHostReplayPlaying(page, false);
     await broadcastCmd(page, 'replayTick', { timestamp: ts });
     await sleep(400);
-    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
-    await resetDiag(page);
-    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: true });
+    const bPausedBefore = await readPanelFollow(page, 'B');
+    await dragPanelWhileStreaming(page, 'B', ts, { moves: 60, stepMs, playing: false });
     await sleep(300);
-    const playDragRendersFollowOff = await readPanelRenders(page, 'B');
-    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', false);
+    const bPausedAfter = await readPanelFollow(page, 'B');
+    const pausedDragFollowRenders = (Number(bPausedAfter?.followRenders) || 0)
+      - (Number(bPausedBefore?.followRenders) || 0);
 
-    // Re-follow B to the edge so the paused-drag reference starts from parity.
-    await setHostReplayPlaying(page, false);
-    await broadcastCmd(page, 'replayTick', { timestamp: ts });
-    await sleep(400);
+    // Non-vacuity: the idle panel's follow actually swept MANY device-pixel columns
+    // (many candle-widths) so the coalesce bound is a real signal, not trivially met.
+    checks.check('H-S19 setup non-vacuous: idle panel swept many device-pixel columns',
+      pixelColumnsCrossed >= 2 * SMALL && candlesCrossed >= 3
+      && pixelColumnsCrossed >= 4 * Math.max(1, candlesCrossed),
+      `pixelColumnsCrossed=${pixelColumnsCrossed} candlesCrossed=${candlesCrossed} `
+      + `dOffset=${idleDOffset.toFixed(2)} candleWidth=${candleWidth} dpr=${dpr} SMALL=${SMALL}`);
 
-    // ── Cell 3: PAUSED-DRAG reference (same gesture, replay STOPPED) ──
-    await resetDiag(page);
-    await dragPanelWhileStreaming(page, 'B', ts, { moves: N, stepMs, playing: false });
-    await sleep(300);
-    const pausedDragRenders = await readPanelRenders(page, 'B');
+    // CORE (idle coalesce — the RED→GREEN flip): the BL-11 follow's render cost on a
+    // NOT-dragged coarse panel is COALESCED to ~one render per device-pixel column
+    // crossed (≪ N host frames), and is non-zero (the follow really rendered).
+    // Kill-switch RED (__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD): renders per-frame
+    // ≈ N ≫ pixelColumnsCrossed + SMALL → this UPPER bound fails. DETERMINISTIC /
+    // load-insensitive (the counter tracks viewport travel, not wall-clock rAF ticks).
+    checks.check('H-S19 idle-panel follow render cost coalesced (<= pixel-columns-crossed + SMALL, << N)',
+      idleFollowRenders > 0 && idleFollowRenders <= pixelColumnsCrossed + SMALL,
+      `idleFollowRenders=${idleFollowRenders} pixelColumnsCrossed=${pixelColumnsCrossed} `
+      + `SMALL=${SMALL} N=${N}`);
 
-    // Follow-attributable render cost = renders(follow on) − renders(follow off),
-    // measured with identical pacing so the coarse BL-10 reslice baseline (which
-    // BL-12 does NOT touch) cancels out. This isolates the BL-11 follow's render
-    // cost as a DETERMINISTIC counter delta (no wall-clock timing — D-039 rule).
-    const idleFollowCost = idleRendersDefault - idleRendersFollowOff;
-    const dragFollowCost = playDragRenders - playDragRendersFollowOff;
-    // D-041 reconciliation of the (formerly ≤60 candle-width) idle bound: GREEN now
-    // coalesces the follow to ~one render per DEVICE-PIXEL COLUMN the leading edge
-    // crosses (1h → ~0.12 px/frame → a new column only every ~8 frames, so ≈ N/8 ≈
-    // 15 over N=120); kill-switch RED (guard OFF) renders ~1:1 with host frames (≈ N).
-    // The bound sits between so the cell still FLIPS: GREEN passes, RED fails. (At the
-    // former 5m the fix correctly repaints every frame — >1 px/frame — so there is no
-    // sub-pixel coalesce to assert; the device-pixel smoothness itself is proved by
-    // H-S19b.)
-    const IDLE_COALESCE_BOUND = 60;
+    // A/B attribution: with the BL-11 follow disabled the follow counter stays flat,
+    // proving the idle follow renders are attributable to the BL-11 follow path.
+    checks.check('H-S19 idle renders attributable to BL-11 follow (follow-off counter flat)',
+      idleFollowRendersNoFollow <= SMALL,
+      `idleFollowRendersNoFollow=${idleFollowRendersNoFollow} (follow-on=${idleFollowRenders})`);
 
-    // Sanity: the follow-off baseline actually rendered (non-vacuous) and the
-    // follow never SUBTRACTS renders — so idleFollowCost is a real cost measure.
-    checks.check('H-S19 follow-off baselines non-vacuous',
-      idleRendersFollowOff > 0 && playDragRendersFollowOff > 0,
-      `idleFollowOff=${idleRendersFollowOff} playDragFollowOff=${playDragRendersFollowOff}`);
+    // DRAG suspend cell (part a correctness): while B is ACTIVELY dragged during play,
+    // the follow adds NO per-frame renders — its follow-render cost stays bounded to
+    // ~the paused-drag reference (both ≈ 0), never scaling with frames like the idle
+    // cell. A pan/zoom already sets userHasPanned (follow disengaged during the
+    // gesture); part (a) makes that structural (never fights the drag / BL-6 recenter).
+    checks.check('H-S19 dragged-panel follow render cost suspended during play-drag',
+      playDragFollowRenders <= pausedDragFollowRenders + SMALL,
+      `playDragFollowRenders=${playDragFollowRenders} pausedDragRef=${pausedDragFollowRenders} SMALL=${SMALL}`);
 
-    // CORE (idle coalesce cell — the RED→GREEN flip): the BL-11 follow's per-frame
-    // render cost on a NOT-dragged coarse panel must be COALESCED (render only when
-    // the leading edge crosses ≥1 DEVICE PIXEL — D-041). GREEN ≪ N; kill-switch RED ≈ N.
-    checks.check('H-S19 idle-panel follow render cost coalesced (<< N host play-frames)',
-      idleFollowCost <= IDLE_COALESCE_BOUND,
-      `idleFollowCost=${idleFollowCost} (default=${idleRendersDefault} followOff=${idleRendersFollowOff}) `
-      + `bound=${IDLE_COALESCE_BOUND} N=${N}`);
-
-    // DRAG suspend cell (part a correctness): while the panel is ACTIVELY dragged
-    // during play, the follow must add NO per-frame renders — its follow-attributable
-    // render cost stays bounded (≈ the paused-drag reference, which has zero follow
-    // renders), never scaling with frames the way the idle cell does. In this engine
-    // a pan/zoom already sets userHasPanned (follow semantically disengaged), so this
-    // holds; part (a) makes it structural (never fights the drag / BL-6 recenter).
-    checks.check('H-S19 dragged-panel follow render cost bounded during play-drag (suspended)',
-      dragFollowCost <= IDLE_COALESCE_BOUND,
-      `dragFollowCost=${dragFollowCost} (playDrag=${playDragRenders} followOff=${playDragRendersFollowOff}) `
-      + `pausedDragRef=${pausedDragRenders} bound=${IDLE_COALESCE_BOUND}`);
-
-    notes.push('H-S19 (BL-12 D-039, idle bound reconciled under BL-13 D-041): same-pair 2x2, all sync OFF, host 1m, '
-      + 'panels B/C set to 1h (coarse — the BL-11 follow path; 1h not 5m so the D-041 sub-pixel coalesce engages). '
-      + 'Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, N=' + N + ' frames). '
-      + 'DETERMINISTIC render COUNTERS only (ch._mcDiag.renders), never wall-clock. '
-      + 'COST MATRIX (renders / ' + N + ' play-frames): '
-      + `idle-panel(C) follow-on=${idleRendersDefault} follow-off=${idleRendersFollowOff} `
-      + `→ idleFollowCost=${idleFollowCost} (RED≈N per-frame; GREEN≪N coalesced to ~1/device-pixel-column ≈ N/8). `
-      + `dragged-panel(B) play-drag follow-on=${playDragRenders} follow-off=${playDragRendersFollowOff} `
-      + `→ dragFollowCost=${dragFollowCost}. paused-drag reference=${pausedDragRenders}. `
-      + `host(A) unchanged (same-TF, follows via forceSamePairParentDataMirror, not this path). `
-      + `ATTRIBUTION A/B (kill-switch __TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW): toggling the BL-11 `
-      + `follow removes the excess idle renders (${idleRendersDefault}→${idleRendersFollowOff}), proving the `
-      + `BL-11 follow is the cost source. NOTE (surprise, flagged): a pan/zoom drag already sets userHasPanned `
-      + `so the follow is disengaged during the gesture (dragFollowCost≈0 in RED and GREEN) — the measurable `
-      + `render regression is the IDLE per-frame follow render (fixed by coalescing, part b); part (a) is the `
-      + `ratified interaction-suspend guard. Fix behind __TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD (default ON).`);
+    notes.push('H-S19 (BL-12 D-039, idle bound reconciled under BL-13 D-041; flake-hardened D-048): same-pair 2x2, '
+      + 'all sync OFF, host 1m, panels B/C set to 1h (coarse — the BL-11 follow path; 1h so the D-041 sub-pixel '
+      + 'coalesce engages). Real PLAY fan-out (replayFrame isPlaying=true, 1m/frame, WARMUP=' + WARMUP + ' + N=' + N
+      + ' settled frames). DETERMINISTIC device-pixel-column model (ch._mcPlayFollowRenders vs pixelColumnsCrossed), '
+      + 'never wall-clock — replaces the pre-D-048 raw ch._mcDiag.renders delta whose per-rAF eased catch-up renders '
+      + 'made the count load-sensitive (186 vs 60 under a saturated gate). COST MATRIX (follow renders): '
+      + `idle-panel(C) followRenders=${idleFollowRenders} vs pixelColumnsCrossed=${pixelColumnsCrossed} `
+      + `(candlesCrossed=${candlesCrossed}, candleWidth=${candleWidth}px dpr=${dpr}) → coalesced ≈ 1/device-pixel-column ≪ N. `
+      + `dragged-panel(B) play-drag followRenders=${playDragFollowRenders} vs paused-drag reference=${pausedDragFollowRenders} `
+      + `→ suspended during the gesture. host(A) unchanged (same-TF mirror path, not this follow). `
+      + `ATTRIBUTION A/B (__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW): disabling the BL-11 follow drops the idle `
+      + `follow counter to ${idleFollowRendersNoFollow} (flat), proving the BL-11 follow is the cost source. `
+      + `RED flip (--bugswitch=__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD): followRenders≈N per-frame ≫ `
+      + `pixelColumnsCrossed+SMALL → idle coalesce bound fails. Fix behind __TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD `
+      + `(default ON) — no new flag.`);
     return checks;
   });
 }

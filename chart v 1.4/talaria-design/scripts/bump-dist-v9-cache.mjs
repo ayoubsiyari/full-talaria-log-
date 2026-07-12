@@ -130,6 +130,26 @@ function bumpChartEmbedHtml(buildId) {
   return touched;
 }
 
+/** multichart-prod/harness/serve.mjs hardcoded host-page build id. */
+function bumpHarnessServeMjs(buildId) {
+  const servePaths = [
+    path.resolve(__dirname, "../../chart/multichart-prod/harness/serve.mjs"),
+    path.resolve(repoRoot, "homepage/public/chart/multichart-prod/harness/serve.mjs"),
+  ];
+  const SERVE_BUILD_ID_RE = /const buildId = '[^']+'/;
+  let touched = 0;
+  for (const servePath of servePaths) {
+    if (!fs.existsSync(servePath) || !buildId) continue;
+    const before = fs.readFileSync(servePath, "utf8");
+    const after = before.replace(SERVE_BUILD_ID_RE, `const buildId = '${buildId}'`);
+    if (after === before) continue;
+    fs.writeFileSync(servePath, after, "utf8");
+    console.log("[bump-dist-v9-cache] Set harness serve.mjs buildId=" + buildId + " in", servePath);
+    touched += 1;
+  }
+  return touched;
+}
+
 function bumpServiceWorkerVersion(buildId) {
   if (!buildId) return 0;
   let touched = 0;
@@ -207,6 +227,7 @@ if (mode === "dist" || mode === "both") {
       distBuildId,
     );
     touched += bumpChartEmbedHtml(distBuildId);
+    touched += bumpHarnessServeMjs(distBuildId);
   }
 }
 

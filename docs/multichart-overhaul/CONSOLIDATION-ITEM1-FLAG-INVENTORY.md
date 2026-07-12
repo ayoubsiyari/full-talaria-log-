@@ -1,10 +1,14 @@
 # Consolidation Item 1 — Kill-Switch Inventory + Single-Hold Policy + Cleanup Plan
 
-**Status:** Analysis complete + partial EXECUTION DONE (build **b71**). Probes `[B10]`/`[EMPTYRENDER]`/
+**Status:** Analysis complete + EXECUTION DONE. Probes `[B10]`/`[EMPTYRENDER]`/
 `[PANLOAD]` stripped (both trees, 0 matches); `[BL2B_PRICE]` kept intact for Item-2; build-id drift
-reconciled (all `sw.js` = b71, stale `dist-v9/sw.js` b36→b71 fixed). **DEFERRED to a post-baseline
-reviewed pass:** viewport-first dead-code removal (retire H flag too) — held until Item-2 baseline exists
-to diff against (no regression harness yet). I4 hashes match on all edited engine files; node --check clean.
+reconciled (all `sw.js` = b71, stale `dist-v9/sw.js` b36→b71 fixed). **UPDATE (post-closure):** the
+viewport-first dead-code removal is now **DONE** — landed in **b73** (per MANAGER-FINDINGS §6av), which
+also retired the **B-FIX-H** flag (`__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH`) and the
+`__TALARIA_MC_DEBUG_B10` probe. The three `__TALARIA_MC_*VIEWPORT_FIRST*` flags, B-FIX-H, and
+`__TALARIA_MC_DEBUG_B10` are all **REMOVED** from the shipped engine. All chart.js line citations below
+are **historical** (pre-b73 offsets) and no longer resolve to live code for the removed flags.
+I4 hashes match on all edited engine files; node --check clean.
 **Authority:** Director **D-026** ("FREEZE IS NOW ACTIVE"), consolidation Item 1.
 **Build:** analysis on `20260707b70`; execution shipped `20260707b71`.
 **I4:** both engine trees (`chart v 1.4/chart/…`, `homepage/public/chart/…`) byte-identical on all cited
@@ -31,14 +35,14 @@ default). `__TALARIA_MC_ENABLE_*` → must be explicitly `true` to engage.
 | `__TALARIA_MC_DISABLE_TF_SWITCH_FILL_STORM_GUARD` | B-FIX-D fill-storm plateau guard | chart.js:29743 `_fillViewportHistoryAfterTfSwitch` | ON | load-bearing |
 | `__TALARIA_MC_DISABLE_PANEL_MIRROR_UNSETTLED_HOST` | **B-FIX-F** hold mirror while host playhead outside master | panel-cmd-bridge.js:528 applyReplayFrame | ON | load-bearing |
 | `__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC` | **B-FIX-G** one-shot re-mirror after settle | panel-cmd-bridge.js:582; chart.js:8094 | ON | load-bearing |
-| `__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH` | **B-FIX-H** hold on _switchingToTimeframe≠panelTf | panel-cmd-bridge.js:560 | ON | **RETIRE-CANDIDATE** (INERT, harmless) |
+| `__TALARIA_MC_DISABLE_PANEL_MIRROR_CROSS_TF_HOST_SWITCH` | **B-FIX-H** hold on _switchingToTimeframe≠panelTf | ~~panel-cmd-bridge.js:560~~ (historical) | — | **REMOVED** (retired in b73, §6av) |
 | `__TALARIA_MC_DISABLE_PANEL_SETTLED_SELFHEAL` | **B-FIX-I** debounced off-screen self-heal | panel-cmd-bridge.js:446 `_mcScheduleSettledSelfHeal` | ON | load-bearing |
 | `__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET` | **B-FIX-J** suppress empty-recovery mid-switch | chart.js:17409 `_scheduleViewportEmptyRecovery` | ON | load-bearing |
 | `__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK` | **BL-5** skip paused coarse-panel no-op seek | panel-cmd-bridge.js:1383 `shouldSkipCoarsePanelHostSwitchSeek` | ON | load-bearing |
 | `__TALARIA_MC_DISABLE_SAMETF_REMIRROR` | 6a-2 re-mirror same-TF panel on extent change | panel-cmd-bridge.js:1822 setTimeframe | ON | load-bearing |
-| `__TALARIA_MC_ENABLE_VIEWPORT_FIRST` | viewport-first switch (superseded D-016) | chart.js:4587/4802 | OFF | **RETIRE-CANDIDATE** (dead code) |
-| `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH` | kill-switch for above (pair) | chart.js:4589/4626 | N/A | **RETIRE-CANDIDATE** |
-| `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH` | kill-switch for above (TF) | chart.js:4623/4803 | N/A | **RETIRE-CANDIDATE** |
+| `__TALARIA_MC_ENABLE_VIEWPORT_FIRST` | viewport-first switch (superseded D-016) | ~~chart.js:4587/4802~~ (historical) | — | **REMOVED** (dead code deleted in b73, §6av) |
+| `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH` | kill-switch for above (pair) | ~~chart.js:4589/4626~~ (historical) | — | **REMOVED** (b73, §6av) |
+| `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH` | kill-switch for above (TF) | ~~chart.js:4623/4803~~ (historical) | — | **REMOVED** (b73, §6av) |
 | `__TALARIA_DISABLE_TF_REVEAL_HOLD` | embed TF-switch reveal hold | chart.js:21127 `_shouldHoldTfReveal` | ON | backstop |
 | `__TALARIA_DISABLE_SHARED_BAR_STORE` | shared bar store opt-out | chart.js:2609 | ON | backstop |
 
@@ -73,7 +77,7 @@ sole retire candidate** (INERT for BL-2b; cross-TF corruption covered by F + cro
 
 | Item | Location | Recommendation |
 |---|---|---|
-| `[B10]` (`__TALARIA_MC_DEBUG_B10`) | chart.js:5568/22454/25294; replay-system.js:3098; sync-bridge.js:516/1665; multichart-manager.js:1054 | **Strip now** — drift thread closed. |
+| `[B10]` (`__TALARIA_MC_DEBUG_B10`) | ~~chart.js:5568/22454/25294; replay-system.js:3098; sync-bridge.js:516/1665; multichart-manager.js:1054~~ (historical) | **REMOVED** — probe stripped in b73 (§6av). |
 | `[BL2B_PRICE]` (`__TALARIA_BL2B_PRICE_PROBE`) | chart.js:2–50 install; marks panel-cmd-bridge.js:499/1427/1476, replay-system.js:6425, sync-bridge.js:2008; logs chart.js:2985/17431/23047, replay-system.js:2854, sync-bridge.js:860 | **KEEP gated until after Item-2 baseline** (needed for BL-2b isolation re-capture). |
 | `_traceEmptyRenderDriver` / `[EMPTYRENDER]` | chart.js:28888/29013/29021 | **Strip now** (BL-5 closed). |
 | `[PANLOAD]` | chart.js:22020 | **Strip now**. |

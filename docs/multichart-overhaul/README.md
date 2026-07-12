@@ -2,7 +2,9 @@
 
 > **Audience:** the "manager" agent. Read this file first, then `INVARIANTS.md`, then the
 > phase files in order. Feed workers ONE task at a time, in the order defined here.
-> **Written:** 2026-07-04. Testers are paused until Phase 4 exit criteria are met.
+> **Written:** 2026-07-04. **Status update:** Phase 4 is complete and the multichart overhaul was
+> **RELEASED / CLOSED on `20260707b105`** (authoritative closure: Director **D-048**). Testers are no
+> longer paused — the overhaul has shipped.
 
 ---
 
