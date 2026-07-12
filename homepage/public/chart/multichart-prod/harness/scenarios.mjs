@@ -4903,6 +4903,252 @@ async function hS35(ctx) {
   });
 }
 
+// ── H-S36 ────────────────────────────────────────────────────────────────
+// TAL-00752#21: pending replay fill must anchor to the candle that actually
+// touches the entry after the placement guard, not the previous/current guard
+// candle or a mirror-adopted frame.
+async function hS36(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S36 setup: replay entered paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    const probe = await page.evaluate(() => {
+      const ch = window.chart;
+      const om = ch && ch.orderManager;
+      if (!ch || !om) return { ok: false, reason: 'missing chart/orderManager' };
+      const rs = ch.replaySystem || null;
+      const data = Array.isArray(rs?.fullRawData) && rs.fullRawData.length
+        ? rs.fullRawData
+        : (Array.isArray(ch.rawData) && ch.rawData.length ? ch.rawData : ch.data);
+      const cur = typeof om.getCurrentCandle === 'function' ? om.getCurrentCandle() : null;
+      const idx = data.findIndex((b) => Number(b.t) === Number(cur && cur.t));
+      const next = idx >= 0 ? data[idx + 1] : null;
+      if (!cur || !next) return { ok: false, reason: `no cur/next idx=${idx}` };
+      const entry = (Number(next.l) + Number(next.h)) / 2;
+      if (!Number.isFinite(entry)) return { ok: false, reason: 'bad entry' };
+
+      const saved = {
+        pendingOrders: om.pendingOrders,
+        openPositions: om.openPositions,
+        orders: om.orders,
+        orderService: om.orderService,
+        methods: {},
+      };
+      [
+        'removePendingOrderLine', 'removePendingSLTPLines', 'removeMultiTPAvgLine',
+        'drawOrderLine', 'drawSLTPLines', 'drawEntryMarker', 'showNotification',
+        'playOrderSound', 'updatePositionsPanel', '_pauseReplayIfPlaying',
+      ].forEach((name) => {
+        saved.methods[name] = om[name];
+        om[name] = () => {};
+      });
+
+      try {
+        om.orderService = null;
+        om.pendingOrders = [{
+          id: 930036,
+          status: 'PENDING',
+          orderType: 'limit',
+          direction: 'BUY',
+          entryPrice: entry,
+          quantity: 1,
+          riskAmount: 10,
+          originalRiskAmount: 10,
+          stopLoss: Math.min(Number(next.l), entry) - 0.001,
+          takeProfit: Math.max(Number(next.h), entry) + 0.001,
+          ticker: ch.currentSymbol,
+          symbol: ch.currentSymbol,
+          sourceFileId: ch.currentFileId != null ? String(ch.currentFileId) : null,
+          _noFillBeforeTime: cur.t,
+          _noFillBeforeTick: -1,
+        }];
+        om.openPositions = [];
+        om.orders = [];
+
+        om.checkPendingOrders(cur);
+        const afterGuard = { pending: om.pendingOrders.length, open: om.openPositions.length };
+        om.checkPendingOrders(next);
+        const filled = om.openPositions[0] || null;
+        return {
+          ok: true,
+          curT: Number(cur.t),
+          nextT: Number(next.t),
+          entry,
+          afterGuard,
+          openCount: om.openPositions.length,
+          pendingCount: om.pendingOrders.length,
+          openTime: filled ? Number(filled.openTime) : null,
+          entryMarkerTimeMs: filled ? Number(filled.entryMarkerTimeMs) : null,
+        };
+      } finally {
+        om.pendingOrders = saved.pendingOrders;
+        om.openPositions = saved.openPositions;
+        om.orders = saved.orders;
+        om.orderService = saved.orderService;
+        Object.entries(saved.methods).forEach(([name, fn]) => { om[name] = fn; });
+      }
+    });
+
+    checks.check('H-S36 probe constructed', probe && probe.ok, probe ? (probe.reason || '') : 'null');
+    if (!probe || !probe.ok) return checks;
+    checks.check('H-S36 guard candle did not fill pending order', probe.afterGuard.pending === 1 && probe.afterGuard.open === 0,
+      `afterGuard=${JSON.stringify(probe.afterGuard)} curT=${probe.curT}`);
+    checks.check('H-S36 CORE: pending fill anchors to touch candle',
+      probe.openCount === 1 && probe.pendingCount === 0 && probe.openTime === probe.nextT && probe.entryMarkerTimeMs === probe.nextT,
+      `open=${probe.openCount} pending=${probe.pendingCount} openTime=${probe.openTime} marker=${probe.entryMarkerTimeMs} expected=${probe.nextT}`);
+    return checks;
+  });
+}
+
+// ── H-S37 ────────────────────────────────────────────────────────────────
+// TAL-00752#3: during replay ticks/candles, TP line DOM should be repositioned,
+// not torn down and recreated (visible per-candle flicker).
+async function hS37(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S37 setup: replay entered paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    const probe = await page.evaluate(() => {
+      const ch = window.chart;
+      const om = ch && ch.orderManager;
+      const cur = om && om.getCurrentCandle && om.getCurrentCandle();
+      if (!ch || !om || !cur || !ch.svg) return { ok: false, reason: 'missing chart/order/current candle/svg' };
+      const order = {
+        id: 930037,
+        type: 'BUY',
+        orderType: 'market',
+        openPrice: Number(cur.c),
+        openTime: Number(cur.t),
+        entryMarkerTimeMs: Number(cur.t),
+        quantity: 1,
+        originalQuantity: 1,
+        riskAmount: 10,
+        originalRiskAmount: 10,
+        stopLoss: Number(cur.c) - 10,
+        takeProfit: Number(cur.c) + 10,
+        status: 'OPEN',
+        ticker: ch.currentSymbol,
+        symbol: ch.currentSymbol,
+        sourceFileId: ch.currentFileId != null ? String(ch.currentFileId) : null,
+        partialCloses: [],
+      };
+      const saved = {
+        openPositions: om.openPositions,
+        orders: om.orders,
+        orderLines: om.orderLines,
+        slLines: om.slLines,
+        tpLines: om.tpLines,
+      };
+      try {
+        om.openPositions = [order];
+        om.orders = [order];
+        om.orderLines = [];
+        om.slLines = [];
+        om.tpLines = [];
+        om.drawSLTPLines(order, ch);
+        const first = ch.svg.select(`.tp-${order.id}`).node();
+        const firstCount = ch.svg.selectAll(`.tp-${order.id}`).nodes().length;
+        om.drawSLTPLines(order, ch);
+        const second = ch.svg.select(`.tp-${order.id}`).node();
+        const secondCount = ch.svg.selectAll(`.tp-${order.id}`).nodes().length;
+        return {
+          ok: true,
+          sameNodeAfterRedraw: first === second,
+          firstCount,
+          secondCount,
+          tpLines: (om.tpLines || []).filter((t) => t.orderId === order.id).length,
+        };
+      } finally {
+        try { om.removeSLTPLines(order.id); } catch (_) {}
+        om.openPositions = saved.openPositions;
+        om.orders = saved.orders;
+        om.orderLines = saved.orderLines;
+        om.slLines = saved.slLines;
+        om.tpLines = saved.tpLines;
+      }
+    });
+
+    checks.check('H-S37 probe constructed', probe && probe.ok, probe ? (probe.reason || '') : 'null');
+    if (!probe || !probe.ok) return checks;
+    checks.check('H-S37 setup: one TP visual set before/after redraw', probe.firstCount > 0 && probe.secondCount > 0 && probe.tpLines === 1,
+      `firstCount=${probe.firstCount} secondCount=${probe.secondCount} tpLines=${probe.tpLines}`);
+    checks.check('H-S37 CORE: TP line node remains stable across replay redraw',
+      probe.sameNodeAfterRedraw === true,
+      `sameNodeAfterRedraw=${probe.sameNodeAfterRedraw} (drawSLTPLines removes/recreates TP DOM)`);
+    return checks;
+  });
+}
+
+async function commitDrawingStyleAndReadRender(page, ref, stylePatch) {
+  const id = typeof ref === 'string' ? ref : ref.id;
+  return page.evaluate(async (drawId, patch) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const drawing = dm && dm.drawings.find((d) => d && String(d.id) === String(drawId));
+    if (!drawing) return { ok: false, reason: 'drawing not found' };
+    const before = ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0;
+    Object.assign(drawing.style, patch);
+    dm.renderDrawing(drawing);
+    dm.saveDrawings();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const after = ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0;
+    return { ok: true, before, after, style: { ...drawing.style } };
+  }, id, stylePatch);
+}
+
+// ── H-S38 ────────────────────────────────────────────────────────────────
+// RC-2 / stuck-until-click: committing a drawing style color change must
+// invalidate the chart by the next frame, without relying on a later click.
+async function hS38(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(400);
+
+    const placed = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    checks.check('H-S38 setup: trendline placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(150);
+    const commit = await commitDrawingStyleAndReadRender(page, placed, { stroke: '#ff00ff' });
+    checks.check('H-S38 probe: stroke color committed', commit && commit.ok, commit?.reason || '');
+    checks.check(
+      'H-S38 CORE: style color commit repaints by next frame without click',
+      commit && commit.after > commit.before,
+      `renders before=${commit?.before} after=${commit?.after}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S39 ────────────────────────────────────────────────────────────────
+// RC-2 / stuck-until-click: committing a drawing style thickness change must
+// invalidate the chart by the next frame, without relying on a later click.
+async function hS39(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await sleep(400);
+
+    const [point] = await defaultTrendlinePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'horizontal', [point]);
+    checks.check('H-S39 setup: horizontal line placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(150);
+    const commit = await commitDrawingStyleAndReadRender(page, placed, { strokeWidth: 5 });
+    checks.check('H-S39 probe: stroke width committed', commit && commit.ok, commit?.reason || '');
+    checks.check(
+      'H-S39 CORE: style width commit repaints by next frame without click',
+      commit && commit.after > commit.before,
+      `renders before=${commit?.before} after=${commit?.after}`,
+    );
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4938,6 +5184,10 @@ export function scenarioList() {
     { id: 'H-S33', title: 'ghost-after-delete: settings delete leaves no labels/dialog/observers (TAL-00157 family)', run: hS33 },
     { id: 'H-S34', title: 'selection-desync: cross-panel placement leaves exactly one selected owner (TAL-00157/TAL-01405 family)', run: hS34 },
     { id: 'H-S35', title: 'stale-quick-menu: cross-panel placement clears previous quick menu owner (TAL-00157/TAL-01499 family)', run: hS35 },
+    { id: 'H-S36', title: 'order replay fill anchors to touch candle (TAL-00752#21)', run: hS36 },
+    { id: 'H-S37', title: 'order TP line remains stable across replay redraw (TAL-00752#3)', run: hS37 },
+    { id: 'H-S38', title: 'invalidation: style color commit repaints by next frame without follow-up click (RC-2)', run: hS38 },
+    { id: 'H-S39', title: 'invalidation: style width commit repaints by next frame without follow-up click (RC-2)', run: hS39 },
   ];
 }
 

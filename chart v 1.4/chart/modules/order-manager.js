@@ -36226,6 +36226,44 @@ class OrderManager {
         return arrayIndex;
     }
 
+    _tpReplayFlickerFixEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_TP_REPLAY_FLICKER_FIX;
+    }
+
+    _sltpVisualSignature(order) {
+        const activeTargets = Array.isArray(order?.tpTargets)
+            ? order.tpTargets
+                .map((t, i) => this._tpTargetStillActiveOnChart(order, t, i)
+                    ? {
+                        id: this._tpCanonicalTargetId(t, i),
+                        price: Number(t.price),
+                        percentage: Number(t.percentage) || 0,
+                    }
+                    : null)
+                .filter(Boolean)
+            : [];
+        return JSON.stringify({
+            sl: Number(order?.stopLoss) || 0,
+            tp: activeTargets.length ? null : (Number(order?.takeProfit) || 0),
+            targets: activeTargets,
+            be: !!(order?.autoBreakeven && order?.breakevenSettings && !order.breakevenSettings.triggered && order.stopLoss),
+            qty: Number(order?.quantity) || 0,
+            side: order?.type || order?.direction || '',
+        });
+    }
+
+    _canReuseSltpVisuals(order, chart, signature) {
+        if (!this._tpReplayFlickerFixEnabled() || !order || !chart || !signature) return false;
+        const onChart = (row) => row && row.orderId === order.id && (row.chart || this.chart) === chart;
+        const rows = [
+            ...(this.slLines || []).filter(onChart),
+            ...(this.tpLines || []).filter(onChart),
+            ...(this.beLines || []).filter(onChart),
+        ];
+        if (!rows.length) return false;
+        return rows.every((row) => row._sltpVisualSig === signature);
+    }
+
     /**
      * Draw SL and TP lines on chart
      */
@@ -36242,6 +36280,14 @@ class OrderManager {
 
         if (order.isSplitEntry && order.splitGroupId) {
             this._syncTpTargetsAcrossSplitGroup(order, 'open');
+        }
+
+        const visualSig = this._sltpVisualSignature(order);
+        const reuseChart = targetChart || (!this._isMultiPanelLayout() ? this.chart : null);
+        if (this._canReuseSltpVisuals(order, reuseChart, visualSig)) {
+            this.updateSLTPLines(reuseChart);
+            this.updateBELines(reuseChart);
+            return;
         }
 
         // Guard: remove any existing SL/TP/BE lines for this order first to prevent duplicates.
@@ -36384,7 +36430,8 @@ class OrderManager {
                 priceBox: slPriceBox,
                 priceText: slPriceText,
                 type: 'SL',
-                chart
+                chart,
+                _sltpVisualSig: visualSig
             });
         }
 
@@ -36551,7 +36598,8 @@ class OrderManager {
                         deleteBtn: tpDeleteBtn,
                         splitBtn: tpMultiSplitBtn,
                         type: 'TP',
-                        chart
+                        chart,
+                        _sltpVisualSig: visualSig
                     });
                 }
             });
@@ -36685,7 +36733,8 @@ class OrderManager {
                 priceBox: tpPriceBox,
                 priceText: tpPriceText,
                 type: 'TP',
-                chart
+                chart,
+                _sltpVisualSig: visualSig
             });
         }
         
@@ -36780,7 +36829,8 @@ class OrderManager {
                 labelText: beLabelText,
                 triggerPrice: beTriggerPrice,
                 type: 'BE',
-                chart
+                chart,
+                _sltpVisualSig: visualSig
             });
         } else if (order.autoBreakeven && order.breakevenSettings && order.breakevenSettings.triggered) {
             console.log(`  ✅ Skipping BE line for order #${order.id} - already triggered (SL should be at entry: ${order.openPrice.toFixed(5)})`);
