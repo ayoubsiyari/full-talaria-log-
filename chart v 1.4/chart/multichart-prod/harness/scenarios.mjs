@@ -3862,6 +3862,145 @@ async function hS27(ctx) {
   });
 }
 
+// ── H-S28 ────────────────────────────────────────────────────────────────
+// §6cq FIRST-RENDER HOST "SHAKE" entering multichart from a single chart.
+// When the host tile resizes from full-width (single chart, ~1280px) to
+// half-width (2x2, ~639px) DURING boot, MultichartGrid sets the viewport-
+// freeze flag `_multichartSkipResizeOffsetAdjust` (true until allDataReady).
+// chart.js resize() then BYPASSES the entire right-edge re-anchor block, so
+// the FIRST post-resize paint keeps the OLD (full-width) offsetX at the NEW
+// (half) width: the latest candle is pushed ~(preW-postW)px off the right edge
+// and a later reveal/align pass snaps it back — the visible SHAKE.
+//
+// FIX (default ON, chart.js resize ~17036, kill-switch
+// __TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR): while frozen on the boot host-
+// resize path, re-anchor the pre-resize right-edge bar with the SAME drift-free
+// index-based pin the duplicate panels use, so the FIRST painted frame already
+// lands at the final right-anchored offset (paint once, no later snap). Index-
+// based → preserves mirror bar-alignment, safe under range-sync.
+//
+// DETERMINISTIC (no wall-clock): the scenario models the frozen single→multi
+// host cell-resize entirely in the host main frame (reusing the read-only DIAG
+// probe approach) and asserts the FIRST post-resize painted offsetX against the
+// index-pin right-anchor target. No timers; every value derives only from the
+// seeded synthetic data extent + margins + the two widths.
+//   GREEN (fix):  |firstPaintOffsetX − rightAnchorTarget| < 1px AND the re-
+//                 anchor happens on the FIRST paint (exactly one pass).
+//   RED   (kill): firstPaintOffsetX ≈ stale full-width offset (drift ≈
+//                 preW−postW off target) → the later-snap shake.
+async function hS28(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, boot.getInFlightDataRequests);
+
+    const probe = await page.evaluate((disableFlag) => {
+      const ch = window.chart;
+      if (!ch || !Array.isArray(ch.data) || !ch.data.length) return { ok: false, reason: 'host not painted' };
+      const wrapper = document.getElementById('chartWrapper');
+      if (!wrapper) return { ok: false, reason: 'no chartWrapper' };
+
+      // Faithful multichart-grid presence: chart.js host re-anchor paths gate on
+      // window.__multichartGrid with getPanelIds().length > 1 (a real ≥2-panel
+      // layout). The harness host is the parent page (React grid absent), so
+      // provide the SAME shape the real MultichartGrid exposes — nothing else.
+      const priorGrid = window.__multichartGrid;
+      window.__multichartGrid = priorGrid || { getPanelIds: function () { return ['A', 'B', 'C', 'D']; } };
+
+      const m = ch.margin || { l: 60, r: 60 };
+      const fixDisabled = !!window[disableFlag];
+
+      // ── Pre-resize: single chart, full width, latest candle right-anchored ──
+      const preW = ch.w;
+      const preOffset = Number(ch.offsetX);
+      const preCandleWidth = Number(ch.candleWidth);
+      const spacing = (typeof ch.getCandleSpacing === 'function') ? ch.getCandleSpacing() : ch.candleWidth;
+      const rightIdx = (typeof ch.getVisibleEndIndex === 'function') ? ch.getVisibleEndIndex() : (ch.data.length - 1);
+      const rendersBefore = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+      // ── Enter multichart: freeze the host viewport (as MultichartGrid does
+      //    until allDataReady) and shrink the cell full→half, then resize(). ──
+      ch._multichartSkipResizeOffsetAdjust = true;
+      const postW = Math.max(200, Math.round(preW / 2));
+      const h = Math.round(wrapper.getBoundingClientRect().height) || ch.h;
+      wrapper.style.right = 'auto';
+      wrapper.style.bottom = 'auto';
+      wrapper.style.width = postW + 'px';
+      wrapper.style.height = h + 'px';
+
+      ch._lastResizeDpr = 0;
+      ch.resize();
+
+      const firstPaintOffset = Number(ch.offsetX);
+      const postCandleWidth = Number(ch.candleWidth);
+      const paintW = ch.w;
+      const rendersAfter = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+      // Canonical right-anchor target: the drift-free index pin at the NEW width
+      // (== where the settled align lands == the fix output).
+      const plotWpost = Math.max(1, paintW - (m.l || 0) - (m.r || 0));
+      const ri = Math.max(0, Math.min(rightIdx, ch.data.length - 1));
+      const rightAnchorTarget = Math.round(plotWpost - (ri + 1) * spacing);
+
+      // Restore the grid global so it never leaks into H-INV / later reads.
+      if (priorGrid === undefined) {
+        try { delete window.__multichartGrid; } catch (_) { window.__multichartGrid = undefined; }
+      }
+
+      const drift = firstPaintOffset - rightAnchorTarget;   // ~0 (fix) / ~−(preW−postW) (stale)
+      const snapFromStale = firstPaintOffset - preOffset;    // moved on first paint (fix) / 0 (stale)
+      const reanchorPasses = Math.abs(snapFromStale) > 1 ? 1 : 0;
+      return {
+        ok: true,
+        fixDisabled,
+        preW, postW, paintW,
+        preOffset, firstPaintOffset, rightAnchorTarget,
+        spacing, rightIdx, dataLen: ch.data.length,
+        preCandleWidth, postCandleWidth,
+        rendersBefore, rendersAfter,
+        drift, snapFromStale, reanchorPasses,
+        staleVsTarget: preOffset - rightAnchorTarget,
+      };
+    }, '__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR');
+
+    checks.check('H-S28 probe constructed frozen boot host-resize', probe.ok, probe.ok ? '' : probe.reason);
+    if (!probe.ok) return checks;
+
+    // ── Setup / non-vacuous (pass in BOTH modes) ──
+    checks.check('H-S28 setup: host cell shrank full→half (single→multi)',
+      probe.preW > probe.postW && (probe.preW - probe.postW) > 200,
+      `preW=${probe.preW} postW=${probe.postW} paintW=${probe.paintW}`);
+    checks.check('H-S28 setup: candleWidth unchanged across boot resize',
+      probe.preCandleWidth === probe.postCandleWidth,
+      `pre=${probe.preCandleWidth} post=${probe.postCandleWidth}`);
+    checks.check('H-S28 setup: exactly one paint on the frozen boot resize',
+      probe.rendersAfter - probe.rendersBefore >= 1,
+      `renders ${probe.rendersBefore}→${probe.rendersAfter}`);
+    checks.check('H-S28 setup: right-anchor target separated from stale offset (non-vacuous shake)',
+      Math.abs(probe.staleVsTarget) > 200,
+      `stale=${probe.preOffset} target=${probe.rightAnchorTarget} |Δ|=${Math.abs(probe.staleVsTarget).toFixed(1)}px`);
+
+    // ── CORE (GREEN pass / RED fail) ──
+    checks.check('H-S28 CORE: first post-resize paint lands at right-anchor target (<1px)',
+      Math.abs(probe.drift) < 1,
+      `firstPaint=${probe.firstPaintOffset} target=${probe.rightAnchorTarget} drift=${probe.drift.toFixed(1)}px`);
+    checks.check('H-S28 CORE: no later snap — host re-anchored on the FIRST painted frame',
+      Math.abs(probe.snapFromStale) > 200,
+      `firstPaint=${probe.firstPaintOffset} stale=${probe.preOffset} moved=${probe.snapFromStale.toFixed(1)}px`);
+    checks.check('H-S28 CORE: exactly one re-anchor pass, on the first paint',
+      probe.reanchorPasses === 1,
+      `reanchorPasses=${probe.reanchorPasses} (fixDisabled=${probe.fixDisabled})`);
+
+    notes.push(`H-S28 (§6cq boot host-resize first-render shake): single(${probe.preW}px)→multi(${probe.postW}px) `
+      + `frozen host cell-resize, candleWidth=${probe.preCandleWidth} unchanged, dataLen=${probe.dataLen}. `
+      + `firstPaintOffsetX=${probe.firstPaintOffset} vs rightAnchorTarget=${probe.rightAnchorTarget} `
+      + `(drift=${probe.drift.toFixed(1)}px); stale(full-width)=${probe.preOffset} `
+      + `(|stale−target|=${Math.abs(probe.staleVsTarget).toFixed(1)}px). reanchorPasses=${probe.reanchorPasses}. `
+      + `Kill-switch __TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR fixDisabled=${probe.fixDisabled}.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -3889,6 +4028,7 @@ export function scenarioList() {
     { id: 'H-S25', title: 'same-TF panel play follow is eased sub-candle, not bar-quantized X-jump (Fix A)', run: hS25 },
     { id: 'H-S26', title: 'sync-off peer play isolation: host TF switch leaves same-pair peers on own cadence/master (BL-10)', run: hS26 },
     { id: 'H-S27', title: 'finer-self-owner (peer finer than host NATIVE) play viewport follows leading edge, not frozen (A7 §6co)', run: hS27 },
+    { id: 'H-S28', title: 'boot host single→multi cell-resize re-anchors on first paint (no first-render shake) (§6cq)', run: hS28 },
   ];
 }
 

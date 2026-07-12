@@ -3561,6 +3561,70 @@ overnight authorization; Director ratification to follow (ESC-style, per the D-0
   is **version-string-only** (the standard `SW_VERSION` cache bump); the version-reload module is a client script,
   not the SW. B8 owner caps + §6c I1 embed high-limit exclusion intact.
 
+## 6cq. First-render host "shake" on enter-multichart fixed: boot host cell-resize now re-anchors on the first painted frame (build 20260707b102, gate 25→26)
+
+MANAGER: gated, RED-first fix for the PO-reported felt first-render "shake" when entering multichart from a single
+chart. Root cause was pre-pinned by a read-only DIAG (verified RED, not re-diagnosed).
+
+**Lead (what changed / proof / what PO tests):**
+1. **What changed:** `chart/chart.js` `resize()` (both trees). Entering multichart from a single chart resizes the
+   HOST tile full-width (~1280px) → half-width (~640px). During boot `MultichartGrid.jsx` sets the viewport-freeze
+   flag `_multichartSkipResizeOffsetAdjust` (true until `allDataReady`); `resize()`'s guard
+   `if (!this._multichartSkipResizeOffsetAdjust)` (~17036) then BYPASSED the entire right-edge re-anchor block, so
+   the first post-resize paint kept the OLD (full-width) `offsetX` at the NEW (half) width — the latest candle was
+   pushed ~641px off the right edge and a later reveal/align pass snapped it back (the visible SHAKE). The fix adds
+   a scoped branch: while frozen on the boot host-resize path, capture the pre-resize right-edge bar
+   (`getVisibleEndIndex()`) and re-anchor with the SAME drift-free **index-based pin** the duplicate panels use
+   (`offsetX = plotW − (rightIdx+1)*spacing`) so the FIRST painted frame already lands at the final right-anchored
+   offset (paint once, no later snap). Index-based → preserves mirror bar-alignment, so it is safe under
+   Date/Time range-sync (unlike a raw pixel hold). The freeze itself is preserved.
+2. **Kill-switch / site:** `__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR` (default unset = fix ON / new stable behavior;
+   set = revert to today's skip-and-snap). Site: `chart/chart.js` `resize()` — pre-resize capture of
+   `_mcBootHostRightIdx` (guarded by freeze flag + `_isMultichartHostPanel()` + `window.__multichartGrid`
+   `getPanelIds().length > 1`) and the `else if (_mcBootHostRightIdx != null)` index-pin branch (~17036). Scoped
+   STRICTLY to the frozen boot host-resize path: `_mcBootHostRightIdx` is null unless the freeze flag is set, so
+   normal (non-boot) live resize/relayout, panel silent-boot, and range-sync alignment semantics are untouched.
+3. **PO tests:** single chart → enter multichart → the host must NOT shake/snap on first render (latest candle
+   stays right-anchored from the very first painted frame).
+
+**RULE 4 — STATE MATRIX (before code, no contradiction):**
+
+| cell | before (b101) | after (b102, fix ON) |
+| --- | --- | --- |
+| host boot single→multi resize (frozen) | skip all offset work → stale paint @old offset, then later SNAP (~641px) | **paint-once** at index-pin right-anchor (the ONLY changed cell) |
+| normal live resize (not frozen) | non-frozen realign / index-pin / pixel-anchor | unchanged (freeze flag unset → `_mcBootHostRightIdx` null → new branch skipped) |
+| range-sync ON boot | host frozen-stale then snap | host index-pins (drift-free) = bar-aligned with mirror panels, paint-once |
+| range-sync OFF boot | host frozen-stale then snap; panels opacity-gated silent boot (jump-free) | host index-pins to right-anchor, paint-once; panels unchanged |
+
+Only the boot host-resize-while-frozen cell changes to paint-once; normal resize + panel silent-boot + range-sync
+alignment intact. No contradiction.
+
+### Verification / report-back
+- **H-S28 (new, next free id) RED vs GREEN, flake-stable ×3 (`--runs=3`):** GREEN `PASS,PASS,PASS`; RED
+  (`--bugswitch=__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR`) `FAIL,FAIL,FAIL` = `FAIL-REAL-BUG`. Deterministic
+  (no wall-clock): models the frozen single(1280px)→multi(640px) host cell-resize in the host main frame (reusing
+  the DIAG probe approach), candleWidth=6 unchanged, dataLen=2000.
+  - **GREEN:** `firstPaintOffsetX = −13419` == `rightAnchorTarget = −13419` (**drift = 0.0px**); moved −612px off the
+    stale full-width offset on the FIRST paint; **reanchorPasses = 1** (on first paint, no later snap).
+  - **RED:** `firstPaintOffsetX = −12807.008` (stale full-width, matches the DIAG's −12807) vs target −13419 →
+    **drift = 612px**; `reanchorPasses = 0` (frozen resize does nothing → the deferred snap = the shake).
+- **Full `npm run gate` — GREEN 25→26** (H-S2..H-S28). Regressions: none. Known-failing: none. Prior scenarios all
+  PASS — **H-S26 (isolation), H-S17/H-S27 (follows), H-S21/H-S23 (acquisition), H-S24 (peer-refetch), H-S25 (eased
+  follow) explicitly PASS**. (One first pass showed **H-S19 FAIL** — the BL-12 render-COUNTER cost-matrix scenario,
+  bound=60 — under an ~11-min heavily-loaded run; it PASSED ×3 in isolation and PASSED on the clean gate re-run.
+  My change cannot touch it: `window.__multichartGrid` is absent in the harness except transiently inside H-S28's
+  own probe on a separate page. Pre-existing load-sensitive flake.)
+- `node --check` clean on every edited JS in **both** trees; both `known-failing.json` parse.
+- **SHA256 — every edited source/mirror pair byte-identical (EQ=True):**
+  `chart.js` = `750166E5578836F391469E93410268651FEB4D70750793EAEC7C5ABE4723D04D`;
+  `multichart-prod/harness/scenarios.mjs` = `1E4A6D4DC57F2A442C51962E2727AFC174DC564AE5774AEBE9200F6B78399D93`;
+  `multichart-prod/harness/known-failing.json` = `A6771EEB38E9FA2D5CA2FA510004BCBECE60B0FCD0DF381D4EBE5D920F55ED88`
+  (plus all b102-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — all EQ=True).
+- **ONE build bump** b101 → `20260707b102` via `bump-dist-v9-cache.mjs`; **0 `20260707b101` stragglers** in shipped
+  files (only this findings doc retains historical b101 text).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string + `?v=` bump).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

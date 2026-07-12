@@ -16963,6 +16963,31 @@ class Chart {
             }
         } catch (_) { _mcHostRightIdx = null; }
 
+        // BOOT host-resize re-anchor (felt-shake fix): capture the pre-resize
+        // right-edge bar index EVEN while the boot viewport-freeze flag is set,
+        // so the frozen boot host cell-resize (single->multi width change) can
+        // re-anchor with the drift-free index pin below instead of repainting at
+        // the stale offset and snapping later. Scoped to the host boot-resize
+        // path (freeze flag set + real multi-panel layout). Default-ON; the
+        // kill-switch __TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR reverts to the old
+        // skip-and-snap behavior. Range-sync-independent: the index pin is
+        // drift-free and keeps panel A bar-aligned with its mirror panels.
+        let _mcBootHostRightIdx = null;
+        try {
+            if (this._multichartSkipResizeOffsetAdjust
+                && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR)
+                && Array.isArray(this.data) && this.data.length
+                && typeof this._isMultichartHostPanel === 'function'
+                && this._isMultichartHostPanel()
+                && window.__multichartGrid
+                && typeof window.__multichartGrid.getPanelIds === 'function'
+                && window.__multichartGrid.getPanelIds().length > 1) {
+                _mcBootHostRightIdx = (typeof this.getVisibleEndIndex === 'function')
+                    ? this.getVisibleEndIndex()
+                    : this.data.length - 1;
+            }
+        } catch (_) { _mcBootHostRightIdx = null; }
+
         this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
 	        this.canvas.style.width = nextW + 'px';
@@ -17033,6 +17058,27 @@ class Chart {
 	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
 	            }
+	            } else if (_mcBootHostRightIdx != null) {
+	                // BOOT host-resize re-anchor (felt-shake fix): the frozen boot
+	                // cell-resize would otherwise skip ALL offset work above, so the
+	                // first post-resize paint keeps the OLD offsetX at the NEW width
+	                // and pushes the latest candle off the right edge; a later align
+	                // pass then snaps it back (the visible "shake"). Apply the SAME
+	                // drift-free index-based pin the duplicate panels use so this
+	                // FIRST paint already lands at the final right-anchored offset
+	                // (paint once, no later snap). Index-based -> preserves mirror
+	                // bar-alignment, safe under range-sync. Scoped strictly to the
+	                // frozen boot host-resize path (normal live resize untouched).
+	                const spacing = (typeof this.getCandleSpacing === 'function')
+	                    ? this.getCandleSpacing()
+	                    : this.candleWidth;
+	                if (Number.isFinite(spacing) && spacing > 0) {
+	                    const mm = this.margin || { l: 60, r: 60 };
+	                    const plotW = Math.max(1, this.w - (mm.l || 0) - (mm.r || 0));
+	                    const ri = Math.max(0, Math.min(_mcBootHostRightIdx, this.data.length - 1));
+	                    this.offsetX = Math.round(plotW - (ri + 1) * spacing);
+	                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
+	                }
 	            }
 	        } else {
 	            this.fitToView();
