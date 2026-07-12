@@ -3876,6 +3876,32 @@ class Chart {
     }
 
     /**
+     * §6cs kill-switch for the HOST step-forward-spam refetch guard (default = fix
+     * ON). When set (__TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD), reverts to the
+     * legacy/RED behavior: spamming manual step-forward fires an overlapping
+     * backward /bars storm that regresses currentIndex (backward jump / stuck).
+     */
+    _mcStepSpamRefetchGuardEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD);
+        } catch (_e) {
+            return true;
+        }
+    }
+
+    /** §6cs true while the replay system reports a manual step-forward burst active. */
+    _mcReplayManualStepBurstActive() {
+        try {
+            const rs = this.replaySystem;
+            return !!(rs && typeof rs._mcManualStepBurstActive === 'function'
+                && rs._mcManualStepBurstActive());
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
      * BL-9: true when THIS delegating same-pair panel's OWN viewport still has an
      * uncovered left gap AND older history remains to serve — i.e. the host-master
      * sync poll must keep driving even after the pan gesture has ended. Terminates
@@ -18309,7 +18335,18 @@ class Chart {
                 const replayNearEmptyLeft = Array.isArray(this.data) && this.data.length > 0
                     && candleSpacing > 0
                     && this.offsetX > maxOffset - candleSpacing * 8;
-                if (replayNearLeft || replayNearEmptyLeft) {
+                // §6cs HOST step-forward-spam guard: while the user is spamming the
+                // manual step-forward button (paused replay), a short playhead
+                // prefix makes offsetX positive and satisfies replayNearLeft, firing
+                // a force=true backward load-more that BYPASSES the 80ms debounce.
+                // Overlapping backward fetches then restore a stale currentIndex →
+                // visible backward jump + stuck loading. Skip only the backward
+                // history probe during the burst (playhead still advances); the
+                // normal settle constrainOffset re-fires it once the burst lapses.
+                const stepSpamSuppressBackward = this._mcStepSpamRefetchGuardEnabled()
+                    && this._mcReplayManualStepBurstActive()
+                    && !(this.replaySystem && this.replaySystem.isPlaying);
+                if ((replayNearLeft || replayNearEmptyLeft) && !stepSpamSuppressBackward) {
                     this.checkViewportLoadMore('backward', true);
                 }
             } else if (!panActive) {
@@ -22847,8 +22884,22 @@ class Chart {
                     const prevReplayIndex = Number.isFinite(replayIndex) ? replayIndex : (masterData.length - 1);
                     if (Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
+                            // §6cs stale-index hardening: `replayIndex` was captured
+                            // at fetch START. Under step-forward spam, manual steps
+                            // advance currentIndex WHILE this backward fetch is in
+                            // flight; blindly writing (replayIndex + uniqueNew.length)
+                            // regresses those steps (visible backward jump). Take the
+                            // MAX of the fetch-start-relative index and the CURRENT
+                            // (possibly-advanced) index so concurrent steps are never
+                            // rolled back. Kill-switch reverts to the legacy overwrite.
+                            const backwardShifted = Math.max(replayIndex + uniqueNew.length, 0);
+                            const curNow = Number(this.replaySystem.currentIndex);
+                            const hardenedIndex = (this._mcStepSpamRefetchGuardEnabled()
+                                && Number.isFinite(curNow))
+                                ? Math.max(backwardShifted, curNow)
+                                : backwardShifted;
                             this.replaySystem.currentIndex = Math.min(
-                                Math.max(replayIndex + uniqueNew.length, 0),
+                                hardenedIndex,
                                 merged.length - 1
                             );
                         } else if (direction === 'forward') {
@@ -23064,7 +23115,16 @@ class Chart {
                 if (typeof this.constrainOffset === 'function') {
                     requestAnimationFrame(() => {
                         try { this.constrainOffset(); } catch (_e) {}
-                        if (this.replaySystem?.isActive) {
+                        // §6cs HOST step-forward-spam guard: do NOT re-chain the
+                        // backward pan-load while a manual step-forward burst is
+                        // active (paused). The re-chain here is what makes the
+                        // backward refetch self-sustaining under spam; suppressing
+                        // it (mirrors BL-9's isPlaying guard shape) breaks the storm
+                        // while leaving play-mode and normal pan re-chains intact.
+                        const stepSpamSuppressRechain = this._mcStepSpamRefetchGuardEnabled()
+                            && this._mcReplayManualStepBurstActive()
+                            && !(this.replaySystem && this.replaySystem.isPlaying);
+                        if (this.replaySystem?.isActive && !stepSpamSuppressRechain) {
                             this._scheduleReplayPanLoadLeft();
                         }
                     });

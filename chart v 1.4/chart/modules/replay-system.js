@@ -5301,6 +5301,14 @@ class ReplaySystem {
      * Ensures replay does not continue running after a single-step action.
      */
     requestStepForward() {
+        // §6cs HOST step-forward-spam refetch guard: mark a short burst window on
+        // every manual step-forward request. chart.js reads
+        // _mcManualStepBurstActive() to suppress the paused backward history probe
+        // (and its post-fetch re-chain) while the user is spamming the step button,
+        // which otherwise fires an overlapping backward /bars storm that regresses
+        // currentIndex (visible backward jump / stuck loading). Playhead advance is
+        // untouched — only the backward probe is deferred during the burst.
+        this._mcManualStepBurstUntil = performance.now() + 150;
         if (this.isPlaying) {
             this.pause();
         }
@@ -5308,6 +5316,11 @@ class ReplaySystem {
         this.animatingCandle = null;
         this.tickProgress = 0;
         this.stepForward();
+    }
+
+    /** §6cs true while a manual step-forward burst is in progress (spam window). */
+    _mcManualStepBurstActive() {
+        return performance.now() < (this._mcManualStepBurstUntil || 0);
     }
 
     /**
@@ -5331,6 +5344,9 @@ class ReplaySystem {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) {
             return;
         }
+        // §6cs refresh the manual step-forward burst window on each actual step so
+        // rapid consecutive steps keep the backward-probe suppression live.
+        this._mcManualStepBurstUntil = performance.now() + 150;
         if (this._timeframeChanging) {
             return;
         }

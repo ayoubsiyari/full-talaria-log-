@@ -16638,8 +16638,6 @@ const TalariaV8b = () => {
                     {label:"divider"},
                     {label:"Edit",      handler:e=>{openEditSession(e,ms);setSessActMenu(null);}, col:hasStarted?"rgba(255,255,255,0.3)":c.ts, disabled:hasStarted, sub:hasStarted?"started":null, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    ...(isV16LiveBoot() ? [{label:"Seed trades", handler:()=>{openSessSeedModal(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
-                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7"/></svg>}] : []),
                     {label:"Delete",    handler:e=>{e?.stopPropagation?.();deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ].map(({label,handler,col,disabled,sub,danger,icon})=>{

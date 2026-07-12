@@ -5,6 +5,15 @@ import { maybeReloadForChunkError, isChunkLoadError } from "@/lib/chunkReload";
 
 type Props = {
   isArabic?: boolean;
+  /**
+   * When this value changes while an error is showing, the boundary clears the
+   * error and re-renders its children (recovery on view switch). Unlike keying
+   * the whole boundary on the view, this does NOT remount children when there is
+   * no error — so normal tab switches keep the heavy TalariaV16 app mounted
+   * instead of tearing it down and re-bootstrapping (which caused a visible
+   * "flash back to the previous view" + jank on every navigation).
+   */
+  resetKey?: string | number | null;
   children: React.ReactNode;
 };
 
@@ -26,6 +35,13 @@ export default class V16ErrorBoundary extends React.Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(prevProps: Props) {
+    // Recover when the user navigates to a different view after a crash.
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
   }
 
   componentDidCatch(error: Error) {

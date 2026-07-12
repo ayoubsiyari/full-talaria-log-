@@ -237,7 +237,7 @@ function TalariaV16DashboardReady({
           pointerEvents: boot.status === "ready" ? "auto" : "none",
         }}
       >
-        <V16ErrorBoundary key={`v16-boundary-${v16View}`} isArabic={isArabic}>
+        <V16ErrorBoundary key="v16-embedded-boundary" resetKey={v16View} isArabic={isArabic}>
           <TalariaV16 key="v16-embedded" />
         </V16ErrorBoundary>
       </div>
@@ -247,8 +247,6 @@ function TalariaV16DashboardReady({
 
 export default function TalariaV16Dashboard() {
   const { registerOnSaved } = useBacktestNewSession();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [gateReady, setGateReady] = useState(false);
   const [platform, setPlatform] = useState<PlatformFeatures | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -263,6 +261,9 @@ export default function TalariaV16Dashboard() {
     });
   }, [registerOnSaved]);
 
+  // Fetch /api/auth/me once on mount. Tab switches only change ?view= — re-fetching
+  // here raced the optimistic view flip and made Sessions↔Trades feel laggy.
+  // Per-view section access is enforced by TalariaV16DashboardReady from cached flags.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -282,7 +283,12 @@ export default function TalariaV16Dashboard() {
 
         window.__TALARIA_PLATFORM_SECTIONS__ = platformSectionsMap(pf);
 
-        const section = currentPlatformSection(pathname || "/dashboard/", searchParams);
+        // One-shot landing guard (same rules as Ready's URL effect). Uses the URL
+        // at fetch completion; later tab changes are handled without another /me.
+        const section = currentPlatformSection(
+          (typeof window !== "undefined" ? window.location.pathname : null) || "/dashboard/",
+          new URLSearchParams(typeof window !== "undefined" ? window.location.search : "")
+        );
         if (
           section &&
           !userIsDashboardAdmin(user) &&
@@ -306,7 +312,9 @@ export default function TalariaV16Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [pathname, searchParams]);
+    // Intentionally mount-once: searchParams must not re-trigger this fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- gate is one-shot; Ready re-checks sections on URL change
+  }, []);
 
   if (!gateReady || !platform || !authUser) {
     return <V16DashboardLoading />;
