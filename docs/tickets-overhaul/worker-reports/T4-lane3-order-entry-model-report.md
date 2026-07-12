@@ -81,7 +81,7 @@ TALARIA_ORDER_AGGREGATES_V2=0 node "chart v 1.4/chart/modules/order-entry-aggreg
 
 1. Average entry price ∈ [min entry, max entry]
 2. Risk split sums to configured total (100% in risk-percent mode; single-entry restore → 100%)
-3. Order type never mutates on move (limit stays limit — TAL-00752)
+3. **Revised by D-005 / T4 step 5:** on move, order type always equals the correct classification for its price relative to market, per side. Source quote, TAL-00752 message #17: *"When I add more than one entry and move the second entry, its location changes and it remains called a market order, even if it was a limit order."*
 4. PNL sign correct relative to entry side (no positive PNL below a long entry)
 
 ---

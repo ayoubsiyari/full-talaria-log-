@@ -122,6 +122,36 @@ Row 2 fix proceeds in T3 step 3 (gated, probe promoted to gate). Row 11 waits on
 
 ---
 
+## D-005 — ESC-005: T4 order-type auto-reclassification reinstated (accepted deliverable corrected)
+
+**Date:** 2026-07-12  
+**Escalation:** ESC-005  
+**Track:** T4 (Lane 3)  
+**RC:** RC-5
+
+### Primary-source verification (before ruling)
+Because this reverses part of an accepted deliverable, the Director re-read the source. **TAL-00752 message #17:** *"…it remains called a market order, even if it was a limit order"* — the tester complained the **label failed to update**, not that the type changed. T4 step 1's "freeze order type on move" (and the invariant built on it) mis-read the ticket. Manager re-interpretation confirmed; PO live requirement matches standard broker behavior.
+
+### Rulings
+**1. Reclassification reinstated as its own gated fix** — `window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2` (default ON = fix active), **decoupled** from step-1 aggregate math and step-2 display/parse switches (both stay). Semantics:
+- Buy **below** market → Buy **Limit**; **above** → Buy **Stop**; **at** market (within a **tick tolerance named with one unit per I12**) → **Market**.
+- Mirrored for Sell.
+- **Each multi-entry leg classifies independently.**
+
+**2. Invariant #3 revised** to: *"on move, order type always equals the correct classification for its price relative to market, per side."* RED-first property tests cover **both sides × all three zones × zone-crossing drags × independent multi-entry legs**. The old invariant's tests are **replaced, not just deleted**.
+
+**3. TAL-00752 discharged** in the direction the tester asked for; registry row cites this ruling.
+
+**4. Acceptance includes a PO live spot-check:** drag one buy entry through all three zones, watch the label transition **Limit → Market → Stop**.
+
+### Process correction (standing rule)
+T4 step 1 was accepted without a Director checkpoint (within Manager authority) but a mis-read product-behavior invariant survived to production. **New standing rule (now INVARIANTS P6): any product-behavior invariant in an acceptance report must quote the source ticket — one line of evidence per invariant.**
+
+### Lane 3 authorization
+Reclassification task unblocked. Keep step-1/step-2 switches intact.
+
+---
+
 ## D-003 — ESC-003: T1 first build accepted; step 4 authorized with legacy-retirement isolation
 
 **Date:** 2026-07-12  
@@ -167,5 +197,33 @@ Row 2 fix proceeds in T3 step 3 (gated, probe promoted to gate). Row 11 waits on
 - If it reproduces: the trace comes back to the Manager for a targeted probe against that topology; fix only after the geometry violation is measured. **No host offset constant on today's evidence** — the probe explicitly does not justify one.
 
 **4. Probe hygiene NOTED AND APPROVED:** the diagnostic probe stayed out of the ratchet gate (I9 intact). Keep `t3-row2-row11-probe.mjs` as a diagnostic asset; promote only the row-2 RED (as a proper scenario) with its fix.
+
+---
+
+## D-005 — ESC-005: order-type auto-reclassification reinstated with correct semantics; T4 invariant #3 revised
+
+**Date:** 2026-07-12  
+**Escalation:** ESC-005  
+**Track:** T4 (Lane 3)  
+**RC:** RC-5
+
+### Ticket-evidence check (Director-verified against the source thread)
+
+TAL-00752 message #17 reads: *"When I add more than one entry and move the second entry, its location changes and it remains called a market order, even if it was a limit order."* The tester's complaint is that the label **failed to update to the correct type** — not that it changed. The T4 step-1 "freeze order type on move" decision, and property invariant #3 as accepted, mis-read the ticket. The manager's re-interpretation is confirmed by the primary source, and the PO's live requirement (standard broker mapping) matches it.
+
+### Rulings
+
+**1. Auto-reclassification REINSTATED — new gated fix authorized** under `window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2` (default ON), decoupled from the step-1 aggregate-math switch and the step-2 display/parse switches, all of which stay intact. Semantics are the standard broker mapping, per side:
+- Buy: below market → Buy Limit; above market → Buy Stop; at market (within tick tolerance) → Market. Mirror for Sell.
+- Applies on entry-line drag and on programmatic price moves; each leg of a multi-entry order reclassifies independently.
+- The tick tolerance for "at market" must be named with one unit (I12) in the fix spec.
+
+**2. Property invariant #3 REVISED** from "order type never mutates on move" to: **"on move, order type always equals the correct limit/stop/market classification for its price relative to market, per side."** RED-first property tests assert the full mapping: both sides × all three zones × zone-crossing drags × multi-entry legs independently classified. The old invariant's tests are replaced, not merely deleted — coverage may not shrink.
+
+**3. TAL-00752 disposition CONFIRMED.** With aggregates fixed (step 1, kept), display/parse fixed (step 2, kept), and reclassification now *correct* rather than frozen, message #17's defect is discharged in the direction the tester actually asked for. The registry row for #17 cites this ruling.
+
+**4. Acceptance:** corrected mapping property suite GREEN in CI; kill-switch A/B; live drag spot-check by the PO (drag one buy entry through all three zones, confirm label transitions Limit → Market → Stop); state matrix including the multi-entry and replay-paused cells; both trees byte-identical; build bump coordinated through the Manager per D-003.
+
+**5. Process note (for the ledger).** T4 step 1 was accepted by the Manager without a Director checkpoint — within the manager's authority, but the mis-read invariant survived until the PO felt it live. Standing correction going forward: **any worker-proposed product-behavior invariant (as opposed to a code-correctness invariant) is quoted back to the source ticket in the acceptance report** — one line of evidence per invariant. Cheap, and it would have caught this at acceptance time.
 
 ---

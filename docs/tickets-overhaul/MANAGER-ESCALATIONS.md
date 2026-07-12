@@ -169,6 +169,47 @@ Both rows are the D-002 retained checkpoint; all other step-3 rows proceed witho
 
 ---
 
+## ESC-005 — T4 order-type behavior: reinstate correct auto-reclassification (reverses part of an accepted deliverable)
+
+**Date:** 2026-07-12  
+**Track:** T4 (Lane 3)  
+**RC:** RC-5  
+**Urgency:** Behavioral — the shipped default-ON T4 build now behaves opposite to what the PO wants; and an accepted invariant is wrong.
+
+### Context (live-verified on `20260712b2`)
+PO confirmed in default state (no kill-switches): entry-line drag is smooth, no crash (the earlier d3 `document`-null crash was a kill-switch artifact and is withdrawn). **However**, the PO wants order type to **auto-reclassify by price vs market** — the standard broker mapping:
+- Buy below market → **Buy Limit**; Buy above market → **Buy Stop**; at market → **Market** (and mirror for Sell).
+
+### Conflict with accepted T4 step 1 (D-none; accepted by Manager)
+T4 step 1 deliberately **froze** order type on drag — it guarded off the auto-detect at `order-manager.js:18789–18837` / `18920–18944` under `__TALARIA_DISABLE_ORDER_AGGREGATES_V2` — to discharge TAL-00752 "limit mutates to stop/market when dragged." It also encoded **property invariant #3: 'order type never mutates on move.'** Both now contradict the PO's required behavior.
+
+### Re-interpretation of TAL-00752
+The genuine defect was almost certainly **incorrect** reclassification (wrong direction / limit→market corruption) bundled with the aggregate/PNL math bugs — NOT the existence of reclassification. T4 step 1's aggregate math fix (average/risk-split/PNL) is correct and should stay; only the "freeze order type" decision is wrong.
+
+### Decision requested
+1. **Authorize reinstating order-type auto-reclassification** with correct limit/stop/market semantics (by price relative to market, per side), as a **new gated fix** (`window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2`), decoupled from the aggregate math (kept) and display/parse (kept).
+2. **Revise T4 property invariant #3** from "order type never mutates on move" to "order type reclassifies to the correct limit/stop/market per price-vs-market on move" — RED-first property tests asserting the full mapping (both sides, all three zones, multi-entry legs).
+3. Confirm this still discharges TAL-00752 (the reclassification is now correct + aggregates already fixed).
+
+### Manager recommendation
+Approve both. Implement as its own gated fix; keep T4 step 1/step 2 switches intact; add the corrected mapping property suite + a live drag spot-check as acceptance. Lane 3 holds this task until ruled; it continues T4 step 3 (replay-interaction) meanwhile.
+
+---
+
+## ESC-005 — RESOLVED
+
+**Director ruling:** D-005 (2026-07-12)  
+**Outcome:** Approved after primary-source check (TAL-00752 #17: *"it remains called a market order, even if it was a limit order"* = label failed to update). Reclassification reinstated as gated fix `__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2` (decoupled from step-1/step-2). Semantics: below=Limit, above=Stop, at-market (tick tolerance, one unit per I12)=Market; mirrored for sell; each leg independent. Invariant #3 revised + tests replaced (both sides × 3 zones × zone-crossing × multi-leg). PO live spot-check (drag through Limit→Market→Stop) is acceptance. **New standing rule → INVARIANTS P6:** product-behavior invariants must quote their source ticket. Lane 3 unblocked.
+
+---
+
+## ESC-005 — RESOLVED
+
+**Director ruling:** D-005 (2026-07-12)  
+**Outcome:** Both requests approved — Director verified the re-interpretation against the source thread (TAL-00752 #17: *"…it remains called a market order, even if it was a limit order"* — the tester wanted the label to update, not freeze). Reclassification reinstated as its own gated fix (`__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2`), standard broker mapping per side, per leg, tick tolerance named with one unit. Invariant #3 revised to "type always equals correct classification for price-vs-market"; full-mapping property suite replaces the old tests. Steps 1–2 switches stay. Acceptance includes PO three-zone drag spot-check. New standing rule: product-behavior invariants must quote the source ticket in acceptance reports.
+
+---
+
 ## ESC-003 — RESOLVED
 
 **Director ruling:** D-003 (2026-07-12)  

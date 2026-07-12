@@ -6,6 +6,26 @@
 /** @typedef {{ id: number, price: number, amount: number, orderType?: string }} EntryLevel */
 /** @typedef {{ side: string, slPrice: number, pipSize: number, pipValuePerLot: number, positionSizeMode: string, totalRiskTarget: number, currentPrice: number, markPrice: number, mainOrderType: string, balance: number, riskPercent: number }} AggregateOpts */
 
+export const ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS = 1;
+
+export function orderTypeReclassifyV2Enabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_TYPE_RECLASSIFY_V2 === '0') return false;
+    return true;
+}
+
+export function classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
+    const market = Number(currentPrice);
+    const entry = Number(price);
+    if (!(market > 0) || !(entry > 0)) return opts.mainOrderType || opts.fallback || 'limit';
+    const tickSize = Number(opts.tickSize || opts.pipSize || 0.0001);
+    const tolerance = tickSize * ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS;
+    if (Math.abs(entry - market) <= tolerance) return 'market';
+    const s = String(side || 'BUY').toUpperCase();
+    if (s === 'BUY') return entry < market ? 'limit' : 'stop';
+    return entry > market ? 'limit' : 'stop';
+}
+
 /**
  * Dollar risk at SL for one level (mirrors OrderManager._getMultiEntryLevelRiskUsd).
  * @param {EntryLevel} level
@@ -124,7 +144,10 @@ export function computeOrderEntryAggregates(entries, opts = {}) {
     const legs = sorted.map((l, i) => {
         const lots = calcLevelLotSizeNumeric(l, opts, sorted);
         const rs = riskSplit.find((r) => r.id === l.id);
-        const orderType = l.orderType || (i === 0 ? (opts.mainOrderType || 'limit') : (opts.mainOrderType || 'limit'));
+        const fallbackOrderType = l.orderType || (i === 0 ? (opts.mainOrderType || 'limit') : (opts.mainOrderType || 'limit'));
+        const orderType = orderTypeReclassifyV2Enabled()
+            ? classifyOrderTypeForPrice(side, l.price, opts.currentPrice, { ...opts, fallback: fallbackOrderType })
+            : fallbackOrderType;
         let pnlAtMark = 0;
         if (lots > 0 && mark > 0) {
             pnlAtMark = estimatePnL(side, l.price, mark, lots, opts);
@@ -336,6 +359,7 @@ export function legacyReadAggregates(state) {
 export function checkAggregateInvariants(agg, opts, initialMainType) {
     const violations = [];
     const tol = 1e-9;
+    const side = (opts.side || 'BUY').toUpperCase();
 
     if (agg.averageEntry > 0 && agg.minEntry > 0 && agg.maxEntry > 0) {
         if (agg.averageEntry < agg.minEntry - tol || agg.averageEntry > agg.maxEntry + tol) {
@@ -354,22 +378,16 @@ export function checkAggregateInvariants(agg, opts, initialMainType) {
         }
     }
 
-    if (initialMainType && agg.mainOrderType && agg.mainOrderType !== initialMainType) {
-        violations.push({
-            code: 'main-type-mutated',
-            msg: `main order type mutated ${initialMainType} → ${agg.mainOrderType}`,
-        });
-    }
     for (const leg of agg.legs || []) {
-        if (leg.isMain && initialMainType && leg.orderType !== initialMainType) {
+        const expectedType = classifyOrderTypeForPrice(side, leg.price, opts.currentPrice, opts);
+        if (leg.orderType !== expectedType) {
             violations.push({
-                code: 'leg-type-mutated',
-                msg: `leg ${leg.id} type mutated to ${leg.orderType} (expected ${initialMainType})`,
+                code: 'order-type-reclassify',
+                msg: `leg ${leg.id} classified ${leg.orderType}, expected ${expectedType} vs market ${opts.currentPrice}`,
             });
         }
     }
 
-    const side = (opts.side || 'BUY').toUpperCase();
     const mark = opts.markPrice ?? opts.currentPrice ?? 0;
     if (mark > 0) {
         for (const leg of agg.legs || []) {

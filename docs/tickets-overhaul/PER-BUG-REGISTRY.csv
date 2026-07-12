@@ -886,7 +886,7 @@ TAL-00752#14,TAL-00752,orders,order-entry,RC-5,user_replied,Cancel order leaves 
 TAL-00752#15,TAL-00752,orders,order-entry,RC-5,user_replied,Cannot change SL/TP from order panel controls,
 TAL-00752#16,TAL-00752,orders,order-entry,RC-5,user_replied,PNL shows profit while price below long entry after TP1 hit,
 TAL-00752#17,TAL-00752,orders,order-entry,RC-5,user_replied,SL/TP lines not rendered when value is below 10,
-TAL-00752#18,TAL-00752,orders,order-entry,RC-5,user_replied,Moving second entry mutates limit order to market order,
+TAL-00752#18,TAL-00752,orders,order-entry,RC-5,user_replied,Moving second entry mutates limit order to market order,D-005 re-read TAL-00752 message #17: label/type should reclassify correctly on move; fixed by __TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2 gate
 TAL-00752#19,TAL-00752,orders,order-entry,RC-5,user_replied,SL/TP arrow drag starts from zero instead of entry price,
 TAL-00752#20,TAL-00752,orders,order-entry,RC-5,user_replied,Multiple entries require repeated X clicks to close,
 TAL-00752#21,TAL-00752,orders,order-entry,RC-5,user_replied,Replay fill occurs on wrong candle vs entry candle,

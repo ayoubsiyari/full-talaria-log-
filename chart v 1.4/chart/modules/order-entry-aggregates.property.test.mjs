@@ -1,9 +1,10 @@
 /**
- * RC-5 property tests — RED on legacy delta model, GREEN on computeOrderEntryAggregates V2.
+ * RC-5 property tests — RED on legacy/gated-off paths, GREEN on computeOrderEntryAggregates V2.
  * Run: node order-entry-aggregates.property.test.mjs
  * Run legacy (RED): node order-entry-aggregates.property.test.mjs
  * Run V2 (GREEN):   TALARIA_ORDER_AGGREGATES_V2=1 node order-entry-aggregates.property.test.mjs
- * Run kill-switch:   TALARIA_ORDER_AGGREGATES_V2=0 node order-entry-aggregates.property.test.mjs
+ * Run aggregate kill-switch: TALARIA_ORDER_AGGREGATES_V2=0 node order-entry-aggregates.property.test.mjs
+ * Run type kill-switch:      TALARIA_ORDER_AGGREGATES_V2=1 TALARIA_ORDER_TYPE_RECLASSIFY_V2=0 node order-entry-aggregates.property.test.mjs
  */
 import {
     computeOrderEntryAggregates,
@@ -200,6 +201,46 @@ const KNOWN_RED_SEQUENCES = [
     },
 ];
 
+const ORDER_TYPE_RECLASSIFY_CASES = [
+    {
+        name: 'buy-zones-limit-market-stop',
+        opts: cloneOpts({ side: 'BUY', currentPrice: 1.1000, markPrice: 1.1000 }),
+        ops: [
+            { type: 'move', id: 1, price: 1.0980 },
+            { type: 'move', id: 1, price: 1.10005 },
+            { type: 'move', id: 1, price: 1.1020 },
+        ],
+    },
+    {
+        name: 'sell-zones-limit-market-stop',
+        opts: cloneOpts({ side: 'SELL', currentPrice: 1.1000, markPrice: 1.1000 }),
+        ops: [
+            { type: 'move', id: 1, price: 1.1020 },
+            { type: 'move', id: 1, price: 1.09995 },
+            { type: 'move', id: 1, price: 1.0980 },
+        ],
+    },
+    {
+        name: 'buy-zone-crossing-drag',
+        opts: cloneOpts({ side: 'BUY', currentPrice: 1.1000, markPrice: 1.1000 }),
+        ops: [
+            { type: 'move', id: 1, price: 1.0975 },
+            { type: 'move', id: 1, price: 1.1000 },
+            { type: 'move', id: 1, price: 1.1030 },
+            { type: 'move', id: 1, price: 1.0990 },
+        ],
+    },
+    {
+        name: 'multi-entry-legs-classify-independently',
+        opts: cloneOpts({ side: 'BUY', currentPrice: 1.1000, markPrice: 1.1000 }),
+        ops: [
+            { type: 'move', id: 1, price: 1.0980 },
+            { type: 'move', id: 2, price: 1.1020 },
+            { type: 'add', id: 3, price: 1.1000 },
+        ],
+    },
+];
+
 function runPropertySuite() {
     const mode = USE_V2 ? 'V2 (computeOrderEntryAggregates)' : 'LEGACY (delta-mutated)';
     console.log(`\n=== RC-5 order-entry aggregate property tests [${mode}] ===\n`);
@@ -220,6 +261,22 @@ function runPropertySuite() {
             }
         } else {
             console.log(`pass (known): ${seq.name}`);
+        }
+    }
+
+    for (const seq of ORDER_TYPE_RECLASSIFY_CASES) {
+        const trace = runSequence(seq.ops, seq.opts, 0);
+        if (trace.length) {
+            totalViolations += trace.length;
+            failingSequences.push({ name: seq.name, ops: seq.ops, trace });
+            console.log(`FAIL (order-type): ${seq.name}`);
+            for (const t of trace) {
+                console.log(`  op: ${JSON.stringify(t.op)}`);
+                for (const v of t.violations) console.log(`    [${v.code}] ${v.msg}`);
+                console.log(`    state: ${JSON.stringify(t.agg)}`);
+            }
+        } else {
+            console.log(`pass (order-type): ${seq.name}`);
         }
     }
 

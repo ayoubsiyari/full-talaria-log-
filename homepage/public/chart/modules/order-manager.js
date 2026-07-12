@@ -14,6 +14,25 @@ function _orderAggregatesV2Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_AGGREGATES_V2;
 }
 
+const ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS = 1;
+
+/** RC-5 / D-005: default ON — order type follows price-vs-market; own kill-switch. */
+function _orderTypeReclassifyV2Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2;
+}
+
+function _classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
+    const market = Number(currentPrice);
+    const entry = Number(price);
+    if (!(market > 0) || !(entry > 0)) return opts.fallback || opts.mainOrderType || 'limit';
+    const tickSize = Number(opts.tickSize || opts.pipSize || 0.0001);
+    const tolerance = tickSize * ORDER_TYPE_AT_MARKET_TOLERANCE_TICKS;
+    if (Math.abs(entry - market) <= tolerance) return 'market';
+    const s = String(side || 'BUY').toUpperCase();
+    if (s === 'BUY') return entry < market ? 'limit' : 'stop';
+    return entry > market ? 'limit' : 'stop';
+}
+
 function _oeaLevelRiskUsd(level, opts, allLevels) {
     const mode = opts.positionSizeMode || 'risk-usd';
     const pipSize = opts.pipSize || 0.0001;
@@ -102,7 +121,10 @@ function computeOrderEntryAggregates(entries, opts = {}) {
     const legs = sorted.map((l, i) => {
         const lots = _oeaCalcLevelLotSizeNumeric(l, opts, sorted);
         const rs = riskSplit.find((r) => r.id === l.id);
-        const orderType = l.orderType || (opts.mainOrderType || 'limit');
+        const fallbackOrderType = l.orderType || (opts.mainOrderType || 'limit');
+        const orderType = _orderTypeReclassifyV2Enabled()
+            ? _classifyOrderTypeForPrice(side, l.price, opts.currentPrice, { ...opts, fallback: fallbackOrderType })
+            : fallbackOrderType;
         let pnlAtMark = 0;
         if (lots > 0 && mark > 0) {
             const diff = side === 'BUY' ? mark - l.price : l.price - mark;
@@ -18830,20 +18852,18 @@ class OrderManager {
                         self._syncAvgEntryPreviewLineFromLevels();
                     }
                     
-                    // Auto-detect order type based on entry position relative to current price
-                    // RC-5 V2: order type is fixed at leg creation — never mutate on drag (TAL-00752).
-                    if (!_orderAggregatesV2Enabled()) {
+                    // D-005: order type/label follows entry price vs market; own kill-switch.
+                    if (_orderTypeReclassifyV2Enabled()) {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || null;
                     
                     if (currentPrice) {
-                        let newOrderType;
-                        if (self.orderSide === 'BUY') {
-                            // BUY: above price = STOP, below price = LIMIT
-                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
-                        } else {
-                            // SELL: below price = STOP, above price = LIMIT
-                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
+                        const newOrderType = _classifyOrderTypeForPrice(self.orderSide, newPrice, currentPrice, {
+                            pipSize: self.pipSize || 0.0001,
+                            fallback: self.orderType || 'limit',
+                        });
+                        if (level) {
+                            level.orderType = newOrderType;
                         }
                         
                         // Update order type if changed
@@ -18851,7 +18871,7 @@ class OrderManager {
                             const oldType = self.orderType;
                             self.orderType = newOrderType;
                             
-                            console.log(`🔄 Auto-detected order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)}, Current: ${currentPrice.toFixed(5)})`);
+                            console.log(`🔄 Reclassified order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)}, Current: ${currentPrice.toFixed(5)})`);
                             
                             // Update order type buttons in panel
                             document.querySelectorAll('.order-type-btn').forEach(btn => {
@@ -18961,18 +18981,15 @@ class OrderManager {
                         self._syncAvgEntryPreviewLineFromLevels();
                     }
                     
-                    // Auto-detect order type based on price
-                    // RC-5 V2: preserve per-leg orderType on drag (TAL-00752 limit→stop mutation).
-                    if (!_orderAggregatesV2Enabled()) {
+                    // D-005: each split leg reclassifies independently by its own price vs market.
+                    if (_orderTypeReclassifyV2Enabled()) {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || 0;
                     if (currentPrice > 0) {
-                        let newOrderType;
-                        if (self.orderSide === 'BUY') {
-                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
-                        } else {
-                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
-                        }
+                        const newOrderType = _classifyOrderTypeForPrice(self.orderSide, newPrice, currentPrice, {
+                            pipSize: self.pipSize || 0.0001,
+                            fallback: lineData.orderType || self.orderType || 'limit',
+                        });
                         if (lineData.orderType !== newOrderType) {
                             lineData.orderType = newOrderType;
                             // Extract level number from label
@@ -18981,6 +18998,10 @@ class OrderManager {
                             // Update split entry data
                             const splitEntry = self.splitEntries.find(e => e.id === lineData.splitEntryId);
                             if (splitEntry) splitEntry.orderType = newOrderType;
+                            const level = lineData.multiEntryLevelId != null
+                                ? self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId)
+                                : null;
+                            if (level) level.orderType = newOrderType;
                             // Re-render label
                             self.renderPreviewLabel(lineData, clampedY);
                             self.adjustPreviewLineForLabel(lineData);
@@ -20830,7 +20851,7 @@ class OrderManager {
 
     /**
      * RC-5 V2: recompute splitEntries / main entry from multiEntryLevels via pure function.
-     * Preserves per-leg orderType once set (no mutation on drag).
+     * D-005: per-leg orderType reclassifies from price vs market under its own gate.
      */
     _applyOrderEntryAggregatesV2() {
         if (!_orderAggregatesV2Enabled() || !this.isMultiEntryMode) return false;
@@ -20844,6 +20865,11 @@ class OrderManager {
             if (sorted.length === 1) {
                 const mainInput = document.getElementById('orderEntryPrice');
                 if (mainInput) mainInput.value = this.formatPrice(sorted[0].price);
+                const leg = agg.legs.find((l) => l.id === sorted[0].id);
+                if (leg && _orderTypeReclassifyV2Enabled()) {
+                    sorted[0].orderType = leg.orderType;
+                    this.orderType = leg.orderType;
+                }
             }
             return true;
         }
@@ -20851,7 +20877,8 @@ class OrderManager {
         if (mainInput) mainInput.value = this.formatPrice(sorted[0].price);
         for (const leg of agg.legs) {
             const lvl = levels.find((l) => l.id === leg.id);
-            if (lvl && !lvl.orderType) lvl.orderType = leg.orderType;
+            if (lvl) lvl.orderType = leg.orderType;
+            if (leg.isMain && _orderTypeReclassifyV2Enabled()) this.orderType = leg.orderType;
         }
         this.splitEntries = [];
         for (const leg of agg.legs) {
