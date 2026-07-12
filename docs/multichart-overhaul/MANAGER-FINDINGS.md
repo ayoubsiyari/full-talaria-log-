@@ -3625,6 +3625,74 @@ alignment intact. No contradiction.
 - **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
   standard `SW_VERSION` cache-string + `?v=` bump).
 
+## 6cr. Residual first-render PEER "shake" on enter-multichart fixed: boot peer cell-resize now re-anchors on the first painted frame (build 20260707b103, gate 26→27)
+
+MANAGER: gated, RED-first fix for the PO-reported RESIDUAL first-render "shake" on peers B/C/D when entering
+multichart from a single chart. This is the panel analogue of the §6cq/b102 host fix. Root cause was pre-diagnosed
+(verified RED, not re-diagnosed from scratch).
+
+**Lead (what changed / proof / what PO tests):**
+1. **What changed:** `chart/chart.js` `resize()` (both trees). §6cq/b102 fixed the HOST tile's first-render shake but
+   was gated ONLY on `_isMultichartHostPanel()`, so EMBED (peer) panels were excluded. While an embed peer's boot
+   viewport is locked (`_isMultichartBootViewportLocked()` — bars positioned, still within
+   `_multichartViewportSettleUntil`), a boot layout-settle width change (the iframe reaching its final cell width)
+   hit the frozen resize path where only the host `_mcBootHostRightIdx` branch re-anchored; the peer kept its OLD
+   (pre-final-width) `offsetX` at the NEW width, drifting the latest candle off the right edge, and a later
+   resize/forceInitialSync mirror snapped it back (the residual peer SHAKE, ~15–50px, 1–2 frames). The fix adds a
+   scoped branch parallel to b102 but for embed panels: while frozen/boot-locked on the boot peer-resize path,
+   capture the pre-resize right-edge bar (`_mcBootPanelRightIdx`, preferring the same-pair host's
+   `getVisibleEndIndex()` — mirroring `_realignMultichartViewportAfterResize` — else local) and re-anchor with the
+   SAME drift-free **index-based pin** the duplicate panels use (`offsetX = plotW − (rightIdx+1)*spacing`), so the
+   FIRST painted frame already lands at the final right-anchored offset (paint once, no later snap). Index-based →
+   preserves mirror bar-alignment, safe under Date/Time range-sync. The freeze + settle semantics are preserved.
+2. **Kill-switch / site:** `__TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR` (default unset = fix ON / new stable behavior;
+   set = revert to today's peer skip-and-snap). Site: `chart/chart.js` `resize()` — pre-resize capture of
+   `_mcBootPanelRightIdx` (guarded by NOT-disabled + `_isMultichartEmbedPanel()` + boot-lock
+   [`_isMultichartBootViewportLocked()` OR (`_multichartBootViewportPositioned` && within
+   `_multichartViewportSettleUntil`)] + `Array.isArray(this.data) && this.data.length`) and the
+   `else if (_mcBootPanelRightIdx != null)` index-pin branch AFTER the host `_mcBootHostRightIdx` branch. Scoped
+   STRICTLY to the frozen boot peer-resize path: `_mcBootPanelRightIdx` is null unless the embed panel is
+   boot-locked, so normal (non-boot) live resize/relayout, range-sync alignment, and the host b102 branch are all
+   untouched.
+3. **PO tests:** single chart → enter multichart → peers B/C/D must NOT shake/snap on first render (latest candle
+   stays right-anchored from the very first painted frame, matching the now-perfect host).
+
+**RULE 4 — STATE MATRIX (before code, no contradiction):**
+
+| cell | before (b102) | after (b103, fix ON) |
+| --- | --- | --- |
+| peer boot layout-settle resize (frozen / boot-locked) | skip all offset work → stale paint @pre-final-width offset, then later SNAP (~15–50px) | **paint-once** at index-pin right-anchor (the ONLY changed cell) |
+| host boot single→multi resize (frozen) | b102 index-pin, paint-once | unchanged (host is not an embed panel → `_mcBootPanelRightIdx` null → new branch skipped) |
+| normal live resize (not boot-locked) | non-frozen realign / index-pin / pixel-anchor | unchanged (`_mcBootPanelRightIdx` null → new branch skipped) |
+| range-sync ON/OFF boot | peer frozen-stale then snap | peer index-pins (drift-free) = bar-aligned with host/mirror, paint-once |
+
+Only the frozen boot peer-resize cell changes to paint-once; host b102, live resize, range-sync alignment, and
+replay-follow paths intact. No contradiction.
+
+### Verification / report-back
+- **H-S29 (new, id 29) RED vs GREEN, flake-stable ×3 (`--runs=3`):** GREEN `PASS,PASS,PASS`; RED
+  (`--bugswitch=__TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR`) `FAIL,FAIL,FAIL` = `FAIL-REAL-BUG`. Deterministic
+  (no wall-clock): models the frozen boot-locked peer layout-settle cell-resize in the host main frame (reusing the
+  DIAG probe approach, tagging the document `multichart-embed` + arming the boot viewport lock), candleWidth=6
+  unchanged, dataLen=2000, width GROWS 1280px→1320px (opposite of H-S28's host shrink).
+  - **GREEN:** `firstPaintOffsetX = −12739` == `rightAnchorTarget = −12739` (**drift = 0.0px**); moved 68px off the
+    stale pre-final-width offset on the FIRST paint; **reanchorPasses = 1** (on first paint, no later snap).
+  - **RED:** `firstPaintOffsetX = −12807.008` (stale pre-final-width) vs target −12739 → **drift = −68px**;
+    `reanchorPasses = 0` (frozen resize does nothing → the deferred snap = the shake).
+- **Full `npm run gate` — GREEN 26→27** (H-S2..H-S29). Regressions: none. Known-failing: none. Prior scenarios all
+  PASS — **H-S17/H-S27 (follows), H-S21/H-S23 (acquisition), H-S24 (peer-refetch), H-S25 (eased follow),
+  H-S26 (isolation), H-S28 (host boot re-anchor) explicitly PASS**.
+- `node --check` clean on every edited JS in **both** trees; both `known-failing.json` parse.
+- **SHA256 — every edited source/mirror pair byte-identical (EQ=True):**
+  `chart.js` = `83298834D1D231222D8BB170DA1C63028FAB96956E3B4286A55C0B632B08EEE5`;
+  `multichart-prod/harness/scenarios.mjs` = `5B509486D733290BC260C53619D5363F47DF68C01140EDAED22F42828ADD5AC7`;
+  `multichart-prod/harness/known-failing.json` = `1560DA832C3E5126260893C99A579B4630FB703AEEAE2C1BFEACD169DB11ECB7`
+  (plus all b103-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — all EQ=True).
+- **ONE build bump** b102 → `20260707b103` via `bump-dist-v9-cache.mjs`; **0 `20260707b102` stragglers** in shipped
+  files (only this findings doc retains historical b102 text).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string + `?v=` bump).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

@@ -3070,6 +3070,10 @@ select { cursor:default; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
         Audit log
       </a>
+      <a class="nav-item" data-section="security-monitor" onclick="navigate('security-monitor')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        Security monitor
+      </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="settings" onclick="navigate('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -5120,6 +5124,141 @@ select { cursor:default; }
         </div>
       </div>
 
+      <!-- ════════ SECURITY MONITOR SECTION ════════ -->
+      <div class="section" id="sec-security-monitor">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+            <div class="card-title">Security monitor</div>
+            <span class="card-badge" id="secThreatBadge" style="text-transform:uppercase">—</span>
+            <label style="display:flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;color:var(--text-muted);cursor:pointer">
+              <input type="checkbox" id="secLiveToggle" checked onchange="securityToggleLive()"> Live
+            </label>
+            <button type="button" class="btn sm" onclick="securityVerifyIntegrity()">Verify integrity</button>
+            <button type="button" class="btn sm primary" onclick="loadSecurityMonitor()">Refresh</button>
+          </div>
+          <div class="card-body" style="font-size:13px;line-height:1.5;color:var(--text-secondary)">
+            <p style="margin:0 0 12px">Live attack telemetry from the API edge: failed logins, rate-limit blocks, forbidden/CSRF hits, path scans, blocked-IP hits and auto-blocks. Rows are hash-chained (tamper-evident). <span id="secWindowLabel" style="color:var(--text-muted)"></span></p>
+            <div class="stat-cards" id="secStatCards" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))"></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px" id="secMidGrid">
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title">Events (last 24h)</div>
+              <select id="secTrendRange" onchange="loadSecurityMonitor()" style="margin-left:auto;padding:5px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                <option value="24">24 hours</option>
+                <option value="72">3 days</option>
+                <option value="168">7 days</option>
+              </select>
+            </div>
+            <div class="card-body">
+              <div id="secTrendChart" style="display:flex;align-items:flex-end;gap:2px;height:120px;width:100%"></div>
+              <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-muted)">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--danger,#f87171);vertical-align:middle"></span> critical</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--warn,#fbbf24);vertical-align:middle"></span> warning</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent,#60a5fa);vertical-align:middle"></span> info</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Actions</div></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Block an IP</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <input type="text" id="secBlockIp" placeholder="1.2.3.4" style="flex:1;min-width:120px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                  <select id="secBlockDuration" style="padding:6px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                    <option value="1">1h</option>
+                    <option value="24" selected>24h</option>
+                    <option value="168">7d</option>
+                    <option value="0">Permanent</option>
+                  </select>
+                  <button type="button" class="btn sm primary" onclick="securityBlockIp()">Block</button>
+                </div>
+                <input type="text" id="secBlockReason" placeholder="Reason (optional)" style="width:100%;margin-top:6px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:12px">
+                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Force-logout a user (revoke all sessions)</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <input type="text" id="secLogoutUser" placeholder="user id or email" style="flex:1;min-width:140px;padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                  <button type="button" class="btn sm" onclick="securityForceLogout()">Revoke</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Top attacker IPs</div></div>
+            <div class="card-body" style="padding:0;max-height:280px;overflow:auto">
+              <table><thead><tr><th>IP</th><th>Country</th><th>Hits</th><th>Last</th><th></th></tr></thead>
+                <tbody id="secTopAttackersBody"></tbody></table>
+              <div class="empty-state" id="secEmptyAttackers" style="display:none"><p>No attacker activity in this window.</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Blocked IPs</div><span class="card-badge" id="secBlockedBadge">0</span></div>
+            <div class="card-body" style="padding:0;max-height:280px;overflow:auto">
+              <table><thead><tr><th>IP</th><th>Reason</th><th>Until</th><th></th></tr></thead>
+                <tbody id="secBlockedBody"></tbody></table>
+              <div class="empty-state" id="secEmptyBlocked" style="display:none"><p>No IPs are currently blocked.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Attack log</div>
+            <span class="card-badge" id="secEventsBadge">0</span>
+            <span id="secLiveDot" style="margin-left:8px;font-size:11px;color:var(--success,#34d399)">● live</span>
+          </div>
+          <div class="card-body" style="font-size:13px">
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px">
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Type
+                <select id="secFilterType" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                  <option value="">Any</option>
+                  <option value="failed_login">failed_login</option>
+                  <option value="rate_limited">rate_limited</option>
+                  <option value="forbidden">forbidden</option>
+                  <option value="admin_denied">admin_denied</option>
+                  <option value="path_scan">path_scan</option>
+                  <option value="ip_blocked_hit">ip_blocked_hit</option>
+                  <option value="auto_block">auto_block</option>
+                  <option value="manual_block">manual_block</option>
+                  <option value="force_logout">force_logout</option>
+                  <option value="login_success">login_success</option>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Severity
+                <select id="secFilterSeverity" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
+                  <option value="">Any</option>
+                  <option value="critical">critical</option>
+                  <option value="warning">warning</option>
+                  <option value="info">info</option>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">IP
+                <input type="text" id="secFilterIp" placeholder="1.2.3.4" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:120px;font-size:12px">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted);flex:1;min-width:140px">Search (path / details / UA)
+                <input type="text" id="secFilterQ" placeholder="substring…" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);width:100%;font-size:12px">
+              </label>
+              <button type="button" class="btn sm primary" onclick="loadSecurityEvents()">Apply</button>
+            </div>
+            <div style="max-height:calc(100vh - 320px);overflow:auto;border:1px solid var(--border);border-radius:8px">
+              <table>
+                <thead><tr><th>When</th><th>Sev</th><th>Type</th><th>IP</th><th>Country</th><th>Path</th><th>Status</th><th>Details</th><th></th></tr></thead>
+                <tbody id="secEventsBody"></tbody>
+              </table>
+              <div class="empty-state" id="secEmptyEvents" style="display:none"><p>No security events match the filters.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SETTINGS SECTION ════════ -->
       <div class="section" id="sec-settings">
         <div class="card">
@@ -5281,6 +5420,7 @@ const sectionTitles = {
   'bulk-email': 'Bulk email',
   support: 'Support',
   'audit-log': 'Audit log',
+  'security-monitor': 'Security monitor',
   settings: 'Settings'
 };
 
@@ -7083,6 +7223,291 @@ function navigate(section) {
     ensureLiveSupportSocket();
   }
   if (section === 'audit-log') loadAuditLog(true);
+  if (section === 'security-monitor') { securityMonitorEnter(); } else { securityMonitorLeave(); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Security Monitor
+// ═══════════════════════════════════════════════════════════
+let secLiveSource = null;      // EventSource for SSE
+let secLivePoll = null;        // setInterval fallback
+let secLastEventId = 0;        // highest event id currently shown
+const SEC_MAX_ROWS = 300;
+
+function secSevColor(sev) {
+  if (sev === 'critical') return 'var(--danger,#f87171)';
+  if (sev === 'warning') return 'var(--warn,#fbbf24)';
+  return 'var(--accent,#60a5fa)';
+}
+function secThreatColor(tl) {
+  tl = (tl || '').toLowerCase();
+  if (tl === 'red') return 'var(--danger,#f87171)';
+  if (tl === 'orange') return '#f97316';
+  if (tl === 'yellow') return 'var(--warn,#fbbf24)';
+  return 'var(--success,#34d399)';
+}
+
+function securityMonitorEnter() {
+  loadSecurityMonitor();
+  const live = $('secLiveToggle');
+  if (live && live.checked) startSecLive();
+}
+function securityMonitorLeave() { stopSecLive(); }
+
+async function loadSecurityMonitor() {
+  const hours = ($('secTrendRange') && $('secTrendRange').value) || '24';
+  const lbl = $('secWindowLabel');
+  if (lbl) lbl.textContent = '· window: ' + (hours === '24' ? 'last 24h' : hours === '72' ? 'last 3 days' : 'last 7 days');
+  try {
+    const [summary, trend, blocked] = await Promise.all([
+      api('/api/admin/security/summary?hours=' + encodeURIComponent(hours)),
+      api('/api/admin/security/trend?hours=' + encodeURIComponent(hours)),
+      api('/api/admin/security/blocked-ips'),
+    ]);
+    renderSecStatCards(summary.stats || {}, summary.threat_level);
+    renderSecTopAttackers(summary.top_attackers || []);
+    renderSecTrend((trend && trend.buckets) || []);
+    renderSecBlocked((blocked && blocked.blocked_ips) || []);
+  } catch (e) {
+    toast(e.message || 'Failed to load security summary', 'err');
+  }
+  loadSecurityEvents();
+}
+
+function renderSecStatCards(s, threat) {
+  const badge = $('secThreatBadge');
+  if (badge) { badge.textContent = (threat || '—'); badge.style.color = secThreatColor(threat); }
+  const host = $('secStatCards');
+  if (!host) return;
+  const card = (cls, label, val, sub) =>
+    '<div class="stat-card ' + cls + '"><div class="label">' + label + '</div><div class="value">' +
+    fmtN(val || 0) + '</div><div class="sub">' + sub + '</div></div>';
+  host.innerHTML =
+    card('danger', 'Failed logins', s.failed_logins, 'window') +
+    card('warn', 'Rate-limited', s.rate_limited, 'window') +
+    card('warn', 'Forbidden', s.forbidden, '403 / CSRF') +
+    card('', 'Path scans', s.path_scans, 'window') +
+    card('danger', 'Auto-blocks', s.auto_blocks, 'window') +
+    card('accent', 'Attacker IPs', s.unique_attacker_ips, 'unique') +
+    card('accent', 'Blocked IPs', s.blocked_ips_active, 'active') +
+    card('', 'Total events', s.total_events, 'window');
+}
+
+function renderSecTrend(buckets) {
+  const host = $('secTrendChart');
+  if (!host) return;
+  if (!buckets.length) { host.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">No data.</p>'; return; }
+  let max = 1;
+  buckets.forEach(b => { max = Math.max(max, (b.info || 0) + (b.warning || 0) + (b.critical || 0)); });
+  host.innerHTML = buckets.map(b => {
+    const total = (b.info || 0) + (b.warning || 0) + (b.critical || 0);
+    const h = Math.round((total / max) * 100);
+    const seg = (n, color) => n > 0 ? '<div style="width:100%;background:' + color + ';height:' + (h * (n / total)) + '%"></div>' : '';
+    const hr = (b.hour || '').slice(11);
+    return '<div title="' + esc(b.hour + ' — ' + total + ' events') + '" style="flex:1;min-width:3px;display:flex;flex-direction:column-reverse;justify-content:flex-start;height:100%;align-items:stretch">' +
+      '<div style="display:flex;flex-direction:column-reverse;height:' + Math.max(h, total ? 4 : 0) + '%">' +
+      seg(b.critical, 'var(--danger,#f87171)') + seg(b.warning, 'var(--warn,#fbbf24)') + seg(b.info, 'var(--accent,#60a5fa)') +
+      '</div></div>';
+  }).join('');
+}
+
+function renderSecTopAttackers(list) {
+  const body = $('secTopAttackersBody');
+  const empty = $('secEmptyAttackers');
+  if (!body) return;
+  if (!list.length) { body.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
+  if (empty) empty.style.display = 'none';
+  body.innerHTML = list.map(a =>
+    '<tr><td style="font-family:monospace">' + esc(a.ip_address) + '</td>' +
+    '<td>' + esc(a.country || '—') + '</td>' +
+    '<td>' + fmtN(a.hits) + '</td>' +
+    '<td style="color:var(--text-muted)">' + esc(timeAgo(a.last_seen)) + '</td>' +
+    '<td>' + (a.blocked
+      ? '<span style="color:var(--danger,#f87171);font-size:11px">blocked</span>'
+      : '<button type="button" class="btn sm" onclick="securityBlockIp(\'' + esc(a.ip_address) + '\')">Block</button>') +
+    '</td></tr>'
+  ).join('');
+}
+
+function renderSecBlocked(list) {
+  const body = $('secBlockedBody');
+  const empty = $('secEmptyBlocked');
+  const badge = $('secBlockedBadge');
+  if (!body) return;
+  const active = list.filter(b => b.active);
+  if (badge) badge.textContent = active.length;
+  if (!list.length) { body.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
+  if (empty) empty.style.display = 'none';
+  body.innerHTML = list.map(b =>
+    '<tr style="opacity:' + (b.active ? '1' : '0.5') + '"><td style="font-family:monospace">' + esc(b.ip_address) + '</td>' +
+    '<td style="color:var(--text-muted);font-size:11px">' + esc(b.reason || '') + '</td>' +
+    '<td style="color:var(--text-muted);font-size:11px">' + (b.is_permanent ? 'permanent' : (b.blocked_until ? timeAgo(b.blocked_until).replace(' ago', '') : '—')) + '</td>' +
+    '<td><button type="button" class="btn sm" onclick="securityUnblockIp(\'' + esc(b.ip_address) + '\')">Unblock</button></td></tr>'
+  ).join('');
+}
+
+function secEventRowHtml(e) {
+  const detail = e.details ? ('<span style="color:var(--text-muted)">' + esc(String(e.details).slice(0, 160)) + '</span>') : '';
+  const blockBtn = (e.ip_address && e.severity !== 'info')
+    ? '<button type="button" class="btn sm" onclick="securityBlockIp(\'' + esc(e.ip_address) + '\')">Block</button>' : '';
+  return '<tr data-eid="' + e.id + '">' +
+    '<td style="white-space:nowrap;color:var(--text-muted)">' + esc(timeAgo(e.created_at)) + '</td>' +
+    '<td><span style="color:' + secSevColor(e.severity) + ';font-weight:600;font-size:11px">' + esc(e.severity) + '</span></td>' +
+    '<td style="font-family:monospace;font-size:11px">' + esc(e.event_type) + '</td>' +
+    '<td style="font-family:monospace;font-size:11px">' + esc(e.ip_address || '—') + '</td>' +
+    '<td style="font-size:11px">' + esc(e.country || '—') + '</td>' +
+    '<td style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(e.path || '') + '">' + esc(e.path || '—') + '</td>' +
+    '<td>' + (e.status_code || '') + '</td>' +
+    '<td style="max-width:260px">' + (e.email ? '<code style="font-size:11px">' + esc(e.email) + '</code> ' : '') + detail + '</td>' +
+    '<td>' + blockBtn + '</td></tr>';
+}
+
+async function loadSecurityEvents() {
+  const params = new URLSearchParams();
+  const type = $('secFilterType') && $('secFilterType').value;
+  const sev = $('secFilterSeverity') && $('secFilterSeverity').value;
+  const ip = $('secFilterIp') && $('secFilterIp').value.trim();
+  const q = $('secFilterQ') && $('secFilterQ').value.trim();
+  const hours = ($('secTrendRange') && $('secTrendRange').value) || '24';
+  if (type) params.set('event_type', type);
+  if (sev) params.set('severity', sev);
+  if (ip) params.set('ip', ip);
+  if (q) params.set('q', q);
+  params.set('since_hours', hours);
+  params.set('limit', '200');
+  const body = $('secEventsBody');
+  const empty = $('secEmptyEvents');
+  try {
+    const data = await api('/api/admin/security/events?' + params.toString());
+    const events = data.events || [];
+    if ($('secEventsBadge')) $('secEventsBadge').textContent = fmtN(data.total || events.length);
+    if (!events.length) { if (body) body.innerHTML = ''; if (empty) empty.style.display = 'block'; }
+    else { if (empty) empty.style.display = 'none'; if (body) body.innerHTML = events.map(secEventRowHtml).join(''); }
+    secLastEventId = events.length ? Math.max.apply(null, events.map(e => e.id)) : secLastEventId;
+  } catch (e) {
+    toast(e.message || 'Failed to load events', 'err');
+  }
+}
+
+function securityToggleLive() {
+  const live = $('secLiveToggle');
+  if (live && live.checked) startSecLive(); else stopSecLive();
+}
+
+function secShowLiveDot(on) {
+  const dot = $('secLiveDot');
+  if (dot) { dot.style.display = on ? 'inline' : 'none'; }
+}
+
+function startSecLive() {
+  stopSecLive();
+  secShowLiveDot(true);
+  if (typeof EventSource !== 'undefined') {
+    try {
+      secLiveSource = new EventSource('/api/admin/security/stream', { withCredentials: true });
+      secLiveSource.onmessage = function (ev) {
+        try { secPrependEvent(JSON.parse(ev.data)); } catch (_) {}
+      };
+      secLiveSource.onerror = function () {
+        // SSE dropped (proxy buffering / auth) — fall back to polling.
+        if (secLiveSource) { secLiveSource.close(); secLiveSource = null; }
+        startSecPoll();
+      };
+      return;
+    } catch (_) { /* fall through to polling */ }
+  }
+  startSecPoll();
+}
+
+function startSecPoll() {
+  if (secLivePoll) return;
+  secLivePoll = setInterval(async function () {
+    try {
+      const data = await api('/api/admin/security/events?since_id=' + secLastEventId + '&limit=100');
+      (data.events || []).slice().reverse().forEach(secPrependEvent);
+    } catch (_) {}
+  }, 5000);
+}
+
+function stopSecLive() {
+  if (secLiveSource) { try { secLiveSource.close(); } catch (_) {} secLiveSource = null; }
+  if (secLivePoll) { clearInterval(secLivePoll); secLivePoll = null; }
+  secShowLiveDot(false);
+}
+
+function secPrependEvent(e) {
+  if (!e || !e.id || e.id <= secLastEventId) return;
+  secLastEventId = e.id;
+  const body = $('secEventsBody');
+  const empty = $('secEmptyEvents');
+  if (!body) return;
+  if (empty) empty.style.display = 'none';
+  // Respect active filters: skip events that don't match the type/severity filter.
+  const ftype = $('secFilterType') && $('secFilterType').value;
+  const fsev = $('secFilterSeverity') && $('secFilterSeverity').value;
+  if (ftype && e.event_type !== ftype) return;
+  if (fsev && e.severity !== fsev) return;
+  body.insertAdjacentHTML('afterbegin', secEventRowHtml(e));
+  while (body.children.length > SEC_MAX_ROWS) body.removeChild(body.lastChild);
+  const row = body.firstElementChild;
+  if (row) { row.style.transition = 'background 1.2s'; row.style.background = 'rgba(96,165,250,0.15)'; setTimeout(() => { row.style.background = ''; }, 1200); }
+}
+
+async function securityBlockIp(prefillIp) {
+  let ip = prefillIp;
+  if (!ip) ip = ($('secBlockIp') && $('secBlockIp').value.trim());
+  if (!ip) { toast('Enter an IP to block', 'err'); return; }
+  const durSel = $('secBlockDuration');
+  const dur = durSel ? durSel.value : '24';
+  const reason = ($('secBlockReason') && $('secBlockReason').value.trim()) || 'Manually blocked by admin';
+  const permanent = dur === '0';
+  if (!confirm('Block IP ' + ip + (permanent ? ' permanently?' : ' for ' + dur + 'h?'))) return;
+  try {
+    await api('/api/admin/security/block-ip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip_address: ip, reason: reason, duration_hours: permanent ? 24 : parseInt(dur, 10), permanent: permanent }),
+    });
+    toast('Blocked ' + ip, 'ok');
+    if ($('secBlockIp')) $('secBlockIp').value = '';
+    loadSecurityMonitor();
+  } catch (e) { toast(e.message || 'Block failed', 'err'); }
+}
+
+async function securityUnblockIp(ip) {
+  if (!ip) return;
+  if (!confirm('Unblock ' + ip + '?')) return;
+  try {
+    await api('/api/admin/security/unblock-ip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip_address: ip }),
+    });
+    toast('Unblocked ' + ip, 'ok');
+    loadSecurityMonitor();
+  } catch (e) { toast(e.message || 'Unblock failed', 'err'); }
+}
+
+async function securityForceLogout() {
+  const val = ($('secLogoutUser') && $('secLogoutUser').value.trim());
+  if (!val) { toast('Enter a user id or email', 'err'); return; }
+  const isId = /^\d+$/.test(val);
+  if (!confirm('Revoke ALL sessions for ' + val + '? They will be signed out on every device.')) return;
+  try {
+    const data = await api('/api/admin/security/force-logout', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isId ? { user_id: parseInt(val, 10) } : { email: val }),
+    });
+    toast('Revoked ' + (data.revoked_sessions || 0) + ' session(s) for ' + (data.email || val), 'ok');
+    if ($('secLogoutUser')) $('secLogoutUser').value = '';
+    loadSecurityEvents();
+  } catch (e) { toast(e.message || 'Force-logout failed', 'err'); }
+}
+
+async function securityVerifyIntegrity() {
+  try {
+    const data = await api('/api/admin/security/verify-integrity');
+    if (data.ok) toast('Integrity OK — ' + fmtN(data.checked) + ' events verified, chain intact', 'ok');
+    else toast('TAMPERING DETECTED — chain breaks at event id ' + data.first_broken_id, 'err');
+  } catch (e) { toast(e.message || 'Verify failed', 'err'); }
 }
 
 // ═══════════════════════════════════════════════════════════

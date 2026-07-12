@@ -16988,6 +16988,55 @@ class Chart {
             }
         } catch (_) { _mcBootHostRightIdx = null; }
 
+        // BOOT panel-resize re-anchor (§6cr felt-shake fix — PEER analogue of the
+        // b102 host branch above): capture the pre-resize right-edge bar index for
+        // an EMBED (peer) panel while its boot viewport is locked, so the frozen
+        // boot peer cell-resize (single->multi layout-settle width change) can
+        // re-anchor with the drift-free index pin below instead of repainting at
+        // the stale pre-final-width offset and snapping later. Scoped to the peer
+        // boot-resize path (embed panel + boot viewport lock). Default-ON; the
+        // kill-switch __TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR reverts to the old
+        // skip-and-snap peer behavior. Index-based -> preserves mirror bar-
+        // alignment, safe under range-sync. HOST b102 is untouched (host is not an
+        // embed panel, so this capture stays null on the host).
+        let _mcBootPanelRightIdx = null;
+        try {
+            const _mcPanelBootLocked = (typeof this._isMultichartBootViewportLocked === 'function'
+                    && this._isMultichartBootViewportLocked())
+                || (this._multichartBootViewportPositioned === true
+                    && Number.isFinite(this._multichartViewportSettleUntil)
+                    && (((typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now()) < this._multichartViewportSettleUntil));
+            if (!(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR)
+                && typeof this._isMultichartEmbedPanel === 'function'
+                && this._isMultichartEmbedPanel()
+                && _mcPanelBootLocked
+                && Array.isArray(this.data) && this.data.length) {
+                // Prefer the same-pair host's right-edge index (mirror
+                // _realignMultichartViewportAfterResize) so the peer's first paint
+                // lands on the SAME bar the settled host anchors; else use local.
+                let _mcPanelRi = null;
+                try {
+                    const _mcHost = (typeof this._multichartGetHostChart === 'function')
+                        ? this._multichartGetHostChart()
+                        : null;
+                    if (_mcHost && Array.isArray(_mcHost.data) && _mcHost.data.length
+                        && typeof this._multichartSamePairAsHost === 'function'
+                        && this._multichartSamePairAsHost(this.currentFileId)
+                        && typeof _mcHost.getVisibleEndIndex === 'function') {
+                        _mcPanelRi = _mcHost.getVisibleEndIndex();
+                    }
+                } catch (_) { _mcPanelRi = null; }
+                if (_mcPanelRi == null) {
+                    _mcPanelRi = (typeof this.getVisibleEndIndex === 'function')
+                        ? this.getVisibleEndIndex()
+                        : this.data.length - 1;
+                }
+                _mcBootPanelRightIdx = _mcPanelRi;
+            }
+        } catch (_) { _mcBootPanelRightIdx = null; }
+
         this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
 	        this.canvas.style.width = nextW + 'px';
@@ -17076,6 +17125,30 @@ class Chart {
 	                    const mm = this.margin || { l: 60, r: 60 };
 	                    const plotW = Math.max(1, this.w - (mm.l || 0) - (mm.r || 0));
 	                    const ri = Math.max(0, Math.min(_mcBootHostRightIdx, this.data.length - 1));
+	                    this.offsetX = Math.round(plotW - (ri + 1) * spacing);
+	                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
+	                }
+	            } else if (_mcBootPanelRightIdx != null) {
+	                // BOOT panel-resize re-anchor (§6cr felt-shake fix, PEER analogue
+	                // of the b102 host branch above): the frozen boot peer cell-resize
+	                // would otherwise skip ALL offset work above, so the first post-
+	                // resize paint keeps the OLD (pre-final-width) offsetX at the NEW
+	                // width and pushes the latest candle off the right edge; a later
+	                // resize/forceInitialSync mirror then snaps it back (the visible
+	                // peer "shake"). Apply the SAME drift-free index-based pin the
+	                // duplicate panels use so this FIRST paint already lands at the
+	                // final right-anchored offset (paint once, no later snap). Index-
+	                // based -> preserves mirror bar-alignment, safe under range-sync.
+	                // Scoped strictly to the frozen boot peer-resize path (normal live
+	                // resize untouched: _mcBootPanelRightIdx is null unless the embed
+	                // panel is boot-locked). HOST b102 above is unchanged.
+	                const spacing = (typeof this.getCandleSpacing === 'function')
+	                    ? this.getCandleSpacing()
+	                    : this.candleWidth;
+	                if (Number.isFinite(spacing) && spacing > 0) {
+	                    const mm = this.margin || { l: 60, r: 60 };
+	                    const plotW = Math.max(1, this.w - (mm.l || 0) - (mm.r || 0));
+	                    const ri = Math.max(0, Math.min(_mcBootPanelRightIdx, this.data.length - 1));
 	                    this.offsetX = Math.round(plotW - (ri + 1) * spacing);
 	                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
 	                }

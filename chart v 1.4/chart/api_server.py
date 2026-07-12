@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response, HTMLResponse, StreamingResponse
 from sqlalchemy import (
     create_engine,
     Column,
@@ -40,6 +40,8 @@ import subprocess
 import tempfile
 import time
 import threading
+import asyncio
+import ipaddress
 import smtplib
 import ssl as ssl_module
 from email.mime.multipart import MIMEMultipart
@@ -482,6 +484,56 @@ async def _admin_audit_middleware(request: Request, call_next):
             db.close()
     except Exception:
         # Never let audit failure affect the real response.
+        pass
+    return response
+
+
+@app.middleware("http")
+async def _security_monitor_middleware(request: Request, call_next):
+    """Edge of the app: enforce IP blocks and capture attack telemetry.
+
+    Registered after the audit middleware so it wraps it (outermost) — a blocked
+    IP is rejected before any handler or audit work runs. All security logging is
+    best-effort and never breaks the real response.
+    """
+    path = request.url.path or ""
+    method = request.method
+
+    # 1) Blocklist enforcement (cached; ~15s TTL). Allowlisted/private IPs bypass.
+    try:
+        ip = _client_ip(request)
+    except Exception:
+        ip = None
+    if ip and not _sec_ip_allowlisted(ip) and _sec_ip_is_blocked(ip):
+        # Throttle the "blocked hit" log to at most once/min per IP to avoid floods.
+        now = time.time()
+        if now - _sec_blockhit_last.get(ip, 0.0) > 60.0:
+            _sec_blockhit_last[ip] = now
+            record_security_event(
+                "ip_blocked_hit", request=request, ip=ip, status_code=403, path=path, method=method,
+            )
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Your IP address has been blocked due to suspicious activity."},
+        )
+
+    response = await call_next(request)
+
+    # 2) Post-response capture — only interesting security signals, no normal 2xx.
+    try:
+        sc = int(getattr(response, "status_code", 0) or 0)
+        is_api = path.startswith("/api/") or path.startswith("/journal/")
+        # Failed logins are captured inline in the login handler (has the email);
+        # skip auth paths here to avoid double counting.
+        is_auth = path.startswith("/api/auth/login") or path.startswith("/api/auth/signup")
+        if sc == 429:
+            record_security_event("rate_limited", request=request, ip=ip, status_code=sc, path=path, method=method)
+        elif sc == 403 and is_api and not is_auth:
+            evt = "admin_denied" if path.startswith("/api/admin/") else "forbidden"
+            record_security_event(evt, request=request, ip=ip, status_code=sc, path=path, method=method)
+        elif sc == 404 and any(m in path.lower() for m in _SEC_SCAN_MARKERS):
+            record_security_event("path_scan", request=request, ip=ip, status_code=sc, path=path, method=method)
+    except Exception:
         pass
     return response
 
@@ -1215,6 +1267,65 @@ class AdminAuditLog(Base):
     user_agent = Column(String(512), nullable=True)
 
 
+class SecurityEvent(Base):
+    """Attack/security telemetry captured across the whole API surface.
+
+    This is the single source of truth for the admin "Security Monitor": every
+    failed login, rate-limit block (429), forbidden/CSRF hit (403), unauthorized
+    probe (401 on auth), path-scan (suspicious 404), blocked-IP hit, and
+    auto-block decision lands here. Rows are hash-chained (`prev_hash` ->
+    `entry_hash`) so tampering (deletes/edits) is detectable via
+    `/api/admin/security/verify-integrity`.
+
+    Kept independent of the journal `security_logs` table (which lacks severity /
+    geo / chain), but capture ALSO best-effort mirrors into `security_logs` so
+    the existing journal "Security & attacks" card stays accurate now that auth
+    runs on this service.
+    """
+
+    __tablename__ = "security_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    event_type = Column(String(48), index=True, nullable=False)  # failed_login, rate_limited, forbidden, ...
+    severity = Column(String(16), index=True, nullable=False, default="info")  # info | warning | critical
+    ip_address = Column(String(64), index=True, nullable=True)
+    country = Column(String(64), nullable=True)                   # best-effort geo (optional)
+    user_id = Column(Integer, index=True, nullable=True)
+    email = Column(String(255), nullable=True)
+    method = Column(String(8), nullable=True)
+    path = Column(String(512), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    details = Column(Text, nullable=True)
+    prev_hash = Column(String(64), nullable=True)
+    entry_hash = Column(String(64), index=True, nullable=True)
+
+
+class BlockedIp(Base):
+    """Chart-side mapping of the shared ``blocked_ips`` table (owned by the journal
+    backend). Reused so blocks placed here are honoured by the journal UI and vice
+    versa. Column set mirrors ``journal-backend/models.py`` ``BlockedIP``."""
+
+    __tablename__ = "blocked_ips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String(45), unique=True, nullable=False, index=True)
+    reason = Column(String(255), nullable=False, default="blocked")
+    blocked_at = Column(DateTime, default=datetime.utcnow)
+    blocked_until = Column(DateTime, nullable=True)   # None + is_permanent => permanent
+    failed_attempts = Column(Integer, default=0)
+    is_permanent = Column(Boolean, default=False)
+    blocked_by = Column(String(100), default="system")
+
+    def is_active(self) -> bool:
+        if self.is_permanent:
+            return True
+        if self.blocked_until is None:
+            return True
+        return datetime.utcnow() < self.blocked_until
+
+
 class MentorshipAllowlist(Base):
     """Invite-only registration allowlist. When allowlist mode is on, only emails
     present here may create an account (they then pay/subscribe like normal users).
@@ -1261,6 +1372,7 @@ _CHART_TABLES = [
     AffiliateAttribution.__table__,
     AffiliateEvent.__table__,
     AdminAuditLog.__table__,
+    SecurityEvent.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -1269,6 +1381,375 @@ try:
     TradingSessionJournalTrade.__table__.create(bind=engine, checkfirst=True)
 except Exception:
     pass
+
+# Shared with journal-backend. checkfirst so we never clobber the journal's copy;
+# creates it if the chart service boots first on a fresh database.
+try:
+    BlockedIp.__table__.create(bind=engine, checkfirst=True)
+except Exception:
+    pass
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  SECURITY MONITOR — attack capture, auto-block, tamper-evident log
+#
+#  Central telemetry for the admin "Security Monitor" page. Every helper
+#  here is best-effort: security logging MUST NEVER break a real request,
+#  so all DB / network work is wrapped and swallowed on failure.
+# ═══════════════════════════════════════════════════════════════════
+_SECEVENT_GENESIS_HASH = "0" * 64
+_SECEVENT_LOCK = threading.Lock()
+
+# Auto-block policy (env-tunable). N auth failures / rate-limit hits from one IP
+# inside the window => temporary block. 0 disables auto-blocking.
+SEC_AUTOBLOCK_THRESHOLD = int(os.getenv("SECURITY_AUTOBLOCK_THRESHOLD", "12") or "12")
+SEC_AUTOBLOCK_WINDOW_SEC = int(os.getenv("SECURITY_AUTOBLOCK_WINDOW_SEC", "900") or "900")
+SEC_AUTOBLOCK_HOURS = int(os.getenv("SECURITY_AUTOBLOCK_HOURS", "6") or "6")
+SEC_BLOCKLIST_TTL_SEC = float(os.getenv("SECURITY_BLOCKLIST_TTL_SEC", "15") or "15")
+SEC_ALERT_THROTTLE_SEC = float(os.getenv("SECURITY_ALERT_THROTTLE_SEC", "300") or "300")
+# IPs that are never blocked (auto or manual enforcement) — protects admin/office
+# IPs from self-lockout. Comma-separated. Private IPs are always exempt too.
+SEC_IP_ALLOWLIST = {
+    s.strip() for s in (os.getenv("SECURITY_IP_ALLOWLIST", "") or "").split(",") if s.strip()
+}
+
+_sec_fail_counts: dict[str, deque] = {}          # ip -> recent auth/ratelimit failure timestamps
+_sec_alert_last: dict[str, float] = {}           # alert-key -> last sent monotonic ts
+_sec_blockhit_last: dict[str, float] = {}        # ip -> last "blocked hit" logged ts (throttle noise)
+_sec_blocklist_cache: dict = {"at": 0.0, "ips": {}}  # {ip: blocked_until|None}
+
+# Suspicious paths that indicate automated scanning when they 404.
+_SEC_SCAN_MARKERS = (
+    "/.env", "/wp-login", "/wp-admin", "/xmlrpc.php", "/.git", "/phpmyadmin",
+    "/.aws", "/config.json", "/.ssh", "/vendor/phpunit", "/actuator", "/cgi-bin",
+    "/.well-known/security", "/administrator", "/solr/", "/shell", "/.svn",
+)
+
+_SEC_DEFAULT_SEVERITY = {
+    "failed_login": "warning",
+    "rate_limited": "warning",
+    "forbidden": "warning",
+    "csrf_blocked": "warning",
+    "unauthorized": "info",
+    "path_scan": "warning",
+    "admin_denied": "warning",
+    "ip_blocked_hit": "warning",
+    "auto_block": "critical",
+    "manual_block": "warning",
+    "manual_unblock": "info",
+    "force_logout": "warning",
+    "login_success": "info",
+}
+
+_geoip_reader_cache: dict = {"tried": False, "reader": None}
+
+
+def _sec_is_private_ip(ip: str | None) -> bool:
+    if not ip:
+        return False
+    try:
+        return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
+
+
+def _sec_geo_country(ip: str | None) -> str | None:
+    """Best-effort country lookup. Returns None unless a local MaxMind DB is
+    configured via GEOIP_DB_PATH (no external calls — avoids SSRF / latency)."""
+    if not ip:
+        return None
+    if _sec_is_private_ip(ip):
+        return "local"
+    if not _geoip_reader_cache["tried"]:
+        _geoip_reader_cache["tried"] = True
+        path = (os.getenv("GEOIP_DB_PATH") or "").strip()
+        if path and Path(path).exists():
+            try:
+                import geoip2.database  # type: ignore
+                _geoip_reader_cache["reader"] = geoip2.database.Reader(path)
+            except Exception:
+                _geoip_reader_cache["reader"] = None
+    reader = _geoip_reader_cache["reader"]
+    if reader is None:
+        return None
+    try:
+        resp = reader.country(ip)
+        return (resp.country.iso_code or resp.country.name or None)
+    except Exception:
+        return None
+
+
+def _sec_hash(prev_hash: str, event_type: str, payload: dict, ts_iso: str) -> str:
+    canonical = json.dumps(
+        {"prev": prev_hash, "type": event_type, "payload": payload, "ts": ts_iso},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def record_security_event(
+    event_type: str,
+    *,
+    request: Request | None = None,
+    ip: str | None = None,
+    severity: str | None = None,
+    user_id: int | None = None,
+    email: str | None = None,
+    status_code: int | None = None,
+    path: str | None = None,
+    method: str | None = None,
+    details=None,
+    user_agent: str | None = None,
+) -> None:
+    """Append one hash-chained row to security_events (+ mirror security_logs).
+
+    Never raises. `details` may be a str or a JSON-serialisable dict."""
+    try:
+        if ip is None and request is not None:
+            ip = _client_ip(request)
+        if request is not None:
+            path = path or (request.url.path if request.url else None)
+            method = method or request.method
+            user_agent = user_agent or (request.headers.get("user-agent") or None)
+        sev = (severity or _SEC_DEFAULT_SEVERITY.get(event_type, "info"))[:16]
+        if isinstance(details, (dict, list)):
+            details_s = json.dumps(details, default=str, separators=(",", ":"))
+        else:
+            details_s = (str(details) if details is not None else None)
+        if details_s and len(details_s) > 4000:
+            details_s = details_s[:3980] + "…[truncated]"
+        country = _sec_geo_country(ip)
+        now = datetime.utcnow()
+        ts_iso = now.isoformat()
+        payload = {
+            "ip": ip, "type": event_type, "sev": sev, "uid": user_id,
+            "email": email, "status": status_code, "path": (path or "")[:512],
+            "method": method, "country": country,
+        }
+        with _SECEVENT_LOCK:
+            db = SessionLocal()
+            try:
+                last = (
+                    db.query(SecurityEvent.entry_hash)
+                    .order_by(SecurityEvent.id.desc())
+                    .first()
+                )
+                prev = (last[0] if last and last[0] else _SECEVENT_GENESIS_HASH)
+                entry_hash = _sec_hash(prev, event_type, payload, ts_iso)
+                row = SecurityEvent(
+                    created_at=now,
+                    event_type=event_type[:48],
+                    severity=sev,
+                    ip_address=(ip or None),
+                    country=country,
+                    user_id=user_id,
+                    email=(email or None),
+                    method=(method or None),
+                    path=((path or None) and path[:512]),
+                    status_code=status_code,
+                    user_agent=((user_agent or None) and user_agent[:512]),
+                    details=details_s,
+                    prev_hash=prev,
+                    entry_hash=entry_hash,
+                )
+                db.add(row)
+                db.commit()
+                # Best-effort mirror into the shared journal table so the existing
+                # "Security & attacks" card reflects chart-side events too.
+                try:
+                    db.execute(
+                        text(
+                            "INSERT INTO security_logs "
+                            "(ip_address, event_type, details, user_agent, endpoint, created_at, user_id) "
+                            "VALUES (:ip, :et, :det, :ua, :ep, :ts, :uid)"
+                        ),
+                        {
+                            "ip": (ip or "unknown")[:45],
+                            "et": event_type[:50],
+                            "det": details_s,
+                            "ua": ((user_agent or None) and user_agent[:500]),
+                            "ep": ((path or None) and path[:255]),
+                            "ts": now,
+                            "uid": user_id,
+                        },
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+            finally:
+                db.close()
+        # Fire an alert for critical events (auto-block etc.).
+        if sev == "critical":
+            _security_alert(
+                subject=f"[Talaria security] {event_type} from {ip or 'unknown'}",
+                body=f"type={event_type} ip={ip} path={path} status={status_code} details={details_s}",
+                key=f"crit:{event_type}",
+            )
+    except Exception:
+        pass
+
+
+def _security_alert(subject: str, body: str, key: str = "") -> None:
+    """Env-gated, throttled alert to email (SECURITY_ALERT_EMAIL) and/or Slack
+    (SECURITY_ALERT_SLACK_WEBHOOK). Runs in a daemon thread; never raises."""
+    try:
+        throttle_key = key or subject
+        now = time.monotonic()
+        last = _sec_alert_last.get(throttle_key, 0.0)
+        if now - last < SEC_ALERT_THROTTLE_SEC:
+            return
+        _sec_alert_last[throttle_key] = now
+        to_email = (os.getenv("SECURITY_ALERT_EMAIL") or os.getenv("ADMIN_ALERT_EMAIL") or "").strip()
+        slack = (os.getenv("SECURITY_ALERT_SLACK_WEBHOOK") or "").strip()
+        if not to_email and not slack:
+            return
+
+        def _worker():
+            if to_email:
+                try:
+                    server, port, use_tls, use_ssl, username, password, envelope_from = _bulk_email_smtp_params()
+                    if username and password:
+                        msg = MIMEText(body, "plain", "utf-8")
+                        msg["Subject"] = subject[:200]
+                        msg["From"] = f"Talaria Security <{envelope_from or username}>"
+                        msg["To"] = to_email
+                        if use_ssl:
+                            smtp = smtplib.SMTP_SSL(server, port, context=ssl_module.create_default_context(), timeout=20)
+                        else:
+                            smtp = smtplib.SMTP(server, port, timeout=20)
+                        with smtp:
+                            smtp.ehlo()
+                            if not use_ssl and use_tls:
+                                smtp.starttls(context=ssl_module.create_default_context())
+                                smtp.ehlo()
+                            smtp.login(username, password)
+                            smtp.sendmail(envelope_from or username, [to_email], msg.as_string())
+                except Exception:
+                    pass
+            if slack:
+                # SSRF-safe: only the official Slack webhook host is permitted.
+                try:
+                    parsed = urlparse(slack)
+                    if parsed.scheme == "https" and parsed.hostname == "hooks.slack.com":
+                        data = json.dumps({"text": f"*{subject}*\n{body}"}).encode("utf-8")
+                        req = urllib.request.Request(
+                            slack, data=data, headers={"Content-Type": "application/json"}
+                        )
+                        urllib.request.urlopen(req, timeout=10).read()
+                except Exception:
+                    pass
+
+        threading.Thread(target=_worker, daemon=True).start()
+    except Exception:
+        pass
+
+
+def _sec_refresh_blocklist(force: bool = False) -> None:
+    now = time.monotonic()
+    if not force and (now - _sec_blocklist_cache["at"]) < SEC_BLOCKLIST_TTL_SEC:
+        return
+    ips: dict = {}
+    try:
+        db = SessionLocal()
+        try:
+            for b in db.query(BlockedIp).all():
+                try:
+                    if b.is_active():
+                        ips[b.ip_address] = b.blocked_until
+                except Exception:
+                    continue
+        finally:
+            db.close()
+    except Exception:
+        # On error keep the previous cache rather than failing open loudly.
+        _sec_blocklist_cache["at"] = now
+        return
+    _sec_blocklist_cache["ips"] = ips
+    _sec_blocklist_cache["at"] = now
+
+
+def _sec_ip_is_blocked(ip: str | None) -> bool:
+    if not ip:
+        return False
+    _sec_refresh_blocklist()
+    return ip in _sec_blocklist_cache["ips"]
+
+
+def _sec_ip_allowlisted(ip: str | None) -> bool:
+    """Never-block IPs: explicit allowlist + all private ranges (prevents an admin
+    on the LAN/VPN or a misconfigured proxy hop from being locked out)."""
+    if not ip:
+        return True
+    if ip in SEC_IP_ALLOWLIST:
+        return True
+    return _sec_is_private_ip(ip)
+
+
+def _sec_block_ip(
+    ip: str,
+    *,
+    reason: str = "blocked",
+    hours: int | None = None,
+    permanent: bool = False,
+    by: str = "system",
+) -> None:
+    """Insert/update a blocked_ips row. Never raises (best-effort for auto-block;
+    admin endpoints validate inputs before calling)."""
+    try:
+        db = SessionLocal()
+        try:
+            until = None if permanent else (datetime.utcnow() + timedelta(hours=hours or SEC_AUTOBLOCK_HOURS))
+            existing = db.query(BlockedIp).filter(BlockedIp.ip_address == ip).first()
+            if existing:
+                existing.reason = reason[:255]
+                existing.blocked_until = until
+                existing.is_permanent = bool(permanent)
+                existing.blocked_by = by[:100]
+                existing.blocked_at = datetime.utcnow()
+            else:
+                db.add(BlockedIp(
+                    ip_address=ip[:45],
+                    reason=reason[:255],
+                    blocked_until=until,
+                    is_permanent=bool(permanent),
+                    blocked_by=by[:100],
+                    blocked_at=datetime.utcnow(),
+                ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+    _sec_refresh_blocklist(force=True)
+
+
+def _sec_note_auth_failure(ip: str | None, request: Request | None, email: str | None) -> None:
+    """Record a failed_login event and auto-block the IP if it crosses the
+    threshold inside the rolling window."""
+    record_security_event(
+        "failed_login", request=request, ip=ip, email=email,
+        status_code=401, details={"email": email},
+    )
+    if not ip or SEC_AUTOBLOCK_THRESHOLD <= 0 or _sec_ip_allowlisted(ip):
+        return
+    now = time.time()
+    dq = _sec_fail_counts.setdefault(ip, deque())
+    dq.append(now)
+    while dq and dq[0] < now - SEC_AUTOBLOCK_WINDOW_SEC:
+        dq.popleft()
+    if len(dq) >= SEC_AUTOBLOCK_THRESHOLD and not _sec_ip_is_blocked(ip):
+        _sec_block_ip(
+            ip,
+            reason=f"Auto-blocked: {len(dq)} failed auth in {SEC_AUTOBLOCK_WINDOW_SEC // 60}m",
+            hours=SEC_AUTOBLOCK_HOURS,
+            by="system",
+        )
+        record_security_event(
+            "auto_block", request=request, ip=ip, severity="critical",
+            details={"failures": len(dq), "window_sec": SEC_AUTOBLOCK_WINDOW_SEC, "block_hours": SEC_AUTOBLOCK_HOURS},
+        )
 
 # Safe migration: add access_expires_at to users table if missing.
 def _backfill_plan_tier_ranks(conn) -> None:
@@ -11621,8 +12102,13 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         _apply_entitlements_schema_migrations(engine)
         user = db.query(User).filter(User.email == email).first()
         if not user:
+            _sec_note_auth_failure(_client_ip(request), request, email)
             raise HTTPException(status_code=401, detail="Invalid email or password.")
         if not user.is_active:
+            record_security_event(
+                "failed_login", request=request, email=email, user_id=int(user.id),
+                status_code=403, details={"reason": "account_disabled"},
+            )
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -11631,6 +12117,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
                 },
             )
         if not _verify_password(payload.password, user.password_hash):
+            _sec_note_auth_failure(_client_ip(request), request, email)
             raise HTTPException(status_code=401, detail="Invalid email or password.")
 
         _chart_enforce_mfa_if_enabled(db, user, payload.totp_code)
@@ -11657,6 +12144,11 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         db.refresh(user)
 
         _set_session_cookie(response, session_id, request=request)
+        record_security_event(
+            "login_success", request=request, email=email, user_id=int(user.id),
+            status_code=200, severity="info",
+            details={"admin": (user.role or "") == "admin"},
+        )
         try:
             _affiliate_post_auth(db, user, request, payload.affiliate_code, is_signup=False)
             db.commit()
@@ -21473,6 +21965,424 @@ async def admin_audit_log_prune(payload: AdminAuditLogPruneIn, request: Request)
         return {"success": True, "dry_run": False, "deleted": int(deleted or 0), "cutoff_utc": cutoff.isoformat() + "Z"}
     finally:
         db.close()
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Security Monitor API — attack log, stats, IP blocking, session revocation
+# ───────────────────────────────────────────────────────────────────────
+
+def _sec_event_dict(e: "SecurityEvent") -> dict:
+    return {
+        "id": e.id,
+        "created_at": (e.created_at.isoformat() if e.created_at else None),
+        "event_type": e.event_type,
+        "severity": e.severity,
+        "ip_address": e.ip_address,
+        "country": e.country,
+        "user_id": e.user_id,
+        "email": e.email,
+        "method": e.method,
+        "path": e.path,
+        "status_code": e.status_code,
+        "user_agent": e.user_agent,
+        "details": e.details,
+    }
+
+
+@app.get("/api/admin/security/events")
+async def admin_security_events(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+    event_type: str | None = None,
+    severity: str | None = None,
+    ip: str | None = None,
+    since_hours: int | None = 24,
+    q: str | None = None,
+    since_id: int | None = None,
+):
+    """Paginated, filterable attack log from `security_events`. Admin-only."""
+    _require_admin(request)
+    limit = max(1, min(500, int(limit or 100)))
+    offset = max(0, int(offset or 0))
+    db = SessionLocal()
+    try:
+        qry = db.query(SecurityEvent)
+        if event_type:
+            qry = qry.filter(SecurityEvent.event_type == event_type[:48])
+        if severity:
+            qry = qry.filter(SecurityEvent.severity == severity[:16])
+        if ip:
+            qry = qry.filter(SecurityEvent.ip_address == ip[:64])
+        if since_id:
+            qry = qry.filter(SecurityEvent.id > int(since_id))
+        elif since_hours:
+            cutoff = datetime.utcnow() - timedelta(hours=max(1, min(24 * 90, int(since_hours))))
+            qry = qry.filter(SecurityEvent.created_at >= cutoff)
+        if q:
+            needle = f"%{q[:120]}%"
+            qry = qry.filter(
+                or_(
+                    SecurityEvent.path.ilike(needle),
+                    SecurityEvent.details.ilike(needle),
+                    SecurityEvent.email.ilike(needle),
+                    SecurityEvent.user_agent.ilike(needle),
+                )
+            )
+        total = qry.count()
+        rows = qry.order_by(SecurityEvent.id.desc()).offset(offset).limit(limit).all()
+        return {
+            "success": True,
+            "total": int(total),
+            "limit": limit,
+            "offset": offset,
+            "events": [_sec_event_dict(e) for e in rows],
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/security/summary")
+async def admin_security_summary(request: Request, hours: int = 24):
+    """Stat cards + threat level + top attacker IPs for the last N hours."""
+    _require_admin(request)
+    hours = max(1, min(24 * 30, int(hours or 24)))
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    db = SessionLocal()
+    try:
+        base = db.query(SecurityEvent).filter(SecurityEvent.created_at >= cutoff)
+
+        def _count(**flt):
+            q = base
+            for k, v in flt.items():
+                q = q.filter(getattr(SecurityEvent, k) == v)
+            return int(q.count())
+
+        failed_logins = _count(event_type="failed_login")
+        rate_limited = _count(event_type="rate_limited")
+        forbidden = _count(event_type="forbidden") + _count(event_type="admin_denied") + _count(event_type="csrf_blocked")
+        scans = _count(event_type="path_scan")
+        auto_blocks = _count(event_type="auto_block")
+        critical = int(base.filter(SecurityEvent.severity == "critical").count())
+        total_events = int(base.count())
+        unique_ips = int(
+            db.query(func.count(func.distinct(SecurityEvent.ip_address)))
+            .filter(SecurityEvent.created_at >= cutoff, SecurityEvent.severity != "info")
+            .scalar() or 0
+        )
+
+        _sec_refresh_blocklist(force=True)
+        blocked_active = len(_sec_blocklist_cache["ips"])
+
+        top_rows = (
+            db.query(
+                SecurityEvent.ip_address,
+                func.count(SecurityEvent.id).label("hits"),
+                func.max(SecurityEvent.created_at).label("last_seen"),
+                func.max(SecurityEvent.country).label("country"),
+            )
+            .filter(
+                SecurityEvent.created_at >= cutoff,
+                SecurityEvent.severity != "info",
+                SecurityEvent.ip_address.isnot(None),
+            )
+            .group_by(SecurityEvent.ip_address)
+            .order_by(func.count(SecurityEvent.id).desc())
+            .limit(15)
+            .all()
+        )
+        top_attackers = [
+            {
+                "ip_address": r.ip_address,
+                "hits": int(r.hits),
+                "last_seen": (r.last_seen.isoformat() if r.last_seen else None),
+                "country": r.country,
+                "blocked": r.ip_address in _sec_blocklist_cache["ips"],
+            }
+            for r in top_rows
+        ]
+
+        # Threat level heuristic.
+        if critical > 0 or failed_logins >= 50:
+            threat = "red"
+        elif failed_logins >= 15 or rate_limited >= 30 or scans >= 20:
+            threat = "orange"
+        elif total_events > 0:
+            threat = "yellow"
+        else:
+            threat = "green"
+
+        return {
+            "success": True,
+            "window_hours": hours,
+            "threat_level": threat,
+            "stats": {
+                "failed_logins": failed_logins,
+                "rate_limited": rate_limited,
+                "forbidden": forbidden,
+                "path_scans": scans,
+                "auto_blocks": auto_blocks,
+                "critical": critical,
+                "total_events": total_events,
+                "unique_attacker_ips": unique_ips,
+                "blocked_ips_active": blocked_active,
+            },
+            "top_attackers": top_attackers,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/security/trend")
+async def admin_security_trend(request: Request, hours: int = 24):
+    """Hourly event buckets by severity for the trend chart."""
+    _require_admin(request)
+    hours = max(1, min(24 * 14, int(hours or 24)))
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(SecurityEvent.created_at, SecurityEvent.severity)
+            .filter(SecurityEvent.created_at >= cutoff)
+            .all()
+        )
+        buckets: dict[str, dict] = {}
+        start = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        for i in range(hours - 1, -1, -1):
+            key = (start - timedelta(hours=i)).strftime("%Y-%m-%dT%H:00")
+            buckets[key] = {"hour": key, "info": 0, "warning": 0, "critical": 0}
+        for created_at, severity in rows:
+            if not created_at:
+                continue
+            key = created_at.strftime("%Y-%m-%dT%H:00")
+            b = buckets.get(key)
+            if b is None:
+                continue
+            sev = severity if severity in ("info", "warning", "critical") else "info"
+            b[sev] += 1
+        return {"success": True, "window_hours": hours, "buckets": list(buckets.values())}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/security/blocked-ips")
+async def admin_security_blocked_ips(request: Request):
+    """List all blocked IPs (active + expired) from the shared blocklist."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        rows = db.query(BlockedIp).order_by(BlockedIp.blocked_at.desc()).all()
+        out = []
+        for b in rows:
+            try:
+                active = b.is_active()
+            except Exception:
+                active = False
+            out.append({
+                "id": b.id,
+                "ip_address": b.ip_address,
+                "reason": b.reason,
+                "blocked_at": (b.blocked_at.isoformat() if b.blocked_at else None),
+                "blocked_until": (b.blocked_until.isoformat() if b.blocked_until else None),
+                "is_permanent": bool(b.is_permanent),
+                "blocked_by": b.blocked_by,
+                "active": active,
+            })
+        return {"success": True, "blocked_ips": out, "active_count": sum(1 for x in out if x["active"])}
+    finally:
+        db.close()
+
+
+class SecurityBlockIpIn(BaseModel):
+    ip_address: str = Field(..., min_length=3, max_length=45)
+    reason: str = Field(default="Manually blocked by admin", max_length=255)
+    duration_hours: int = Field(default=24, ge=1, le=8760)
+    permanent: bool = False
+
+
+@app.post("/api/admin/security/block-ip")
+async def admin_security_block_ip(payload: SecurityBlockIpIn, request: Request):
+    """Block an IP address. Validated so an admin cannot block their own IP or a
+    private range (self-lockout protection)."""
+    admin = _require_admin(request)
+    ip = payload.ip_address.strip()
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid IP address.")
+    if _sec_ip_allowlisted(ip) or ip == _client_ip(request):
+        raise HTTPException(status_code=400, detail="Refusing to block a private/allowlisted IP or your own address.")
+    by = getattr(admin, "email", None) or "admin"
+    _sec_block_ip(ip, reason=payload.reason, hours=payload.duration_hours, permanent=payload.permanent, by=by)
+    record_security_event(
+        "manual_block", request=request, ip=ip, severity="warning",
+        details={"reason": payload.reason, "permanent": payload.permanent, "hours": payload.duration_hours, "by": by},
+    )
+    _record_admin_action(
+        request, action="security_block_ip", status="ok", status_code=200,
+        target_type="ip", target_id=ip,
+        params={"reason": payload.reason, "permanent": payload.permanent, "hours": payload.duration_hours},
+    )
+    return {"success": True, "ip_address": ip}
+
+
+class SecurityUnblockIpIn(BaseModel):
+    ip_address: str | None = None
+    block_id: int | None = None
+
+
+@app.post("/api/admin/security/unblock-ip")
+async def admin_security_unblock_ip(payload: SecurityUnblockIpIn, request: Request):
+    """Remove an IP block by address or block id."""
+    admin = _require_admin(request)
+    if not payload.ip_address and not payload.block_id:
+        raise HTTPException(status_code=400, detail="Provide ip_address or block_id.")
+    db = SessionLocal()
+    try:
+        q = db.query(BlockedIp)
+        if payload.block_id:
+            q = q.filter(BlockedIp.id == int(payload.block_id))
+        else:
+            q = q.filter(BlockedIp.ip_address == payload.ip_address.strip()[:45])
+        row = q.first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Block not found.")
+        ip = row.ip_address
+        db.delete(row)
+        db.commit()
+    finally:
+        db.close()
+    _sec_refresh_blocklist(force=True)
+    by = getattr(admin, "email", None) or "admin"
+    record_security_event("manual_unblock", request=request, ip=ip, severity="info", details={"by": by})
+    _record_admin_action(
+        request, action="security_unblock_ip", status="ok", status_code=200,
+        target_type="ip", target_id=ip,
+    )
+    return {"success": True, "ip_address": ip}
+
+
+class SecurityForceLogoutIn(BaseModel):
+    user_id: int | None = None
+    email: str | None = None
+
+
+@app.post("/api/admin/security/force-logout")
+async def admin_security_force_logout(payload: SecurityForceLogoutIn, request: Request):
+    """Revoke ALL active sessions for a user (force-logout). Deletes the user's
+    server-side `user_sessions` rows so every device is signed out immediately."""
+    admin = _require_admin(request)
+    db = SessionLocal()
+    try:
+        target = None
+        if payload.user_id:
+            target = db.query(User).filter(User.id == int(payload.user_id)).first()
+        elif payload.email:
+            target = db.query(User).filter(User.email == payload.email.strip().lower()).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found.")
+        revoked = db.query(UserSession).filter(UserSession.user_id == target.id).delete(synchronize_session=False)
+        db.commit()
+        tid = int(target.id)
+        temail = target.email
+    finally:
+        db.close()
+    by = getattr(admin, "email", None) or "admin"
+    record_security_event(
+        "force_logout", request=request, user_id=tid, email=temail, severity="warning",
+        details={"revoked_sessions": int(revoked or 0), "by": by},
+    )
+    _record_admin_action(
+        request, action="security_force_logout", status="ok", status_code=200,
+        target_type="user", target_id=tid, result={"revoked_sessions": int(revoked or 0)},
+    )
+    return {"success": True, "user_id": tid, "email": temail, "revoked_sessions": int(revoked or 0)}
+
+
+@app.get("/api/admin/security/verify-integrity")
+async def admin_security_verify_integrity(request: Request, limit: int = 5000):
+    """Recompute the hash chain over recent security_events to detect tampering
+    (deleted or edited rows). Returns ok=false + the first broken id if any."""
+    _require_admin(request)
+    limit = max(100, min(50000, int(limit or 5000)))
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(SecurityEvent)
+            .order_by(SecurityEvent.id.desc())
+            .limit(limit)
+            .all()
+        )
+        rows = list(reversed(rows))
+        if not rows:
+            return {"success": True, "ok": True, "checked": 0, "note": "No events yet."}
+        broken_at = None
+        prev = rows[0].prev_hash or _SECEVENT_GENESIS_HASH
+        for e in rows:
+            payload = {
+                "ip": e.ip_address, "type": e.event_type, "sev": e.severity, "uid": e.user_id,
+                "email": e.email, "status": e.status_code, "path": (e.path or "")[:512],
+                "method": e.method, "country": e.country,
+            }
+            expected = _sec_hash(prev, e.event_type, payload, e.created_at.isoformat() if e.created_at else "")
+            if e.prev_hash != prev or e.entry_hash != expected:
+                broken_at = e.id
+                break
+            prev = e.entry_hash
+        return {
+            "success": True,
+            "ok": broken_at is None,
+            "checked": len(rows),
+            "first_broken_id": broken_at,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/security/stream")
+async def admin_security_stream(request: Request):
+    """Server-Sent Events stream of new security events for the live view.
+    Admin-only; polls the table every ~3s and pushes rows with id > last."""
+    _require_admin(request)
+
+    async def _gen():
+        db = SessionLocal()
+        try:
+            last = db.query(func.max(SecurityEvent.id)).scalar() or 0
+        except Exception:
+            last = 0
+        finally:
+            db.close()
+        yield "retry: 5000\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                db = SessionLocal()
+                try:
+                    rows = (
+                        db.query(SecurityEvent)
+                        .filter(SecurityEvent.id > last)
+                        .order_by(SecurityEvent.id.asc())
+                        .limit(100)
+                        .all()
+                    )
+                    for e in rows:
+                        last = e.id
+                        yield "data: " + json.dumps(_sec_event_dict(e), default=str) + "\n\n"
+                    if not rows:
+                        yield ": keep-alive\n\n"
+                finally:
+                    db.close()
+            except Exception:
+                yield ": error\n\n"
+            await asyncio.sleep(3)
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════

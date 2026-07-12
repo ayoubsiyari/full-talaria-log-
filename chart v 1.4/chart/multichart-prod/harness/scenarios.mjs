@@ -4001,6 +4001,164 @@ async function hS28(ctx) {
   });
 }
 
+// ── H-S29 ────────────────────────────────────────────────────────────────
+// §6cr RESIDUAL FIRST-RENDER PEER "SHAKE" entering multichart (panel analogue
+// of the §6cq/b102 host fix). While an EMBED (peer B/C/D) panel's boot viewport
+// is locked (`_isMultichartBootViewportLocked` — bars positioned, still within
+// `_multichartViewportSettleUntil`), a boot layout-settle width change (the
+// iframe growing to its final cell width) hit the frozen resize path: chart.js
+// resize() only re-anchored the HOST (b102 `_mcBootHostRightIdx`), so the peer
+// kept its OLD (pre-final-width) offsetX at the NEW width — the latest candle
+// drifted off the right edge and a later resize/forceInitialSync mirror snapped
+// it back (the residual peer SHAKE, ~15–50px, 1–2 frames).
+//
+// FIX (default ON, chart.js resize, kill-switch
+// __TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR): a scoped peer branch parallel to
+// b102 — while frozen on the boot peer-resize path, capture the pre-resize
+// right-edge bar (`_mcBootPanelRightIdx`, preferring the same-pair host's
+// getVisibleEndIndex() else local) and re-anchor with the SAME drift-free index
+// pin the duplicate panels use, so the FIRST painted frame already lands at the
+// final right-anchored offset (paint once, no later snap). Index-based →
+// preserves mirror bar-alignment, safe under range-sync.
+//
+// DETERMINISTIC (no wall-clock): models the frozen boot-locked peer cell-resize
+// entirely in the host main frame (reusing the DIAG probe approach, tagging the
+// document as an embed panel + arming the boot viewport lock) and asserts the
+// FIRST post-resize painted offsetX against the index-pin right-anchor target.
+// Width GROWS by 40px (layout-settle), the opposite direction of H-S28's host
+// shrink. Every value derives only from seeded data extent + margins + widths.
+//   GREEN (fix):  |firstPaintOffsetX − rightAnchorTarget| < 1px AND the re-
+//                 anchor happens on the FIRST paint (exactly one pass).
+//   RED   (kill): firstPaintOffsetX ≈ stale pre-final-width offset (drift ≈
+//                 postW−preW off target, ~40px) → the later-snap shake.
+async function hS29(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, boot.getInFlightDataRequests);
+
+    const probe = await page.evaluate((disableFlag) => {
+      const ch = window.chart;
+      if (!ch || !Array.isArray(ch.data) || !ch.data.length) return { ok: false, reason: 'chart not painted' };
+      const wrapper = document.getElementById('chartWrapper');
+      if (!wrapper) return { ok: false, reason: 'no chartWrapper' };
+
+      const m = ch.margin || { l: 60, r: 60 };
+      const fixDisabled = !!window[disableFlag];
+
+      // ── Tag this document as an EMBED (peer) panel so the peer re-anchor
+      //    branch is the one under test (b102 host branch stays inert — a peer
+      //    is NOT a host panel). Restore exactly afterward. ──
+      const priorEmbed = document.documentElement.classList.contains('multichart-embed');
+      if (!priorEmbed) document.documentElement.classList.add('multichart-embed');
+
+      // ── Arm the boot viewport lock exactly as embed-bridge does during boot
+      //    (bars positioned + still inside the settle window) and enter the
+      //    frozen boot-resize path (the peer analogue of MultichartGrid's host
+      //    freeze). Restore all prior state afterward. ──
+      const priorPositioned = ch._multichartBootViewportPositioned;
+      const priorSettleUntil = ch._multichartViewportSettleUntil;
+      const priorSkip = ch._multichartSkipResizeOffsetAdjust;
+      const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      ch._multichartBootViewportPositioned = true;
+      ch._multichartViewportSettleUntil = nowMs + 60_000;
+      ch._multichartSkipResizeOffsetAdjust = true;
+
+      // ── Pre-resize: peer at its pre-final (smaller) cell width, latest candle
+      //    right-anchored. ──
+      const preW = ch.w;
+      const preOffset = Number(ch.offsetX);
+      const preCandleWidth = Number(ch.candleWidth);
+      const spacing = (typeof ch.getCandleSpacing === 'function') ? ch.getCandleSpacing() : ch.candleWidth;
+      const rightIdx = (typeof ch.getVisibleEndIndex === 'function') ? ch.getVisibleEndIndex() : (ch.data.length - 1);
+      const rendersBefore = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+      // ── Boot layout-settle width GROWTH (iframe reaches its final cell width),
+      //    then resize() while boot-locked + frozen. ──
+      const postW = preW + 40;
+      const h = Math.round(wrapper.getBoundingClientRect().height) || ch.h;
+      wrapper.style.right = 'auto';
+      wrapper.style.bottom = 'auto';
+      wrapper.style.width = postW + 'px';
+      wrapper.style.height = h + 'px';
+
+      ch._lastResizeDpr = 0;
+      ch.resize();
+
+      const firstPaintOffset = Number(ch.offsetX);
+      const postCandleWidth = Number(ch.candleWidth);
+      const paintW = ch.w;
+      const rendersAfter = (ch._mcDiag && Number.isFinite(ch._mcDiag.renders)) ? ch._mcDiag.renders : 0;
+
+      // Canonical right-anchor target: the drift-free index pin at the NEW width.
+      const plotWpost = Math.max(1, paintW - (m.l || 0) - (m.r || 0));
+      const ri = Math.max(0, Math.min(rightIdx, ch.data.length - 1));
+      const rightAnchorTarget = Math.round(plotWpost - (ri + 1) * spacing);
+
+      // ── Restore all mutated state so nothing leaks into H-INV / later reads. ──
+      if (!priorEmbed) document.documentElement.classList.remove('multichart-embed');
+      if (priorPositioned === undefined) delete ch._multichartBootViewportPositioned;
+      else ch._multichartBootViewportPositioned = priorPositioned;
+      if (priorSettleUntil === undefined) delete ch._multichartViewportSettleUntil;
+      else ch._multichartViewportSettleUntil = priorSettleUntil;
+      if (priorSkip === undefined) delete ch._multichartSkipResizeOffsetAdjust;
+      else ch._multichartSkipResizeOffsetAdjust = priorSkip;
+
+      const drift = firstPaintOffset - rightAnchorTarget;   // ~0 (fix) / ~−(postW−preW) (stale)
+      const snapFromStale = firstPaintOffset - preOffset;    // moved on first paint (fix) / 0 (stale)
+      const reanchorPasses = Math.abs(snapFromStale) > 1 ? 1 : 0;
+      return {
+        ok: true,
+        fixDisabled,
+        preW, postW, paintW,
+        preOffset, firstPaintOffset, rightAnchorTarget,
+        spacing, rightIdx, dataLen: ch.data.length,
+        preCandleWidth, postCandleWidth,
+        rendersBefore, rendersAfter,
+        drift, snapFromStale, reanchorPasses,
+        staleVsTarget: preOffset - rightAnchorTarget,
+      };
+    }, '__TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR');
+
+    checks.check('H-S29 probe constructed frozen boot-locked peer-resize', probe.ok, probe.ok ? '' : probe.reason);
+    if (!probe.ok) return checks;
+
+    // ── Setup / non-vacuous (pass in BOTH modes) ──
+    checks.check('H-S29 setup: peer cell grew on boot layout-settle (+40px)',
+      probe.postW > probe.preW && (probe.postW - probe.preW) === 40,
+      `preW=${probe.preW} postW=${probe.postW} paintW=${probe.paintW}`);
+    checks.check('H-S29 setup: candleWidth unchanged across boot resize',
+      probe.preCandleWidth === probe.postCandleWidth,
+      `pre=${probe.preCandleWidth} post=${probe.postCandleWidth}`);
+    checks.check('H-S29 setup: exactly one paint on the frozen boot resize',
+      probe.rendersAfter - probe.rendersBefore >= 1,
+      `renders ${probe.rendersBefore}→${probe.rendersAfter}`);
+    checks.check('H-S29 setup: right-anchor target separated from stale offset (non-vacuous shake)',
+      Math.abs(probe.staleVsTarget) > 20,
+      `stale=${probe.preOffset} target=${probe.rightAnchorTarget} |Δ|=${Math.abs(probe.staleVsTarget).toFixed(1)}px`);
+
+    // ── CORE (GREEN pass / RED fail) ──
+    checks.check('H-S29 CORE: first post-resize paint lands at right-anchor target (<1px)',
+      Math.abs(probe.drift) < 1,
+      `firstPaint=${probe.firstPaintOffset} target=${probe.rightAnchorTarget} drift=${probe.drift.toFixed(1)}px`);
+    checks.check('H-S29 CORE: no later snap — peer re-anchored on the FIRST painted frame',
+      Math.abs(probe.snapFromStale) > 20,
+      `firstPaint=${probe.firstPaintOffset} stale=${probe.preOffset} moved=${probe.snapFromStale.toFixed(1)}px`);
+    checks.check('H-S29 CORE: exactly one re-anchor pass, on the first paint',
+      probe.reanchorPasses === 1,
+      `reanchorPasses=${probe.reanchorPasses} (fixDisabled=${probe.fixDisabled})`);
+
+    notes.push(`H-S29 (§6cr boot peer-resize first-render shake): peer boot layout-settle `
+      + `(${probe.preW}px→${probe.postW}px) frozen boot-locked cell-resize, candleWidth=${probe.preCandleWidth} `
+      + `unchanged, dataLen=${probe.dataLen}. firstPaintOffsetX=${probe.firstPaintOffset} vs `
+      + `rightAnchorTarget=${probe.rightAnchorTarget} (drift=${probe.drift.toFixed(1)}px); `
+      + `stale(pre-final-width)=${probe.preOffset} (|stale−target|=${Math.abs(probe.staleVsTarget).toFixed(1)}px). `
+      + `reanchorPasses=${probe.reanchorPasses}. Kill-switch __TALARIA_MC_DISABLE_BOOT_PANEL_REANCHOR `
+      + `fixDisabled=${probe.fixDisabled}.`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -4029,6 +4187,7 @@ export function scenarioList() {
     { id: 'H-S26', title: 'sync-off peer play isolation: host TF switch leaves same-pair peers on own cadence/master (BL-10)', run: hS26 },
     { id: 'H-S27', title: 'finer-self-owner (peer finer than host NATIVE) play viewport follows leading edge, not frozen (A7 §6co)', run: hS27 },
     { id: 'H-S28', title: 'boot host single→multi cell-resize re-anchors on first paint (no first-render shake) (§6cq)', run: hS28 },
+    { id: 'H-S29', title: 'boot peer layout-settle cell-resize re-anchors on first paint (no residual peer shake) (§6cr)', run: hS29 },
   ];
 }
 
