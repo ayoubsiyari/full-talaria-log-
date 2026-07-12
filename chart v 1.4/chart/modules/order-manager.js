@@ -21,6 +21,11 @@ function _orderTypeReclassifyV2Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_TYPE_RECLASSIFY_V2;
 }
 
+/** T4 step 6: default ON — live-refresh order type labels during drag; own kill-switch. */
+function _orderTypeLiveLabelFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDERTYPE_LIVE_LABEL_FIX;
+}
+
 function _classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
     const market = Number(currentPrice);
     const entry = Number(price);
@@ -13122,6 +13127,39 @@ class OrderManager {
         this._applyImmediateLevelCtrlHover(lineData);
     }
 
+    _refreshOrderTypePreviewLabelLive(lineData, overrideY = null, chart = null) {
+        if (!_orderTypeLiveLabelFixEnabled()) return false;
+        if (!lineData || !lineData.labelGroup) return false;
+        const label = String(lineData.label || '');
+        if (!(label === 'Entry' || label.startsWith('Entry#'))) return false;
+
+        this._orderTypeLiveLabelPending = { lineData, overrideY, chart };
+        if (this._orderTypeLiveLabelRaf) return true;
+
+        const run = () => {
+            this._orderTypeLiveLabelRaf = null;
+            const pending = this._orderTypeLiveLabelPending;
+            this._orderTypeLiveLabelPending = null;
+            if (!pending?.lineData?.labelGroup) return;
+            this.renderPreviewLabel(pending.lineData, pending.overrideY);
+            this.adjustPreviewLineForLabel(pending.lineData);
+            if (typeof this._syncPendingLimitStopConnector === 'function') {
+                this._syncPendingLimitStopConnector();
+            }
+            if (pending.chart && typeof this._refreshLevelCtrlHoverIfNeeded === 'function') {
+                this._refreshLevelCtrlHoverIfNeeded(pending.chart);
+            }
+        };
+
+        if (typeof requestAnimationFrame === 'function') {
+            this._orderTypeLiveLabelRaf = requestAnimationFrame(run);
+        } else {
+            this._orderTypeLiveLabelRaf = true;
+            run();
+        }
+        return true;
+    }
+
     /**
      * Reveal freshly-(re)created `.om-level-ctrl` controls in a preview label group
      * immediately (no opacity transition) when the cursor is already on that level.
@@ -18899,6 +18937,7 @@ class OrderManager {
                         }
                     }
                     }
+                    self._refreshOrderTypePreviewLabelLive(lineData, clampedY, ch);
                     
                     // Entry-anchored badges: full X+Y reflow beside entry tag (replay ticks won't snap back).
                     if (self._useEntryAnchoredTpSlBadges()) {
@@ -19008,6 +19047,7 @@ class OrderManager {
                         }
                     }
                     }
+                    self._refreshOrderTypePreviewLabelLive(lineData, clampedY, ch);
                     
                     self.calculateAdvancedRiskReward();
                 }
