@@ -1107,6 +1107,18 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   async function persistSessionWithConfig(config: Record<string, unknown>): Promise<number | null> {
     const sessionName = sanitizeSessionNameInput(newSessName.trim() || "Backtest Session");
     const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
+    // API errors can carry `detail` as a string OR a structured object
+    // (e.g. { code, section, message }). Unwrap it so users see the real reason
+    // instead of "[object Object]".
+    const readErr = async (r: Response): Promise<string> => {
+      const body = await r.json().catch(() => null);
+      const d = body?.detail;
+      if (typeof d === "string" && d.trim()) return d;
+      if (d && typeof d === "object") {
+        return String(d.message || d.code || JSON.stringify(d));
+      }
+      return `HTTP ${r.status}`;
+    };
     if (editSessId != null) {
       const res = await fetch(`/api/sessions/${encodeURIComponent(String(editSessId))}`, {
         method: "PATCH",
@@ -1115,8 +1127,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
         body: JSON.stringify({ name: sessionName, config }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ? String(body.detail) : `HTTP ${res.status}`);
+        throw new Error(await readErr(res));
       }
       return Number(editSessId);
     }
@@ -1127,8 +1138,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       body: JSON.stringify({ name: sessionName, session_type, config }),
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.detail ? String(body.detail) : `HTTP ${res.status}`);
+      throw new Error(await readErr(res));
     }
     const payload = await res.json();
     const id = payload?.session?.id;

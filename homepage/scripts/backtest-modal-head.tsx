@@ -689,7 +689,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ? String(body.detail) : `HTTP ${res.status}`);
+        const d = body?.detail;
+        const msg =
+          typeof d === "string" && d.trim()
+            ? d
+            : d && typeof d === "object"
+              ? String(d.message || d.code || JSON.stringify(d))
+              : `HTTP ${res.status}`;
+        throw new Error(msg);
       }
       const payload = await res.json();
       const id = payload?.session?.id != null ? Number(payload.session.id) : null;
