@@ -51,6 +51,56 @@ export async function readInteractiveState(page, panelId = 'A') {
   }).catch(() => null);
 }
 
+export async function installParentSettingsProbe(page) {
+  return page.evaluate(() => {
+    window.__harnessDrawingSettingsMessages = [];
+    window.__harnessParentSettingsOpen = false;
+    window.__harnessParentSettingsClosed = false;
+    if (window.__harnessDrawingSettingsProbeInstalled) return true;
+    window.__harnessDrawingSettingsProbeInstalled = true;
+    window.addEventListener('message', (ev) => {
+      const msg = ev && ev.data;
+      if (!msg || typeof msg.type !== 'string') return;
+      if (msg.type === 'multichart-open-drawing-settings') {
+        window.__harnessParentSettingsOpen = true;
+        window.__harnessParentSettingsClosed = false;
+        window.__harnessDrawingSettingsMessages.push({
+          type: msg.type,
+          source: msg.source || null,
+          drawingId: msg.drawingId != null ? String(msg.drawingId) : null,
+        });
+      }
+      if (msg.type === 'multichart-close-drawing-settings') {
+        window.__harnessParentSettingsOpen = false;
+        window.__harnessParentSettingsClosed = true;
+        window.__harnessDrawingSettingsMessages.push({
+          type: msg.type,
+          source: msg.source || null,
+          drawingId: msg.drawingId != null ? String(msg.drawingId) : null,
+        });
+      }
+      if (msg.type === 'multichart-drawing-deselected') {
+        window.__harnessDrawingSettingsMessages.push({
+          type: msg.type,
+          source: msg.source || null,
+          drawingId: msg.drawingId != null ? String(msg.drawingId) : null,
+        });
+      }
+    }, true);
+    return true;
+  });
+}
+
+export async function readParentSettingsProbe(page) {
+  return page.evaluate(() => ({
+    open: !!window.__harnessParentSettingsOpen,
+    closed: !!window.__harnessParentSettingsClosed,
+    messages: Array.isArray(window.__harnessDrawingSettingsMessages)
+      ? window.__harnessDrawingSettingsMessages.slice()
+      : [],
+  }));
+}
+
 /**
  * Programmatically place a completed drawing (host panel). Returns stable ref.
  * points: [{x: barIndex, y: price}, ...] in chart data space.
@@ -145,6 +195,21 @@ export async function openSettings(page, panelId, ref) {
     }
     return { ok: true };
   }, id);
+}
+
+export async function pressEscape(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  await frame.evaluate(() => {
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(ev);
+  });
+  await sleep(180);
+  return { ok: true };
 }
 
 /** Delete drawing via manager deleteDrawing (direct path). */

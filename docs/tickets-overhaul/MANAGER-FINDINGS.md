@@ -172,6 +172,16 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Manager-coordinated build bump → `20260712b6`** (single bump captures T1 step 4 + T3 Row 2 + T4 step 3; `drawing-tools-manager.js`/`chart.js` changed since b5). PO live-confirms everything on b6.
 - **Milestone:** T1 (the heaviest lane, ~60% of ticket volume) is functionally complete pending live-confirm — biggest single progress jump.
 
+## T1 step 4 LIVE-CONFIRM FAILED (multichart) — reopened (2026-07-12)
+
+- **PO on b6:** single chart selection works. **Multichart panels broken:** (A) tool **cannot be selected and settings menu won't open** on normal click — only **double-click** opens settings; (B) **Esc deselects the tool but does NOT close the settings menu/bar** (teardown gap).
+- **T1 step 4 acceptance REVOKED** (was conditional on live-confirm per D-003). Not closed. Selection-desync/stale-quick-menu families NOT actually green live in panels.
+- **Coverage gap (again):** H-S34/H-S35 tested only cross-panel selection *clearing*, not the intra-panel **select(single-click) → open settings → Esc-closes-settings** flow. New RED scenarios required that exercise this.
+- **Suspected mechanism:** step-4 `toolSelected` cross-panel cleanup / `clearDrawingUiOnOtherPanels` added to `multichart-manager.js` likely clears the just-selected panel's own UI (breaking select+settings-open); and the `toolDeselected` path (Esc) doesn't drive `settingsPanel.hide()` in panel/iframe context (leaves settings bar open).
+- **Action:** dispatched `worker-prompts/T1-step5-multichart-select-settings-fix.md` to Lane 1 — RED-first with panel select→settings→Esc scenarios; gated; no build bump (Manager coordinates). T1 progress rolled back to ~75%.
+- **ACCEPTED (harness) — T1 step 5** (`T1-step5-multichart-select-settings-fix-report.md`): Symptom A fixed via `skipV9Dismiss:true` (cross-panel cleanup no longer clears the *selecting* panel's own settings/V9 surface); Symptom B fixed via `toolDeselected` → hide local settings/context/toolbar + post `multichart-close-drawing-settings` to parent. Patched the **production React `MultichartGrid.jsx`** + harness manager + `chart.js` + `drawing-tools-manager.js`. New **H-S44** (panel single-click select → settings open → Esc close) RED→GREEN→kill-switch-RED; full gate H-S32–37/43/44 PASS, H-S38–42 tracked-red, 0 regressions. **Manager P1 verify:** hashed both trees — `drawing-tools-manager.js` 5907BADA match, `chart.js` EA3ECA2B match; Row-2 markers preserved (not clobbered).
+- **CONDITIONAL on PO live-confirm:** the original bug lived in production React `MultichartGrid.jsx`, which the harness does not exercise. **Manager bump → `20260712b7`**; PO re-tests the exact multichart select→settings→Esc flow. Not closed until live-confirmed.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

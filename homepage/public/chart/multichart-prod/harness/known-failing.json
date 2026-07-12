@@ -40,7 +40,8 @@
     "H-S40",
     "H-S41",
     "H-S42",
-    "H-S43"
+    "H-S43",
+    "H-S44"
   ],
   "knownFailing": {
     "H-S38": "T0 step 3 tracked-red: RC-2 style color commit does not repaint by next frame",

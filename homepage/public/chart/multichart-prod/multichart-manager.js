@@ -766,8 +766,9 @@
         return Promise.all(jobs);
     };
 
-    MultichartManager.prototype.clearDrawingUiOnOtherPanels = function (sourceId) {
+    MultichartManager.prototype.clearDrawingUiOnOtherPanels = function (sourceId, opts) {
         const source = sourceId || null;
+        const skipDismiss = !!(opts && opts.skipV9Dismiss);
         const jobs = [];
         for (const c of this.charts.values()) {
             if (!c || c.id === source) continue;
@@ -775,7 +776,9 @@
                 this._clearHostDrawingUi();
             } else {
                 this.sendCommandNoReply(c.id, 'deselectDrawings', {});
-                this.sendCommandNoReply(c.id, 'closeDrawingSettings', {});
+                if (!skipDismiss) {
+                    this.sendCommandNoReply(c.id, 'closeDrawingSettings', {});
+                }
             }
         }
         return Promise.all(jobs);
@@ -982,7 +985,9 @@
 
             case 'multichart-clear-drawing-ui':
                 if (sourceId && typeof this.clearDrawingUiOnOtherPanels === 'function') {
-                    this.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
+                    this.clearDrawingUiOnOtherPanels(sourceId, {
+                        skipV9Dismiss: msg.skipV9Dismiss === true,
+                    }).catch(() => {});
                 }
                 return;
 

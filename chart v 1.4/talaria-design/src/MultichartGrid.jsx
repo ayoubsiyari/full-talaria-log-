@@ -5833,7 +5833,9 @@ export default function MultichartGrid({
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
                 if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                    grid.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
+                    grid.clearDrawingUiOnOtherPanels(sourceId, {
+                        skipV9Dismiss: msg.skipV9Dismiss === true,
+                    }).catch(() => {});
                 }
                 return;
             }

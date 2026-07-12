@@ -2313,14 +2313,14 @@ class Chart {
      * Deselect shapes, hide toolbars, and close settings on every OTHER multichart
      * tile so only one panel has active drawing UI (TradingView quick-settings style).
      */
-    _requestMultichartClearDrawingUiOnOtherPanels() {
+    _requestMultichartClearDrawingUiOnOtherPanels(opts = {}) {
         try {
             const panelId = this._getMultichartPanelId();
             if (!panelId) return;
             if (this._isMultichartHostPanel()) {
                 const grid = window.__multichartGrid;
                 if (grid && typeof grid.clearDrawingUiOnOtherPanels === 'function') {
-                    grid.clearDrawingUiOnOtherPanels(panelId).catch(() => {});
+                    grid.clearDrawingUiOnOtherPanels(panelId, opts).catch(() => {});
                 }
                 return;
             }
@@ -2328,6 +2328,7 @@ class Chart {
                 window.parent.postMessage({
                     type: 'multichart-clear-drawing-ui',
                     source: panelId,
+                    skipV9Dismiss: opts && opts.skipV9Dismiss === true,
                 }, '*');
             }
         } catch (e) {

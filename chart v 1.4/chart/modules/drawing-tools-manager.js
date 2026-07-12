@@ -186,6 +186,24 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
     }
 }
 
+function requestMultichartParentCloseDrawingSettings() {
+    if (!isMultichartIframeEmbed()) return false;
+    let panelId = 'embed';
+    try {
+        panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
+    } catch (_q) { /* ignore */ }
+    try {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+                type: 'multichart-close-drawing-settings',
+                source: panelId,
+            }, '*');
+            return true;
+        }
+    } catch (_) { /* ignore */ }
+    return false;
+}
+
 class DrawingToolsManager {
     constructor(chartInstance) {
         this.chart = chartInstance;
@@ -3493,7 +3511,7 @@ class DrawingToolsManager {
                 this.clearTool(true);
             }
             if (this.chart && typeof this.chart._requestMultichartClearDrawingUiOnOtherPanels === 'function') {
-                this.chart._requestMultichartClearDrawingUiOnOtherPanels();
+                this.chart._requestMultichartClearDrawingUiOnOtherPanels({ skipV9Dismiss: true });
             }
             this.selectDrawing(drawing, false, { allowWhileArmed: true, suppressToolbar });
             if (this.chart && typeof this.chart.scheduleRender === 'function') {
@@ -3550,6 +3568,20 @@ class DrawingToolsManager {
         });
 
         store.on('toolDeselected', () => {
+            if (this.settingsPanel) {
+                if (typeof this.settingsPanel.hide === 'function') {
+                    this.settingsPanel.hide();
+                }
+                this.settingsPanel.currentDrawing = null;
+                this.settingsPanel.pendingChanges = {};
+            }
+            if (this.contextMenu && typeof this.contextMenu.hide === 'function') {
+                this.contextMenu.hide();
+            }
+            if (this.toolbar && typeof this.toolbar.hide === 'function') {
+                this.toolbar.hide();
+            }
+            requestMultichartParentCloseDrawingSettings();
             if (this.objectTreeManager && typeof this.objectTreeManager.refresh === 'function') {
                 this.objectTreeManager.refresh();
             }
@@ -9753,7 +9785,7 @@ class DrawingToolsManager {
             }
             // Single selection - deselect all others
             if (this.chart && typeof this.chart._requestMultichartClearDrawingUiOnOtherPanels === 'function') {
-                this.chart._requestMultichartClearDrawingUiOnOtherPanels();
+                this.chart._requestMultichartClearDrawingUiOnOtherPanels({ skipV9Dismiss: true });
             }
             this.deselectAll({ forSelectionChange: true });
             this.selectedDrawing = drawing;

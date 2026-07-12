@@ -62,6 +62,9 @@ import {
   assertCanvasRepainted,
   assertMenuState,
   assertNoGhostAfterDelete,
+  installParentSettingsProbe,
+  readParentSettingsProbe,
+  pressEscape,
   defaultTrendlinePoints,
   defaultRectanglePoints,
 } from './interactive-helpers.mjs';
@@ -5423,6 +5426,63 @@ async function hS43(ctx) {
   });
 }
 
+// ── H-S44 ────────────────────────────────────────────────────────────────
+// T1 step 5 regression: panel single-click must select and keep its quick
+// settings owner; opening settings must notify the parent, and Esc must close it.
+async function hS44(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await installParentSettingsProbe(page);
+
+    const placed = await placeTool(page, 'B', 'rectangle', await defaultRectanglePoints(page, 'B'));
+    checks.check('H-S44 setup: panel-B rectangle placed', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(250);
+
+    await page.evaluate((drawId) => {
+      const frame = Array.from(document.querySelectorAll('iframe')).find((el) => {
+        try { return new URL(el.src).searchParams.get('panelId') === 'B'; } catch (_) { return false; }
+      });
+      return !!frame && !!drawId;
+    }, placed?.id);
+    const deselected = await deselectAllViaCanvas(page, 'B');
+    checks.check('H-S44 setup: panel-B deselect dispatched', deselected && deselected.ok, JSON.stringify(deselected || null));
+    await sleep(200);
+
+    const clickRes = await selectTool(page, 'B', placed, { click: true });
+    checks.check('H-S44 probe: panel-B single click dispatched', clickRes && clickRes.ok, clickRes?.reason || '');
+    await sleep(350);
+    const afterClick = await readInteractiveState(page, 'B');
+    assertMenuState(checks, 'H-S44 CORE: panel-B single click selects + keeps quick settings owner', {
+      selectedIds: [placed.id],
+      toolbarVisible: true,
+    }, afterClick);
+
+    const openRes = await openSettings(page, 'B', placed);
+    checks.check('H-S44 probe: panel-B settings open invoked', openRes && openRes.ok, openRes?.reason || '');
+    await sleep(300);
+    const parentOpen = await readParentSettingsProbe(page);
+    const openedMsg = parentOpen.messages.find((m) =>
+      m.type === 'multichart-open-drawing-settings'
+      && m.source === 'B'
+      && String(m.drawingId) === String(placed.id)
+    );
+    checks.check('H-S44 CORE: panel-B settings request reaches parent', !!openedMsg,
+      `probe=${JSON.stringify(parentOpen)}`);
+
+    await pressEscape(page, 'B');
+    const afterEsc = await readInteractiveState(page, 'B');
+    const parentAfterEsc = await readParentSettingsProbe(page);
+    checks.check('H-S44 CORE: Esc deselects panel-B drawing', afterEsc?.selectedIds?.length === 0,
+      `selected=${JSON.stringify(afterEsc?.selectedIds)}`);
+    checks.check('H-S44 CORE: Esc closes panel-B settings/quick-settings surfaces',
+      !afterEsc?.toolbarVisible && !parentAfterEsc.open,
+      `toolbarVisible=${afterEsc?.toolbarVisible} parentProbe=${JSON.stringify(parentAfterEsc)}`);
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -5466,6 +5526,7 @@ export function scenarioList() {
     { id: 'H-S41', title: 'anchoring: fixed range volume profile endpoints survive timeframe switch (RC-3)', run: hS41 },
     { id: 'H-S42', title: 'anchoring: anchored volume profile timestamp+price survives timeframe switch (RC-3)', run: hS42 },
     { id: 'H-S43', title: 'panel Ctrl-select selects two drawings once; no iframe double-toggle (TAL-01498)', run: hS43 },
+    { id: 'H-S44', title: 'panel single-click settings flow: select, open settings, Esc closes settings (T1 step 5)', run: hS44 },
   ];
 }
 
