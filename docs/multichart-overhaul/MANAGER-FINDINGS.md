@@ -3693,6 +3693,87 @@ replay-follow paths intact. No contradiction.
 - **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
   standard `SW_VERSION` cache-string + `?v=` bump).
 
+## 6cs. HOST step-forward-spam refetch storm fixed: manual-step-burst in-flight guard + stale-index hardening (build 20260707b104, gate 27→28)
+
+MANAGER: gated, RED-first fix for the PO-reported, felt, reproducible HOST defect — during replay, rapidly
+spam-clicking "step forward" makes the host jump BACKWARD, refetch the complete data set, and get stuck loading;
+peers are fine. Root cause was pre-diagnosed (verified RED, not re-diagnosed from scratch).
+
+**Lead (what changed / proof / what PO tests):**
+1. **Root cause (4 interacting sites):** the manual step path (`replay-system.js` `requestStepForward()` →
+   `stepForward()` → `updateChartData(autoScroll)` → `syncReplayViewportToPlayhead`/`constrainOffset`) has **no
+   in-flight guard**. During replay a short playhead prefix makes `getReplayAutoScrollState` return a positive
+   `offsetX`, satisfying `replayNearLeft`/`replayNearEmptyLeft` (`chart.js` ~18306), which calls
+   `checkViewportLoadMore('backward', true)`; the `force=true` **bypasses the 80ms replay debounce**. Under spam,
+   overlapping backward fetches restore a **STALE `currentIndex`** captured at fetch start (~22848,
+   `currentIndex = min(max(replayIndex + uniqueNew.length,0), merged.length-1)`) blindly overwriting steps that
+   advanced during the fetch → visible backward jump; and the `.finally` rAF (~23064) re-schedules
+   `constrainOffset()` + `_scheduleReplayPanLoadLeft()` → a self-sustaining backward refetch chain. BL-9's
+   `_panelPanHistoryGapNeedsHostMore` guard is paused-only + same-pair embed delegate — the HOST step path never
+   reaches it, so there was no analog guard.
+2. **What changed (4 scoped guard sites, both trees, edited regions SHA256-identical):**
+   - **(a) Manual step burst marker** — `replay-system.js` `requestStepForward()`/`stepForward()` set
+     `this._mcManualStepBurstUntil = performance.now() + 150` (refreshed on each step); new predicate
+     `_mcManualStepBurstActive()` → `performance.now() < (this._mcManualStepBurstUntil||0)`. Step advance / playhead
+     behavior unchanged.
+   - **(b) Suppress backward load-more during a burst** — `chart.js` ~18306: before
+     `checkViewportLoadMore('backward', true)`, skip when guard enabled AND `_mcReplayManualStepBurstActive()` AND
+     `!replaySystem.isPlaying`. Playhead still advances; only the backward history probe is skipped during the burst.
+   - **(c) Suppress the post-fetch re-chain during a burst** — `chart.js` ~23064: skip
+     `_scheduleReplayPanLoadLeft()` when guard enabled and a manual step burst is active (mirrors BL-9's isPlaying
+     guard shape).
+   - **(d) Stale-index hardening** — `chart.js` ~22848: on backward-fetch completion do NOT blindly overwrite
+     `currentIndex`; restore by `max(replayIndex + uniqueNew.length, currentCurrentIndex)` clamped to
+     `merged.length-1`, so steps that advanced during the in-flight fetch are not regressed.
+   - Helper: `_mcStepSpamRefetchGuardEnabled()` → `!(window.__TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD)`.
+3. **Kill-switch / site:** `__TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD` (default unset = fix ON / new stable
+   behavior; set = legacy/RED refetch-storm behavior). All four sites gated behind the same switch.
+4. **PO tests:** enter replay on the host, spam "step forward" fast — the host must keep advancing (no backward
+   jump), must NOT refetch the whole dataset, and must NOT get stuck loading; peers unaffected.
+
+**RULE 4 — STATE MATRIX (before code, no contradiction):**
+
+| cell | before (b103) | after (b104, fix ON) |
+| --- | --- | --- |
+| manual step BURST (spam), replay paused, short prefix | force-backward probe bypasses debounce → refetch storm + stale-index backward jump + stuck loading | backward probe skipped during burst, no re-chain, index never regressed (the ONLY changed cell) |
+| normal SINGLE step (no burst) | backward probe as today | unchanged (`_mcManualStepBurstActive()` false → guard inert) |
+| PLAY mode (isPlaying) | play-follow / BL-10/11 paths | unchanged (guard requires `!isPlaying`) |
+| peer mirroring / lazy-1m-master hydration | as today | unchanged (host-only step path; hydration baseline ≤1 fetch preserved) |
+| non-forced load-more debounce | 80ms debounce | unchanged (only the `force=true` burst cell is gated) |
+
+Only the manual-step-burst host cell changes; single-step, play, peer mirror, lazy-master, and the non-forced
+debounce are all identical. No contradiction.
+
+### Verification / report-back
+- **H-S30 (new, id 30) RED vs GREEN, flake-stable ×3 (`--runs=3`):** GREEN `PASS,PASS,PASS`; RED
+  (`--bugswitch=__TALARIA_MC_DISABLE_STEP_SPAM_REFETCH_GUARD`) `FAIL-REAL-BUG` ×3. Deterministic (no wall-clock):
+  independent 2x2, sync OFF, host file25 tf `1m` paused replay, per-burst short display prefix pinned at the
+  loaded-window start (idx 2, `hasMoreLeft=true`), peer B file27 tf `1h`. Two synchronous
+  `rs.requestStepForward()`×25 bursts, microtasks flushed for in-flight, then settled via `waitHostReplayQuiet`.
+  - **GREEN:** host(file25) fetches phase1 = 0 (one-time lazy-master ≤1 baseline) / phase2 = 0 (repeat = 0);
+    peerB(file27) fetches phase1 = 0 / phase2 = 0; playhead per burst armed=1783736700000 → sync=1783738200000 →
+    postFetch=1783738200000 (**Δ = 0**, no stale-index regression); +25.0 / +25.0 1m-buckets advanced;
+    `_panLoading` after settle = false; `offsetX` no backward jump.
+  - **RED:** host(file25) fetches phase1 = 1 / phase2 = 1 (backward `/bars` storm) + stale-index backward jump
+    (`postFetch ts < sync ts`) + stuck loading → `FAIL-REAL-BUG`.
+  - Note: only `1m` keeps a real backward coverage gap in this harness (coarse TFs ≤2400 bars fully load &
+    boot-backfill → `hasMoreLeft` false); the defect (short-prefix force-backward probe bypassing the 80ms debounce
+    + stale-index overwrite + self-sustaining `.finally` re-chain) is TF-agnostic.
+- **Full `npm run gate` — GREEN 27→28** (H-S2..H-S30). Regressions: none. Known-failing: none. Prior scenarios all
+  PASS — **H-S17/S21/S23/S24/S25/S26/S27/S28/S29 explicitly PASS**.
+- `node --check` clean on **both** `chart.js` trees, **both** `replay-system.js` trees, and `scenarios.mjs`;
+  ReadLints clean on every edited file.
+- **SHA256 — every edited source/mirror pair byte-identical (EQ=True):**
+  `chart.js` = `3E76F3C759FD2D14D8CF7FA3C3169BA26CCC0B653037F92A0F0BD04266616FFE`;
+  `modules/replay-system.js` = `79907DB8CD27D9EC9312C131AE1666CFEF1A5F57188743E7FD3ECF597DDF4C20`
+  (plus all b104-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — bumped in
+  lockstep). The harness `scenarios.mjs`/`known-failing.json` live canonically under `chart v 1.4/.../harness`
+  (already historically divergent from the homepage copy at HEAD; the gate runs the canonical tree).
+- **ONE build bump** b103 → `20260707b104` via `bump-dist-v9-cache.mjs`; **0 `20260707b103` stragglers** in shipped
+  files (only this findings doc retains historical b103 text).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string + `?v=` bump).
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via
