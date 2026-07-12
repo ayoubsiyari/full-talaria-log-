@@ -241,6 +241,11 @@
     // SUBSEQUENT seeks once isActive=true.
     var coalescedSeekTs = null;
     var coalescedSeekScheduled = false;
+    // When set, the pending coalesced seek MUST advance this panel on its OWN
+    // replay master only (forceReplaySeek) and MUST NOT pull the host's TF-
+    // switched display data/master via the parent-mirror payload. See
+    // peerPlayMustStayOnOwnMaster (BL-10 D-037 sync-off host-TF isolation).
+    var coalescedSeekOwnMasterOnly = false;
     var coalescedMirrorCatchUpTs = null;
     var coalescedMirrorCatchUpArgs = null;
     var coalescedMirrorCatchUpScheduled = false;
@@ -677,7 +682,27 @@
                     if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
                         && ch._multichartFinerSamePairPanelSelfOwns()) {
                         ch._mcFinerOwnerActiveReplayCatchUp = !!args.isPlaying;
-                        forceReplaySeek(ch, ts, false);
+                        // A7 (§6co, D-048): the finer-SELF-OWNER play-advance seek (peer
+                        // finer than the host's committed NATIVE cadence) was the ONLY
+                        // follow-less exit on the peer play-advance paths — the playhead
+                        // advanced on the peer's own master while its viewport stayed put
+                        // ("the candles run, the panels stop moving"). Carry the SAME
+                        // settle-time leading-edge follow the own-master coalesced exit
+                        // (:1849) and the mirror exits (:1837/:1843) already use. The
+                        // follow tracks the peer's OWN leading edge
+                        // (maybePanelPlayViewportFollow -> getReplayAutoScrollState) — NO
+                        // host/parent data pull, so the b99 (BL-10/D-037) isolation cannot
+                        // regress — and respects the D-038 drag-disengage contract
+                        // (maybePanelPlayViewportFollow gates on userHasPanned /
+                        // autoScrollEnabled). Default ON; kill-switch
+                        // __TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW reverts to
+                        // the follow-less seek.
+                        if (typeof window !== 'undefined'
+                            && window.__TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW) {
+                            forceReplaySeek(ch, ts, false);
+                        } else {
+                            forceReplaySeek(ch, ts, false, function () { maybePanelPlayViewportFollow(ch); });
+                        }
                     } else if (args.isPlaying
                         && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE)) {
                         // BL-10 (D-037): a COARSER same-pair panel (not a finer self-
@@ -694,7 +719,15 @@
                         // behaviour is unchanged (those take the replayTick path, not
                         // this branch). Kill-switch:
                         // __TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE.
-                        scheduleCoalescedSeek(ch, ts);
+                        //
+                        // BL-10 (D-037) sync-off host-TF isolation: when the host's
+                        // committed DISPLAY cadence differs from this peer's TF (host
+                        // switched to another display TF), advance on the peer's OWN
+                        // master ONLY — do NOT pull the host's TF-switched display
+                        // data/master via the parent mirror (see
+                        // peerPlayMustStayOnOwnMaster / kill-switch
+                        // __TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION).
+                        scheduleCoalescedSeek(ch, ts, peerPlayMustStayOnOwnMaster(ch));
                     }
                 } catch (_) {}
                 return;
@@ -1087,6 +1120,51 @@
             return global.parent && global.parent !== global ? global.parent.chart : null;
         } catch (_) {}
         return null;
+    }
+
+    // BL-10 (D-037) SYNC-OFF PEER PLAY / HOST-TF ISOLATION:
+    // With ALL sync OFF, a host TF switch must leave every OTHER same-pair peer
+    // completely unaffected. The P4 same-symbol/different-TF PLAY branch routes a
+    // non-finer-self-owner peer through scheduleCoalescedSeek, whose parent-mirror
+    // pulls (applyParentReplayMirror / applyStaticMirrorFrame →
+    // readParentReplayMirrorPayload / _syncReplayMasterFromParentIfCovers) clone
+    // the host's now-TF-switched DISPLAY data/master onto the peer — flipping the
+    // peer's data cadence + regressing its replay master to the host window WHILE
+    // its TF label stays put ("4H candles under a 1m label"). This is only wrong in
+    // the LEAK direction: the peer is FINER than the host's committed DISPLAY
+    // cadence (the host switched to a COARSER display TF), so adopting the host's
+    // coarser master corrupts the finer peer. Returns true then, so the peer
+    // advances on its OWN master instead. A genuinely COARSER peer following a
+    // finer host (legitimate BL-10 / H-S17) is NOT affected — it keeps the full
+    // coalesced mirror path and still tracks the host. Kill-switch
+    // __TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION (default = fix ON)
+    // reverts to the leaking parent-mirror pull.
+    function peerPlayMustStayOnOwnMaster(ch) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION) {
+                return false;
+            }
+            var pc = readParentChart();
+            if (!pc || !ch || typeof ch.parseTimeframe !== 'function') return false;
+            var panelTf = String(ch.currentTimeframe || '').toLowerCase().trim();
+            var hostTf = String(pc.currentTimeframe || '').toLowerCase().trim();
+            if (!panelTf || !hostTf || panelTf === hostTf) return false;
+            var panelMs = Number(ch.parseTimeframe(panelTf));
+            var hostMs = Number(ch.parseTimeframe(hostTf));
+            if (!Number.isFinite(panelMs) || !Number.isFinite(hostMs)) return false;
+            // Only the LEAK direction: peer FINER than the host's committed DISPLAY
+            // cadence, AND the host truly DISPLAYS that coarser cadence (its committed
+            // bars match its own TF — it switched display, not just its label). A
+            // coarser peer (panelMs > hostMs) keeps the legitimate mirror follow.
+            if (!(panelMs < hostMs)) return false;
+            var hostDisplaysHostTf = (typeof pc._committedBarsMatchTimeframe === 'function')
+                ? !!pc._committedBarsMatchTimeframe(hostTf)
+                : true;
+            return hostDisplaysHostTf;
+        } catch (_) {
+            return false;
+        }
     }
 
     /** Host tile A's current fileId, so mirror frames pick the shared vs independent path correctly. */
@@ -1733,7 +1811,7 @@
         } catch (_) {}
     }
 
-    function scheduleCoalescedSeek(ch, ts) {
+    function scheduleCoalescedSeek(ch, ts, ownMasterOnly) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:scheduleCoalescedSeek');
         markHostReplayContext(ch);
         if (shouldSkipPausedAlignedReplaySeek(ch, ts)) {
@@ -1747,6 +1825,9 @@
             return;
         }
         coalescedSeekTs = ts;
+        // Latch own-master-only for THIS coalesced frame (any own-master-only
+        // caller in the frame forces the whole coalesced seek to stay own-master).
+        if (ownMasterOnly) coalescedSeekOwnMasterOnly = true;
         if (coalescedSeekScheduled) return;
         coalescedSeekScheduled = true;
         var raf = global.requestAnimationFrame || function (fn) {
@@ -1755,17 +1836,32 @@
         raf(function () {
             coalescedSeekScheduled = false;
             var seekTs = coalescedSeekTs;
+            var ownMaster = coalescedSeekOwnMasterOnly;
             coalescedSeekTs = null;
+            coalescedSeekOwnMasterOnly = false;
             if (seekTs == null) return;
             if (isViewportSettling(ch)) return;
-            // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
-            if (applyParentReplayMirror(ch, seekTs, false)) { maybePanelPlayViewportFollow(ch); return; }
-            // Prefer the SAME render path as the play-time frame stream so pause/scrub
-            // doesn't visibly re-fit the viewport and snap back. Fall back to a full
-            // seek (which can refetch) only when the mirror can't render this ts.
-            // BL-11: during PLAY, add the host's leading-edge viewport follow on top of
-            // the window-preserving render (maybePanelPlayViewportFollow is play-only).
-            if (applyStaticMirrorFrame(ch, seekTs)) { maybePanelPlayViewportFollow(ch); return; }
+            // BL-10 (D-037) sync-off host-TF isolation: when ownMaster is set (a
+            // same-pair peer FINER than the host's committed DISPLAY cadence — the
+            // host switched to a COARSER display TF), the parent-mirror pulls clone
+            // the host's TF-switched display master onto the peer
+            // (applyParentReplayMirror / applyStaticMirrorFrame →
+            // readParentReplayMirrorPayload / _syncReplayMasterFromParentIfCovers /
+            // forceSamePairParentDataMirror) — flipping the peer's data cadence +
+            // regressing its replay master under an unchanged TF label. Skip both
+            // and advance the peer on its OWN master via forceReplaySeek. The
+            // COARSER legitimate BL-10 play-advance (peerPlayMustStayOnOwnMaster ==
+            // false) keeps the full coalesced mirror path so it still tracks the host.
+            if (!ownMaster) {
+                // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
+                if (applyParentReplayMirror(ch, seekTs, false)) { maybePanelPlayViewportFollow(ch); return; }
+                // Prefer the SAME render path as the play-time frame stream so pause/scrub
+                // doesn't visibly re-fit the viewport and snap back. Fall back to a full
+                // seek (which can refetch) only when the mirror can't render this ts.
+                // BL-11: during PLAY, add the host's leading-edge viewport follow on top of
+                // the window-preserving render (maybePanelPlayViewportFollow is play-only).
+                if (applyStaticMirrorFrame(ch, seekTs)) { maybePanelPlayViewportFollow(ch); return; }
+            }
             // COARSER same-pair play path: the panel advances on its OWN master via a
             // real seek. goToReplayTimestamp is itself blocked from re-anchoring by the
             // accumulated-drift _replayUserOwnsViewport heuristic, so apply the leading-

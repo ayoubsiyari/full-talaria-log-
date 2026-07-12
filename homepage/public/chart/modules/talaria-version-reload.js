@@ -3,10 +3,21 @@
  *
  * When a newer chart build has been deployed while this tab stays open on an
  * older build, show a small, non-intrusive, DISMISSIBLE toast on the HOST page
- * (never inside a multichart panel iframe) with a Reload button that does a hard
- * reload. Additive UI only — it does not steal focus, block interaction, or
- * auto-reload. This retires the recurring "panels run old cached code after a
- * deploy" stale-tab problem.
+ * (never inside a multichart panel iframe) with a Reload button that does a HARD
+ * escape: it unregisters ALL service worker registrations and deletes ALL caches
+ * BEFORE reloading, so a service worker actively controlling the page can no
+ * longer serve the stale cached bundle (a plain location.reload() cannot escape
+ * a controlling SW and re-shows the toast forever). Additive UI only — it does
+ * not steal focus, block interaction, or auto-reload. This retires the recurring
+ * "panels run old cached code after a deploy" stale-tab problem.
+ *
+ * RELOAD SAFETY: every SW/Cache API is feature-detected and guarded
+ * (navigator.serviceWorker may be undefined in an insecure context / sandboxed
+ * frame → "Cannot read properties of undefined (reading 'getRegistrations')").
+ * When those APIs are absent the handler falls back to a plain hard reload; it
+ * never throws and ALWAYS reaches a reload even if teardown rejects. The SW
+ * caching strategy (sw.js install/activate/fetch) is UNCHANGED — this is purely
+ * the client-side button handler.
  *
  * KILL SWITCH: window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT === true fully
  * disables the feature (no polling, no fetch, no toast). Default = feature ON.
@@ -125,13 +136,71 @@
         }
     }
 
-    function hardReload() {
+    // Final step of the reload: a cache-busting navigation (so the HTTP cache
+    // also can't re-serve stale), falling back to a plain reload. Never throws.
+    function reloadNow() {
         try {
             var u = new URL(root.location.href);
             u.searchParams.set('__vr', String(Date.now()));
             root.location.replace(u.toString());
         } catch (_) {
             try { root.location.reload(); } catch (__) { /* ignore */ }
+        }
+    }
+
+    /**
+     * HARD escape then reload. A plain reload cannot escape a service worker that
+     * is actively controlling the page and serving a stale cached bundle, so tear
+     * down the SW + caches first:
+     *   1. unregister ALL service worker registrations,
+     *   2. delete ALL caches,
+     *   3. THEN reload.
+     * Every API is feature-detected and guarded — navigator.serviceWorker may be
+     * undefined (insecure context / sandboxed frame) and caches may be absent; in
+     * that case fall back to a plain hard reload. Wrapped so it never throws, and
+     * uses Promise.allSettled so it ALWAYS reaches reloadNow() even if any
+     * unregister / cache-delete rejects. Does NOT touch the SW caching strategy.
+     */
+    function hardReload() {
+        var tasks = [];
+        try {
+            var nav = root.navigator;
+            if (nav && ('serviceWorker' in nav) && nav.serviceWorker &&
+                typeof nav.serviceWorker.getRegistrations === 'function') {
+                tasks.push(
+                    nav.serviceWorker.getRegistrations().then(function (regs) {
+                        return Promise.allSettled((regs || []).map(function (r) {
+                            return (r && typeof r.unregister === 'function')
+                                ? r.unregister()
+                                : Promise.resolve();
+                        }));
+                    }).catch(function () { /* ignore — still reload */ })
+                );
+            }
+        } catch (_) { /* ignore — still reload */ }
+
+        try {
+            if (('caches' in root) && root.caches &&
+                typeof root.caches.keys === 'function') {
+                tasks.push(
+                    root.caches.keys().then(function (keys) {
+                        return Promise.allSettled((keys || []).map(function (k) {
+                            try { return root.caches.delete(k); }
+                            catch (_) { return Promise.resolve(false); }
+                        }));
+                    }).catch(function () { /* ignore — still reload */ })
+                );
+            }
+        } catch (_) { /* ignore — still reload */ }
+
+        // No SW/Cache APIs available (insecure context / sandboxed frame) →
+        // plain hard reload without throwing.
+        if (!tasks.length) { reloadNow(); return; }
+
+        try {
+            Promise.allSettled(tasks).then(reloadNow, reloadNow);
+        } catch (_) {
+            reloadNow();
         }
     }
 

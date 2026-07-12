@@ -3306,6 +3306,261 @@ same-pair SAME-TF panel must scroll smoothly with the host, no per-bar X jump. (
 **NOT in b98** — the coarse-panel Y balloon is a harness-uncovered layout (PLAY starting mid-acquire); needs a
 reproducing harness cell before a scoped fix ships.
 
+## 6cm. BL-10 (D-037) — sync-off peer play / host-TF isolation: host TF switch leaks its coarse master onto same-pair peers (build 20260707b99)
+
+**What changed / proof / what PO tests:**
+1. **Shipped fix** — with ALL sync OFF and replay PLAYING, a same-pair peer that is FINER than the host's
+   committed DISPLAY cadence now advances its playhead on its OWN master and no longer pulls the host's
+   TF-switched parent-mirror payload. New `peerPlayMustStayOnOwnMaster(ch)` gates the different-TF PLAY branch
+   which now calls `scheduleCoalescedSeek(ch, ts, ownMasterOnly)`; the coalesced seek latches
+   `coalescedSeekOwnMasterOnly` and skips the `applyParentReplayMirror` / `applyStaticMirrorFrame` pulls,
+   routing the peer through `forceReplaySeek` on its own bars. Kill-switch
+   `__TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION` (default = fix ON).
+2. **Proof:** new **H-S26** RED-first, flake-stable ×3 — GREEN `PASS` (peers keep TF=1m, cadence=60000,
+   own master `1783687140000..1783807080000` unchanged, self-fetch=0, playhead advanced `1783759140000 →
+   1783768140000` on own 1m master); RED (`--bugswitch=…SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION`) `FAIL,FAIL,FAIL`
+   (`FAIL-REAL-BUG`): peer replay master `firstT` regresses `1783687200000 → 1776024000000` (the host 4h
+   window start) under an unchanged 1m label. Full `npm run gate` **GREEN 24/24** (23→24).
+3. **PO tests:** during replay PLAY with ALL sync OFF, switch the host tile's TF (e.g. 1m→4h) mid-play; every
+   OTHER same-pair peer must stay on its own TF label + cadence + master (no "4H candles under a 1m label"),
+   while its playhead may still advance on its own master.
+
+### Audit result — MATCHED SPEC (no correction needed)
+
+The as-found source fix was audited against the invariant and found correct:
+- `peerPlayMustStayOnOwnMaster` returns **false** when the kill-switch is set (early guard), when host/panel
+  TFs are equal or unresolved, and — critically — unless `panelMs < hostMs` (peer strictly FINER than host).
+  It additionally requires the host to actually DISPLAY the coarser TF (`pc._committedBarsMatchTimeframe(hostTf)`),
+  so a mere label change without a committed display switch does not trip it.
+- The gate is a host-display-cadence-vs-panel-TF check, **not** something that catches the legitimate coarser
+  peer (H-S17, `panelMs > hostMs`), which returns false and keeps the full coalesced mirror follow. Confirmed
+  by H-S17 staying GREEN (`B.replayTs 1783759320000→1783766580000; renders=25` — advanced + bounded).
+- Latch vars declared `:242-248`; `scheduleCoalescedSeek` consumes the 3rd arg `:1794/1810/1819`; call site
+  `:710`. No code was inert; no minimal correction was required.
+
+### Verification / report-back
+
+- **RED vs GREEN, flake-stable ×3 (H-S26):** GREEN `PASS`; RED `FAIL,FAIL,FAIL` = `FAIL-REAL-BUG`.
+  GREEN peer master `1783687140000..1783807080000` (unchanged), cadence `60000` (matches=true), self-fetch `0`,
+  playhead `→1783768140000`. RED peer master `firstT` regresses to `1776024000000` (host 4h window);
+  cadence stayed `60000` and self-fetch `0` in this cell — the master-extent regression is the RED signal.
+- **Full `npm run gate` — GREEN 24/24** (H-S2..H-S26). Regressions: none. Known-failing: none. **H-S17
+  (legit coarser play-advance) explicitly PASS**; H-S21/H-S23 (own-switch acquire), H-S24 (peer-refetch),
+  H-S25 (eased follow) all PASS.
+- `node --check` clean on every edited JS in **both** trees; JSON parses.
+- **SHA256 — every edited source/mirror pair byte-identical (EQ=True):**
+  `multichart-prod/panel-cmd-bridge.js` = `2C0847BD72F2441BAAE4A57DC105CA004D8164F010557D7BE9FB504D04B61773`;
+  `multichart-prod/harness/scenarios.mjs` = `6B1C651B2BD636710964DF5096CFC3A381876CEFE1ECD2950762D2BBEBA897DE`;
+  `multichart-prod/harness/known-failing.json` = `11606CA358B1E0240B850831454D919F22302DF1249C3CD468BADC57BD08EBAE`
+  (plus all b99-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — all EQ=True).
+- **ONE build bump** b98 → `20260707b99` via `bump-dist-v9-cache.mjs`; **0 `20260707b98` stragglers** repo-wide
+  (only this findings doc retains historical b98 text).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string bump).
+
+**NOTE (id reuse):** the `H-S26` id was previously used for the b98 Fix-B coarse Y-rescale scenario, which was
+**removed** as NOT-REPRODUCIBLE (§6cl). This H-S26 is a distinct BL-10/D-037 sync-off peer-isolation scenario
+reusing the freed id.
+
+**PENDING:** PO live re-test on deployed **b99** — with ALL sync OFF during replay PLAY, host TF switch must
+leave same-pair peers on their own cadence/master (no coarse-master leak under an unchanged TF label).
+
+## 6cn. A7 follow-up (b99 own-master viewport-follow freeze) — NOT-REPRODUCIBLE on the named path (D-048 "do not force it"); NO fix shipped, still b99 24/24
+
+**Lead (what changed / proof / what PO tests):**
+1. **Nothing shipped.** The reported follow-up — "after the host switches TF mid-play, the sync-off finer
+   peers' viewport freezes because b99's own-master-only seek path does NOT carry the BL-11/BL-13 eased
+   viewport follow" — **does not reproduce on the path b99 actually introduced**. That path (the
+   `scheduleCoalescedSeek` `ownMasterOnly` flush) **already invokes the follow** and the peer viewport tracks
+   the playhead continuously. There is **no pre-fix RED** on the named path, so per the D-048 standing
+   "do not force an unverifiable fix" discipline (same call made for §6cl Fix B) **no code, no build bump, no
+   scenario, and no mirror edits were made**. Tree stays at **b99**; `npm run gate` stays **GREEN 24/24**.
+2. **Proof (Step 1 mechanism):** instrumented H-S26 (all sync OFF, replay PLAYING, host 1m→4h mid-play,
+   peers on 1m — the exact b99 finer-peer own-master case) and sampled `offsetX` + `_mcPlayFollowRenders` +
+   an own-master vs non-own-master `forceReplaySeek`-exit counter across the 150-frame play window:
+   - **own-master flush exits = 150, non-own = 0** → every peer advance goes through the b99 `ownMaster`
+     branch (isolation intact; H-S26 CORE cadence/master/self-fetch all still pass).
+   - **`_mcPlayFollowRenders` 0 → 151** and **`offsetX` −7422 → −8402 monotonically (~1 candleSpacing/frame)**
+     — the peer viewport follows its OWN playhead the whole window, straight through the host TF switch.
+   - Control: with the follow globally disabled (`--bugswitch=__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW`)
+     the SAME cell **does** freeze — `offsetX` pins at ~−7618 after 1 render — the exact PO symptom. So the
+     follow is load-bearing AND present by default on the own-master path.
+3. **PO should re-test on b99 live:** with ALL sync OFF, replay PLAYING, host TF switch mid-play — the finer
+   same-pair peers' viewport should keep scrolling to track their own playhead. If it still freezes live, it
+   is a layout the harness does not cover (see mechanism note below), not the coalesced own-master exit.
+
+### Step 1 mechanism — the follow is NOT missed on the b99 own-master coalesced exit
+
+`panel-cmd-bridge.js` different-TF PLAY branch calls `scheduleCoalescedSeek(ch, ts, peerPlayMustStayOnOwnMaster(ch))`
+(~`:710`). In the coalesced flush, `ownMaster === true` **skips** the `applyParentReplayMirror` /
+`applyStaticMirrorFrame` parent-mirror pulls (the b99 isolation fix, `if (!ownMaster) { … }`) and falls through
+to the **pre-existing, unchanged** exit:
+
+```
+forceReplaySeek(ch, seekTs, false, function () { maybePanelPlayViewportFollow(ch); });   // ~:1849
+```
+
+That `onDone` callback runs `maybePanelPlayViewportFollow(ch)` — the SAME BL-11/BL-13 eased follow used by the
+normal mirror exits (`:1837/:1843`). b99 did **not** remove it (git-diff confirms the `forceReplaySeek(…,
+callback)` line is a context line, unchanged by b99). So there is **no line where the follow is missed** on the
+b99 own-master path. `maybePanelPlayViewportFollow` follows on the peer's OWN data (`getReplayAutoScrollState`
+→ own leading edge) — no host-data pull — so isolation would remain intact even if a change were made.
+
+### The only genuine follow gap is OUT of the sanctioned scope (RULE 4)
+
+The FINER-**self-owner** play-advance (`applyReplayFrame` `:685`, `forceReplaySeek(ch, ts, false)` — no
+`onDone`) does NOT carry the follow. But that is (a) a DIFFERENT path than the one b99 introduced (it gates on
+host **native** cadence, not host **display** cadence), and (b) the task's RULE 4 explicitly scopes the fix to
+"only the b99 own-master (finer-than-host-DISPLAY) case; do NOT alter the finer cell." A probe that forces a
+finer self-owner (host native 1h via fan-out, peers switched to 1m, then PLAY) was **not cleanly reproducible**:
+during play the finer self-owner does not persist — the peers **relabel back to the host's 1h** (own `offsetX`
+barely moves, own/non-own flush counters both 0, TF ends 1h Δ=3600000). That is a *separate* finer-self-owner-
+during-play relabel leak, not the coalesced own-master freeze, and fixing it is a larger, out-of-scope change.
+
+### Recommendation
+
+- **Do NOT ship** a follow "fix" on the b99 own-master coalesced exit — it would be a no-op vs today's behavior
+  (the follow already fires) with no RED to back it; RED-first cannot be honored.
+- If the PO still sees a live freeze on b99, the next step is a **reproducing harness cell for the finer-self-
+  owner-during-play case** (which must first hold the peer at its finer TF through play — surfacing the relabel-
+  to-host-TF leak — before the `:685` missing-follow can be isolated), then a separately-scoped fix. Mirrors
+  the §6cl precedent ("points to a live layout the harness does not cover").
+
+### Verification / report-back
+
+- **Gate unchanged — `npm run gate` GREEN 24/24** (H-S2..H-S26), no regressions, none known-failing; **H-S26
+  (isolation), H-S17 (legit coarser follow), H-S24, H-S25 all PASS**. Confirmed AFTER all probe instrumentation
+  was reverted.
+- **No files shipped.** `panel-cmd-bridge.js` and `harness/scenarios.mjs` are **byte-identical to their b99
+  homepage mirrors** (SHA256 EQ) after revert; `harness-lib.mjs` is unchanged vs HEAD (a pre-existing `hostFile`
+  mirror drift between trees is unrelated to this task). `node --check` clean on the edited-then-reverted JS.
+- **No build bump** (stays `20260707b99`); no security / SW-lifecycle / `gate.mjs` / `security.yml` touched.
+
+## 6co. A7 finer-SELF-OWNER play viewport freeze FIXED (D-048, build 20260707b100)
+
+**Lead (what changed / proof / what PO tests):**
+1. **What changed:** ONE gated line-pair at `panel-cmd-bridge.js:685`. The finer-**self-owner** play-advance
+   seek (a same-pair peer FINER than the host's committed **NATIVE** cadence — host went 4h native, no 1m fine
+   master) was the ONLY follow-less exit on the peer play-advance paths — `forceReplaySeek(ch, ts, false)` with
+   NO `onDone`. It now carries the SAME settle-time leading-edge follow the own-master coalesced exit (`:1849`)
+   and the mirror exits (`:1837/:1843`) already use:
+   `forceReplaySeek(ch, ts, false, function () { maybePanelPlayViewportFollow(ch); });`. Default ON; new
+   kill-switch **`__TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW`** reverts to the follow-less seek.
+2. **Proof:** new RED-first harness scenario **H-S27** (finer-self-owner regime, deterministic, no wall-clock).
+   RED (pre-fix / kill-switch): peer `offsetX` CONSTANT (net ~12px sporadic re-anchor) + `_mcPlayFollowRenders===0`
+   while `replayTs` strictly increases → frozen viewport ("candles run, panels stop"). GREEN (fix): `offsetX`
+   tracks the leading edge (net **44.4px ≈** full 45px march), `_mcPlayFollowRenders` grows **0→46** on every
+   peer, TF stays **1m** / cadence **60000** / own master / self-fetch **0** (b99 isolation intact). Flake-stable
+   ×3 both directions.
+3. **PO tests:** with ALL sync OFF, replay PLAYING, and the host on a coarse NATIVE timeframe while same-pair
+   peers stay on a finer TF (e.g. host 4h-native, peers 1m) — each finer peer's viewport should keep scrolling to
+   track its own playhead, not freeze.
+
+### RULE 4 — state-matrix (before-code), no contradiction
+
+Peer cell (sync OFF, playing, after host TF switch) × behavior:
+
+| cell | site | viewport follows? | own TF label? | playhead advances? | touched by this fix? |
+|---|---|---|---|---|---|
+| **finer-than-host-NATIVE self-owner** | `:685` (was follow-less) | **NO → fix adds follow** | yes (self-own keeps own 1m master) | yes | **YES (only this cell)** |
+| finer-than-host-DISPLAY b99 own-master | `:710`→`scheduleCoalescedSeek(ownMaster)`→`:1849` | yes (already) | yes | yes | no |
+| same-TF | `forceSamePairParentDataMirror` eased `:1329-1354` | yes | yes | yes | no |
+| coarser (H-S17) | `:710` else-if→`scheduleCoalescedSeek(!ownMaster)`→`:1837/1843/1849` | yes | yes | yes | no |
+| independent | `isSameSymbolAsHost`=false → own path | yes | yes | yes | no |
+
+No contradiction: the fix touches ONLY the `:685` finer-self-owner cell. It does NOT alter H-S17 (coarser),
+H-S26 (isolation / b99 own-master), same-TF (H-S25), or independent. The added follow calls
+`maybePanelPlayViewportFollow` → `getReplayAutoScrollState`, i.e. the peer's **OWN** leading edge — NO
+host/parent data pull — so the b99 (BL-10/D-037) isolation cannot regress; and it respects the D-038
+drag-disengage contract (`maybePanelPlayViewportFollow` gates on `userHasPanned` / `autoScrollEnabled`).
+
+### Why this reproduced where §6cn's probe did not
+
+§6cn's probe forced the regime with `fanOutTf` (a broadcast), which relabelled the peers back to the host TF
+during play — never surfacing the `:685` cell. H-S27 constructs the finer-self-owner regime **without any
+fan-out**: it switches ONLY the host to NATIVE 4h **before** replay via a host-only in-process `setTimeframe`
+(commits `_mcCommittedNativeRawFetchTf='4h'`), with interval-sync AND range-sync OFF, so the peers are never
+pushed and hold their own 1m through play (`_multichartFinerSamePairPanelSelfOwns()===true` for every peer,
+asserted as a REGIME gate). This is the "hold the peer at its finer TF through play" step §6cn called for.
+
+### Verification / report-back
+
+- **State-matrix confirmed (above), no contradiction.** Kill-switch `__TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW`;
+  site `panel-cmd-bridge.js:685`; helper **reused** (`maybePanelPlayViewportFollow`, no new math); **no host-data pull**.
+- **H-S27 RED vs GREEN, flake-stable ×3:** GREEN `PASS,PASS,PASS`; RED (kill-switch) `FAIL,FAIL,FAIL` = `FAIL-REAL-BUG`.
+  GREEN `offsetX` net **44.40px** (≈ leading-edge march 45.00px), `changedFraction 0.33`, `_mcPlayFollowRenders 0→46`
+  per peer, `replayTs 1780689600000→1780698600000`, TF **1m** / cadence **60000** / master unchanged / self-fetch **0**.
+  RED `offsetX` net **~12px**, `changedFraction 0.04`, `_mcPlayFollowRenders 0`.
+- **Full `npm run gate` — GREEN 24→25** (H-S2..H-S27). Regressions: none. Known-failing: none. **H-S26 (isolation),
+  H-S17 (coarser follow), H-S24, H-S25 all explicitly PASS.**
+- `node --check` clean on every edited JS in **both** trees; both `known-failing.json` parse.
+- **SHA256 — every edited source/mirror pair byte-identical (EQ=True):**
+  `multichart-prod/panel-cmd-bridge.js` = `CE32FDC9BDEF00D1D24713D904028A3B19017B5DD8E6F22AF3D180ECEFAE5796`;
+  `multichart-prod/harness/scenarios.mjs` = `C84997AF465D14D07526FD52B10A9079032906D4ECC44AAF08B9640DB0D31F3F`;
+  `multichart-prod/harness/known-failing.json` = `0C165FB6886AD596103E97FBAAA89BB9627A7EAC67ED73456CD2C82BEEC4A0C1`
+  (plus all b100-bump HTML/sw mirror pairs — dist-v9 index/sw, chart/sw.js, legacy-index, chart-embed — all EQ=True).
+- **ONE build bump** b99 → `20260707b100` via `bump-dist-v9-cache.mjs`; **0 `20260707b99` stragglers** repo-wide
+  (only this findings doc retains historical b99 text).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched** (only the
+  standard `SW_VERSION` cache-string + `?v=` bump).
+
+### Backlog (out of scope — NOT touched)
+
+- **Finer-owner bounded refetch storm:** on every coarse host playhead jump the finer self-owner runs a bounded
+  refetch (`_mcDiag.ownerFetches` climbing / `_finerPanelOwnerFetchRange`). This is a SEPARATE storm from the
+  viewport freeze fixed here and is left for a dedicated backlog entry (secondary finding of the §6cn/§6co DIAG).
+
+## 6cp. Reload-prompt button now HARD-escapes the service worker before reloading (tooling/hygiene, build 20260707b101)
+
+MANAGER: reload-button hard-escape shipped as tooling-hygiene completion of the D-045 reload prompt under PO
+overnight authorization; Director ratification to follow (ESC-style, per the D-046 correction).
+
+**Lead (what changed / proof / what PO tests):**
+1. **What changed:** `modules/talaria-version-reload.js` (both trees) — the "A new version is available — Reload"
+   toast's Reload button no longer does a plain reload (which CANNOT escape a service worker actively controlling
+   the page and serving a stale cached bundle → the toast reappeared forever in the field). `hardReload()` now
+   performs a HARD escape first: **(1)** unregister ALL SW registrations
+   (`navigator.serviceWorker.getRegistrations()` → `unregister()` each), **(2)** delete ALL caches
+   (`caches.keys()` → `caches.delete()` each), **(3)** THEN reload (via the existing cache-busting
+   `location.replace(?__vr=…)`, renamed `reloadNow()`, falling back to `location.reload()`). Every API is
+   feature-detected (`'serviceWorker' in navigator`, `'caches' in window`) and guarded — `navigator.serviceWorker`
+   may be `undefined` (insecure context / sandboxed frame; the exact `Cannot read properties of undefined (reading
+   'getRegistrations')` the user hit) → falls back to a plain hard reload. Wrapped in try/catch and driven by
+   `Promise.allSettled(...).then(reloadNow, reloadNow)` so it NEVER throws and ALWAYS reaches a reload even if any
+   unregister / cache-delete rejects. **Client-side button handler ONLY — sw.js install/activate/fetch + caching
+   strategy UNCHANGED (its diff is version-string-only).**
+2. **Proof:** `node --check` clean on the edited module in both trees. A faithful Node simulation loaded the REAL
+   module source into a minimal window/document stub, drove `check()` (loaded `b100` vs deployed `b101` marker) so
+   it rendered the real toast, captured the actual Reload `click` handler, and clicked it under two environments:
+   - **BRANCH A (SW + caches present):** observed order `getRegistrations → caches.keys → unregister(sw-A) →
+     unregister(sw-B) → caches.delete(each) → location.replace` — every teardown completed BEFORE reload, no throw. PASS.
+   - **BRANCH B (`navigator.serviceWorker` undefined, no caches):** observed `location.replace` only — plain hard
+     reload, NO SW/cache calls, NO throw. PASS.
+   Preserved behavior intact and gate-confirmed: **H-S22 PASS** (host-only `isPanel()` guard, dismissible toast,
+   kill-switch `__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT` still fully disables, the network-past-cache
+   `/chart/sw.js` `cache:'no-store'` + `?__vrc=` version CHECK unchanged).
+3. **PO tests:** load the app → the "new version — Reload" toast should appear (b100→b101 mismatch) → clicking
+   Reload should now land on b101 (`__TALARIA_CHART_BUILD_ID === '20260707b101'`) and the toast should NOT reappear
+   (the stale-SW loop is broken).
+
+### Verification / report-back
+- **Full `npm run gate` — GREEN 25/25** (H-S2..H-S27; H-S22 version-reload PASS). Regressions: none. Known-failing
+  baseline: none.
+- `node --check` clean on the edited module in **both** trees; both branches of the click handler proven by the
+  Node simulation (branch A teardown-then-reload; branch B plain-reload fallback, neither throws).
+- **SHA256 — every edited mirror pair byte-identical (EQ=True):**
+  `modules/talaria-version-reload.js` = `4299CB78118CC5F953B26F77B97CADACBE80F1B957F7BDE08E3A0EF930DF40DD`;
+  `chart/sw.js` = `dist-v9/sw.js` = `DC019FD647A7AE2537BC7370C7E8AFF94CF2002A7D806C5D1E81C97DFAC5E1F6`;
+  `dist-v9/index.html` = `81681003FF81A846139355F4DA873BB28B384A02DBF11FC9095ADD73A2516051`;
+  `legacy-index.html` = `005C0310B701F890F2D6A5B519E6427628AEEC81600A540C91078E9100D86CA1`;
+  `multichart-prod/chart-embed.html` = `728C4D346D2BB79ED2BC3043439CD4DCE7BD234BE663253021C243E80651F383`.
+- **ONE build bump** b100 → `20260707b101` via `bump-dist-v9-cache.mjs` (uniform `?v=` + `SW_VERSION` + embed
+  default across dist-v9 / live / legacy / embed in both trees); **0 `20260707b100` stragglers** in shipped files
+  (remaining b100 text is prior-build ledger history in this findings doc only).
+- **No security guard / SW-lifecycle logic / `gate.mjs` / `.github/workflows/security.yml` touched.** `sw.js` diff
+  is **version-string-only** (the standard `SW_VERSION` cache bump); the version-reload module is a client script,
+  not the SW. B8 owner caps + §6c I1 embed high-limit exclusion intact.
+
 ## 6s. [SUPERSEDED] CROSSROADS — B-FIX-3c direction (see ESC-007)
 
 **SUPERSEDED by D-016.** ESC-007 resolved to Option B (remove the 1m-master tax at source via

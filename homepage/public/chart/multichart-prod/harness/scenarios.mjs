@@ -35,6 +35,7 @@ import {
   broadcastCmd,
   hostReplayEnter,
   hostReplaySeek,
+  hostSetTimeframe,
   fanOutTf,
   invariantCheck,
   makeChecks,
@@ -3424,6 +3425,443 @@ async function hS25(ctx) {
   });
 }
 
+// ── H-S26 ────────────────────────────────────────────────────────────────
+// BL-10 (D-037) SYNC-OFF PEER PLAY / HOST-TF ISOLATION (on-list A2/A11):
+// CORE INVARIANT — with ALL sync OFF (interval-sync AND range-sync), a host TF
+// switch during PLAY must leave every OTHER same-pair peer COMPLETELY
+// unaffected: same TF label, same data cadence, same replay master, zero
+// self-fetch. NO re-render storm.
+//
+// RED (leak): 4 same-pair panels, interval-sync OFF + range-sync OFF, replay
+// PLAYING, all on 1m. The host switches 1m→4h during play. On the next PLAY
+// frame each peer sees hostTf(4h) !== panelTf(1m); it is NOT a finer self-owner
+// (host NATIVE master is still 1m), so applyReplayFrame's P4 different-TF PLAY
+// branch (panel-cmd-bridge.js) falls into the BL-10 coarser-play-advance
+// else-if and calls scheduleCoalescedSeek, whose parent-mirror pulls
+// (applyParentReplayMirror / applyStaticMirrorFrame → readParentReplayMirror
+// Payload) clone the host's now-4h-headed DISPLAY data/master onto the peer —
+// its `data` head cadence flips 60000→14400000 and its replay master extent
+// regresses to the host window, WHILE its TF label stays "1m" ("4H candles
+// under a 1m label"). The peer never calls setTimeframe.
+//
+// FIX (default ON): a same-pair peer that is NOT a finer self-owner and whose
+// TF differs from the host's committed DISPLAY cadence advances its playhead on
+// its OWN master only (own 1m replay master) and never pulls the parent mirror
+// payload. Gate: peerPlayMustStayOnOwnMaster (host `_committedBarsMatchTimeframe
+// (panelTf)`), consumed inside scheduleCoalescedSeek (ownMasterOnly). The
+// legitimate coarser-panel play-advance (H-S17) stays own-master + bounded.
+// Kill-switch (RED): __TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION.
+//
+// DETERMINISTIC (no wall-clock): every assertion is a per-panel cadence / TF
+// label / replay-master-extent / self-fetch-count sample taken after the play
+// window settles. The peer's playhead ADVANCING on its own 1m master is
+// asserted separately as PERMITTED (not a violation).
+async function hS26(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const peers = ['B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    // ALL sync OFF — interval-sync AND range-sync.
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S26 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+    checks.check('H-S26 non-backtest replay entered + quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // BEFORE: peers B/C/D all on 1m with 1m cadence + their own replay master.
+    const beforeAxis = {};
+    const beforePanel = {};
+    for (const id of peers) {
+      beforeAxis[id] = await readAxis21(page, id);
+      beforePanel[id] = await readPanel(page, id);
+    }
+    const setupOk = peers.every((id) => beforeAxis[id] && beforeAxis[id].tf === '1m'
+      && beforeAxis[id].dominantDelta === 60000 && beforeAxis[id].dataMatchesTf
+      && beforePanel[id] && Number.isFinite(beforePanel[id].replayMasterFirstT)
+      && Number.isFinite(beforePanel[id].replayMasterLastT));
+    checks.check('H-S26 setup: peers B/C/D on 1m, cadence 60000, own replay master resolved',
+      setupOk, peers.map((id) => `${id}[tf=${beforeAxis[id]?.tf},Δ=${beforeAxis[id]?.dominantDelta},`
+        + `master=${beforePanel[id]?.replayMasterFirstT}..${beforePanel[id]?.replayMasterLastT}]`).join(' '));
+    if (!setupOk) return checks;
+
+    // Size the forward play window to stay INSIDE every peer's loaded 1m master
+    // so a correct (own-master) advance never needs to self-fetch (deterministic,
+    // no network). The leak (mirroring the host's 4h master) is orthogonal to how
+    // far we play.
+    const stepMs = 60_000;
+    let maxForward = Infinity;
+    for (const id of peers) {
+      const fwd = Math.floor((Number(beforePanel[id].replayMasterLastT) - ts0) / stepMs);
+      if (Number.isFinite(fwd)) maxForward = Math.min(maxForward, fwd);
+    }
+    const FRAMES = Math.max(30, Math.min(150, (Number.isFinite(maxForward) ? maxForward : 60) - 6));
+
+    // Flip host + peers into PLAYING, then the host switches its OWN TF 1m→4h
+    // DURING play (all sync OFF → no fan-out; peers keep their 1m label).
+    await setHostReplayPlaying(page, true);
+    await broadcastCmd(page, 'replayFrame', { timestamp: ts0, isPlaying: true });
+    await sleep(200);
+    await hostSetTimeframe(page, '4h');
+    await sleep(1200);
+    const hostAfterSwitch = await readAxis21(page, 'A');
+    const hostSwitched = !!(hostAfterSwitch && hostAfterSwitch.tf === '4h');
+    checks.check('H-S26 host committed 4h during play (peers still labelled 1m)',
+      hostSwitched, `host.tf=${hostAfterSwitch?.tf} host.Δ=${hostAfterSwitch?.dominantDelta}`);
+    if (!hostSwitched) return checks;
+
+    // Stream real PLAY frames: host seeks its (now 4h) playhead each step and
+    // broadcasts the shared-playhead frame; peers mirror it (replayTick is
+    // suppressed while playing). This is the exact production leak trigger.
+    await resetDiag(page);
+    let ts = ts0;
+    for (let i = 0; i < FRAMES; i++) {
+      ts += stepMs;
+      await hostReplaySeek(page, ts);
+      await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+      if (i % 10 === 0) await sleep(35);
+    }
+    await sleep(1200);
+
+    // AFTER: sample each peer.
+    const afterAxis = {};
+    const afterPanel = {};
+    for (const id of peers) {
+      afterAxis[id] = await readAxis21(page, id);
+      afterPanel[id] = await readPanel(page, id);
+    }
+
+    // CORE 1 (RED→GREEN): peer TF label UNCHANGED (stays 1m).
+    const tfUnchanged = peers.every((id) => afterAxis[id] && afterAxis[id].tf === '1m');
+    checks.check('H-S26 CORE: peers keep their 1m TF label (never adopt host 4h)',
+      tfUnchanged, peers.map((id) => `${id}.tf=${afterAxis[id]?.tf}`).join(' '));
+
+    // CORE 2 (RED→GREEN): peer `data` cadence UNCHANGED (stays 60000, NEVER the
+    // host's 14400000). This is the "4H candles under a 1m label" leak.
+    const cadenceUnchanged = peers.every((id) => afterAxis[id]
+      && afterAxis[id].dominantDelta === 60000 && afterAxis[id].dataMatchesTf);
+    checks.check('H-S26 CORE: peers keep 60000ms data cadence (never flips to host 14400000)',
+      cadenceUnchanged,
+      peers.map((id) => `${id}[Δ=${afterAxis[id]?.dominantDelta},matches=${afterAxis[id]?.dataMatchesTf}]`).join(' '));
+
+    // CORE 3 (RED→GREEN): peer replay MASTER extent UNCHANGED (does not regress
+    // to the host window).
+    const masterUnchanged = peers.every((id) => afterPanel[id]
+      && afterPanel[id].replayMasterFirstT === beforePanel[id].replayMasterFirstT
+      && afterPanel[id].replayMasterLastT === beforePanel[id].replayMasterLastT);
+    checks.check('H-S26 CORE: peers keep their own replay master extent (no regression to host window)',
+      masterUnchanged,
+      peers.map((id) => `${id}[${beforePanel[id]?.replayMasterFirstT}..${beforePanel[id]?.replayMasterLastT}`
+        + ` -> ${afterPanel[id]?.replayMasterFirstT}..${afterPanel[id]?.replayMasterLastT}]`).join(' '));
+
+    // CORE 4 (RED→GREEN): peers self-fetch == 0 across the whole play window.
+    const peerFetch = sumFetches(afterPanel, peers);
+    checks.check('H-S26 CORE: peers self-fetch == 0 during host TF switch play (no storm)',
+      peerFetch === 0,
+      peers.map((id) => `${id}.fetches=${afterPanel[id]?.fetches}`).join(' '));
+
+    // PERMITTED (not a violation): the peer's playhead MAY advance on its OWN 1m
+    // master. Assert it did advance (the play still progresses) — this is the
+    // legitimate shared-playhead follow, distinct from adopting the host's data.
+    const playheadAdvanced = peers.every((id) => afterPanel[id]
+      && Number.isFinite(afterPanel[id].replayTs) && Number(afterPanel[id].replayTs) > ts0);
+    checks.check('H-S26 PERMITTED: peer playhead advanced on its OWN 1m master (allowed)',
+      playheadAdvanced,
+      peers.map((id) => `${id}.replayTs ${beforePanel[id]?.replayTs}->${afterPanel[id]?.replayTs} (ts0=${ts0})`).join(' '));
+
+    notes.push('H-S26 (BL-10, D-037 sync-off peer play / host-TF isolation, A2/A11): same-pair 2x2, '
+      + 'interval-sync OFF + range-sync OFF, replay PLAYING, all 1m. Host switches 1m->4h during play. '
+      + 'RED (--bugswitch=__TALARIA_MC_DISABLE_SYNCOFF_PEER_PLAY_HOST_TF_ISOLATION): peers B/C/D adopt the '
+      + 'host 4h-headed replay master via the P4 different-TF PLAY branch parent-mirror pull — data cadence '
+      + 'flips 60000->14400000 and master regresses to the host window WHILE the TF label stays 1m. '
+      + 'GREEN (fix): peers advance their playhead on their OWN 1m master only (peerPlayMustStayOnOwnMaster '
+      + 'gates scheduleCoalescedSeek ownMasterOnly), keeping TF=1m / cadence=60000 / own master / self-fetch=0. '
+      + `Play window=${FRAMES} frames. peerFetch=${peerFetch}. `
+      + 'H-S17 (legitimate coarser play-advance), H-S21/H-S23 (finer/coarse own-switch), H-S24 (peer-refetch) '
+      + 'unaffected.');
+    return checks;
+  });
+}
+
+// ── H-S27 ────────────────────────────────────────────────────────────────
+// A7 (§6co, D-048) FINER-SELF-OWNER PLAY VIEWPORT FREEZE: distinct from H-S26
+// (finer-than-host-DISPLAY own-master, which already follows) — here each 1m
+// peer is finer than the host's committed NATIVE cadence (host truly went 4h
+// native, no 1m fine master), so applyReplayFrame takes the FINER-SELF-OWNER
+// branch (panel-cmd-bridge.js:685). That seek carried NO onDone follow callback,
+// so the peer's playhead advanced on its OWN 1m master while its viewport froze
+// ("the candles run, the panels stop moving" — offsetX constant, replayTs
+// climbing). Every sibling seek exit on the peer play-advance paths (the own-
+// master coalesced exit :1849, the mirror exits :1837/:1843, the same-TF eased
+// follow :1329-1354) DOES carry maybePanelPlayViewportFollow; :685 was the ONLY
+// follow-less one.
+//
+// REGIME CONSTRUCTION (why this is NOT H-S26 and NOT the §6cn fan-out probe):
+// switch ONLY the HOST to a coarse NATIVE 4h BEFORE entering replay via a host-
+// only in-process setTimeframe (NOT fanOutTf) — with interval-sync AND range-
+// sync OFF the switch is never broadcast, so the peers are never pushed and hold
+// their own 1m TF through play (the §6cn fan-out probe relabelled peers back to
+// the host TF precisely because it broadcast). A pre-replay host switch commits
+// the host NATIVE fetch cadence to 4h (_mcCommittedNativeRawFetchTf='4h'), so
+// _multichartFinerSamePairPanelSelfOwns() reads panelMs(1m) < hostNativeMs(4h)
+// → TRUE for every peer → the :685 cell fires on each PLAY frame.
+//
+// RED (--bugswitch=__TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW, and
+// also the pre-fix tree): peer offsetX CONSTANT + _mcPlayFollowRenders===0 while
+// replayTs strictly increases → FROZEN VIEWPORT.
+// GREEN (fix, default ON): each peer keeps its own TF label (1m, cadence 60000)
+// AND offsetX advances with _mcPlayFollowRenders>0 in lockstep with replayTs,
+// following the peer's OWN leading edge (no host-data pull → b99 isolation
+// intact: cadence/master/self-fetch all stay put).
+//
+// DETERMINISTIC (no wall-clock): every assertion is an offsetX / follow-render-
+// counter / replayTs / TF-cadence sample taken at a settled point in a fixed
+// frame-count play window sized strictly inside every peer's loaded 1m master.
+async function readFinerOwnerSample(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    const rs = ch.replaySystem || null;
+    const data = Array.isArray(ch.data) ? ch.data : [];
+    let selfOwns = null;
+    try {
+      selfOwns = (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function')
+        ? !!ch._multichartFinerSamePairPanelSelfOwns()
+        : null;
+    } catch (_) { selfOwns = null; }
+    return {
+      offsetX: Number(ch.offsetX),
+      followRenders: Number(ch._mcPlayFollowRenders) || 0,
+      dataLen: data.length,
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      replayTs: rs && Number.isFinite(Number(rs.replayTimestamp)) ? Number(rs.replayTimestamp) : null,
+      userHasPanned: !!(rs && rs.userHasPanned),
+      selfOwns,
+    };
+  }).catch(() => null);
+}
+
+async function readHostNative(page) {
+  return page.evaluate(() => {
+    const ch = window.chart;
+    if (!ch) return null;
+    return {
+      tf: ch.currentTimeframe != null ? String(ch.currentTimeframe) : '',
+      committedNative: ch._mcCommittedNativeRawFetchTf != null ? String(ch._mcCommittedNativeRawFetchTf) : '',
+      nativeRawFetchTf: ch._nativeRawFetchTf != null ? String(ch._nativeRawFetchTf) : '',
+    };
+  }).catch(() => null);
+}
+
+async function hS27(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const peers = ['B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    // ALL sync OFF — interval-sync AND range-sync (finer-self-owner regime;
+    // host-only switch must NOT fan out to peers).
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    // ── Host commits a COARSE NATIVE 4h BEFORE replay (host-only, no fan-out). ──
+    await hostSetTimeframe(page, '4h');
+    const hostSwitchDeadline = Date.now() + 20_000;
+    let hostAxis = null;
+    while (Date.now() < hostSwitchDeadline) {
+      await sleep(250);
+      hostAxis = await readAxis21(page, 'A');
+      if (hostAxis && hostAxis.tf === '4h' && !hostAxis.switching) break;
+    }
+    await sleep(500);
+    const hostNative = await readHostNative(page);
+    const hostNativeTf = String((hostNative && (hostNative.committedNative || hostNative.nativeRawFetchTf)) || '')
+      .toLowerCase().trim();
+    const hostOn4hNative = !!(hostAxis && hostAxis.tf === '4h' && hostAxis.dominantDelta === 14_400_000
+      && hostAxis.dataMatchesTf && hostNativeTf === '4h');
+    checks.check('H-S27 setup: host committed NATIVE 4h (finer-self-owner regime, not display-resample)',
+      hostOn4hNative,
+      `host.tf=${hostAxis?.tf} Δ=${hostAxis?.dominantDelta} matches=${hostAxis?.dataMatchesTf} `
+      + `committedNative=${hostNative?.committedNative} nativeRawFetchTf=${hostNative?.nativeRawFetchTf}`);
+    if (!hostOn4hNative) return checks;
+
+    // Peers must NOT have been pushed — they hold their own 1m (sync OFF, no fan-out).
+    const beforeAxis = {};
+    const beforePanel = {};
+    for (const id of peers) {
+      beforeAxis[id] = await readAxis21(page, id);
+      beforePanel[id] = await readPanel(page, id);
+    }
+    const peersOn1m = peers.every((id) => beforeAxis[id] && beforeAxis[id].tf === '1m'
+      && beforeAxis[id].dominantDelta === 60000 && beforeAxis[id].dataMatchesTf);
+    checks.check('H-S27 setup: peers held own 1m (host-only switch did NOT fan out)',
+      peersOn1m, peers.map((id) => `${id}[tf=${beforeAxis[id]?.tf},Δ=${beforeAxis[id]?.dominantDelta}]`).join(' '));
+    if (!peersOn1m) return checks;
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S27 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+    checks.check('H-S27 non-backtest replay entered + quiescent on all panels', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    // Re-sample peer masters post-enter (self-own keeps the peer's OWN 1m master).
+    for (const id of peers) beforePanel[id] = await readPanel(page, id);
+
+    // ── REGIME GATE: every peer must be a FINER SELF-OWNER (the :685 cell). If
+    //    this cannot be established the regime is not constructed — FAIL loudly
+    //    (do-not-force-it) rather than assert a viewport follow on the wrong cell.
+    const ownSamples = {};
+    for (const id of peers) ownSamples[id] = await readFinerOwnerSample(page, id);
+    const allSelfOwn = peers.every((id) => ownSamples[id] && ownSamples[id].selfOwns === true
+      && ownSamples[id].tf === '1m');
+    checks.check('H-S27 REGIME: every 1m peer is a finer-self-owner vs host NATIVE 4h (:685 cell)',
+      allSelfOwn, peers.map((id) => `${id}[selfOwns=${ownSamples[id]?.selfOwns},tf=${ownSamples[id]?.tf}]`).join(' '));
+    if (!allSelfOwn) return checks;
+
+    // Size the forward play window strictly INSIDE every peer's loaded 1m master
+    // (deterministic, no self-fetch) — mirrors H-S26.
+    const stepMs = 60_000;
+    let maxForward = Infinity;
+    for (const id of peers) {
+      const fwd = Math.floor((Number(beforePanel[id].replayMasterLastT) - ts0) / stepMs);
+      if (Number.isFinite(fwd)) maxForward = Math.min(maxForward, fwd);
+    }
+    const FRAMES = Math.max(30, Math.min(150, (Number.isFinite(maxForward) ? maxForward : 60) - 6));
+
+    // Candle spacing (device px indifferent) to threshold the viewport advance.
+    const bFollow = await readPanelFollow(page, 'B');
+    const spacing = Number(bFollow?.spacing);
+    const spacingOk = Number.isFinite(spacing) && spacing > 0;
+    checks.check('H-S27 setup: peer B candle spacing resolved', spacingOk, `spacing=${spacing}`);
+    if (!spacingOk) return checks;
+
+    // ── PLAY: host seeks its (now 4h-native) playhead each 1m step and broadcasts
+    //    the shared-playhead PLAY frame; every peer takes the :685 finer-self-owner
+    //    branch on its OWN 1m master. Sample each peer's offsetX + follow-render
+    //    counter + replayTs across the window (pick B as the representative track,
+    //    assert all peers at the end). ──
+    await resetDiag(page);
+    await setHostReplayPlaying(page, true);
+    const startSample = {};
+    for (const id of peers) startSample[id] = await readFinerOwnerSample(page, id);
+    const track = []; // per-frame B samples
+    let ts = ts0;
+    for (let i = 0; i < FRAMES; i++) {
+      ts += stepMs;
+      await hostReplaySeek(page, ts);
+      await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+      await sleep(28);
+      const s = await readFinerOwnerSample(page, 'B');
+      if (s) track.push(s);
+      if (i % 10 === 0) await sleep(30);
+    }
+    await sleep(400);
+    const endSample = {};
+    const endAxis = {};
+    for (const id of peers) { endSample[id] = await readFinerOwnerSample(page, id); endAxis[id] = await readAxis21(page, id); }
+
+    // Non-vacuity: the shared playhead actually advanced on every peer's OWN master.
+    const replayAdvanced = peers.every((id) => startSample[id] && endSample[id]
+      && Number.isFinite(endSample[id].replayTs) && Number.isFinite(startSample[id].replayTs)
+      && endSample[id].replayTs > startSample[id].replayTs);
+    checks.check('H-S27 non-vacuous: peer replayTs strictly increased (candles ran on own master)',
+      replayAdvanced,
+      peers.map((id) => `${id}.replayTs ${startSample[id]?.replayTs}->${endSample[id]?.replayTs}`).join(' '));
+
+    // ISOLATION (no host-data pull; b99 leak cannot return): peer keeps its own TF
+    // label + 1m cadence + own replay master extent + self-fetch == 0.
+    const isolationHeld = peers.every((id) => endAxis[id] && endAxis[id].tf === '1m'
+      && endAxis[id].dominantDelta === 60000 && endAxis[id].dataMatchesTf
+      && beforePanel[id] && endSample[id]
+      && (() => {
+        const p = beforePanel[id];
+        return Number.isFinite(p.replayMasterFirstT) && Number.isFinite(p.replayMasterLastT);
+      })());
+    checks.check('H-S27 ISOLATION: peers keep own 1m label + 60000 cadence (no host-data pull on the follow)',
+      isolationHeld, peers.map((id) => `${id}[tf=${endAxis[id]?.tf},Δ=${endAxis[id]?.dominantDelta}]`).join(' '));
+    const afterPanel = {};
+    for (const id of peers) afterPanel[id] = await readPanel(page, id);
+    const masterUnchanged = peers.every((id) => afterPanel[id] && beforePanel[id]
+      && afterPanel[id].replayMasterFirstT === beforePanel[id].replayMasterFirstT
+      && afterPanel[id].replayMasterLastT === beforePanel[id].replayMasterLastT);
+    checks.check('H-S27 ISOLATION: peers keep own replay master extent (no regression to host 4h window)',
+      masterUnchanged,
+      peers.map((id) => `${id}[${beforePanel[id]?.replayMasterFirstT}..${beforePanel[id]?.replayMasterLastT}`
+        + ` -> ${afterPanel[id]?.replayMasterFirstT}..${afterPanel[id]?.replayMasterLastT}]`).join(' '));
+    const peerFetch = sumFetches(afterPanel, peers);
+    checks.check('H-S27 ISOLATION: peers self-fetch == 0 across the play window (no storm)',
+      peerFetch === 0, peers.map((id) => `${id}.fetches=${afterPanel[id]?.fetches}`).join(' '));
+
+    // ── CORE (RED→GREEN) 1: viewport FOLLOWS. offsetX advances by ≥ a candle over
+    //    the window AND changes on a majority of frames. RED: FROZEN (net ~0). ──
+    const offs = track.map((s) => s.offsetX).filter(Number.isFinite);
+    const netOffsetDelta = offs.length >= 2 ? Math.abs(offs[offs.length - 1] - offs[0]) : 0;
+    const stepDeltas = [];
+    for (let i = 1; i < offs.length; i++) stepDeltas.push(Math.abs(offs[i] - offs[i - 1]));
+    const EPS = Math.max(0.25, spacing * 0.02);
+    const changedSteps = stepDeltas.filter((d) => d > EPS).length;
+    const changedFraction = stepDeltas.length ? changedSteps / stepDeltas.length : 0;
+    // The leading edge marches ~1 candleSpacing per 1m frame, so a viewport that
+    // actually follows it moves on the order of FRAMES*spacing px net. RED's
+    // occasional goToReplayTimestamp re-anchor nudges offsetX a little, so a bare
+    // ">= 1 spacing" would not discriminate (candles are sub-pixel here); require a
+    // substantial fraction of the full leading-edge travel instead.
+    const expectedTravel = FRAMES * spacing;
+    checks.check('H-S27 CORE: peer viewport TRACKED the leading edge (offsetX net move ≥ 1/3 of the march; RED freezes)',
+      netOffsetDelta >= expectedTravel * 0.33,
+      `netOffsetDelta=${netOffsetDelta.toFixed(2)} expectedTravel=${expectedTravel.toFixed(2)} `
+      + `spacing=${spacing.toFixed(3)} offset ${offs[0]?.toFixed?.(2)}->${offs[offs.length - 1]?.toFixed?.(2)}`);
+    // offsetX advances at the device-pixel-column cadence (BL-13 coalesce, ~spacing
+    // px/frame here), FAR above the RED "frozen" floor (only the sporadic
+    // re-anchor moves it, ~0.04). Not a "majority" — the eased follow deliberately
+    // coalesces sub-pixel advances into one repaint per device-pixel column.
+    checks.check('H-S27 CORE: offsetX advanced on many play frames, well above the frozen floor (lockstep w/ replayTs)',
+      changedFraction > 0.15,
+      `changedFraction=${changedFraction.toFixed(3)} changed=${changedSteps}/${stepDeltas.length} (RED floor ~0.04)`);
+
+    // ── CORE (RED→GREEN) 2: the follow actually issued renders. RED keeps it 0. ──
+    const followDelta = {};
+    for (const id of peers) {
+      followDelta[id] = (Number(endSample[id]?.followRenders) || 0) - (Number(startSample[id]?.followRenders) || 0);
+    }
+    const followGrew = peers.every((id) => followDelta[id] > 0);
+    checks.check('H-S27 CORE: _mcPlayFollowRenders grew on every peer (RED keeps it 0 — frozen)',
+      followGrew, peers.map((id) => `${id}.followΔ=${followDelta[id]}`).join(' '));
+
+    notes.push('H-S27 (A7 §6co, D-048 finer-self-owner play viewport freeze): same-pair 2x2, interval-sync OFF '
+      + '+ range-sync OFF. Host switches to NATIVE 4h BEFORE replay (host-only setTimeframe, no fan-out) so each '
+      + '1m peer is finer than host NATIVE → _multichartFinerSamePairPanelSelfOwns()===true (the :685 cell, distinct '
+      + 'from H-S26/b99 which is finer-than-host-DISPLAY own-master and already follows). Replay PLAYING. '
+      + 'RED (--bugswitch=__TALARIA_MC_DISABLE_FINER_OWNER_PLAY_VIEWPORT_FOLLOW): peer offsetX CONSTANT + '
+      + '_mcPlayFollowRenders===0 while replayTs strictly increases (frozen viewport, "candles run, panels stop"). '
+      + 'GREEN (fix, default ON): forceReplaySeek at :685 carries the SAME maybePanelPlayViewportFollow onDone the '
+      + 'own-master exit uses — offsetX advances (net '
+      + `${netOffsetDelta.toFixed(1)}px ≥ spacing ${spacing.toFixed(1)}, changed ${(changedFraction * 100).toFixed(0)}% `
+      + `of frames), followRenders>0 (Δ=${peers.map((id) => followDelta[id]).join('/')}), on the peer's OWN leading `
+      + `edge — TF stays 1m / cadence 60000 / own master / self-fetch=${peerFetch} (b99 isolation intact). `
+      + `Play window=${FRAMES} frames. H-S26 (isolation/own-master), H-S17 (coarser follow), same-TF (H-S25) and `
+      + 'independent paths untouched.');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -3449,6 +3887,8 @@ export function scenarioList() {
     { id: 'H-S23', title: 'coarser same-pair panel bounded coarse-acquire on TF switch during NON-backtest replay; no chunk-walk (BL-17)', run: hS23 },
     { id: 'H-S24', title: 'host TF fan-out during replay: same-pair peers mirror, do NOT self-fetch (BL-18)', run: hS24 },
     { id: 'H-S25', title: 'same-TF panel play follow is eased sub-candle, not bar-quantized X-jump (Fix A)', run: hS25 },
+    { id: 'H-S26', title: 'sync-off peer play isolation: host TF switch leaves same-pair peers on own cadence/master (BL-10)', run: hS26 },
+    { id: 'H-S27', title: 'finer-self-owner (peer finer than host NATIVE) play viewport follows leading edge, not frozen (A7 §6co)', run: hS27 },
   ];
 }
 
