@@ -4840,8 +4840,22 @@ export default function MultichartGrid({
         function clearDrawingUiOnOtherPanels(sourceId, opts) {
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             const ownershipV2 = multichartOwnershipV2Enabled();
-            const skipDismiss = ownershipV2 && !!(opts && opts.skipV9Dismiss);
-            const preserveSourceSettings = ownershipV2 && !!(opts && (opts.skipV9Dismiss || opts.preserveSourceSettings));
+            // If a V9 settings panel was just opened for THIS source, protect it:
+            // the global dismiss below is not source-aware and would close the panel
+            // we just opened (the "open-then-flash-closed" bug on multichart). The
+            // guard is short-lived, so normal close/deselect still works afterward.
+            let protectSource = false;
+            try {
+                if (typeof window !== "undefined"
+                    && window.__v9DrawingSettingsOpenGuardUntil
+                    && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
+                    && String(window.__v9DrawingSettingsOpenSource) === String(source)) {
+                    protectSource = true;
+                }
+            } catch (_) {}
+            const skipDismiss = protectSource || (ownershipV2 && !!(opts && opts.skipV9Dismiss));
+            const preserveSourceSettings = protectSource
+                || (ownershipV2 && !!(opts && (opts.skipV9Dismiss || opts.preserveSourceSettings)));
             if (!skipDismiss) {
                 closeGlobalLegacyDrawingSettings();
                 try {
@@ -4853,7 +4867,7 @@ export default function MultichartGrid({
             return Promise.all([
                 deselectDrawingsOnNonFocusedPanels(source),
                 preserveSourceSettings
-                    ? closeDrawingSettingsOnOtherPanels(source)
+                    ? closeDrawingSettingsPreservingSource(source)
                     : closeDrawingSettingsOnAllPanels(),
             ]);
         }
@@ -4953,6 +4967,15 @@ export default function MultichartGrid({
                         try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
                             window.__v9MultichartSettingsPanelId = null;
                         }
+                        // Protect the panel we just opened from peer-clear cascades
+                        // (postMessage "clear drawing UI" / focus side-effects) that
+                        // fire a few hundred ms later. With ownership-V2 disabled the
+                        // global "dismiss drawing settings" event those paths emit
+                        // would otherwise close THIS panel too — the "flash" bug.
+                        try {
+                            window.__v9DrawingSettingsOpenSource = String(source);
+                            window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
+                        } catch (_) {}
                         // v9Open just rendered the settings for `source` (for an
                         // iframe panel this happens inside that panel). Close only
                         // the OTHER panels — never `source` — otherwise, with

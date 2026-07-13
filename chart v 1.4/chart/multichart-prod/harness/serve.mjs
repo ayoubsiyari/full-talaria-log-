@@ -473,7 +473,7 @@ function hostPageHtml(query) {
   if (pair === 'independent' && fileIds.B != null) fileIds.B = independentFileId;
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260712b19';
+  const buildId = '20260712b23';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 

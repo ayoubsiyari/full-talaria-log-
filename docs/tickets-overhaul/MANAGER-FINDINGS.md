@@ -269,6 +269,12 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **T0 step 5 (Lane 4):** `dev:live` now boots the chart locally (`chartTruthy/d3Truthy:true`, 0 console errors) via `/chart/vendor|fonts|pwa` dev-serving; production build untouched. **Fast-test recipe:** `USE_LOCAL_CHART=1 npm run dev:live` → set `__TALARIA_*` flags in console → interact, no rebuild. Accepted.
 - **Unblocks the marquee fix** (`PLAN2-FOUND#1`): now locally verifiable in seconds. Dispatching to Lane 1 next.
 
+### T1 step 9 — marquee border FIXED + visually verified (2026-07-13)
+- **Report:** `worker-reports/T1-step9-marquee-border-fix-report.md`. Root cause step 8 missed: the live Ctrl+drag stream is **pointer-event dominant** (13 `pointermove`, 1 `mousemove`) and `drawCtrlMarqueeSelect()` was never reached during renders → overlay never created. Fix (gated `__TALARIA_DISABLE_CTRL_MARQUEE_FIX`): listen to pointer events + sync the overlay directly from the tracker.
+- **Fast-loop VISUAL proof (the discipline we needed):** blue overlay draws during Ctrl+drag — main chart 396×215, panel iframe 287×270; release selects 2/2 enclosed tools on host A and panel B; kill-switch ON → overlay gone. Both `chart.js` trees byte-identical (`AA6FD125…`). Worker gate PASS.
+- **Manager re-running `npm run gate`** on the step-9 tree (P1) — result pending; batching deploy.
+- **Ready to deploy:** T2 step 1 (`drawing-tools-manager.js`) + step 9 (`chart.js`) both harness-verified → one server rebuild, **Manager bump `20260713b4`**, PO confirms marquee live.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.
