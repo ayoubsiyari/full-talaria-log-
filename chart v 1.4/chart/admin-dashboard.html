@@ -4950,6 +4950,7 @@ select { cursor: default; }
               <button type="button" class="btn sm" onclick="supportUnarchiveMatching()">Unarchive matched</button>
               <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()">Archive matched</button>
               <button type="button" class="btn sm danger" id="supportBulkDeleteBtn" onclick="supportDeleteTickets()" disabled title="Select a ticket type first">Delete by type</button>
+              <button type="button" class="btn sm danger" id="supportDeleteAllBtn" onclick="supportDeleteAllTickets()" title="Permanently delete EVERY ticket (all types, all statuses, including archived)">Delete ALL tickets</button>
               <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
               <a class="btn sm" id="supportExportFullBtn" href="#" onclick="return supportExportFull(event)" title="ZIP with ticket titles, all messages, and image attachments">Export full (msgs + images)</a>
             </div>
@@ -6742,6 +6743,47 @@ async function supportDeleteTickets() {
       confirmPrefix: 'Permanently delete',
       donePrefix: 'Deleted'
     });
+  } catch (e) {
+    toast(e.message || 'Delete failed', 'err');
+  }
+}
+
+async function supportDeleteAllTickets() {
+  // Wipe EVERY ticket regardless of type/status/archive. Irreversible, so require
+  // the admin to type an exact phrase before we even preview.
+  const typed = prompt(
+    'This permanently deletes EVERY support ticket (all types, all statuses, including archived) ' +
+    'along with their messages and attachments. This cannot be undone.\n\n' +
+    'Type  DELETE ALL  to confirm:'
+  );
+  if (typed == null) return;
+  if (typed.trim() !== 'DELETE ALL') {
+    toast('Cancelled — confirmation text did not match', 'err');
+    return;
+  }
+  const body = { all_tickets: true, include_resolved: true, dry_run: true };
+  try {
+    const preview = await api('/api/admin/support/delete-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const n = preview.deleted_count || 0;
+    if (!n) {
+      toast('No tickets to delete', 'ok');
+      return;
+    }
+    const ok = confirm('Permanently delete ALL ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now? This cannot be undone.');
+    if (!ok) return;
+    body.dry_run = false;
+    const data = await api('/api/admin/support/delete-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    supportClearSelectedIfMissing();
+    toast('Deleted ' + (data.deleted_count || n) + ' ticket(s)', 'ok');
+    await loadSupportThreads();
   } catch (e) {
     toast(e.message || 'Delete failed', 'err');
   }

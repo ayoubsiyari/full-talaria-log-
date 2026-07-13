@@ -200,6 +200,11 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Build/deploy fact (Manager):** live serves a **Vite-built bundle** (`npm run build:live` → `vite build` → `sync-v9-to-homepage` → Docker image), NOT raw JSX. A cache-only bump will retest STALE compiled React → false negative. Acceptance requires a full `build:live` + Docker redeploy, then PO runs `MULTICHART-PARITY-CHECKLIST.md` with build id confirmed on host + every panel (L1).
 - **Next:** PO rebuilds + redeploys, runs parity checklist. PASS → accept step 7, close the R1/R2/R3 regression, resume T1 closure. FAIL on any row → back to Lane 1 (or fallback (b)).
 
+### WORKFLOW GAP found (2026-07-13) — why "nothing changed" on retest
+- PO retested with only a **cache-bump** (`bump-dist-v9-cache`, see terminal 11 runs b3/b4). That stamps `?v=`/SW_VERSION but does **NOT recompile React**. `MultichartGrid.jsx` is compiled by Vite into `chart/dist-v9/assets/talaria-v9-live.js` (`vite.config.live.js` `base:/chart/dist-v9/`, `entryFileNames: assets/talaria-v9-live.js`). So every React fix (T1 step 4/5/7) needs `npm run build:live` (or a Docker image rebuild — `chart_assets` stage runs `build:live:chart`, ~15–20 min Terser). Raw JS module fixes (order-manager) worked on bump-only because they're served unminified — which masked this gap.
+- **Correction issued to PO:** for any `MultichartGrid.jsx`/React fix, run `npm run build:live` in `talaria-design` (recompiles dist-v9 + syncs homepage/public) BEFORE bump/reload. This is now part of multichart acceptance.
+- **Fast-test gap (for Lane 4 later):** `dev:live` (Vite HMR, instant) can't init the chart because `vite.config.live.js` proxy list omits `/chart/vendor/d3.min.js` (only `/chart/chart.js`, `/chart/modules`, etc. are proxied) → `d3 load failed`. Fixing that proxy/`USE_LOCAL_CHART` gap would give a sub-second React test loop instead of full rebuilds — directly serves D-006's parity-check tooling.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.
