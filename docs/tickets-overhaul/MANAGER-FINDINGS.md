@@ -258,6 +258,17 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
   - **Lane 4 → fast-test tooling:** fix Vite `/chart/vendor/d3.min.js` proxy gap (sub-second React test loop vs 20-min rebuilds) + reclassify H-S34/35/44 to known-failing for the fallback window.
 - T1 deferred re-migration recorded as a future track item (re-enable via retained `__TALARIA_*` flags under the real-product parity gate).
 
+### b3 fallback ACCEPTED (stable) — remaining item = marquee border (2026-07-13)
+- PO on `20260713b3`: multichart stable. **Settings double-click = spec-correct** (PO re-confirmed TV-style: single=select+quick menu, double=settings) → NOT a bug, closed. **Ctrl+drag selects fine.** Only remaining live gap: **blue marquee preview border does not draw during Ctrl+drag** = pre-existing `PLAN2-FOUND#1`; step-8's fix never landed live.
+- **Decision:** do NOT re-attempt the marquee fix blindly (that caused the rebuild loop). **Lane 4 first fixes the Vite dev-proxy** (`/chart/vendor/d3.min.js`) so the engine/React can be tested locally in seconds; THEN the marquee gets a clean dedicated fix verified fast before any server deploy. Marquee stays non-blocking; big buckets proceed meanwhile.
+- **Dispatched Lane 4** `worker-prompts/T0-step5-vite-devproxy-fast-test.md` (fast-test enabler) + it also reclassifies H-S34/35/44 to known-failing for the fallback window. Lane 1 proceeds on T2.
+
+### T2 step 1 + T0 step 5 ACCEPTED (Manager-verified gate) (2026-07-13)
+- **Manager independently ran `npm run gate` (P1):** `[gate] PASS: no new regressions; 6 known-failing tracked` (exit 0, elapsed ~571s). H-S38/H-S39 now PASS (T2 fix); tracked reds = H-S34/35/44 (fallback window) + H-S40/41/42 (T5 anchoring, not yet fixed). Both Lane 1 + Lane 4 edits to `known-failing.json` converged (identical SHA `98CF39EB…`) — no collision.
+- **T2 step 1 (Lane 1):** RC-2 drawing-save invalidation. `saveDrawings()` fingerprints state → schedules render on change; kill-switch `__TALARIA_DISABLE_DRAWING_SAVE_INVALIDATION_V2`. RED/GREEN/RED proven on H-S38/39. Trees byte-identical (`7716A3BA…`). Accepted. (T2 may need a step-2 broader assertion tour for remaining RC-2 hits.)
+- **T0 step 5 (Lane 4):** `dev:live` now boots the chart locally (`chartTruthy/d3Truthy:true`, 0 console errors) via `/chart/vendor|fonts|pwa` dev-serving; production build untouched. **Fast-test recipe:** `USE_LOCAL_CHART=1 npm run dev:live` → set `__TALARIA_*` flags in console → interact, no rebuild. Accepted.
+- **Unblocks the marquee fix** (`PLAN2-FOUND#1`): now locally verifiable in seconds. Dispatching to Lane 1 next.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

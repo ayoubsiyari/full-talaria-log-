@@ -44,10 +44,11 @@
     "H-S44"
   ],
   "knownFailing": {
-    "H-S38": "T0 step 3 tracked-red: RC-2 style color commit does not repaint by next frame",
-    "H-S39": "T0 step 3 tracked-red: RC-2 style width commit does not repaint by next frame",
+    "H-S34": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands",
+    "H-S35": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands",
     "H-S40": "T0 step 4 tracked-red: RC-3 anchored VWAP shifts timestamp anchor across timeframe switch",
     "H-S41": "T0 step 4 tracked-red: RC-3 fixed range volume profile shifts endpoint anchors across timeframe switch",
-    "H-S42": "T0 step 4 tracked-red: RC-3 anchored volume profile shifts timestamp anchor across timeframe switch"
+    "H-S42": "T0 step 4 tracked-red: RC-3 anchored volume profile shifts timestamp anchor across timeframe switch",
+    "H-S44": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands"
   }
 }

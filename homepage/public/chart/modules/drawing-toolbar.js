@@ -1775,17 +1775,30 @@ class DrawingToolbar {
                 const anchorX = r.left + r.width / 2;
                 const anchorY = r.bottom + 10;
                 const liveDrawing = this.currentDrawing || drawing;
-                // Parent V9 wraps toolbar.hide and clears tlBarSelected — suppress that while
-                // opening settings so multichart gear matches dblclick (settings + quick bar).
-                try {
-                    const until = Date.now() + 700;
-                    if (typeof window !== 'undefined') {
-                        window.__v9SuppressToolbarHideUntil = until;
+                // Multichart: opening settings from the gear triggers the same "clicked
+                // outside a shape" cleanup that deselects + dismisses settings on other
+                // tiles (chart.js pointerdown/mousedown, MultichartGrid deselect helpers).
+                // Those paths honor __v9DrawingSelectionGuardUntil (performance.now()-based),
+                // so arm that real guard here — otherwise the settings modal we just opened
+                // is immediately torn down and the gear appears to do nothing, while
+                // double-click (which happens on the shape) works.
+                // performance.now() is per-document (different time origin per window),
+                // so arm each window's guard using ITS OWN clock — never copy one window's
+                // value into another.
+                const armSelectionGuard = (win) => {
+                    try {
+                        if (!win) return;
+                        const perf = win.performance;
+                        const nowTs = (perf && typeof perf.now === 'function') ? perf.now() : Date.now();
+                        win.__v9DrawingSelectionGuardUntil = nowTs + 700;
+                    } catch (_) { /* cross-origin / ignore */ }
+                };
+                if (typeof window !== 'undefined') {
+                    armSelectionGuard(window);
+                    if (window.parent && window.parent !== window) {
+                        armSelectionGuard(window.parent);
                     }
-                    if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
-                        window.parent.__v9SuppressToolbarHideUntil = until;
-                    }
-                } catch (_) { /* ignore */ }
+                }
                 if (this.onSettings) {
                     this.onSettings(liveDrawing, anchorX, anchorY);
                 }

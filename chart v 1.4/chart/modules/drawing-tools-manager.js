@@ -233,6 +233,7 @@ class DrawingToolsManager {
         this._drawingsPendingTargets = { session: false, api: false };
         this._drawingsFlushAllInProgress = false;
         this._drawingsSaveBtn = null;
+        this._lastDrawingsRenderSignature = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -11592,6 +11593,63 @@ class DrawingToolsManager {
         return json;
     }
 
+    _isDrawingSaveInvalidationV2Enabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_DRAWING_SAVE_INVALIDATION_V2);
+    }
+
+    _ensureInvalidationAssertionScheduleHook() {
+        if (typeof window === 'undefined' || !window.__TALARIA_ASSERT_INVALIDATION) return;
+        const chart = this.chart;
+        if (!chart || typeof chart.scheduleRender !== 'function' || chart._talariaInvalidationScheduleWrapped) return;
+        const originalScheduleRender = chart.scheduleRender.bind(chart);
+        chart._talariaInvalidationScheduleWrapped = true;
+        chart._talariaInvalidationScheduleSeq = Number(chart._talariaInvalidationScheduleSeq) || 0;
+        chart.scheduleRender = (...args) => {
+            chart._talariaInvalidationScheduleSeq += 1;
+            chart._talariaInvalidationLastScheduleAt = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            return originalScheduleRender(...args);
+        };
+    }
+
+    _assertRenderInvalidationScheduled(setterName, beforeSeq, stack) {
+        if (typeof window === 'undefined' || !window.__TALARIA_ASSERT_INVALIDATION) return;
+        const chart = this.chart;
+        const thresholdMs = 50;
+        setTimeout(() => {
+            const afterSeq = Number(chart && chart._talariaInvalidationScheduleSeq) || 0;
+            if (afterSeq > beforeSeq) return;
+            const hit = {
+                setter: setterName,
+                thresholdMs,
+                stack,
+            };
+            try {
+                if (!Array.isArray(window.__talariaInvalidationWarnings)) {
+                    window.__talariaInvalidationWarnings = [];
+                }
+                window.__talariaInvalidationWarnings.push(hit);
+            } catch (_) { /* ignore */ }
+            console.warn('[TALARIA ASSERT INVALIDATION] render-relevant mutation without scheduleRender within 50 ms', hit);
+        }, thresholdMs);
+    }
+
+    _invalidateAfterRenderRelevantSave(setterName, signatureBefore, signatureAfter) {
+        if (signatureBefore == null || signatureBefore === signatureAfter) return;
+        const chart = this.chart;
+        if (!chart) return;
+        this._ensureInvalidationAssertionScheduleHook();
+        const beforeSeq = Number(chart._talariaInvalidationScheduleSeq) || 0;
+        const stack = (typeof window !== 'undefined' && window.__TALARIA_ASSERT_INVALIDATION)
+            ? (new Error(`${setterName} mutated render-relevant drawing state`)).stack
+            : null;
+        this._assertRenderInvalidationScheduled(setterName, beforeSeq, stack);
+        if (this._isDrawingSaveInvalidationV2Enabled() && typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
+    }
+
     /** Restore lock after fromJSON() — many tool classes omit locked in fromJSON. */
     _applyLoadedDrawingLockState(drawing, item) {
         if (!drawing || !item) return;
@@ -11620,6 +11678,9 @@ class DrawingToolsManager {
         });
         
         const data = this.drawings.map((d) => this._serializeDrawingForStorage(d));
+        const renderSignatureBefore = this._lastDrawingsRenderSignature;
+        const renderSignatureAfter = JSON.stringify(data);
+        this._lastDrawingsRenderSignature = renderSignatureAfter;
         const key = this.getStorageKey(fileIdOverride);
         const clientUpdatedAt = Date.now();
 
@@ -11672,6 +11733,7 @@ class DrawingToolsManager {
         } catch (error) {
             console.warn('⚠️ Failed to dispatch drawingsChanged event:', error?.message || error);
         }
+        this._invalidateAfterRenderRelevantSave('DrawingToolsManager.saveDrawings', renderSignatureBefore, renderSignatureAfter);
     }
 
     /**

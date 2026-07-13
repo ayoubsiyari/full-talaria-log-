@@ -31,7 +31,24 @@ const BACKEND = process.env.CHART_BACKEND || 'http://31.97.192.82:3000'
 const USE_LOCAL_CHART = process.env.USE_LOCAL_CHART === '1' || process.env.USE_LOCAL_CHART === 'true'
 const chartRoot = path.resolve(__dirname, '../chart')
 
-/** Serve ../chart/chart.js and ../chart/modules/* from disk when USE_LOCAL_CHART=1. */
+const MIME_TYPES = {
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.webmanifest': 'application/manifest+json; charset=utf-8',
+}
+
+function localChartFileForUrl(url) {
+    if (!url.startsWith('/chart/')) return null
+    const rel = decodeURIComponent(url.replace(/^\/chart\//, ''))
+    const file = path.normalize(path.join(chartRoot, rel))
+    return file.startsWith(chartRoot + path.sep) ? file : null
+}
+
+/** Serve existing ../chart/* static files from disk when USE_LOCAL_CHART=1. */
 function localChartModulesPlugin() {
     return {
         name: 'local-chart-modules',
@@ -39,15 +56,15 @@ function localChartModulesPlugin() {
             if (!USE_LOCAL_CHART) return
             server.middlewares.use((req, res, next) => {
                 const url = (req.url || '').split('?')[0]
-                if (url !== '/chart/chart.js' && !url.startsWith('/chart/modules/')) {
+                const file = localChartFileForUrl(url)
+                if (!file) {
                     next()
                     return
                 }
-                const rel = url.replace(/^\/chart\//, '')
-                const file = path.join(chartRoot, rel)
                 try {
                     if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-                        res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+                        const type = MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream'
+                        res.setHeader('Content-Type', type)
                         fs.createReadStream(file).pipe(res)
                         return
                     }
@@ -92,15 +109,20 @@ export default defineConfig({
             ],
         },
         proxy: {
-            // Legacy chart static files (chart.js, modules/*.js, indicators/*, image/*)
+            // Legacy chart static files (chart.js, modules/*.js, vendor/*, assets)
             '/chart/chart.js':              { target: BACKEND, changeOrigin: true },
             '/chart/chart-main.js':         { target: BACKEND, changeOrigin: true },
             '/chart/chart.module.js':       { target: BACKEND, changeOrigin: true },
             '/chart/styles.css':            { target: BACKEND, changeOrigin: true },
             '/chart/propfirm-styles.css':   { target: BACKEND, changeOrigin: true },
             '/chart/modules':               { target: BACKEND, changeOrigin: true },
+            '/chart/vendor':                { target: BACKEND, changeOrigin: true },
             '/chart/indicators':            { target: BACKEND, changeOrigin: true },
             '/chart/image':                 { target: BACKEND, changeOrigin: true },
+            '/chart/fonts':                 { target: BACKEND, changeOrigin: true },
+            '/chart/pwa':                   { target: BACKEND, changeOrigin: true },
+            '/chart/manifest.webmanifest':  { target: BACKEND, changeOrigin: true },
+            '/chart/pwa-install.js':        { target: BACKEND, changeOrigin: true },
             '/chart/settings-panel.js':     { target: BACKEND, changeOrigin: true },
             '/chart/settings-panel-ext.js': { target: BACKEND, changeOrigin: true },
             '/chart/multichart-prod':       { target: BACKEND, changeOrigin: true },
