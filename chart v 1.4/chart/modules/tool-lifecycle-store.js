@@ -19,7 +19,30 @@
         }
 
         isEnabled() {
-            return !(global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2);
+            if (global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2) return false;
+            if (this._isMultichartIframeEmbed()) {
+                return !!(global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false);
+            }
+            return true;
+        }
+
+        _isMultichartIframeEmbed() {
+            const chart = this.drawingManager && this.drawingManager.chart;
+            if (chart && typeof chart._isMultichartEmbedPanel === 'function') {
+                try { return !!chart._isMultichartEmbedPanel(); } catch (_) { /* ignore */ }
+            }
+            if (!global || !global.document || global.parent === global) return false;
+            try {
+                if (global.parent && global.parent.__multichartGrid) return true;
+            } catch (_) { /* cross-origin */ }
+            try {
+                if (global.document.documentElement.classList.contains('multichart-embed')) return true;
+            } catch (_) { /* ignore */ }
+            try {
+                return new URLSearchParams(global.location && global.location.search || '').get('multichart') === '1';
+            } catch (_) {
+                return false;
+            }
         }
 
         on(eventName, handler) {

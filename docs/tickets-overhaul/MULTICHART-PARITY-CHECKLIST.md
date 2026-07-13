@@ -8,8 +8,8 @@
 ---
 
 ## Preconditions (L1)
-- [ ] **REBUILD FIRST (mandatory — a cache bump alone does NOT recompile React):** in `chart v 1.4/talaria-design` run `$env:BUILD_ID='<new-id>'; npm run build:live`. This recompiles `MultichartGrid.jsx` into `dist-v9`, stamps `?v=`/SW_VERSION, and syncs homepage. Raw `chart.js`/module fixes only need this for the `?v=` bump; React fixes REQUIRE the recompile. Skipping this = testing stale code.
-- [ ] Service worker unregistered + hard reload after the rebuild.
+- [ ] **DEPLOY FIRST — a cache bump alone does NOT recompile React, and local builds do NOT reach the server.** The PO tests on the **remote server** (`/opt/talaria`), so the fix reaches the browser only via: (1) local `git commit` + `git push` to `origin/main`; (2) on the server `git pull` then `GIT_COMMIT=<new-id> docker compose up --build -d` (Docker recompiles `MultichartGrid.jsx` and serves the new `chart.js`, stamping the build id). For a purely local dev check instead, `npm run build:live` in `talaria-design` — but that only affects a locally-served chart, never the server.
+- [ ] Service worker unregistered + hard reload after the deploy.
 - [ ] Live React multichart open (Vite live UI / real `chart-embed`), **not** the harness.
 - [ ] Build id confirmed on the host **and every panel frame** = the new id just built (record it here: `__________`).
 - [ ] At least two panels open; place two synced drawings in a non-focused panel (panel B).

@@ -53,9 +53,9 @@ const HOST_CONTAINER_ID = "chart-container";
 
 function multichartOwnershipV2Enabled() {
     try {
-        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2);
+        return typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2 === false;
     } catch (_) {
-        return true;
+        return false;
     }
 }
 

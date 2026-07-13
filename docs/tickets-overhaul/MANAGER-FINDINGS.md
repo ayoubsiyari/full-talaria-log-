@@ -228,6 +228,22 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Deploy note:** step 8 = **raw `chart.js`** (not React) → served directly, so a **cache-bump surfaces it** (no Vite/Docker rebuild needed, unlike step 7's `MultichartGrid.jsx`). Manager bump → **`20260713b2`**.
 - **Next:** PO runs `build:live` (covers the cache-bump; also keeps step-7 React bundle current), confirms `20260713b2` on frame, runs parity rows 8–9 on main chart AND a panel + switch-off revert check. PASS → step 8 accepted, PLAN2-FOUND#1/#2 close, T1 back on track.
 
+### DEPLOY PIPELINE CORRECTED (2026-07-13) — root cause of every "nothing changed"
+- **The PO tests on a REMOTE SERVER**, not locally: terminal 5 shows `root@srv904606:/opt/talaria#` running `docker compose up --build`. **Local `npm run build:live` (Windows) never reaches that server** — this was the actual cause of the repeated "nothing changed", not the fixes.
+- **Correct pipeline for ANY fix to reach the PO's browser:**
+  1. Local: commit + push to `origin/main` (verified: step-8 `chart.js` is in commit `08832136`, pushed).
+  2. Server (`/opt/talaria`): `git pull` → `GIT_COMMIT=<id> docker compose up --build -d`. The Docker `chart_assets` stage runs `build:live:chart` (compiles `MultichartGrid.jsx` → dist-v9 + serves `chart.js`); `GIT_COMMIT` → `BUILD_ID` so the frame shows a confirmable id.
+  3. Browser: unregister SW + hard reload; confirm build id (L1).
+- **Manager action:** stop issuing local build commands as the deploy step; the deploy is server-side git pull + docker build. Local build:live is only for a local dev check (which is separately blocked by the Vite d3 proxy gap).
+- **Parity checklist precondition #1 updated** should reflect server rebuild, not local `build:live`, when the PO tests the server. (Follow-up: reconcile checklist wording.) — DONE.
+
+### FALLBACK (b) INVOKED — stop the T1 multichart patch loop (2026-07-13)
+- On confirmed build `20260713b2` (deploy verified — console showed `?v=20260713b2`), PO reports multichart still broken: **Ctrl+drag marquee doesn't work** and **multichart tool settings menu doesn't open**. PO explicit: *"when I told you it's not working it's not working… don't loop on test and report"* and *"it worked before the workers started."*
+- Iterative T1 multichart patching (steps 4–8) has **not converged** and is exhausting the PO. Per **D-006 ruling 3 (fallback (b), pre-authorized, no new escalation)**: revert — **default the T1 multichart-panel migration OFF (single-chart stays ON), ship a stable build, re-migrate once later under the parity gate.**
+- **Dispatched** `worker-prompts/T1-fallbackB-disable-multichart-migration.md` to Lane 1: context-gated defaults (single-chart migration ON, multichart-iframe panels → pre-worker behavior), migration code retained + re-enableable via existing `__TALARIA_*` flags for the future re-attempt. Manager coordinates one deploy bump.
+- **Marquee (`PLAN2-FOUND#1`) is pre-existing** and explicitly OUT of this rollback — scheduled as its own dedicated fix later, not part of the loop.
+- T1 headline: single-chart improvements kept; multichart returns to known-good; T1 re-migration deferred (becomes a future consolidated effort under the real-product parity gate). Informing Director as a fallback-(b) invocation (no ruling needed).
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

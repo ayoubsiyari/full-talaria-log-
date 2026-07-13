@@ -3492,7 +3492,11 @@ class DrawingToolsManager {
     }
 
     _isToolLifecycleV2Enabled() {
-        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2);
+        if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2) return false;
+        if (isMultichartIframeEmbed()) {
+            return typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false;
+        }
+        return true;
     }
 
     _emitToolLifecycle(eventName, detail = {}) {

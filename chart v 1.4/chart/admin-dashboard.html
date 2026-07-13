@@ -4951,6 +4951,7 @@ select { cursor: default; }
               <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()">Archive matched</button>
               <button type="button" class="btn sm danger" id="supportBulkDeleteBtn" onclick="supportDeleteTickets()" disabled title="Select a ticket type first">Delete by type</button>
               <button type="button" class="btn sm danger" id="supportDeleteAllBtn" onclick="supportDeleteAllTickets()" title="Permanently delete EVERY ticket (all types, all statuses, including archived)">Delete ALL tickets</button>
+              <button type="button" class="btn sm" id="supportEmailNotifBtn" onclick="supportToggleEmailNotif()" title="Turn ticket email notifications (new ticket, replies, status changes) on/off">Email notifs: …</button>
               <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
               <a class="btn sm" id="supportExportFullBtn" href="#" onclick="return supportExportFull(event)" title="ZIP with ticket titles, all messages, and image attachments">Export full (msgs + images)</a>
             </div>
@@ -6789,6 +6790,45 @@ async function supportDeleteAllTickets() {
   }
 }
 
+let _supportEmailNotifLoaded = false;
+function supportRenderEmailNotifBtn(enabled) {
+  const b = $('supportEmailNotifBtn');
+  if (!b) return;
+  b.textContent = 'Email notifs: ' + (enabled ? 'ON' : 'OFF');
+  b.classList.toggle('warn', !enabled);
+  b.dataset.enabled = enabled ? '1' : '0';
+}
+async function supportLoadEmailNotifState(force) {
+  if (_supportEmailNotifLoaded && !force) return;
+  try {
+    const d = await api('/api/admin/support/email-notifications');
+    _supportEmailNotifLoaded = true;
+    supportRenderEmailNotifBtn(!!d.enabled);
+  } catch (e) { /* leave placeholder */ }
+}
+async function supportToggleEmailNotif() {
+  const b = $('supportEmailNotifBtn');
+  const cur = !!(b && b.dataset.enabled === '1');
+  const next = !cur;
+  if (!next && !confirm(
+    'Turn OFF all support ticket email notifications?\n\n' +
+    'Users will stop receiving emails for new tickets, admin replies, and status changes ' +
+    'until you turn this back on. Tickets still appear in the admin inbox.'
+  )) return;
+  try {
+    const d = await api('/api/admin/support/email-notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next })
+    });
+    _supportEmailNotifLoaded = true;
+    supportRenderEmailNotifBtn(!!d.enabled);
+    toast('Ticket email notifications ' + (d.enabled ? 'enabled' : 'disabled'), 'ok');
+  } catch (e) {
+    toast(e.message || 'Failed to update', 'err');
+  }
+}
+
 function supportSelectedRequesterId() {
   const raw = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
   if (!raw) return null;
@@ -7002,6 +7042,7 @@ async function loadSupportUserReplyThreads() {
 }
 
 async function loadSupportThreads(append) {
+  if (!append) supportLoadEmailNotifState();
   if (supportInboxTab === 'replies' && !append) {
     loadSupportUserReplyThreads();
     return;

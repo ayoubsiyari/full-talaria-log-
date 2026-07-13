@@ -13687,9 +13687,25 @@ def _send_support_ticket_email_sync(to_addr: str, subject: str, html_body: str) 
         print(f"[support-email] failed to {to_addr}: {exc}", flush=True)
 
 
+SUPPORT_EMAIL_NOTIFICATIONS_SETTING = "support_email_notifications_enabled"
+
+
+def _support_email_notifications_enabled() -> bool:
+    """Master on/off for all support ticket emails (admin-toggleable). Default ON."""
+    db = SessionLocal()
+    try:
+        return _truthy(_get_app_setting(db, SUPPORT_EMAIL_NOTIFICATIONS_SETTING, "true"))
+    except Exception:
+        return True
+    finally:
+        db.close()
+
+
 def _schedule_support_ticket_email(to_addr: str, subject: str, html_body: str) -> None:
     addr = (to_addr or "").strip()
     if not addr:
+        return
+    if not _support_email_notifications_enabled():
         return
     threading.Thread(
         target=_send_support_ticket_email_sync,
@@ -16626,6 +16642,43 @@ async def admin_set_platform_sections(payload: _PlatformSectionsIn, request: Req
             params={"sections": updated},
         )
         return {"success": True, "sections": _platform_sections_global(db)}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/email-notifications")
+async def admin_get_support_email_notifications(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        return {"enabled": _truthy(_get_app_setting(db, SUPPORT_EMAIL_NOTIFICATIONS_SETTING, "true"))}
+    finally:
+        db.close()
+
+
+class _SupportEmailNotifIn(BaseModel):
+    enabled: bool
+
+
+@app.put("/api/admin/support/email-notifications")
+async def admin_set_support_email_notifications(payload: _SupportEmailNotifIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        _set_app_setting(
+            db,
+            SUPPORT_EMAIL_NOTIFICATIONS_SETTING,
+            "true" if payload.enabled else "false",
+        )
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support_email_notifications_set",
+            target_type="app_setting",
+            target_id=SUPPORT_EMAIL_NOTIFICATIONS_SETTING,
+            params={"enabled": bool(payload.enabled)},
+        )
+        return {"success": True, "enabled": bool(payload.enabled)}
     finally:
         db.close()
 

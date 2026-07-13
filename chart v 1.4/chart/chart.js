@@ -2292,6 +2292,16 @@ class Chart {
         } catch (_e) { return false; }
     }
 
+    _isLegacySelectionRetireV2Enabled() {
+        if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2) {
+            return false;
+        }
+        if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+            return typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 === false;
+        }
+        return true;
+    }
+
     /**
      * After a completed stroke auto-deselects the draw tool on this tile, clear the same
      * armed tool on every other multichart panel (host + iframes). Matches single-chart
@@ -18957,8 +18967,7 @@ class Chart {
                 }
             }
             
-            const legacySelectionRetired = !(typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2);
+            const legacySelectionRetired = this._isLegacySelectionRetireV2Enabled();
             const dm = this.drawingManager;
 
             // Escape - deselect tool
@@ -32645,7 +32654,7 @@ class Chart {
                 return;
             }
 
-            if (this.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+            if (this.drawingManager && this._isLegacySelectionRetireV2Enabled()) {
                 return;
             }
             
@@ -32872,7 +32881,7 @@ class Chart {
         
         // Handle clicks on the SVG for drawing selection
         this.svg.on('click', (event) => {
-            if (this.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+            if (this.drawingManager && this._isLegacySelectionRetireV2Enabled()) {
                 return;
             }
             
@@ -33844,7 +33853,7 @@ class Chart {
                 element.on('click', (event) => {
                     event.stopPropagation(); // Prevent bubbling
                     
-                    if (chart.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                    if (chart.drawingManager && chart._isLegacySelectionRetireV2Enabled()) {
                         return;
                     }
                     
@@ -33873,7 +33882,7 @@ class Chart {
                 element.on('contextmenu', (event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    if (chart.drawingManager && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2)) {
+                    if (chart.drawingManager && chart._isLegacySelectionRetireV2Enabled()) {
                         return;
                     }
                     if (chart.shouldSuppressRightClickContextMenu(event)) {
