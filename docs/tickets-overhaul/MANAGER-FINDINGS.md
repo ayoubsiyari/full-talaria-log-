@@ -275,6 +275,12 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Manager re-running `npm run gate`** on the step-9 tree (P1) — result pending; batching deploy.
 - **Ready to deploy:** T2 step 1 (`drawing-tools-manager.js`) + step 9 (`chart.js`) both harness-verified → one server rebuild, **Manager bump `20260713b4`**, PO confirms marquee live.
 
+### Marquee CONFIRMED live; settings-flash re-surfaced (fallback trade-off) (2026-07-13)
+- PO: **Ctrl+drag marquee works perfectly live** (step 9 accepted live). New live complaint: **multichart settings menu flashes open→closed (~1s); single chart fine.**
+- **Cause:** this is **R3** (diagnosed in step 6/7). Step 7 fixed it via ownership-V2, but **fallback (b) defaulted ownership-V2 OFF in panels → R3 returned.** Trade-off of the rollback.
+- **Now fixable cleanly:** with fast-test loop (T0 step 5) + marquee fixed independently (step 9) + deploy pipeline understood, we can re-apply step-7's R3 fix and verify live — this is the D-006 "re-migrate under the parity gate" path, done incrementally.
+- **Dispatched T1 step 10** (`worker-prompts/T1-step10-multichart-settings-flash-remigration.md`) to Lane 1: re-apply ONLY the R3 settings-flash fix, verify in running chart (settings stays open in panel) + parity rows 4/5/9. Batch into the next deploy.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

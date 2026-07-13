@@ -7910,7 +7910,22 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
   const MAX_TRADE_TAGS = 10;
   const MAX_TAG_VALUES = 10;
   const [openValueMenu, setOpenValueMenu] = React.useState(null);
+  const [valueMenuFlip, setValueMenuFlip] = React.useState(false);
   const [valueDrafts, setValueDrafts] = React.useState({});
+  const toggleValueMenu = (id, triggerEl) => {
+    const willOpen = openValueMenu !== id;
+    if (willOpen && triggerEl && typeof window !== 'undefined') {
+      const r = triggerEl.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+      // Estimated dropdown height (values list + input row + padding).
+      const estimated = 240;
+      setValueMenuFlip(spaceBelow < estimated && spaceAbove > spaceBelow);
+    } else {
+      setValueMenuFlip(false);
+    }
+    setOpenValueMenu(willOpen ? id : null);
+  };
   const [editingTagId, setEditingTagId] = React.useState(null);
   const valueMenuRef = React.useRef(null);
   React.useEffect(() => {
@@ -8019,13 +8034,13 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
               const label = values.length ? values.map(item=>item.opt).join(', ') : 'None';
               return (
                 <>
-                  <button type="button" onClick={()=>setOpenValueMenu(openValueMenu===v.id?null:v.id)}
+                  <button type="button" onClick={(e)=>toggleValueMenu(v.id, e.currentTarget)}
                     style={{...fieldStyle,height:34,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,textAlign:'left',color:values.length?c.ts:c.tm,cursor:'default'}}>
                     <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}</span>
                     <svg width={12} height={12} viewBox="0 0 24 24" fill="none" style={{flexShrink:0}}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                   {openValueMenu===v.id&&(
-                    <div style={{position:'absolute',left:0,right:0,top:38,zIndex:40,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 18px 42px rgba(0,0,0,0.72)',padding:8,animation:'tlrSoftOpen 0.11s ease-out'}}>
+                    <div style={{position:'absolute',left:0,right:0,...(valueMenuFlip?{bottom:38}:{top:38}),zIndex:40,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 18px 42px rgba(0,0,0,0.72)',padding:8,animation:'tlrSoftOpen 0.11s ease-out'}}>
                       <div style={{display:'grid',gap:5,maxHeight:150,overflowY:'auto'}} className="tlr-scroll">
                         {values.length===0&&(
                           <div style={{padding:'8px 6px',fontSize:11,fontWeight:650,color:c.tm,fontFamily:F}}>No values yet</div>

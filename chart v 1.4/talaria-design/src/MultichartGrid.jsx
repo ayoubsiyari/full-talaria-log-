@@ -59,6 +59,14 @@ function multichartOwnershipV2Enabled() {
     }
 }
 
+function multichartSettingsFlashFixEnabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_SETTINGS_FLASH_FIX_V2);
+    } catch (_) {
+        return true;
+    }
+}
+
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
 // /chart/ does NOT load the bridge by default (it's only loaded inside
@@ -4746,6 +4754,9 @@ export default function MultichartGrid({
         // panel we just opened in the same tick — so the settings flash and never
         // appear. This preserves the source panel regardless of ownership mode.
         function closeDrawingSettingsPreservingSource(sourceId) {
+            if (!multichartSettingsFlashFixEnabled()) {
+                return closeDrawingSettingsOnAllPanels();
+            }
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             const mgr = managerRef.current;
             const proms = [];
@@ -4771,9 +4782,6 @@ export default function MultichartGrid({
         }
 
         function closeDrawingSettingsForPanel(sourceId) {
-            if (!multichartOwnershipV2Enabled()) {
-                return clearDrawingUiOnOtherPanels(sourceId);
-            }
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             closeGlobalLegacyDrawingSettings();
             try {
@@ -4840,13 +4848,15 @@ export default function MultichartGrid({
         function clearDrawingUiOnOtherPanels(sourceId, opts) {
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             const ownershipV2 = multichartOwnershipV2Enabled();
+            const settingsFlashFix = multichartSettingsFlashFixEnabled();
             // If a V9 settings panel was just opened for THIS source, protect it:
             // the global dismiss below is not source-aware and would close the panel
             // we just opened (the "open-then-flash-closed" bug on multichart). The
             // guard is short-lived, so normal close/deselect still works afterward.
             let protectSource = false;
             try {
-                if (typeof window !== "undefined"
+                if (settingsFlashFix
+                    && typeof window !== "undefined"
                     && window.__v9DrawingSettingsOpenGuardUntil
                     && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
                     && String(window.__v9DrawingSettingsOpenSource) === String(source)) {
@@ -4967,21 +4977,25 @@ export default function MultichartGrid({
                         try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
                             window.__v9MultichartSettingsPanelId = null;
                         }
-                        // Protect the panel we just opened from peer-clear cascades
-                        // (postMessage "clear drawing UI" / focus side-effects) that
-                        // fire a few hundred ms later. With ownership-V2 disabled the
-                        // global "dismiss drawing settings" event those paths emit
-                        // would otherwise close THIS panel too — the "flash" bug.
-                        try {
-                            window.__v9DrawingSettingsOpenSource = String(source);
-                            window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
-                        } catch (_) {}
-                        // v9Open just rendered the settings for `source` (for an
-                        // iframe panel this happens inside that panel). Close only
-                        // the OTHER panels — never `source` — otherwise, with
-                        // ownership-V2 disabled, we would immediately tear down the
-                        // settings we just opened.
-                        closeDrawingSettingsPreservingSource(source).catch(() => {});
+                        if (multichartSettingsFlashFixEnabled()) {
+                            // Protect the panel we just opened from peer-clear cascades
+                            // (postMessage "clear drawing UI" / focus side-effects) that
+                            // fire a few hundred ms later. With ownership-V2 disabled the
+                            // global "dismiss drawing settings" event those paths emit
+                            // would otherwise close THIS panel too — the "flash" bug.
+                            try {
+                                window.__v9DrawingSettingsOpenSource = String(source);
+                                window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
+                            } catch (_) {}
+                            // v9Open just rendered the settings for `source` (for an
+                            // iframe panel this happens inside that panel). Close only
+                            // the OTHER panels — never `source` — otherwise, with
+                            // ownership-V2 disabled, we would immediately tear down the
+                            // settings we just opened.
+                            closeDrawingSettingsPreservingSource(source).catch(() => {});
+                        } else {
+                            closeDrawingSettingsOnAllPanels().catch(() => {});
+                        }
                         return Promise.resolve(true);
                     }
                 } catch (e) {
@@ -5015,7 +5029,9 @@ export default function MultichartGrid({
                     if (typeof dm.deleteDrawing === "function") dm.deleteDrawing(drawingToDelete);
                 }
             );
-            if (multichartOwnershipV2Enabled()) {
+            if (multichartSettingsFlashFixEnabled()) {
+                closeDrawingSettingsPreservingSource(source).catch(() => {});
+            } else if (multichartOwnershipV2Enabled()) {
                 closeDrawingSettingsOnOtherPanels(source).catch(() => {});
             } else {
                 closeDrawingSettingsOnAllPanels().catch(() => {});
@@ -5945,7 +5961,8 @@ export default function MultichartGrid({
             if (msg.type === "multichart-close-drawing-settings") {
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
-                if (grid && multichartOwnershipV2Enabled() && typeof grid.closeDrawingSettingsForPanel === "function") {
+                if (grid && (multichartOwnershipV2Enabled() || multichartSettingsFlashFixEnabled())
+                    && typeof grid.closeDrawingSettingsForPanel === "function") {
                     grid.closeDrawingSettingsForPanel(sourceId).catch(() => {});
                 } else if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                     grid.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
