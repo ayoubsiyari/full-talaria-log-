@@ -146,16 +146,6 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
         panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
     } catch (_q) { /* ignore */ }
     const drawId = drawing && drawing.id != null ? drawing.id : null;
-    try {
-        const p = (typeof window !== 'undefined') ? window.parent : null;
-        console.log('[GEARDBG] requestParent', {
-            drawId,
-            panelId,
-            hasParent: !!(p && p !== window),
-            hasShapeHook: !!(p && typeof p.__multichartOpenShapeSettings === 'function'),
-            hasGrid: !!(p && p.__multichartGrid),
-        });
-    } catch (_dbg) { /* ignore */ }
     const px = typeof x === 'number' && !isNaN(x) ? x : 0;
     const py = typeof y === 'number' && !isNaN(y) ? y : 0;
     try {
@@ -1811,14 +1801,6 @@ class DrawingToolsManager {
         
         // Settings callback - opens settings panel (same V9 hook as editDrawing / dblclick)
         this.toolbar.onSettings = (drawing, anchorX, anchorY) => {
-            try {
-                console.log('[GEARDBG] onSettings.enter', {
-                    argId: drawing && drawing.id,
-                    selId: self.selectedDrawing && self.selectedDrawing.id,
-                    iframe: isMultichartIframeEmbed(),
-                    grid: !!(typeof window !== 'undefined' && window.__multichartGrid),
-                });
-            } catch (_) { /* ignore */ }
             let liveDrawing = drawing;
             try {
                 if (self.selectedDrawing) {
@@ -10179,14 +10161,6 @@ class DrawingToolsManager {
      * Edit drawing settings
      */
     editDrawing(drawing, x, y) {
-        try {
-            console.log('[GEARDBG] editDrawing.enter', {
-                id: drawing && drawing.id,
-                type: drawing && drawing.type,
-                iframe: isMultichartIframeEmbed(),
-                grid: !!(typeof window !== 'undefined' && window.__multichartGrid),
-            });
-        } catch (_) { /* ignore */ }
         if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
             this.settingsPanel.hide();
         }

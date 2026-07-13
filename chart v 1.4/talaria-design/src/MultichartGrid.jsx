@@ -888,13 +888,6 @@ function clearMultichartGlobalSettingsRoot() {
 function closeGlobalLegacyDrawingSettings() {
     if (typeof document === "undefined") return;
     try {
-        const n = document.querySelectorAll(".tv-settings-modal").length;
-        if (n > 0) {
-            console.log("[GEARDBG] closeGlobalLegacyDrawingSettings removing", n,
-                (new Error().stack || "").split("\n").slice(1, 5).join(" <- "));
-        }
-    } catch (_dbg) {}
-    try {
         document.querySelectorAll(".tv-settings-modal").forEach((el) => {
             try {
                 if (el.externalDropdowns) {
@@ -4745,6 +4738,38 @@ export default function MultichartGrid({
             return Promise.all(proms);
         }
 
+        // Close drawing settings on every panel EXCEPT `source`, and never fall
+        // back to closing all panels. Use this immediately after we open settings
+        // for `source` (e.g. the V9 gear/double-click routes a shape's settings
+        // into its own iframe). With ownership-V2 disabled, the normal helpers
+        // collapse to closeDrawingSettingsOnAllPanels(), which would tear down the
+        // panel we just opened in the same tick — so the settings flash and never
+        // appear. This preserves the source panel regardless of ownership mode.
+        function closeDrawingSettingsPreservingSource(sourceId) {
+            const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            const mgr = managerRef.current;
+            const proms = [];
+            if (source !== HOST_PANEL_ID) {
+                proms.push(
+                    applyHostCommand("closeDrawingSettings", null).catch((e) => {
+                        console.warn("[MultichartGrid] closeDrawingSettings host failed", e && e.message || e);
+                    })
+                );
+            }
+            forEachIframePanelExcept(source, (id) => {
+                if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(id, "closeDrawingSettings", null);
+                } else if (mgr) {
+                    proms.push(
+                        mgr.sendCommand(id, "closeDrawingSettings", null).catch((e) => {
+                            console.warn("[MultichartGrid] closeDrawingSettings", id, "failed", e && e.message || e);
+                        })
+                    );
+                }
+            });
+            return Promise.all(proms);
+        }
+
         function closeDrawingSettingsForPanel(sourceId) {
             if (!multichartOwnershipV2Enabled()) {
                 return clearDrawingUiOnOtherPanels(sourceId);
@@ -4838,12 +4863,6 @@ export default function MultichartGrid({
          * on the host document) for one tile. Iframe tiles postMessage here.
          */
         function openDrawingSettingsForPanel(sourceId, drawingOrId, x, y) {
-            try {
-                console.log("[GEARDBG] openDrawingSettingsForPanel.enter", {
-                    sourceId,
-                    kind: (drawingOrId && typeof drawingOrId === "object") ? ("obj:" + drawingOrId.type) : ("id:" + drawingOrId),
-                });
-            } catch (_dbg) {}
             let source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             let drawing = null;
             if (drawingOrId && typeof drawingOrId === "object" && drawingOrId.type) {
@@ -4903,14 +4922,6 @@ export default function MultichartGrid({
                 }
             }
 
-            try {
-                console.log("[GEARDBG] openDrawingSettingsForPanel.resolved", {
-                    source,
-                    drawingId: drawing && drawing.id,
-                    hasDm: !!dm,
-                    hasV9: typeof window.__v9OpenDrawingSettings === "function",
-                });
-            } catch (_dbg) {}
             if (!drawing || !dm) return Promise.resolve(false);
 
             ensureMultichartGlobalSettingsRoot();
@@ -4938,28 +4949,16 @@ export default function MultichartGrid({
                 : null;
             if (v9Open) {
                 try {
-                    const v9Ret = v9Open(drawing, px, py);
-                    try {
-                        console.log("[GEARDBG] v9Open.returned", {
-                            ret: v9Ret,
-                            ownershipV2: multichartOwnershipV2Enabled(),
-                            modalsAfter: document.querySelectorAll(".tv-settings-modal").length,
-                        });
-                    } catch (_dbg) {}
-                    if (v9Ret) {
+                    if (v9Open(drawing, px, py)) {
                         try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
                             window.__v9MultichartSettingsPanelId = null;
                         }
-                        if (multichartOwnershipV2Enabled()) {
-                            closeDrawingSettingsOnOtherPanels(source).catch(() => {});
-                        } else {
-                            closeDrawingSettingsOnAllPanels().catch(() => {});
-                        }
-                        try {
-                            console.log("[GEARDBG] v9Open.afterClosePeers", {
-                                modalsAfter: document.querySelectorAll(".tv-settings-modal").length,
-                            });
-                        } catch (_dbg) {}
+                        // v9Open just rendered the settings for `source` (for an
+                        // iframe panel this happens inside that panel). Close only
+                        // the OTHER panels — never `source` — otherwise, with
+                        // ownership-V2 disabled, we would immediately tear down the
+                        // settings we just opened.
+                        closeDrawingSettingsPreservingSource(source).catch(() => {});
                         return Promise.resolve(true);
                     }
                 } catch (e) {
