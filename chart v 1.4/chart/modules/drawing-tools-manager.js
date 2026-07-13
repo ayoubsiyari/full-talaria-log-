@@ -66,6 +66,23 @@ function isMultichartIframeEmbed() {
     }
 }
 
+function multichartQuickbarSettingsFixEnabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
 /** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
 function notifyMultichartParentSelectionCleared(chartInstance) {
     if (typeof window === 'undefined') return;
@@ -1823,6 +1840,7 @@ class DrawingToolsManager {
                     ? anchorY
                     : rect.bottom + 10;
             if (isMultichartIframeEmbed()) {
+                if (!multichartQuickbarSettingsFixEnabled()) return;
                 self.editDrawing(liveDrawing, x, y);
                 return;
             }

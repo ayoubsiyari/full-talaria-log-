@@ -5010,6 +5010,50 @@ function v9ResolveOpenDrawingSettingsHook() {
   return null;
 }
 
+function v9QuickBarPanelSettingsFixEnabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+  } catch (_) {
+    return true;
+  }
+}
+
+function v9OpenQuickBarSettingsViaEditDrawing(drawing, x, y) {
+  if (!drawing || !v9QuickBarPanelSettingsFixEnabled()) return false;
+  try {
+    if (!v9IsMultichartIframeEmbed() && !v9MultichartGridApi()) return false;
+  } catch (_) {
+    return false;
+  }
+  try {
+    const dm = resolveDrawingManagerForDrawing(drawing);
+    const live = resolveLiveDrawingInDm(dm, drawing) || drawing;
+    if (dm && typeof dm.editDrawing === "function") {
+      dm.editDrawing(live, x, y);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function v9QuickBarPanelSettingsDisabledForMultichartDrawing(drawing) {
+  if (!drawing || v9QuickBarPanelSettingsFixEnabled()) return false;
+  try {
+    if (v9IsMultichartIframeEmbed()) return true;
+  } catch (_) {}
+  try {
+    const grid = v9MultichartGridApi();
+    if (!grid) return false;
+    const dm = resolveDrawingManagerForDrawing(drawing);
+    const panelId = dm && typeof grid.getPanelIdForDrawingManager === "function"
+      ? grid.getPanelIdForDrawingManager(dm)
+      : null;
+    return !!(panelId && panelId !== (grid.hostPanelId || "A"));
+  } catch (_) {
+    return false;
+  }
+}
+
 /** True when the parent multichart shell owns selection UI — legacy iframe toolbar must not show. */
 function v9ShouldSkipLegacyDrawingToolbarShow() {
   try {
@@ -13997,6 +14041,18 @@ const TalariaV8bLive = () => {
     }
     return null;
   };
+  const devLiveMultichartEnabled = import.meta.env.DEV && !v9IsMultichartIframeEmbed();
+  const devLiveApplyMultichartLayout = (id) => {
+    const normalized = id === "2" ? "2v" : id === "2x2" ? "4" : id;
+    const tuple = layoutTupleFromId(normalized);
+    if (tuple) {
+      try {
+        if (normalized === "1") localStorage.removeItem("talaria_devlive_multichart_layout");
+        else localStorage.setItem("talaria_devlive_multichart_layout", normalized);
+      } catch (_) {}
+      setLayoutPanels(tuple);
+    }
+  };
 
   // Mount: hydrate V9 state from whatever panelManager already has loaded
   // from userStorage so the UI shows the correct active layout/sync toggles.
@@ -14050,6 +14106,19 @@ const TalariaV8bLive = () => {
   // Skips the very first run (initial defaults) so we don't reset whatever
   // layout panelManager restored from userStorage on boot.
   const layoutFirstApplyRef = useRef(true);
+  useEffect(() => {
+    if (!devLiveMultichartEnabled) return;
+    let requested = null;
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      requested = params.get("devMultichart") || params.get("devLayout");
+      if (!requested) requested = localStorage.getItem("talaria_devlive_multichart_layout");
+    } catch (_) {}
+    if (!requested) return;
+    devLiveApplyMultichartLayout(requested);
+    // Dev-only URL bootstrap: run once at local Vite boot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
     const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
@@ -26886,7 +26955,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;if(d&&v9DrawingTypeToPanelGroup(d.type)==="text"){suppressTxtForwardBridge.current=true;suppressTxtCoordBridge.current=true;v9MarkTxtStyleOwnerType(v9TxtStyleOwnerTypeRef,d);flushSync(()=>setTxtStyle(v9BuildFullTxtStyleFromDrawing(d)));const icon=legacyChartTextTypeToV9Icon(d.type)||"text";if(v9TxtIconHasContentTab(icon))setTxtSettTab("text");else if(d.type==="price-note")setTxtSettTab("style");}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}if(v9QuickBarPanelSettingsDisabledForMultichartDrawing(d))return;if(v9OpenQuickBarSettingsViaEditDrawing(d,anchorX,anchorY))return;try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;if(d&&v9DrawingTypeToPanelGroup(d.type)==="text"){suppressTxtForwardBridge.current=true;suppressTxtCoordBridge.current=true;v9MarkTxtStyleOwnerType(v9TxtStyleOwnerTypeRef,d);flushSync(()=>setTxtStyle(v9BuildFullTxtStyleFromDrawing(d)));const icon=legacyChartTextTypeToV9Icon(d.type)||"text";if(v9TxtIconHasContentTab(icon))setTxtSettTab("text");else if(d.type==="price-note")setTxtSettTab("style");}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options (menu portaled below) */}
@@ -31158,6 +31227,8 @@ const TalariaV8bLive = () => {
               if (!d) {
                 try { d = getSelectedDrawingAcrossCharts(null); } catch (_) {}
               }
+              if (v9QuickBarPanelSettingsDisabledForMultichartDrawing(d)) return;
+              if (v9OpenQuickBarSettingsViaEditDrawing(d, anchorX, anchorY)) return;
               try {
                 const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
                 if (grid && typeof grid.openDrawingSettingsForPanel === "function" && d) {
@@ -31528,9 +31599,11 @@ const TalariaV8bLive = () => {
               }
             } catch (_) {}
           }
+          const r = e.currentTarget.getBoundingClientRect();
+          if (v9QuickBarPanelSettingsDisabledForMultichartDrawing(d)) return;
+          if (v9OpenQuickBarSettingsViaEditDrawing(d, r.left + r.width / 2, r.bottom + 8)) return;
           const hook = v9ResolveOpenDrawingSettingsHook();
           if (d && typeof hook === "function") {
-            const r = e.currentTarget.getBoundingClientRect();
             try {
               if (hook(d, r.left + r.width / 2, r.bottom + 8)) return;
             } catch (err) {
@@ -31538,7 +31611,6 @@ const TalariaV8bLive = () => {
             }
           }
           if (!d || d.type !== "anchored-vwap") return;
-          const r = e.currentTarget.getBoundingClientRect();
           const vpW2 = window.innerWidth / Z;
           const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
           const y = r.bottom / Z + 8;
@@ -31706,9 +31778,11 @@ const TalariaV8bLive = () => {
               }
             } catch (_) {}
           }
+          const r = e.currentTarget.getBoundingClientRect();
+          if (v9QuickBarPanelSettingsDisabledForMultichartDrawing(d)) return;
+          if (v9OpenQuickBarSettingsViaEditDrawing(d, r.left + r.width / 2, r.bottom + 8)) return;
           const hook = v9ResolveOpenDrawingSettingsHook();
           if (d && typeof hook === "function") {
-            const r = e.currentTarget.getBoundingClientRect();
             v9SuppressNextChartDeselect();
             try {
               if (hook(d, r.left + r.width / 2, r.bottom + 8)) return;
@@ -31717,7 +31791,6 @@ const TalariaV8bLive = () => {
             }
           }
           if (!d || !v9IsVolumeProfileDrawingType(d.type)) return;
-          const r = e.currentTarget.getBoundingClientRect();
           const vpW2 = window.innerWidth / Z;
           const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
           const y = r.bottom / Z + 8;
@@ -34444,6 +34517,61 @@ const TalariaV8bLive = () => {
               }}>
               {/* Legacy probes: panel-manager + replay-system expect these IDs; V9 UI lives in React. */}
               <button type="button" id="layout-selector-btn" data-open-mode="settings-panel" tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />
+              {devLiveMultichartEnabled && (
+                <div
+                  data-devlive-multichart-controls="1"
+                  data-chart-ui="1"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: 10,
+                    right: 10,
+                    zIndex: 2147483000,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "5px 6px",
+                    borderRadius: 8,
+                    background: "rgba(8,10,24,0.86)",
+                    border: "1px solid rgba(140,160,255,0.28)",
+                    boxShadow: "0 10px 28px rgba(0,0,0,0.38)",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 700, color: c.ts, letterSpacing: 0.4, textTransform: "uppercase" }}>dev layout</span>
+                  {[
+                    ["1", "1"],
+                    ["2v", "2"],
+                    ["4", "2x2"],
+                  ].map(([id, label]) => {
+                    const tuple = layoutTupleFromId(id);
+                    const active = tuple && layoutPanels.n === tuple.n && layoutPanels.li === tuple.li;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-devlive-layout={id}
+                        onClick={() => devLiveApplyMultichartLayout(id)}
+                        style={{
+                          minWidth: 34,
+                          height: 24,
+                          borderRadius: 6,
+                          border: `1px solid ${active ? "rgba(140,160,255,0.65)" : "rgba(140,160,255,0.18)"}`,
+                          background: active ? "rgba(74,106,255,0.24)" : "rgba(255,255,255,0.04)",
+                          color: active ? c.acL : c.ts,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "default",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <div id="replayToolbar" aria-hidden="true" style={{ position: "fixed", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", visibility: "hidden" }}>
                 <div id="replayToolbarHandle" />
                 <button type="button" id="replayModeBtn" tabIndex={-1} />

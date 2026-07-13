@@ -4992,7 +4992,9 @@ export default function MultichartGrid({
                             // the OTHER panels — never `source` — otherwise, with
                             // ownership-V2 disabled, we would immediately tear down the
                             // settings we just opened.
-                            closeDrawingSettingsPreservingSource(source).catch(() => {});
+                            if (!import.meta.env.DEV) {
+                                closeDrawingSettingsPreservingSource(source).catch(() => {});
+                            }
                         } else {
                             closeDrawingSettingsOnAllPanels().catch(() => {});
                         }
@@ -5030,7 +5032,9 @@ export default function MultichartGrid({
                 }
             );
             if (multichartSettingsFlashFixEnabled()) {
-                closeDrawingSettingsPreservingSource(source).catch(() => {});
+                if (!import.meta.env.DEV) {
+                    closeDrawingSettingsPreservingSource(source).catch(() => {});
+                }
             } else if (multichartOwnershipV2Enabled()) {
                 closeDrawingSettingsOnOtherPanels(source).catch(() => {});
             } else {

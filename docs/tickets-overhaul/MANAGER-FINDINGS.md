@@ -281,6 +281,32 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Now fixable cleanly:** with fast-test loop (T0 step 5) + marquee fixed independently (step 9) + deploy pipeline understood, we can re-apply step-7's R3 fix and verify live — this is the D-006 "re-migrate under the parity gate" path, done incrementally.
 - **Dispatched T1 step 10** (`worker-prompts/T1-step10-multichart-settings-flash-remigration.md`) to Lane 1: re-apply ONLY the R3 settings-flash fix, verify in running chart (settings stays open in panel) + parity rows 4/5/9. Batch into the next deploy.
 
+### T1 step 10 delivered — harness-clean; live acceptance = PO server test (2026-07-13)
+- **Report:** `worker-reports/T1-step10-multichart-settings-flash-remigration-report.md`. New gated switch `__TALARIA_DISABLE_MULTICHART_SETTINGS_FLASH_FIX_V2` (default ON) in `MultichartGrid.jsx` only; re-applies step-7 R3 slice (open preserves source panel; explicit Esc/close routes through `closeDrawingSettingsForPanel()`). Broader ownership-V2 stays default-OFF (fallback posture intact). Gate PASS (only tracked reds); trees byte-identical.
+- **FAST-LOOP GAP found:** `dev:live` boots the single chart but does NOT mount the React MultichartGrid (`__multichartGrid=false`, 0 iframes, `MultichartGrid.jsx` dynamic import fails). So React-**multichart** fixes still can't be fast-verified locally; T0 step 5 only covers single-chart boot. Worker honestly did NOT claim live acceptance. → **Live acceptance for step 10 = PO server test** (real product, per I13/D-006).
+- **Follow-up queued (Lane 4, T0 step 6):** make the React MultichartGrid mountable under `dev:live` (panels + layout control) so future React-multichart fixes get seconds-fast local verification — closes the remaining half of the parity-check tooling.
+- **Deploy batch → `20260713b5`:** marquee (step 9, `chart.js`) + T2 step 1 (`drawing-tools-manager.js`) + settings-flash (step 10, `MultichartGrid.jsx`). One server rebuild; PO confirms marquee + settings-stays-open live.
+
+### b5 live — mostly GREEN; one small gap: quick-bar gear (2026-07-13)
+- PO on `20260713b5` (screenshots): **settings menu opens + STAYS open in panel (step 10 confirmed live), Ctrl works, marquee works, rectangle selects with blue border.** Big multichart recovery confirmed.
+- **Remaining:** the **quick settings/floating toolbar gear button does not open settings** in a panel (double-click does). Small routing gap — the quick-bar gear must trigger the same panel settings-open path (`editDrawing()` → `requestMultichartParentDrawingSettings()` → `openDrawingSettingsForPanel()`) that double-click now uses.
+- **Dispatched T1 step 11** (`worker-prompts/T1-step11-quickbar-settings-button.md`) to Lane 1. Verification: fast loop once Lane 4 T0 step 6 mounts the grid, else PO server test.
+
+### T1 step 11 delivered — code-complete, UNVERIFIED (2026-07-13)
+- **Report:** `worker-reports/T1-step11-quickbar-settings-button-report.md`. Fix in `TalariaV8bLive.jsx` (V9 quick-bar owner, not engine): new gated `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2` (default ON) → quick-bar gear (line/shape, text, VWAP, volume-profile) routes through `dm.editDrawing()` in multichart context, matching double-click; single chart unchanged. Gate green (tracked reds unchanged); `TalariaV8bLive.jsx` SHA `758e0915…`.
+- **NOT verified:** harness doesn't cover the React quick-bar and `dev:live` still can't mount the grid → no live proof. Worker gave a PO server-test script.
+- **Sequencing decision:** wait for **Lane 4 T0 step 6** (grid mount) to verify step 11 in the fast loop, THEN one deploy `20260713b6` (step 11 gear). Avoids deploying unverified. PO stays on b5 (good except the gear) meanwhile.
+
+### T0 step 6 ACCEPTED — local multichart testing now works (2026-07-13)
+- **Report:** `worker-reports/T0-step6-devlive-mount-multichart-grid-report.md`. `dev:live` now mounts the React `MultichartGrid` via a DEV LAYOUT overlay (1/2/2x2) + `?devMultichart=`/localStorage bootstrap. Probe: `__multichartGrid:true`, 2 & 2x2 iframes mounted, panel B rectangle placed + settings dialog opened. **All dev-only, guarded by `import.meta.env.DEV`** (stripped in prod); `npm run build` passed; gate exit 0. Touched `TalariaV8bLive.jsx` + `MultichartGrid.jsx` (dev-gated) — coexists with step 10/11 edits; build compiled clean.
+- **Milestone:** React multichart panel fixes are now locally verifiable in seconds. Recipe in report (`?devMultichart=2v`, DEV LAYOUT overlay).
+- **Next:** verify **T1 step 11 gear** in this fast loop (set the panel layout, click quick-bar gear → settings opens/stays). If green → deploy `20260713b6` (step 11) for PO live confirm. Then pivot Lane 1 to T2 broad sweep + T5.
+
+### T1 step 11 VERIFIED in fast loop — deploying b6 (2026-07-13)
+- **Report updated:** panel B route proof on `dev:live` (`?devMultichart=2v`): default ON → gear opens Rectangle settings in parent, stays open, Esc closes; kill-switch `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2=true` → gear inert. First multichart React fix verified locally before deploy (the tooling paying off). Switch coverage tightened: `TalariaV8bLive.jsx` + `drawing-tools-manager.js` (both trees) iframe `#tb-settings` gear honors the switch.
+- **Manager re-running full `npm run gate`** (drawing-tools-manager.js now has T2 + step 11 engine edits) — result pending.
+- **Deploy → `20260713b6`:** full multichart set (step 9 marquee, T2 step 1, step 10 settings-flash, step 11 gear; T0 step 6 dev-only stripped in prod). One server rebuild; PO confirms gear live = multichart done.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

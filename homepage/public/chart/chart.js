@@ -1481,9 +1481,10 @@ class Chart {
 
     _formatPairTicker(rawTicker, rawFileName) {
         const ccys = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG']);
+        const stripExt = (s) => String(s || '').replace(/\.(csv)$/i, '').replace(/^\d{8}_\d{6}_/, '');
         const tryFormat = (s) => {
             if (!s) return null;
-            const clean = String(s).replace(/\.(csv|CSV)$/i, '').replace(/^\d{8}_\d{6}_/, '');
+            const clean = stripExt(s);
             const m6 = clean.replace(/[\s\-_\/\.]/g, '').match(/([A-Za-z]{6})/);
             if (m6) {
                 const pair = m6[1].toUpperCase();
@@ -1493,7 +1494,27 @@ class Chart {
             }
             return null;
         };
-        return tryFormat(rawTicker) || tryFormat(rawFileName) || String(rawTicker || rawFileName || '').toUpperCase();
+        const fx = tryFormat(rawTicker) || tryFormat(rawFileName);
+        if (fx) return fx;
+        // Never leave ".CSV" on chart/top-bar labels — fall back to a cleaned
+        // filename stem (SI_1MIN.CSV → SI_1MIN) when no FX pair was parsed.
+        const fallback = stripExt(rawTicker || rawFileName || '').trim();
+        return fallback ? fallback.toUpperCase() : '';
+    }
+
+    /**
+     * Turn a raw upload filename into a short chart label when no session ticker
+     * exists (e.g. SI_1MIN.CSV / GC_M1.csv → SI / GC).
+     */
+    _tickerFromFilename(fileName) {
+        if (!fileName) return null;
+        let stem = String(fileName).replace(/\.(csv)$/i, '').replace(/^\d{8}_\d{6}_/, '');
+        // Drop common timeframe suffixes: _1MIN, _M1, -5m, _1H, etc.
+        stem = stem.replace(/[_\-\s]?(?:M|H|D|W)?\d+(?:MIN|SECS?|HOURS?|DAYS?|WEEKS?|MO|M|H|D|W)?$/i, '');
+        stem = stem.replace(/[_\-\s]+$/g, '');
+        const cleaned = stem.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!cleaned || /^\d+$/.test(cleaned)) return null;
+        return this._displaySessionFuturesSymbol(cleaned) || cleaned;
     }
 
     /** Session/chart label: NQ1 → NQ for known CME roots; never derive from filename alone. */
@@ -1517,22 +1538,37 @@ class Chart {
         if (!session || !fileId) return null;
         const fileKey = String(fileId);
         const isNumericOnly = (s) => /^\d+$/.test(String(s || '').trim());
-
-        if (Array.isArray(session.files)) {
-            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
-            if (file) {
-                const fromName = this._formatPairTicker(file.name || file.fileName, null);
-                if (fromName && !isNumericOnly(fromName)) return fromName;
+        // Prefer the same display form the symbol-switcher dropdown uses so the
+        // top bar / OHLC legend never show a raw "SI_1MIN.CSV" while the list
+        // shows "SI1" / "SI".
+        const finalize = (raw) => {
+            if (!raw || isNumericOnly(raw)) return null;
+            const asFx = this._formatPairTicker(raw, null);
+            const candidate = (asFx && !/\.CSV$/i.test(asFx) && asFx.includes('/'))
+                ? asFx
+                : String(raw).replace(/\.(csv)$/i, '').trim().toUpperCase();
+            if (!candidate || isNumericOnly(candidate) || /\.CSV$/i.test(candidate)) return null;
+            // If candidate still looks like a filename stem (SI_1MIN), compress it.
+            if (/_/.test(candidate) || /MIN|HOUR|DAY/i.test(candidate)) {
+                const fromFile = this._tickerFromFilename(candidate);
+                if (fromFile) return fromFile;
             }
-        }
+            return this._displaySessionFuturesSymbol(candidate) || candidate;
+        };
+
+        // Prefer explicit session tickers over CSV filenames.
         if (Array.isArray(session.symbols)) {
             const symRow = session.symbols.find((row) => row && String(row.fileId) === fileKey);
             if (symRow) {
-                const fromSym = this._formatPairTicker(
-                    symRow.symbolName || symRow.symbol || symRow.ticker,
-                    symRow.fileName || symRow.name
+                const fromSym = finalize(
+                    symRow.symbolName || symRow.symbol || symRow.ticker
+                ) || finalize(
+                    this._formatPairTicker(
+                        symRow.symbolName || symRow.symbol || symRow.ticker,
+                        symRow.fileName || symRow.name
+                    )
                 );
-                if (fromSym && !isNumericOnly(fromSym)) return fromSym;
+                if (fromSym) return fromSym;
             }
         }
         if (session.instruments && typeof session.instruments === 'object') {
@@ -1543,15 +1579,29 @@ class Chart {
                 if (!row) continue;
                 const rowFileId = row.fileId || row.datasetId || row.sourceFileId;
                 if (String(rowFileId) === fileKey) {
-                    const fromRow = this._formatPairTicker(
-                        row.ticker || row.symbol || ticker,
-                        row.fileName || row.name
-                    );
-                    if (fromRow && !isNumericOnly(fromRow)) return fromRow;
+                    const fromRow = finalize(row.ticker || row.symbol || ticker)
+                        || finalize(this._formatPairTicker(
+                            row.ticker || row.symbol || ticker,
+                            row.fileName || row.name
+                        ));
+                    if (fromRow) return fromRow;
                     if (!isNumericOnly(ticker)) {
-                        return this._formatPairTicker(ticker, row.fileName || row.name);
+                        const fromKey = finalize(ticker);
+                        if (fromKey) return fromKey;
                     }
                 }
+            }
+        }
+        // Filename is last resort (and must never keep a .csv extension).
+        if (Array.isArray(session.files)) {
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
+            if (file) {
+                const rawName = file.name || file.fileName;
+                const fromTicker = finalize(file.ticker || file.symbol || file.symbolName);
+                if (fromTicker) return fromTicker;
+                const fromName = this._tickerFromFilename(rawName)
+                    || finalize(this._formatPairTicker(rawName, null));
+                if (fromName) return fromName;
             }
         }
         return null;
@@ -2058,13 +2108,16 @@ class Chart {
             if (resolvedTicker) {
                 this.currentSymbol = resolvedTicker;
             } else if (session.fileName) {
-                this.currentSymbol = session.fileName.replace('.csv', '').toUpperCase();
+                this.currentSymbol = this._tickerFromFilename(session.fileName)
+                    || session.fileName.replace(/\.(csv)$/i, '').toUpperCase();
             } else if (session.instrumentTickers && session.instrumentTickers.length > 0) {
-                this.currentSymbol = session.instrumentTickers[0];
+                this.currentSymbol = this._displaySessionFuturesSymbol(session.instrumentTickers[0])
+                    || session.instrumentTickers[0];
             } else if (session.symbol) {
-                this.currentSymbol = session.symbol;
+                this.currentSymbol = this._displaySessionFuturesSymbol(session.symbol) || session.symbol;
             } else if (session.symbols && session.symbols.length > 0) {
-                this.currentSymbol = session.symbols[0].symbolName || 'UNKNOWN';
+                const sn = session.symbols[0].symbolName || 'UNKNOWN';
+                this.currentSymbol = this._displaySessionFuturesSymbol(sn) || sn;
             } else {
                 this.currentSymbol = `FILE_${fileId}`;
             }
@@ -9178,7 +9231,11 @@ class Chart {
             this.currentFileId = targetFileId;
             // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
-            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
+            this.currentSymbol = targetTicker
+                || (session.fileName
+                    ? (this._tickerFromFilename(session.fileName)
+                        || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
+                    : this.currentSymbol);
 
             this._nativeRawFetchTf = result.nativeRawFetchTf || requestTimeframe;
             if (anchorToHostPlayhead && isBacktestSession) {
@@ -9547,7 +9604,10 @@ class Chart {
             // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
             this.currentFileId = targetFileId;
             this.currentSymbol = targetTicker
-                || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
+                || (session.fileName
+                    ? (this._tickerFromFilename(session.fileName)
+                        || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
+                    : this.currentSymbol);
 
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
@@ -15826,8 +15886,9 @@ class Chart {
                     const rawName = String(f.name || f.fileName || '');
                     const resolved = this.resolveSessionTickerForFileId(session, fileId);
                     const displayTicker = resolved
+                        || this._tickerFromFilename(rawName)
                         || this._formatPairTicker(rawName, '')
-                        || rawName.replace(/\.(csv|CSV)$/i, '').toUpperCase();
+                        || rawName.replace(/\.(csv)$/i, '').toUpperCase();
                     addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
                 });
             }
