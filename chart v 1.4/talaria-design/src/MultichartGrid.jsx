@@ -4831,6 +4831,12 @@ export default function MultichartGrid({
          * on the host document) for one tile. Iframe tiles postMessage here.
          */
         function openDrawingSettingsForPanel(sourceId, drawingOrId, x, y) {
+            try {
+                console.log("[GEARDBG] openDrawingSettingsForPanel.enter", {
+                    sourceId,
+                    kind: (drawingOrId && typeof drawingOrId === "object") ? ("obj:" + drawingOrId.type) : ("id:" + drawingOrId),
+                });
+            } catch (_dbg) {}
             let source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             let drawing = null;
             if (drawingOrId && typeof drawingOrId === "object" && drawingOrId.type) {
@@ -4890,6 +4896,14 @@ export default function MultichartGrid({
                 }
             }
 
+            try {
+                console.log("[GEARDBG] openDrawingSettingsForPanel.resolved", {
+                    source,
+                    drawingId: drawing && drawing.id,
+                    hasDm: !!dm,
+                    hasV9: typeof window.__v9OpenDrawingSettings === "function",
+                });
+            } catch (_dbg) {}
             if (!drawing || !dm) return Promise.resolve(false);
 
             ensureMultichartGlobalSettingsRoot();

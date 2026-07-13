@@ -1799,6 +1799,13 @@ class DrawingToolbar {
                         armSelectionGuard(window.parent);
                     }
                 }
+                try {
+                    console.log('[GEARDBG] gear.click', {
+                        hasOnSettings: typeof this.onSettings,
+                        liveId: liveDrawing && liveDrawing.id,
+                        curId: this.currentDrawing && this.currentDrawing.id,
+                    });
+                } catch (_) { /* ignore */ }
                 if (this.onSettings) {
                     this.onSettings(liveDrawing, anchorX, anchorY);
                 }
