@@ -888,6 +888,13 @@ function clearMultichartGlobalSettingsRoot() {
 function closeGlobalLegacyDrawingSettings() {
     if (typeof document === "undefined") return;
     try {
+        const n = document.querySelectorAll(".tv-settings-modal").length;
+        if (n > 0) {
+            console.log("[GEARDBG] closeGlobalLegacyDrawingSettings removing", n,
+                (new Error().stack || "").split("\n").slice(1, 5).join(" <- "));
+        }
+    } catch (_dbg) {}
+    try {
         document.querySelectorAll(".tv-settings-modal").forEach((el) => {
             try {
                 if (el.externalDropdowns) {
@@ -4931,7 +4938,15 @@ export default function MultichartGrid({
                 : null;
             if (v9Open) {
                 try {
-                    if (v9Open(drawing, px, py)) {
+                    const v9Ret = v9Open(drawing, px, py);
+                    try {
+                        console.log("[GEARDBG] v9Open.returned", {
+                            ret: v9Ret,
+                            ownershipV2: multichartOwnershipV2Enabled(),
+                            modalsAfter: document.querySelectorAll(".tv-settings-modal").length,
+                        });
+                    } catch (_dbg) {}
+                    if (v9Ret) {
                         try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
                             window.__v9MultichartSettingsPanelId = null;
                         }
@@ -4940,6 +4955,11 @@ export default function MultichartGrid({
                         } else {
                             closeDrawingSettingsOnAllPanels().catch(() => {});
                         }
+                        try {
+                            console.log("[GEARDBG] v9Open.afterClosePeers", {
+                                modalsAfter: document.querySelectorAll(".tv-settings-modal").length,
+                            });
+                        } catch (_dbg) {}
                         return Promise.resolve(true);
                     }
                 } catch (e) {
