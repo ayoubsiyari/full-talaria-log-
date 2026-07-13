@@ -8,8 +8,10 @@
 ---
 
 ## Preconditions (L1)
+- [ ] **REBUILD FIRST (mandatory — a cache bump alone does NOT recompile React):** in `chart v 1.4/talaria-design` run `$env:BUILD_ID='<new-id>'; npm run build:live`. This recompiles `MultichartGrid.jsx` into `dist-v9`, stamps `?v=`/SW_VERSION, and syncs homepage. Raw `chart.js`/module fixes only need this for the `?v=` bump; React fixes REQUIRE the recompile. Skipping this = testing stale code.
+- [ ] Service worker unregistered + hard reload after the rebuild.
 - [ ] Live React multichart open (Vite live UI / real `chart-embed`), **not** the harness.
-- [ ] Build id confirmed on the host **and every panel frame** = expected build (record it here: `__________`).
+- [ ] Build id confirmed on the host **and every panel frame** = the new id just built (record it here: `__________`).
 - [ ] At least two panels open; place two synced drawings in a non-focused panel (panel B).
 
 ## Selection surface — run per panel (host + each panel)
@@ -22,16 +24,18 @@
 | 5 | **Settings close on Esc:** press Esc → tool deselects **and** the settings menu/bar closes together (no orphaned menu). | ☐ |
 | 6 | **Delete:** delete a selected tool → no ghost artifact remains; canvas repaints without an extra click. | ☐ |
 | 7 | **Peer isolation:** selecting in panel B does not wrongly clear or open UI in other panels beyond the intended cross-panel rule. | ☐ |
+| 8 | **Ctrl+drag marquee (added D-007):** hold Ctrl and drag on empty chart → blue marquee-select border draws and multi-selects enclosed tools. Run on **main chart AND a panel**. | ☐ |
+| 9 | **Single→double click chain (added D-007):** single-click a tool → selects + quick menu per stated spec; **double-click** → opens settings; **Esc** → deselects and closes settings. Run on **main chart AND a panel**. | ☐ |
 
 ## Single-chart regression guard (must stay unchanged)
 | # | Check | Pass? |
 |---|---|---|
-| 8 | Repeat checks 1–6 in single-chart mode → all behave as before (live-confirmed baseline). | ☐ |
+| 10 | Repeat checks 1–6, 8, 9 in single-chart mode → all behave as before (live-confirmed baseline). | ☐ |
 
 ## Kill-switch revertibility (I13)
 | # | Check | Pass? |
 |---|---|---|
-| 9 | Set the fix's named switch OFF → the fixed behaviors revert (proves the switch covers **every** file, React included). | ☐ |
+| 11 | Set the fix's named switch OFF → the fixed behaviors revert (proves the switch covers **every** file, React included). | ☐ |
 
 ---
 

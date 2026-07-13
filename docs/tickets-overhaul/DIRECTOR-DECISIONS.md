@@ -2,6 +2,26 @@
 
 ---
 
+## D-007 — T1 step-7 retest: three-switch isolation matrix + PO spec before step 8
+
+**Date:** 2026-07-13
+**Track:** T1 step 7→8 (Lane 1)
+**RC:** RC-1
+
+### Correction
+The Manager planned to isolate the main-chart blue-border regression with only the step-7 switch (`__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2`). Director checked the code first: the blue Ctrl+drag border is **engine-owned**, not React — it's the `ctrlMarqueeSelect` marquee (`chart.js` `drawCtrlMarqueeSelect` ~:18645), and its start predicate (~:31174) depends on manager/engine state that T1 steps 4–6 migrated (`_isCursorSelectMode()`, `currentTool`, hit-tests). Step 6's legacy-retirement also short-circuits old click handlers (`chart.js:32588`, `:32815`). So a main-chart border regression most plausibly lives under `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` or `__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2` — switches the planned single-switch test wouldn't touch. Testing only the step-7 switch risks a false "pre-existing, not ours" verdict.
+
+### Directives
+1. **Three-switch isolation matrix** — `MULTICHART_OWNERSHIP_V2`, `TOOL_LIFECYCLE_V2`, `LEGACY_SELECTION_RETIRE_V2`, one at a time on the **main chart**, build id confirmed. Each outcome maps to a different step-8 fix target; **none** restoring the border ⇒ genuinely pre-existing → log to registry, do not block T1.
+2. **Double-click-settings symptom needs a PO-stated spec before any fix** (P6, from D-005): what should single-click do — select + quick menu, with double-click opening settings (TradingView-style)? Lane 1 fixes to a stated spec, not reverse-engineered intent.
+3. **Two permanent parity-checklist rows added:** (a) Ctrl+drag marquee border / multi-select; (b) single-click → quick menu → double-click settings → Esc chain — run on **main chart AND a panel** every build.
+4. **Step-8 dispatches only after the matrix result:** one proven mechanism, one gated fix.
+
+### Manager mechanism note (for the record)
+D-007's "one reload each" cannot be executed literally: these switches are read lazily from `window.__TALARIA_*` with **no localStorage/URL persistence**, so a reload wipes a console-set flag (this also invalidated the earlier "set-then-reload → same" test cited in ESC-006). The matrix is therefore run as **set-flag → Ctrl+drag without reloading** (predicate is evaluated at drag time), build id confirmed once up front. Same isolation intent, valid mechanism. Flagging in case the Director wants a persistent flag shim (localStorage seed) built by Lane 4 for future A/B tests.
+
+---
+
 ## D-006 — ESC-006: multichart selection regressions — premise corrected; gating audit ordered before ownership hunt
 
 **Date:** 2026-07-13
@@ -277,5 +297,36 @@ The escalation reads the PO's isolation result (`__TALARIA_DISABLE_TOOL_LIFECYCL
 **5. Standing rule (ledger + INVARIANTS).** **I3 is amended in practice: a fix's kill-switch must cover every file the fix touches, including React/shell surfaces.** If a change cannot be gated (e.g. React markup), the acceptance report must say so explicitly and the change gets real-product verification before acceptance. The step-4/5 acceptances that missed this were harness-green but ungated-live — that combination is now an automatic acceptance blocker.
 
 **6. T1 status:** acceptance stays revoked (~70%); H-S32–35/44 remain the harness contract but are **necessary, not sufficient** for multichart claims until the parity check exists. PO keeps `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2=true` only if the audit shows it actually helps; otherwise the audit's revert build is the PO relief.
+
+---
+
+## D-007 — Step-7 retest residuals (R2 border, single-click settings): isolation matrix corrected before the next PO cycle
+
+**Date:** 2026-07-13  
+**Trigger:** MANAGER-FINDINGS "T1 step 7 first live retest — PARTIAL" (not an escalation; Director directive to prevent a wasted PO cycle)  
+**Track:** T1 (Lane 1), build `20260713b1`
+
+### Director code check (evidence)
+
+The manager's planned isolation tests only `__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2` on the main chart. That switch cannot be the whole story, and testing it alone risks a false "pre-existing" verdict:
+
+- **R2 (blue Ctrl+drag border) is engine-owned, not React-owned.** The border is the `ctrlMarqueeSelect` marquee drawn by `chart.js` (`drawCtrlMarqueeSelect`, `chart.js:18645`; overlay sync `:18713`). Its start predicate (`tryStartCtrlMarqueeSelect`, `chart.js:31174-31238`) depends on engine/manager state that T1 steps 4–6 migrated: `dm._isCursorSelectMode()` (= `!currentTool`, `drawing-tools-manager.js:13105-13107`), `dm.currentTool`, drawing hit-tests, and `this.tool`. Step 7 touched only `MultichartGrid.jsx` and is panel-gated — a main-chart border regression is far more plausibly **T1 steps 4/5/6 engine work**, i.e. under `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` or `__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2`.
+- **Step 6 rewired the click paths that lead to selection UI.** With legacy retirement active (default), the legacy SVG/canvas click handlers return early (`chart.js:32588`, `:32815`, `:33787`) and selection chrome depends entirely on the new store path. If the store path doesn't drive the border/preview, that is a step-6-visible regression — again invisible to the ownership-V2 switch.
+
+### Directives
+
+**1. Isolation is a three-switch matrix, one PO reload each, main chart, build id confirmed (L1):**
+| Test | Switch set | If border returns |
+|---|---|---|
+| a | `__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2=true` | step 7 leaked into single-chart (I5 breach) — Lane 1 re-scopes step 7 |
+| b | `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2=true` | T1 store migration owns it — step-8 fix in the store's selection-chrome path |
+| c | `__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2=true` | step-6 retirement dropped the marquee/border wiring — step-8 fix restores it on the store path |
+If none restores it: treat as pre-existing/unrelated, capture live trace, register as a registry row instead of a T1 blocker.
+
+**2. "Settings opens only on double-click" needs a product-behavior spec before any fix (P6).** The intended single-click behavior must be stated by the PO (expected: single-click = select + quick menu; double-click = settings — TradingView convention) and quoted in the step-8 prompt. Lane 1 must not guess the spec from the regression report; the earlier b6 symptom (A) and this one must be fixed to the *same* stated spec.
+
+**3. Parity checklist gains two permanent rows:** (i) Ctrl+drag marquee shows border and completes multi-select; (ii) single-click select → quick menu appears → double-click opens settings → Esc closes all — each run on main chart *and* a panel.
+
+**4. Step-8 dispatch is gated on the matrix result** — one mechanism, one gated fix, RED-first on the real product per I13/D-006. No fix lands on "probably the store path."
 
 ---

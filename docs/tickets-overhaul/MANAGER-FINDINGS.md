@@ -205,6 +205,29 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Correction issued to PO:** for any `MultichartGrid.jsx`/React fix, run `npm run build:live` in `talaria-design` (recompiles dist-v9 + syncs homepage/public) BEFORE bump/reload. This is now part of multichart acceptance.
 - **Fast-test gap (for Lane 4 later):** `dev:live` (Vite HMR, instant) can't init the chart because `vite.config.live.js` proxy list omits `/chart/vendor/d3.min.js` (only `/chart/chart.js`, `/chart/modules`, etc. are proxied) → `d3 load failed`. Fixing that proxy/`USE_LOCAL_CHART` gap would give a sub-second React test loop instead of full rebuilds — directly serves D-006's parity-check tooling.
 
+### T1 step 7 first live retest (post-rebuild) — PARTIAL (2026-07-13)
+- After the correct `build:live` rebuild, PO reports: **R1 (Ctrl-select) FIXED.** Remaining: **R2** blue selection border still not showing (PO says "even on main chart, on Ctrl+drag"), and **settings opens only on double-click, not single-click** (first-click-open regression, distinct from the earlier flash).
+- **Concern:** R2 reported on the MAIN/single chart → possible I5 breach (step 7 must be panel-gated). Requested isolation: PO sets `__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2=true` on main chart; if the border returns, step 7 leaked into single-chart and Lane 1 re-scopes; if not, border is pre-existing/separate. Also pending PO build-id confirm (`20260713b1`).
+- **Next:** on isolation result, dispatch T1 step 8 to Lane 1 (R2 border + single-click settings open), RED-first on the real React product per I13/D-006. Fallback (b) still available if convergence stalls.
+
+### D-007 (2026-07-13) — Director corrected the isolation plan
+- Blue Ctrl+drag border is **engine-owned** (`chart.js` `drawCtrlMarqueeSelect` ~:18645, start predicate ~:31174), depends on state migrated by T1 steps 4–6 → single-switch (ownership-V2) test would false-negative. Directive: **three-switch matrix** (ownership-V2 / lifecycle-V2 / legacy-retire-V2) on main chart, each maps to a step-8 target; none ⇒ pre-existing → registry.
+- Double-click-settings symptom: **PO must state the spec first** (P6) before any fix.
+- Two permanent parity rows added (Ctrl+drag marquee; single→double click chain) — main chart AND panel every build. Done in `MULTICHART-PARITY-CHECKLIST.md` (rows 8–9).
+- **Manager mechanism note:** switches are lazy `window.*` reads with no persistence → "reload each" wipes them; matrix run as **set-flag → Ctrl+drag without reload**, build id confirmed once. Recorded in D-007. Possible Lane 4 follow-up: localStorage flag shim.
+- Recorded D-007; step 8 dispatches only after matrix result + PO spec.
+- **PO SPEC stated (D-007 req 2, P6-compliant):** single-click = select + show quick menu (floating toolbar); **double-click = open full settings**; Esc = deselect + close. ⇒ The "settings opens on double-click" the PO reported is **spec-correct, not a bug**. Step-8 settings scope narrows to: *does single-click show the quick menu?* (and the Esc close chain). Blue-border still pending the three-switch matrix.
+
+### D-007 matrix RESULT + T1 step 8 dispatched (2026-07-13)
+- **Matrix result:** blue Ctrl+drag marquee border returns in **NONE** of the three switch states, nor all-three-off ⇒ **PRE-EXISTING engine defect, not a T1 regression** (per D-007 → registry, does not block T1). New symptom from PO: **Ctrl+drag intermittent — sometimes works, sometimes the shape jumps** (drag mis-read as move).
+- **Registry:** `PLAN2-FOUND#1` (marquee border never draws), `PLAN2-FOUND#2` (intermittent Ctrl+drag shape-jump). Both RC-1, chart_core_ui, open.
+- **Dispatched T1 step 8** (`worker-prompts/T1-step8-ctrl-drag-marquee-diagnostic-fix.md`): engine-owned Ctrl+drag marquee, diagnostic-first (S1 border-not-drawing + S2 shape-jump; one-or-two mechanisms), gated fix, real-product acceptance on parity rows 8–9. Also verifies single-click quick-menu vs the PO spec (fix only if broken). T1 step 7 (Ctrl-select fix) remains PO-confirmed good and is unaffected.
+
+### T1 step 8 delivered — LIVE PENDING (2026-07-13)
+- **Report:** `worker-reports/T1-step8-ctrl-drag-marquee-report.md`. Diagnostic: S1+S2 = **one** mechanism (fragmented Ctrl+drag ownership between chart marquee and drawing-manager hit/move). Fix in `chart.js` (both trees byte-identical, SHA `53f60ca1…`), gated by `__TALARIA_DISABLE_CTRL_MARQUEE_FIX`: document-level marquee drag continuation + SVG overlay sizing + relaxed geometric-hit rejection only when DOM target isn't `.drawing` (preserves H-S43). Harness H-S32/33/34/35/43/44 green; lint/`node --check` clean. Single-click quick-menu = spec-correct (H-S32/H-S44); double-click settings unchanged (correct).
+- **Deploy note:** step 8 = **raw `chart.js`** (not React) → served directly, so a **cache-bump surfaces it** (no Vite/Docker rebuild needed, unlike step 7's `MultichartGrid.jsx`). Manager bump → **`20260713b2`**.
+- **Next:** PO runs `build:live` (covers the cache-bump; also keeps step-7 React bundle current), confirms `20260713b2` on frame, runs parity rows 8–9 on main chart AND a panel + switch-off revert check. PASS → step 8 accepted, PLAN2-FOUND#1/#2 close, T1 back on track.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

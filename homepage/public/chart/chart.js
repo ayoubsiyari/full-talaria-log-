@@ -704,6 +704,7 @@ class Chart {
             endX: 0,
             endY: 0
         };
+        this._ctrlMarqueeDocumentTracking = null;
 
         // Right-click gesture state
         this._rightClickDragThreshold = 6;
@@ -18706,7 +18707,16 @@ class Chart {
         const h = this.h || drawingsSvg.clientHeight || 0;
         if (w) layer.style.width = w + 'px';
         if (h) layer.style.height = h + 'px';
+        if (this._isCtrlMarqueeFixEnabled()) {
+            if (w) layer.setAttribute('width', String(w));
+            if (h) layer.setAttribute('height', String(h));
+            if (w && h) layer.setAttribute('viewBox', `0 0 ${w} ${h}`);
+        }
         return rectEl;
+    }
+
+    _isCtrlMarqueeFixEnabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_CTRL_MARQUEE_FIX);
     }
 
     /** Position + show the isolated marquee overlay rect. */
@@ -31171,6 +31181,64 @@ class Chart {
 
         const tryStartBoxZoom = () => false;
 
+        const updateCtrlMarqueeSelectFromEvent = (e) => {
+            if (!this.ctrlMarqueeSelect || !this.ctrlMarqueeSelect.active) return false;
+            if (!this.drag || this.drag.type !== 'ctrlMarqueeSelect') return false;
+            const [mx, my] = this._eventCanvasLocalXY(e);
+            this.ctrlMarqueeSelect.endX = mx;
+            this.ctrlMarqueeSelect.endY = my;
+            this.scheduleRender();
+            return true;
+        };
+
+        const completeCtrlMarqueeSelectFromEvent = (e) => {
+            if (!this.ctrlMarqueeSelect || !this.ctrlMarqueeSelect.active) return false;
+            if (!this.drag || this.drag.type !== 'ctrlMarqueeSelect') return false;
+            updateCtrlMarqueeSelectFromEvent(e);
+            const dm = this.drawingManager;
+            const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+            const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+            const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
+            const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
+            if (dm && typeof dm.completeCtrlMarqueeFromChart === 'function') {
+                dm.completeCtrlMarqueeFromChart(x1, y1, width, height);
+            } else if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
+                dm.cancelCtrlMarqueeSelectFromChart();
+            }
+            this.ctrlMarqueeSelect.active = false;
+            this._hideCtrlMarqueeSelectOverlay();
+            this.drag.active = false;
+            this.drag.type = null;
+            this.movement.isDragging = false;
+            this.scheduleRender();
+            return true;
+        };
+
+        const stopCtrlMarqueeDocumentTracking = () => {
+            const t = this._ctrlMarqueeDocumentTracking;
+            if (!t || typeof document === 'undefined') return;
+            document.removeEventListener('mousemove', t.onMove, true);
+            document.removeEventListener('mouseup', t.onUp, true);
+            this._ctrlMarqueeDocumentTracking = null;
+        };
+
+        const startCtrlMarqueeDocumentTracking = () => {
+            if (!this._isCtrlMarqueeFixEnabled() || typeof document === 'undefined') return;
+            stopCtrlMarqueeDocumentTracking();
+            const onMove = (ev) => {
+                if (!updateCtrlMarqueeSelectFromEvent(ev)) {
+                    stopCtrlMarqueeDocumentTracking();
+                }
+            };
+            const onUp = (ev) => {
+                completeCtrlMarqueeSelectFromEvent(ev);
+                stopCtrlMarqueeDocumentTracking();
+            };
+            this._ctrlMarqueeDocumentTracking = { onMove, onUp };
+            document.addEventListener('mousemove', onMove, true);
+            document.addEventListener('mouseup', onUp, true);
+        };
+
         const tryStartCtrlMarqueeSelect = (e) => {
             if (this.drag && this.drag.active) return false;
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.shiftKey) return false;
@@ -31198,11 +31266,17 @@ class Chart {
                 }
             }
 
-            // Ctrl+marquee must not steal mousedown from whole-shape moves on any drawing hit.
+            // Ctrl+marquee must not steal Ctrl-click toggles from real drawing DOM hits.
+            const targetIsDrawingElement = !!(e.target && typeof e.target.closest === 'function'
+                && e.target.closest('.drawing'));
+
+            // Ctrl+marquee must not steal mousedown from whole-shape moves on actual drawing hits.
             if (typeof dm.findDrawingsAtPoint === 'function') {
                 const drawingHits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
                 if (Array.isArray(drawingHits) && drawingHits.length > 0) {
-                    return false;
+                    if (!this._isCtrlMarqueeFixEnabled() || targetIsDrawingElement) {
+                        return false;
+                    }
                 }
             }
 
@@ -31233,6 +31307,7 @@ class Chart {
             if (typeof dm.prepareCtrlMarqueeSelectFromChart === 'function') {
                 dm.prepareCtrlMarqueeSelectFromChart();
             }
+            startCtrlMarqueeDocumentTracking();
             if (typeof e.preventDefault === 'function') e.preventDefault();
             this.scheduleRender();
             return true;
@@ -31553,9 +31628,7 @@ class Chart {
                     this.scheduleRender();
                 }
                 else if (this.drag.type === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect.active) {
-                    this.ctrlMarqueeSelect.endX = mx;
-                    this.ctrlMarqueeSelect.endY = my;
-                    this.scheduleRender();
+                    updateCtrlMarqueeSelectFromEvent(e);
                 }
                 // ─── Separate panel resize ───
                 else if (this.drag.type === 'separatePanelResize') {
@@ -31699,21 +31772,8 @@ class Chart {
             
             // Handle Ctrl+drag multi-select marquee
             if (dragType === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect.active) {
-                const [mx, my] = this._eventCanvasLocalXY(e);
-                this.ctrlMarqueeSelect.endX = mx;
-                this.ctrlMarqueeSelect.endY = my;
-                const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
-                const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
-                const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
-                const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
-                if (dm && typeof dm.completeCtrlMarqueeFromChart === 'function') {
-                    dm.completeCtrlMarqueeFromChart(x1, y1, width, height);
-                } else if (dm && typeof dm.cancelCtrlMarqueeSelectFromChart === 'function') {
-                    dm.cancelCtrlMarqueeSelectFromChart();
-                }
-                this.ctrlMarqueeSelect.active = false;
-                this._hideCtrlMarqueeSelectOverlay();
-                this.scheduleRender();
+                completeCtrlMarqueeSelectFromEvent(e);
+                stopCtrlMarqueeDocumentTracking();
             }
             // Handle box zoom
             else if (dragType === 'boxZoom' && this.boxZoom.active) {
