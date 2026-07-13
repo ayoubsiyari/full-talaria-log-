@@ -244,6 +244,20 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Marquee (`PLAN2-FOUND#1`) is pre-existing** and explicitly OUT of this rollback — scheduled as its own dedicated fix later, not part of the loop.
 - T1 headline: single-chart improvements kept; multichart returns to known-good; T1 re-migration deferred (becomes a future consolidated effort under the real-product parity gate). Informing Director as a fallback-(b) invocation (no ruling needed).
 
+### Fallback (b) DELIVERED — deploying stable build (2026-07-13)
+- **Report:** `worker-reports/T1-fallbackB-disable-multichart-migration-report.md`. Predicate-only, reversible, no migration code deleted. Context-gated: single chart = migration ON (unchanged); multichart iframe panels + React shell = pre-T1 behavior by default. Each piece re-enableable via existing `__TALARIA_*` flags for the future re-migration. Trees byte-identical (chart.js `de742bca…`, drawing-tools-manager `194f8989…`, tool-lifecycle-store `90df0c9b…`; MultichartGrid `340dacd0…`). `node --check`/lint clean.
+- **Expected harness reds (rollback window):** H-S34, H-S35, H-S44 now FAIL because they assert the intentionally-disabled migrated multichart behavior. H-S32/33/36/37/43 pass. **Follow-up (non-blocking, Manager to assign Lane 4):** move H-S34/S35/S44 to `known-failing.json` with a "T1 fallback-(b) rollback window" note (not an assertion change → within fallback scope, no I9 escalation).
+- **Deploy:** touches raw JS + `MultichartGrid.jsx` → full server rebuild required. Manager bump → **`20260713b3`**. Pipeline: local commit+push → server `git pull` → `GIT_COMMIT=20260713b3 docker compose up --build -d` → browser SW-clear + hard reload → confirm `20260713b3`.
+- **Acceptance:** PO confirms multichart panels behave like before the workers (select, settings menu, no shape-jump on normal use); single chart unchanged. Marquee (`PLAN2-FOUND#1`) remains a separate pre-existing item, not part of this.
+
+### Next wave dispatched — moving off T1 to the ready root causes (2026-07-13)
+- With T1-multichart parked (single-chart kept; re-migration deferred to a future consolidated effort under the parity gate), advancing the plan per TRACKS lane map:
+  - **Lane 1 → T2** (RC-2 invalidation / "stuck-until-click", ~38 tickets): dispatched `worker-prompts/T2-step1-invalidation-assertion-sweep.md`. Assertion mode + per-mechanism gated fixes; RED scenarios from T0 step 3 (H-S36/37).
+  - **Lane 3 → T4 close:** finish the remaining replay fill spot-check; T4 otherwise done.
+  - **Lane 2 → T3 retest triage** on stable `b3` (retest-first per TRACKS; migration-dependent fixes re-scoped after the rollback).
+  - **Lane 4 → fast-test tooling:** fix Vite `/chart/vendor/d3.min.js` proxy gap (sub-second React test loop vs 20-min rebuilds) + reclassify H-S34/35/44 to known-failing for the fallback window.
+- T1 deferred re-migration recorded as a future track item (re-enable via retained `__TALARIA_*` flags under the real-product parity gate).
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.
