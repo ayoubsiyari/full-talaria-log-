@@ -307,6 +307,12 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Manager re-running full `npm run gate`** (drawing-tools-manager.js now has T2 + step 11 engine edits) — result pending.
 - **Deploy → `20260713b6`:** full multichart set (step 9 marquee, T2 step 1, step 10 settings-flash, step 11 gear; T0 step 6 dev-only stripped in prod). One server rebuild; PO confirms gear live = multichart done.
 
+### b6 live — gear works on host tile A, NOT iframe panel B (2026-07-13)
+- PO on b6 (screenshot): panel A (host tile) gear opens Trend Line settings; **panel B (iframe) gear does nothing.** Double-click works on panel B (step 10). So iframe→parent transport is fine; only the **iframe engine floating-toolbar gear** (`#tb-settings`) doesn't reach the parent open route. Step 11 verified panel B in fast loop, so either panel-B iframe is **stale** (L1 check requested) or a prod-vs-devloop embed difference.
+- **First:** PO confirms both panels on b6 (rule out stale iframe). If confirmed and B still fails → dispatch **T1 step 12** (`worker-prompts/T1-step12-panelB-iframe-gear-route.md`): fix the engine iframe gear to route via `editDrawing()`→parent; reproduce+verify in fast loop (T0 step 6 iframe panel). Prompt staged.
+- **Manager gate (T2+step11 tree):** PASS (exit 0, no new regressions, 6 tracked reds).
+- **CONFIRMED real gap:** PO retested on fresh b6, both panels reloaded — panel B iframe gear still fails. Not stale. → **T1 step 12 dispatched** to Lane 1 (`worker-prompts/T1-step12-panelB-iframe-gear-route.md`): fix engine iframe `#tb-settings` gear to route via `editDrawing()`→parent; reproduce + verify in fast loop (T0 step 6 iframe panel) before deploy. Step 11 only covered the host-tile V9 quick-bar; the iframe runs the engine toolbar, which still doesn't reach the parent open route.
+
 ### 2.2 T3 step 0 (Lane 2) — **ACCEPTED** (checklist prep)
 - Report: `worker-reports/T3-lane2-retest-triage-report.md`
 - Checklist: `T3-RETEST-CHECKLIST.md` — **24 tickets** enumerated with repro scripts, hypothesis tags, L1 build-id procedure.

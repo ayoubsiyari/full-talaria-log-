@@ -9001,7 +9001,47 @@ class DrawingToolsManager {
             if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
             this.toolbar.show(drawing, x, y);
             notifyV9SelectionSync(this.chart, drawing);
+            this._rescueMultichartIframeToolbarAfterSelection(drawing);
         }
+    }
+
+    _rescueMultichartIframeToolbarAfterSelection(drawing) {
+        if (!drawing || !this.toolbar || !isMultichartIframeEmbed() || !multichartQuickbarSettingsFixEnabled()) return;
+        const rescue = () => {
+            try {
+                const stillSelected = Array.isArray(this.selectedDrawings)
+                    && this.selectedDrawings.some((d) => d && drawing && String(d.id) === String(drawing.id));
+                if (!stillSelected || !drawing.group) return;
+                const gear = typeof document !== 'undefined' ? document.getElementById('tb-settings') : null;
+                const gearRect = gear && typeof gear.getBoundingClientRect === 'function' ? gear.getBoundingClientRect() : null;
+                const gearVisible = !!(gearRect && gearRect.width > 0 && gearRect.height > 0);
+                if (this.toolbar.visible && gearVisible) return;
+                const node = drawing.group.node && drawing.group.node();
+                const bbox = node && typeof node.getBBox === 'function' ? node.getBBox() : null;
+                const svgNode = this.svg && this.svg.node && this.svg.node();
+                const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
+                    ? svgNode.getBoundingClientRect()
+                    : null;
+                if (!bbox || !svgRect || bbox.width <= 0) return;
+                const x = svgRect.left + bbox.x + (bbox.width / 2);
+                const y = svgRect.top + bbox.y;
+                if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
+                const toolbarEl = this.toolbar.toolbar;
+                if (gear && toolbarEl) {
+                    this.toolbar.currentDrawing = drawing;
+                    this.toolbar.visible = true;
+                    toolbarEl.style.display = 'flex';
+                    if (typeof this.toolbar.position === 'function') {
+                        this.toolbar.position(x, y);
+                    }
+                    return;
+                }
+                this.toolbar.show(drawing, x, y);
+            } catch (_) { /* best-effort iframe quick-bar recovery */ }
+        };
+        setTimeout(rescue, 0);
+        setTimeout(rescue, 80);
+        setTimeout(rescue, 200);
     }
 
     /** Keep resize targets above rebuilt shape borders during live edits / hover. */

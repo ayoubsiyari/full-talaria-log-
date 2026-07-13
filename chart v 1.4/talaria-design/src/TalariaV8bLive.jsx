@@ -6,7 +6,10 @@ import {
   FlagSvg,
   ChartSymbolBadge,
   chartAssetFromSymbolObj,
+  displayChartSessionSymbol,
   extractDatasetTicker,
+  inferChartAssetClass,
+  normalizeBadgeAsset,
   normalizeSymForBadge,
   resolveSessionChartSymbol,
 } from "./chartSymbolBadge.jsx";
@@ -1101,7 +1104,7 @@ function v9NormalizeToolbarSymbol(s) {
   const u = s.toUpperCase().replace(/\s+/g, "");
   if (u.includes("/")) return u;
   if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + "/" + u.slice(3);
-  return u;
+  return displayChartSessionSymbol(u) || u;
 }
 
 /** Minutes east of UTC for `timeZone` at instant `dateMs` (DST-aware). */
@@ -5011,8 +5014,19 @@ function v9ResolveOpenDrawingSettingsHook() {
 }
 
 function v9QuickBarPanelSettingsFixEnabled() {
+  const disabled = (w) => {
+    try {
+      return !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+    } catch (_) {
+      return false;
+    }
+  };
   try {
-    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+    if (typeof window === "undefined") return true;
+    if (disabled(window)) return false;
+    if (window.parent && window.parent !== window && disabled(window.parent)) return false;
+    if (window.top && window.top !== window && disabled(window.top)) return false;
+    return true;
   } catch (_) {
     return true;
   }
@@ -5059,7 +5073,7 @@ function v9ShouldSkipLegacyDrawingToolbarShow() {
   try {
     if (typeof window !== "undefined" && window.__multichartGrid) return true;
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      if (window.parent.__multichartGrid) return true;
+      if (window.parent.__multichartGrid) return !v9QuickBarPanelSettingsFixEnabled();
     }
   } catch (_) {}
   return false;
@@ -10656,7 +10670,6 @@ function v9ParseFxPairForDropdown(raw) {
         type: "forex",
         base: p[0],
         quote: p[1],
-        cat: "BACKTEST",
       };
     }
   }
@@ -10667,45 +10680,100 @@ function v9ParseFxPairForDropdown(raw) {
       type: "forex",
       base: u.slice(0, 3),
       quote: u.slice(3),
-      cat: "BACKTEST",
     };
   }
   return null;
 }
 
+/** Map session / inferred asset class → dropdown section (matches session-creation markets). */
+function v9SessionCatFromAsset(assetClass, ticker) {
+  const hinted = normalizeBadgeAsset(assetClass);
+  const inferred = hinted || inferChartAssetClass(ticker);
+  if (inferred === "Forex") return "FOREX";
+  if (inferred === "Futures") return "FUTURES";
+  if (inferred === "Crypto") return "CRYPTO";
+  if (inferred === "Stocks") return "STOCKS";
+  return "BACKTEST";
+}
+
+function v9TypeFromCat(cat) {
+  if (cat === "FOREX") return "forex";
+  if (cat === "FUTURES") return "futures";
+  if (cat === "CRYPTO") return "crypto";
+  if (cat === "STOCKS") return "stock";
+  return "other";
+}
+
 function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_SYMBOL_CATALOG) {
   const rawLabel = String(ticker || "").trim();
-  const cleanedTicker = extractDatasetTicker(rawLabel) || rawLabel;
+  const extracted = extractDatasetTicker(rawLabel) || rawLabel;
+  const cleanedTicker = displayChartSessionSymbol(extracted) || extracted;
+  const cat = v9SessionCatFromAsset(assetClass, cleanedTicker);
   const badgeAsset =
-    assetClass != null && String(assetClass).trim() ? String(assetClass).trim() : undefined;
-  const withBadge = (row) => (badgeAsset ? { ...row, badgeAsset } : row);
+    normalizeBadgeAsset(assetClass) ||
+    (cat === "FOREX"
+      ? "Forex"
+      : cat === "FUTURES"
+        ? "Futures"
+        : cat === "CRYPTO"
+          ? "Crypto"
+          : cat === "STOCKS"
+            ? "Stocks"
+            : undefined);
+  const withMeta = (row) => ({
+    ...row,
+    cat,
+    type: row.type || v9TypeFromCat(cat),
+    fileId,
+    ...(badgeAsset ? { badgeAsset } : {}),
+  });
+
+  // Catalog is only for icon colors / friendly labels — never for section grouping.
   let found = known.find((s) => s.id === cleanedTicker);
-  if (!found && cleanedTicker) found = known.find((s) => v9NormSymKey(s.id) === v9NormSymKey(cleanedTicker));
-  if (found) return withBadge({ ...found, id: found.id, name: rawLabel || found.name, fileId });
+  if (!found && cleanedTicker) {
+    found = known.find((s) => v9NormSymKey(s.id) === v9NormSymKey(cleanedTicker));
+  }
+  if (found) {
+    const displayId =
+      found.type === "forex" ? found.id : displayChartSessionSymbol(found.id) || found.id;
+    // Prefer the clean session ticker for both lines so chart matches session creation.
+    const displayName = cleanedTicker || displayId;
+    return withMeta({
+      ...found,
+      id: displayId,
+      name: displayName,
+    });
+  }
+
+  const fx = v9ParseFxPairForDropdown(cleanedTicker);
+  if (fx) {
+    return withMeta({
+      ...fx,
+      name: fx.id,
+    });
+  }
+
   const parts = (cleanedTicker || "").split("/");
   if (parts.length === 2 && parts[0].length === 3 && parts[1].length === 3) {
     const b = parts[0].toUpperCase();
     const q = parts[1].toUpperCase();
-    return withBadge({
+    return withMeta({
       id: `${b}/${q}`,
-      name: rawLabel || `${b} / ${q}`,
+      name: `${b}/${q}`,
       type: "forex",
       base: b,
       quote: q,
-      cat: "FOREX",
-      fileId,
     });
   }
-  const fx = v9ParseFxPairForDropdown(cleanedTicker);
-  if (fx) return withBadge({ ...fx, name: rawLabel || fx.name, fileId });
-  return withBadge({
+
+  return withMeta({
     id: cleanedTicker,
-    name: rawLabel || cleanedTicker,
-    type: "other",
-    cat: "BACKTEST",
-    fileId,
+    name: cleanedTicker,
+    type: v9TypeFromCat(cat),
   });
 }
+
+const V9_SESSION_CAT_ORDER = ["FOREX", "FUTURES", "CRYPTO", "STOCKS", "BACKTEST"];
 
 /** Session pair list for symbol dropdowns — same source as header MARKETS picker. */
 function v9BuildSessionSymbolGroups(sessionPairs, fallbackSymbol) {
@@ -10718,7 +10786,13 @@ function v9BuildSessionSymbolGroups(sessionPairs, fallbackSymbol) {
     const k = it.cat || "BACKTEST";
     (byCat[k] ||= []).push(it);
   });
-  return Object.entries(byCat).map(([cat, catItems]) => ({ cat, items: catItems }));
+  return Object.entries(byCat)
+    .sort(([a], [b]) => {
+      const ia = V9_SESSION_CAT_ORDER.indexOf(a);
+      const ib = V9_SESSION_CAT_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    })
+    .map(([cat, catItems]) => ({ cat, items: catItems }));
 }
 
 function v9FilterSessionSymbolGroups(groups, searchQuery) {
@@ -11905,6 +11979,8 @@ const TalariaV8bLive = () => {
         if (!session) return;
 
         const chart = window.chart;
+        const sessionAssetHint =
+          session.asset_class ?? session.assetClass ?? session.market ?? null;
         /** Prefer chart.js pair resolver (parses EURUSD from filename when map key is wrong). */
         const resolveTickerForInstrument = (tickerKey, info, fileId) => {
           const fid = fileId ?? info?.fileId ?? info?.datasetId ?? null;
@@ -11946,17 +12022,23 @@ const TalariaV8bLive = () => {
         const pushPair = (ticker, fileId, assetClass) => {
           if (!ticker) return;
           const fid = fileId != null ? fileId : null;
-          const dedupeKey = fid != null ? `id:${fid}` : `sym:${ticker}`;
+          const cleaned =
+            displayChartSessionSymbol(extractDatasetTicker(ticker) || ticker) ||
+            String(ticker).trim();
+          if (!cleaned) return;
+          const dedupeKey = fid != null ? `id:${fid}` : `sym:${cleaned}`;
           if (seen.has(dedupeKey)) return;
           seen.add(dedupeKey);
-          const ac =
+          const acRaw =
             assetClass != null && String(assetClass).trim()
               ? String(assetClass).trim()
-              : null;
+              : sessionAssetHint != null && String(sessionAssetHint).trim()
+                ? String(sessionAssetHint).trim()
+                : null;
           pairs.push({
-            ticker: v9NormalizeToolbarSymbol(String(ticker).trim()),
+            ticker: v9NormalizeToolbarSymbol(cleaned),
             fileId: fid,
-            assetClass: ac,
+            assetClass: acRaw,
           });
         };
 

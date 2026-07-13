@@ -558,6 +558,11 @@ const FUTURES_ROOTS_FOR_INFER = [
   "HO",
   "HOG",
   "RB",
+  "ZW",
+  "ZL",
+  "ZC",
+  "ZS",
+  "ZM",
   "6E",
   "6B",
   "6J",
@@ -626,9 +631,29 @@ export function extractDatasetTicker(raw) {
   return head ? head.toUpperCase() : flat;
 }
 
+/** Mirror homepage `displaySessionSymbol` — ES1 → ES for known continuous roots. */
+const FUTURES_DISPLAY_ROOTS = new Set([
+  "ES", "NQ", "YM", "RTY", "CL", "GC", "SI", "NG", "HG", "PL", "RB", "HO", "ZW", "ZL", "ZC", "ZS", "ZM",
+  "MNQ", "MES", "MYM", "M2K", "MGC", "MCL", "6E", "6B", "6J", "6A", "6C", "6N", "6S",
+  "ZB", "ZN", "ZF", "ZT", "NKD", "MBT", "MET",
+]);
+
+export function displayChartSessionSymbol(sym) {
+  const k = String(sym || "")
+    .replace(/[\/\s_.-]/g, "")
+    .toUpperCase();
+  if (!k) return "";
+  if (/^[A-Z0-9]{1,5}\d$/.test(k)) {
+    const root = k.slice(0, -1);
+    if (FUTURES_DISPLAY_ROOTS.has(root)) return root;
+  }
+  return k;
+}
+
 export function normalizeSymForBadge(symbol) {
   const extracted = extractDatasetTicker(symbol);
-  return String(extracted || symbol || "")
+  const displayed = displayChartSessionSymbol(extracted || symbol);
+  return String(displayed || symbol || "")
     .replace(/\//g, "")
     .toUpperCase();
 }
@@ -731,7 +756,8 @@ export function ChartSymbolBadge({ sym, asset, w = 11, h = 10, fontFamily = "'Ex
     setSrcIdx(0);
   }, [sym, normAsset]);
 
-  const metal = METAL_BADGES[upper];
+  // Match homepage SymbolBadge: metal by exact ticker or futures root (SI1 → SI → Ag).
+  const metal = METAL_BADGES[upper] || METAL_BADGES[futuresRoot(upper)];
   if (metal) {
     const rx = Math.round(h * 0.2);
     return (
@@ -774,12 +800,9 @@ export function ChartSymbolBadge({ sym, asset, w = 11, h = 10, fontFamily = "'Ex
     );
   }
 
+  // Same as session-creation SymbolBadge — letter/root pills, not a US flag.
   if (normAsset === "Futures") {
-    return (
-      <div style={{ borderRadius: 2, overflow: "hidden", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}>
-        <FlagSvg code="US" w={w} h={h} />
-      </div>
-    );
+    return futuresSvg(sym, w, h, fontFamily);
   }
 
   const src = urls[srcIdx];
