@@ -46040,7 +46040,7 @@ const TalariaV8b = () => {
           const filteredMine = mineSource
             .filter(s=>{
               const q=normalizeSearchQuery(stratSearch);
-              return !q||s.name.toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
+              return !q||String(s.name||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>String(t||"").toLowerCase().includes(q));
             })
             .sort((a,b)=>{
               let av=communitySortValue(a, stratSort), bv=communitySortValue(b, stratSort);
@@ -46051,7 +46051,7 @@ const TalariaV8b = () => {
             });
           const filteredSavedCommunity = COMMUNITY_ENABLED ? savedCommunityStrats.filter(s=>{
             const q=normalizeSearchQuery(stratSearch);
-            return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
+            return !q||String(s.name||"").toLowerCase().includes(q)||String(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>String(t||"").toLowerCase().includes(q));
           }) : [];
 
           /* ─── Strategy card (shared) ─── */

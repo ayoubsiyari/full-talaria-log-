@@ -31196,6 +31196,13 @@ class Chart {
             const [mx, my] = this._eventCanvasLocalXY(e);
             this.ctrlMarqueeSelect.endX = mx;
             this.ctrlMarqueeSelect.endY = my;
+            if (this._isCtrlMarqueeFixEnabled()) {
+                const x1 = Math.min(this.ctrlMarqueeSelect.startX, this.ctrlMarqueeSelect.endX);
+                const y1 = Math.min(this.ctrlMarqueeSelect.startY, this.ctrlMarqueeSelect.endY);
+                const width = Math.abs(this.ctrlMarqueeSelect.endX - this.ctrlMarqueeSelect.startX);
+                const height = Math.abs(this.ctrlMarqueeSelect.endY - this.ctrlMarqueeSelect.startY);
+                this._syncCtrlMarqueeSelectOverlay(x1, y1, width, height);
+            }
             this.scheduleRender();
             return true;
         };
@@ -31227,7 +31234,10 @@ class Chart {
             const t = this._ctrlMarqueeDocumentTracking;
             if (!t || typeof document === 'undefined') return;
             document.removeEventListener('mousemove', t.onMove, true);
+            document.removeEventListener('pointermove', t.onMove, true);
             document.removeEventListener('mouseup', t.onUp, true);
+            document.removeEventListener('pointerup', t.onUp, true);
+            document.removeEventListener('pointercancel', t.onUp, true);
             this._ctrlMarqueeDocumentTracking = null;
         };
 
@@ -31245,7 +31255,10 @@ class Chart {
             };
             this._ctrlMarqueeDocumentTracking = { onMove, onUp };
             document.addEventListener('mousemove', onMove, true);
+            document.addEventListener('pointermove', onMove, true);
             document.addEventListener('mouseup', onUp, true);
+            document.addEventListener('pointerup', onUp, true);
+            document.addEventListener('pointercancel', onUp, true);
         };
 
         const tryStartCtrlMarqueeSelect = (e) => {
