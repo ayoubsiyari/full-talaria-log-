@@ -51,6 +51,14 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
+function multichartOwnershipV2Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2);
+    } catch (_) {
+        return true;
+    }
+}
+
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
 // /chart/ does NOT load the bridge by default (it's only loaded inside
@@ -4702,13 +4710,59 @@ export default function MultichartGrid({
             return Promise.all(proms);
         }
 
-        /**
-         * @deprecated use closeDrawingSettingsOnAllPanels — kept for callers that
-         * previously closed "other" panels only; settings are now globally exclusive.
-         */
         function closeDrawingSettingsOnOtherPanels(sourceId) {
-            void sourceId;
-            return closeDrawingSettingsOnAllPanels();
+            if (!multichartOwnershipV2Enabled()) {
+                return closeDrawingSettingsOnAllPanels();
+            }
+            const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            const mgr = managerRef.current;
+            const proms = [];
+            if (source !== HOST_PANEL_ID) {
+                proms.push(
+                    applyHostCommand("closeDrawingSettings", null).catch((e) => {
+                        console.warn("[MultichartGrid] closeDrawingSettings host failed", e && e.message || e);
+                    })
+                );
+            }
+            forEachIframePanelExcept(source, (id) => {
+                if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(id, "closeDrawingSettings", null);
+                } else if (mgr) {
+                    proms.push(
+                        mgr.sendCommand(id, "closeDrawingSettings", null).catch((e) => {
+                            console.warn("[MultichartGrid] closeDrawingSettings", id, "failed", e && e.message || e);
+                        })
+                    );
+                }
+            });
+            return Promise.all(proms);
+        }
+
+        function closeDrawingSettingsForPanel(sourceId) {
+            if (!multichartOwnershipV2Enabled()) {
+                return clearDrawingUiOnOtherPanels(sourceId);
+            }
+            const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            closeGlobalLegacyDrawingSettings();
+            try {
+                window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
+            } catch (_) {}
+            if (source === HOST_PANEL_ID) {
+                return applyHostCommand("closeDrawingSettings", null).catch((e) => {
+                    console.warn("[MultichartGrid] closeDrawingSettings host failed", e && e.message || e);
+                });
+            }
+            const mgr = managerRef.current;
+            if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                mgr.sendCommandNoReply(source, "closeDrawingSettings", null);
+                return Promise.resolve(null);
+            }
+            if (mgr) {
+                return mgr.sendCommand(source, "closeDrawingSettings", null).catch((e) => {
+                    console.warn("[MultichartGrid] closeDrawingSettings", source, "failed", e && e.message || e);
+                });
+            }
+            return Promise.resolve(null);
         }
 
         /**
@@ -4753,7 +4807,9 @@ export default function MultichartGrid({
          */
         function clearDrawingUiOnOtherPanels(sourceId, opts) {
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
-            const skipDismiss = !!(opts && opts.skipV9Dismiss);
+            const ownershipV2 = multichartOwnershipV2Enabled();
+            const skipDismiss = ownershipV2 && !!(opts && opts.skipV9Dismiss);
+            const preserveSourceSettings = ownershipV2 && !!(opts && (opts.skipV9Dismiss || opts.preserveSourceSettings));
             if (!skipDismiss) {
                 closeGlobalLegacyDrawingSettings();
                 try {
@@ -4764,7 +4820,9 @@ export default function MultichartGrid({
             }
             return Promise.all([
                 deselectDrawingsOnNonFocusedPanels(source),
-                closeDrawingSettingsOnAllPanels(),
+                preserveSourceSettings
+                    ? closeDrawingSettingsOnOtherPanels(source)
+                    : closeDrawingSettingsOnAllPanels(),
             ]);
         }
 
@@ -4863,7 +4921,11 @@ export default function MultichartGrid({
                         try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
                             window.__v9MultichartSettingsPanelId = null;
                         }
-                        closeDrawingSettingsOnAllPanels().catch(() => {});
+                        if (multichartOwnershipV2Enabled()) {
+                            closeDrawingSettingsOnOtherPanels(source).catch(() => {});
+                        } else {
+                            closeDrawingSettingsOnAllPanels().catch(() => {});
+                        }
                         return Promise.resolve(true);
                     }
                 } catch (e) {
@@ -4897,7 +4959,11 @@ export default function MultichartGrid({
                     if (typeof dm.deleteDrawing === "function") dm.deleteDrawing(drawingToDelete);
                 }
             );
-            closeDrawingSettingsOnAllPanels().catch(() => {});
+            if (multichartOwnershipV2Enabled()) {
+                closeDrawingSettingsOnOtherPanels(source).catch(() => {});
+            } else {
+                closeDrawingSettingsOnAllPanels().catch(() => {});
+            }
             return Promise.resolve(true);
         }
 
@@ -5287,6 +5353,7 @@ export default function MultichartGrid({
             runCommandOnAllPanels,
             deselectDrawingsOnNonFocusedPanels,
             closeDrawingSettingsOnOtherPanels,
+            closeDrawingSettingsForPanel,
             closeDrawingSettingsOnAllPanels,
             closeGlobalLegacyDrawingSettings,
             clearDrawingUiOnOtherPanels,
@@ -5822,7 +5889,9 @@ export default function MultichartGrid({
             if (msg.type === "multichart-close-drawing-settings") {
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
-                if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                if (grid && multichartOwnershipV2Enabled() && typeof grid.closeDrawingSettingsForPanel === "function") {
+                    grid.closeDrawingSettingsForPanel(sourceId).catch(() => {});
+                } else if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                     grid.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
                 } else if (grid && typeof grid.closeDrawingSettingsOnOtherPanels === "function") {
                     grid.closeDrawingSettingsOnOtherPanels(sourceId).catch(() => {});
@@ -5855,6 +5924,13 @@ export default function MultichartGrid({
                     // shape never shows selected on B/C/D.
                     if (typeof window !== "undefined") {
                         window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+                    }
+                    if (multichartOwnershipV2Enabled() && msg.source != null) {
+                        const sourceId = String(msg.source);
+                        focusPanelById(sourceId);
+                        setTimeout(() => {
+                            try { computeFocusedRect(); } catch (_) {}
+                        }, 0);
                     }
                     if (msg.drawingType) {
                         window.dispatchEvent(new CustomEvent("talaria:v9-selected-drawing", {

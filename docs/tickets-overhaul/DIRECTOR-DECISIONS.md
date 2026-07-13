@@ -2,6 +2,28 @@
 
 ---
 
+## D-006 — ESC-006: multichart selection regressions — premise corrected; gating audit ordered before ownership hunt
+
+**Date:** 2026-07-13
+**Escalation:** ESC-006
+**Track:** T1 step 6→7 (Lane 1)
+**RC:** RC-1
+
+### Premise correction
+The Manager concluded from the PO kill-switch test (switch ON → R1/R2/R3 persist) that the live selection path "does not run through the gated engine lifecycle." That inference is unsound: T1 steps 4/5 edited the production React surface directly — `MultichartGrid.jsx:4756` (skipV9Dismiss cleanup) and `:5822-5837` (`multichart-close-drawing-settings` handler) — and those edits are **not** behind the engine kill-switch. "Switch off, nothing changes" is equally consistent with our own **un-gated React edits** being the cause. The isolation test cannot distinguish the two theories. Substantively this is an **I3 breach**: steps 4/5 were never fully revertible by their named switch.
+
+### Rulings
+1. **No harness-only acceptance for multichart work** — approved unconditionally.
+2. **Recovery path (a), reordered.** Step-6 (now step-7) first deliverable is a **gating audit**: enumerate every step-4/5 edit outside kill-switch reach (edit → switch coverage → revertible table), then **A/B-revert the un-gated React edits** against R1–R3 in the real product. This cheapest decisive experiment comes **before** any theory that React owns selection independently. The ownership hunt begins only if the regressions survive with all our edits neutralized.
+3. **Fallback (b) pre-authorized** (no further escalation round-trip): if the audit shows the step-4/5 model is wrong for panels, revert and default the multichart migration **OFF** (single-chart stays ON — live-confirmed), ship the PO a stable build, re-migrate once under the parity gate. **Option (c) rejected** — Lane 1 owns the recovery; T3 must not absorb a moving defect.
+4. **Production-React parity check = standing gate.** A scripted per-build manual checklist now (select, Ctrl-select, blue border, settings open/close, Esc, per panel); Lane 4 scopes the automated version after recovery. This is the plan-1 §7.7 harness blind spot, now proven twice.
+5. **New standing rule (→ INVARIANTS I13).** A fix's kill-switch must cover **every file the fix touches, React included**; anything ungatable gets an explicit callout + real-product verification before acceptance. "Harness-green but ungated-live" is an automatic acceptance blocker.
+
+### Director expectation
+The audit will likely show the un-gated edits are the cause (regressions appeared exactly when steps 4/5 landed; single-chart, where the switch covers everything, is fine). If so, the fix is to **re-land the React-side changes properly gated**, not to redesign ownership.
+
+---
+
 ## D-001 — ESC-001: T1 ToolLifecycleStore design approved; phased implementation authorized
 
 **Date:** 2026-07-12  
@@ -225,5 +247,35 @@ TAL-00752 message #17 reads: *"When I add more than one entry and move the secon
 **4. Acceptance:** corrected mapping property suite GREEN in CI; kill-switch A/B; live drag spot-check by the PO (drag one buy entry through all three zones, confirm label transitions Limit → Market → Stop); state matrix including the multi-entry and replay-paused cells; both trees byte-identical; build bump coordinated through the Manager per D-003.
 
 **5. Process note (for the ledger).** T4 step 1 was accepted by the Manager without a Director checkpoint — within the manager's authority, but the mis-read invariant survived until the PO felt it live. Standing correction going forward: **any worker-proposed product-behavior invariant (as opposed to a code-correctness invariant) is quoted back to the source ticket in the acceptance report** — one line of evidence per invariant. Cheap, and it would have caught this at acceptance time.
+
+---
+
+## D-006 — ESC-006: T1 multichart recovery — gating audit first; the isolation test is invalid evidence
+
+**Date:** 2026-07-13  
+**Escalation:** ESC-006  
+**Track:** T1 (Lane 1), build `20260712b8`  
+**RC:** RC-1
+
+### Director correction to the escalation's premise
+
+The escalation reads the PO's isolation result (`__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 = true` → R1/R2/R3 persist) as proof that "the live multichart selection path does not run through the gated engine lifecycle." That inference is **unsafe**. Director verification: T1 steps 4/5 edited the production React surface directly — `MultichartGrid.jsx:4756` (`skipV9Dismiss` handling in `clearDrawingUiOnOtherPanels`) and `:5822-5837` (`multichart-close-drawing-settings` message handler) — and **those React-side edits are not behind the engine kill-switch.** "Switch off, no change" is therefore consistent with *our own un-gated React edits being the cause* of R1–R3. The isolation test cannot distinguish "React owns selection independently of our work" from "our un-gated React changes broke it." This is also an I3 breach in substance: the step-4/5 fixes are not fully revertible by their named kill-switches.
+
+### Rulings
+
+**1. Request 1 APPROVED unconditionally.** No further T1 multichart fix is accepted on harness evidence alone. Every T1/T3 multichart-affecting change requires a real-product (React `MultichartGrid`) reproduction before fix and verification after, until ruling 4's parity check exists.
+
+**2. Recovery path: (a), but the first deliverable is a GATING AUDIT, not a selection-ownership hunt.** The Lane-1 step-6 diagnostic must, in order:
+   1. **Enumerate every change steps 4/5 made outside the kill-switch's reach** — all `MultichartGrid.jsx` edits, any bridge/manager edits not guarded by `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` (or guarded by a different switch). Deliverable: a table of edit → switch coverage → revertible yes/no.
+   2. **A/B the un-gated React edits** against R1/R2/R3 in the real product (revert them locally, reload, retest). This is the cheapest decisive experiment and must come before any new mechanism theory.
+   3. Only if R1–R3 persist with all step-4/5 edits neutralized does the diagnostic proceed to mapping the React surface's independent selection ownership.
+   
+**3. Fallback (b) is pre-authorized without re-escalation** if the audit shows the step-4/5 model itself is wrong for panels: revert the un-gated React edits and default the T1 multichart migration OFF for panels (single-chart migration stays ON — it is live-confirmed). Ship the PO a stable build first; re-migrate once under ruling 4's parity gate. Option (c) is REJECTED: Lane 1 introduced these regressions, Lane 1 owns the recovery; T3's contract work continues separately and must not absorb a moving defect.
+
+**4. Request 3 APPROVED — production-React parity check becomes a standing acceptance gate.** Minimum viable version now: a scripted PO/manager checklist (select, Ctrl-select, blue border, settings open/close, Esc, per panel) executed on the real product per build. Harness-automated React coverage is the durable version — Lane 4 scopes it after the recovery lands (it is the same blind spot the journey report's §7.7 warned about, now proven twice).
+
+**5. Standing rule (ledger + INVARIANTS).** **I3 is amended in practice: a fix's kill-switch must cover every file the fix touches, including React/shell surfaces.** If a change cannot be gated (e.g. React markup), the acceptance report must say so explicitly and the change gets real-product verification before acceptance. The step-4/5 acceptances that missed this were harness-green but ungated-live — that combination is now an automatic acceptance blocker.
+
+**6. T1 status:** acceptance stays revoked (~70%); H-S32–35/44 remain the harness contract but are **necessary, not sufficient** for multichart claims until the parity check exists. PO keeps `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2=true` only if the audit shows it actually helps; otherwise the audit's revert build is the PO relief.
 
 ---

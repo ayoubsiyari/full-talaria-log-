@@ -4,6 +4,57 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-006 — RESOLVED
+
+**Director ruling:** D-006 (2026-07-13)
+**Outcome:** Premise corrected — the kill-switch isolation test was inconclusive because T1 steps 4/5 edited `MultichartGrid.jsx` (`:4756`, `:5822-5837`) **outside** the engine kill-switch (an I3 breach), so "switch off, no change" cannot distinguish "React owns selection" from "our own un-gated React edits regressed it." Rulings: (1) no harness-only acceptance — approved; (2) recovery path (a) **reordered** — step-7's first deliverable is a **gating audit + A/B revert of the un-gated React edits** in the real product, before any ownership hunt; (3) fallback (b) **pre-authorized** — if the step-4/5 model is wrong for panels, revert + default multichart migration OFF (single-chart stays ON), ship a stable build, re-migrate under the parity gate; option (c) rejected (Lane 1 owns recovery); (4) production-React parity checklist = standing per-build gate (manual now, Lane 4 automates later); (5) **new INVARIANTS I13** — a kill-switch must cover every file a fix touches, React included; ungatable edits are an automatic acceptance blocker. Step-7 prompt restructured to lead with the audit.
+
+---
+
+## ESC-006 (original) — T1 multichart selection: harness-green fixes keep breaking the live React product; approach decision needed
+
+**Date:** 2026-07-13
+**Track:** T1 (Lane 1), build `20260712b8`
+**RC:** RC-1
+**Urgency:** Blocks T1 closure; PO's live multichart selection is degraded vs. pre-overhaul.
+
+### Context
+T1 steps 4 and 5 each passed the harness gate (H-S32–37/43/44 green) and were accepted, but each broke the **live React multichart** in a way the harness never caught. On `b8` the PO reports three concurrent regressions in multichart panels (single chart is fine):
+- **R1** — Ctrl-select no longer works correctly.
+- **R2** — no blue selection/preview border shown during selection.
+- **R3** — settings menu **flashes open then immediately closes** in a panel (open/close race in one interaction).
+
+### The mechanism-level finding (why this is an escalation, not a patch)
+Isolation test: PO set `window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 = true` and reloaded. **No change** — all three regressions persist with the T1 engine lifecycle disabled. That means the live multichart selection path does **not** run through the gated engine lifecycle the workers have been editing; the production React surface (`MultichartGrid.jsx` / chart-embed) is the real owner, and it is neither gated by our kill-switch nor exercised by the harness (`multichart-manager.js`). We have been validating fixes on a surface that isn't the one the PO uses.
+
+### Decision requested
+1. **Pause forward patching of T1 on harness evidence.** Require every T1 multichart fix to carry a **real-product (React `MultichartGrid`) reproduction + verification**, not harness-only, before acceptance.
+2. Choose the recovery path:
+   - **(a)** Keep the kill-switch defaulted ON and dispatch the consolidated Lane-1 diagnostic (`T1-step6-...`) to find where the React surface owns selection and fix R1/R2/R3 there; **or**
+   - **(b)** Default the T1 multichart migration **OFF** (ship known pre-overhaul behavior for panels) until a production-React parity harness exists, then re-migrate once; **or**
+   - **(c)** Fold this into T3 (multichart interaction parity, Lane 2) since the owner is the React multichart, not the engine.
+3. Authorize a small **production-React parity check** (even a manual PO script) as a standing acceptance gate for T1/T3 multichart work, since the current harness has a proven blind spot.
+
+### Manager recommendation
+Approve **(1)** unconditionally. For recovery, **(a)** with a hard constraint: Lane 1's step-6 diagnostic must locate the React-surface owner and reproduce R1/R2/R3 there before any fix; if it can't be fixed without reworking the step-4/5 ownership model, fall back to **(b)**. Add the production-React parity check as a gate. T1 acceptance rolled back to ~70% until live-confirmed.
+
+### UPDATE (2026-07-13) — step-6 diagnostic returned; mechanism CONFIRMED in React parent
+Lane 1 completed Part 1 and stopped at the stop condition (fix requires a React ownership rework). The owner is `MultichartGrid.jsx`, not the engine:
+- **R3 (settings flash):** open path `openDrawingSettingsForPanel()` (`MultichartGrid.jsx:4854-4867`) races the close path — `clearDrawingUiOnOtherPanels()` still calls `closeDrawingSettingsOnAllPanels()` **unconditionally** (`:4754-4768`), and `openDrawingSettingsForPanel()` itself calls it right after opening (`:4860-4867`). `skipV9Dismiss` only skips `multichart-dismiss-drawing-settings`, not the parent-wide close → open-then-close in one interaction.
+- **R2 (no border):** per-tool selected chrome is engine-owned (`drawing-tools-base.js:2280-2296`) but the panel focus frame is React-owned (`MultichartGrid.jsx:3585-3624`, `:6508-6522`) and CSS strips all other borders (`talaria-design/live/index.html:266-301`); routing selection through parent cleanup desyncs the two owners.
+- **R1 (Ctrl):** Row-2 iframe suppression is correctly scoped, but parent focus cleanup (`clearDrawingUiOnOtherPanels()`/`deselectDrawingsOnNonFocusedPanels()`, `MultichartGrid.jsx:1970-1988, 3719-3742, 6308-6322`) is a separate owner that still re-routes UI around the iframe selection.
+- **Recommended fix shape (worker):** split `clearDrawingUiOnOtherPanels(sourceId, opts)` into source-preserving ops (peer-deselect / peer-settings-close / parent V9 dismiss / source-settings-close-only-on-explicit-deselect-Esc-delete); treat `multichart-close-drawing-settings` as source-scoped, not "clear all other panels."
+- **Harness blind spot proven:** H-S43/H-S44 both PASS while the live surface is broken. A real-React acceptance path is mandatory before the fix is accepted.
+
+**Refined decision requested:** authorize the step-7 fix in `MultichartGrid.jsx` (recovery path (a)) per the worker's fix shape, gated by a new React-scoped switch, with a mandatory real-product PO acceptance script (already drafted in the step-6 report). Full diagnostic: `worker-reports/T1-step6-multichart-selection-regression-report.md`.
+
+---
+
+## ESC-006 — RESOLVED
+
+**Director ruling:** D-006 (2026-07-13)  
+**Outcome:** Premise corrected — the kill-switch isolation test is **invalid evidence**: steps 4/5 edited production React (`MultichartGrid.jsx:4756`, `:5822-5837`) *outside* `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2`, so "switch off, no change" cannot exonerate our own un-gated edits (I3 breach in substance). Request 1 approved unconditionally. Recovery = (a) but step-6 diagnostic starts with a **gating audit**: enumerate every un-gated step-4/5 edit (edit → switch coverage → revertible table), A/B-revert them against R1–R3 in the real product *first*; only then hunt independent React ownership. Fallback (b) pre-authorized if the model is wrong for panels (single-chart stays ON). Option (c) rejected — Lane 1 owns its regressions. Production-React parity checklist becomes a standing acceptance gate (Lane 4 scopes automated version after recovery). New standing rule: **a kill-switch must cover every file its fix touches** — ungated-live + harness-green is an automatic acceptance blocker.
+
 ## ESC-001 — T1 design checkpoint: approve ToolLifecycleStore before implementation
 
 **Date:** 2026-07-12  
