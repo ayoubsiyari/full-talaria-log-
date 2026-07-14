@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714a3';
+const CHART_ENGINE_BUILD = '20260714a4';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -23722,10 +23722,15 @@ class Chart {
             }
             this._panScalesCalculated = false;
         }
-        // Wheel burst (horizontal zoom): reuse frozen Y domain — skip O(n) OHLC scan every tick.
+        // Wheel burst + manual Y: reuse frozen domain (user pinned the price scale).
+        // Auto-scale / locked price scale must refit every frame — freezing Y is what
+        // left candles stuck at the top until mouse-wheel settle (not TradingView-like).
+        const wheelAutoPrice = !!(this.autoScale
+            || (this.priceScale && (this.priceScale.autoScale || this.priceScale.locked)));
         if (
             this._isWheelZoomBurst()
             && !this._wheelBurstFinalPass
+            && !wheelAutoPrice
             && this._wheelBurstSnapYDomain
             && this._wheelBurstSnapYDomain.length === 2
             && this.yScale
@@ -23734,8 +23739,6 @@ class Chart {
             && this.data.length > 0
         ) {
             const mW = this.margin;
-            const cwW = this.w - mW.l - mW.r;
-            const candleAndSpacing = this.getCandleSpacing();
             this._applyViewportXScale(mW);
             const indPanelH = this.separateIndicatorPanelHeight || 0;
             const plotBottom = this.h - mW.b - indPanelH;
@@ -24528,10 +24531,8 @@ class Chart {
         const newWidth = Math.max(minWidth, Math.min(maxWidth, oldWidth * zoomFactor));
         if (newWidth === oldWidth) return false;
 
-        if (!this.priceScale.locked) {
-            this.autoScale = false;
-            this.priceScale.autoScale = false;
-        }
+        // Keep auto-scale on during time-axis drag zoom (same as wheel) so Y
+        // refits live; do not force manual Y mid-gesture.
 
         const m = this.margin;
         const oldSpacing = this.getCandleSpacing();
@@ -31161,12 +31162,21 @@ class Chart {
             this._markScalesDirty();
             this._clearPanTimeTickCache();
             this._cachedInteractionTimeTicks = null;
+            // Only pin Y when the user already left auto-scale (manual price range).
+            // Auto / locked price scale must keep refitting during the burst.
             if (!burstWasActive && this.yScale) {
-                const dom = this.yScale.domain();
-                this._wheelBurstSnapYDomain = [Number(dom[0]), Number(dom[1])];
-                if (this.volumeScale && typeof this.volumeScale.domain === 'function') {
-                    const vd = this.volumeScale.domain();
-                    this._wheelBurstSnapVolumeDomain = [Number(vd[0]), Number(vd[1])];
+                const keepAutoY = !!(this.autoScale
+                    || (this.priceScale && (this.priceScale.autoScale || this.priceScale.locked)));
+                if (keepAutoY) {
+                    this._wheelBurstSnapYDomain = null;
+                    this._wheelBurstSnapVolumeDomain = null;
+                } else {
+                    const dom = this.yScale.domain();
+                    this._wheelBurstSnapYDomain = [Number(dom[0]), Number(dom[1])];
+                    if (this.volumeScale && typeof this.volumeScale.domain === 'function') {
+                        const vd = this.volumeScale.domain();
+                        this._wheelBurstSnapVolumeDomain = [Number(vd[0]), Number(vd[1])];
+                    }
                 }
             }
             if (!burstWasActive) {
@@ -31293,12 +31303,11 @@ class Chart {
                 const oldWidth = this.candleWidth;
                 const newWidth = Math.max(minWidth, Math.min(maxWidth, oldWidth * timeZoomFactor));
 
-                // When price axis is UNLOCKED, using time wheel should freeze vertical auto-scale
-                // so Y range stays fixed while we zoom time.
-                if (!priceLocked) {
-                    this.autoScale = false;
-                    this.priceScale.autoScale = false;
-                }
+                // TradingView-style: horizontal wheel zoom keeps price auto-scale alive so
+                // Y refits the visible bars on every tick. Only a prior manual Y gesture
+                // (autoScale already false) should keep the price range pinned.
+                // (Old behavior forced autoScale=false here → candles stuck to the top of
+                // a stale Y domain until wheel settle.)
 
                 this.candleWidth = newWidth;
 
