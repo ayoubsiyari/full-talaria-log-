@@ -17167,10 +17167,7 @@ class Chart {
 	        // Defer SVG resize during drag to avoid layout thrashing
 	        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
 	        if (svgNode && !isPanelDragResize) {
-	            svgNode.setAttribute('width', this.w);
-	            svgNode.setAttribute('height', this.h);
-	            svgNode.style.width = this.w + 'px';
-	            svgNode.style.height = this.h + 'px';
+	            this._syncDrawingSvgSurfaceSize(this.w, this.h, svgNode);
 	        }
 	        
 	        if (oldW && oldH) {
@@ -17290,15 +17287,31 @@ class Chart {
 	        
 	        if (!isPanelDragResize) {
 	            if (svgNode) {
-	                svgNode.setAttribute('width', this.w);
-	                svgNode.setAttribute('height', this.h);
-	                svgNode.style.width = this.w + 'px';
-	                svgNode.style.height = this.h + 'px';
+	                this._syncDrawingSvgSurfaceSize(this.w, this.h, svgNode);
 	            }
 	            if (this.replaySystem) {
 	                this.replaySystem.updateAutoScrollIndicator();
 	            }
 	        }
+	    }
+
+	    /**
+	     * Keep #drawingSvg user-space aligned with canvas logical size.
+	     * viewBox + preserveAspectRatio=none is required so CSS size changes
+	     * (multichart splitter preview) scale drawings with the candle bitmap
+	     * instead of leaving shapes stuck in old absolute pixel coords.
+	     */
+	    _syncDrawingSvgSurfaceSize(w, h, svgNode) {
+	        const node = svgNode || (this.svg && this.svg.node ? this.svg.node() : null);
+	        if (!node) return;
+	        const sw = Math.max(1, Math.round(Number(w) || this.w || 1));
+	        const sh = Math.max(1, Math.round(Number(h) || this.h || 1));
+	        node.setAttribute('width', String(sw));
+	        node.setAttribute('height', String(sh));
+	        node.setAttribute('viewBox', `0 0 ${sw} ${sh}`);
+	        node.setAttribute('preserveAspectRatio', 'none');
+	        node.style.width = sw + 'px';
+	        node.style.height = sh + 'px';
 	    }
     
     /**

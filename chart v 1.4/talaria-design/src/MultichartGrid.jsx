@@ -1266,19 +1266,39 @@ function applyHostSlot(cellEl, opts) {
     } catch (_) {}
 }
 
+/**
+ * CSS-only surface stretch (no chart.resize). Canvas bitmap scales via CSS;
+ * drawings need an explicit viewBox locked to the last logical ch.w/ch.h so
+ * SVG paths scale with the same non-uniform stretch (otherwise shapes stay
+ * stuck in old absolute pixels while candles move).
+ */
+function cssStretchChartSurface(ch, displayW, displayH) {
+    if (!ch || !ch.canvas) return;
+    const w = Math.max(1, Math.round(displayW));
+    const h = Math.max(1, Math.round(displayH));
+    ch.canvas.style.width = w + "px";
+    ch.canvas.style.height = h + "px";
+    const svgNode = ch.svg && typeof ch.svg.node === "function" ? ch.svg.node() : null;
+    if (!svgNode) return;
+    const logicalW = Math.max(1, Math.round(Number(ch.w) || w));
+    const logicalH = Math.max(1, Math.round(Number(ch.h) || h));
+    svgNode.setAttribute("width", String(logicalW));
+    svgNode.setAttribute("height", String(logicalH));
+    svgNode.setAttribute("viewBox", `0 0 ${logicalW} ${logicalH}`);
+    svgNode.setAttribute("preserveAspectRatio", "none");
+    svgNode.style.width = w + "px";
+    svgNode.style.height = h + "px";
+}
+
 // Lightweight position update — moves #chartWrapper to match cellEl's
 // current bbox WITHOUT calling chart.resize(). Used during splitter
 // drag where we want the wrapper to track the cell visually but can't
 // afford the cost of resize() + render() on every mousemove (each
 // resize is 5–20ms; at 60Hz that's a budget blowout).
 //
-// The chart's canvas is set to fill the wrapper via CSS, so the canvas
-// will visually grow/shrink with the wrapper even though chart.js
-// hasn't redrawn yet. Pixels look slightly stretched mid-drag (because
-// the canvas's internal buffer is still the old size) but the user
-// sees fluid layout motion. On mouseup we call the full applyHostSlot
-// once, which triggers a single resize() + render() to repaint at
-// the final pixel-perfect resolution.
+// Canvas + drawing SVG are CSS-stretched together (viewBox-locked) so
+// shapes track candles mid-drag. On mouseup, settlePanelChartsAfterLayoutDrag
+// runs one real resize()+redraw at the final size.
 function applyHostSlotPositionOnly(cellEl) {
     if (!cellEl) return;
     if (typeof document === "undefined") return;
@@ -1299,21 +1319,8 @@ function applyHostSlotPositionOnly(cellEl) {
     wrapper.style.bottom = "auto";
     wrapper.style.zIndex = "13";
     wrapper.dataset.multichartHost = "1";
-    // Stretch the canvas via CSS only (no buffer realloc) so the host
-    // panel tracks splitter drag fluidly until mouseup repaint.
     try {
-        const ch = window.chart;
-        if (ch && ch.canvas) {
-            const w = Math.max(1, width);
-            const h = Math.max(1, height);
-            ch.canvas.style.width = w + "px";
-            ch.canvas.style.height = h + "px";
-            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
-            if (svgNode) {
-                svgNode.style.width = w + "px";
-                svgNode.style.height = h + "px";
-            }
-        }
+        cssStretchChartSurface(window.chart, width, height);
     } catch (_) {}
 }
 
@@ -1327,15 +1334,11 @@ function previewIframeChartsInContainer(container) {
             const parent = ch.canvas.parentElement;
             if (!parent) return;
             const rect = parent.getBoundingClientRect();
-            const w = Math.max(1, Math.round(rect.width));
-            const h = Math.max(1, Math.round(rect.height));
-            ch.canvas.style.width = w + "px";
-            ch.canvas.style.height = h + "px";
-            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
-            if (svgNode) {
-                svgNode.style.width = w + "px";
-                svgNode.style.height = h + "px";
-            }
+            cssStretchChartSurface(
+                ch,
+                Math.max(1, Math.round(rect.width)),
+                Math.max(1, Math.round(rect.height))
+            );
         } catch (_) {}
     });
 }

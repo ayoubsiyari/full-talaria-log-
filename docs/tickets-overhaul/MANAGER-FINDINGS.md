@@ -516,6 +516,10 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **BLOCKS DEPLOY:** do NOT finalize the canonical deploy build until the gear route is fixed + verified on the real built product. Freeze stays.
 - **Dispatched:** Lane 1 urgent `worker-prompts/T1-step18-lane1-gear-settings-regression.md` (reproduce on built product BOTH panels → root → fix → prove; coordinate H-R13 probe with Lane 4 so the harness can catch it). Awaiting PO build id + double-click isolation before worker begins repro.
 
+### PO live-confirmed step 18 (trust restored) + new defect PLAN2-FOUND#3 (2026-07-14)
+- **PO ran the local b97 spot-check: all 4 gear/settings rows PASS** (gear opens real settings on Panel A + Panel B, dbl-click stays open, one toolbar). The honest harness matched reality → **harness trust restored** for the settings path. Settings-open P0 is genuinely closed pending final deploy live-confirm.
+- **New defect PLAN2-FOUND#3 (Objects Tree duplication):** in a 4-panel layout the right-panel Objects Tree lists the same shapes multiple times (repeated Brush 1/2/3 + Rectangle). Logged to registry. Mechanism guess: multichart drawing sync-bridge (peer mirror) adds each synced drawing to the shared Objects Tree once per panel rather than one deduped/panel-scoped entry (RC-4 peer sync; possible RC-2 list-invalidation overlap). **Owner: Lane 2** (multichart) — fold into the post-ESC-011 peer-sync/routing re-fix family; Lane 2 to include it in the current T7 multichart closure sweep disposition. Frozen territory → implementation after ruling.
+
 ### T1 step 18 (Lane 1) — settings-open ROOT fixed + HONESTLY verified (2026-07-14)
 - **P0 resolved for the settings path.** Step-0 isolation confirmed BOTH gear + dbl-click broke on panels A AND B (only quick-bar shell appeared) — whole settings-open path, not just gear.
 - **Root:** dismiss-guard race — `__v9DrawingSettingsOpenGuardUntil` set AFTER `__v9OpenDrawingSettings`, so peer-clear flash-closed settings; iframe bridge didn't pre-arm the parent guard or call the sync parent-open API; gear product path didn't resolve iframe selection / call the V9 hook.
