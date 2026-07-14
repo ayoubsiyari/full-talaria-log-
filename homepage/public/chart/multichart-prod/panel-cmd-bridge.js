@@ -3868,6 +3868,7 @@
             return true;
         }
         var had = !!(dm.currentTool
+            || dm.selectedDrawing
             || (dm.selectedDrawings && dm.selectedDrawings.length));
         if (!keepSelection && typeof dm.deselectAll === 'function') {
             dm.deselectAll({ fromCanvasBackground: true });
@@ -3908,16 +3909,41 @@
         return cleared;
     }
 
+    function multichartKeyboardTransportFixEnabled() {
+        try {
+            if (global.parent && global.parent !== global) {
+                return !global.parent.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+            }
+            return !global.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+        } catch (_) {
+            return true;
+        }
+    }
+
     function isDrawingToolDismissKeyTarget(dm) {
         if (!dm) return false;
-        return !!(dm.currentTool
+        if (dm.currentTool
             || (dm.drawingState && dm.drawingState.isDrawing)
-            || dm.isRectSelecting
-            || (dm.selectedDrawings && dm.selectedDrawings.length));
+            || dm.isRectSelecting) {
+            return true;
+        }
+        if (dm.selectedDrawing) return true;
+        if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return true;
+        var visuallySelected = (dm.drawings || []).filter(function (d) { return d && d.selected; });
+        return visuallySelected.length > 0;
+    }
+
+    function hasDeletableDrawingSelection(dm) {
+        if (!dm) return false;
+        if (dm.selectedDrawing) return true;
+        if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return true;
+        var visuallySelected = (dm.drawings || []).filter(function (d) { return d && d.selected; });
+        return visuallySelected.length > 0;
     }
 
     function onDismissDrawingKey(e) {
         if (!e || e.key !== 'Escape') return;
+        if (!multichartKeyboardTransportFixEnabled()) return;
         var t = e.target;
         if (t && t.tagName) {
             var tag = String(t.tagName).toLowerCase();
@@ -3932,7 +3958,38 @@
         dismissActiveDrawingTool(dm, false);
         notifyParentDrawingToolCleared();
     }
+
+    function onDeleteDrawingKey(e) {
+        if (!e || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
+        if (!multichartKeyboardTransportFixEnabled()) return;
+        var t = e.target;
+        if (t && t.tagName) {
+            var tag = String(t.tagName).toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (t.isContentEditable) return;
+        }
+        var dm = global.chart && global.chart.drawingManager;
+        if (!hasDeletableDrawingSelection(dm)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        var toDelete = Array.isArray(dm.selectedDrawings) ? dm.selectedDrawings.slice() : [];
+        if (toDelete.length === 0 && dm.selectedDrawing) {
+            toDelete.push(dm.selectedDrawing);
+        }
+        if (toDelete.length === 0) {
+            var visuallySelected = (dm.drawings || []).filter(function (d) { return d && d.selected; });
+            if (visuallySelected.length === 1) toDelete = visuallySelected;
+        }
+        toDelete.forEach(function (drawing) {
+            if (drawing && typeof dm.deleteDrawing === 'function') {
+                dm.deleteDrawing(drawing);
+            }
+        });
+    }
+
     global.addEventListener('keydown', onDismissDrawingKey, { capture: true });
+    global.addEventListener('keydown', onDeleteDrawingKey, { capture: true });
 
     // ─── context-menu forward ───────────────────────────────────────────
     //

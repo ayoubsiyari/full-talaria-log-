@@ -19058,22 +19058,43 @@ const TalariaV8bLive = () => {
           return;
         }
 
+        const multichartDedupeEnabled = (() => {
+          try {
+            if (typeof window === "undefined") return false;
+            if (window.__TALARIA_DISABLE_OBJECTS_TREE_MULTICHART_DEDUPE_V1) return false;
+            return managers.length > 1;
+          } catch (_) {
+            return managers.length > 1;
+          }
+        })();
+
         const items = [];
         // Multichart: every panel's drawingManager holds a synced copy of the
         // same drawing, so enumerating all managers lists each drawing once per
-        // tile (e.g. 4 brushes × 4 tiles = 16). We can't dedupe on `id` alone —
-        // synced copies frequently lack a stable id across panels — so build a
-        // content signature (type + geometry + color) that is identical for the
-        // same logical drawing on every tile, and emit each signature once.
+        // tile (e.g. 4 brushes × 4 tiles = 16). Synced copies keep the same
+        // stable `id` (chart.js receiveDrawingChange line ~37545) but panel-local
+        // index `points` differ — dedupe on id first, then timestamp geometry.
         const seenDrawingKeys = new Set();
         const drawingDedupeKey = (d) => {
           try {
+            if (multichartDedupeEnabled && d) {
+              if (d.__syncId != null && d.__syncId !== "") {
+                return `sync:${String(d.__syncId)}`;
+              }
+              if (d.id != null && d.id !== "" && !String(d.id).startsWith("live_")) {
+                return `id:${String(d.id)}`;
+              }
+            }
             // Prefer timestamp anchors: they survive across panels even when
             // each tile is on a different timeframe (index-based x differs, the
             // timestamp+price pair does not).
             let geom = '';
             if (Array.isArray(d.timestampPoints) && d.timestampPoints.length) {
               geom = d.timestampPoints
+                .map((p) => `${Math.round(Number(p && (p.timestamp ?? p.t)) || 0)}:${Number(p && (p.price ?? p.y)) || 0}`)
+                .join(',');
+            } else if (Array.isArray(d._originalTimestampPoints) && d._originalTimestampPoints.length) {
+              geom = d._originalTimestampPoints
                 .map((p) => `${Math.round(Number(p && (p.timestamp ?? p.t)) || 0)}:${Number(p && (p.price ?? p.y)) || 0}`)
                 .join(',');
             } else if (Array.isArray(d.points) && d.points.length) {

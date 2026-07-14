@@ -535,10 +535,15 @@ function dismissActiveDrawingTool(dm, mirrored = false, opts = null) {
 
 function isDrawingToolDismissKeyTarget(dm) {
     if (!dm) return false;
-    return !!(dm.currentTool
+    if (dm.currentTool
         || (dm.drawingState && dm.drawingState.isDrawing)
-        || dm.isRectSelecting
-        || (dm.selectedDrawings && dm.selectedDrawings.length));
+        || dm.isRectSelecting) {
+        return true;
+    }
+    if (dm.selectedDrawing) return true;
+    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return true;
+    const visuallySelected = (dm.drawings || []).filter((d) => d && d.selected);
+    return visuallySelected.length > 0;
 }
 
 /**

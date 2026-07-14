@@ -25,6 +25,7 @@ For **every** file touched: full path, and 1–3 lines on *what* changed and *wh
 - RED evidence (the failing state before the fix) and GREEN evidence (after). Paste the key lines or attach the evidence file path.
 - **Determinism:** for any timing-sensitive fix, report pass count over repeated runs (e.g. "10/10"). A green that needs an artificial fixed `sleep()` to pass = RED; say what signal you gated on instead.
 - Gate result (scenario counts, regressions, tracked-red list) if the gate was run.
+- **I15 (NO PROXY GREENS — D-012):** every green claim MUST name (a) **how it actuated** — real user input (real mouse/keyboard at true coordinates, real cross-frame input for iframe panels) vs synthetic dispatch — and (b) **what it measured** — the real end-state the user sees (visible settings modal, drawing actually gone from the store, real selection state) vs a proxy (toolbar visible, element count, click dispatched, DOM shell text). **A synthetic-actuation or proxy-assertion green can NEVER be called "proven"** — it is at most "DONE (dev only) — NEEDS-LIVE". For multichart interaction specifically, until the honest real-actuation harness is rebuilt, the ONLY valid acceptance is **PO live-confirm on the real built product**.
 
 ### 5. Invariants checked
 - List each relevant invariant (I1–I13, L1–L2) and how you satisfied it. Call out any you could NOT satisfy.

@@ -2,6 +2,38 @@
 
 ---
 
+## D-012 — ESC-011: false-green retraction ratified; measurement repaired before/alongside fixes; PO live-confirm is the interim acceptance authority
+
+**Date:** 2026-07-14
+**Escalation:** ESC-011 (P0) + T0-step-12 addendum
+**Track:** T1 ∩ T3 interaction family; T0 harness integrity
+**RC:** RC-4 / RC-7 (process)
+
+### Framing
+Same disease D-010 diagnosed — validating against a surface that isn't the product — proven one level deeper: the probe lied, and the actuation lies. The Manager's handling was correct on every count (deploy freeze, refusing the 8-row known-failing baseline as "acceptance," treating the honest baseline as the new truth). All five requests ruled below.
+
+### Rulings
+
+**1. Re-verification mandate — GRANTED, two-tier bar.** The permanent bar for any multichart-interaction "proven" claim is **honest probe + real actuation** (real cross-frame mouse/keyboard into the panel iframe at true coordinates, real-state assertions). Until the harness meets that bar, synthetic-actuation green is **development evidence only** and **PO live-confirm on the real built product is the sole acceptance authority** for this family (codifies the step-12 addendum). Every previously "proven" row is retracted to UNPROVEN — **including H-R01/H-R07**; the ratchet floor is withdrawn until re-proven honestly. Status/registry: T1 steps 15/16/17 and the T3 step-4 settings chain move from DONE to **RETRACTED-FALSE-GREEN**; the registry rows they closed reopen.
+
+**2. Shipping posture — CONFIRMED: live stays on fallback-B.** Do not ship the partial-green subset; per the addendum even its assertions are untrustworthy. Fallback-B is the last posture the PO verified by hand — it remains the deploy baseline until the interaction family passes the honest bar AND PO confirms live. Deploy freeze continues.
+
+**3. Consolidated settings-open-transport fix — AUTHORIZED as one root fix.** Gear, dbl-click, and H-R04 all failing to open the real modal from a panel is one transport problem, not three. Owner: Lane 1, one kill-switch, I14-compliant (postMessage transport). Esc/Delete/marquee re-verified separately after it lands — no assumption they collapse with it. Its acceptance is sequenced per ruling 5.
+
+**4. Real-event actuation — APPROVED.** Lane 4 rebuilds the harness actuation layer: CDP `Input.dispatch*` (or equivalent) into the panel iframe at true coordinates; real-state assertions (settings = message-open + visible modal + `hasStyleSection`; deselect = store-level, not chrome-visibility proxy); **all `selectDrawing`/`editDrawing` synthetic fallbacks removed** — if real routing is broken the row must be RED; that is the point. Host-side H-S32/H-S33 get the same honesty pass (no `toolbarVisible` proxies).
+
+**5. Sequencing — HARNESS-FIRST, with a bounded parallel diagnostic (modification of strict serialization).**
+- Lane 4 rebuilds the harness now and **owns `react-parity-lib.mjs` exclusively** until the rebuild lands; Lane 1 is forbidden from touching that file (resolves the collision).
+- Lane 1's step 18 is **re-scoped diagnostic-first in parallel:** trace the settings-open transport root on the real built product (read-only + instrumentation, no harness-lib edits) so the fix design is ready when the honest harness lands. Lane 1 may implement the gated fix, but **no acceptance claim** until (a) the rebuilt harness is RED-first on the settings rows and goes GREEN with the fix, AND (b) PO live-confirm.
+- Interim path if the rebuild is slow: the fix may accept on **PO live-confirm alone** (ruling 1's interim authority), harness row added retroactively — but it goes to a staging build only; the frozen deploy does not move until the family is green.
+- Rationale: strict fix-first risks a third false-green cycle; strict harness-first idles the heaviest lane. Diagnose in parallel; accept only against honest measurement.
+
+### Standing rules added
+- **New INVARIANTS I15:** a harness assertion may not use a proxy for the user-visible outcome (chrome visibility ≠ selection state; dispatched event ≠ opened modal). Every interaction scenario asserts the end-state the user would see, via real actuation.
+- Any "X/X GREEN" acceptance claim must name the **probe** and the **actuation method**. Green on synthetic actuation is labeled **GREEN-SYNTHETIC**, never "proven."
+
+---
+
 ## D-011 — ESC-010: panel-B interaction — diagnostic-first, consolidated fix pre-authorized
 
 **Date:** 2026-07-14

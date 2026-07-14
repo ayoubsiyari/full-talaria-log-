@@ -24055,8 +24055,11 @@ class Chart {
      * Immediate render for replay playback and inertia. Wheel zoom and axis zoom coalesce to one paint per frame.
      */
     _isChartViewPanning() {
+        // Uncommitted finger-down (click candidate) is not a pan — keep idle ticks/grid.
+        const dragPan = !!(this.drag && this.drag.active && this.drag.type === 'pan'
+            && this.drag.panCommitted !== false);
         return !!(
-            (this.drag && this.drag.active && this.drag.type === 'pan') ||
+            dragPan ||
             (this.inertia && this.inertia.active) ||
             this._isPanSyncFollowBurst()
         );
@@ -31620,6 +31623,11 @@ class Chart {
                 }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
+                // Do NOT pan-paint until movement exceeds the click threshold.
+                // Finger-down used to call render() immediately → _buildTimeTicksFast()
+                // while drag.active, then mouseup rebuilt full ticks — so a plain
+                // click flipped the time axis / grid with no viewport change.
+                this.drag.panCommitted = false;
                 if (mode === 'separatePanelPlot' && this.cursor.separatePanelSlot) {
                     this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
                     this.drag.separatePanelIndicator = this.cursor.separatePanelSlot.indicator;
@@ -31635,10 +31643,6 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
-                // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
-                this._scheduleChartPanRender();
-                this.renderPending = false;
-                this.render();
             }
         });
 
@@ -31697,10 +31701,25 @@ class Chart {
                 
                 // ─── Chart Pan ─── (offset updates every mousemove; render coalesced to rAF)
                 if (this.drag.type === 'pan') {
-                    this._scheduleChartPanFrame(e.clientX, e.clientY);
+                    const zPanCommit = this._v9LayoutZoom();
+                    const commitDx = (e.clientX - (this.drag.startX ?? e.clientX)) / zPanCommit;
+                    const commitDy = (e.clientY - (this.drag.startY ?? e.clientY)) / zPanCommit;
+                    // Keep idle time-axis ticks until this is a real pan (not a click).
+                    if (!this.drag.panCommitted) {
+                        if (Math.hypot(commitDx, commitDy) < 5) {
+                            this.drag.lastX = e.clientX;
+                            this.drag.lastY = e.clientY;
+                        } else {
+                            this.drag.panCommitted = true;
+                            this._scheduleChartPanRender();
+                            this._scheduleChartPanFrame(e.clientX, e.clientY);
+                        }
+                    } else {
+                        this._scheduleChartPanFrame(e.clientX, e.clientY);
+                    }
 
                     // Update follow button visibility after panning
-                    if (this.replaySystem && this.replaySystem.isActive) {
+                    if (this.replaySystem && this.replaySystem.isActive && this.drag.panCommitted) {
                         this.replaySystem.updateAutoScrollIndicator();
                     }
                 }
@@ -31957,10 +31976,9 @@ class Chart {
                     this.renderPending = false;
                     this.render();
                 } else {
-                    // Mousedown starts pan/lite paint; without this, a click leaves mixed time-axis labels.
-                    this._cachedInteractionTimeTicks = null;
-                    this.renderPending = false;
-                    this.render();
+                    // Pure click (no pan): do NOT rebuild time ticks / grid.
+                    // Re-rendering here used to flip idle full ticks ↔ pan-fast ticks.
+                    this.drag.panCommitted = false;
                 }
                 this.scheduleChartViewSave();
 
