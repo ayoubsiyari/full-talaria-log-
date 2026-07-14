@@ -509,6 +509,24 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Plan:** 6 phases, per-phase kill-switch (`__TALARIA_RC3_VOLUME_RENDER_RESOLVE` for Phase 1, etc.). Phase 5 (multichart parity, I14) = high-risk. H-S40/41/42 GREEN after Phase 1; proposed new H-S43-48.
 - **Phase 1 dispatched as T5 step 2 (freeze-safe):** scoped to `drawing-tools-advanced-volume.js` only (+ read-only use of existing resolve helpers). **Forbidden to edit any frozen multichart file** incl. `drawing-tools-manager.js`; if Phase 1 needs manager.js, STOP + report (sequence after deploy). Gate-prove H-S40/41/42 GREEN + switch-OFF RED; report row-deltas to Lane 4 (do NOT edit known-failing.json).
 
+### P0 REGRESSION — gear settings broken on BOTH panels (2026-07-14)
+- **PO report:** the gear/settings button no longer opens the settings menu on **Panel A OR Panel B**. Panel A's gear previously WORKED → this is a regression introduced by recent combined changes.
+- **Likely mechanism (to confirm via diagnostic):** T1 step 15 + step 17 gated the settings-open route (`postMultichartOpenDrawingSettings`, `openDrawingSettingsForPanel`) behind `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2`; step 17's I13 tighten touched these paths. Combined tree may have broken the gear→settings route for both surfaces.
+- **Harness blind spot (validates ESC-009/D-010):** the H-R13 probe conflates the V9 quick-bar shell text with the settings modal, so the harness can show H-R13 GREEN while the gear is actually broken live. This is exactly why we require PO live-confirm — and why Lane 4's probe fix (T0 step 11) is urgent.
+- **BLOCKS DEPLOY:** do NOT finalize the canonical deploy build until the gear route is fixed + verified on the real built product. Freeze stays.
+- **Dispatched:** Lane 1 urgent `worker-prompts/T1-step18-lane1-gear-settings-regression.md` (reproduce on built product BOTH panels → root → fix → prove; coordinate H-R13 probe with Lane 4 so the harness can catch it). Awaiting PO build id + double-click isolation before worker begins repro.
+
+### CRITICAL — multichart interaction fixes were FALSE-GREEN; ESC-011 filed (2026-07-14)
+- **Lane 4 T0 step 11 (honest-probe reconcile) ACCEPTED as truth-telling** (not as acceptance). Fixed `readParentReactSettings` to stop counting the V9 quick-bar shell as "settings open". On the true combined build **b88** (verified to contain routing V3, peer V1, deleteSelectedDrawings, dismissActiveDrawingTool, A3, order-entry family 1):
+  - **Genuinely GREEN:** H-R01 (select→chrome), H-R07 (peer isolation), H-R02, H-R03.
+  - **Genuinely RED:** H-R04, H-R05 (Esc), H-R06 (Delete), H-R12 (gear→settings), H-R13 (dbl-click→settings), H-R14 (marquee), H-R08, H-R09.
+- **The step 15/16/17 + T3-step4-settings "10/10 GREEN" proofs were false greens** — passed against a dishonest probe + synthetic in-iframe events. Corroborated by PO live test (gear broken both panels). This is the D-010/ESC-009 blind spot proven material.
+- **b88 is NOT shippable.** Deploy stays frozen. Recommending live product stays on **fallback-B** (known-good) meanwhile.
+- **Did NOT accept the 8-row baseline as "acceptable"** — it's an honest snapshot of brokenness. Gate "passing" with 6 supposed-fixes in known-failing ≠ acceptance.
+- **Two fidelity gaps identified:** (1) probe — now fixed by Lane 4; (2) actuation — harness uses synthetic in-iframe events, not real mouse/keyboard → may still over-pass. ESC-011 requests real-event actuation.
+- **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
+- **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
+
 ### T2 step 3 (Lane 2) diagnostic ACCEPTED (2026-07-14)
 - **Root gaps (RC-2):** peer drawing ADD (`sync-bridge.js` L1874-1879 — `redrawAll` only, no `chart.render()`), peer drawing REMOVE (`chart.js` ~L3755 `destroy()` w/o render), paused-replay step→peer (`replay-system.js` L6763-6768 iframe may not repaint), React SVG-only path (`TalariaV8bLive.jsx` L5766-5767 no canvas flush). Ties: TAL-01484/01490, H-S50. T2 step 1 already closed the single-chart save-invalidation hole (H-S38/39 green).
 - **Fix plan T2-3a..d is POST-FREEZE** — all target frozen/iframe files (sync-bridge, replay-system, TalariaV8bLive) → I14 territory. New RED candidates proposed: H-S38-B/H-S39-B (panel-B style commit), peer-delete ghost, H-R50 (built-product replay step).

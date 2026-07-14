@@ -17,6 +17,7 @@ import {
   ctrlDragMarquee,
   readSelectionChrome,
   readParentReactSettings,
+  waitForParentDrawingSettingsOpen,
   pressEscapeReact,
   waitForV9QuickBarReady,
   clickV9QuickBarGear,
@@ -366,9 +367,13 @@ async function hR12(ctx) {
     const click = await clickV9QuickBarGear(page);
     checks.check('H-R12 probe: parent #tl-sett gear click', click && click.ok, click?.reason || '');
 
-    const settings = await readParentReactSettings(page);
+    const settingsWait = await waitForParentDrawingSettingsOpen(page, 5000);
     checks.check('H-R12 CORE: parent settings open after panel-B gear route',
-      settings.open, JSON.stringify(settings));
+      settingsWait.ok, JSON.stringify(settingsWait.settings));
+    checks.check('H-R12 CORE: gear opened real settings modal (not quick-bar shell only)',
+      settingsWait.ok && settingsWait.settings && !settingsWait.settings.quickBarShellOnly
+        && settingsWait.settings.hasStyleSection,
+      JSON.stringify(settingsWait.settings));
 
     await pressEscapeReact(page, 'B');
     await page.evaluate(() => {
@@ -376,6 +381,49 @@ async function hR12(ctx) {
       if (root) root.replaceChildren();
     }).catch(() => {});
     await waitForPanelSettle(page, 'B');
+    return checks;
+  });
+}
+
+// ── H-R12A — burned-fix: host panel-A gear → parent settings (real product) ─
+async function hR12a(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    await focusReactPanel(page, 'A');
+    const pts = await reactDefaultTrendlinePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'trendline', pts);
+    checks.check('H-R12A setup: panel-A trendline placed', placed && placed.id, placed ? placed.id : 'null');
+
+    await page.evaluate((drawId) => {
+      const dm = window.chart && window.chart.drawingManager;
+      const d = dm && dm.drawings.find((x) => x && String(x.id) === String(drawId));
+      if (!d) throw new Error(`drawing ${drawId} not found`);
+      dm.selectDrawing(d, false);
+    }, placed.id);
+
+    const ready = await waitForV9QuickBarReady(page, placed.id);
+    checks.check('H-R12A probe: parent V9 quick-bar gear-ready settle signal',
+      ready && ready.ok, JSON.stringify(ready?.detail || ready));
+
+    const click = await clickV9QuickBarGear(page);
+    checks.check('H-R12A probe: parent #tl-sett gear click (panel A)', click && click.ok, click?.reason || '');
+
+    const settingsWait = await waitForParentDrawingSettingsOpen(page, 5000);
+    checks.check('H-R12A CORE: parent settings open after panel-A gear route',
+      settingsWait.ok, JSON.stringify(settingsWait.settings));
+    checks.check('H-R12A CORE: gear opened real settings modal (not quick-bar shell only)',
+      settingsWait.ok && settingsWait.settings && !settingsWait.settings.quickBarShellOnly
+        && settingsWait.settings.hasStyleSection,
+      JSON.stringify(settingsWait.settings));
+
+    await pressEscapeReact(page, 'A');
+    await page.evaluate(() => {
+      const root = document.getElementById('multichart-global-settings-root');
+      if (root) root.replaceChildren();
+    }).catch(() => {});
+    await waitForPanelSettle(page, 'A');
     return checks;
   });
 }
@@ -391,13 +439,13 @@ async function hR13(ctx) {
     checks.check('H-R13 setup: panel-B trendline placed', tool && tool.id, tool ? tool.id : 'null');
     const dbl = await doubleClickDrawing(page, 'B', tool.id);
     checks.check('H-R13 probe: double-click dispatched in iframe panel', dbl && dbl.ok, dbl?.reason || '');
-    const immediate = await readParentReactSettings(page);
+    const immediate = await waitForParentDrawingSettingsOpen(page, 5000);
     checks.check('H-R13 CORE: settings open immediately after dbl-click',
-      immediate.open, JSON.stringify(immediate));
+      immediate.ok, JSON.stringify(immediate.settings));
     await sleep(400);
     const after = await readParentReactSettings(page);
     checks.check('H-R13 CORE: settings still open after 400ms (no flash-close race)',
-      after.open, JSON.stringify(after));
+      after.open && !after.quickBarShellOnly && after.hasStyleSection, JSON.stringify(after));
     await pressEscapeReact(page, 'B');
     await page.evaluate(() => {
       const root = document.getElementById('multichart-global-settings-root');
@@ -450,6 +498,7 @@ export function reactScenarioList() {
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
     { id: 'H-R14', title: 'burned-fix: Ctrl+drag marquee inside panel-B iframe', run: hR14 },
     { id: 'H-R12', title: 'burned-fix: iframe panel-B gear opens parent settings', run: hR12 },
+    { id: 'H-R12A', title: 'burned-fix: host panel-A gear opens parent settings', run: hR12a },
     { id: 'H-R01', title: 'parity row 1: single-click select (host + panel B)', run: hR01 },
     { id: 'H-R02', title: 'parity row 2: blue selection border (host + panel B)', run: hR02 },
     { id: 'H-R03', title: 'parity row 3: Ctrl-click multi-select (host + panel B)', run: hR03 },

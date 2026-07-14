@@ -403,3 +403,38 @@ Approve the diagnostic-first path and, if the common root is confirmed, **(b) th
 
 **Director ruling:** D-009 (2026-07-14)  
 **Outcome:** Both fixes authorized (`__TALARIA_FIX_REPLAY_INTERVAL_CADENCE` first — pure correctness; `__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING` second). Fork ruled **(A)** on P6 grounds (tester's TAL-01582 wording is a complaint that the mode changed): tick persists, interval bounds steps only; UI must reflect both mode and interval. PO live-confirm of (A) is part of (a)'s acceptance — if overruled live, (B) swaps in via the switch, no redesign. Prelude rides (b)'s switch; switch-off cell must render today's behavior. State matrix must cover the multichart `stepTimeframeOverride` consumer.
+
+---
+
+## ESC-011 — OPEN (P0 / high-risk crossroads) — multichart interaction fixes are FALSE-GREEN; acceptance harness gave false positives
+
+**Date:** 2026-07-14 · **Filed by:** Manager · **Severity:** P0 (reverses status of T1/T3 interaction family + systemic acceptance-integrity failure)
+
+### What happened
+Two independent signals converged:
+1. **PO live test:** gear/settings button no longer opens the settings menu on **Panel A OR Panel B** (Panel A worked before).
+2. **Lane 4 honest-probe reconcile (T0 step 11):** Lane 4 fixed the `readParentReactSettings` harness probe, which previously counted the V9 quick-bar shell as "settings open" (false green). With the **honest probe on the true combined build `20260712b88`** (verified to contain routing V3, peer-deselect V1, `deleteSelectedDrawings`, `dismissActiveDrawingTool`, A3, order-entry family 1):
+   - **GREEN (genuine):** H-R01 (select→chrome), H-R07 (peer isolation), H-R02, H-R03.
+   - **RED (genuine failures):** H-R04, **H-R05 (Esc)**, **H-R06 (Delete)**, **H-R12 (gear→settings)**, **H-R13 (dbl-click→settings)**, **H-R14 (marquee)**, H-R08, H-R09.
+
+### The finding
+The "10/10 GREEN" acceptance proofs for **T1 step 15 (H-R13), step 16 (H-R14), step 17 (H-R05/H-R06)** and the settings chain in **T3 step 4 (H-R04)** were **false greens** — they passed against (a) a probe that mistook the quick-bar shell for the settings modal, and (b) **synthetic in-iframe events** (synthetic dblclick / handleKeyDown / ctrl-drag) rather than real user actuation. On the honest harness + real product, these interaction fixes **do not work**. Not the workers' fault — the T0 harness was structurally unable to see the truth; this is precisely the D-010/ESC-009 blind spot, now proven material.
+
+### Impact
+- The multichart interaction batch (settings-open, Esc, Delete, marquee) is **NOT shippable**. b88 is confirmed broken (harness + live). Deploy remains frozen.
+- T1/T3 interaction status must be marked down materially. Only select→chrome (H-R01) and peer-isolation (H-R07) are genuinely green.
+- We still have a **second fidelity gap** below the probe: the harness actuates with synthetic events inside the iframe, not real mouse/keyboard — so even the honest probe may over-pass.
+
+### Manager actions already taken (no ruling needed to proceed)
+- Deploy frozen; recommending the **live product stays on fallback-B** (last known-good multichart posture) until the interaction family genuinely passes.
+- Did **NOT** accept Lane 4's 8-row baseline as "acceptable" — it is an **honest snapshot of what is broken**, not a green light. The gate "passing" with 6 supposed-fixes in known-failing is not acceptance.
+- Lane 1 P0 re-fix dispatched (T1 step 18) against the **honest harness + real product**, covering the gear + dbl-click + re-verifying Esc/Delete/marquee.
+
+### Decisions requested from the Director
+1. **Re-verification mandate:** ratify that every multichart interaction row must be re-proven on the **honest probe** AND against **real actuation** (not synthetic in-iframe events) before any "proven" claim — i.e., raise the T0 acceptance bar (harness actuation fidelity), or accept synthetic actuation + mandatory PO live-confirm per row as the bar.
+2. **Shipping posture:** confirm the live product stays on **fallback-B** until the interaction family is genuinely green (vs. shipping the partial-green subset H-R01/H-R07 now behind switches).
+3. **Root vs per-surface, again:** the settings-open family (H-R04/H-R12/H-R13) all failing together on the real product suggests a single settings-open transport root (gear + dbl-click both fail to open the real modal from a panel). Authorize a **consolidated settings-open-transport fix** (one root) rather than per-row, owned by Lane 1 with Lane 4 providing an honest gear-specific + modal-specific harness assertion. Esc/Delete/marquee re-verified separately.
+4. **Harness actuation:** approve a Lane 4 task to add **real-event actuation** (real cross-frame mouse/keyboard, e.g. CDP `Input.dispatch*` at true coordinates into the panel iframe) so the harness stops relying on synthetic dispatch that bypasses the real product path.
+
+### Manager recommendation
+Grant (1) honest-probe + real-actuation as the new bar; (2) stay on fallback-B; (3) consolidated settings-open-transport fix (root, not per-row); (4) yes to real-event actuation. Keep H-R01/H-R07 (genuinely green) as the ratchet floor. Treat Lane 4's honest baseline as the new truth and drive the RED rows to green against it.

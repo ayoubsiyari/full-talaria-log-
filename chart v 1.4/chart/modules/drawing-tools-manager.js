@@ -160,6 +160,18 @@ function notifyV9SelectionSync(chartInstance, drawing) {
     }
 }
 
+function armMultichartParentSettingsOpenGuard(panelId) {
+    if (!multichartQuickbarSettingsFixEnabled()) return;
+    try {
+        const parent = window.parent;
+        if (!parent || parent === window) return;
+        const perf = parent.performance;
+        const nowTs = (perf && typeof perf.now === 'function') ? perf.now() : Date.now();
+        parent.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
+        parent.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+    } catch (_) { /* cross-origin / ignore */ }
+}
+
 function requestMultichartParentDrawingSettings(drawing, x, y) {
     let panelId = 'embed';
     try {
@@ -175,9 +187,35 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
         x: px,
         y: py,
     };
-    // I14: iframe tiles must use postMessage — parent globals race dismiss handlers.
+    // I14: iframe tiles open on the parent shell — arm the dismiss guard first so
+    // peer-clear / focus side-effects cannot flash-close the panel we are opening.
     if (isMultichartIframeEmbed()) {
         if (!multichartQuickbarSettingsFixEnabled()) return false;
+        armMultichartParentSettingsOpenGuard(panelId);
+        try {
+            const parent = window.parent;
+            if (parent && parent !== window) {
+                if (typeof parent.__multichartOpenShapeSettings === 'function') {
+                    parent.__multichartOpenShapeSettings(
+                        panelId,
+                        drawing && drawing.type ? drawing : drawId,
+                        px,
+                        py
+                    );
+                    return true;
+                }
+                const grid = parent.__multichartGrid;
+                if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                    grid.openDrawingSettingsForPanel(
+                        panelId,
+                        drawing && drawing.type ? drawing : drawId,
+                        px,
+                        py
+                    );
+                    return true;
+                }
+            }
+        } catch (_) { /* cross-origin */ }
         try {
             window.parent.postMessage(payload, '*');
             return true;

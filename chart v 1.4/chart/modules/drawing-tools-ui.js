@@ -403,6 +403,26 @@ function shouldRouteDrawingSettingsToMultichartParent() {
     }
 }
 
+function armMultichartParentSettingsOpenGuard(panelId) {
+    const flagSet = (w) => {
+        try { return !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2); } catch (_) { return false; }
+    };
+    let fixOn = true;
+    try {
+        if (flagSet(window)) fixOn = false;
+        else if (window.parent && window.parent !== window && flagSet(window.parent)) fixOn = false;
+    } catch (_) { /* ignore */ }
+    if (!fixOn) return;
+    try {
+        const parent = window.parent;
+        if (!parent || parent === window) return;
+        const perf = parent.performance;
+        const nowTs = (perf && typeof perf.now === 'function') ? perf.now() : Date.now();
+        parent.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
+        parent.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+    } catch (_) { /* cross-origin */ }
+}
+
 function postMultichartOpenDrawingSettings(drawing, x, y) {
     if (isMultichartIframeEmbed()) {
         const flagSet = (w) => {
@@ -422,6 +442,9 @@ function postMultichartOpenDrawingSettings(drawing, x, y) {
     const drawId = drawing && drawing.id != null ? drawing.id : null;
     const px = typeof x === 'number' && !isNaN(x) ? x : 0;
     const py = typeof y === 'number' && !isNaN(y) ? y : 0;
+    if (isMultichartIframeEmbed()) {
+        armMultichartParentSettingsOpenGuard(panelId);
+    }
     try {
         const parent = window.parent;
         if (parent && parent !== window) {

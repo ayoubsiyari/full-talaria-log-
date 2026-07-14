@@ -5040,6 +5040,31 @@ function v9QuickBarPanelSettingsFixEnabled() {
   }
 }
 
+function v9ArmParentSettingsOpenGuard(panelId) {
+  if (!v9QuickBarPanelSettingsFixEnabled()) return;
+  try {
+    if (typeof window === "undefined") return;
+    const perf = window.performance;
+    const nowTs = (perf && typeof perf.now === "function") ? perf.now() : Date.now();
+    window.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
+    window.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+  } catch (_) {}
+}
+
+/** Resolve the drawing the parent V9 gear should edit (host + iframe tiles). */
+function v9ResolveDrawingForGearClick(editingRefDrawing) {
+  try {
+    const fromQuickBar = v9GetLiveSelectedDrawingForQuickBar();
+    if (fromQuickBar) return fromQuickBar;
+    const anchored = v9ResolveLiveDrawingFromQuickBarAnchor();
+    if (anchored) return anchored;
+    return getPrimarySelectedDrawingForActiveChart(editingRefDrawing)
+      || getSelectedDrawingAcrossCharts(editingRefDrawing);
+  } catch (_) {
+    return null;
+  }
+}
+
 function v9OpenQuickBarSettingsViaEditDrawing(drawing, x, y) {
   if (!drawing || !v9QuickBarPanelSettingsFixEnabled()) return false;
   const grid = v9MultichartGridApi();
@@ -5055,6 +5080,7 @@ function v9OpenQuickBarSettingsViaEditDrawing(drawing, x, y) {
       panelId = grid.getFocusedPanelId();
     }
     panelId = panelId || grid.hostPanelId || "A";
+    v9ArmParentSettingsOpenGuard(panelId);
     grid.openDrawingSettingsForPanel(panelId, live, x, y);
     return true;
   } catch (_) {}
@@ -31412,7 +31438,7 @@ const TalariaV8bLive = () => {
               const r = e.currentTarget.getBoundingClientRect();
               const anchorX = r.left + r.width / 2;
               const anchorY = r.bottom + 8;
-              let d = getSelectedDrawingForTemplate();
+              let d = v9ResolveDrawingForGearClick(editingDrawingRef.current?.drawing);
               if (!d) {
                 try { d = getSelectedDrawingAcrossCharts(null); } catch (_) {}
               }

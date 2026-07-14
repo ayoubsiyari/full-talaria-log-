@@ -5123,6 +5123,14 @@ export default function MultichartGrid({
             try {
                 window.__v9MultichartSettingsPanelId = source;
             } catch (_) {}
+            // Arm BEFORE v9Open so synchronous peer-clear / dismiss handlers cannot
+            // flash-close the panel we are about to paint (gear + dblclick routes).
+            if (multichartSettingsFlashFixEnabled()) {
+                try {
+                    window.__v9DrawingSettingsOpenSource = String(source);
+                    window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
+                } catch (_) {}
+            }
             const v9Open = typeof window.__v9OpenDrawingSettings === "function"
                 ? window.__v9OpenDrawingSettings
                 : null;
@@ -5133,11 +5141,8 @@ export default function MultichartGrid({
                             window.__v9MultichartSettingsPanelId = null;
                         }
                         if (multichartSettingsFlashFixEnabled()) {
-                            // Protect the panel we just opened from peer-clear cascades
-                            // (postMessage "clear drawing UI" / focus side-effects) that
-                            // fire a few hundred ms later. With ownership-V2 disabled the
-                            // global "dismiss drawing settings" event those paths emit
-                            // would otherwise close THIS panel too — the "flash" bug.
+                            // Re-arm after open in case the guard was consumed by a
+                            // same-tick dismiss race during v9Open's React flush.
                             try {
                                 window.__v9DrawingSettingsOpenSource = String(source);
                                 window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
@@ -6250,8 +6255,14 @@ export default function MultichartGrid({
             }
             if (msg.type === "multichart-open-drawing-settings") {
                 if (!multichartSettingsFlashFixEnabled()) return;
-                const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
+                if (sourceId) {
+                    try {
+                        window.__v9DrawingSettingsOpenSource = sourceId;
+                        window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
+                    } catch (_) {}
+                }
+                const grid = window.__multichartGrid;
                 if (grid && typeof grid.openDrawingSettingsForPanel === "function") {
                     grid.openDrawingSettingsForPanel(
                         sourceId,

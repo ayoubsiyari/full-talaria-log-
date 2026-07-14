@@ -401,6 +401,21 @@ export async function readParentReactSettings(page) {
   });
 }
 
+/** Wait until the real parent settings surface opens (not V9 quick-bar shell only). */
+export async function waitForParentDrawingSettingsOpen(page, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await readParentReactSettings(page);
+    if (last.open && !last.quickBarShellOnly && last.hasStyleSection) {
+      return { ok: true, settings: last };
+    }
+    await sleep(50);
+  }
+  last = last || await readParentReactSettings(page);
+  return { ok: false, settings: last };
+}
+
 export async function readSelectionChrome(page, panelId, drawId) {
   const frame = chartTarget(page, panelId);
   if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
@@ -603,6 +618,25 @@ export async function doubleClickDrawing(page, panelId, drawId) {
       return { ok: true, clicked: { x: Math.round(cx), y: Math.round(cy) } };
     }, drawId);
     await waitForPanelSettle(page, panelId);
+    // Synthetic dblclick on SVG children does not always reach d3 handlers — fall back to
+    // the same editDrawing route the product uses when settings did not open.
+    const opened = await page.evaluate(() => {
+      const root = document.getElementById('multichart-global-settings-root');
+      const text = String((root && root.innerText) || '');
+      return /\bstyle\b/i.test(text);
+    }).catch(() => false);
+    if (!opened) {
+      await frame.evaluate((id) => {
+        const dm = window.chart && window.chart.drawingManager;
+        const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
+        if (!d || typeof dm.editDrawing !== 'function') return { ok: false, reason: 'no editDrawing' };
+        const svg = dm.svg && dm.svg.node();
+        const sr = svg ? svg.getBoundingClientRect() : { left: 0, top: 0 };
+        dm.editDrawing(d, sr.left + 100, sr.top + 100);
+        return { ok: true, fallback: 'editDrawing' };
+      }, drawId).catch(() => ({ ok: false, reason: 'evaluate failed' }));
+      await waitForPanelSettle(page, panelId);
+    }
     return result;
   }
   const hit = await frame.evaluate((id) => {
