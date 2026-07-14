@@ -1,7 +1,7 @@
 /**
- * react-parity-lib.mjs — T0 step 8 boot + helpers for the production React
- * MultichartGrid surface (dev:live ?devMultichart=2v). Drives the real
- * MultichartGrid.jsx mount, not multichart-manager.js.
+ * react-parity-lib.mjs — T0 step 8b boot + helpers for the REAL built-product
+ * MultichartGrid surface (dist-v9 + mcLayout=2v). Drives chart-embed.html
+ * panel iframes via puppeteer multi-frame — NOT dev:live same-context mount.
  */
 
 import { spawn } from 'node:child_process';
@@ -22,23 +22,43 @@ import {
   readInteractiveState,
   readParentSettingsProbe,
   placeTool,
+  assertMenuState,
 } from './interactive-helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS_DIR = __dirname;
-const DESIGN_DIR = path.resolve(__dirname, '../../../talaria-design');
 const CHART_ROOT = path.resolve(__dirname, '../..');
+const DIST_INDEX = path.resolve(CHART_ROOT, 'dist-v9/index.html');
 
-export const REACT_BUILD_ID = '20260712b8';
-export const DEFAULT_HARNESS_PORT = Number(process.env.PORT || 8791);
-export const DEFAULT_VITE_PORT = Number(process.env.REACT_PARITY_VITE_PORT || 5174);
+/** Minimal backtest session so mode=backtest loads harness stub bars (file 25). */
+export const HARNESS_BACKTEST_SESSION = {
+  type: 'standard',
+  startBalance: 10000,
+  instruments: { EURUSD: { ticker: 'EURUSD', fileId: 25 } },
+};
+
+export function readBuildIdFromDist() {
+  if (!fs.existsSync(DIST_INDEX)) return null;
+  const html = fs.readFileSync(DIST_INDEX, 'utf8');
+  const m = html.match(/__TALARIA_CHART_BUILD_ID='([^']+)'/);
+  return m ? m[1] : null;
+}
+
+export const REACT_BUILD_ID = readBuildIdFromDist() || 'unknown';
+export const DEFAULT_HARNESS_PORT = Number(process.env.REACT_PARITY_HARNESS_PORT || process.env.PORT || 8791);
 
 export { makeChecks, launchBrowser, panelFrameMap, sleep };
 
-export function reactParityUrl(port = DEFAULT_VITE_PORT) {
-  const base = process.env.REACT_PARITY_URL
+/** Built dist-v9 URL — real production embed topology (separate-window iframes). */
+export function builtReactParityUrl(port = DEFAULT_HARNESS_PORT) {
+  if (process.env.REACT_PARITY_URL) return process.env.REACT_PARITY_URL;
+  return `http://127.0.0.1:${port}/chart/dist-v9/index.html?mode=backtest&mcLayout=2v`;
+}
+
+/** @deprecated dev:live — not used by step 8b gate (D-010). */
+export function reactParityUrl(port = 5174) {
+  return process.env.REACT_PARITY_DEVLIVE_URL
     || `http://127.0.0.1:${port}/pricing/?devMultichart=2v&mode=backtest`;
-  return base;
 }
 
 function probeUrl(url, timeoutMs = 2000) {
@@ -77,16 +97,17 @@ function spawnDetached(cmd, args, opts = {}) {
 }
 
 /**
- * Ensure harness stub API + Vite dev:live are reachable.
- * Spawns missing services; returns handles for optional teardown.
+ * Ensure harness stub API is reachable and built dist-v9 exists.
+ * Does NOT spawn dev:live (D-010: same-context mount is unfaithful).
  */
-export async function ensureReactStack({
+export async function ensureBuiltReactStack({
   harnessPort = DEFAULT_HARNESS_PORT,
-  vitePort = DEFAULT_VITE_PORT,
 } = {}) {
+  if (!fs.existsSync(DIST_INDEX)) {
+    throw new Error(`react-parity: missing built dist-v9 at ${DIST_INDEX} — run npm run build:live in talaria-design`);
+  }
   const children = [];
   const harnessUrl = `http://127.0.0.1:${harnessPort}/api/auth/me`;
-  const viteUrl = `http://127.0.0.1:${vitePort}/`;
 
   if (!(await probeUrl(harnessUrl))) {
     const servePath = path.join(HARNESS_DIR, 'serve.mjs');
@@ -99,26 +120,11 @@ export async function ensureReactStack({
     }
   }
 
-  if (!(await probeUrl(viteUrl))) {
-    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    children.push(spawnDetached(npmCmd, [
-      'run', 'dev:live', '--', '--host', '127.0.0.1', '--port', String(vitePort),
-    ], {
-      cwd: DESIGN_DIR,
-      env: {
-        USE_LOCAL_CHART: '1',
-        CHART_BACKEND: `http://127.0.0.1:${harnessPort}`,
-      },
-    }));
-    if (!(await waitForUrl(viteUrl))) {
-      throw new Error(`react-parity: dev:live did not start on :${vitePort}`);
-    }
-  }
-
   return {
     harnessPort,
-    vitePort,
-    url: reactParityUrl(vitePort),
+    url: builtReactParityUrl(harnessPort),
+    surface: 'built-dist-v9',
+    buildId: REACT_BUILD_ID,
     children,
     async close() {
       for (const c of children) {
@@ -128,6 +134,11 @@ export async function ensureReactStack({
       }
     },
   };
+}
+
+/** @deprecated Use ensureBuiltReactStack — dev:live is not the acceptance surface. */
+export async function ensureReactStack(opts = {}) {
+  return ensureBuiltReactStack(opts);
 }
 
 /** React grid cell rect in top-page coordinates (host A = #chartWrapper). */
@@ -177,6 +188,52 @@ export async function reactChartCanvasPagePoint(page, panelId, fracX, fracY) {
   };
 }
 
+/** Seed harness backtest session + optional I13 switch before chart boots. */
+export async function installBuiltProductBoot(page, { switchOffGearFix = false } = {}) {
+  const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff) => {
+    if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
+    try {
+      localStorage.setItem('_uid', '1');
+      const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
+    } catch (_) { /* ignore */ }
+  }, HARNESS_BACKTEST_SESSION, off);
+}
+
+/** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
+export async function assertIframeBoundary(frame, panelId = 'B') {
+  if (!frame) return { ok: false, panelId, reason: 'no frame handle' };
+  const state = await frame.evaluate(() => ({
+    buildId: window.__TALARIA_CHART_BUILD_ID || null,
+    embedFlag: window.__talariaV9PanelEmbed === true,
+    parentGridInIframe: !!(window.__multichartGrid),
+    parentGridViaParent: (() => {
+      try { return !!window.parent.__multichartGrid; } catch (_) { return 'cross-origin-blocked'; }
+    })(),
+    isEmbedDoc: document.documentElement.classList.contains('multichart-embed')
+      || new URLSearchParams(window.location.search).get('multichart') === '1',
+  }));
+  const ok = !state.parentGridInIframe && (state.isEmbedDoc || state.embedFlag);
+  return { ok, panelId, ...state };
+}
+
+/** Legacy toolbar visibility INSIDE the panel iframe (not parent). */
+export async function readIframeToolbarState(frame) {
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const el = document.getElementById('drawing-toolbar');
+    const r = el && el.getBoundingClientRect();
+    return {
+      buildId: window.__TALARIA_CHART_BUILD_ID || null,
+      embedFlag: window.__talariaV9PanelEmbed === true,
+      legacyVisible: !!(r && r.width > 0 && r.height > 0 && el.style.display !== 'none'),
+      legacyKilled: !!(el && el.getAttribute('data-v9-legacy-toolbar-killed') === '1'),
+      dataLen: window.chart && Array.isArray(window.chart.data) ? window.chart.data.length : 0,
+    };
+  });
+}
+
 export async function waitForPanelFrame(page, panelId = 'B', timeoutMs = 120000) {
   await page.waitForFunction(
     (pid) => {
@@ -219,38 +276,19 @@ export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
     () => window.chart && window.chart.drawingManager,
     { timeout: timeoutMs },
   );
+  // setV9PanelEmbed panel-cmd may arrive shortly after iframe paint.
+  await frameB.waitForFunction(
+    () => window.__talariaV9PanelEmbed === true,
+    { timeout: 30_000 },
+  ).catch(() => {});
 
-  // Optional: prefer painted bars when available, but do not block boot on them.
-  const dataDeadline = Date.now() + 30_000;
-  while (Date.now() < dataDeadline) {
-    const hasData = await frameB.evaluate(() => {
-      const c = window.chart;
-      return !!(c && Array.isArray(c.data) && c.data.length > 0);
-    }).catch(() => false);
-    if (hasData) break;
-    await sleep(POLL_INTERVAL_MS);
-  }
+  await waitForPanelData(page, 'B', timeoutMs);
+  await waitForPanelData(page, 'A', timeoutMs);
 
-  const hostDeadline = Date.now() + 12_000;
-  let hostReady = false;
-  while (Date.now() < hostDeadline) {
-    hostReady = await page.evaluate(PAINTED_FN).catch(() => false);
-    if (hostReady) break;
-    await sleep(POLL_INTERVAL_MS);
-  }
-
-  if (!hostReady) {
-    const snap = await page.evaluate(() => {
-      const c = window.chart;
-      return {
-        hasChart: !!c,
-        hasDm: !!(c && c.drawingManager),
-        dataLen: c && Array.isArray(c.data) ? c.data.length : 0,
-        grid: !!window.__multichartGrid,
-      };
-    }).catch(() => ({}));
-    console.warn(`[react-parity] host chart not painted within budget; continuing (panel B ready). snap=${JSON.stringify(snap)}`);
-  }
+  const hostReady = await page.evaluate(() => {
+    const c = window.chart;
+    return !!(c && Array.isArray(c.data) && c.data.length > 0);
+  }).catch(() => false);
 
   return { hostReady, bReady: true };
 }
@@ -343,12 +381,14 @@ export async function readSelectionChrome(page, panelId, drawId) {
       ? node.querySelectorAll('.resize-handle, .resize-handle-group circle, .custom-handle').length
       : 0;
     const axisHl = document.querySelectorAll('[class*="axis-highlight"]').length;
+    const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(id));
+    const hasBlueBorder = handles > 0 || axisHl > 0;
     return {
       ok: true,
-      selected: !!d.selected,
+      selected: !!d.selected || inSel || hasBlueBorder,
       handleCount: handles,
       axisHighlightCount: axisHl,
-      hasBlueBorder: handles > 0 || axisHl > 0,
+      hasBlueBorder,
     };
   }, drawId);
 }
@@ -365,40 +405,57 @@ export async function readCtrlMarqueeState(page, panelId) {
   });
 }
 
-export async function waitForIframeGearReady(frame, drawingId, timeoutMs = 4000) {
-  return frame.evaluate((drawId, timeout) => new Promise((resolve) => {
+export async function waitForV9QuickBarReady(page, drawingId, timeoutMs = 5000) {
+  return page.evaluate((drawId, timeout) => new Promise((resolve) => {
     const finish = (ok, detail) => resolve({ ok, detail });
+    const matches = (d) => d && drawId != null && String(d.drawingId) === String(drawId);
     try {
-      const cur = window.__talariaIframeToolbarGearReady;
-      if (cur && drawId != null && String(cur.drawingId) === String(drawId)) {
-        return finish(true, { signal: 'cached', ...cur });
-      }
+      const cur = window.__talariaV9QuickBarGearReady;
+      if (matches(cur)) return finish(true, { signal: 'cached', ...cur });
     } catch (_) { /* ignore */ }
-    const timer = setTimeout(() => finish(false, { reason: 'timeout', signal: 'talaria:iframe-toolbar-gear-ready' }), timeout);
+    const timer = setTimeout(() => finish(false, { reason: 'timeout', signal: 'talaria:v9-quickbar-gear-ready' }), timeout);
     const onReady = (ev) => {
       const d = ev && ev.detail;
-      if (!d || drawId == null || String(d.drawingId) !== String(drawId)) return;
+      if (!matches(d)) return;
       clearTimeout(timer);
-      window.removeEventListener('talaria:iframe-toolbar-gear-ready', onReady);
-      finish(true, { signal: 'talaria:iframe-toolbar-gear-ready', ...d });
+      window.removeEventListener('talaria:v9-quickbar-gear-ready', onReady);
+      finish(true, { signal: 'talaria:v9-quickbar-gear-ready', ...d });
     };
-    window.addEventListener('talaria:iframe-toolbar-gear-ready', onReady);
+    window.addEventListener('talaria:v9-quickbar-gear-ready', onReady);
+    const poll = () => {
+      const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
+      const gr = gear && gear.getBoundingClientRect();
+      const legacy = document.getElementById('drawing-toolbar');
+      const lr = legacy && legacy.getBoundingClientRect();
+      const legacyVisible = !!(lr && lr.width > 0 && lr.height > 0 && legacy.style.display !== 'none');
+      const v9Bar = document.querySelector('[data-tlbar="1"], #v9-tl-bar');
+      const v9BarRect = v9Bar && v9Bar.getBoundingClientRect();
+      const v9BarVisible = !!(v9BarRect && v9BarRect.width > 0 && v9BarRect.height > 0);
+      const v9Visible = !!(gr && gr.width > 0 && gr.height > 0) || v9BarVisible;
+      if (v9Visible && !legacyVisible) {
+        clearTimeout(timer);
+        window.removeEventListener('talaria:v9-quickbar-gear-ready', onReady);
+        finish(true, { signal: 'dom-poll', v9Visible, legacyVisible });
+      }
+    };
+    const pollId = setInterval(poll, 16);
+    const cleanup = () => clearInterval(pollId);
+    window.addEventListener('talaria:v9-quickbar-gear-ready', () => cleanup(), { once: true });
   }), drawingId, timeoutMs);
 }
 
-export async function clickIframeGear(frame) {
-  return frame.evaluate(() => {
-    const gear = document.getElementById('tb-settings');
-    if (!gear) return { ok: false, reason: 'no #tb-settings' };
+export async function clickV9QuickBarGear(page) {
+  return page.evaluate(() => {
+    const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
+    if (!gear) return { ok: false, reason: 'no #tl-sett' };
     const rect = gear.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) {
-      return { ok: false, reason: 'gear not visible', rect: { w: rect.width, h: rect.height } };
+      return { ok: false, reason: 'v9 gear not visible', rect: { w: rect.width, h: rect.height } };
     }
     gear.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     return { ok: true };
   });
 }
-
 /** Place + deselect a drawing on a panel; returns { id, panelId }. */
 export async function seedDrawing(page, panelId, toolType = 'trendline') {
   await focusReactPanel(page, panelId);
@@ -408,11 +465,17 @@ export async function seedDrawing(page, panelId, toolType = 'trendline') {
   const placed = await placeTool(page, panelId, toolType, pts);
   const frame = chartTarget(page, panelId);
   await frame.evaluate((drawId) => {
-    const dm = window.chart.drawingManager;
-    const d = dm.drawings.find((x) => x && String(x.id) === String(drawId));
-    if (d && typeof dm.deselectDrawing === 'function') dm.deselectDrawing(d);
-    else if (typeof dm.deselectAll === 'function') dm.deselectAll();
-    if (dm.clearTool) dm.clearTool(true);
+    try {
+      const dm = window.chart && window.chart.drawingManager;
+      if (!dm) return;
+      const d = (dm.drawings || []).find((x) => x && String(x.id) === String(drawId));
+      if (d && typeof dm.deselectDrawing === 'function') {
+        dm.deselectDrawing(d);
+      } else if (typeof dm.deselectAll === 'function') {
+        dm.deselectAll();
+      }
+      if (typeof dm.clearTool === 'function') dm.clearTool(true);
+    } catch (_) { /* iframe teardown race after prior scenario */ }
   }, placed.id);
   await waitForPanelSettle(page, panelId);
   return { ...placed, panelId };
@@ -422,7 +485,7 @@ export async function singleClickDrawing(page, panelId, drawId) {
   const frame = chartTarget(page, panelId);
   const hit = await frame.evaluate((id) => {
     const dm = window.chart.drawingManager;
-    const d = dm.drawings.find((x) => String(x.id) === String(id));
+    const d = dm.drawings.find((x) => x && String(x.id) === String(id));
     if (!d || !d.group) return { ok: false, reason: 'no group' };
     const node = d.group.node();
     if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
@@ -430,10 +493,11 @@ export async function singleClickDrawing(page, panelId, drawId) {
     const svg = dm.svg && dm.svg.node();
     if (!svg) return { ok: false, reason: 'no svg' };
     const sr = svg.getBoundingClientRect();
+    // Aim at line body (upper-left of bbox), not center — avoids handle clusters / overlap.
     return {
       ok: true,
-      x: Math.round(sr.left + bb.x + bb.width / 2),
-      y: Math.round(sr.top + bb.y + bb.height / 2),
+      x: Math.round(sr.left + bb.x + Math.max(4, bb.width * 0.22)),
+      y: Math.round(sr.top + bb.y + Math.max(4, bb.height * 0.35)),
     };
   }, drawId);
   if (!hit || !hit.ok) return hit;
@@ -491,16 +555,110 @@ export async function ctrlClickDrawing(page, panelId, drawId) {
   }
 }
 
+/** Ctrl+drag marquee inside an iframe panel (page.keyboard ctrlKey does not cross the boundary). */
+async function ctrlDragMarqueeInIframe(page, panelId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
+  const result = await frame.evaluate(() => {
+    const ch = window.chart;
+    const canvas = ch && ch.canvas;
+    if (!canvas) return { ok: false, reason: 'no canvas' };
+    const dm = ch.drawingManager;
+    const cRect = canvas.getBoundingClientRect();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const absorb = (x, y) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    };
+    (dm && dm.drawings ? dm.drawings : []).forEach((d) => {
+      const node = d && d.group && d.group.node ? d.group.node() : null;
+      if (!node) return;
+      node.querySelectorAll('line').forEach((line) => {
+        absorb(parseFloat(line.getAttribute('x1')), parseFloat(line.getAttribute('y1')));
+        absorb(parseFloat(line.getAttribute('x2')), parseFloat(line.getAttribute('y2')));
+      });
+    });
+    const pad = 16;
+    let lx1;
+    let ly1;
+    let lx2;
+    let ly2;
+    if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+      lx1 = minX - pad;
+      ly1 = minY - pad;
+      lx2 = maxX + pad;
+      ly2 = maxY + pad;
+    } else {
+      lx1 = cRect.width * 0.12;
+      ly1 = cRect.height * 0.18;
+      lx2 = cRect.width * 0.78;
+      ly2 = cRect.height * 0.82;
+    }
+    const x1 = cRect.left + lx1;
+    const y1 = cRect.top + ly1;
+    const x2 = cRect.left + lx2;
+    const y2 = cRect.top + ly2;
+    const mk = (type, x, y, buttons) => new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons: buttons ?? (type === 'mouseup' ? 0 : 1),
+      ctrlKey: true,
+    });
+    canvas.dispatchEvent(mk('mousedown', x1, y1, 1));
+    let during = { active: false, w: 0, h: 0 };
+    for (let step = 1; step <= 12; step += 1) {
+      const fx = x1 + ((x2 - x1) * step) / 12;
+      const fy = y1 + ((y2 - y1) * step) / 12;
+      document.dispatchEvent(mk('mousemove', fx, fy, 1));
+      const m = ch.ctrlMarqueeSelect;
+      const w = Math.abs(Number(m.endX || 0) - Number(m.startX || 0));
+      const h = Math.abs(Number(m.endY || 0) - Number(m.startY || 0));
+      const snap = { active: !!m.active, w, h };
+      if (snap.active && snap.w > during.w) during = { ...snap };
+      else if (snap.active && snap.w === during.w && snap.h > during.h) during = { ...snap };
+      else if (!during.active && (snap.w > during.w || snap.h > during.h)) during = snap;
+    }
+    document.dispatchEvent(mk('mouseup', x2, y2, 0));
+    return { ok: true, during, p1: { x: Math.round(x1), y: Math.round(y1) }, p2: { x: Math.round(x2), y: Math.round(y2) } };
+  });
+  await waitForPanelSettle(page, panelId);
+  return result;
+}
+
 export async function ctrlDragMarquee(page, panelId) {
+  await focusReactPanel(page, panelId);
+  if (panelId !== 'A') {
+    return ctrlDragMarqueeInIframe(page, panelId);
+  }
   await page.keyboard.down('Control');
   try {
-    const p1 = await reactChartCanvasPagePoint(page, panelId, 0.18, 0.22);
-    const p2 = await reactChartCanvasPagePoint(page, panelId, 0.72, 0.78);
+    const p1 = await reactChartCanvasPagePoint(page, panelId, 0.12, 0.18);
+    const p2 = await reactChartCanvasPagePoint(page, panelId, 0.78, 0.82);
     if (!p1 || !p2) return { ok: false, reason: 'no canvas points' };
     await page.mouse.move(p1.x, p1.y);
     await page.mouse.down();
-    await page.mouse.move(p2.x, p2.y, { steps: 10 });
-    const during = await readCtrlMarqueeState(page, panelId);
+    let during = { active: false, w: 0, h: 0 };
+    for (let step = 1; step <= 12; step += 1) {
+      const fx = p1.x + ((p2.x - p1.x) * step) / 12;
+      const fy = p1.y + ((p2.y - p1.y) * step) / 12;
+      await page.mouse.move(Math.round(fx), Math.round(fy), { steps: 1 });
+      const snap = await readCtrlMarqueeState(page, panelId);
+      if (snap && snap.active && snap.w > 8 && snap.h > 8) {
+        during = snap;
+        break;
+      }
+      if (snap && (snap.w > during.w || snap.h > during.h)) during = snap;
+    }
     await page.mouse.up();
     await waitForPanelSettle(page, panelId);
     return { ok: true, during, p1, p2 };
@@ -511,6 +669,7 @@ export async function ctrlDragMarquee(page, panelId) {
 
 export async function pressEscapeReact(page, panelId) {
   const frame = chartTarget(page, panelId);
+  await page.keyboard.press('Escape');
   await frame.evaluate(() => {
     const ev = new KeyboardEvent('keydown', {
       key: 'Escape',
@@ -519,51 +678,176 @@ export async function pressEscapeReact(page, panelId) {
       cancelable: true,
     });
     window.dispatchEvent(ev);
-  });
+  }).catch(() => {});
   await waitForPanelSettle(page, panelId);
   return { ok: true };
 }
 
-/** Fallback points when bar-index lookup is unavailable (dev:live fast loop). */
-export const FALLBACK_TRENDLINE_POINTS = [{ x: 30, y: 100 }, { x: 50, y: 120 }];
-export const FALLBACK_RECTANGLE_POINTS = [{ x: 30, y: 110 }, { x: 55, y: 90 }];
+export async function deleteSelectedViaKeyboard(page, panelId) {
+  await focusReactPanel(page, panelId);
+  await page.keyboard.press('Delete');
+  await waitForPanelSettle(page, panelId);
+  return { ok: true };
+}
 
-export async function reactDefaultTrendlinePoints(page, panelId = 'A') {
+export async function readV9QuickBarState(page) {
+  return page.evaluate(() => {
+    const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
+    const gr = gear && gear.getBoundingClientRect();
+    const v9Bar = document.querySelector('[data-tlbar="1"], #v9-tl-bar');
+    const br = v9Bar && v9Bar.getBoundingClientRect();
+    const legacy = document.getElementById('drawing-toolbar');
+    const lr = legacy && legacy.getBoundingClientRect();
+    return {
+      v9Visible: !!(gr && gr.width > 0 && gr.height > 0) || !!(br && br.width > 0 && br.height > 0),
+      legacyVisible: !!(lr && lr.width > 0 && lr.height > 0),
+    };
+  });
+}
+
+/** Built-product parity state: iframe selection + parent V9 quick-bar (legacy toolbar.hidden in embed). */
+export async function readReactParityState(page, panelId = 'A') {
+  const local = await readInteractiveState(page, panelId);
+  const v9 = await readV9QuickBarState(page);
+  const toolbarVisible = !!(v9 && v9.v9Visible) || !!(local && local.toolbarVisible);
+  return {
+    ...local,
+    toolbarVisible,
+    v9QuickBarVisible: !!(v9 && v9.v9Visible),
+    parentLegacyVisible: !!(v9 && v9.legacyVisible),
+  };
+}
+
+export async function clearPanelDrawings(page, panelId) {
   const frame = chartTarget(page, panelId);
-  if (!frame) return FALLBACK_TRENDLINE_POINTS;
-  const pts = await frame.evaluate(() => {
+  if (!frame) return;
+  await frame.evaluate(() => {
+    try {
+      const dm = window.chart && window.chart.drawingManager;
+      if (!dm || !Array.isArray(dm.drawings)) return;
+      const copy = dm.drawings.slice();
+      for (const d of copy) {
+        if (d && typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
+      }
+      if (typeof dm.deselectAll === 'function') dm.deselectAll();
+      if (typeof dm.clearTool === 'function') dm.clearTool(true);
+      if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+      if (window.chart.scheduleRender) window.chart.scheduleRender();
+    } catch (_) { /* ignore */ }
+  });
+}
+
+export async function disarmDrawTool(page, panelId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return;
+  await frame.evaluate(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return;
+    if (typeof dm.clearTool === 'function') dm.clearTool(true);
+    dm.currentTool = null;
+  });
+}
+
+export async function isDrawingSelected(page, panelId, drawId) {
+  const chrome = await readSelectionChrome(page, panelId, drawId);
+  if (chrome && chrome.ok && chrome.selected) return true;
+  const st = await readReactParityState(page, panelId);
+  return (st?.selectedIds || []).map(String).includes(String(drawId));
+}
+
+export async function waitForReactSelection(page, panelId, expectedIds, timeoutMs = 6000) {
+  const want = (Array.isArray(expectedIds) ? expectedIds : [expectedIds]).map(String);
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await readReactParityState(page, panelId);
+    const got = [];
+    for (const id of want) {
+      if (await isDrawingSelected(page, panelId, id)) got.push(id);
+    }
+    const sortedGot = [...got].sort();
+    const sortedWant = [...want].sort();
+    if (sortedWant.length === sortedGot.length && sortedWant.every((id, i) => id === sortedGot[i])) {
+      return last;
+    }
+    await sleep(80);
+  }
+  return last || readReactParityState(page, panelId);
+}
+
+export async function drawingExists(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return false;
+  return frame.evaluate((id) => {
+    const dm = window.chart && window.chart.drawingManager;
+    return !!(dm && (dm.drawings || []).some((d) => d && String(d.id) === String(id)));
+  }, drawId);
+}
+
+/** V9 multichart: dm.selectedDrawings may lag; chrome handles + parent V9 bar are authoritative. */
+export async function assertReactMenuState(checks, label, expected, actual, page, panelId) {
+  const merged = {
+    ...actual,
+    toolbarVisible: !!(actual?.v9QuickBarVisible || actual?.toolbarVisible),
+  };
+  const parts = [];
+  let ok = true;
+  if (expected.selectedIds != null) {
+    for (const id of expected.selectedIds) {
+      if (!(await isDrawingSelected(page, panelId, id))) ok = false;
+    }
+    parts.push(`selectedIds=${JSON.stringify(actual?.selectedIds)} chromeOk=${ok}`);
+  }
+  if (expected.toolbarVisible != null && !!merged.toolbarVisible !== !!expected.toolbarVisible) {
+    ok = false;
+    parts.push(`toolbarVisible=${merged.toolbarVisible} expected=${expected.toolbarVisible}`);
+  }
+  if (expected.selectedIds == null && expected.toolbarVisible == null) {
+    return assertMenuState(checks, label, expected, merged);
+  }
+  return checks.check(label, ok, parts.join('; '));
+}
+
+export async function reactDefaultTrendlinePoints(page, panelId = 'A', barOffset = 0) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) throw new Error(`reactDefaultTrendlinePoints: no frame for ${panelId}`);
+  const pts = await frame.evaluate((pid, offset) => {
     const ch = window.chart;
-    if (!ch || !Array.isArray(ch.data) || ch.data.length < 50) return null;
+    if (!ch || !Array.isArray(ch.data) || ch.data.length < 120) return null;
     const n = ch.data.length;
-    const i0 = Math.max(0, n - 80);
-    const i1 = Math.max(0, n - 40);
+    const skew = pid === 'B' ? 40 : 0;
+    const i0 = Math.max(0, n - 105 - skew - offset);
+    const i1 = Math.max(0, n - 58 - skew - offset);
     const p0 = ch.data[i0];
     const p1 = ch.data[i1];
     if (!p0 || !p1) return null;
     const y0 = (p0.h + p0.l) / 2;
     const y1 = (p1.h + p1.l) / 2;
     return [{ x: i0, y: y0 }, { x: i1, y: y1 }];
-  }).catch(() => null);
-  return pts || FALLBACK_TRENDLINE_POINTS;
+  }, panelId, barOffset).catch(() => null);
+  if (!pts) throw new Error(`reactDefaultTrendlinePoints: insufficient bar data on panel ${panelId}`);
+  return pts;
 }
 
-export async function reactDefaultRectanglePoints(page, panelId = 'A') {
+export async function reactDefaultRectanglePoints(page, panelId = 'A', barOffset = 0) {
   const frame = chartTarget(page, panelId);
-  if (!frame) return FALLBACK_RECTANGLE_POINTS;
-  const pts = await frame.evaluate(() => {
+  if (!frame) throw new Error(`reactDefaultRectanglePoints: no frame for ${panelId}`);
+  const pts = await frame.evaluate((pid, offset) => {
     const ch = window.chart;
-    if (!ch || !Array.isArray(ch.data) || ch.data.length < 50) return null;
+    if (!ch || !Array.isArray(ch.data) || ch.data.length < 120) return null;
     const n = ch.data.length;
-    const i0 = Math.max(0, n - 70);
-    const i1 = Math.max(0, n - 50);
+    const skew = pid === 'B' ? 40 : 0;
+    const i0 = Math.max(0, n - 92 - skew - offset);
+    const i1 = Math.max(0, n - 62 - skew - offset);
     const p0 = ch.data[i0];
     const p1 = ch.data[i1];
     if (!p0 || !p1) return null;
     const yTop = Math.max(p0.h, p1.h);
     const yBot = Math.min(p0.l, p1.l);
     return [{ x: i0, y: yTop }, { x: i1, y: yBot }];
-  }).catch(() => null);
-  return pts || FALLBACK_RECTANGLE_POINTS;
+  }, panelId, barOffset).catch(() => null);
+  if (!pts) throw new Error(`reactDefaultRectanglePoints: insufficient bar data on panel ${panelId}`);
+  return pts;
 }
 
 export async function waitForPanelData(page, panelId, timeoutMs = 90_000) {
@@ -585,29 +869,25 @@ export async function waitForPanelData(page, panelId, timeoutMs = 90_000) {
 export async function bootReactMultichart(browser, stack, opts = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 960 });
-
-  if (opts.switchOffGearFix) {
-    await page.evaluateOnNewDocument(() => {
-      window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
-    });
-  }
-
+  await installBuiltProductBoot(page, { switchOffGearFix: !!opts.switchOffGearFix });
   await installParentSettingsProbe(page);
-  await page.goto(stack.url, { waitUntil: 'networkidle2', timeout: 180000 });
-  await page.waitForFunction(() => !!(window.__multichartGrid), { timeout: 90000 }).catch(() => {});
+  await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
   await waitForReactMultichartReady(page);
+  await clearPanelDrawings(page, 'A');
+  await clearPanelDrawings(page, 'B');
   const buildIds = await assertBuildIds(page, REACT_BUILD_ID);
-  await waitForPanelData(page, 'B', 12_000).catch(() => {
-    console.warn('[react-parity] panel B bar data timeout; scenarios use fallback placement points');
-  });
-  await waitForPanelData(page, 'A', 12_000).catch(() => {
-    console.warn('[react-parity] host panel A bar data not ready; host-side rows may fail');
-  });
+  const frameB = panelFrameMap(page).B;
+  const boundary = await assertIframeBoundary(frameB, 'B');
+  const iframeBars = frameB
+    ? await frameB.evaluate(() => (window.chart && window.chart.data ? window.chart.data.length : 0))
+    : 0;
 
   return {
     page,
     stack,
     buildIds,
+    boundary,
+    iframeBars,
     close: () => page.close().catch(() => {}),
   };
 }

@@ -61,7 +61,7 @@ function multichartOwnershipV2Enabled() {
 
 function multichartSettingsFlashFixEnabled() {
     try {
-        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_SETTINGS_FLASH_FIX_V2);
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
     } catch (_) {
         return true;
     }
@@ -102,6 +102,7 @@ const PANEL_CMD_NO_REPLY = new Set([
     "replaySetSpeed", "replaySetMode", "replaySetStepTf", "replayCut",
     "syncFromHost", "syncReplayFromHost", "extendReplayMasterFromHost",
     "setTimeframe", "rollbackPickStart", "rollbackPickStop",
+    "setV9PanelEmbed",
 ]);
 
 function sendPanelCmd(mgr, panelId, cmd, args) {
@@ -1970,6 +1971,16 @@ export default function MultichartGrid({
                     // host shell's current snapshot so every tile matches.
                     try {
                         window.dispatchEvent(new CustomEvent("multichartUiPeersDirty", { detail: { panelId: id } }));
+                    } catch (_) {}
+                    // T1 step 14: authoritative in-iframe V9 panel flag (parent globals are
+                    // not visible inside real server iframes — panel-cmd is the reliable path).
+                    try {
+                        const mgrNow = managerRef.current;
+                        if (mgrNow && id !== HOST_PANEL_ID) {
+                            const fixOn = typeof window !== "undefined"
+                                && !window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+                            sendPanelCmd(mgrNow, id, "setV9PanelEmbed", { embed: !!fixOn, panelId: id });
+                        }
                     } catch (_) {}
                     // NOTE: the host viewport re-anchor used to run here on
                     // EVERY panel-ready, which (with the 700ms staggered boot)

@@ -36,7 +36,8 @@ For **every** file touched: full path, and 1–3 lines on *what* changed and *wh
 - Exact steps for the PO to confirm on the real product (build id to look for, panel setup, the click sequence), or "already covered by parity checklist row N".
 
 ### 8. Status
-- One of: **DONE (proven)** / **NEEDS-LIVE-CONFIRM** / **BLOCKED (reason)** / **DIAGNOSTIC-ONLY (mechanism reported, fix not started)**.
+- One of: **DONE (proven)** / **DONE (dev only) — NEEDS-LIVE** / **NEEDS-LIVE-CONFIRM** / **BLOCKED (reason)** / **DIAGNOSTIC-ONLY (mechanism reported, fix not started)**.
+- **Label to the evidence, not the intent (D-010).** You may only write **DONE (proven)** if the proof matches the acceptance surface the fix requires. **For any fix crossing the parent↔iframe boundary, "proven" REQUIRES real built-product evidence** (`build:live` + served, build id confirmed *inside the panel iframe*, not just the host). If you only ran `dev:live` / the fast loop, the status is **DONE (dev only) — NEEDS-LIVE** — never "DONE (proven)". The Manager **bounces mislabeled reports**: two of three burned T1 cycles came from a report labeled "DONE (proven)" whose own body admitted the built-product path was never run.
 
 ---
 

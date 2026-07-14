@@ -207,6 +207,16 @@ class DrawingToolbar {
     init() {
         // Inject toolbar styles for dark/light mode
         this.injectToolbarStyles();
+
+        if (this._shouldSuppressLegacyToolbarShow()) {
+            this.toolbar = document.createElement('div');
+            this.toolbar.id = 'drawing-toolbar';
+            this.toolbar.className = 'drawing-toolbar';
+            this.toolbar.setAttribute('data-v9-legacy-toolbar-killed', '1');
+            this.toolbar.style.display = 'none';
+            document.body.appendChild(this.toolbar);
+            return;
+        }
         
         // Create toolbar element
         this.toolbar = document.createElement('div');
@@ -1911,6 +1921,12 @@ class DrawingToolbar {
 
     hide() {
         this.visible = false;
+        if (!this.toolbar) {
+            this.currentDrawing = null;
+            this.stopDragging();
+            document.removeEventListener('click', this.handleDocumentClick, true);
+            return;
+        }
         this.toolbar.style.display = 'none';
         this.currentDrawing = null;
         this.stopDragging();
@@ -2050,7 +2066,7 @@ class DrawingToolbar {
         return typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function';
     }
 
-    /** Engine floating toolbar must stay hidden when V9 quick-bar owns selection (step 13). */
+    /** Engine floating toolbar must stay hidden when V9 quick-bar owns selection (step 13/14). */
     _shouldSuppressLegacyToolbarShow() {
         try {
             const disabled = (w) => !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
@@ -2062,6 +2078,8 @@ class DrawingToolbar {
                 if (disabled(w)) return false;
             }
             if (typeof window !== 'undefined') {
+                // T1 step 14: parent panel-cmd sets this inside real iframe panels.
+                if (window.__talariaV9PanelEmbed === true) return true;
                 if (window.__multichartGrid) return true;
                 if (window.parent && window.parent !== window && window.parent.__multichartGrid) {
                     return true;

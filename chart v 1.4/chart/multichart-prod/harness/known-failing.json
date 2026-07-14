@@ -80,17 +80,20 @@
       "H-R07",
       "H-R08",
       "H-R09",
-      "H-R12"
+      "H-R12",
+      "H-R13",
+      "H-R14"
     ],
     "knownFailing": {
-      "H-R01": "T0 step 8 tracked-red: parity row 1 single-click select (mouse hit) — needs bar data / draw-tool disarm on React surface",
-      "H-R02": "T0 step 8 tracked-red: parity row 2 blue selection border — click select not landing with fallback placement",
-      "H-R03": "T0 step 8 tracked-red: parity row 3 Ctrl-click multi-select",
-      "H-R05": "T0 step 8 tracked-red: parity row 5 Esc closes settings + deselects",
-      "H-R06": "T0 step 8 tracked-red: parity row 6 delete without ghost",
-      "H-R07": "T0 step 8 tracked-red: parity row 7 peer isolation on cross-panel select",
-      "H-R08": "T0 step 8 tracked-red: parity row 8 Ctrl+drag marquee multi-select (partial: blue border draws GREEN sub-check)",
-      "H-R09": "T0 step 8 tracked-red: parity row 9 single→double chain (partial: panel-B dbl-click+Esc GREEN sub-checks)"
+      "H-R01": "T0 step 8b tracked-red: parity row 1 single-click select on built-product real iframe",
+      "H-R02": "T0 step 8b tracked-red: parity row 2 blue selection border on real iframe surface",
+      "H-R03": "T0 step 8b tracked-red: parity row 3 Ctrl-click multi-select on real iframe surface",
+      "H-R04": "T0 step 8b tracked-red: parity row 4 settings open/stays on real iframe surface",
+      "H-R05": "T0 step 8b tracked-red: parity row 5 Esc closes settings + deselects",
+      "H-R06": "T0 step 8b tracked-red: parity row 6 delete without ghost",
+      "H-R08": "T0 step 8b tracked-red: parity row 8 Ctrl+drag marquee multi-select",
+      "H-R09": "T0 step 8b tracked-red: parity row 9 single→double chain",
+      "H-R14": "T0 step 8b tracked-red: burned-fix marquee-in-panel on panel-B real iframe"
     }
   }
 }

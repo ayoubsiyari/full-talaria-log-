@@ -1,5 +1,7 @@
 # T0 step 8 (Lane 4) — automated production-React parity harness
 
+> **RAISED TO LANE 4'S TOP ITEM by D-010 (2026-07-14).** Hardened exit (all mandatory): drives the **real `MultichartGrid`**, uses **real separate-window iframes** (NOT a same-context dev mount — the whole point is to represent the parent↔iframe boundary that `dev:live` cannot), asserts the **build id inside each panel iframe**, and includes **one regression scenario per burned fix**: (i) iframe panel gear→settings route, (ii) multichart settings-flash, (iii) marquee-in-panel. This harness is the durable gate for the iframe-panel fix family so it can never ship on fast-loop green again. Per D-010 it is NOT a hard serialization — near-term fixes accept via the manual real-built path meanwhile — but it is your first priority.
+
 **Cold-start (read first if you are new to this repo):** self-contained NEW task, not a resumption. Read `docs/tickets-overhaul/INVARIANTS.md`, `docs/tickets-overhaul/WORKER-REPORT-STANDARD.md`, `docs/tickets-overhaul/MULTICHART-PARITY-CHECKLIST.md` (the manual gate you are automating), and D-006 ruling 4 in `docs/tickets-overhaul/DIRECTOR-DECISIONS.md` (which authorized this). Look at the existing harness (`chart v 1.4/chart/multichart-prod/harness/`) and the `dev:live` mount work from T0 step 6 (React `MultichartGrid` under `talaria-design`, `?devMultichart=2v`). Harness trees are mirrored into `homepage/public/chart/multichart-prod/harness/` — keep all copies byte-identical.
 
 **Type:** harness/tooling only — no engine or React product edits.

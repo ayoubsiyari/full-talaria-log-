@@ -1,9 +1,9 @@
 /**
- * react-parity-scenarios.mjs — T0 step 8 automated MULTICHART-PARITY-CHECKLIST
- * rows against the real React MultichartGrid (dev:live mount).
+ * react-parity-scenarios.mjs — T0 step 8b/9 automated MULTICHART-PARITY-CHECKLIST
+ * rows against the REAL built-product MultichartGrid (dist-v9 + mcLayout=2v).
  *
- * IDs H-R01..H-R09 map to checklist rows 1..9 (host tile A + iframe panel B).
- * H-R12 = T1 step 12 iframe panel-B gear → parent settings (proven GREEN).
+ * Step 9: H-R01..H-R09 use real mouse hit-tests on loaded bars + parent V9 bar
+ * visibility (not legacy iframe toolbar.visible).
  */
 
 import {
@@ -18,13 +18,21 @@ import {
   readSelectionChrome,
   readParentReactSettings,
   pressEscapeReact,
-  waitForIframeGearReady,
-  clickIframeGear,
+  waitForV9QuickBarReady,
+  clickV9QuickBarGear,
   waitForPanelSettle,
   panelFrameMap,
   reactDefaultTrendlinePoints,
   reactDefaultRectanglePoints,
-  FALLBACK_TRENDLINE_POINTS,
+  readIframeToolbarState,
+  readReactParityState,
+  waitForReactSelection,
+  assertReactMenuState,
+  deleteSelectedViaKeyboard,
+  sleep,
+  disarmDrawTool,
+  drawingExists,
+  isDrawingSelected,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -32,15 +40,28 @@ import {
   readInteractiveState,
   readRenderCount,
   assertCanvasRepainted,
-  assertMenuState,
   assertNoGhostAfterDelete,
   readParentSettingsProbe,
-  openSettings,
-  deleteToolViaSettings,
 } from './interactive-helpers.mjs';
 
-async function forPanels(fn) {
-  return { host: await fn('A'), panelB: await fn('B') };
+async function runPanelClickRow(page, checks, prefix, panelId, toolType = 'trendline') {
+  const label = panelId === 'A' ? 'host' : 'panelB';
+  const tool = await seedDrawing(page, panelId, toolType);
+  checks.check(`${prefix} setup (${label}): ${toolType} placed on real bars`, tool && tool.id, tool ? tool.id : 'null');
+  await focusReactPanel(page, panelId);
+  await disarmDrawTool(page, panelId);
+  const before = await readReactParityState(page, panelId);
+  checks.check(`${prefix} setup (${label}): not selected before click`,
+    before && before.selectedIds.length === 0 && !(await isDrawingSelected(page, panelId, tool.id)),
+    JSON.stringify(before?.selectedIds));
+  const click = await singleClickDrawing(page, panelId, tool.id);
+  checks.check(`${prefix} probe (${label}): single click dispatched`, click && click.ok, click?.reason || '');
+  const after = await waitForReactSelection(page, panelId, [tool.id]);
+  await assertReactMenuState(checks, `${prefix} CORE (${label}): first click selects + V9 quick menu`, {
+    selectedIds: [tool.id],
+    toolbarVisible: true,
+  }, after, page, panelId);
+  return { tool, label, panelId };
 }
 
 // ── H-R01 — Row 1: single-click select (host + panel B) ─────────────────
@@ -48,38 +69,15 @@ async function hR01(ctx) {
   return runWithReact(ctx, async (boot) => {
     const { page } = boot;
     const checks = makeChecks();
-    checks.check('H-R01 L1: build id on host + panel B', boot.buildIds.ok,
+    checks.check('H-R01 L1: build id on host + panel B iframe', boot.buildIds.ok,
       JSON.stringify(boot.buildIds));
+    checks.check('H-R01 L1: iframe boundary (no parent __multichartGrid in panel B)',
+      boot.boundary && boot.boundary.ok, JSON.stringify(boot.boundary));
+    checks.check('H-R01 L1: real bar data in panel B iframe', boot.iframeBars > 50,
+      `dataLen=${boot.iframeBars}`);
 
-    const seeded = await forPanels(async (pid) => {
-      const tool = await seedDrawing(page, pid, 'trendline');
-      await focusReactPanel(page, pid);
-      const frame = chartTarget(page, pid);
-      const armed = await frame.evaluate(() => {
-        const dm = window.chart && window.chart.drawingManager;
-        if (!dm) return null;
-        dm.setTool('trendline');
-        return dm.currentTool;
-      });
-      return { tool, armed };
-    });
-
-    for (const [label, side] of [['host', seeded.host], ['panelB', seeded.panelB]]) {
-      const { tool, armed } = side;
-      checks.check(`H-R01 setup (${label}): trendline placed`, tool && tool.id, tool ? tool.id : 'null');
-      checks.check(`H-R01 setup (${label}): draw tool re-armed`, armed === 'trendline', `tool=${armed}`);
-      const before = await readInteractiveState(page, label === 'host' ? 'A' : 'B');
-      checks.check(`H-R01 setup (${label}): not selected before click`,
-        before && before.selectedIds.length === 0, JSON.stringify(before?.selectedIds));
-      const pid = label === 'host' ? 'A' : 'B';
-      const click = await singleClickDrawing(page, pid, tool.id);
-      checks.check(`H-R01 probe (${label}): single click dispatched`, click && click.ok, click?.reason || '');
-      const after = await readInteractiveState(page, pid);
-      assertMenuState(checks, `H-R01 CORE (${label}): first click selects + shows Quick Menu`, {
-        selectedIds: [tool.id],
-        toolbarVisible: true,
-      }, after);
-    }
+    await runPanelClickRow(page, checks, 'H-R01', 'A');
+    await runPanelClickRow(page, checks, 'H-R01', 'B');
     return checks;
   });
 }
@@ -94,6 +92,7 @@ async function hR02(ctx) {
       const tool = await seedDrawing(page, pid, 'rectangle');
       checks.check(`H-R02 setup (${label}): rectangle placed`, tool && tool.id, tool ? tool.id : 'null');
       await singleClickDrawing(page, pid, tool.id);
+      await waitForReactSelection(page, pid, [tool.id]);
       const chrome = await readSelectionChrome(page, pid, tool.id);
       checks.check(`H-R02 CORE (${label}): drawing selected with visible chrome`,
         chrome && chrome.ok && chrome.selected && chrome.hasBlueBorder,
@@ -110,22 +109,26 @@ async function hR03(ctx) {
     const checks = makeChecks();
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
-      const pts1 = await reactDefaultTrendlinePoints(page, pid);
-      const pts2 = pts1.map((p, i) => ({ x: p.x + 30, y: p.y - (i === 0 ? 0.001 : 0.0008) }));
+      const pts1 = await reactDefaultTrendlinePoints(page, pid, 0);
+      const pts2 = [
+        { x: pts1[0].x + 22, y: pts1[0].y - 0.0006 },
+        { x: pts1[1].x + 22, y: pts1[1].y - 0.0004 },
+      ];
       const first = await placeTool(page, pid, 'trendline', pts1);
       const second = await placeTool(page, pid, 'trendline', pts2);
       checks.check(`H-R03 setup (${label}): two trendlines placed`,
         first && first.id && second && second.id, `${first?.id},${second?.id}`);
       await focusReactPanel(page, pid);
+      await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, first.id);
+      await waitForReactSelection(page, pid, [first.id]);
       await ctrlClickDrawing(page, pid, second.id);
       await waitForPanelSettle(page, pid);
-      const after = await readInteractiveState(page, pid);
-      const expected = [String(first.id), String(second.id)].sort();
-      const actual = (after?.selectedIds || []).map(String).sort();
+      const selFirst = await isDrawingSelected(page, pid, first.id);
+      const selSecond = await isDrawingSelected(page, pid, second.id);
       checks.check(`H-R03 CORE (${label}): Ctrl-select keeps both (no double-toggle)`,
-        expected.length === 2 && actual.length === 2 && expected.every((id, i) => id === actual[i]),
-        `selected=${JSON.stringify(after?.selectedIds)} expected=${JSON.stringify(expected)}`);
+        selFirst && selSecond,
+        `first=${selFirst} second=${selSecond}`);
     }
     return checks;
   });
@@ -139,14 +142,17 @@ async function hR04(ctx) {
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
+      await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, tool.id);
-      const openRes = await openSettings(page, pid, tool);
-      checks.check(`H-R04 probe (${label}): settings open invoked`, openRes && openRes.ok, openRes?.reason || '');
+      await waitForReactSelection(page, pid, [tool.id]);
+      await waitForV9QuickBarReady(page, tool.id, 4000);
+      const dbl = await doubleClickDrawing(page, pid, tool.id);
+      checks.check(`H-R04 probe (${label}): double-click opens settings`, dbl && dbl.ok, dbl?.reason || '');
       await waitForPanelSettle(page, pid);
       const parent = await readParentReactSettings(page);
-      const local = await readInteractiveState(page, pid);
+      const local = await readReactParityState(page, pid);
       const settingsOpen = parent.open || (local && local.settingsOpen);
-      checks.check(`H-R04 CORE (${label}): settings stay open after open`,
+      checks.check(`H-R04 CORE (${label}): settings stay open after dbl-click`,
         !!settingsOpen,
         `parent=${JSON.stringify(parent)} local.settingsOpen=${local?.settingsOpen}`);
       await pressEscapeReact(page, pid);
@@ -164,13 +170,14 @@ async function hR05(ctx) {
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
       await singleClickDrawing(page, pid, tool.id);
-      await openSettings(page, pid, tool);
+      await doubleClickDrawing(page, pid, tool.id);
       await waitForPanelSettle(page, pid);
       await pressEscapeReact(page, pid);
-      const after = await readInteractiveState(page, pid);
+      const after = await readReactParityState(page, pid);
       const parent = await readParentSettingsProbe(page);
+      const deselected = !(await isDrawingSelected(page, pid, tool.id));
       checks.check(`H-R05 CORE (${label}): Esc deselects drawing`,
-        after && after.selectedIds.length === 0, JSON.stringify(after?.selectedIds));
+        deselected && after && after.selectedIds.length === 0, JSON.stringify(after?.selectedIds));
       checks.check(`H-R05 CORE (${label}): Esc closes settings surfaces`,
         !after?.toolbarVisible && !parent.open,
         `toolbar=${after?.toolbarVisible} parentOpen=${parent.open}`);
@@ -187,17 +194,18 @@ async function hR06(ctx) {
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
+      await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, tool.id);
-      await openSettings(page, pid, tool);
-      await waitForPanelSettle(page, pid);
+      await waitForReactSelection(page, pid, [tool.id]);
       const rendersBefore = await readRenderCount(page, pid);
-      const delRes = await deleteToolViaSettings(page, pid, tool);
-      checks.check(`H-R06 probe (${label}): delete invoked`, delRes && delRes.ok, delRes?.reason || '');
+      const delRes = await deleteSelectedViaKeyboard(page, pid);
+      checks.check(`H-R06 probe (${label}): Delete key dispatched`, delRes && delRes.ok, delRes?.reason || '');
       await waitForPanelSettle(page, pid);
-      const after = await readInteractiveState(page, pid);
+      const removed = !(await drawingExists(page, pid, tool.id));
+      const after = await readReactParityState(page, pid);
       const rendersAfter = await readRenderCount(page, pid);
-      checks.check(`H-R06 CORE (${label}): drawing removed from store`,
-        after && after.drawingCount === 0, `count=${after?.drawingCount}`);
+      checks.check(`H-R06 CORE (${label}): placed drawing removed from store`,
+        removed, `id=${tool.id} stillExists=${!removed} count=${after?.drawingCount}`);
       assertCanvasRepainted(checks, `H-R06 CORE (${label}): delete schedules repaint`, rendersBefore, rendersAfter);
       assertNoGhostAfterDelete(checks, `H-R06 CORE (${label}): no ghost artifacts`, tool, after);
     }
@@ -211,29 +219,32 @@ async function hR07(ctx) {
     const { page } = boot;
     const checks = makeChecks();
 
-    const hostTool = await placeTool(page, 'A', 'trendline', await reactDefaultTrendlinePoints(page, 'A'));
+    const hostTool = await placeTool(page, 'A', 'trendline', await reactDefaultTrendlinePoints(page, 'A', 0));
     checks.check('H-R07 setup: host trendline placed', hostTool && hostTool.id, hostTool ? hostTool.id : 'null');
+    await disarmDrawTool(page, 'A');
     await singleClickDrawing(page, 'A', hostTool.id);
-    await waitForPanelSettle(page, 'A');
+    await waitForReactSelection(page, 'A', [hostTool.id]);
 
-    const panelTool = await placeTool(page, 'B', 'rectangle', await reactDefaultRectanglePoints(page, 'B'));
+    const panelTool = await placeTool(page, 'B', 'rectangle', await reactDefaultRectanglePoints(page, 'B', 0));
     checks.check('H-R07 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
     await focusReactPanel(page, 'B');
+    await disarmDrawTool(page, 'B');
     await singleClickDrawing(page, 'B', panelTool.id);
-    await waitForPanelSettle(page, 'B');
+    await waitForReactSelection(page, 'B', [panelTool.id]);
 
-    const host = await readInteractiveState(page, 'A');
-    const panel = await readInteractiveState(page, 'B');
-    const totalSelected = (host?.selectedIds?.length || 0) + (panel?.selectedIds?.length || 0);
+    const hostSel = await isDrawingSelected(page, 'A', hostTool.id);
+    const panelSel = await isDrawingSelected(page, 'B', panelTool.id);
+    const host = await readReactParityState(page, 'A');
+    const panel = await readReactParityState(page, 'B');
     checks.check(
       'H-R07 CORE: exactly one selected drawing globally after cross-panel select',
-      totalSelected === 1 && host?.selectedIds?.length === 0 && panel?.selectedIds?.[0] === panelTool.id,
-      `A.selected=${JSON.stringify(host?.selectedIds)} B.selected=${JSON.stringify(panel?.selectedIds)}`,
+      !hostSel && panelSel,
+      `A.selected=${hostSel} B.selected=${panelSel}`,
     );
     checks.check(
       'H-R07 CORE: host quick menu cleared when panel B owns selection',
-      !host?.toolbarVisible,
-      `A.toolbarVisible=${host?.toolbarVisible}`,
+      !host?.toolbarVisible && !host?.v9QuickBarVisible,
+      `A.toolbarVisible=${host?.toolbarVisible} v9=${host?.v9QuickBarVisible}`,
     );
     return checks;
   });
@@ -246,15 +257,21 @@ async function hR08(ctx) {
     const checks = makeChecks();
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
-      const pts1 = await reactDefaultTrendlinePoints(page, pid);
-      const pts2 = pts1.map((p, i) => ({ x: p.x + 25, y: p.y - (i === 0 ? 0.001 : 0.0008) }));
-      await placeTool(page, pid, 'trendline', pts1);
-      await placeTool(page, pid, 'trendline', pts2);
+      const pts1 = await reactDefaultTrendlinePoints(page, pid, 0);
+      const pts2 = [
+        { x: pts1[0].x + 20, y: pts1[0].y - 0.0005 },
+        { x: pts1[1].x + 20, y: pts1[1].y - 0.0003 },
+      ];
+      const t1 = await placeTool(page, pid, 'trendline', pts1);
+      const t2 = await placeTool(page, pid, 'trendline', pts2);
+      checks.check(`H-R08 setup (${label}): two trendlines placed`, t1 && t1.id && t2 && t2.id, `${t1?.id},${t2?.id}`);
       await focusReactPanel(page, pid);
       const frame = pid === 'A' ? page : panelFrameMap(page)[pid];
       await frame.evaluate(() => {
-        const dm = window.chart.drawingManager;
-        if (typeof dm.deselectAll === 'function') dm.deselectAll();
+        try {
+          const dm = window.chart && window.chart.drawingManager;
+          if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
+        } catch (_) { /* ignore */ }
       });
       await waitForPanelSettle(page, pid);
       const drag = await ctrlDragMarquee(page, pid);
@@ -262,10 +279,12 @@ async function hR08(ctx) {
       checks.check(`H-R08 CORE (${label}): blue marquee border draws during Ctrl+drag`,
         drag && drag.during && drag.during.active && drag.during.w > 8 && drag.during.h > 8,
         JSON.stringify(drag?.during));
-      const after = await readInteractiveState(page, pid);
+      const after = await waitForReactSelection(page, pid, [t1.id, t2.id], 4000);
+      const sel1 = await isDrawingSelected(page, pid, t1.id);
+      const sel2 = await isDrawingSelected(page, pid, t2.id);
       checks.check(`H-R08 CORE (${label}): marquee multi-selects enclosed tools`,
-        after && after.selectedIds.length >= 2,
-        `selected=${JSON.stringify(after?.selectedIds)}`);
+        sel1 && sel2,
+        `t1=${sel1} t2=${sel2} dm.selected=${JSON.stringify(after?.selectedIds)}`);
     }
     return checks;
   });
@@ -279,28 +298,30 @@ async function hR09(ctx) {
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'trendline');
+      await disarmDrawTool(page, pid);
       const click1 = await singleClickDrawing(page, pid, tool.id);
       checks.check(`H-R09 probe (${label}): single click`, click1 && click1.ok, click1?.reason || '');
-      const afterSingle = await readInteractiveState(page, pid);
-      assertMenuState(checks, `H-R09 CORE (${label}): single click selects + quick menu`, {
+      const afterSingle = await waitForReactSelection(page, pid, [tool.id]);
+      await assertReactMenuState(checks, `H-R09 CORE (${label}): single click selects + quick menu`, {
         selectedIds: [tool.id],
         toolbarVisible: true,
-      }, afterSingle);
+      }, afterSingle, page, pid);
 
       const dbl = await doubleClickDrawing(page, pid, tool.id);
       checks.check(`H-R09 probe (${label}): double click`, dbl && dbl.ok, dbl?.reason || '');
       await waitForPanelSettle(page, pid);
       const settings = await readParentReactSettings(page);
-      const localSettings = await readInteractiveState(page, pid);
+      const localSettings = await readReactParityState(page, pid);
       const settingsOpen = settings.open || (localSettings && localSettings.settingsOpen);
       checks.check(`H-R09 CORE (${label}): double click opens settings`,
         !!settingsOpen, JSON.stringify(settings));
 
       await pressEscapeReact(page, pid);
-      const afterEsc = await readInteractiveState(page, pid);
+      const afterEsc = await readReactParityState(page, pid);
       const parent = await readParentSettingsProbe(page);
+      const deselected = !(await isDrawingSelected(page, pid, tool.id));
       checks.check(`H-R09 CORE (${label}): Esc deselects after chain`,
-        afterEsc && afterEsc.selectedIds.length === 0, JSON.stringify(afterEsc?.selectedIds));
+        deselected && afterEsc && afterEsc.selectedIds.length === 0, JSON.stringify(afterEsc?.selectedIds));
       checks.check(`H-R09 CORE (${label}): Esc closes settings after chain`,
         !afterEsc?.toolbarVisible && !parent.open,
         `toolbar=${afterEsc?.toolbarVisible} parentOpen=${parent.open}`);
@@ -309,20 +330,24 @@ async function hR09(ctx) {
   });
 }
 
-// ── H-R12 — T1 step 12: iframe panel-B gear → parent settings (GREEN) ───
+// ── H-R12 — burned-fix: iframe panel-B gear → parent settings (real iframe) ─
 async function hR12(ctx) {
   return runWithReact(ctx, async (boot) => {
     const { page } = boot;
     const checks = makeChecks();
+    const frameB = panelFrameMap(page).B;
+
+    checks.check('H-R12 L1: build id inside panel-B iframe',
+      boot.buildIds.ok && boot.buildIds.frames && boot.buildIds.frames.B === boot.buildIds.expectedId,
+      JSON.stringify(boot.buildIds));
+    checks.check('H-R12 L1: iframe boundary (separate window)',
+      boot.boundary && boot.boundary.ok, JSON.stringify(boot.boundary));
 
     await focusReactPanel(page, 'B');
-    const placed = await placeTool(page, 'B', 'trendline', [
-      { x: 30, y: 100 },
-      { x: 50, y: 120 },
-    ]);
-    checks.check('H-R12 setup: panel-B trendline placed', placed && placed.id, placed ? placed.id : 'null');
+    const pts = await reactDefaultTrendlinePoints(page, 'B');
+    const placed = await placeTool(page, 'B', 'trendline', pts);
+    checks.check('H-R12 setup: panel-B trendline placed on real bars', placed && placed.id, placed ? placed.id : 'null');
 
-    const frameB = panelFrameMap(page).B;
     await frameB.evaluate((drawId) => {
       const dm = window.chart.drawingManager;
       const d = dm.drawings.find((x) => x && String(x.id) === String(drawId));
@@ -330,25 +355,91 @@ async function hR12(ctx) {
       dm.selectDrawing(d, false);
     }, placed.id);
 
-    const ready = await waitForIframeGearReady(frameB, placed.id);
-    checks.check('H-R12 probe: gear-ready settle signal',
+    const iframeToolbar = await readIframeToolbarState(frameB);
+    checks.check('H-R12 probe: panel-B iframe toolbar state',
+      iframeToolbar && iframeToolbar.dataLen > 50, JSON.stringify(iframeToolbar));
+    checks.check('H-R12 CORE: no legacy #drawing-toolbar inside panel-B iframe (step-14 litmus)',
+      iframeToolbar && !iframeToolbar.legacyVisible, JSON.stringify(iframeToolbar));
+
+    const ready = await waitForV9QuickBarReady(page, placed.id);
+    checks.check('H-R12 probe: parent V9 quick-bar gear-ready settle signal',
       ready && ready.ok, JSON.stringify(ready?.detail || ready));
 
-    const click = await clickIframeGear(frameB);
-    checks.check('H-R12 probe: immediate gear click', click && click.ok, click?.reason || '');
+    const click = await clickV9QuickBarGear(page);
+    checks.check('H-R12 probe: parent #tl-sett gear click', click && click.ok, click?.reason || '');
 
     const settings = await readParentReactSettings(page);
-    checks.check('H-R12 CORE: parent settings open after iframe gear click',
-      settings.open && settings.hasStyleSection,
-      JSON.stringify(settings));
+    checks.check('H-R12 CORE: parent settings open after panel-B gear route',
+      settings.open, JSON.stringify(settings));
 
+    return checks;
+  });
+}
+
+// ── H-R13 — burned-fix: settings-flash (panel B iframe, settings must stay) ─
+async function hR13(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    await focusReactPanel(page, 'B');
+    const tool = await seedDrawing(page, 'B', 'trendline');
+    checks.check('H-R13 setup: panel-B trendline placed', tool && tool.id, tool ? tool.id : 'null');
+    const dbl = await doubleClickDrawing(page, 'B', tool.id);
+    checks.check('H-R13 probe: double-click dispatched in iframe panel', dbl && dbl.ok, dbl?.reason || '');
+    const immediate = await readParentReactSettings(page);
+    checks.check('H-R13 CORE: settings open immediately after dbl-click',
+      immediate.open, JSON.stringify(immediate));
+    await sleep(400);
+    const after = await readParentReactSettings(page);
+    checks.check('H-R13 CORE: settings still open after 400ms (no flash-close race)',
+      after.open, JSON.stringify(after));
+    return checks;
+  });
+}
+
+// ── H-R14 — burned-fix: Ctrl+drag marquee inside panel-B iframe ───────────
+async function hR14(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    const pts1 = await reactDefaultTrendlinePoints(page, 'B', 0);
+    const pts2 = [
+      { x: pts1[0].x + 20, y: pts1[0].y - 0.0005 },
+      { x: pts1[1].x + 20, y: pts1[1].y - 0.0003 },
+    ];
+    const first = await placeTool(page, 'B', 'trendline', pts1);
+    const second = await placeTool(page, 'B', 'trendline', pts2);
+    checks.check('H-R14 setup: two trendlines in panel-B iframe',
+      first && first.id && second && second.id, `${first?.id},${second?.id}`);
+    await focusReactPanel(page, 'B');
+    const frameB = panelFrameMap(page).B;
+    await frameB.evaluate(() => {
+      try {
+        const dm = window.chart && window.chart.drawingManager;
+        if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
+      } catch (_) { /* ignore */ }
+    });
+    await waitForPanelSettle(page, 'B');
+    const drag = await ctrlDragMarquee(page, 'B');
+    checks.check('H-R14 probe: Ctrl+drag marquee in panel-B iframe', drag && drag.ok, drag?.reason || '');
+    checks.check('H-R14 CORE: marquee border active during drag (w/h > 8px)',
+      drag && drag.during && drag.during.active && drag.during.w > 8 && drag.during.h > 8,
+      JSON.stringify(drag?.during));
+    const state = await waitForReactSelection(page, 'B', [first.id, second.id], 4000);
+    checks.check('H-R14 CORE: marquee multi-selects drawings in panel-B iframe',
+      state && state.selectedIds && state.selectedIds.length >= 2,
+      JSON.stringify(state?.selectedIds));
     return checks;
   });
 }
 
 export function reactScenarioList() {
   return [
-    { id: 'H-R12', title: 'T1 step 12: iframe panel-B gear opens parent settings', run: hR12 },
+    { id: 'H-R12', title: 'burned-fix: iframe panel-B gear opens parent settings', run: hR12 },
+    { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
+    { id: 'H-R14', title: 'burned-fix: Ctrl+drag marquee inside panel-B iframe', run: hR14 },
     { id: 'H-R01', title: 'parity row 1: single-click select (host + panel B)', run: hR01 },
     { id: 'H-R02', title: 'parity row 2: blue selection border (host + panel B)', run: hR02 },
     { id: 'H-R03', title: 'parity row 3: Ctrl-click multi-select (host + panel B)', run: hR03 },

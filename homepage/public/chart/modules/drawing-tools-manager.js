@@ -56,6 +56,9 @@ function isMultichartIframeEmbed() {
     if (typeof document === 'undefined' || typeof window === 'undefined') return false;
     if (window.parent === window) return false;
     try {
+        if (window.__talariaV9PanelEmbed === true) return true;
+    } catch (_) { /* ignore */ }
+    try {
         if (window.parent && window.parent.__multichartGrid) return true;
     } catch (_) { /* cross-origin */ }
     if (document.documentElement.classList.contains('multichart-embed')) return true;
@@ -165,6 +168,22 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
     const drawId = drawing && drawing.id != null ? drawing.id : null;
     const px = typeof x === 'number' && !isNaN(x) ? x : 0;
     const py = typeof y === 'number' && !isNaN(y) ? y : 0;
+    const payload = {
+        type: 'multichart-open-drawing-settings',
+        source: panelId,
+        drawingId: drawId,
+        x: px,
+        y: py,
+    };
+    // I14: dist-v9 iframe tiles must use postMessage — parent globals are not authoritative.
+    if (window.__talariaV9PanelEmbed === true) {
+        try {
+            window.parent.postMessage(payload, '*');
+            return true;
+        } catch (_pm) {
+            return false;
+        }
+    }
     try {
         const parent = window.parent;
         if (parent && parent !== window) {
@@ -190,13 +209,7 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
         }
     } catch (_) { /* cross-origin */ }
     try {
-        window.parent.postMessage({
-            type: 'multichart-open-drawing-settings',
-            source: panelId,
-            drawingId: drawId,
-            x: px,
-            y: py,
-        }, '*');
+        window.parent.postMessage(payload, '*');
         return true;
     } catch (_pm) {
         return false;
@@ -13430,14 +13443,26 @@ class DrawingToolsManager {
         if (!drawing.group) return false;
         
         try {
-            // Get bounding box of the drawing
-            const bbox = drawing.group.node().getBBox();
-            
-            // Check if rectangles intersect
-            const drawingLeft = bbox.x;
-            const drawingRight = bbox.x + bbox.width;
-            const drawingTop = bbox.y;
-            const drawingBottom = bbox.y + bbox.height;
+            const node = drawing.group.node();
+            const bbox = node && node.getBBox ? node.getBBox() : null;
+            let drawingLeft;
+            let drawingRight;
+            let drawingTop;
+            let drawingBottom;
+
+            if (bbox && bbox.width > 0 && bbox.height > 0) {
+                drawingLeft = bbox.x;
+                drawingRight = bbox.x + bbox.width;
+                drawingTop = bbox.y;
+                drawingBottom = bbox.y + bbox.height;
+            } else {
+                const lineBounds = this._getDrawingLineBoundsForMarquee(node);
+                if (!lineBounds) return false;
+                drawingLeft = lineBounds.left;
+                drawingRight = lineBounds.right;
+                drawingTop = lineBounds.top;
+                drawingBottom = lineBounds.bottom;
+            }
             
             const rectLeft = rectX;
             const rectRight = rectX + rectWidth;
@@ -13453,6 +13478,38 @@ class DrawingToolsManager {
             console.warn('Error checking drawing intersection:', error);
             return false;
         }
+    }
+
+    /** Pixel bounds from rendered line/polyline attrs when getBBox() is empty (common in iframe embed). */
+    _getDrawingLineBoundsForMarquee(groupNode) {
+        if (!groupNode || typeof groupNode.querySelectorAll !== 'function') return null;
+        const elems = groupNode.querySelectorAll('line, polyline, path');
+        if (!elems || elems.length === 0) return null;
+        let left = Infinity;
+        let right = -Infinity;
+        let top = Infinity;
+        let bottom = -Infinity;
+        const absorb = (x, y) => {
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            left = Math.min(left, x);
+            right = Math.max(right, x);
+            top = Math.min(top, y);
+            bottom = Math.max(bottom, y);
+        };
+        elems.forEach((el) => {
+            const tag = (el.tagName || '').toLowerCase();
+            if (tag === 'line') {
+                absorb(parseFloat(el.getAttribute('x1')), parseFloat(el.getAttribute('y1')));
+                absorb(parseFloat(el.getAttribute('x2')), parseFloat(el.getAttribute('y2')));
+            } else if (tag === 'polyline' && el.points) {
+                for (let i = 0; i < el.points.numberOfItems; i += 1) {
+                    const pt = el.points.getItem(i);
+                    absorb(pt.x, pt.y);
+                }
+            }
+        });
+        if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+        return { left, right, top, bottom };
     }
 
     /**

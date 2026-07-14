@@ -334,6 +334,36 @@ Approve (1). For (2), recommend **(A)** — the user selected Tick deliberately;
 
 ---
 
+## ESC-009 — Iframe-panel toolbar fix has failed live 3× despite fast-loop green; dev:live is not a faithful acceptance surface
+
+**Date:** 2026-07-14
+**Track:** T1 (Lane 1), build `20260712b11` (PO-confirmed on host AND panel B)
+**RC:** RC-1 / tooling-fidelity
+**Urgency:** Recurring wasted deploy cycles; erodes confidence in "DONE (proven)" for multichart.
+
+### Pattern
+Steps 11, 12, and 13 each reported deterministic GREEN on the **dev:live fast loop** (step 13: 20/20) and each **failed the real server iframe panel**: panel B still renders the OLD engine `#drawing-toolbar` on a build-id-confirmed `b11`. Step 13's own report noted "build:live + Docker PO path not run in this session." The dev:live mount shares context with the parent, so parent-global-based suppression works there but not inside the real cross-window iframe — the fast loop cannot reproduce the exact defect.
+
+### Decision requested
+1. **Standing rule:** for **iframe-panel multichart** fixes specifically, dev:live fast-loop green is **necessary but not acceptance** — acceptance requires **real built-product verification** (`build:live`/served build, or Lane 4's T0-step8 React-parity harness driving the real `MultichartGrid`), with build id confirmed inside the panel iframe.
+2. **Sequencing:** gate future iframe-panel toolbar/selection fixes on **T0-step8** (automated real-React parity harness) landing, so we stop shipping fast-loop-green/live-broken. Step 14 (dispatched now) already requires real-product proof + screenshot.
+
+### Manager recommendation
+Approve both. Step 14 is already written to (a) fix via a reliable in-iframe signal posted by the parent bridge (not parent globals) and (b) require real-product 10× proof. Recommend making T0-step8 the durable gate for this whole family. This is the D-006 blind spot recurring — the parity check must become real, not dev:live.
+
+## ESC-009 — RESOLVED
+
+**Director ruling:** D-010 (2026-07-14). Both requests approved + 1 modification + 2 additions: (1) real built-product acceptance surface for parent↔iframe fixes (build id confirmed inside the panel iframe); (2) T0-step8 durable gate but **not** hard serialization — near-term fixes (step 14) accept via manual real-built path; (3) **new INVARIANTS I14** — postMessage-bridge-only, parent globals forbidden in panel-facing paths; (4) report-labeling correction — mislabeled "DONE (proven)" → **Manager bounces**; (5) T0-step8 raised to Lane 4 top item with hardened exit (real MultichartGrid, real separate-window iframes, build-id assert per panel, one regression scenario per burned fix: gear route / settings flash / marquee-in-panel).
+
+---
+
+## ESC-009 — RESOLVED
+
+**Director ruling:** D-010 (2026-07-14)  
+**Outcome:** Both requests approved, one modification. (1) For any parent↔iframe-boundary fix, dev:live green = development evidence only; acceptance = real built product with build id confirmed **inside the panel iframe**. (2) T0-step8 is the durable gate but NOT a hard serialization — near-term iframe fixes may accept via the manual `build:live`+served path (step 14 proceeds as written). New binding mechanism rule: parent↔iframe coordination must use postMessage bridges — parent globals/same-context assumptions forbidden in panel-facing paths (dev:live shares context and structurally cannot represent the boundary). Report-labeling corrected: unrun acceptance path = "NEEDS-LIVE", never "proven"; Manager bounces mislabeled reports. T0-step8 raised to Lane 4's top item; its exit includes real iframes + in-panel build-id assertion + one regression scenario per burned fix (gear, settings-flash, marquee).
+
+---
+
 ## ESC-008 — RESOLVED
 
 **Director ruling:** D-009 (2026-07-14)  

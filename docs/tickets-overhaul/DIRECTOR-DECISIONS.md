@@ -2,6 +2,50 @@
 
 ---
 
+## D-010 — ESC-009: iframe-fix acceptance surface corrected; postMessage-only rule added
+
+**Date:** 2026-07-14
+**Escalation:** ESC-009
+**Track:** T1 (Lane 1), build `20260712b11`
+**RC:** RC-1 / tooling-fidelity
+
+### Mechanism class exposed (the real output of this escalation)
+`dev:live` mounts the panel in the **same JS context** as the parent, so any fix coordinating via **parent globals** passes there and **structurally cannot work across a real iframe boundary**. The tool doesn't just miss this bug class — it is **incapable of representing it**. That explains all three burned deploy cycles (steps 11/12/13) at once.
+
+### Rulings
+1. **Acceptance surface corrected.** For any fix crossing the parent↔iframe boundary, `dev:live` green is **development evidence only**. Acceptance requires the **real built product** (`build:live` + served), with the build id confirmed **inside the panel iframe**, not just the host frame.
+2. **T0-step8 is the durable gate — but NOT a hard serialization** (modification to the Manager's request). Hard-gating iframe fixes on a not-yet-existent harness would idle Lane 1's recovery on Lane 4's timeline. Near-term fixes (step 14 included) may accept via the **manual real-built path** — slower but faithful.
+3. **New binding mechanism rule → INVARIANTS I14.** Parent↔iframe coordination must use the **postMessage bridges**. Parent globals, shared closures, and same-context assumptions are **forbidden** in panel-facing code paths. Step 14's in-iframe-signal design is the correct pattern; any prior fix in this family that leaned on parent globals gets re-checked when touched.
+4. **Report-labeling correction.** Step 13 said "DONE (proven)" while its own report noted the built-product path was never run — that is **"DONE (dev only) — NEEDS-LIVE"** under the report standard. **The Manager bounces mislabeled reports.** Two of the three lost cycles came from accepting the label instead of the evidence.
+5. **T0-step8 raised to Lane 4's top item**, hardened exit: real `MultichartGrid`, real **separate-window** iframes, **build-id assertion inside each panel**, and **one regression scenario per burned fix** (gear route, settings flash, marquee-in-panel) so this class can never ship on fast-loop green again.
+
+---
+
+## D-010 — ESC-009: iframe-panel acceptance surface corrected; dev:live demoted to development-only for cross-window work
+
+**Date:** 2026-07-14
+**Escalation:** ESC-009
+**Track:** T1 (Lane 1) / tooling fidelity
+**RC:** RC-1 + RC-7
+
+### Ruling context
+
+Three consecutive fixes (steps 11/12/13) were fast-loop green and live-broken on the real iframe panel. The mechanism class is now identified and is the important output: **the dev:live mount shares a JS context with the parent, so any fix that communicates via parent globals "works" there and cannot work across a real cross-origin-style iframe boundary.** The tool didn't just miss the bug — it structurally cannot represent it. That is a different and worse failure than a flaky test, and it explains all three cycles.
+
+### Rulings
+
+**1. Request 1 APPROVED — standing acceptance rule (extends D-006/I13):** for any fix whose mechanism crosses the parent↔iframe boundary (panel toolbars, selection sync, settings routing, bridge messages), **dev:live green is development evidence only.** Acceptance requires the real built product — `npm run build:live` + served build (or the T0-step8 parity harness once it exists) — with build id confirmed **inside the panel iframe**, not just on the host frame.
+
+**2. Request 2 APPROVED WITH A MODIFICATION — no hard serialization on T0-step8.** T0-step8 (automated real-React parity harness) becomes the *durable* gate, but in-flight and near-term iframe fixes may accept via the manual real-built path from ruling 1 — step 14 is already written that way and proceeds. Rationale: hard-gating on a harness that doesn't exist yet would idle Lane 1's recovery on Lane 4's timeline; the manual path is slower but faithful.
+
+**3. Mechanism rule for this family (new, binding):** fixes that need parent↔iframe coordination must use **cross-window transports (postMessage via the existing bridges)** — parent globals, shared closures, and same-context assumptions are forbidden in panel-facing code paths. Step 14's design (in-iframe signal posted by the parent bridge) is the correct pattern. Any existing fix in this family that relied on parent globals gets re-checked when touched.
+
+**4. Report-labeling correction (process):** step 13 reported "DONE (proven)" while its own §6 noted the built-product path was unrun. Per `WORKER-REPORT-STANDARD`, a report whose acceptance path is unrun is **DONE (harness/dev only) — NEEDS-LIVE**, never "proven." The Manager bounces mislabeled reports; two lost deploy cycles came from accepting the label instead of the evidence.
+
+**5. T0-step8 priority raised:** it is now Lane 4's top item (ahead of any new scenario families). Exit for T0-step8 must include: real `MultichartGrid` mount, real iframes (separate windows), build-id assertion inside each panel, and one regression scenario per burned fix (gear route, settings flash, marquee-in-panel) so this class can never ship fast-loop-green again.
+
+---
+
 ## D-009 — ESC-008: A3 replay fixes authorized; behavioral fork ruled (A) — tick mode persists, interval bounds steps
 
 **Date:** 2026-07-14

@@ -1,11 +1,11 @@
 /**
- * react-run.mjs — T0 step 8 runner for production-React parity scenarios.
+ * react-run.mjs — T0 step 8b runner for built-product React parity scenarios.
  *
- * Boots dev:live MultichartGrid (?devMultichart=2v) via react-parity-lib.
- * CLI flags mirror run.mjs: --runs=N, --only=H-R01,H-R12, --headful
+ * Boots real dist-v9 MultichartGrid (mcLayout=2v) via react-parity-lib.
+ * CLI flags: --runs=N, --only=H-R01,H-R12, --headful
  */
 
-import { ensureReactStack, launchBrowser } from './react-parity-lib.mjs';
+import { ensureBuiltReactStack, launchBrowser } from './react-parity-lib.mjs';
 import { reactScenarioList } from './react-parity-scenarios.mjs';
 
 function parseArgs(argv) {
@@ -28,8 +28,9 @@ function verdictOf(result) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const stack = await ensureReactStack();
-  console.log(`[react-run] dev:live url: ${stack.url}`);
+  const stack = await ensureBuiltReactStack();
+  console.log(`[react-run] built-product url: ${stack.url}`);
+  console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
   console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'}`);
 
   const scenarios = reactScenarioList().filter((s) => !args.only || args.only.includes(s.id));

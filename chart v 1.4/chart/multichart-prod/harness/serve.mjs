@@ -337,7 +337,16 @@ function handleApi(req, res, url) {
   // /api/auth/me — chart-embed.html auth gate (redirects to /login on non-OK).
   if (parts[1] === 'auth' && parts[2] === 'me') {
     logApi(req.method, url, 'auth.me', null);
-    return sendJson(res, { user: { id: 1, email: 'harness@talaria.local', name: 'Harness' } });
+    // has_journal_access / admin role required for mode=backtest (chart.js subscription gate).
+    return sendJson(res, {
+      user: {
+        id: 1,
+        email: 'harness@talaria.local',
+        name: 'Harness',
+        role: 'admin',
+        has_journal_access: true,
+      },
+    });
   }
   if (parts[1] === 'file' && parts[2] != null) {
     const fileId = parseInt(parts[2], 10);
@@ -473,7 +482,7 @@ function hostPageHtml(query) {
   if (pair === 'independent' && fileIds.B != null) fileIds.B = independentFileId;
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260712b8';
+  const buildId = '20260712b26';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 

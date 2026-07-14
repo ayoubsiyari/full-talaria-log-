@@ -5071,9 +5071,10 @@ function v9QuickBarPanelSettingsDisabledForMultichartDrawing(drawing) {
   }
 }
 
-/** True when V9 owns the quick-bar — engine floating toolbar must not render (step 13). */
+/** True when V9 owns the quick-bar — engine floating toolbar must not render (step 13/14). */
 function v9ShouldSkipLegacyDrawingToolbarShow() {
   try {
+    if (typeof window !== "undefined" && window.__talariaV9PanelEmbed === true) return true;
     if (typeof window !== "undefined" && window.__multichartGrid) return true;
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
       if (window.parent.__multichartGrid) return true;
@@ -14143,6 +14144,33 @@ const TalariaV8bLive = () => {
       setLayoutPanels(tuple);
     }
   };
+
+  // Built-product harness bootstrap (?mcLayout=2v) — works in prod builds, not dev-only.
+  // Deferred until window.chart exists so host engine finishes init before iframes mount.
+  useEffect(() => {
+    let requested = null;
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      requested = params.get("mcLayout") || params.get("multichartLayout");
+    } catch (_) {}
+    if (!requested) return;
+    const normalized = requested === "2" ? "2v" : requested === "2x2" ? "4" : requested;
+    const tuple = layoutTupleFromId(normalized);
+    if (!tuple) return;
+    let cancelled = false;
+    let attempts = 0;
+    const applyWhenChartReady = () => {
+      if (cancelled) return;
+      if (!window.chart) {
+        if (attempts++ < 120) setTimeout(applyWhenChartReady, 100);
+        return;
+      }
+      setLayoutPanels(tuple);
+    };
+    applyWhenChartReady();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Mount: hydrate V9 state from whatever panelManager already has loaded
   // from userStorage so the UI shows the correct active layout/sync toggles.

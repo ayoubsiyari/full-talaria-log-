@@ -63,6 +63,56 @@
         } catch (_) {}
     }
 
+    /** T1 step 14 — same switch as drawing-tools-manager / TalariaV8bLive (I13). */
+    function v9QuickBarPanelEmbedFixEnabled() {
+        try {
+            if (global.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) return false;
+        } catch (_) {}
+        return true;
+    }
+
+    /** Parent-authoritative flag: this iframe is a V9 multichart panel tile. */
+    function clearV9PanelEmbedFlag() {
+        try { delete global.__talariaV9PanelEmbed; } catch (_) {}
+    }
+
+    /**
+     * Delete legacy #drawing-toolbar in panel iframes — parent V9 quick-bar owns UI.
+     * Keys off window.__talariaV9PanelEmbed set by setV9PanelEmbed panel-cmd.
+     */
+    function killLegacyDrawingToolbarForV9PanelEmbed(ch) {
+        try {
+            global.__talariaV9PanelEmbed = true;
+            var doc = global.document;
+            if (doc) {
+                var nodes = doc.querySelectorAll('#drawing-toolbar, .drawing-toolbar');
+                for (var i = 0; i < nodes.length; i++) {
+                    try { nodes[i].parentNode && nodes[i].parentNode.removeChild(nodes[i]); } catch (_) {}
+                }
+                if (!doc.getElementById('talaria-v9-panel-embed-toolbar-kill')) {
+                    var st = doc.createElement('style');
+                    st.id = 'talaria-v9-panel-embed-toolbar-kill';
+                    st.textContent = '#drawing-toolbar,.drawing-toolbar{display:none!important;visibility:hidden!important;pointer-events:none!important;}';
+                    doc.head.appendChild(st);
+                }
+            }
+            var dm = ch && ch.drawingManager;
+            if (dm && dm.toolbar) {
+                dm.toolbar.visible = false;
+                if (dm.toolbar.toolbar) {
+                    try { dm.toolbar.toolbar.remove(); } catch (_) {}
+                    dm.toolbar.toolbar = null;
+                }
+                dm.toolbar.show = function () {
+                    dm.toolbar.visible = false;
+                    return undefined;
+                };
+            }
+        } catch (eKill) {
+            warn('killLegacyDrawingToolbarForV9PanelEmbed failed', eKill && eKill.message);
+        }
+    }
+
     function reportResult(requestId, ok, error, data) {
         if (!requestId) return;
         try {
@@ -2769,6 +2819,16 @@
                     return;
                 }
 
+                // T1 step 14 — parent posts authoritative V9-panel-embed flag on bridge-ready.
+                case 'setV9PanelEmbed': {
+                    if (!v9QuickBarPanelEmbedFixEnabled() || args.embed === false) {
+                        clearV9PanelEmbedFlag();
+                        return;
+                    }
+                    killLegacyDrawingToolbarForV9PanelEmbed(ch);
+                    return;
+                }
+
                 // Host calendar/filter change → repaint time-axis news flags on this tile.
                 case 'redrawEconomicNewsMarkers': {
                     var ef = args.filters;
@@ -3625,6 +3685,7 @@
                 'getIndicators',
                 'getOrderPanelPriceSnapshot',
                 'applyV9UiSettings',
+                'setV9PanelEmbed',
                 'syncFromHost',
                 'syncReplayFromHost',
                 'extendReplayMasterFromHost',

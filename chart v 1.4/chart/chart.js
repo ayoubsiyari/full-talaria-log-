@@ -18787,7 +18787,14 @@ class Chart {
     }
 
     _isCtrlMarqueeFixEnabled() {
-        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_CTRL_MARQUEE_FIX);
+        if (typeof window === 'undefined') return true;
+        if (window.__TALARIA_DISABLE_CTRL_MARQUEE_FIX) return false;
+        // I14: iframe embed marquee is part of the quickbar/settings fix bundle (step 16).
+        if (window.__talariaV9PanelEmbed === true
+            && window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) {
+            return false;
+        }
+        return true;
     }
 
     /** Position + show the isolated marquee overlay rect. */
