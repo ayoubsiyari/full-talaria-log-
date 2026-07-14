@@ -516,6 +516,19 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **BLOCKS DEPLOY:** do NOT finalize the canonical deploy build until the gear route is fixed + verified on the real built product. Freeze stays.
 - **Dispatched:** Lane 1 urgent `worker-prompts/T1-step18-lane1-gear-settings-regression.md` (reproduce on built product BOTH panels → root → fix → prove; coordinate H-R13 probe with Lane 4 so the harness can catch it). Awaiting PO build id + double-click isolation before worker begins repro.
 
+### T1 step 18 (Lane 1) — settings-open ROOT fixed + HONESTLY verified (2026-07-14)
+- **P0 resolved for the settings path.** Step-0 isolation confirmed BOTH gear + dbl-click broke on panels A AND B (only quick-bar shell appeared) — whole settings-open path, not just gear.
+- **Root:** dismiss-guard race — `__v9DrawingSettingsOpenGuardUntil` set AFTER `__v9OpenDrawingSettings`, so peer-clear flash-closed settings; iframe bridge didn't pre-arm the parent guard or call the sync parent-open API; gear product path didn't resolve iframe selection / call the V9 hook.
+- **Fix:** arm guard BEFORE open; iframe tries sync `__multichartOpenShapeSettings` then postMessage; gear calls `__v9OpenDrawingSettings` directly (`v9ResolveDrawingForGearClick`). Flash-fix + Esc/Delete preserved.
+- **Proven with HONEST harness (real mouse gear click + `waitForParentDrawingSettingsOpen()` that REJECTS the quick-bar shell)** on b97: H-R12 (panel-B gear) 10/10, **H-R12A (panel-A gear, new) 10/10**, H-R13 (flash/dbl-click) 10/10, H-R05/H-R06 10/10. Switch-OFF: H-R12 reverts on B (expected). This is the first multichart interaction fix proven against a real-actuation + honest-assertion path — validates the ESC-011 approach.
+- **Baseline action for Lane 4 (Worker 1 correctly did NOT edit it):** add H-R12A to expectedTests, drop H-R12 + H-R13 from `knownFailing`, re-run `gate:react`. **react-parity-lib.mjs is now FREE** (Worker 1 released it) → the collision block on Lane 4's real-actuation rebuild is cleared.
+- **STILL untrusted / not done (do NOT call multichart done):**
+  - **H-R05/H-R06 (Esc/Delete)** "pass" may still be on synthetic/proxy assertions (audit HIGH-risk) — need the honest real-actuation upgrade before trusted.
+  - **H-R14 (marquee)** was NOT addressed in step 18 — still broken/untrusted.
+  - **H-R04** (settings chain) not explicitly re-confirmed.
+  - Minor I13: panel-A gear fix not gated by the multichart switch (switch-OFF still passes H-R12A) — host-side path; note, not blocking.
+- **Deploy still frozen**; PO live-confirm of the settings fix recommended to close the trust loop (honest harness should now match the real product).
+
 ### T0 step 12 audit — the false-green disease is suite-wide (2026-07-14)
 - Lane 4's honesty audit: even H-R01/H-R02/H-R03/H-R07 (I'd called "genuinely green") are **NOT trustworthy** — `selectDrawing`/`editDrawing` synthetic fallbacks, `toolbarVisible`/handle-count proxies, H-R04 only checks click dispatched. Host H-S32/H-S33 also proxy/synthetic.
 - **No trustworthy automated multichart-interaction coverage exists right now.** PO live-confirm on the real product is the only reliable acceptance authority for multichart until the harness is rebuilt.

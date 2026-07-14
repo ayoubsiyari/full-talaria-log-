@@ -1317,25 +1317,48 @@ function applyHostSlotPositionOnly(cellEl) {
     } catch (_) {}
 }
 
-/** CSS-only stretch for iframe charts during splitter drag (no resize()). */
-function previewIframeChartsInContainer(container) {
+/** Force drawings to re-project from data coords after a size change. */
+function forceRedrawDrawingsOnChart(ch) {
+    if (!ch) return;
+    try {
+        if (ch.drawingManager && typeof ch.drawingManager.redrawAll === "function") {
+            ch.drawingManager.redrawAll({ forceFull: true });
+        } else if (typeof ch.redrawDrawings === "function") {
+            ch.redrawDrawings();
+        }
+    } catch (_) {}
+}
+
+/**
+ * Resize + render host and iframe charts so candles AND drawings stay locked
+ * to price/time (same projection path as a normal chart.resize).
+ *
+ * CSS-only stretch (applyHostSlotPositionOnly / previewIframeChartsInContainer)
+ * scales the canvas bitmap and SVG shell differently — drawings look like they
+ * "slide off" the candles while the splitter moves. Call this instead.
+ */
+function reprojectPanelCharts(container, cellA, opts) {
+    const reanchor = !!(opts && opts.reanchor);
+    if (cellA) applyHostSlot(cellA, { reanchor });
+    try {
+        forceRedrawDrawingsOnChart(typeof window !== "undefined" ? window.chart : null);
+    } catch (_) {}
     if (!container) return;
+    normalizeIframeStyles(container);
     container.querySelectorAll("iframe").forEach((ifr) => {
         try {
             const ch = ifr.contentWindow && ifr.contentWindow.chart;
-            if (!ch || !ch.canvas) return;
-            const parent = ch.canvas.parentElement;
-            if (!parent) return;
-            const rect = parent.getBoundingClientRect();
-            const w = Math.max(1, Math.round(rect.width));
-            const h = Math.max(1, Math.round(rect.height));
-            ch.canvas.style.width = w + "px";
-            ch.canvas.style.height = h + "px";
-            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
-            if (svgNode) {
-                svgNode.style.width = w + "px";
-                svgNode.style.height = h + "px";
+            if (!ch || typeof ch.resize !== "function") return;
+            const oldW = ch.w;
+            const oldH = ch.h;
+            ch._lastResizeDpr = 0;
+            ch.resize();
+            // Keep right-edge bar lock through splitter drag (drawings use same scales).
+            if (typeof ch._realignMultichartViewportAfterResize === "function") {
+                try { ch._realignMultichartViewportAfterResize(oldW, oldH); } catch (_) {}
             }
+            if (typeof ch.render === "function") ch.render();
+            forceRedrawDrawingsOnChart(ch);
         } catch (_) {}
     });
 }
@@ -1433,10 +1456,9 @@ function thawPanelSurfaces(locked, cellA, container) {
         normalizeIframeStyles(container);
         container.querySelectorAll("iframe").forEach(clearIframeLayoutDragFlags);
     }
-    if (cellA) applyHostSlot(cellA);
-    if (container) {
-        resizeAllIframesInContainer(container);
-    } else if (locked && locked.iframes) {
+    // Full reproject so drawings snap to the same price/time anchors as candles.
+    reprojectPanelCharts(container, cellA, { reanchor: false });
+    if (!container && locked && locked.iframes) {
         locked.iframes.forEach(({ el }) => {
             try {
                 const ch = el.contentWindow && el.contentWindow.chart;
@@ -1444,6 +1466,7 @@ function thawPanelSurfaces(locked, cellA, container) {
                     ch._lastResizeDpr = 0;
                     ch.resize();
                     if (typeof ch.render === "function") ch.render();
+                    forceRedrawDrawingsOnChart(ch);
                 }
             } catch (_) {}
         });
@@ -6480,8 +6503,9 @@ export default function MultichartGrid({
                 container.style[styleProp] = fracsToTemplate(updated);
                 liveDragRef.current = { axis, fracs: updated };
                 const cellA = cellRefs.current[HOST_PANEL_ID];
-                if (cellA) applyHostSlotPositionOnly(cellA);
-                previewIframeChartsInContainer(container);
+                // Re-project candles + drawings from data coords every frame.
+                // CSS-only stretch made shapes drift off the bars mid-drag.
+                reprojectPanelCharts(container, cellA, { reanchor: false });
                 if (focusedPanelId) {
                     updateFocusFrameDom(focusedPanelId, cellRefs.current);
                 }
@@ -6513,11 +6537,20 @@ export default function MultichartGrid({
                 if (axis === "col") setColFractions(lastApplied);
                 else setRowFractions(lastApplied);
                 const cellA = cellRefs.current[HOST_PANEL_ID];
+                // Double-rAF: first frame thaws + reprojects; second catches the
+                // React fractions commit so drawings land on the final cell size.
                 requestAnimationFrame(() => {
                     thawPanelSurfaces(lockedSurfaces, cellA, container);
                     if (focusedPanelId && computeFocusedRectRef.current) {
                         computeFocusedRectRef.current();
                     }
+                    requestAnimationFrame(() => {
+                        const cellA2 = cellRefs.current[HOST_PANEL_ID];
+                        reprojectPanelCharts(container, cellA2, { reanchor: false });
+                        if (focusedPanelId && computeFocusedRectRef.current) {
+                            computeFocusedRectRef.current();
+                        }
+                    });
                 });
             }
             document.addEventListener("mousemove", onMove);
