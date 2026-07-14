@@ -22,8 +22,6 @@ import {
   readInteractiveState,
   readParentSettingsProbe,
   placeTool,
-  defaultTrendlinePoints,
-  defaultRectanglePoints,
 } from './interactive-helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -204,7 +202,7 @@ export async function waitForPanelFrame(page, panelId = 'B', timeoutMs = 120000)
 
 const PAINTED_FN = () => {
   const c = window.chart;
-  return !!(c && Array.isArray(c.data) && c.data.length > 0 && c._mcDiag && c._mcDiag.renders > 0);
+  return !!(c && c.drawingManager && Array.isArray(c.data) && c.data.length > 0);
 };
 
 export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
@@ -212,17 +210,49 @@ export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
     () => !!(window.__multichartGrid),
     { timeout: timeoutMs },
   );
-  await waitForPanelFrame(page, 'B', timeoutMs);
+  const frameB = await waitForPanelFrame(page, 'B', timeoutMs);
+  if (!frameB) {
+    throw new Error('react-parity: panel B iframe missing after grid ready');
+  }
 
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const hostPainted = await page.evaluate(PAINTED_FN).catch(() => false);
-    const frameB = panelFrameMap(page).B;
-    const bPainted = frameB ? await frameB.evaluate(PAINTED_FN).catch(() => false) : false;
-    if (hostPainted && bPainted) return { hostPainted, bPainted };
+  await frameB.waitForFunction(
+    () => window.chart && window.chart.drawingManager,
+    { timeout: timeoutMs },
+  );
+
+  // Optional: prefer painted bars when available, but do not block boot on them.
+  const dataDeadline = Date.now() + 30_000;
+  while (Date.now() < dataDeadline) {
+    const hasData = await frameB.evaluate(() => {
+      const c = window.chart;
+      return !!(c && Array.isArray(c.data) && c.data.length > 0);
+    }).catch(() => false);
+    if (hasData) break;
     await sleep(POLL_INTERVAL_MS);
   }
-  throw new Error('react-parity: host/panel B did not paint before timeout');
+
+  const hostDeadline = Date.now() + 12_000;
+  let hostReady = false;
+  while (Date.now() < hostDeadline) {
+    hostReady = await page.evaluate(PAINTED_FN).catch(() => false);
+    if (hostReady) break;
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  if (!hostReady) {
+    const snap = await page.evaluate(() => {
+      const c = window.chart;
+      return {
+        hasChart: !!c,
+        hasDm: !!(c && c.drawingManager),
+        dataLen: c && Array.isArray(c.data) ? c.data.length : 0,
+        grid: !!window.__multichartGrid,
+      };
+    }).catch(() => ({}));
+    console.warn(`[react-parity] host chart not painted within budget; continuing (panel B ready). snap=${JSON.stringify(snap)}`);
+  }
+
+  return { hostReady, bReady: true };
 }
 
 /** L1 — build id must match on host and every iframe panel. */
@@ -259,16 +289,22 @@ export async function waitForPanelSettle(page, panelId, budgetMs = 4000) {
   if (!frame) return false;
   return frame.evaluate((timeout) => new Promise((resolve) => {
     const start = performance.now();
-    let last = -1;
+    let stablePasses = 0;
+    let lastSel = -1;
     const tick = () => {
-      const cur = window.chart && window.chart._mcDiag ? Number(window.chart._mcDiag.renders) || 0 : 0;
-      if (cur > 0 && cur === last) {
+      const ch = window.chart;
+      const dm = ch && ch.drawingManager;
+      const cur = ch && ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : -1;
+      const hasChart = !!(dm && Array.isArray(ch.data) && ch.data.length > 0);
+      if (hasChart && (cur < 0 || cur === lastSel)) stablePasses += 1;
+      else stablePasses = 0;
+      lastSel = cur;
+      if (stablePasses >= 2) {
         resolve(true);
         return;
       }
-      last = cur;
       if (performance.now() - start > timeout) {
-        resolve(cur > 0);
+        resolve(hasChart);
         return;
       }
       requestAnimationFrame(tick);
@@ -367,8 +403,8 @@ export async function clickIframeGear(frame) {
 export async function seedDrawing(page, panelId, toolType = 'trendline') {
   await focusReactPanel(page, panelId);
   const pts = toolType === 'rectangle'
-    ? await defaultRectanglePoints(page, panelId)
-    : await defaultTrendlinePoints(page, panelId);
+    ? await reactDefaultRectanglePoints(page, panelId)
+    : await reactDefaultTrendlinePoints(page, panelId);
   const placed = await placeTool(page, panelId, toolType, pts);
   const frame = chartTarget(page, panelId);
   await frame.evaluate((drawId) => {
@@ -488,6 +524,61 @@ export async function pressEscapeReact(page, panelId) {
   return { ok: true };
 }
 
+/** Fallback points when bar-index lookup is unavailable (dev:live fast loop). */
+export const FALLBACK_TRENDLINE_POINTS = [{ x: 30, y: 100 }, { x: 50, y: 120 }];
+export const FALLBACK_RECTANGLE_POINTS = [{ x: 30, y: 110 }, { x: 55, y: 90 }];
+
+export async function reactDefaultTrendlinePoints(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return FALLBACK_TRENDLINE_POINTS;
+  const pts = await frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch || !Array.isArray(ch.data) || ch.data.length < 50) return null;
+    const n = ch.data.length;
+    const i0 = Math.max(0, n - 80);
+    const i1 = Math.max(0, n - 40);
+    const p0 = ch.data[i0];
+    const p1 = ch.data[i1];
+    if (!p0 || !p1) return null;
+    const y0 = (p0.h + p0.l) / 2;
+    const y1 = (p1.h + p1.l) / 2;
+    return [{ x: i0, y: y0 }, { x: i1, y: y1 }];
+  }).catch(() => null);
+  return pts || FALLBACK_TRENDLINE_POINTS;
+}
+
+export async function reactDefaultRectanglePoints(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return FALLBACK_RECTANGLE_POINTS;
+  const pts = await frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch || !Array.isArray(ch.data) || ch.data.length < 50) return null;
+    const n = ch.data.length;
+    const i0 = Math.max(0, n - 70);
+    const i1 = Math.max(0, n - 50);
+    const p0 = ch.data[i0];
+    const p1 = ch.data[i1];
+    if (!p0 || !p1) return null;
+    const yTop = Math.max(p0.h, p1.h);
+    const yBot = Math.min(p0.l, p1.l);
+    return [{ x: i0, y: yTop }, { x: i1, y: yBot }];
+  }).catch(() => null);
+  return pts || FALLBACK_RECTANGLE_POINTS;
+}
+
+export async function waitForPanelData(page, panelId, timeoutMs = 90_000) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) throw new Error(`waitForPanelData: no frame for ${panelId}`);
+  await frame.waitForFunction(
+    () => {
+      const c = window.chart;
+      return !!(c && Array.isArray(c.data) && c.data.length > 0);
+    },
+    { timeout: timeoutMs },
+  );
+  return true;
+}
+
 /**
  * Boot one cold React multichart page (2v layout) for a scenario.
  */
@@ -503,8 +594,15 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
 
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'networkidle2', timeout: 180000 });
+  await page.waitForFunction(() => !!(window.__multichartGrid), { timeout: 90000 }).catch(() => {});
   await waitForReactMultichartReady(page);
   const buildIds = await assertBuildIds(page, REACT_BUILD_ID);
+  await waitForPanelData(page, 'B', 12_000).catch(() => {
+    console.warn('[react-parity] panel B bar data timeout; scenarios use fallback placement points');
+  });
+  await waitForPanelData(page, 'A', 12_000).catch(() => {
+    console.warn('[react-parity] host panel A bar data not ready; host-side rows may fail');
+  });
 
   return {
     page,

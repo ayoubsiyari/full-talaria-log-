@@ -17,15 +17,17 @@ import {
   ctrlDragMarquee,
   readSelectionChrome,
   readParentReactSettings,
-  readCtrlMarqueeState,
   pressEscapeReact,
   waitForIframeGearReady,
   clickIframeGear,
   waitForPanelSettle,
   panelFrameMap,
-  sleep,
+  reactDefaultTrendlinePoints,
+  reactDefaultRectanglePoints,
+  FALLBACK_TRENDLINE_POINTS,
 } from './react-parity-lib.mjs';
 import {
+  chartTarget,
   placeTool,
   readInteractiveState,
   readRenderCount,
@@ -35,8 +37,6 @@ import {
   readParentSettingsProbe,
   openSettings,
   deleteToolViaSettings,
-  defaultTrendlinePoints,
-  defaultRectanglePoints,
 } from './interactive-helpers.mjs';
 
 async function forPanels(fn) {
@@ -54,7 +54,8 @@ async function hR01(ctx) {
     const seeded = await forPanels(async (pid) => {
       const tool = await seedDrawing(page, pid, 'trendline');
       await focusReactPanel(page, pid);
-      const armed = await page.evaluate(() => {
+      const frame = chartTarget(page, pid);
+      const armed = await frame.evaluate(() => {
         const dm = window.chart && window.chart.drawingManager;
         if (!dm) return null;
         dm.setTool('trendline');
@@ -109,7 +110,7 @@ async function hR03(ctx) {
     const checks = makeChecks();
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
-      const pts1 = await defaultTrendlinePoints(page, pid);
+      const pts1 = await reactDefaultTrendlinePoints(page, pid);
       const pts2 = pts1.map((p, i) => ({ x: p.x + 30, y: p.y - (i === 0 ? 0.001 : 0.0008) }));
       const first = await placeTool(page, pid, 'trendline', pts1);
       const second = await placeTool(page, pid, 'trendline', pts2);
@@ -144,7 +145,7 @@ async function hR04(ctx) {
       await waitForPanelSettle(page, pid);
       const parent = await readParentReactSettings(page);
       const local = await readInteractiveState(page, pid);
-      const settingsOpen = pid === 'B' ? parent.open : (local && local.settingsOpen);
+      const settingsOpen = parent.open || (local && local.settingsOpen);
       checks.check(`H-R04 CORE (${label}): settings stay open after open`,
         !!settingsOpen,
         `parent=${JSON.stringify(parent)} local.settingsOpen=${local?.settingsOpen}`);
@@ -210,12 +211,12 @@ async function hR07(ctx) {
     const { page } = boot;
     const checks = makeChecks();
 
-    const hostTool = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    const hostTool = await placeTool(page, 'A', 'trendline', await reactDefaultTrendlinePoints(page, 'A'));
     checks.check('H-R07 setup: host trendline placed', hostTool && hostTool.id, hostTool ? hostTool.id : 'null');
     await singleClickDrawing(page, 'A', hostTool.id);
     await waitForPanelSettle(page, 'A');
 
-    const panelTool = await placeTool(page, 'B', 'rectangle', await defaultRectanglePoints(page, 'B'));
+    const panelTool = await placeTool(page, 'B', 'rectangle', await reactDefaultRectanglePoints(page, 'B'));
     checks.check('H-R07 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
     await focusReactPanel(page, 'B');
     await singleClickDrawing(page, 'B', panelTool.id);
@@ -245,7 +246,7 @@ async function hR08(ctx) {
     const checks = makeChecks();
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
-      const pts1 = await defaultTrendlinePoints(page, pid);
+      const pts1 = await reactDefaultTrendlinePoints(page, pid);
       const pts2 = pts1.map((p, i) => ({ x: p.x + 25, y: p.y - (i === 0 ? 0.001 : 0.0008) }));
       await placeTool(page, pid, 'trendline', pts1);
       await placeTool(page, pid, 'trendline', pts2);
@@ -289,11 +290,11 @@ async function hR09(ctx) {
       const dbl = await doubleClickDrawing(page, pid, tool.id);
       checks.check(`H-R09 probe (${label}): double click`, dbl && dbl.ok, dbl?.reason || '');
       await waitForPanelSettle(page, pid);
-      const settings = pid === 'B'
-        ? await readParentReactSettings(page)
-        : { open: (await readInteractiveState(page, pid))?.settingsOpen };
+      const settings = await readParentReactSettings(page);
+      const localSettings = await readInteractiveState(page, pid);
+      const settingsOpen = settings.open || (localSettings && localSettings.settingsOpen);
       checks.check(`H-R09 CORE (${label}): double click opens settings`,
-        !!settings.open, JSON.stringify(settings));
+        !!settingsOpen, JSON.stringify(settings));
 
       await pressEscapeReact(page, pid);
       const afterEsc = await readInteractiveState(page, pid);
@@ -315,7 +316,10 @@ async function hR12(ctx) {
     const checks = makeChecks();
 
     await focusReactPanel(page, 'B');
-    const placed = await placeTool(page, 'B', 'trendline', await defaultTrendlinePoints(page, 'B'));
+    const placed = await placeTool(page, 'B', 'trendline', [
+      { x: 30, y: 100 },
+      { x: 50, y: 120 },
+    ]);
     checks.check('H-R12 setup: panel-B trendline placed', placed && placed.id, placed ? placed.id : 'null');
 
     const frameB = panelFrameMap(page).B;

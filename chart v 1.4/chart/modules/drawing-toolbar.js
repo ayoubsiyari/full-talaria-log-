@@ -220,6 +220,12 @@ class DrawingToolbar {
     }
 
     show(drawing, x, y) {
+        if (this._shouldSuppressLegacyToolbarShow()) {
+            this.currentDrawing = drawing;
+            this.visible = false;
+            if (this.toolbar) this.toolbar.style.display = 'none';
+            return;
+        }
         this.currentDrawing = drawing;
         this.visible = true;
         
@@ -2042,6 +2048,38 @@ class DrawingToolbar {
 
     _isV9Chrome() {
         return typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function';
+    }
+
+    /** Engine floating toolbar must stay hidden when V9 quick-bar owns selection (step 13). */
+    _shouldSuppressLegacyToolbarShow() {
+        try {
+            const disabled = (w) => !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+            const wins = typeof window !== 'undefined' ? [window] : [];
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                wins.push(window.parent);
+            }
+            for (const w of wins) {
+                if (disabled(w)) return false;
+            }
+            if (typeof window !== 'undefined') {
+                if (window.__multichartGrid) return true;
+                if (window.parent && window.parent !== window && window.parent.__multichartGrid) {
+                    return true;
+                }
+                if (window.parent !== window) {
+                    if (document.documentElement && document.documentElement.classList.contains('multichart-embed')) {
+                        return true;
+                    }
+                    if (new URLSearchParams(window.location.search || '').get('multichart') === '1') {
+                        return true;
+                    }
+                }
+            }
+            for (const w of wins) {
+                if (w && typeof w.__v9OpenDrawingSettings === 'function') return true;
+            }
+        } catch (_) { /* ignore */ }
+        return false;
     }
 
     deepClone(obj) {

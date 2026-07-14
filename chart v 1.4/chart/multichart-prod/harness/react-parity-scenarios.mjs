@@ -348,6 +348,7 @@ async function hR12(ctx) {
 
 export function reactScenarioList() {
   return [
+    { id: 'H-R12', title: 'T1 step 12: iframe panel-B gear opens parent settings', run: hR12 },
     { id: 'H-R01', title: 'parity row 1: single-click select (host + panel B)', run: hR01 },
     { id: 'H-R02', title: 'parity row 2: blue selection border (host + panel B)', run: hR02 },
     { id: 'H-R03', title: 'parity row 3: Ctrl-click multi-select (host + panel B)', run: hR03 },
@@ -357,6 +358,5 @@ export function reactScenarioList() {
     { id: 'H-R07', title: 'parity row 7: peer isolation on cross-panel select', run: hR07 },
     { id: 'H-R08', title: 'parity row 8: Ctrl+drag marquee (host + panel B)', run: hR08 },
     { id: 'H-R09', title: 'parity row 9: single→double-click chain + Esc (host + panel B)', run: hR09 },
-    { id: 'H-R12', title: 'T1 step 12: iframe panel-B gear opens parent settings', run: hR12 },
   ];
 }

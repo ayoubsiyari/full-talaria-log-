@@ -26,6 +26,7 @@
 | 7 | **Peer isolation:** selecting in panel B does not wrongly clear or open UI in other panels beyond the intended cross-panel rule. | ☐ |
 | 8 | **Ctrl+drag marquee (added D-007):** hold Ctrl and drag on empty chart → blue marquee-select border draws and multi-selects enclosed tools. Run on **main chart AND a panel**. | ☐ |
 | 9 | **Single→double click chain (added D-007):** single-click a tool → selects + quick menu per stated spec; **double-click** → opens settings; **Esc** → deselects and closes settings. Run on **main chart AND a panel**. | ☐ |
+| 9b | **Exactly one toolbar (added after b7 step-12 regression):** selecting a drawing shows **one** toolbar (the current V9 quick-bar) — no duplicate/old engine toolbar stacked above it — and **that** toolbar's gear opens settings. Run on **main chart AND a panel**. | ☐ |
 
 ## Single-chart regression guard (must stay unchanged)
 | # | Check | Pass? |

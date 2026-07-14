@@ -5034,18 +5034,21 @@ function v9QuickBarPanelSettingsFixEnabled() {
 
 function v9OpenQuickBarSettingsViaEditDrawing(drawing, x, y) {
   if (!drawing || !v9QuickBarPanelSettingsFixEnabled()) return false;
-  try {
-    if (!v9IsMultichartIframeEmbed() && !v9MultichartGridApi()) return false;
-  } catch (_) {
-    return false;
-  }
+  const grid = v9MultichartGridApi();
+  if (!grid || typeof grid.openDrawingSettingsForPanel !== "function") return false;
   try {
     const dm = resolveDrawingManagerForDrawing(drawing);
-    const live = resolveLiveDrawingInDm(dm, drawing) || drawing;
-    if (dm && typeof dm.editDrawing === "function") {
-      dm.editDrawing(live, x, y);
-      return true;
+    const live = (dm && resolveLiveDrawingInDm(dm, drawing)) || drawing;
+    let panelId = null;
+    if (dm && typeof grid.getPanelIdForDrawingManager === "function") {
+      panelId = grid.getPanelIdForDrawingManager(dm);
     }
+    if (!panelId && typeof grid.getFocusedPanelId === "function") {
+      panelId = grid.getFocusedPanelId();
+    }
+    panelId = panelId || grid.hostPanelId || "A";
+    grid.openDrawingSettingsForPanel(panelId, live, x, y);
+    return true;
   } catch (_) {}
   return false;
 }
@@ -5068,23 +5071,16 @@ function v9QuickBarPanelSettingsDisabledForMultichartDrawing(drawing) {
   }
 }
 
-/** True when the parent multichart shell owns selection UI — legacy iframe toolbar must not show. */
+/** True when V9 owns the quick-bar — engine floating toolbar must not render (step 13). */
 function v9ShouldSkipLegacyDrawingToolbarShow() {
   try {
     if (typeof window !== "undefined" && window.__multichartGrid) return true;
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      if (window.parent.__multichartGrid) return !v9QuickBarPanelSettingsFixEnabled();
+      if (window.parent.__multichartGrid) return true;
     }
-  } catch (_) {}
-  return false;
-}
-
-/** Iframe embed tiles keep the engine floating toolbar when the quick-bar gear fix is ON. */
-function v9PreserveIframeEngineToolbarOnHide(dm) {
-  if (!v9QuickBarPanelSettingsFixEnabled()) return false;
-  try {
-    const ch = dm && dm.chart;
-    if (ch && typeof ch._isMultichartEmbedPanel === "function" && ch._isMultichartEmbedPanel()) {
+    if (v9QuickBarPanelSettingsFixEnabled()
+      && typeof window !== "undefined"
+      && typeof window.__v9OpenDrawingSettings === "function") {
       return true;
     }
   } catch (_) {}
@@ -20897,9 +20893,6 @@ const TalariaV8bLive = () => {
       };
       tb.hide = function () {
         try {
-          if (v9PreserveIframeEngineToolbarOnHide(dm)) {
-            return undefined;
-          }
           if (typeof window !== "undefined") {
             const until = Number(window.__v9SuppressToolbarHideUntil || 0);
             if (until > 0 && Date.now() <= until) {
@@ -30858,6 +30851,8 @@ const TalariaV8bLive = () => {
           const isDel = id === "tl-del";
           return (
             <div
+              id={id || undefined}
+              data-v9-tl-btn={id || undefined}
               onMouseEnter={()=>{setHov(id);}}
               onMouseLeave={()=>{setHov(null);}}
               onPointerDown={(e) => {
@@ -30891,7 +30886,7 @@ const TalariaV8bLive = () => {
         const hideQuickBarTextColor = v9HideFloatingBarTextColor(tlQuickBarIcon);
         const hideQuickBarLineStyle = v9HideFloatingBarLineStyleAndWidth(tlQuickBarIcon);
         return v9PortalFloatingUi(
-        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
+        <div ref={tlBarRef} id="v9-tl-bar" data-sdrop="1" data-tlbar="1"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseLeave={hideTip}
           onClick={e=>e.stopPropagation()}

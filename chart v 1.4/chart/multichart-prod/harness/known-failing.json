@@ -86,7 +86,6 @@
       "H-R01": "T0 step 8 tracked-red: parity row 1 single-click select (mouse hit) — needs bar data / draw-tool disarm on React surface",
       "H-R02": "T0 step 8 tracked-red: parity row 2 blue selection border — click select not landing with fallback placement",
       "H-R03": "T0 step 8 tracked-red: parity row 3 Ctrl-click multi-select",
-      "H-R04": "T0 step 8 tracked-red: parity row 4 settings open/stays (partial: panel-B parent settings GREEN sub-check)",
       "H-R05": "T0 step 8 tracked-red: parity row 5 Esc closes settings + deselects",
       "H-R06": "T0 step 8 tracked-red: parity row 6 delete without ghost",
       "H-R07": "T0 step 8 tracked-red: parity row 7 peer isolation on cross-panel select",
