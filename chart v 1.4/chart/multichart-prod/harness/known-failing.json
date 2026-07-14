@@ -83,18 +83,17 @@
       "H-R08",
       "H-R09",
       "H-R12",
+      "H-R12A",
       "H-R13",
       "H-R14"
     ],
     "knownFailing": {
-      "H-R04": "T0 step 11 reconcile: dbl-click does not open real settings (probe disambiguated; quick-bar shell only)",
-      "H-R05": "T0 step 9 tracked-red: Esc does not clear selection chrome after closing settings",
-      "H-R06": "T0 step 9 tracked-red: Delete key does not remove selected drawing on built-product iframe",
-      "H-R08": "T0 step 11 reconcile: panel-B Ctrl+drag marquee border inactive (host GREEN on b88)",
-      "H-R09": "T0 step 9 tracked-red: panel-B select/settings chain broken; host Esc leaves selection chrome",
-      "H-R12": "T0 step 11 reconcile: gear route does not open real parent settings (probe disambiguated on b88)",
-      "H-R13": "T0 step 11 reconcile: dbl-click does not open real settings / no multichart-open-drawing-settings message (I13 gap on b88)",
-      "H-R14": "T0 step 11 reconcile: panel-B Ctrl+drag marquee multi-select via dm.selected empty (border probe RED on b88)"
+      "H-R04": "T0 step 12 audit: settings-open still proxy/synthetic on panel-B dbl-click path",
+      "H-R05": "T0 step 12 audit: Esc uses synthetic handleKeyDown + toolbar proxy",
+      "H-R06": "T0 step 12 audit: Delete uses synthetic handleKeyDown; parent forwarder unverified",
+      "H-R08": "T0 step 12 audit: panel-B Ctrl+drag marquee uses synthetic iframe events",
+      "H-R09": "T0 step 12 audit: settings/Esc chain proxy-heavy on panel-B",
+      "H-R14": "T0 step 12 audit: panel-B Ctrl+drag marquee synthetic; border probe RED"
     }
   }
 }

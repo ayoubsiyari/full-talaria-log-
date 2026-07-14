@@ -1317,6 +1317,43 @@ function applyHostSlotPositionOnly(cellEl) {
     } catch (_) {}
 }
 
+/** CSS-only stretch for iframe charts during splitter drag (no resize()). */
+function previewIframeChartsInContainer(container) {
+    if (!container) return;
+    container.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+            const ch = ifr.contentWindow && ifr.contentWindow.chart;
+            if (!ch || !ch.canvas) return;
+            const parent = ch.canvas.parentElement;
+            if (!parent) return;
+            const rect = parent.getBoundingClientRect();
+            const w = Math.max(1, Math.round(rect.width));
+            const h = Math.max(1, Math.round(rect.height));
+            ch.canvas.style.width = w + "px";
+            ch.canvas.style.height = h + "px";
+            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
+            if (svgNode) {
+                svgNode.style.width = w + "px";
+                svgNode.style.height = h + "px";
+            }
+        } catch (_) {}
+    });
+}
+
+/** Drop stale time-axis tick caches so the next render rebuilds clean labels/grid. */
+function invalidateChartTimeAxisCaches(ch) {
+    if (!ch) return;
+    try {
+        if (typeof ch._invalidateTimeAxisTickCaches === "function") {
+            ch._invalidateTimeAxisTickCaches();
+        } else {
+            ch._cachedInteractionTimeTicks = null;
+            ch._panTimeTickCache = null;
+            ch._timeTicks = null;
+        }
+    } catch (_) {}
+}
+
 /** Force drawings to re-project from data coords after a size change. */
 function forceRedrawDrawingsOnChart(ch) {
     if (!ch) return;
@@ -1329,19 +1366,63 @@ function forceRedrawDrawingsOnChart(ch) {
     } catch (_) {}
 }
 
-/**
- * Resize + render host and iframe charts so candles AND drawings stay locked
- * to price/time (same projection path as a normal chart.resize).
- *
- * CSS-only stretch (applyHostSlotPositionOnly / previewIframeChartsInContainer)
- * scales the canvas bitmap and SVG shell differently — drawings look like they
- * "slide off" the candles while the splitter moves. Call this instead.
- */
-function reprojectPanelCharts(container, cellA, opts) {
-    const reanchor = !!(opts && opts.reanchor);
-    if (cellA) applyHostSlot(cellA, { reanchor });
+/** Repair offset/zoom if a prior resize storm left the time axis unreadable. */
+function healChartViewportAfterLayoutDrag(ch) {
+    if (!ch || !Array.isArray(ch.data) || !ch.data.length) return;
     try {
-        forceRedrawDrawingsOnChart(typeof window !== "undefined" ? window.chart : null);
+        let spacing = typeof ch.getCandleSpacing === "function"
+            ? ch.getCandleSpacing()
+            : Number(ch.candleWidth) || 0;
+        const allowed = ch.zoomLevel && Array.isArray(ch.zoomLevel.allowedWidths)
+            ? ch.zoomLevel.allowedWidths
+            : null;
+        // Tiny/NaN spacing → overlapping time labels + dense vertical grid.
+        if (!(spacing > 0.05) || !Number.isFinite(spacing)) {
+            const idx = (ch.zoomLevel && typeof ch.zoomLevel.candleWidthIndex === "number")
+                ? ch.zoomLevel.candleWidthIndex
+                : 9;
+            const fallback = (allowed && allowed[idx]) || 6;
+            ch.candleWidth = fallback;
+            if (ch._candleWidthAtCache !== undefined) ch._candleWidthAtCache = null;
+            spacing = typeof ch.getCandleSpacing === "function"
+                ? ch.getCandleSpacing()
+                : fallback;
+        }
+        const m = ch.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (ch.w || 0) - (m.l || 0) - (m.r || 0));
+        let rightIdx = typeof ch.getVisibleEndIndex === "function"
+            ? ch.getVisibleEndIndex()
+            : ch.data.length - 1;
+        if (!Number.isFinite(rightIdx)) rightIdx = ch.data.length - 1;
+        // If the view shows an absurd bar count, jump to latest.
+        const barsVisible = spacing > 0 ? plotW / spacing : Infinity;
+        if (!Number.isFinite(barsVisible) || barsVisible > 2500) {
+            rightIdx = ch.data.length - 1;
+        }
+        rightIdx = Math.max(0, Math.min(rightIdx, ch.data.length - 1));
+        if (spacing > 0) {
+            ch.offsetX = Math.round(plotW - (rightIdx + 1) * spacing);
+            if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+        }
+    } catch (_) {}
+}
+
+/**
+ * ONE-SHOT settle after splitter release (never call per mousemove).
+ * Mid-drag resize/realign storms corrupt candleWidth/offsetX and stack
+ * time-axis ticks (overlapping labels + dense vertical grid).
+ */
+function settlePanelChartsAfterLayoutDrag(container, cellA) {
+    try {
+        const host = typeof window !== "undefined" ? window.chart : null;
+        invalidateChartTimeAxisCaches(host);
+    } catch (_) {}
+    if (cellA) applyHostSlot(cellA, { reanchor: false });
+    try {
+        const host = typeof window !== "undefined" ? window.chart : null;
+        healChartViewportAfterLayoutDrag(host);
+        if (host && typeof host.render === "function") host.render();
+        forceRedrawDrawingsOnChart(host);
     } catch (_) {}
     if (!container) return;
     normalizeIframeStyles(container);
@@ -1349,14 +1430,10 @@ function reprojectPanelCharts(container, cellA, opts) {
         try {
             const ch = ifr.contentWindow && ifr.contentWindow.chart;
             if (!ch || typeof ch.resize !== "function") return;
-            const oldW = ch.w;
-            const oldH = ch.h;
             ch._lastResizeDpr = 0;
+            invalidateChartTimeAxisCaches(ch);
             ch.resize();
-            // Keep right-edge bar lock through splitter drag (drawings use same scales).
-            if (typeof ch._realignMultichartViewportAfterResize === "function") {
-                try { ch._realignMultichartViewportAfterResize(oldW, oldH); } catch (_) {}
-            }
+            healChartViewportAfterLayoutDrag(ch);
             if (typeof ch.render === "function") ch.render();
             forceRedrawDrawingsOnChart(ch);
         } catch (_) {}
@@ -1456,14 +1533,16 @@ function thawPanelSurfaces(locked, cellA, container) {
         normalizeIframeStyles(container);
         container.querySelectorAll("iframe").forEach(clearIframeLayoutDragFlags);
     }
-    // Full reproject so drawings snap to the same price/time anchors as candles.
-    reprojectPanelCharts(container, cellA, { reanchor: false });
+    // One clean resize+redraw after drag — drawings re-project like candles,
+    // time-axis caches are rebuilt (no mid-drag resize storm).
+    settlePanelChartsAfterLayoutDrag(container, cellA);
     if (!container && locked && locked.iframes) {
         locked.iframes.forEach(({ el }) => {
             try {
                 const ch = el.contentWindow && el.contentWindow.chart;
                 if (ch && typeof ch.resize === "function") {
                     ch._lastResizeDpr = 0;
+                    invalidateChartTimeAxisCaches(ch);
                     ch.resize();
                     if (typeof ch.render === "function") ch.render();
                     forceRedrawDrawingsOnChart(ch);
@@ -6503,9 +6582,10 @@ export default function MultichartGrid({
                 container.style[styleProp] = fracsToTemplate(updated);
                 liveDragRef.current = { axis, fracs: updated };
                 const cellA = cellRefs.current[HOST_PANEL_ID];
-                // Re-project candles + drawings from data coords every frame.
-                // CSS-only stretch made shapes drift off the bars mid-drag.
-                reprojectPanelCharts(container, cellA, { reanchor: false });
+                // Mid-drag: CSS-only preview (fluid). Full resize() every frame
+                // corrupts time-axis / grid — settle once on mouseup instead.
+                if (cellA) applyHostSlotPositionOnly(cellA);
+                previewIframeChartsInContainer(container);
                 if (focusedPanelId) {
                     updateFocusFrameDom(focusedPanelId, cellRefs.current);
                 }
@@ -6537,8 +6617,8 @@ export default function MultichartGrid({
                 if (axis === "col") setColFractions(lastApplied);
                 else setRowFractions(lastApplied);
                 const cellA = cellRefs.current[HOST_PANEL_ID];
-                // Double-rAF: first frame thaws + reprojects; second catches the
-                // React fractions commit so drawings land on the final cell size.
+                // Settle after layout commits: invalidate time ticks, resize once,
+                // re-project drawings onto the final candle scale.
                 requestAnimationFrame(() => {
                     thawPanelSurfaces(lockedSurfaces, cellA, container);
                     if (focusedPanelId && computeFocusedRectRef.current) {
@@ -6546,7 +6626,7 @@ export default function MultichartGrid({
                     }
                     requestAnimationFrame(() => {
                         const cellA2 = cellRefs.current[HOST_PANEL_ID];
-                        reprojectPanelCharts(container, cellA2, { reanchor: false });
+                        settlePanelChartsAfterLayoutDrag(container, cellA2);
                         if (focusedPanelId && computeFocusedRectRef.current) {
                             computeFocusedRectRef.current();
                         }
