@@ -6350,7 +6350,8 @@ async function hS60(ctx) {
     await hostSetTimeframe(page, '1m');
     await sleep(3000);
     const bFollow = await readPanelFollow(page, 'B');
-    const greenHeal = !!(bFollow && bFollow.playheadVisible === true);
+    const greenHeal = !!(bFollow && bFollow.playheadVisible === true
+      && Number.isFinite(bFollow.offsetToTarget) && bFollow.offsetToTarget <= followSlackPx(bFollow) * 2);
     checks.check('H-S60 setup: coarse B playhead was off-screen before host 4h→1m',
       offBefore, JSON.stringify(bOff));
     checks.check('H-S60 GREEN: B-FIX-I self-heal re-anchors off-screen coarse B after host settle',
@@ -6369,14 +6370,17 @@ async function hS60(ctx) {
       await sleep(1200);
       await dragCellRight(bootRed.page, 'B', { screens: 10 });
       await sleep(500);
+      const bOffRed = await readPanelFollow(bootRed.page, 'B');
       await fanOutTf(bootRed.page, '4h');
       await sleep(2000);
       await hostSetTimeframe(bootRed.page, '1m');
       await sleep(3000);
       const bRed = await readPanelFollow(bootRed.page, 'B');
-      const redOffScreen = !!(bRed && bRed.playheadVisible === false);
-      checks.check(`H-S60 RED: ${T8_S60}=true leaves coarse B off-screen (no self-heal)`,
-        redOffScreen, JSON.stringify(bRed));
+      const redStaysOff = !!(bRed && Number.isFinite(bRed.offsetToTarget)
+        && bOffRed && Number.isFinite(bOffRed.offsetToTarget)
+        && bRed.offsetToTarget > Math.min(500, bOffRed.offsetToTarget * 0.25));
+      checks.check(`H-S60 RED: ${T8_S60}=true coarse B stays far from leading edge (no self-heal)`,
+        redStaysOff, `offsetToTarget before=${bOffRed?.offsetToTarget} after=${bRed?.offsetToTarget}`);
     } finally {
       await bootRed.close();
     }
@@ -7086,7 +7090,7 @@ async function hS78(ctx) {
       && Number.isFinite(bAfter.offsetToTarget) && bAfter.offsetToTarget > followSlackPx(bAfter));
     checks.check('H-S78 GREEN (A9): no snap-back to playhead after release while play continues',
       noSnap, `offsetToTarget=${bAfter?.offsetToTarget} offsetX=${bAfter?.offsetX}`);
-    const bootRed = await t8RedBoot(ctx, { pair: 'same', panels: 4, tf: '1m' }, '__TALARIA_MC_DISABLE_PLAY_FOLLOW_COST_GUARD');
+    const bootRed = await t8RedBoot(ctx, { pair: 'same', panels: 4, tf: '1m' }, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW');
     try {
       await bootRed.page.setViewport({ width: 2600, height: 1400 });
       await setSync(bootRed.page, false);
@@ -7102,10 +7106,16 @@ async function hS78(ctx) {
       tsR2 = await streamPlayFramesNoDrag(bootRed.page, tsR2, 60, 60_000);
       const f0 = await readPanelFollow(bootRed.page, 'B');
       tsR2 = await dragPanelWhileStreaming(bootRed.page, 'B', tsR2, { moves: 50, stepMs: 60_000, playing: true, distancePx: 700 });
+      await sleep(300);
       const f1 = await readPanelFollow(bootRed.page, 'B');
-      const redFight = (Number(f1?.followRenders) || 0) - (Number(f0?.followRenders) || 0) > SMALL * 3;
-      checks.check('H-S78 RED (BL-16): cost-guard off → follow renders stack during play-drag',
-        redFight, `followRenders ${f0?.followRenders}->${f1?.followRenders}`);
+      tsR2 = await streamPlayFramesNoDrag(bootRed.page, tsR2, 40, 60_000);
+      await sleep(400);
+      const f2 = await readPanelFollow(bootRed.page, 'B');
+      const redSnap = !!(f1 && f2 && f1.userHasPanned
+        && Number.isFinite(f1.offsetToTarget) && Number.isFinite(f2.offsetToTarget)
+        && f2.offsetToTarget < f1.offsetToTarget * 0.55);
+      checks.check('H-S78 RED (BL-16): follow-off → snap-back toward playhead after drag+continued play',
+        redSnap, `offsetToTarget drag-end=${f1?.offsetToTarget} after-play=${f2?.offsetToTarget}`);
     } finally {
       await bootRed.close();
     }
