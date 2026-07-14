@@ -3874,6 +3874,14 @@ function v9ResolveSelectedDrawingOnDm(dm) {
   return null;
 }
 
+function v9PanelSelectionChromeRoutingV3Enabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3);
+  } catch (_) {
+    return true;
+  }
+}
+
 function v9DrawingIsPrimarySelection(dm, drawing) {
   if (!dm || !drawing) return false;
   if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
@@ -14125,6 +14133,13 @@ const TalariaV8bLive = () => {
     ["7a","7v"],
     ["8","8b","8v","8h"],
   ];
+  const layoutPersistV2Enabled = () => {
+    try {
+      return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_LAYOUT_PERSIST_V2);
+    } catch (_) {
+      return true;
+    }
+  };
   const layoutTupleFromId = (id) => {
     for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
       const li = LAYOUT_ID_MAP[n].indexOf(id);
@@ -14144,6 +14159,24 @@ const TalariaV8bLive = () => {
       setLayoutPanels(tuple);
     }
   };
+
+  // Row 13 (D-008): hydrate layout from existing chart_panel_state blob before URL defaults.
+  useEffect(() => {
+    if (!layoutPersistV2Enabled()) return;
+    try {
+      const raw = localStorage.getItem("chart_panel_state");
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      const layoutId = state && state.layout != null ? String(state.layout) : null;
+      if (!layoutId || layoutId === "1") return;
+      const normalized = layoutId === "2" ? "2v" : layoutId;
+      const tuple = layoutTupleFromId(normalized);
+      if (tuple) setLayoutPanels(tuple);
+    } catch (_) {
+      /* corrupt blob → silent single-chart fallback */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Built-product harness bootstrap (?mcLayout=2v) — works in prod builds, not dev-only.
   // Deferred until window.chart exists so host engine finishes init before iframes mount.
@@ -14241,6 +14274,25 @@ const TalariaV8bLive = () => {
     if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
     const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
     if (!id) return;
+    if (layoutPersistV2Enabled()) {
+      try {
+        let blob = { layout: id, selectedPanelIndex: 0, panels: [] };
+        const raw = localStorage.getItem("chart_panel_state");
+        if (raw) {
+          try {
+            const prev = JSON.parse(raw);
+            if (prev && typeof prev === "object") {
+              blob = { ...prev, layout: id };
+            }
+          } catch (_) { /* ignore corrupt */ }
+        }
+        localStorage.setItem("chart_panel_state", JSON.stringify(blob));
+        try {
+          const pm = window.panelManager;
+          if (pm && typeof pm.savePanelState === "function") pm.savePanelState();
+        } catch (_) {}
+      } catch (_) {}
+    }
     const apply = () => {
       const pm = window.panelManager;
       if (!pm || typeof pm.applyLayout !== "function") return false;
@@ -21051,8 +21103,10 @@ const TalariaV8bLive = () => {
             const ch = grid.getChartForPanel(srcPanel);
             const pdm = ch && ch.drawingManager;
             const onPanel = pdm && resolveLiveDrawingInDmById(pdm, wantId);
+            const routingV3 = v9PanelSelectionChromeRoutingV3Enabled();
             if (onPanel && onPanel.type === t
-              && (v9DrawingIsPrimarySelection(pdm, onPanel) || onPanel.selected)) {
+              && (routingV3 && srcPanel
+                || v9DrawingIsPrimarySelection(pdm, onPanel) || onPanel.selected)) {
               live = onPanel;
               v9RememberQuickBarSelection(pdm, onPanel);
             }

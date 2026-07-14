@@ -79,6 +79,31 @@ export function sortPricedLevels(levels, opts) {
 }
 
 /**
+ * Stack index per level id when multiple legs share the same normalized price.
+ * Used to separate overlapping entry hit-targets and close badges (TAL-00752 #10/#20/#22).
+ * @param {EntryLevel[]} levels
+ * @param {number} [pricePrecision]
+ * @returns {Map<number, number>}
+ */
+export function computeMultiEntryStackIndices(levels, pricePrecision = 5) {
+    const prec = Number.isFinite(pricePrecision) && pricePrecision >= 0 ? pricePrecision : 5;
+    const priced = (levels || []).filter((l) => l && l.id != null && l.price > 0);
+    /** @type {Map<number, number[]>} */
+    const groups = new Map();
+    for (const l of priced) {
+        const key = Number(Number(l.price).toFixed(prec));
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(l.id);
+    }
+    /** @type {Map<number, number>} */
+    const out = new Map();
+    for (const ids of groups.values()) {
+        ids.forEach((id, i) => out.set(id, i));
+    }
+    return out;
+}
+
+/**
  * Pure recompute-from-entries aggregate model (RC-5 fix).
  * @param {EntryLevel[]} entries
  * @param {AggregateOpts} opts

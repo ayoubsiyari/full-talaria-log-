@@ -67,6 +67,60 @@ function multichartSettingsFlashFixEnabled() {
     }
 }
 
+/** T3/Lane 2: panel iframe selection drives parent focus + V9 chrome (I14). Default ON; I13 kill-switch. */
+function multichartPanelSelectionChromeRoutingV3Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3);
+    } catch (_) {
+        return true;
+    }
+}
+
+/** T3 step 5: cross-panel peer deselect when another tile takes selection (I14). Default ON; I13 kill-switch. */
+function multichartPeerDeselectV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
+/** Strip stale resize-handle DOM left after peer deselect (I14 bridge; no engine edits). */
+function scrubHostStaleSelectionChrome() {
+    try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        const dm = ch && ch.drawingManager;
+        if (!dm) return;
+        (dm.drawings || []).forEach((d) => {
+            if (!d) return;
+            try {
+                const node = d.group && d.group.node && d.group.node();
+                if (node) {
+                    node.querySelectorAll(
+                        ".resize-handle, .resize-handle-group circle, .custom-handle"
+                    ).forEach((el) => {
+                        try { el.remove(); } catch (_) {}
+                    });
+                }
+                if (typeof d.deselect === "function") d.deselect();
+                if (typeof dm.renderDrawing === "function") {
+                    dm.renderDrawing(d, { skipInteraction: true });
+                }
+            } catch (_) {}
+        });
+        if (typeof dm.redrawAll === "function") dm.redrawAll();
+        if (ch && typeof ch.render === "function") ch.render();
+    } catch (_) {}
+}
+
+function symbolSyncConvergeV2Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_SYMBOL_SYNC_CONVERGE_V2);
+    } catch (_) {
+        return true;
+    }
+}
+
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
 // /chart/ does NOT load the bridge by default (it's only loaded inside
@@ -465,9 +519,17 @@ function dismissActiveDrawingTool(dm, mirrored = false, opts = null) {
     }
     const had = !!(dm.currentTool
         || (dm.selectedDrawings && dm.selectedDrawings.length));
-    if (!keepSelection && typeof dm.deselectAll === "function") dm.deselectAll();
+    if (!keepSelection && typeof dm.deselectAll === "function") {
+        dm.deselectAll({ fromCanvasBackground: true });
+    }
     if (typeof dm.clearTool === "function") dm.clearTool(!!mirrored);
     else dm.currentTool = null;
+    if (!keepSelection && typeof window !== "undefined" && window.__multichartGrid) {
+        try {
+            window.dispatchEvent(new CustomEvent("talaria:v9-cleared-selection"));
+            window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
+        } catch (_) { /* ignore */ }
+    }
     return had;
 }
 
@@ -1583,6 +1645,9 @@ export default function MultichartGrid({
     setFocusedPanelId,
 }) {
     const containerRef = useRef(null);
+    const layoutSyncRef = useRef(layoutSync);
+    const symbolSyncWasRef = useRef(false);
+    useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
     const cellRefs = useRef({});             // panelId -> cell <div>
     const managerRef = useRef(null);
     const [managerReady, setManagerReady] = useState(false);
@@ -1663,8 +1728,26 @@ export default function MultichartGrid({
     /** Keep ref + React state in sync immediately — runCommand reads the ref, not state. */
     const focusPanelById = useCallback((id) => {
         if (!id) return;
+        const prev = focusedPanelIdRef.current;
         focusedPanelIdRef.current = id;
         if (typeof setFocusedPanelId === "function") setFocusedPanelId(id);
+                if (multichartPeerDeselectV1Enabled() && prev && prev !== id) {
+            try {
+                const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+                if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                    grid.deselectDrawingsOnNonFocusedPanels(id, { ignoreSelectionGuard: true });
+                } else if (prev === HOST_PANEL_ID && id !== HOST_PANEL_ID) {
+                    const dm = window.chart && window.chart.drawingManager;
+                    if (dm && typeof dm.deselectAll === "function") {
+                        dm.deselectAll({ forSelectionChange: true });
+                    }
+                    scrubHostStaleSelectionChrome();
+                    if (window.chart && typeof window.chart.render === "function") {
+                        window.chart.render();
+                    }
+                }
+            } catch (_) {}
+        }
     }, [setFocusedPanelId]);
     const focusPanelByIdRef = useRef(focusPanelById);
     focusPanelByIdRef.current = focusPanelById;
@@ -2005,12 +2088,14 @@ export default function MultichartGrid({
                     if (!grid) return;
                     // Defer peer cleanup so iframe mousedown can finish shape select first.
                     setTimeout(() => {
+                        if (!multichartPeerDeselectV1Enabled()) return;
+                        const peerOpts = { ignoreSelectionGuard: true };
                         if (prev !== id) {
                             if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                                grid.clearDrawingUiOnOtherPanels(id);
+                                grid.clearDrawingUiOnOtherPanels(id, peerOpts);
                             }
                         } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                            grid.deselectDrawingsOnNonFocusedPanels(id);
+                            grid.deselectDrawingsOnNonFocusedPanels(id, peerOpts);
                         }
                     }, 0);
                 },
@@ -2684,6 +2769,9 @@ export default function MultichartGrid({
     useEffect(() => {
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.setSyncMode !== "function") return;
+        const symWas = symbolSyncWasRef.current;
+        const symNow = !!(layoutSync && layoutSync.symbol);
+        symbolSyncWasRef.current = symNow;
         try {
             // Only these four map into MultichartManager / sync-bridge postMessage
             // fan-out. `layoutSync.interval`, `indicators`, and `chartType` are
@@ -2697,12 +2785,33 @@ export default function MultichartGrid({
                 crosshair:    !!(layoutSync && layoutSync.crosshair),
                 visibleRange: dateRangeOn,
                 timeSync:     timeOn && !dateRangeOn,
-                symbol:       !!(layoutSync && layoutSync.symbol),
+                symbol:       symNow,
                 drawings:     !!(layoutSync && layoutSync.drawings),
             });
             const hostBridge = typeof window !== "undefined" ? window.__multichartHostBridge : null;
             if (hostBridge && typeof hostBridge.refreshSyncFlags === "function") {
                 try { hostBridge.refreshSyncFlags(); } catch (_) {}
+            }
+            // Row 15 (D-008): symbol-sync false→true converges all tiles to focused panel fileId.
+            if (symbolSyncConvergeV2Enabled() && symNow && !symWas) {
+                const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+                const focusId = (grid && typeof grid.getFocusedPanelId === "function")
+                    ? (grid.getFocusedPanelId() || HOST_PANEL_ID)
+                    : (focusedPanelIdRef.current || HOST_PANEL_ID);
+                const ch = grid && typeof grid.getChartForPanel === "function"
+                    ? grid.getChartForPanel(focusId)
+                    : null;
+                const fileId = ch && ch.currentFileId != null ? String(ch.currentFileId) : null;
+                if (fileId && grid && typeof grid.runCommandOnAllPanels === "function") {
+                    grid.runCommandOnAllPanels("loadFile", { fileId, force: true }).catch(() => {});
+                } else if (fileId && grid && typeof grid.loadFileOnPanel === "function") {
+                    const ids = typeof grid.getPanelIds === "function" ? grid.getPanelIds() : [HOST_PANEL_ID];
+                    ids.forEach((pid) => {
+                        if (pid !== focusId) {
+                            grid.loadFileOnPanel(pid, fileId, { force: true }).catch(() => {});
+                        }
+                    });
+                }
             }
         } catch (_) {}
     }, [layoutSync, managerReady]);
@@ -2866,6 +2975,20 @@ export default function MultichartGrid({
     // a fresh replay session re-primes everyone.
     const primedPanelsRef = useRef(new Set());
 
+    // Resolved replay INTERVAL for multichart sync (single owner when cadence fix ON).
+    function replayStepTfForBroadcast(rs) {
+        if (!rs) return null;
+        if (typeof window !== "undefined" && window.__TALARIA_FIX_REPLAY_INTERVAL_CADENCE === false) {
+            const legacy = rs.stepTimeframeOverride;
+            return legacy == null ? null : legacy;
+        }
+        if (typeof rs.getReplayStepTimeframeForSync === "function") {
+            return rs.getReplayStepTimeframeForSync();
+        }
+        const stf = rs.stepTimeframeOverride;
+        return stf == null ? null : stf;
+    }
+
     // Prime helper: shared between the mount-once tick listener and the
     // readyPanels-watching effect. If parent is in active replay, send
     // replayEnter to every iframe panel that's bridge-ready but hasn't
@@ -2901,7 +3024,7 @@ export default function MultichartGrid({
                     // pause/tick still propagate via their own broadcasters.
                     if (c.id !== HOST_PANEL_ID && primedPanelsRef.current.has(c.id)) continue;
                     sendPanelCmd(mgr, c.id, "replayEnter", { timestamp: ts });
-                    const stf = rs.stepTimeframeOverride;
+                    const stf = replayStepTfForBroadcast(rs);
                     sendPanelCmd(mgr, c.id, "replaySetStepTf", {
                         tf: stf == null ? null : stf,
                     });
@@ -3261,7 +3384,7 @@ export default function MultichartGrid({
                             const mode = (typeof this.getPlaybackMode === "function")
                                 ? this.getPlaybackMode()
                                 : (this.playbackMode || "tick");
-                            const stf = this.stepTimeframeOverride;
+                            const stf = replayStepTfForBroadcast(this);
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
@@ -3337,7 +3460,7 @@ export default function MultichartGrid({
                     patchedRs.setPlaybackMode = function (mode, opts) {
                         const result = patchOriginalSetMode(mode, opts);
                         try {
-                            const stf = this.stepTimeframeOverride;
+                            const stf = replayStepTfForBroadcast(this);
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
@@ -3356,7 +3479,7 @@ export default function MultichartGrid({
                     patchedRs.setStepTimeframe = function (timeframe) {
                         const result = patchOriginalSetStepTf(timeframe);
                         try {
-                            const stf = this.stepTimeframeOverride;
+                            const stf = replayStepTfForBroadcast(this);
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
@@ -3799,8 +3922,7 @@ export default function MultichartGrid({
 
     // Stable ref to the latest layoutSync so the onState delegate below
     // can read it without re-running on every toggle change.
-    const layoutSyncRef = useRef(layoutSync);
-    useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
+    // (layoutSyncRef declared at component top)
 
     // Track per-panel last-broadcast tf/fileId so we don't echo a sync
     // back to the same panel and don't re-broadcast on noise updates
@@ -4032,6 +4154,22 @@ export default function MultichartGrid({
                         const dmc = ch.drawingManager;
                         if (!dmc) return Promise.resolve(null);
                         dismissActiveDrawingTool(dmc, !!(args && args.mirrored), args);
+                        return Promise.resolve(null);
+                    }
+                    case "deleteSelectedDrawings": {
+                        const dmd = ch.drawingManager;
+                        if (!dmd) return Promise.resolve(null);
+                        const toDelete = Array.isArray(dmd.selectedDrawings)
+                            ? dmd.selectedDrawings.slice()
+                            : [];
+                        if (toDelete.length === 0 && dmd.selectedDrawing) {
+                            toDelete.push(dmd.selectedDrawing);
+                        }
+                        toDelete.forEach((drawing) => {
+                            if (drawing && typeof dmd.deleteDrawing === "function") {
+                                dmd.deleteDrawing(drawing);
+                            }
+                        });
                         return Promise.resolve(null);
                     }
                     case "addIndicator": {
@@ -4821,9 +4959,10 @@ export default function MultichartGrid({
          * focused one. TradingView-style: clicking another panel clears the
          * previous panel's selection chrome.
          */
-        function deselectDrawingsOnNonFocusedPanels(focusedId) {
+        function deselectDrawingsOnNonFocusedPanels(focusedId, opts) {
             try {
-                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil
+                if (!(opts && opts.ignoreSelectionGuard)
+                    && typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil
                     && performance.now() < window.__v9DrawingSelectionGuardUntil) {
                     return Promise.resolve();
                 }
@@ -4886,7 +5025,9 @@ export default function MultichartGrid({
                 } catch (_) {}
             }
             return Promise.all([
-                deselectDrawingsOnNonFocusedPanels(source),
+                multichartPeerDeselectV1Enabled()
+                    ? deselectDrawingsOnNonFocusedPanels(source, opts)
+                    : Promise.resolve(),
                 preserveSourceSettings
                     ? closeDrawingSettingsPreservingSource(source)
                     : closeDrawingSettingsOnAllPanels(),
@@ -4899,6 +5040,9 @@ export default function MultichartGrid({
          */
         function openDrawingSettingsForPanel(sourceId, drawingOrId, x, y) {
             let source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            if (String(source) !== HOST_PANEL_ID && !multichartSettingsFlashFixEnabled()) {
+                return Promise.resolve(false);
+            }
             let drawing = null;
             if (drawingOrId && typeof drawingOrId === "object" && drawingOrId.type) {
                 drawing = drawingOrId;
@@ -5451,6 +5595,17 @@ export default function MultichartGrid({
             isPersistentFreehandLegacyTool,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
+            repaintAllPanelSurfaces: (opts) => {
+                try {
+                    const cellA = container && container.querySelector
+                        ? container.querySelector(`[data-cell="${HOST_PANEL_ID}"]`)
+                        : null;
+                    repaintAllPanelSurfaces(container, cellA, opts);
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            },
             getPanelIds: () => {
                 const ids = [HOST_PANEL_ID];
                 const mgr = managerRef.current;
@@ -5485,6 +5640,7 @@ export default function MultichartGrid({
         // clicking an iframe tile, so route dismiss to the focused panel.
         function onParentDismissDrawingKey(e) {
             if (!e || e.key !== "Escape") return;
+            if (!multichartSettingsFlashFixEnabled()) return;
             const t = e.target;
             if (t && t.tagName) {
                 const tag = String(t.tagName).toLowerCase();
@@ -5499,6 +5655,9 @@ export default function MultichartGrid({
             e.stopPropagation();
             void runCommand("clearActiveDrawingTool", null, { panelId: focused })
                 .then(() => {
+                    if (typeof closeDrawingSettingsForPanel === "function") {
+                        closeDrawingSettingsForPanel(focused).catch(() => {});
+                    }
                     try {
                         window.dispatchEvent(new CustomEvent("v9DrawingToolCleared", {
                             detail: { panelId: focused },
@@ -5507,10 +5666,34 @@ export default function MultichartGrid({
                 })
                 .catch(() => {});
         }
+
+        function onParentDeleteDrawingKey(e) {
+            if (!e || (e.key !== "Delete" && e.key !== "Backspace")) return;
+            if (!multichartSettingsFlashFixEnabled()) return;
+            const t = e.target;
+            if (t && t.tagName) {
+                const tag = String(t.tagName).toLowerCase();
+                if (tag === "input" || tag === "textarea" || tag === "select") return;
+                if (t.isContentEditable) return;
+            }
+            const focused = focusedPanelIdRef.current || HOST_PANEL_ID;
+            const ch = getChartForPanelId(focused);
+            const dm = ch && ch.drawingManager;
+            const hasSelection = !!(dm && (
+                (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length)
+                || dm.selectedDrawing
+            ));
+            if (!hasSelection) return;
+            e.preventDefault();
+            e.stopPropagation();
+            void runCommand("deleteSelectedDrawings", null, { panelId: focused }).catch(() => {});
+        }
         document.addEventListener("keydown", onParentDismissDrawingKey, true);
+        document.addEventListener("keydown", onParentDeleteDrawingKey, true);
 
         return () => {
             document.removeEventListener("keydown", onParentDismissDrawingKey, true);
+            document.removeEventListener("keydown", onParentDeleteDrawingKey, true);
             try {
                 if (window.__multichartOpenShapeSettings === multichartOpenShapeSettings) {
                     delete window.__multichartOpenShapeSettings;
@@ -5989,7 +6172,32 @@ export default function MultichartGrid({
             if (msg.type === "multichart-clear-drawing-ui") {
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
-                if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                if (multichartPeerDeselectV1Enabled() && sourceId) {
+                    focusPanelById(sourceId);
+                    if (sourceId !== HOST_PANEL_ID) {
+                        try {
+                            const dm = window.chart && window.chart.drawingManager;
+                            if (dm && typeof dm.deselectAll === "function") {
+                                dm.deselectAll({ forSelectionChange: true });
+                            }
+                            scrubHostStaleSelectionChrome();
+                            if (window.chart && typeof window.chart.render === "function") {
+                                window.chart.render();
+                            }
+                        } catch (_) {}
+                    }
+                    if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                        grid.deselectDrawingsOnNonFocusedPanels(sourceId, { ignoreSelectionGuard: true });
+                    }
+                }
+                if (multichartPeerDeselectV1Enabled() && grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    const peerOpts = {
+                        skipV9Dismiss: msg.skipV9Dismiss === true,
+                        ignoreSelectionGuard: true,
+                    };
+                    grid.clearDrawingUiOnOtherPanels(sourceId, peerOpts).catch(() => {});
+                } else if (grid && (multichartOwnershipV2Enabled() || multichartSettingsFlashFixEnabled())
+                    && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                     grid.clearDrawingUiOnOtherPanels(sourceId, {
                         skipV9Dismiss: msg.skipV9Dismiss === true,
                     }).catch(() => {});
@@ -6013,9 +6221,17 @@ export default function MultichartGrid({
                     if (typeof window !== "undefined") {
                         window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
                     }
-                    if (multichartOwnershipV2Enabled() && msg.source != null) {
+                    if ((multichartOwnershipV2Enabled() || multichartPanelSelectionChromeRoutingV3Enabled())
+                        && msg.source != null) {
                         const sourceId = String(msg.source);
                         focusPanelById(sourceId);
+                        if (multichartPeerDeselectV1Enabled() && sourceId !== HOST_PANEL_ID) {
+                            const grid = window.__multichartGrid;
+                            if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                                grid.deselectDrawingsOnNonFocusedPanels(sourceId, { ignoreSelectionGuard: true });
+                            }
+                            scrubHostStaleSelectionChrome();
+                        }
                         setTimeout(() => {
                             try { computeFocusedRect(); } catch (_) {}
                         }, 0);
@@ -6033,6 +6249,7 @@ export default function MultichartGrid({
                 return;
             }
             if (msg.type === "multichart-open-drawing-settings") {
+                if (!multichartSettingsFlashFixEnabled()) return;
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
                 if (grid && typeof grid.openDrawingSettingsForPanel === "function") {

@@ -346,6 +346,21 @@ class ReplaySystem {
 
         if (this.timeframeSelect) {
             this.timeframeSelect.addEventListener('change', (e) => {
+                if (!this._isReplayIntervalCadenceFixEnabled()) return;
+                const raw = e.target && e.target.value;
+                if (!raw) {
+                    this.setStepTimeframe(null);
+                    return;
+                }
+                const lower = String(raw).trim().toLowerCase();
+                const chartTf = this.chart && this.chart.currentTimeframe
+                    ? String(this.chart.currentTimeframe).toLowerCase()
+                    : null;
+                if (chartTf && lower === chartTf) {
+                    this.setStepTimeframe(null);
+                } else {
+                    this.setStepTimeframe(lower);
+                }
             });
         }
 
@@ -521,6 +536,63 @@ class ReplaySystem {
         return this.playbackMode === 'candle' ? 'candle' : 'tick';
     }
 
+    _isReplayIntervalCadenceFixEnabled() {
+        return typeof window === 'undefined' || window.__TALARIA_FIX_REPLAY_INTERVAL_CADENCE !== false;
+    }
+
+    _isReplayModePlayRoutingFixEnabled() {
+        return typeof window === 'undefined' || window.__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING !== false;
+    }
+
+    /** D-009 (A): tick persists when an explicit interval is set; interval bounds step size only. */
+    _shouldUseTickAnimation() {
+        if (this.getPlaybackMode() !== 'tick') return false;
+        if (this._isReplayModePlayRoutingFixEnabled()) return true;
+        return !this._hasExplicitReplayStepInterval();
+    }
+
+    /** Resolved INTERVAL for multichart sync (single owner when cadence fix is ON). */
+    getReplayStepTimeframeForSync() {
+        if (!this._isReplayIntervalCadenceFixEnabled()) {
+            const o = this.stepTimeframeOverride;
+            return (o == null || o === '') ? null : String(o).toLowerCase();
+        }
+        const tf = this._resolveReplayStepTimeframe();
+        if (!tf) return null;
+        const lower = String(tf).toLowerCase();
+        if (lower === 'sync' || lower === 'auto') return null;
+        return lower;
+    }
+
+    /** Active play loop kind for harness / UI agreement checks. */
+    getPlaybackLoopKind() {
+        if (!this.isActive) return null;
+        if (this.playInterval) return 'candle';
+        if (this.tickInterval || this.fastMode || this.animatingCandle) return 'tick';
+        if (this.isPlayStarting) {
+            return this._shouldUseTickAnimation() ? 'tick' : 'candle';
+        }
+        if (!this.isPlaying) return null;
+        return this._shouldUseTickAnimation() ? 'tick' : 'candle';
+    }
+
+    /**
+     * V9 INTERVAL slider → canonical replay step TF (gated by cadence fix).
+     * @param {string|null} tf — 'auto' | '1m' | '4h' | …
+     */
+    applyReplayIntervalFromUi(tf, { restartPlayback = true } = {}) {
+        if (!this._isReplayIntervalCadenceFixEnabled()) return false;
+        let normalized = null;
+        if (tf != null && String(tf).trim()) {
+            const lower = String(tf).trim().toLowerCase();
+            if (lower !== 'auto' && lower !== 'sync') {
+                normalized = lower;
+            }
+        }
+        this.setStepTimeframe(normalized, { restartPlayback });
+        return true;
+    }
+
     syncPlaybackModeControls() {
         const mode = this.getPlaybackMode();
         const modeSelects = document.querySelectorAll(
@@ -578,7 +650,7 @@ class ReplaySystem {
      * Set replay step timeframe explicitly (used by V9 UI when hidden legacy
      * select is not present in the DOM).
      */
-    setStepTimeframe(timeframe) {
+    setStepTimeframe(timeframe, { restartPlayback = true } = {}) {
         const prev = this.stepTimeframeOverride;
         if (timeframe == null) {
             this.stepTimeframeOverride = null;
@@ -592,7 +664,7 @@ class ReplaySystem {
             }
         }
         const norm = (v) => (v == null || v === '' ? null : String(v).toLowerCase());
-        if (norm(prev) !== norm(this.stepTimeframeOverride) && this.isPlaying) {
+        if (norm(prev) !== norm(this.stepTimeframeOverride) && this.isPlaying && restartPlayback) {
             this._restartPlaybackAfterControlChange(true);
         }
     }
@@ -613,7 +685,7 @@ class ReplaySystem {
         if (!this.isActive || !this.isPlaying) return;
         this.stopAllPlayback();
         this.isPlaying = true;
-        const useTickAnimation = this.getPlaybackMode() === 'tick' && !this._hasExplicitReplayStepInterval();
+        const useTickAnimation = this._shouldUseTickAnimation();
         if (useTickAnimation) {
             this.startTickAnimation();
         } else {
@@ -3465,7 +3537,7 @@ class ReplaySystem {
         }
 
         const playbackMode = this.getPlaybackMode();
-        const useTickAnimation = playbackMode === 'tick' && !this._hasExplicitReplayStepInterval();
+        const useTickAnimation = this._shouldUseTickAnimation();
         
         // Restore partial tick state saved during pause so animation continues
         // from where it was instead of restarting the candle.
@@ -3544,7 +3616,8 @@ class ReplaySystem {
                         this.animatingCandle = null;
                         this.tickProgress = 0;
                         this.tickElapsedMs = 0;
-                        this.startCandleByCandle(true);
+                        const candleImmediate = !this._isReplayIntervalCadenceFixEnabled();
+                        this.startCandleByCandle(candleImmediate);
                     }
 
                     requestAnimationFrame(() => {

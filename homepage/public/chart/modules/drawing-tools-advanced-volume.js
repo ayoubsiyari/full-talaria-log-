@@ -3,6 +3,56 @@
  * Includes: Gann Box, Anchored VWAP, Fixed Range Volume Profile
  */
 
+/** RC-3 Phase 1: default ON — render resolves x from timestampPoints without mutating points.x */
+function _isRc3VolumeRenderResolveEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_VOLUME_RENDER_RESOLVE !== false;
+}
+
+/**
+ * Resolve render-time bar indices for volume tools. When the kill-switch is ON and
+ * timestampPoints exist, uses CoordinateUtils.resolveDrawingPoints (read-only).
+ * Returns { mode: 'legacy' } to signal the old mutate-points.x path.
+ */
+function _getVolumeRenderIndices(drawing, chart) {
+    const dataLen = chart && Array.isArray(chart.data) ? chart.data.length : 0;
+    const maxDataIndex = dataLen > 0 ? dataLen - 1 : null;
+
+    if (!_isRc3VolumeRenderResolveEnabled()) {
+        return { mode: 'legacy', maxDataIndex };
+    }
+
+    if (drawing && drawing.timestampPoints && drawing.timestampPoints.length > 0 &&
+        chart && dataLen > 0 &&
+        typeof CoordinateUtils !== 'undefined' &&
+        typeof CoordinateUtils.resolveDrawingPoints === 'function') {
+        const resolved = CoordinateUtils.resolveDrawingPoints(drawing, chart);
+        return { mode: 'resolved', points: resolved, maxDataIndex };
+    }
+
+    return { mode: 'points', maxDataIndex };
+}
+
+function _legacyRoundClampIndex(rawX, maxDataIndex) {
+    let x = Number.isFinite(rawX) ? Math.round(rawX) : 0;
+    if (maxDataIndex != null) {
+        x = Math.max(0, Math.min(maxDataIndex, x));
+    }
+    return x;
+}
+
+/** Persist timestamp-resolved indices into drawing.points (replaces destructive integer rounding). */
+function _writeRc3ResolvedPoints(drawing, indexState) {
+    if (!_isRc3VolumeRenderResolveEnabled()) return;
+    if (!drawing || indexState.mode !== 'resolved' || !Array.isArray(indexState.points)) return;
+    for (let i = 0; i < indexState.points.length; i++) {
+        if (!Array.isArray(drawing.points) || !drawing.points[i]) continue;
+        const rx = indexState.points[i].x;
+        const ry = indexState.points[i].y;
+        if (Number.isFinite(rx)) drawing.points[i].x = rx;
+        if (Number.isFinite(ry)) drawing.points[i].y = ry;
+    }
+}
+
 /**
  * Gann Box Tool
  * Creates a box with customizable price and time levels for Gann analysis
@@ -523,13 +573,31 @@ class AnchoredVWAPTool extends BaseDrawing {
         }
 
         const latestDataIndex = chartData.length > 0 ? chartData.length - 1 : null;
-        let anchorIndex = Math.round(this.points[0].x);
-        if (latestDataIndex != null) {
-            anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+        const chartRef = scales.chart || (typeof window !== 'undefined' ? window.chart : null);
+        const indexState = _getVolumeRenderIndices(this, chartRef);
+        let anchorIndex;
+        if (indexState.mode === 'legacy') {
+            anchorIndex = _legacyRoundClampIndex(this.points[0].x, latestDataIndex);
             if (this.points[0].x !== anchorIndex) {
                 this.points[0].x = anchorIndex;
             }
+        } else if (indexState.mode === 'resolved') {
+            anchorIndex = Number.isFinite(indexState.points[0]?.x)
+                ? indexState.points[0].x
+                : (this.points[0]?.x ?? 0);
+            if (latestDataIndex != null) {
+                anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+            }
+        } else {
+            anchorIndex = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;
+            if (latestDataIndex != null) {
+                anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+            }
         }
+        _writeRc3ResolvedPoints(this, indexState);
+        const anchorBarIndex = latestDataIndex != null
+            ? Math.max(0, Math.min(latestDataIndex, Math.floor(anchorIndex)))
+            : Math.max(0, Math.floor(anchorIndex));
         const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(anchorIndex) : scales.xScale(anchorIndex);
         const fallbackAnchorY = scales.yScale(this.points[0].y);
@@ -607,8 +675,8 @@ class AnchoredVWAPTool extends BaseDrawing {
         const shouldRenderVWAPCurves = this._isActiveMoving !== true;
 
         if (this._isActiveMoving) {
-            if (chartData.length > 0 && chartData[anchorIndex]) {
-                const close = Number(chartData[anchorIndex].c ?? chartData[anchorIndex].close);
+            if (chartData.length > 0 && chartData[anchorBarIndex]) {
+                const close = Number(chartData[anchorBarIndex].c ?? chartData[anchorBarIndex].close);
                 if (Number.isFinite(close)) {
                     anchorY = scales.yScale(close);
                 }
@@ -638,7 +706,7 @@ class AnchoredVWAPTool extends BaseDrawing {
         }
         
         // Always compute VWAP from anchor through full series — zoom must not change marker count.
-        const startIndex = Math.max(0, anchorIndex);
+        const startIndex = anchorBarIndex;
         const endIndex = chartData.length;
 
         let vwapPoints = null;
@@ -748,8 +816,8 @@ class AnchoredVWAPTool extends BaseDrawing {
             if (Number.isFinite(vwapAnchorY)) {
                 anchorY = vwapAnchorY;
             }
-        } else if (this._isActiveMoving && chartData.length > 0 && chartData[anchorIndex]) {
-            const close = Number(chartData[anchorIndex].c ?? chartData[anchorIndex].close);
+        } else if (this._isActiveMoving && chartData.length > 0 && chartData[anchorBarIndex]) {
+            const close = Number(chartData[anchorBarIndex].c ?? chartData[anchorBarIndex].close);
             if (Number.isFinite(close)) {
                 anchorY = scales.yScale(close);
             }
@@ -1142,10 +1210,21 @@ class VolumeProfileTool extends BaseDrawing {
         if (this.points.length < 2) {
             if (isPreview) {
                 const point = this.points[0] || {};
-                const anchorIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
+                const chartRef = scales.chart || (typeof window !== 'undefined' ? window.chart : null);
+                const indexState = _getVolumeRenderIndices(this, chartRef);
+                let previewIndex;
+                if (indexState.mode === 'legacy') {
+                    previewIndex = Number.isFinite(point.x) ? Math.round(point.x) : 0;
+                } else if (indexState.mode === 'resolved') {
+                    previewIndex = Number.isFinite(indexState.points[0]?.x)
+                        ? indexState.points[0].x
+                        : (Number.isFinite(point.x) ? point.x : 0);
+                } else {
+                    previewIndex = Number.isFinite(point.x) ? point.x : 0;
+                }
                 const anchorX = scales.chart && scales.chart.dataIndexToPixel
-                    ? scales.chart.dataIndexToPixel(anchorIndex)
-                    : scales.xScale(anchorIndex);
+                    ? scales.chart.dataIndexToPixel(previewIndex)
+                    : scales.xScale(previewIndex);
 
                 const yDomain = scales.yScale && typeof scales.yScale.domain === 'function'
                     ? scales.yScale.domain()
@@ -1161,21 +1240,43 @@ class VolumeProfileTool extends BaseDrawing {
 
         const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
         const hasChartData = chartData.length > 0;
-        const rawIndex1 = Number.isFinite(this.points[0]?.x) ? Math.round(this.points[0].x) : 0;
-        const rawIndex2 = Number.isFinite(this.points[1]?.x) ? Math.round(this.points[1].x) : 0;
         const maxDataIndex = hasChartData ? chartData.length - 1 : null;
+        const chartRef = scales.chart || (typeof window !== 'undefined' ? window.chart : null);
+        const indexState = _getVolumeRenderIndices(this, chartRef);
 
-        // Left anchor stays bound to available data. Right anchor can extend into future space.
-        const clampedIndex1 = hasChartData
-            ? Math.max(0, Math.min(maxDataIndex, rawIndex1))
-            : Math.max(0, rawIndex1);
-        const displayIndex2 = Math.max(0, rawIndex2);
-        const dataIndex2 = hasChartData
-            ? Math.max(0, Math.min(maxDataIndex, rawIndex2))
-            : displayIndex2;
+        let clampedIndex1;
+        let displayIndex2;
+        let dataIndex2;
 
-        this.points[0].x = clampedIndex1;
-        this.points[1].x = displayIndex2;
+        if (indexState.mode === 'legacy') {
+            const rawIndex1 = Number.isFinite(this.points[0]?.x) ? Math.round(this.points[0].x) : 0;
+            const rawIndex2 = Number.isFinite(this.points[1]?.x) ? Math.round(this.points[1].x) : 0;
+            // Left anchor stays bound to available data. Right anchor can extend into future space.
+            clampedIndex1 = hasChartData
+                ? Math.max(0, Math.min(maxDataIndex, rawIndex1))
+                : Math.max(0, rawIndex1);
+            displayIndex2 = Math.max(0, rawIndex2);
+            dataIndex2 = hasChartData
+                ? Math.max(0, Math.min(maxDataIndex, rawIndex2))
+                : displayIndex2;
+            this.points[0].x = clampedIndex1;
+            this.points[1].x = displayIndex2;
+        } else {
+            const rawIndex1 = indexState.mode === 'resolved'
+                ? (Number.isFinite(indexState.points[0]?.x) ? indexState.points[0].x : (this.points[0]?.x ?? 0))
+                : (Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0);
+            const rawIndex2 = indexState.mode === 'resolved'
+                ? (Number.isFinite(indexState.points[1]?.x) ? indexState.points[1].x : (this.points[1]?.x ?? 0))
+                : (Number.isFinite(this.points[1]?.x) ? this.points[1].x : 0);
+            clampedIndex1 = hasChartData
+                ? Math.max(0, Math.min(maxDataIndex, rawIndex1))
+                : Math.max(0, rawIndex1);
+            displayIndex2 = Math.max(0, rawIndex2);
+            dataIndex2 = hasChartData
+                ? Math.max(0, Math.min(maxDataIndex, rawIndex2))
+                : displayIndex2;
+        }
+        _writeRc3ResolvedPoints(this, indexState);
 
         const fixedScreenRightX = Number(this.fixedScreenRightX);
         const hasFixedScreenRightX = Number.isFinite(fixedScreenRightX);
@@ -2208,8 +2309,22 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
 
         const latestDataIndex = chartData.length - 1;
         const endIndex = latestDataIndex;
-        const anchorIndex = Math.max(0, Math.min(latestDataIndex, Math.round(this.points[0].x)));
-        this.points[0].x = anchorIndex;
+        const chartRef = scales.chart || (typeof window !== 'undefined' ? window.chart : null);
+        const indexState = _getVolumeRenderIndices(this, chartRef);
+        let anchorIndex;
+        if (indexState.mode === 'legacy') {
+            anchorIndex = Math.max(0, Math.min(latestDataIndex, Math.round(this.points[0].x)));
+            this.points[0].x = anchorIndex;
+        } else if (indexState.mode === 'resolved') {
+            anchorIndex = Number.isFinite(indexState.points[0]?.x)
+                ? indexState.points[0].x
+                : (this.points[0]?.x ?? 0);
+            anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+        } else {
+            anchorIndex = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;
+            anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+        }
+        _writeRc3ResolvedPoints(this, indexState);
 
         this.group.remove();
 

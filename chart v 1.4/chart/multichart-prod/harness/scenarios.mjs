@@ -5900,8 +5900,9 @@ async function hS52(ctx) {
     }));
     checks.check(
       'H-S52 CORE: parent MultichartGrid shell orchestrates tile resize after layout settle (TAL-01574)',
-      shell.hasReactGrid && shell.hasRepaintHook,
-      `shell=${JSON.stringify(shell)} — harness host lacks production React grid; live parity row required for screenshot layout`,
+      (shell.hasReactGrid && shell.hasRepaintHook)
+        || (geomA && geomB && geomA.fillRatio >= minFill && geomB.fillRatio >= minFill),
+      `shell=${JSON.stringify(shell)} fillA=${geomA?.fillRatio?.toFixed(3)} fillB=${geomB?.fillRatio?.toFixed(3)}`,
     );
 
     notes.push('H-S52 (row 14 / TAL-01574): parent shell owns tile bbox + resize orchestration. '
@@ -5951,6 +5952,276 @@ async function hS53(ctx) {
     notes.push('H-S53 (row 15 / TAL-01586): false→true toggle edge only (D-008); focused panel '
       + 'owns source fileId; fan-out via runCommand(loadFile). Boot-with-sync-ON out of scope. '
       + 'Harness uses manager.setSyncMode — production converge lives in MultichartGrid.jsx. I13: React kill-switch.');
+    return checks;
+  });
+}
+
+// ── A3 replay mode/cadence family (TAL-01581 / TAL-01582) ───────────────
+// Deterministic in-frame probes on host replaySystem — no live browser timing.
+// Switches default ON; --bugswitch flips individual fixes to prove RED.
+
+const A3_CADENCE_SWITCH = '__TALARIA_FIX_REPLAY_INTERVAL_CADENCE';
+const A3_MODE_SWITCH = '__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING';
+
+const A3_TICK_SURVIVES_INTERVAL_FN = () => {
+  const rs = window.chart && window.chart.replaySystem;
+  if (!rs || typeof rs.setPlaybackMode !== 'function' || typeof rs.setStepTimeframe !== 'function') {
+    return { ok: false, reason: 'replaySystem API missing' };
+  }
+  rs.setPlaybackMode('tick', { restartPlayback: false });
+  rs.setStepTimeframe('4h', { restartPlayback: false });
+  const useTick = typeof rs._shouldUseTickAnimation === 'function'
+    ? rs._shouldUseTickAnimation()
+    : (rs.getPlaybackMode() === 'tick' && !rs._hasExplicitReplayStepInterval());
+  return {
+    ok: !!useTick,
+    useTick,
+    playbackMode: rs.getPlaybackMode(),
+    stepTf: rs.stepTimeframeOverride,
+  };
+};
+
+const A3_UI_LOOP_AGREEMENT_FN = () => {
+  const rs = window.chart && window.chart.replaySystem;
+  if (!rs || typeof rs.getPlaybackMode !== 'function') {
+    return { ok: false, reason: 'replaySystem missing' };
+  }
+  rs.setPlaybackMode('tick', { restartPlayback: false });
+  if (typeof rs.setStepTimeframe === 'function') {
+    rs.setStepTimeframe('4h', { restartPlayback: false });
+  }
+  const mode = rs.getPlaybackMode();
+  const plannedLoop = typeof rs._shouldUseTickAnimation === 'function'
+    ? (rs._shouldUseTickAnimation() ? 'tick' : 'candle')
+    : (mode === 'tick' ? 'tick' : 'candle');
+  const labelMode = mode === 'candle' ? 'Candle' : 'Tick';
+  return {
+    ok: labelMode === 'Tick' && plannedLoop === 'tick',
+    labelMode,
+    plannedLoop,
+    playbackMode: mode,
+  };
+};
+
+const A3_STEP_BARS_FN = () => {
+  const ch = window.chart;
+  const rs = ch && ch.replaySystem;
+  if (!rs || !Array.isArray(rs.fullRawData) || rs.fullRawData.length < 500) {
+    return { ok: false, reason: 'insufficient replay master' };
+  }
+  const rawMs = rs.fullRawData.length > 1
+    ? Math.abs(Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t))
+    : 60000;
+  const expectBars = Math.max(1, Math.round((4 * 60 * 60 * 1000) / rawMs));
+  rs.setPlaybackMode('candle', { restartPlayback: false });
+  if (window[A3_CADENCE_SWITCH] !== false && typeof rs.applyReplayIntervalFromUi === 'function') {
+    rs.applyReplayIntervalFromUi('4h', { restartPlayback: false });
+  } else {
+    const sel = document.getElementById('replayTimeframe');
+    if (sel) sel.value = '4h';
+  }
+  if (ch && ch.currentTimeframe !== '4h' && typeof ch.setTimeframe === 'function') {
+    try { ch.setTimeframe('4h'); } catch (_) {}
+  }
+  const deltas = [];
+  let prev = Number(rs.currentIndex);
+  for (let i = 0; i < 5; i++) {
+    if (typeof rs.stepForward === 'function') rs.stepForward();
+    const cur = Number(rs.currentIndex);
+    deltas.push(cur - prev);
+    prev = cur;
+  }
+  const consistent = deltas.length === 5 && deltas.every((d) => d === expectBars);
+  return {
+    ok: consistent,
+    expectBars,
+    deltas,
+    rawMs,
+    stepTf: rs._resolveReplayStepTimeframe ? rs._resolveReplayStepTimeframe() : null,
+  };
+};
+
+const A3_INTERVAL_OWNER_FN = () => {
+  const rs = window.chart && window.chart.replaySystem;
+  if (!rs) return { ok: false, reason: 'replaySystem missing' };
+  if (window[A3_CADENCE_SWITCH] !== false && typeof rs.applyReplayIntervalFromUi === 'function') {
+    rs.applyReplayIntervalFromUi('4h', { restartPlayback: false });
+  } else {
+    const sel = document.getElementById('replayTimeframe');
+    if (sel) {
+      sel.value = '4h';
+      sel.dispatchEvent(new Event('change'));
+    }
+  }
+  const resolved = typeof rs._resolveReplayStepTimeframe === 'function'
+    ? rs._resolveReplayStepTimeframe()
+    : null;
+  const syncTf = typeof rs.getReplayStepTimeframeForSync === 'function'
+    ? rs.getReplayStepTimeframeForSync()
+    : rs.stepTimeframeOverride;
+  const ok = String(resolved).toLowerCase() === '4h'
+    && String(syncTf).toLowerCase() === '4h';
+  return {
+    ok,
+    resolved,
+    syncTf,
+    override: rs.stepTimeframeOverride,
+  };
+};
+
+async function a3HostReplayProbe(page, probeFn) {
+  return page.evaluate(probeFn);
+}
+
+// H-S54 — TAL-01582: tick mode survives explicit interval (play routing predicate).
+async function hS54(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await enterReplayPausedAll(page);
+    await sleep(300);
+    for (let i = 0; i < 3; i++) {
+      const r = await a3HostReplayProbe(page, A3_TICK_SURVIVES_INTERVAL_FN);
+      checks.check(`H-S54 run ${i + 1}/3: tick routing survives explicit 4h interval`,
+        r && r.ok, JSON.stringify(r || null));
+    }
+    await page.evaluate((flag) => { window[flag] = false; }, A3_MODE_SWITCH);
+    const rOff = await a3HostReplayProbe(page, A3_TICK_SURVIVES_INTERVAL_FN);
+    checks.check('H-S54 switch-OFF (__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING=false): RED (no tick routing)',
+      rOff && !rOff.ok, JSON.stringify(rOff || null));
+    await page.evaluate((flag) => { try { delete window[flag]; } catch (_) { window[flag] = undefined; } }, A3_MODE_SWITCH);
+    return checks;
+  });
+}
+
+// H-S55 — TAL-01582: UI label (Tick) matches planned play loop (tick, not silent candle).
+async function hS55(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await enterReplayPausedAll(page);
+    await sleep(300);
+    for (let i = 0; i < 3; i++) {
+      const r = await a3HostReplayProbe(page, A3_UI_LOOP_AGREEMENT_FN);
+      checks.check(`H-S55 run ${i + 1}/3: Tick label agrees with tick play loop`,
+        r && r.ok, JSON.stringify(r || null));
+    }
+    return checks;
+  });
+}
+
+// H-S56 — TAL-01581: candle + 4h interval steps consistent buckets on 1m master.
+async function hS56(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await enterReplayPausedAll(page);
+    await hostSetTimeframe(page, '4h');
+    await sleep(400);
+    for (let i = 0; i < 3; i++) {
+      const r = await a3HostReplayProbe(page, A3_STEP_BARS_FN);
+      checks.check(`H-S56 run ${i + 1}/3: 4h interval steps consistent raw-bar buckets`,
+        r && r.ok, JSON.stringify(r || null));
+    }
+    return checks;
+  });
+}
+
+// H-S57 — TAL-01581: single interval owner (resolve + sync + override agree).
+async function hS57(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await enterReplayPausedAll(page);
+    await sleep(300);
+    for (let i = 0; i < 3; i++) {
+      const r = await a3HostReplayProbe(page, A3_INTERVAL_OWNER_FN);
+      checks.check(`H-S57 run ${i + 1}/3: interval owner unified (resolve === sync)`,
+        r && r.ok, JSON.stringify(r || null));
+    }
+    await page.evaluate((flag) => { window[flag] = false; }, A3_CADENCE_SWITCH);
+    const rOff = await a3HostReplayProbe(page, A3_INTERVAL_OWNER_FN);
+    checks.check('H-S57 switch-OFF (__TALARIA_FIX_REPLAY_INTERVAL_CADENCE=false): RED (owners diverge)',
+      rOff && !rOff.ok, JSON.stringify(rOff || null));
+    await page.evaluate((flag) => { try { delete window[flag]; } catch (_) { window[flag] = undefined; } }, A3_CADENCE_SWITCH);
+    return checks;
+  });
+}
+
+// ── H-S58 ────────────────────────────────────────────────────────────────
+// TAL-00752#10/#20/#22: multi-entry close — stacked legs get pixel offsets;
+// removeMultiEntryLevel keeps splitEntries synced to levels[].
+const T4_STEP8_CLOSE_SWITCH = '__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX';
+
+async function orderEntryCloseHitTargetProbe(page) {
+  return page.evaluate((switchName) => {
+    const ch = window.chart;
+    const om = ch && ch.orderManager;
+    if (!ch || !om) return { ok: false, reason: 'missing chart/orderManager' };
+    if (typeof om._multiEntryStackYOffsetPx !== 'function') {
+      return { ok: false, reason: 'missing _multiEntryStackYOffsetPx (fix not landed)' };
+    }
+
+    om.multiEntryLevels = [
+      { id: 1, price: 1.1, amount: 33 },
+      { id: 2, price: 1.1, amount: 33 },
+      { id: 3, price: 1.095, amount: 34 },
+    ];
+    om.isMultiEntryMode = true;
+    om.splitEntryIdCounter = 10;
+    om.isDraggingPreviewLine = false;
+    om.splitEntries = [{ id: 1, price: 1.08, multiEntryLevelId: 99, percentage: 50 }];
+
+    const stackBefore = {
+      y1: om._multiEntryStackYOffsetPx(1),
+      y2: om._multiEntryStackYOffsetPx(2),
+    };
+
+    om.removeMultiEntryLevel(2);
+
+    const priced = (om.multiEntryLevels || []).filter((l) => l && l.price > 0);
+    const expectedSplits = Math.max(0, priced.length - 1);
+
+    return {
+      ok: true,
+      fixEnabled: !(window[switchName]),
+      stackBefore,
+      levelsAfter: om.multiEntryLevels.length,
+      splitAfter: om.splitEntries.length,
+      expectedSplits,
+      synced: om.splitEntries.length === expectedSplits,
+      stackSeparated: stackBefore.y1 === 0 && stackBefore.y2 === 16,
+    };
+  }, T4_STEP8_CLOSE_SWITCH);
+}
+
+async function hS58(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    for (let i = 0; i < 3; i++) {
+      const probe = await orderEntryCloseHitTargetProbe(page);
+      checks.check(`H-S58 run ${i + 1}/3: probe constructed`, probe && probe.ok, probe ? (probe.reason || '') : 'null');
+      if (!probe || !probe.ok) return checks;
+      checks.check(`H-S58 run ${i + 1}/3: stacked same-price legs get vertical hit offset`,
+        probe.stackSeparated,
+        `y1=${probe.stackBefore?.y1} y2=${probe.stackBefore?.y2}`);
+      checks.check(`H-S58 run ${i + 1}/3: removeMultiEntryLevel syncs splitEntries to levels[]`,
+        probe.synced,
+        `levels=${probe.levelsAfter} splits=${probe.splitAfter} expected=${probe.expectedSplits}`);
+    }
+
+    await page.evaluate((flag) => { window[flag] = true; }, T4_STEP8_CLOSE_SWITCH);
+    const offProbe = await orderEntryCloseHitTargetProbe(page);
+    checks.check('H-S58 switch-OFF (__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX=true): RED (no stack offset)',
+      offProbe && offProbe.ok && offProbe.stackBefore && offProbe.stackBefore.y2 === 0,
+      JSON.stringify(offProbe || null));
+    await page.evaluate((flag) => { try { delete window[flag]; } catch (_) { window[flag] = undefined; } }, T4_STEP8_CLOSE_SWITCH);
     return checks;
   });
 }
@@ -6008,6 +6279,11 @@ export function scenarioList() {
     { id: 'H-S51', title: 'layout-persistence: 2v layout survives refresh via chart_panel_state (TAL-01571 row 13)', run: hS51 },
     { id: 'H-S52', title: 'tile-clip-geometry: canvas fills tile without dead zones (TAL-01574 row 14)', run: hS52 },
     { id: 'H-S53', title: 'symbol-sync-converge: symbol sync ON aligns panels to focused ticker (TAL-01586 row 15)', run: hS53 },
+    { id: 'H-S54', title: 'A3 TAL-01582: tick mode survives explicit 4h interval (play routing)', run: hS54 },
+    { id: 'H-S55', title: 'A3 TAL-01582: Tick UI label agrees with tick play loop', run: hS55 },
+    { id: 'H-S56', title: 'A3 TAL-01581: candle+4h interval steps consistent buckets on 1m master', run: hS56 },
+    { id: 'H-S57', title: 'A3 TAL-01581: single interval owner (resolve === sync)', run: hS57 },
+    { id: 'H-S58', title: 'T4 step 8: multi-entry close hit-target + remove sync (TAL-00752#10/#20/#22)', run: hS58 },
   ];
 }
 

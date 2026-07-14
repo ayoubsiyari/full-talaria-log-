@@ -88,7 +88,7 @@ function multichartQuickbarSettingsFixEnabled() {
 
 /** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
 function notifyMultichartParentSelectionCleared(chartInstance) {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !multichartQuickbarSettingsFixEnabled()) return;
     let panelId = null;
     try {
         if (chartInstance && typeof chartInstance._getMultichartPanelId === 'function') {
@@ -175,8 +175,9 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
         x: px,
         y: py,
     };
-    // I14: dist-v9 iframe tiles must use postMessage — parent globals are not authoritative.
-    if (window.__talariaV9PanelEmbed === true) {
+    // I14: iframe tiles must use postMessage — parent globals race dismiss handlers.
+    if (isMultichartIframeEmbed()) {
+        if (!multichartQuickbarSettingsFixEnabled()) return false;
         try {
             window.parent.postMessage(payload, '*');
             return true;
@@ -217,7 +218,7 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
 }
 
 function requestMultichartParentCloseDrawingSettings() {
-    if (!isMultichartIframeEmbed()) return false;
+    if (!isMultichartIframeEmbed() || !multichartQuickbarSettingsFixEnabled()) return false;
     let panelId = 'embed';
     try {
         panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
@@ -5521,7 +5522,21 @@ class DrawingToolsManager {
     handleKeyDown(event) {
         if (typeof isChartShortcutsBlockedBySettingsUi === 'function'
             && isChartShortcutsBlockedBySettingsUi()) {
-            if (event.key !== 'Escape') return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                if (this.drawingState.isDrawing) {
+                    this.cancelDrawing();
+                } else {
+                    const bridgeOpts = (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled())
+                        ? { fromCanvasBackground: true }
+                        : {};
+                    this.deselectAll(bridgeOpts);
+                    this.clearTool();
+                    if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                        requestMultichartParentCloseDrawingSettings();
+                    }
+                }
+            }
             return;
         }
         // Track Command/Ctrl key for multi-select hover mode
@@ -5532,13 +5547,25 @@ class DrawingToolsManager {
         }
         
         // Delete key - delete selected drawing(s)
-        if (event.key === 'Delete') {
-            if (this.selectedDrawings.length > 0) {
-                // Delete all selected drawings
-                const drawingsToDelete = [...this.selectedDrawings];
+        if (event.key === 'Delete' || event.key === 'Backspace') {
+            if (!multichartQuickbarSettingsFixEnabled() && isMultichartIframeEmbed()) {
+                return;
+            }
+            let drawingsToDelete = this.selectedDrawings.length > 0
+                ? [...this.selectedDrawings]
+                : [];
+            if (drawingsToDelete.length === 0 && this.selectedDrawing) {
+                drawingsToDelete = [this.selectedDrawing];
+            }
+            if (drawingsToDelete.length === 0) {
+                const visuallySelected = (this.drawings || []).filter((d) => d && d.selected);
+                if (visuallySelected.length === 1) {
+                    drawingsToDelete = visuallySelected;
+                }
+            }
+            if (drawingsToDelete.length > 0) {
                 drawingsToDelete.forEach(drawing => this.deleteDrawing(drawing));
-            } else if (this.selectedDrawing) {
-                this.deleteDrawing(this.selectedDrawing);
+                event.preventDefault();
             }
         }
         
@@ -5551,8 +5578,14 @@ class DrawingToolsManager {
             if (this.drawingState.isDrawing) {
                 this.cancelDrawing();
             } else {
-                this.deselectAll();
+                const bridgeOpts = (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled())
+                    ? { fromCanvasBackground: true }
+                    : {};
+                this.deselectAll(bridgeOpts);
                 this.clearTool();
+                if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                    requestMultichartParentCloseDrawingSettings();
+                }
             }
         }
 
@@ -9967,9 +10000,19 @@ class DrawingToolsManager {
                 d.group.remove();
             }
         });
-        
-        this.selectedDrawings.forEach(d => {
-            d.deselect();
+
+        const toDeselect = selected.slice();
+        if (this.selectedDrawing && !toDeselect.includes(this.selectedDrawing)) {
+            toDeselect.push(this.selectedDrawing);
+        }
+        (this.drawings || []).forEach((d) => {
+            if (d && d.selected && !toDeselect.includes(d)) {
+                toDeselect.push(d);
+            }
+        });
+
+        toDeselect.forEach(d => {
+            if (typeof d.deselect === 'function') d.deselect();
             this.renderDrawing(d, { skipInteraction: true });
         });
         this.selectedDrawing = null;
@@ -13455,13 +13498,15 @@ class DrawingToolsManager {
                 drawingRight = bbox.x + bbox.width;
                 drawingTop = bbox.y;
                 drawingBottom = bbox.y + bbox.height;
-            } else {
+            } else if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
                 const lineBounds = this._getDrawingLineBoundsForMarquee(node);
                 if (!lineBounds) return false;
                 drawingLeft = lineBounds.left;
                 drawingRight = lineBounds.right;
                 drawingTop = lineBounds.top;
                 drawingBottom = lineBounds.bottom;
+            } else {
+                return false;
             }
             
             const rectLeft = rectX;

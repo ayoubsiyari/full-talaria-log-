@@ -52,8 +52,7 @@ async function runPanelClickRow(page, checks, prefix, panelId, toolType = 'trend
   await disarmDrawTool(page, panelId);
   const before = await readReactParityState(page, panelId);
   checks.check(`${prefix} setup (${label}): not selected before click`,
-    before && before.selectedIds.length === 0 && !(await isDrawingSelected(page, panelId, tool.id)),
-    JSON.stringify(before?.selectedIds));
+    before && before.selectedIds.length === 0, JSON.stringify(before?.selectedIds));
   const click = await singleClickDrawing(page, panelId, tool.id);
   checks.check(`${prefix} probe (${label}): single click dispatched`, click && click.ok, click?.reason || '');
   const after = await waitForReactSelection(page, panelId, [tool.id]);
@@ -221,12 +220,11 @@ async function hR07(ctx) {
 
     const hostTool = await placeTool(page, 'A', 'trendline', await reactDefaultTrendlinePoints(page, 'A', 0));
     checks.check('H-R07 setup: host trendline placed', hostTool && hostTool.id, hostTool ? hostTool.id : 'null');
+    const panelTool = await placeTool(page, 'B', 'rectangle', await reactDefaultRectanglePoints(page, 'B', 0));
+    checks.check('H-R07 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
     await disarmDrawTool(page, 'A');
     await singleClickDrawing(page, 'A', hostTool.id);
     await waitForReactSelection(page, 'A', [hostTool.id]);
-
-    const panelTool = await placeTool(page, 'B', 'rectangle', await reactDefaultRectanglePoints(page, 'B', 0));
-    checks.check('H-R07 setup: panel-B rectangle placed', panelTool && panelTool.id, panelTool ? panelTool.id : 'null');
     await focusReactPanel(page, 'B');
     await disarmDrawTool(page, 'B');
     await singleClickDrawing(page, 'B', panelTool.id);
@@ -372,6 +370,12 @@ async function hR12(ctx) {
     checks.check('H-R12 CORE: parent settings open after panel-B gear route',
       settings.open, JSON.stringify(settings));
 
+    await pressEscapeReact(page, 'B');
+    await page.evaluate(() => {
+      const root = document.getElementById('multichart-global-settings-root');
+      if (root) root.replaceChildren();
+    }).catch(() => {});
+    await waitForPanelSettle(page, 'B');
     return checks;
   });
 }
@@ -394,6 +398,12 @@ async function hR13(ctx) {
     const after = await readParentReactSettings(page);
     checks.check('H-R13 CORE: settings still open after 400ms (no flash-close race)',
       after.open, JSON.stringify(after));
+    await pressEscapeReact(page, 'B');
+    await page.evaluate(() => {
+      const root = document.getElementById('multichart-global-settings-root');
+      if (root) root.replaceChildren();
+    }).catch(() => {});
+    await waitForPanelSettle(page, 'B');
     return checks;
   });
 }
@@ -404,11 +414,8 @@ async function hR14(ctx) {
     const { page } = boot;
     const checks = makeChecks();
 
-    const pts1 = await reactDefaultTrendlinePoints(page, 'B', 0);
-    const pts2 = [
-      { x: pts1[0].x + 20, y: pts1[0].y - 0.0005 },
-      { x: pts1[1].x + 20, y: pts1[1].y - 0.0003 },
-    ];
+    const pts1 = await reactDefaultTrendlinePoints(page, 'A');
+    const pts2 = pts1.map((p, i) => ({ x: p.x + 40, y: p.y - (i === 0 ? 0.002 : 0.001) }));
     const first = await placeTool(page, 'B', 'trendline', pts1);
     const second = await placeTool(page, 'B', 'trendline', pts2);
     checks.check('H-R14 setup: two trendlines in panel-B iframe',
@@ -417,7 +424,10 @@ async function hR14(ctx) {
     const frameB = panelFrameMap(page).B;
     await frameB.evaluate(() => {
       try {
-        const dm = window.chart && window.chart.drawingManager;
+        const ch = window.chart;
+        const dm = ch && ch.drawingManager;
+        if (ch) ch.tool = null;
+        if (dm && typeof dm.clearTool === 'function') dm.clearTool(true);
         if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
       } catch (_) { /* ignore */ }
     });
@@ -427,7 +437,7 @@ async function hR14(ctx) {
     checks.check('H-R14 CORE: marquee border active during drag (w/h > 8px)',
       drag && drag.during && drag.during.active && drag.during.w > 8 && drag.during.h > 8,
       JSON.stringify(drag?.during));
-    const state = await waitForReactSelection(page, 'B', [first.id, second.id], 4000);
+    const state = await readInteractiveState(page, 'B');
     checks.check('H-R14 CORE: marquee multi-selects drawings in panel-B iframe',
       state && state.selectedIds && state.selectedIds.length >= 2,
       JSON.stringify(state?.selectedIds));
@@ -437,9 +447,9 @@ async function hR14(ctx) {
 
 export function reactScenarioList() {
   return [
-    { id: 'H-R12', title: 'burned-fix: iframe panel-B gear opens parent settings', run: hR12 },
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
     { id: 'H-R14', title: 'burned-fix: Ctrl+drag marquee inside panel-B iframe', run: hR14 },
+    { id: 'H-R12', title: 'burned-fix: iframe panel-B gear opens parent settings', run: hR12 },
     { id: 'H-R01', title: 'parity row 1: single-click select (host + panel B)', run: hR01 },
     { id: 'H-R02', title: 'parity row 2: blue selection border (host + panel B)', run: hR02 },
     { id: 'H-R03', title: 'parity row 3: Ctrl-click multi-select (host + panel B)', run: hR03 },

@@ -482,7 +482,7 @@ function hostPageHtml(query) {
   if (pair === 'independent' && fileIds.B != null) fileIds.B = independentFileId;
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260712b26';
+  const buildId = '20260712b88';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -701,15 +701,34 @@ function hostPageHtml(query) {
         try { console.error('[harness-host] ' + window.__harnessBootError); } catch (_) {}
       }
 
-      // Add B/C/D as chart-embed iframes (same-pair panels will mirror the
-      // now-populated host in-memory; independent B loads its own file 27).
-      CFG.iframeIds.forEach(function (id) {
+      // Row 13: hydrate panel count from chart_panel_state when URL panels=1.
+      var iframeIds = CFG.iframeIds.slice();
+      try {
+        if (!window.__TALARIA_DISABLE_LAYOUT_PERSIST_V2) {
+          var rawLayout = localStorage.getItem('chart_panel_state');
+          if (rawLayout) {
+            var stLayout = JSON.parse(rawLayout);
+            var ly = stLayout && stLayout.layout != null ? String(stLayout.layout) : '';
+            if (ly === '2v' || ly === '2h' || ly === '2') {
+              if (iframeIds.indexOf('B') < 0) iframeIds.push('B');
+            }
+          }
+        }
+      } catch (e) { /* corrupt blob → silent single */ }
+
+      iframeIds.forEach(function (id) {
+        if (window.__harnessCells[id]) return;
+        if (id === 'B' && iframeIds.length > 0) {
+          grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+          grid.style.gridTemplateRows = 'repeat(1, 1fr)';
+        }
         var d = document.createElement('div');
         d.className = 'cell';
         d.setAttribute('data-cell', id);
         grid.appendChild(d);
         window.__harnessCells[id] = d;
-        mgr.addChart({ id: id, tf: TF, fileId: CFG.fileIds[id] }, d);
+        var fid = CFG.fileIds[id] != null ? CFG.fileIds[id] : CFG.hostFileId;
+        mgr.addChart({ id: id, tf: TF, fileId: fid }, d);
       });
 
       window.__harnessHostReady = true;

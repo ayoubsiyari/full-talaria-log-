@@ -2552,6 +2552,22 @@
                     dismissActiveDrawingTool(ch.drawingManager, !!(args && args.mirrored), args);
                     return;
                 }
+                case 'deleteSelectedDrawings': {
+                    var dmd = ch.drawingManager;
+                    if (!dmd) return;
+                    var toDelete = Array.isArray(dmd.selectedDrawings)
+                        ? dmd.selectedDrawings.slice()
+                        : [];
+                    if (toDelete.length === 0 && dmd.selectedDrawing) {
+                        toDelete.push(dmd.selectedDrawing);
+                    }
+                    toDelete.forEach(function (drawing) {
+                        if (drawing && typeof dmd.deleteDrawing === 'function') {
+                            dmd.deleteDrawing(drawing);
+                        }
+                    });
+                    return;
+                }
                 case 'setChartCursorType': {
                     var ct = args.cursorType ? String(args.cursorType) : 'cross';
                     var skipSync = !!(args && args.skipSync);

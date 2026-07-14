@@ -16,6 +16,8 @@ function isChartShortcutsBlockedBySettingsUi() {
         if (document.querySelector('#indicator-settings-modal')) return true;
         const goTo = document.getElementById('goToSettingsModal');
         if (goTo && goTo.classList && goTo.classList.contains('open')) return true;
+        const mcRoot = document.getElementById('multichart-global-settings-root');
+        if (mcRoot && mcRoot.childElementCount > 0) return true;
     } catch (_) { /* ignore */ }
     return false;
 }
@@ -485,7 +487,10 @@ class KeyboardShortcutsManager {
 
         // Block chart shortcuts while a settings panel is open (undo, zoom, symbol search, etc.).
         if (isChartShortcutsBlockedBySettingsUi()) {
-            if (e.key === 'Escape') return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.cancelAction();
+            }
             return;
         }
         
@@ -927,12 +932,30 @@ class KeyboardShortcutsManager {
     
     cancelAction() {
         // Cancel current drawing or deselect
-        if (this.chart.drawingManager) {
-            if (this.chart.drawingManager.drawingState?.isDrawing) {
-                this.chart.drawingManager.cancelDrawing?.();
+        const dm = this.chart.drawingManager;
+        if (dm) {
+            if (dm.drawingState?.isDrawing) {
+                dm.cancelDrawing?.();
             } else {
-                this.chart.drawingManager.deselectAll?.();
-                this.chart.drawingManager.clearTool?.();
+                const inMultichart = !!(typeof window !== 'undefined' && (
+                    window.__multichartGrid
+                    || (() => {
+                        try {
+                            return new URLSearchParams(window.location.search).get('multichart') === '1';
+                        } catch (_) {
+                            return false;
+                        }
+                    })()
+                ));
+                const opts = inMultichart ? { fromCanvasBackground: true } : {};
+                dm.deselectAll?.(opts);
+                dm.clearTool?.();
+                if (inMultichart) {
+                    try {
+                        window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
+                        window.dispatchEvent(new CustomEvent('multichart-dismiss-drawing-settings'));
+                    } catch (_) { /* ignore */ }
+                }
             }
         }
         
@@ -946,8 +969,18 @@ class KeyboardShortcutsManager {
     }
     
     deleteSelected() {
-        if (this.chart.drawingManager?.selectedDrawing) {
-            this.chart.drawingManager.deleteDrawing(this.chart.drawingManager.selectedDrawing);
+        const dm = this.chart.drawingManager;
+        if (!dm) return;
+        let selected = Array.isArray(dm.selectedDrawings) ? dm.selectedDrawings.slice() : [];
+        if (selected.length === 0 && dm.selectedDrawing) {
+            selected = [dm.selectedDrawing];
+        }
+        if (selected.length === 0) {
+            const visuallySelected = (dm.drawings || []).filter((d) => d && d.selected);
+            if (visuallySelected.length === 1) selected = visuallySelected;
+        }
+        if (selected.length > 0) {
+            selected.forEach((drawing) => dm.deleteDrawing(drawing));
         }
     }
     

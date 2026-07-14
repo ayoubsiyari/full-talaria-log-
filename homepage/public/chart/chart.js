@@ -18790,10 +18790,13 @@ class Chart {
         if (typeof window === 'undefined') return true;
         if (window.__TALARIA_DISABLE_CTRL_MARQUEE_FIX) return false;
         // I14: iframe embed marquee is part of the quickbar/settings fix bundle (step 16).
-        if (window.__talariaV9PanelEmbed === true
-            && window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) {
-            return false;
-        }
+        try {
+            const inIframe = !!(window.parent && window.parent !== window);
+            const quickbarOff = inIframe
+                ? !!window.parent.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2
+                : !!window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+            if (inIframe && quickbarOff) return false;
+        } catch (_) { /* ignore */ }
         return true;
     }
 
@@ -31330,6 +31333,19 @@ class Chart {
         };
 
         const tryStartCtrlMarqueeSelect = (e) => {
+            if (typeof window !== 'undefined') {
+                let inMultichartIframe = false;
+                let quickbarFixOff = false;
+                try {
+                    inMultichartIframe = !!(window.parent && window.parent !== window);
+                    if (inMultichartIframe) {
+                        quickbarFixOff = !!window.parent.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+                    } else {
+                        quickbarFixOff = !!window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2;
+                    }
+                } catch (_) { /* ignore */ }
+                if (inMultichartIframe && quickbarFixOff) return false;
+            }
             if (this.drag && this.drag.active) return false;
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.shiftKey) return false;
             const dm = this.drawingManager;

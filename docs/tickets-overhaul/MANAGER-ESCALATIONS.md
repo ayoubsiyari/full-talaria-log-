@@ -351,6 +351,41 @@ Steps 11, 12, and 13 each reported deterministic GREEN on the **dev:live fast lo
 ### Manager recommendation
 Approve both. Step 14 is already written to (a) fix via a reliable in-iframe signal posted by the parent bridge (not parent globals) and (b) require real-product 10× proof. Recommend making T0-step8 the durable gate for this whole family. This is the D-006 blind spot recurring — the parity check must become real, not dev:live.
 
+## ESC-010 — Real-iframe harness reveals broad panel-B interaction breakage; per-surface vs consolidated-root decision
+
+**Date:** 2026-07-14
+**Track:** T1 (Lane 1) ∩ T3 (Lane 2), build `20260712b26` (local built dist-v9)
+**RC:** RC-1 / RC-4
+**Urgency:** Scope/architecture decision — determines whether the next 5–6 fixes are separate steps or one consolidated fix. Not lane-blocking (15/16 + T3 rows in flight).
+
+### Finding
+Now that T0-step9 runs the parity rows **faithfully on real iframes**, panel-B interaction is broken across **seven** surfaces (only blue-border H-R02 and Ctrl-click H-R03 pass): H-R01 single-click shows **no parent V9 quick bar**, H-R04 dbl-click→settings, H-R05 Esc leaves chrome selected, H-R06 delete doesn't remove, H-R07 peer isolation fails, H-R08 marquee inactive, H-R09 click chain broken. Registered HR-PARITY#1–#8. The dev:live-only history hid all of this.
+
+### The decision
+H-R01 (a panel-B selection never produces the parent V9 quick bar) is very likely the **root**: settings-open, Esc-deselect, delete-routing, and the click chain all cascade from selection→parent-chrome routing being incomplete across the iframe boundary. So:
+1. **Confirm the common root** with one diagnostic (does driving panel-B selection→parent V9 chrome over the bridge collapse H-R01/04/05/06/09 together?), before dispatching any more per-surface fixes.
+2. **Then choose:** (a) continue per-surface I14 steps (17, 18, …), or (b) **one consolidated panel-B interaction-parity fix** — parent chrome subscribes to panel-B selection over the postMessage bridge (I14), HR-PARITY rows as the acceptance contract. Owner: T3/Lane 2 (RC-4 interaction parity) coordinating the I14 transport with Lane 1.
+
+### Manager recommendation
+Approve the diagnostic-first path and, if the common root is confirmed, **(b) the consolidated fix owned by T3/Lane 2** — this is exactly the root-not-symptom mandate; six per-surface steps would repeat the loop we're closing. Keep steps 15/16 (concrete, in-flight, turn H-R13/H-R14 green) as-is; peer isolation (H-R07) is already a T3 contract row. HR-PARITY#1–#8 are the ratchet. Hold new per-surface steps beyond 16 until the root is confirmed.
+
+## ESC-010 — RESOLVED
+
+**Director ruling:** D-011 (2026-07-14). Diagnostic-first approved; consolidated fix (b) pre-authorized (no round-trip). **+Mandatory step 0 fallback-posture A/B** (b26 = fallback-B; re-run failing HR-PARITY rows with migration switches ON in-panel — vanishing failures = our rollback, future re-migration scope, not defects). **Scope fence:** selection→parent-chrome routing only, T3/Lane 2 owns, Lane 1 engine-side emit as separate gated commit; H-R07/H-R08 stay separate unless proven to collapse with root. Acceptance = HR-PARITY green on real-iframe harness + parity checklist on built product (not dev:live). Steps 15/16 continue; per-surface beyond 16 held until diagnostic returns.
+
+## ESC-008 — RESOLVED
+
+**Director ruling:** D-009 (2026-07-14). Both replay fixes authorized — cadence correctness first (`__TALARIA_FIX_REPLAY_INTERVAL_CADENCE`), mode-play routing second (`__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING`). Fork ruled **(A)**: tick persists, interval bounds step size only, UI shows both. Acceptance = harness green + PO live confirm (Tick+4h → tick animation, 4h step bounds). Lane 3 free to dispatch.
+
+---
+
+## ESC-010 — RESOLVED
+
+**Director ruling:** D-011 (2026-07-14)  
+**Outcome:** Diagnostic-first approved (timeboxed, discriminating evidence per row). **Mandatory step 0 inside the diagnostic: fallback-posture A/B** — re-run failing HR-PARITY rows with the retained migration switches ON in the panel; failures that vanish are re-migration scope (our deliberate rollback), not defects. On root confirmation, consolidated fix **(b) pre-authorized** (no second escalation): parent V9 chrome subscribes to panel-B selection via postMessage (I14), owned by T3/Lane 2 with Lane 1 providing the engine emit as a separate gated commit; scope = selection→parent-chrome routing only (no wholesale fallback reversal; H-R07/H-R08 stay on their own tracks). Acceptance = HR-PARITY rows green on the real-iframe harness + PO parity checklist (per D-010). Root refuted → per-surface resumes with evidence re-escalated. Steps 15/16 continue; per-surface beyond 16 held.
+
+---
+
 ## ESC-009 — RESOLVED
 
 **Director ruling:** D-010 (2026-07-14). Both requests approved + 1 modification + 2 additions: (1) real built-product acceptance surface for parent↔iframe fixes (build id confirmed inside the panel iframe); (2) T0-step8 durable gate but **not** hard serialization — near-term fixes (step 14) accept via manual real-built path; (3) **new INVARIANTS I14** — postMessage-bridge-only, parent globals forbidden in panel-facing paths; (4) report-labeling correction — mislabeled "DONE (proven)" → **Manager bounces**; (5) T0-step8 raised to Lane 4 top item with hardened exit (real MultichartGrid, real separate-window iframes, build-id assert per panel, one regression scenario per burned fix: gear route / settings flash / marquee-in-panel).

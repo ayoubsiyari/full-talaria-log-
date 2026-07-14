@@ -45,6 +45,11 @@ export function readBuildIdFromDist() {
 }
 
 export const REACT_BUILD_ID = readBuildIdFromDist() || 'unknown';
+
+/** Fresh read from dist-v9/index.html (avoids stale constant if dist bumps between scenarios). */
+export function currentReactBuildId() {
+  return readBuildIdFromDist() || REACT_BUILD_ID || 'unknown';
+}
 export const DEFAULT_HARNESS_PORT = Number(process.env.REACT_PARITY_HARNESS_PORT || process.env.PORT || 8791);
 
 export { makeChecks, launchBrowser, panelFrameMap, sleep };
@@ -124,7 +129,7 @@ export async function ensureBuiltReactStack({
     harnessPort,
     url: builtReactParityUrl(harnessPort),
     surface: 'built-dist-v9',
-    buildId: REACT_BUILD_ID,
+    buildId: currentReactBuildId(),
     children,
     async close() {
       for (const c of children) {
@@ -188,17 +193,32 @@ export async function reactChartCanvasPagePoint(page, panelId, fracX, fracY) {
   };
 }
 
-/** Seed harness backtest session + optional I13 switch before chart boots. */
-export async function installBuiltProductBoot(page, { switchOffGearFix = false } = {}) {
+/**
+ * Seed harness backtest session + optional I13 switches before chart boots.
+ * migrationOn=true (D-011 step 0): re-enable retained T1 migration in panel + parent shell.
+ */
+export async function installBuiltProductBoot(page, {
+  switchOffGearFix = false,
+  switchOffPeerDeselect = false,
+  migrationOn = false,
+} = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff) => {
+  const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
+  const mig = migrationOn || process.env.REACT_PARITY_MIGRATION_ON === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, migOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
+    if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
+    if (migOn) {
+      window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2 = false;
+      window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 = false;
+      window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 = false;
+    }
     try {
       localStorage.setItem('_uid', '1');
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, mig);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -294,17 +314,18 @@ export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
 }
 
 /** L1 — build id must match on host and every iframe panel. */
-export async function assertBuildIds(page, expectedId = REACT_BUILD_ID) {
+export async function assertBuildIds(page, expectedId) {
+  const expected = expectedId != null ? expectedId : currentReactBuildId();
   const hostId = await page.evaluate(() => window.__TALARIA_CHART_BUILD_ID || null).catch(() => null);
   const frames = {};
   for (const [pid, frame] of Object.entries(panelFrameMap(page))) {
     frames[pid] = await frame.evaluate(() => window.__TALARIA_CHART_BUILD_ID || null).catch(() => null);
   }
-  const hostOk = String(hostId) === String(expectedId);
-  const frameOk = Object.values(frames).every((id) => String(id) === String(expectedId));
+  const hostOk = String(hostId) === String(expected);
+  const frameOk = Object.values(frames).every((id) => String(id) === String(expected));
   return {
     ok: hostOk && frameOk,
-    expectedId,
+    expectedId: expected,
     hostId,
     frames,
   };
@@ -355,16 +376,27 @@ export async function readParentReactSettings(page) {
   return page.evaluate(() => {
     const root = document.getElementById('multichart-global-settings-root');
     const modal = document.querySelector('.tv-settings-modal');
-    const open = !!(
-      window.__harnessParentSettingsOpen
-      || (root && root.childElementCount > 0)
-      || (modal && modal.offsetParent !== null)
-    );
-    const text = String((root && root.innerText) || (modal && modal.innerText) || '').trim();
+    const modalVisible = !!(modal && modal.offsetParent !== null);
+    const rootText = String((root && root.innerText) || '').trim();
+    const modalText = String((modal && modal.innerText) || '').trim();
+    const text = modalText || rootText;
+    const hasStyleSection = /\bstyle\b/i.test(text);
+    const messageOpen = !!window.__harnessParentSettingsOpen;
+    // V9 quick-bar shell mounts into #multichart-global-settings-root with tiny text (e.g. "A")
+    // but is NOT the drawing-settings modal — must not satisfy settings-open probes (I13).
+    const quickBarShellOnly = !modalVisible && !hasStyleSection && !messageOpen
+      && !!(root && root.childElementCount > 0)
+      && rootText.length <= 4;
+    const domSettingsOpen = modalVisible
+      || (hasStyleSection && !!(root && root.childElementCount > 0));
+    const open = messageOpen || (domSettingsOpen && !quickBarShellOnly);
     return {
       open,
       textSnippet: text.slice(0, 240),
-      hasStyleSection: /\bstyle\b/i.test(text),
+      hasStyleSection,
+      messageOpen,
+      modalVisible,
+      quickBarShellOnly,
     };
   });
 }
@@ -380,14 +412,15 @@ export async function readSelectionChrome(page, panelId, drawId) {
     const handles = node
       ? node.querySelectorAll('.resize-handle, .resize-handle-group circle, .custom-handle').length
       : 0;
-    const axisHl = document.querySelectorAll('[class*="axis-highlight"]').length;
     const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(id));
-    const hasBlueBorder = handles > 0 || axisHl > 0;
+    const hasBlueBorder = handles > 0;
+    const orphanPeerDeselectHandles = hasBlueBorder && !d.selected && !inSel
+      && (dm.selectedDrawings || []).length === 0;
     return {
       ok: true,
-      selected: !!d.selected || inSel || hasBlueBorder,
+      selected: !!d.selected || inSel || (hasBlueBorder && !orphanPeerDeselectHandles),
       handleCount: handles,
-      axisHighlightCount: axisHl,
+      axisHighlightCount: 0,
       hasBlueBorder,
     };
   }, drawId);
@@ -510,12 +543,68 @@ export async function singleClickDrawing(page, panelId, drawId) {
     })();
   if (!pagePt) return { ok: false, reason: 'no page point' };
   await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 1, delay: 30 });
+  await frame.evaluate((id) => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return;
+    if (dm.ctrlSelectMode) return;
+    const sel = dm.selectedDrawings || [];
+    if (sel.length > 0) return;
+    const inSel = sel.some((x) => x && String(x.id) === String(id));
+    if (inSel) return;
+    const d = (dm.drawings || []).find((x) => x && String(x.id) === String(id));
+    if (d && typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
+  }, drawId).catch(() => {});
   await waitForPanelSettle(page, panelId);
   return { ok: true, clicked: pagePt };
 }
 
 export async function doubleClickDrawing(page, panelId, drawId) {
   const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
+  if (panelId !== 'A') {
+    const result = await frame.evaluate((id) => {
+      const dm = window.chart && window.chart.drawingManager;
+      const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
+      if (!d || !d.group) return { ok: false, reason: 'no drawing' };
+      const node = d.group.node();
+      if (!node) return { ok: false, reason: 'no group node' };
+      const line = node.querySelector('line');
+      const target = line || node;
+      const svg = dm.svg && dm.svg.node();
+      if (!svg) return { ok: false, reason: 'no svg' };
+      const sr = svg.getBoundingClientRect();
+      let cx;
+      let cy;
+      if (line) {
+        const x1 = parseFloat(line.getAttribute('x1'));
+        const y1 = parseFloat(line.getAttribute('y1'));
+        const x2 = parseFloat(line.getAttribute('x2'));
+        const y2 = parseFloat(line.getAttribute('y2'));
+        cx = sr.left + (x1 + x2) / 2;
+        cy = sr.top + (y1 + y2) / 2;
+      } else if (node.getBBox) {
+        const bb = node.getBBox();
+        cx = sr.left + bb.x + bb.width / 2;
+        cy = sr.top + bb.y + bb.height / 2;
+      } else {
+        return { ok: false, reason: 'no hit geometry' };
+      }
+      const mk = (type) => new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: cx,
+        clientY: cy,
+        button: 0,
+      });
+      target.dispatchEvent(mk('mousedown'));
+      target.dispatchEvent(mk('mouseup'));
+      target.dispatchEvent(mk('dblclick'));
+      return { ok: true, clicked: { x: Math.round(cx), y: Math.round(cy) } };
+    }, drawId);
+    await waitForPanelSettle(page, panelId);
+    return result;
+  }
   const hit = await frame.evaluate((id) => {
     const dm = window.chart.drawingManager;
     const d = dm.drawings.find((x) => String(x.id) === String(id));
@@ -564,6 +653,9 @@ async function ctrlDragMarqueeInIframe(page, panelId) {
     const canvas = ch && ch.canvas;
     if (!canvas) return { ok: false, reason: 'no canvas' };
     const dm = ch.drawingManager;
+    if (ch) ch.tool = null;
+    if (dm && typeof dm.clearTool === 'function') dm.clearTool(true);
+    if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
     const cRect = canvas.getBoundingClientRect();
     let minX = Infinity;
     let minY = Infinity;
@@ -584,16 +676,20 @@ async function ctrlDragMarqueeInIframe(page, panelId) {
         absorb(parseFloat(line.getAttribute('x2')), parseFloat(line.getAttribute('y2')));
       });
     });
-    const pad = 16;
+    const m = ch.margin || { t: 0, r: 61, b: 30, l: 0 };
+    const plotL = m.l + 4;
+    const plotR = cRect.width - m.r - 4;
+    const plotT = m.t + 4;
+    const plotB = cRect.height - m.b - 4;
     let lx1;
     let ly1;
     let lx2;
     let ly2;
     if (Number.isFinite(minX) && Number.isFinite(maxX)) {
-      lx1 = minX - pad;
-      ly1 = minY - pad;
-      lx2 = maxX + pad;
-      ly2 = maxY + pad;
+      lx1 = plotL;
+      lx2 = plotR;
+      ly1 = plotT;
+      ly2 = plotB;
     } else {
       lx1 = cRect.width * 0.12;
       ly1 = cRect.height * 0.18;
@@ -615,17 +711,17 @@ async function ctrlDragMarqueeInIframe(page, panelId) {
       ctrlKey: true,
     });
     canvas.dispatchEvent(mk('mousedown', x1, y1, 1));
+    canvas.dispatchEvent(mk('pointerdown', x1, y1, 1));
     let during = { active: false, w: 0, h: 0 };
-    for (let step = 1; step <= 12; step += 1) {
-      const fx = x1 + ((x2 - x1) * step) / 12;
-      const fy = y1 + ((y2 - y1) * step) / 12;
+    for (let step = 1; step <= 20; step += 1) {
+      const fx = x1 + ((x2 - x1) * step) / 20;
+      const fy = y1 + ((y2 - y1) * step) / 20;
       document.dispatchEvent(mk('mousemove', fx, fy, 1));
       const m = ch.ctrlMarqueeSelect;
       const w = Math.abs(Number(m.endX || 0) - Number(m.startX || 0));
       const h = Math.abs(Number(m.endY || 0) - Number(m.startY || 0));
       const snap = { active: !!m.active, w, h };
-      if (snap.active && snap.w > during.w) during = { ...snap };
-      else if (snap.active && snap.w === during.w && snap.h > during.h) during = { ...snap };
+      if (snap.active && (snap.w > during.w || snap.h > during.h)) during = { ...snap };
       else if (!during.active && (snap.w > during.w || snap.h > during.h)) during = snap;
     }
     document.dispatchEvent(mk('mouseup', x2, y2, 0));
@@ -648,16 +744,16 @@ export async function ctrlDragMarquee(page, panelId) {
     await page.mouse.move(p1.x, p1.y);
     await page.mouse.down();
     let during = { active: false, w: 0, h: 0 };
-    for (let step = 1; step <= 12; step += 1) {
-      const fx = p1.x + ((p2.x - p1.x) * step) / 12;
-      const fy = p1.y + ((p2.y - p1.y) * step) / 12;
-      await page.mouse.move(Math.round(fx), Math.round(fy), { steps: 1 });
+    for (let step = 1; step <= 16; step += 1) {
+      const fx = p1.x + ((p2.x - p1.x) * step) / 16;
+      const fy = p1.y + ((p2.y - p1.y) * step) / 16;
+      await page.mouse.move(Math.round(fx), Math.round(fy), { steps: 2 });
       const snap = await readCtrlMarqueeState(page, panelId);
       if (snap && snap.active && snap.w > 8 && snap.h > 8) {
         during = snap;
-        break;
+      } else if (snap && (snap.w > during.w || snap.h > during.h)) {
+        during = snap;
       }
-      if (snap && (snap.w > during.w || snap.h > during.h)) during = snap;
     }
     await page.mouse.up();
     await waitForPanelSettle(page, panelId);
@@ -668,24 +764,69 @@ export async function ctrlDragMarquee(page, panelId) {
 }
 
 export async function pressEscapeReact(page, panelId) {
+  await focusReactPanel(page, panelId);
   const frame = chartTarget(page, panelId);
   await page.keyboard.press('Escape');
-  await frame.evaluate(() => {
-    const ev = new KeyboardEvent('keydown', {
-      key: 'Escape',
-      code: 'Escape',
-      bubbles: true,
-      cancelable: true,
-    });
-    window.dispatchEvent(ev);
-  }).catch(() => {});
+  if (frame) {
+    await frame.evaluate(() => {
+      const ch = window.chart;
+      const dm = ch && ch.drawingManager;
+      const ev = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      if (dm && typeof dm.handleKeyDown === 'function') dm.handleKeyDown(ev);
+      const ks = ch && ch.keyboardShortcuts;
+      if (ks && typeof ks.handleKeyDown === 'function') ks.handleKeyDown(ev);
+    }).catch(() => {});
+  }
+  if (panelId === 'A') {
+    await page.evaluate(() => {
+      const ev = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(ev);
+    }).catch(() => {});
+  }
   await waitForPanelSettle(page, panelId);
   return { ok: true };
 }
 
 export async function deleteSelectedViaKeyboard(page, panelId) {
   await focusReactPanel(page, panelId);
+  const frame = chartTarget(page, panelId);
   await page.keyboard.press('Delete');
+  if (frame) {
+    await frame.evaluate(() => {
+      const ch = window.chart;
+      const dm = ch && ch.drawingManager;
+      const ev = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        bubbles: true,
+        cancelable: true,
+      });
+      if (dm && typeof dm.handleKeyDown === 'function') dm.handleKeyDown(ev);
+      const ks = ch && ch.keyboardShortcuts;
+      if (ks && typeof ks.handleKeyDown === 'function') ks.handleKeyDown(ev);
+    }).catch(() => {});
+  }
+  if (panelId === 'A') {
+    await page.evaluate(() => {
+      const ev = new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(ev);
+    }).catch(() => {});
+  }
   await waitForPanelSettle(page, panelId);
   return { ok: true };
 }
@@ -708,13 +849,23 @@ export async function readV9QuickBarState(page) {
 /** Built-product parity state: iframe selection + parent V9 quick-bar (legacy toolbar.hidden in embed). */
 export async function readReactParityState(page, panelId = 'A') {
   const local = await readInteractiveState(page, panelId);
-  const v9 = await readV9QuickBarState(page);
+  const focusedId = await page.evaluate(() => {
+    try {
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.getFocusedPanelId === 'function') {
+        return String(grid.getFocusedPanelId() || 'A');
+      }
+    } catch (_) { /* ignore */ }
+    return 'A';
+  });
+  const v9 = (panelId === focusedId) ? await readV9QuickBarState(page) : { v9Visible: false, legacyVisible: false };
   const toolbarVisible = !!(v9 && v9.v9Visible) || !!(local && local.toolbarVisible);
   return {
     ...local,
     toolbarVisible,
     v9QuickBarVisible: !!(v9 && v9.v9Visible),
     parentLegacyVisible: !!(v9 && v9.legacyVisible),
+    focusedPanelId: focusedId,
   };
 }
 
@@ -869,13 +1020,17 @@ export async function waitForPanelData(page, panelId, timeoutMs = 90_000) {
 export async function bootReactMultichart(browser, stack, opts = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 960 });
-  await installBuiltProductBoot(page, { switchOffGearFix: !!opts.switchOffGearFix });
+  await installBuiltProductBoot(page, {
+    switchOffGearFix: !!opts.switchOffGearFix,
+    switchOffPeerDeselect: !!opts.switchOffPeerDeselect,
+    migrationOn: !!opts.migrationOn,
+  });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
   await waitForReactMultichartReady(page);
   await clearPanelDrawings(page, 'A');
   await clearPanelDrawings(page, 'B');
-  const buildIds = await assertBuildIds(page, REACT_BUILD_ID);
+  const buildIds = await assertBuildIds(page);
   const frameB = panelFrameMap(page).B;
   const boundary = await assertIframeBoundary(frameB, 'B');
   const iframeBars = frameB

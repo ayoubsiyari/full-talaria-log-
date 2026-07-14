@@ -5,6 +5,9 @@ on:
     paths:
       - "chart v 1.4/chart/**"
       - "chart v 1.4/talaria-design/src/Multichart*"
+      - "chart v 1.4/talaria-design/vite.config.live.js"
+      - "chart v 1.4/chart/multichart-prod/harness/**"
+      - ".github/workflows/multichart-harness.yml"
   workflow_dispatch:
 
 permissions:
@@ -34,3 +37,34 @@ jobs:
       - name: Run multichart regression gate
         working-directory: "chart v 1.4/chart/multichart-prod/harness"
         run: npm run gate
+
+  gate-react:
+    name: react parity gate (real iframe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            chart v 1.4/talaria-design/package-lock.json
+            chart v 1.4/chart/multichart-prod/harness/package-lock.json
+
+      - name: Install talaria-design dependencies
+        working-directory: "chart v 1.4/talaria-design"
+        run: npm ci
+
+      - name: Build dist-v9 (built product for real-iframe parity)
+        working-directory: "chart v 1.4/talaria-design"
+        run: npm run build:live
+
+      - name: Install harness dependencies
+        working-directory: "chart v 1.4/chart/multichart-prod/harness"
+        run: npm ci
+
+      - name: Run react parity gate (built dist-v9 + real iframes)
+        working-directory: "chart v 1.4/chart/multichart-prod/harness"
+        run: npm run gate:react

@@ -1,0 +1,5 @@
+(node:44116) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[react-run] FATAL: Error: react-parity: harness serve did not start on :8791
+    at ensureBuiltReactStack (file:///C:/Users/user/Desktop/talaria1/full-talaria-log--main/chart%20v%201.4/chart/multichart-prod/harness/react-parity-lib.mjs:124:13)
+    at async main (file:///C:/Users/user/Desktop/talaria1/full-talaria-log--main/chart%20v%201.4/chart/multichart-prod/harness/react-run.mjs:32:17)

@@ -9,9 +9,10 @@ import { ensureBuiltReactStack, launchBrowser } from './react-parity-lib.mjs';
 import { reactScenarioList } from './react-parity-scenarios.mjs';
 
 function parseArgs(argv) {
-  const args = { runs: 1, only: null, headful: false };
+  const args = { runs: 1, only: null, headful: false, migrationOn: false };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
+    else if (a === '--migration-on') args.migrationOn = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
   }
@@ -31,7 +32,7 @@ async function main() {
   const stack = await ensureBuiltReactStack();
   console.log(`[react-run] built-product url: ${stack.url}`);
   console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
-  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'}`);
+  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} migrationOn=${args.migrationOn}`);
 
   const scenarios = reactScenarioList().filter((s) => !args.only || args.only.includes(s.id));
   if (!scenarios.length) {
@@ -49,7 +50,7 @@ async function main() {
     for (let run = 1; run <= args.runs; run++) {
       console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
       for (const s of scenarios) {
-        const ctx = { browser, stack };
+        const ctx = { browser, stack, migrationOn: args.migrationOn };
         let result;
         try {
           result = await s.run(ctx);
@@ -57,6 +58,7 @@ async function main() {
           console.log(`[react-run] ${s.id} threw: ${(err && err.stack) || err}`);
           verdicts[s.id].push('FAIL');
           console.log(`RESULT ${s.id} FAIL`);
+          await new Promise((r) => setTimeout(r, 1500));
           continue;
         }
         const v = verdictOf(result);
@@ -67,6 +69,7 @@ async function main() {
           console.log(`   [${c.ok ? ' ok ' : 'FAIL'}] ${c.label}${c.detail ? ' — ' + c.detail : ''}`);
         }
         console.log(`RESULT ${s.id} ${v.pass ? 'PASS' : 'FAIL'}`);
+        await new Promise((r) => setTimeout(r, 1500));
       }
     }
   } finally {

@@ -26,6 +26,15 @@
         throw new Error('multichart-manager: MultichartGuards must load first');
     }
 
+    /** T3 step 5: cross-panel peer deselect (I13). Default ON. */
+    function multichartPeerDeselectV1Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -93,6 +102,7 @@
             : null;
 
         this.charts = new Map();    // id -> { id, frame, ready, state }
+        this.focusedPanelId = 'A';
         this.syncMode = {
             crosshair:    true,
             visibleRange: false,
@@ -195,6 +205,69 @@
                     self._initialSyncToHost(c);
                 }
             }, 0);
+        }
+
+        const symNow = !!this.syncMode.symbol;
+        const symWas = !!prev.symbol;
+        if (symNow && !symWas && symbolSyncConvergeV2Enabled()) {
+            const self = this;
+            setTimeout(function () { self._convergeSymbolSyncFromFocusedPanel(); }, 0);
+        }
+    };
+
+    function symbolSyncConvergeV2Enabled() {
+        try {
+            return !(global.__TALARIA_DISABLE_SYMBOL_SYNC_CONVERGE_V2);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    MultichartManager.prototype._resolveFocusedPanelFileId = function () {
+        let focusId = this.focusedPanelId || 'A';
+        try {
+            const grid = global.__multichartGrid;
+            if (grid && typeof grid.getFocusedPanelId === 'function') {
+                focusId = grid.getFocusedPanelId() || focusId;
+            }
+        } catch (_) {}
+        const entry = this.charts.get(focusId);
+        if (entry && entry.host && global.chart && global.chart.currentFileId != null) {
+            return { focusId: focusId, fileId: String(global.chart.currentFileId) };
+        }
+        if (entry && entry.state && entry.state.fileId != null) {
+            return { focusId: focusId, fileId: String(entry.state.fileId) };
+        }
+        if (entry && entry.frame) {
+            try {
+                const cw = entry.frame.contentWindow;
+                if (cw && cw.chart && cw.chart.currentFileId != null) {
+                    return { focusId: focusId, fileId: String(cw.chart.currentFileId) };
+                }
+            } catch (_) {}
+        }
+        return { focusId: focusId, fileId: null };
+    };
+
+    MultichartManager.prototype._convergeSymbolSyncFromFocusedPanel = function () {
+        const resolved = this._resolveFocusedPanelFileId();
+        const fileId = resolved.fileId;
+        const focusId = resolved.focusId;
+        if (!fileId) return;
+        const self = this;
+        for (const c of this.charts.values()) {
+            if (!c || c.id === focusId) continue;
+            if (c.host) {
+                try {
+                    const ch = global.chart;
+                    if (ch && typeof ch.loadFileData === 'function') {
+                        ch.currentFileId = String(fileId);
+                        ch.loadFileData(String(fileId));
+                    }
+                } catch (_) {}
+            } else if (c.ready && typeof self.sendCommand === 'function') {
+                self.sendCommand(c.id, 'loadFile', { fileId: String(fileId), force: true }).catch(function () {});
+            }
         }
     };
 
@@ -741,13 +814,16 @@
             const ch = global.chart;
             const dm = ch && ch.drawingManager;
             if (dm && typeof dm.deselectAll === 'function') {
-                dm.deselectAll({ fromCanvasBackground: true });
+                dm.deselectAll({ forSelectionChange: true });
             }
             if (dm && dm.contextMenu && typeof dm.contextMenu.hide === 'function') {
                 dm.contextMenu.hide();
             }
             if (ch && typeof ch.hideContextMenu === 'function') {
                 ch.hideContextMenu();
+            }
+            if (ch && typeof ch.render === 'function') {
+                ch.render();
             }
         } catch (_) {}
     };
@@ -977,6 +1053,7 @@
                     }
                 } catch (_) {}
                 if (sourceId) {
+                    this.focusedPanelId = sourceId;
                     try { this.onPanelFocus(sourceId); } catch (e) {
                         this._log('warn', 'onPanelFocus threw: ' + (e && e.message || e));
                     }
@@ -984,7 +1061,9 @@
                 return;
 
             case 'multichart-clear-drawing-ui':
-                if (sourceId && typeof this.clearDrawingUiOnOtherPanels === 'function') {
+                if (multichartPeerDeselectV1Enabled()
+                    && sourceId
+                    && typeof this.clearDrawingUiOnOtherPanels === 'function') {
                     this.clearDrawingUiOnOtherPanels(sourceId, {
                         skipV9Dismiss: msg.skipV9Dismiss === true,
                     }).catch(() => {});
@@ -997,7 +1076,9 @@
                         global.__v9DrawingSelectionGuardUntil = performance.now() + 300;
                     }
                 } catch (_) {}
-                if (sourceId && typeof this.clearDrawingUiOnOtherPanels === 'function') {
+                if (multichartPeerDeselectV1Enabled()
+                    && sourceId
+                    && typeof this.clearDrawingUiOnOtherPanels === 'function') {
                     this.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
                 }
                 return;

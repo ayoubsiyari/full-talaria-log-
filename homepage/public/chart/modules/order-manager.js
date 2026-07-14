@@ -26,6 +26,30 @@ function _orderTypeLiveLabelFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDERTYPE_LIVE_LABEL_FIX;
 }
 
+/** T4 step 8: default ON — multi-entry close hit-target + stack offset + remove refresh; own kill-switch. */
+function _orderEntryCloseHitTargetFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CLOSE_HITTARGET_FIX;
+}
+
+const ENTRY_STACK_OFFSET_PX = 16;
+
+/** @param {Array<{id:number,price:number}>} levels @param {number} [pricePrecision] @returns {Map<number, number>} */
+function _computeMultiEntryStackIndices(levels, pricePrecision = 5) {
+    const prec = Number.isFinite(pricePrecision) && pricePrecision >= 0 ? pricePrecision : 5;
+    const priced = (levels || []).filter((l) => l && l.id != null && l.price > 0);
+    const groups = new Map();
+    for (const l of priced) {
+        const key = Number(Number(l.price).toFixed(prec));
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(l.id);
+    }
+    const out = new Map();
+    for (const ids of groups.values()) {
+        ids.forEach((id, i) => out.set(id, i));
+    }
+    return out;
+}
+
 function _classifyOrderTypeForPrice(side, price, currentPrice, opts = {}) {
     const market = Number(currentPrice);
     const entry = Number(price);
@@ -13034,6 +13058,8 @@ class OrderManager {
                     x: bb.width + gap,
                     y: (height - 18) / 2,
                     levelPrice: lineData.price,
+                    levelId: lineData.multiEntryLevelId,
+                    stackOffsetPx: lineData._stackOffsetY || 0,
                     stopMousedown: true,
                     onClick: (event) => {
                         event.preventDefault();
@@ -18279,6 +18305,17 @@ class OrderManager {
             } catch (_e) { /* ignore */ }
         }
         if (!Number.isFinite(y)) return null;
+        let stackYPx = 0;
+        if (options?.multiEntryLevelId != null) {
+            if (options._stackOffsetY != null && Number.isFinite(Number(options._stackOffsetY))) {
+                stackYPx = Number(options._stackOffsetY);
+            } else if (_orderEntryCloseHitTargetFixEnabled()) {
+                stackYPx = this._multiEntryStackYOffsetPx(options.multiEntryLevelId);
+            }
+        } else if (options?._stackOffsetY != null && Number.isFinite(Number(options._stackOffsetY))) {
+            stackYPx = Number(options._stackOffsetY);
+        }
+        const lineYPx = y + stackYPx;
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
@@ -18288,8 +18325,8 @@ class OrderManager {
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
             .attr('x1', 0)
             .attr('x2', chart.w)
-            .attr('y1', y)
-            .attr('y2', y)
+            .attr('y1', lineYPx)
+            .attr('y2', lineYPx)
             .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
@@ -18301,8 +18338,8 @@ class OrderManager {
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
             .attr('x2', chart.w)
-            .attr('y1', y)
-            .attr('y2', y)
+            .attr('y1', lineYPx)
+            .attr('y2', lineYPx)
             .attr('stroke', color)
             .attr('stroke-width', hitStrokeWidth)
             .attr('stroke-dasharray', dash)
@@ -18344,8 +18381,9 @@ class OrderManager {
         }
         if (options?.isSplitEntry) lineData.isSplitEntry = true;
         if (options?.orderType) lineData.orderType = options.orderType;
+        if (stackYPx) lineData._stackOffsetY = stackYPx;
 
-        this.renderPreviewLabel(lineData, y);
+        this.renderPreviewLabel(lineData, lineYPx);
         this.adjustPreviewLineForLabel(lineData);
         
         // Add Y-axis price highlight for all preview lines (BE: line shows "BE @ …" only; axis shows the level price)
@@ -20763,6 +20801,9 @@ class OrderManager {
             this.setEntryMode(false);
             this.multiEntryLevels = [];
             this.multiEntryIdCounter = 1;
+            if (_orderEntryCloseHitTargetFixEnabled()) {
+                this._finalizeMultiEntryLevelRemove();
+            }
             return;
         }
 
@@ -20770,8 +20811,38 @@ class OrderManager {
         // Scale remaining levels proportionally to restore the total risk/lot target
         // (equalizeMultiEntryAmounts resets to equal split — this preserves relative weights)
         this._rebalanceLevelAmountsToTarget();
-        this.renderMultiEntryRows();
-        this.syncMultiEntryToSplitEntries();
+        if (_orderEntryCloseHitTargetFixEnabled()) {
+            this._finalizeMultiEntryLevelRemove();
+        } else {
+            this.renderMultiEntryRows();
+            this.syncMultiEntryToSplitEntries();
+        }
+    }
+
+    /**
+     * T4 step 8: after removing a multi-entry leg, force splitEntries + preview to match levels[].
+     */
+    _finalizeMultiEntryLevelRemove() {
+        if (this.isMultiEntryMode) {
+            this.renderMultiEntryRows();
+            this.syncMultiEntryToSplitEntries();
+        }
+        if (!this.isDraggingPreviewLine) {
+            this.updatePreviewLines();
+        }
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
+    }
+
+    /** Pixel Y offset for stacked entry legs that share the same price (T4 step 8). */
+    _multiEntryStackYOffsetPx(levelId) {
+        if (!_orderEntryCloseHitTargetFixEnabled() || levelId == null) return 0;
+        const map = _computeMultiEntryStackIndices(
+            this.multiEntryLevels || [],
+            this.getPricePrecision()
+        );
+        const idx = map.get(levelId) ?? 0;
+        return idx * ENTRY_STACK_OFFSET_PX;
     }
 
     /**
@@ -23775,9 +23846,19 @@ class OrderManager {
                 const width = bucket.widths[index] ?? 0;
                 const bbox = lineData.labelDimensions;
                 const height = bbox?.height || 0;
-                const yPixel = ch.scales.yScale(lineData.price);
+                const stackYPx = (_orderEntryCloseHitTargetFixEnabled() && lineData.multiEntryLevelId != null)
+                    ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
+                    : (lineData._stackOffsetY || 0);
+                const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
+                if (lineData.line) {
+                    lineData.line.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (lineData.hitLine) {
+                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (stackYPx) lineData._stackOffsetY = stackYPx;
                 this.adjustPreviewLineForLabel(lineData, currentX, width, height);
                 currentX += width + gap;
             });
@@ -38181,6 +38262,19 @@ class OrderManager {
         }
     }
 
+    _tagOmLevelCtrlLevelId(el, levelId, stackOffsetPx) {
+        if (!el) return;
+        if (levelId != null) {
+            el.setAttribute('data-level-id', String(levelId));
+        }
+        const stack = Number(stackOffsetPx);
+        if (Number.isFinite(stack) && stack !== 0) {
+            el.setAttribute('data-level-stack-px', String(stack));
+        } else if (el.hasAttribute('data-level-stack-px')) {
+            el.removeAttribute('data-level-stack-px');
+        }
+    }
+
     /** Chart preview badges + RR tool row controls (drawing SVG). */
     _collectOmLevelCtrlBadgeNodes(ch) {
         const nodes = [];
@@ -38236,7 +38330,10 @@ class OrderManager {
                 && clientY >= r.top - PAD && clientY <= r.bottom + PAD;
             const lp = parseFloat(el.getAttribute('data-level-price'));
             if (yScale && Number.isFinite(lp)) {
-                const levelPixelY = yScale(lp);
+                const stackPx = _orderEntryCloseHitTargetFixEnabled()
+                    ? parseFloat(el.getAttribute('data-level-stack-px') || '0')
+                    : 0;
+                const levelPixelY = yScale(lp) + (Number.isFinite(stackPx) ? stackPx : 0);
                 // Reveal band must cover the badge's own height so moving onto the
                 // control never leaves the band (prevents hover flicker).
                 const band = Math.max(PAD, (r.height || 0) / 2 + PAD);
@@ -42913,6 +43010,17 @@ class OrderManager {
             .attr('font-family', this._orderLevelLabelFontFamily())
             .text(spec.glyph);
         this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
+        if (_orderEntryCloseHitTargetFixEnabled() && kind === 'close') {
+            const pad = 5;
+            g.insert('rect', ':first-child')
+                .attr('class', 'order-level-badge-hitpad')
+                .attr('x', -pad)
+                .attr('y', -pad)
+                .attr('width', size + pad * 2)
+                .attr('height', size + pad * 2)
+                .attr('fill', 'transparent')
+                .style('pointer-events', 'all');
+        }
         if (o.onClick) {
             // Fire on pointerdown (the press) rather than click. These preview badges are
             // destroyed+recreated on every chart re-render (replay ticks, hover reveal), so a
@@ -42937,6 +43045,9 @@ class OrderManager {
             g.on('mousedown', (e) => e.stopPropagation());
         }
         this._tagOmLevelCtrlPrice(g.node(), o.levelPrice);
+        if (_orderEntryCloseHitTargetFixEnabled()) {
+            this._tagOmLevelCtrlLevelId(g.node(), o.levelId, o.stackOffsetPx);
+        }
         return { group: g, size, r };
     }
 

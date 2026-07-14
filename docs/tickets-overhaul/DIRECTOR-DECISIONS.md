@@ -2,6 +2,62 @@
 
 ---
 
+## D-011 — ESC-010: panel-B interaction — diagnostic-first, consolidated fix pre-authorized
+
+**Date:** 2026-07-14
+**Escalation:** ESC-010
+**Track:** T1 (Lane 1) ∩ T3 (Lane 2), build `20260712b26`
+**RC:** RC-1 / RC-4
+
+### Rulings
+1. **Diagnostic-first APPROVED; consolidated fix (b) PRE-AUTHORIZED** if the root confirms — no second escalation round-trip. Lane 2 moves straight from evidence to fix.
+2. **Mandatory step 0 — fallback-posture A/B.** b26 runs the **fallback-B posture** (panels deliberately default to pre-T1 legacy behavior). Before hunting a root, re-run the failing HR-PARITY rows with the **retained migration switches turned ON in the panel**. Any failure that **vanishes** is our own intentional rollback state → belongs to the future **re-migration scope, not a defect to fix now**. Without this we'd burn cycles "fixing" our own revert.
+3. **Scope fence on the consolidated fix:** **selection→parent-chrome routing only**, owned by **T3/Lane 2**, with **Lane 1 providing the engine-side emit as a separate gated commit** (file-ownership rule intact). NOT a wholesale fallback reversal. **Peer isolation (H-R07) and marquee (H-R08) stay on their own tracks** unless the diagnostic proves they collapse with the root.
+4. **Acceptance per D-010:** HR-PARITY rows GREEN on the real-iframe harness **plus** the parity checklist on the **built product** — dev:live doesn't count.
+5. **Sequencing:** steps 15/16 continue as-is; anything per-surface **beyond 16 is held** until the diagnostic returns.
+
+---
+
+## D-009 — ESC-008: A3 replay fixes authorized; tick-vs-interval fork ruled (A)
+
+**Date:** 2026-07-14
+**Escalation:** ESC-008
+**Track:** T4/A3 (Lane 3)
+**RC:** RC-5 adjacent
+
+### Rulings
+1. **Both replay fixes authorized**, in order: **cadence correctness first** (`__TALARIA_FIX_REPLAY_INTERVAL_CADENCE`, TAL-01581), **mode-play routing second** (`__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING`, TAL-01582). Two switches, RED-first against the A3 step-2 harness scenarios.
+2. **Behavioral fork ruled (A):** **tick mode persists**; the interval **bounds step size only**; the **UI shows both** (mode = Tick, interval = e.g. 4h). Tick + explicit interval must NOT silently fall back to the candle loop.
+3. **Acceptance:** harness scenarios GREEN + PO live confirm — **Tick + 4h interval plays as tick animation with 4h step bounds.**
+4. Lane 3 free to dispatch the fixes against its new harness scenarios now (manager's "pending ESC-008" note was stale).
+
+---
+
+## D-011 — ESC-010: diagnostic-first approved; consolidated panel-B parity fix pre-authorized on root confirmation
+
+**Date:** 2026-07-14
+**Escalation:** ESC-010
+**Track:** T1 (Lane 1) ∩ T3 (Lane 2), real-iframe harness findings HR-PARITY#1–#8
+**RC:** RC-1 / RC-4
+
+### Rulings
+
+**1. Diagnostic-first APPROVED.** One timeboxed diagnostic (P2) determines whether H-R01 (panel-B selection never reaches the parent V9 chrome) is the common root of H-R04/05/06/09: drive panel-B selection→parent chrome over the postMessage bridge in the real-iframe harness and observe which rows collapse together. The deliverable is discriminating evidence per row — "very likely the root" becomes "measured," or it doesn't.
+
+**2. Mandatory step 0 inside the diagnostic — fallback-posture A/B.** Build b26 runs the fallback-B posture: panels default to pre-T1 legacy behavior with the migration switches OFF. Before any root hunt, re-run the failing HR-PARITY rows with the retained migration switches ON in the panel context (`__TALARIA_DISABLE_TOOL_LIFECYCLE_V2=false`, etc.). Failures that vanish are **re-migration scope** — our own deliberate rollback state, not new defects — and must be labeled as such. Fixing the fallback posture as if it were a bug would burn cycles on our own revert.
+
+**3. On root confirmation, option (b) is PRE-AUTHORIZED — no second escalation round-trip:** one consolidated panel-B interaction-parity fix — parent V9 chrome subscribes to panel-B selection over the postMessage bridge (I14-compliant). Constraints:
+- **Owner: T3/Lane 2** (this is contract rows 2/3/4 territory), with Lane 1 providing the engine-side selection emit. File-ownership holds: Lane 1 alone edits engine files; Lane 2 edits React shell/bridge; the two slices land as separate gated commits coordinated by the Manager.
+- **Scope = selection→parent-chrome routing only.** Not a wholesale fallback reversal. H-R07 (peer isolation, already a T3 contract row) and H-R08 (marquee) stay on their own tracks unless the diagnostic proves they collapse with the root.
+- **Acceptance:** collapsed HR-PARITY rows GREEN on the real-iframe harness (per D-010 — no dev:live acceptance), kill-switch A/B per slice (I3/I13), PO parity checklist on the built product, state matrix covering host/panel × fallback-switch postures.
+- If the diagnostic **refutes** the common root, per-surface steps resume and the Manager re-escalates with the evidence table.
+
+**4. Steps 15/16 CONFIRMED in-flight as-is** (concrete, turn H-R13/H-R14 green). Per-surface steps beyond 16 held until the diagnostic returns.
+
+**5. Ledger note:** HR-PARITY#1–#8 are the ratchet for this family. This finding retro-validates D-010 — the breadth of panel-B breakage was invisible until real iframes ran. No panel-B surface is "green" unless green on T0-step9's real-iframe rows.
+
+---
+
 ## D-010 — ESC-009: iframe-fix acceptance surface corrected; postMessage-only rule added
 
 **Date:** 2026-07-14

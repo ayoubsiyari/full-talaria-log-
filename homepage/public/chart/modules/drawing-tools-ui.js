@@ -404,6 +404,17 @@ function shouldRouteDrawingSettingsToMultichartParent() {
 }
 
 function postMultichartOpenDrawingSettings(drawing, x, y) {
+    if (isMultichartIframeEmbed()) {
+        const flagSet = (w) => {
+            try { return !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2); } catch (_) { return false; }
+        };
+        let fixOn = true;
+        try {
+            if (flagSet(window)) fixOn = false;
+            else if (window.parent && window.parent !== window && flagSet(window.parent)) fixOn = false;
+        } catch (_) { /* ignore */ }
+        if (!fixOn) return false;
+    }
     let panelId = 'embed';
     try {
         panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
