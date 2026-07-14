@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714a1';
+const CHART_ENGINE_BUILD = '20260714a2';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -24186,6 +24186,12 @@ class Chart {
             && Number.isFinite(this._wheelBurstSnapLabelInterval)
             && this._wheelBurstSnapLabelInterval > 0
             && this._wheelBurstSnapLabelIntervalTf === tf) {
+            // Freeze only against densifying mid-burst (avoids 9:00→8:45 churn).
+            // Always allow thinning when zooming out — otherwise a snap from a
+            // zoomed-in cadence (e.g. every 5 bars) paints a solid label band.
+            if (Number.isFinite(computed) && computed > this._wheelBurstSnapLabelInterval) {
+                this._wheelBurstSnapLabelInterval = computed;
+            }
             return this._wheelBurstSnapLabelInterval;
         }
         if (Number.isFinite(computed) && computed > 0) {
@@ -27026,15 +27032,24 @@ class Chart {
 
         // Sort and filter by minimum pixel spacing.
         // Off-screen ticks participate in spacing so the grid stays stable while panning.
+        // Uniform intraday normally trusts bar-cadence (gap=0). During a wheel-zoom
+        // burst, still cull by pixels so a lagging frozen interval cannot paint a
+        // solid overlapping label band before the settle pass.
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
         const panBufferPx = options.panCache ? Math.max(240, cw * 0.4) : 0;
         const viewLeft  = m.l + 20 - panBufferPx;
         const viewRight = this.w - m.r - 20 + panBufferPx;
+        const wheelBurstCull = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
-            const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
+            let gap;
+            if (useUniformIntradayTicks) {
+                gap = wheelBurstCull ? (minSpacing * 0.65) : 0;
+            } else {
+                gap = (c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing;
+            }
             if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
