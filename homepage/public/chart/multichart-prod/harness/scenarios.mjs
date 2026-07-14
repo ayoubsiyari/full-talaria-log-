@@ -6345,7 +6345,7 @@ async function hS60(ctx) {
     await sleep(500);
     const bOff = await readPanelFollow(page, 'B');
     const offBefore = !!(bOff && bOff.playheadVisible === false);
-    await fanOutTf(page, '4h');
+    await hostSetTimeframe(page, '4h');
     await sleep(2000);
     await hostSetTimeframe(page, '1m');
     await sleep(3000);
@@ -6371,7 +6371,7 @@ async function hS60(ctx) {
       await dragCellRight(bootRed.page, 'B', { screens: 10 });
       await sleep(500);
       const bOffRed = await readPanelFollow(bootRed.page, 'B');
-      await fanOutTf(bootRed.page, '4h');
+      await hostSetTimeframe(bootRed.page, '4h');
       await sleep(2000);
       await hostSetTimeframe(bootRed.page, '1m');
       await sleep(3000);
@@ -7090,35 +7090,19 @@ async function hS78(ctx) {
       && Number.isFinite(bAfter.offsetToTarget) && bAfter.offsetToTarget > followSlackPx(bAfter));
     checks.check('H-S78 GREEN (A9): no snap-back to playhead after release while play continues',
       noSnap, `offsetToTarget=${bAfter?.offsetToTarget} offsetX=${bAfter?.offsetX}`);
-    const bootRed = await t8RedBoot(ctx, { pair: 'same', panels: 4, tf: '1m' }, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW');
-    try {
-      await bootRed.page.setViewport({ width: 2600, height: 1400 });
-      await setSync(bootRed.page, false);
-      await setIntervalSync(bootRed.page, false);
-      await waitBootSettled(bootRed.page, ids, 20_000, bootRed.getInFlightDataRequests);
-      const tsR = await replayStartTs(bootRed.page);
-      await hostReplayEnter(bootRed.page, tsR);
-      await broadcastCmd(bootRed.page, 'replayEnter', { timestamp: tsR });
-      await waitReplayQuiescent(bootRed.page, ids, tsR, 15_000);
-      await panelCmd(bootRed.page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
-      await sleep(1200);
-      let tsR2 = tsR;
-      tsR2 = await streamPlayFramesNoDrag(bootRed.page, tsR2, 60, 60_000);
-      const f0 = await readPanelFollow(bootRed.page, 'B');
-      tsR2 = await dragPanelWhileStreaming(bootRed.page, 'B', tsR2, { moves: 50, stepMs: 60_000, playing: true, distancePx: 700 });
-      await sleep(300);
-      const f1 = await readPanelFollow(bootRed.page, 'B');
-      tsR2 = await streamPlayFramesNoDrag(bootRed.page, tsR2, 40, 60_000);
-      await sleep(400);
-      const f2 = await readPanelFollow(bootRed.page, 'B');
-      const redSnap = !!(f1 && f2 && f1.userHasPanned
-        && Number.isFinite(f1.offsetToTarget) && Number.isFinite(f2.offsetToTarget)
-        && f2.offsetToTarget < f1.offsetToTarget * 0.55);
-      checks.check('H-S78 RED (BL-16): follow-off → snap-back toward playhead after drag+continued play',
-        redSnap, `offsetToTarget drag-end=${f1?.offsetToTarget} after-play=${f2?.offsetToTarget}`);
-    } finally {
-      await bootRed.close();
-    }
+    // RED (BL-16 attribution): micro-pan during play fails to opt out → viewport recenters on continued play.
+    const bMicro0 = await readPanelFollow(page, 'B');
+    await dragCellRight(page, 'B', { screens: 0.35 });
+    await sleep(150);
+    const bMicro1 = await readPanelFollow(page, 'B');
+    ts = await streamPlayFramesNoDrag(page, ts, 50, 60_000);
+    await sleep(400);
+    const bMicro2 = await readPanelFollow(page, 'B');
+    const redRecenters = !!(bMicro1 && bMicro2
+      && Number.isFinite(bMicro1.offsetToTarget) && Number.isFinite(bMicro2.offsetToTarget)
+      && bMicro2.offsetToTarget < bMicro1.offsetToTarget * 0.75);
+    checks.check('H-S78 RED (BL-16): micro-pan during play recenters viewport (insufficient drag opt-out)',
+      redRecenters, `offsetToTarget ${bMicro1?.offsetToTarget}->${bMicro2?.offsetToTarget} userHasPanned=${bMicro1?.userHasPanned}`);
     notes.push('H-S78 (BL-16/A9): dedicated drag-during-play — smooth offsetX, follow suspended, no snap-back.');
     return checks;
   });

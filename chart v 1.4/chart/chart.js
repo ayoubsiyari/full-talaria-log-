@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714a2';
+const CHART_ENGINE_BUILD = '20260714a3';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -26612,7 +26612,11 @@ class Chart {
         const viewRight = m.l + plotW;
         const coverRight = viewRight - minSpacingPx * 0.6;
         const wantTicks = Math.max(4, Math.floor(plotW / minSpacingPx));
-        const step = Math.max(1, Math.floor(labelInterval || this._getFastTimeLabelIntervalBars()));
+        const minBars = Math.max(1, Math.ceil(minSpacingPx / Math.max(1e-6, vp.spacing || 1)));
+        const step = Math.max(
+            minBars,
+            Math.max(1, Math.floor(labelInterval || this._getFastTimeLabelIntervalBars())),
+        );
         const merged = Array.isArray(ticks) ? ticks.slice() : [];
         merged.sort((a, b) => a.idx - b.idx);
 
@@ -26630,7 +26634,7 @@ class Chart {
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
-            if (x > viewRight + minSpacingPx) break;
+            if (!Number.isFinite(x) || x > viewRight + minSpacingPx) break;
             if (x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
                 const label = this._formatTimeLabelForBarIndex(idx);
                 if (label) {
@@ -26782,11 +26786,11 @@ class Chart {
             || (intradayCalendarMode && visibleDays > 120);
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
+        const minBarsPerTick = Math.max(1, Math.ceil(minSpacing / Math.max(0.0001, candleSpacing)));
 
         // Keep intraday tick cadence deterministic and stable while panning/replay.
         // This avoids left-edge dependent thinning that can make spacing look uneven.
         if (useUniformIntradayTicks) {
-            const minBarsPerTick = Math.max(1, Math.ceil(minSpacing / Math.max(0.0001, candleSpacing)));
             if (intradayCalendarMode) {
                 const barsPerDay = Math.max(1, Math.round(86400000 / timeframeMs));
                 const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
@@ -26799,6 +26803,19 @@ class Chart {
         // Freeze density during a wheel-zoom burst (see _stabilizeTimeLabelInterval)
         // so the date axis scales smoothly instead of drifting at each tick.
         labelInterval = this._stabilizeTimeLabelInterval(labelInterval);
+        // Stabilize can still return a zoomed-in cadence for a frame; never allow
+        // labels denser than ~minSpacing px (this is what caused the solid white band).
+        if (useUniformIntradayTicks) {
+            if (intradayCalendarMode) {
+                const barsPerDay = Math.max(1, Math.round(86400000 / timeframeMs));
+                const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
+                labelInterval = Math.max(labelInterval, dayStep * barsPerDay);
+            } else {
+                labelInterval = Math.max(labelInterval, minBarsPerTick);
+            }
+        } else {
+            labelInterval = Math.max(labelInterval, minBarsPerTick);
+        }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
         // Anchor tick alignment to the LAST loaded bar (not the first). Dragging
@@ -27031,26 +27048,23 @@ class Chart {
         }
 
         // Sort and filter by minimum pixel spacing.
-        // Off-screen ticks participate in spacing so the grid stays stable while panning.
-        // Uniform intraday normally trusts bar-cadence (gap=0). During a wheel-zoom
-        // burst, still cull by pixels so a lagging frozen interval cannot paint a
-        // solid overlapping label band before the settle pass.
+        // ALWAYS cull by pixels — uniform cadence alone is not enough during fast
+        // zoom (frozen interval × shrinking candle width → solid overlapping labels).
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
         const panBufferPx = options.panCache ? Math.max(240, cw * 0.4) : 0;
         const viewLeft  = m.l + 20 - panBufferPx;
         const viewRight = this.w - m.r - 20 + panBufferPx;
-        const wheelBurstCull = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
+        const maxTicks = Math.max(4, Math.ceil(cw / (minSpacing * 0.65)) + 2);
         for (const c of candidates) {
+            if (ticks.length >= maxTicks) break;
             const x = this.dataIndexToPixel(c.idx);
-            let gap;
-            if (useUniformIntradayTicks) {
-                gap = wheelBurstCull ? (minSpacing * 0.65) : 0;
-            } else {
-                gap = (c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing;
-            }
-            if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
+            if (!Number.isFinite(x)) continue;
+            const gap = (c.isBoundary && allowStandaloneBoundaries)
+                ? minSpacing * 0.7
+                : minSpacing * 0.65;
+            if (x - lastX >= gap || lastX === -Infinity) {
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 }
