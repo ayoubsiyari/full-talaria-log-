@@ -577,6 +577,16 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### D-013 absorbed — T8 pulled forward onto Lane 2, A5 folded in (2026-07-14)
+- **PO priority directive (D-013):** synced-multichart replay is the worst felt UX; T8 lives on the data/X/Y replay-policy path (freeze-exempt), and D-012's interaction freeze idles the Lane 2 work that was ahead of T8. So **Lane 2 pivots from the T7-prep sweep to T8 NOW.**
+- **A5/TAL-01590 is no longer a standalone dispatch** — D-013 folds it into T8 step 2 as the policy-table's **first mandatory input** (independent-symbol × playing cells specified from the freeze trace). Standalone A5 prompt superseded.
+- **Dispatched Lane 2 (2 prompts, freeze-safe, no `react-parity-lib.mjs` collision):**
+  - `T8-step1-lane2-coverage-hardening.md` — RED scenarios for the ~17 ungated replay/mirror kill-switches + BL-16 (plan's mandated "do this first"; edits `scenarios.mjs` only, gate stays green, I15 real-state asserts). No `known-failing.json` edits — reports rows to Lane 4.
+  - `T8-step2-lane2-policy-table-design-A5-first.md` — READ-ONLY policy-table design (`T8-MIRROR-POLICY-TABLE.md`) with TAL-01590 trace FIRST, intake rows 60/62/63/73/75/77/78/79 mapped to cells, conflict/gap/freeze cells flagged as D-013-ruling-3 escalation candidates (ticket = evidence).
+- **Priority inside Lane 2 (D-013 ruling 2):** T8 steps 1–2 + A5 ahead of TAL-01564 and T3 rows 13–16. Frozen T3 interaction rows stay frozen.
+- **Deploy posture (D-013 ruling 3):** T8 builds ship to **staging** for PO synced-replay live-confirm while the D-012 freeze holds; lifting the freeze is a separate decision. Migration (step 3) only after Director approves the table.
+- **Unchanged:** Lane 4 = honest-harness rebuild (D-012 critical path); Lane 1 = settings-transport diagnostic/fix; Lane 3 = A3 replay fixes (D-009). Nothing D-012-critical preempted.
+
 ### T2 step 3 (Lane 2) diagnostic ACCEPTED (2026-07-14)
 - **Root gaps (RC-2):** peer drawing ADD (`sync-bridge.js` L1874-1879 — `redrawAll` only, no `chart.render()`), peer drawing REMOVE (`chart.js` ~L3755 `destroy()` w/o render), paused-replay step→peer (`replay-system.js` L6763-6768 iframe may not repaint), React SVG-only path (`TalariaV8bLive.jsx` L5766-5767 no canvas flush). Ties: TAL-01484/01490, H-S50. T2 step 1 already closed the single-chart save-invalidation hole (H-S38/39 green).
 - **Fix plan T2-3a..d is POST-FREEZE** — all target frozen/iframe files (sync-bridge, replay-system, TalariaV8bLive) → I14 territory. New RED candidates proposed: H-S38-B/H-S39-B (panel-B style commit), peer-delete ghost, H-R50 (built-product replay step).

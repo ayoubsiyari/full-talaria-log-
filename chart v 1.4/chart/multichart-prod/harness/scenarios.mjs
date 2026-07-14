@@ -6156,11 +6156,21 @@ async function hS57(ctx) {
 // GAP-MC-REPLAY-INDEP (TAL-01590): 2 panels, DIFFERENT symbols (host file25,
 // panel B file27), replay PLAY → BOTH panels must advance playhead. Plan-1
 // covered same-pair play exhaustively (H-S8/H-S17 BL-10 family); independent-
-// symbol panels during PLAY were never scenario-tested. Mechanism: BL-10's
-// play-advance cell (scheduleCoalescedSeek during args.isPlaying) lives inside
-// isSameSymbolAsHost() in panel-cmd-bridge.js — independent panels skip it and
-// rely on applyMultichartMirrorFrame + async scheduleMirrorCatchUp only; replayTick
-// is suppressed while playing (pendingPlayDesired). RED-first: B freezes at ts0.
+// symbol panels during PLAY were never scenario-tested.
+//
+// Mechanism (see report): BL-10's play-advance cell (scheduleCoalescedSeek during
+// args.isPlaying) is gated inside isSameSymbolAsHost() in panel-cmd-bridge.js:701-
+// 783. Independent panels rely on applyMultichartMirrorFrame + async
+// scheduleMirrorCatchUp; replayTick is dropped while pendingPlayDesired.
+//
+// RED probe (captured 2026-07-14): replayFrame-only fan-out WITHOUT hostReplaySeek
+// leaves the HOST frozen while the independent iframe panel still advances from
+// the frame timestamp — asymmetric fan-out (see a5-hs59-red-evidence.txt).
+// PO TAL-01590 reports the inverse on production (iframe freeze); harness backtest
+// path does not reproduce B-freeze when hostReplaySeek drives the host play loop.
+//
+// Contract (this scenario): replayPlay + hostReplaySeek + replayFrame isPlaying
+// → BOTH host A and independent B must advance playhead on their own masters.
 async function hS59(ctx) {
   return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot, notes) => {
     const { page } = boot;
@@ -6189,27 +6199,33 @@ async function hS59(ctx) {
     checks.check('H-S59 replay entered + playhead settled on A and B @ ts0', entered.ok, entered.detail);
     if (!entered.ok) return checks;
 
-    const hostAtStart = await readHost(page);
-    const bAtStart = await readPanel(page, 'B');
-    const setupOk = !!(hostAtStart && bAtStart
-      && hostAtStart.replayActive && bAtStart.replayActive
-      && hostAtStart.replayTs != null && bAtStart.replayTs != null);
-    checks.check('H-S59 both panels replay-active before play',
-      setupOk, `host.replayTs=${hostAtStart?.replayTs} B.replayTs=${bAtStart?.replayTs}`);
+    // Independent B on a coarser display TF (different symbol + different TF).
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1800);
+    const bBefore = await readPanel(page, 'B');
+    const hostBefore = await readHost(page);
+    const setupOk = !!(bBefore && hostBefore
+      && bBefore.tf === '1h' && hostBefore.tf === '1m'
+      && bBefore.replayActive && bBefore.replayTs != null);
+    checks.check('H-S59 panel B is independent file27 + coarser 1h with replay active',
+      setupOk, `B.fileId=${bBefore?.fileId} B.tf=${bBefore?.tf} host.tf=${hostBefore?.tf} B.replayTs=${bBefore?.replayTs}`);
     if (!setupOk) return checks;
 
     await resetDiag(page);
-    const stepMs = 60_000;
-    const FRAMES = 60;
-    let ts = ts0;
+    const bAtPlayStart = await readPanel(page, 'B');
+    await broadcastCmd(page, 'replayPlay', { speed: 1, mode: 'candle' });
     await setHostReplayPlaying(page, true);
+
+    const stepMs = 60_000;
+    const FRAMES = 180;
+    let ts = ts0;
     for (let i = 0; i < FRAMES; i++) {
       ts += stepMs;
       await hostReplaySeek(page, ts);
       await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
       if (i % 10 === 0) await sleep(35);
     }
-    await sleep(1200);
+    await sleep(1500);
     const lastTs = ts;
 
     const hostAfter = await readHost(page);
@@ -6218,30 +6234,736 @@ async function hS59(ctx) {
     const hostAdvanced = !!(hostAfter && hostAfter.replayTs != null
       && Number(hostAfter.replayTs) > Number(ts0));
     checks.check('H-S59 host A playhead advanced during play',
-      hostAdvanced, `host.replayTs ${hostAtStart?.replayTs} -> ${hostAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
+      hostAdvanced, `host.replayTs ${hostBefore?.replayTs} -> ${hostAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
 
     const bAdvanced = !!(bAfter && bAfter.replayTs != null
       && Number(bAfter.replayTs) > Number(ts0));
     checks.check('H-S59 independent panel B playhead ADVANCED during play (not frozen)',
-      bAdvanced, `B.replayTs ${bAtStart?.replayTs} -> ${bAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
+      bAdvanced, `B.replayTs ${bBefore?.replayTs} -> ${bAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
 
-    const MINUTE = 60_000;
-    const bTracksHost = bAdvanced && hostAdvanced
-      && Math.abs(Number(bAfter.replayTs) - Number(hostAfter.replayTs)) <= MINUTE * 2;
-    checks.check('H-S59 independent B playhead tracks host wall-clock (±2m)',
-      bTracksHost, `B.replayTs=${bAfter?.replayTs} host.replayTs=${hostAfter?.replayTs}`);
+    const HOUR = 3_600_000;
+    const bNearEnd = bAdvanced && Math.abs(Number(bAfter.replayTs) - lastTs) <= HOUR;
+    checks.check('H-S59 independent B playhead tracks host wall-clock to end (±1 coarse bucket)',
+      bNearEnd, `B.replayTs=${bAfter?.replayTs} lastTs=${lastTs} host.replayTs=${hostAfter?.replayTs}`);
 
-    const barAdvanced = !!(bAfter && bAtStart && bAfter.lastBarT != null
-      && bAtStart.lastBarT != null && Number(bAfter.lastBarT) >= Number(bAtStart.lastBarT));
-    checks.check('H-S59 independent B last visible bar did not regress (no gap/freeze artifact)',
-      barAdvanced, `B.lastBarT ${bAtStart?.lastBarT} -> ${bAfter?.lastBarT} B.dataLen ${bAtStart?.dataLen} -> ${bAfter?.dataLen}`);
+    const formingAdvanced = !!(bAfter && bAtPlayStart && bAfter.lastBarT != null
+      && bAtPlayStart.lastBarT != null && Number(bAfter.lastBarT) > Number(bAtPlayStart.lastBarT));
+    checks.check('H-S59 independent B forming candle advanced (last bar moved forward)',
+      formingAdvanced, `B.lastBarT ${bAtPlayStart?.lastBarT} -> ${bAfter?.lastBarT} B.dataLen ${bAtPlayStart?.dataLen} -> ${bAfter?.dataLen}`);
 
-    notes.push('H-S59 (GAP-MC-REPLAY-INDEP, TAL-01590): 2-panel independent-symbol layout (A=file25, B=file27), '
-      + 'all sync OFF, paused replay entered, then real PLAY fan-out (hostReplaySeek + replayFrame isPlaying=true, '
-      + `${FRAMES}×1m frames). Independent panel must advance playhead on its OWN master at the shared wall-clock ts — `
-      + 'not only same-pair BL-10 paths. RED-first: B.replayTs stays at ts0 when the play-advance cell is gated '
-      + 'inside isSameSymbolAsHost() only. '
-      + `host.replayTs ${hostAtStart?.replayTs}->${hostAfter?.replayTs}; B.replayTs ${bAtStart?.replayTs}->${bAfter?.replayTs}.`);
+    notes.push('H-S59 (GAP-MC-REPLAY-INDEP, TAL-01590): 2-panel independent-symbol (A=file25, B=file27), '
+      + 'B switched to 1h, all sync OFF, replayPlay + hostReplaySeek + replayFrame isPlaying=true '
+      + `(180×1m). Contract: BOTH panels advance playhead at shared wall-clock. `
+      + 'Mechanism gap: BL-10 play-advance cell is inside isSameSymbolAsHost() only; '
+      + 'independent panels use applyMultichartMirrorFrame + scheduleMirrorCatchUp. '
+      + `host.replayTs ${hostBefore?.replayTs}->${hostAfter?.replayTs}; B.replayTs ${bBefore?.replayTs}->${bAfter?.replayTs}. `
+      + 'RED variant (replayFrame-only, no hostReplaySeek): host frozen, B advances — see a5-hs59-red-evidence.txt.');
+    return checks;
+  });
+}
+
+// ── T8 step-1 pending coverage (H-S60..H-S78) ───────────────────────────
+// Each row: GREEN with fix ON (default), then flip its kill-switch ON and assert
+// measurable regression. Pending list only — gate stays H-S2..H-S58.
+
+const T8_S60 = '__TALARIA_MC_DISABLE_PANEL_SETTLED_SELFHEAL';
+const T8_S61 = '__TALARIA_MC_DISABLE_PANEL_MIRROR_UNSETTLED_HOST';
+const T8_S62 = '__TALARIA_MC_DISABLE_PANEL_SETTLED_RESYNC';
+const T8_S63 = '__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR';
+const T8_S64 = '__TALARIA_MC_DISABLE_HOST_TF_MIRROR_WAIT';
+const T8_S65 = '__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_SEEK';
+const T8_S66 = '__TALARIA_MC_DISABLE_PANEL_PRICE_INDEPENDENCE';
+const T8_S67 = '__TALARIA_MC_DISABLE_PAUSED_REPLAY_ALIGNED_SEEK_GUARD';
+const T8_S68 = '__TALARIA_MC_DISABLE_COARSE_PANEL_HOSTSWITCH_VIEWPORT_RECENTER';
+const T8_S69 = '__TALARIA_MC_DISABLE_DISPLAY_TF_MASTER';
+const T8_S70 = '__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK';
+const T8_S71 = '__TALARIA_MC_DISABLE_TF_SWITCH_FILL_STORM_GUARD';
+const T8_S72 = '__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET';
+const T8_S73 = '__TALARIA_MC_DISABLE_MIRROR_PREPEND_COMPENSATION';
+const T8_S74 = '__TALARIA_MC_DISABLE_FINER_PANEL_SELFOWN';
+const T8_S75 = '__TALARIA_MC_DISABLE_SAME_PAIR_PAN_HOST_OWNER';
+const T8_S76 = '__TALARIA_MC_DISABLE_REPLAY_FOLLOW_FALLBACK';
+const T8_S77 = '__TALARIA_MC_DISABLE_PANEL_MASTER_GROWTH_OFFSET';
+
+/** Common paused-replay + host TF switch settle for T8 mirror-policy rows. */
+async function t8PausedReplayHostSwitch(page, fromTf, toTf, ids) {
+  const ts0 = await replayStartTs(page);
+  if (ts0 == null) return { ok: false, reason: 'no ts0', ts0: null };
+  await hostReplayEnter(page, ts0);
+  await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+  const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+  if (!entered.ok) return { ok: false, reason: entered.detail, ts0 };
+  if (fromTf && fromTf !== '1m') {
+    await fanOutTf(page, fromTf);
+    await sleep(2000);
+  }
+  await resetDiag(page);
+  const before = await readPanels(page);
+  await hostSetTimeframe(page, toTf);
+  const deadline = Date.now() + 20_000;
+  let after = null;
+  while (Date.now() < deadline) {
+    await sleep(250);
+    after = await readPanels(page);
+    const hostTfOk = after.A && after.A.tf === toTf;
+    const quiescent = ids.every((i) => after[i] && isPanelQuiescent(after[i]));
+    if (hostTfOk && quiescent) break;
+  }
+  await sleep(400);
+  after = await readPanels(page);
+  return { ok: true, ts0, before, after };
+}
+
+async function hS60(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(400);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+    const sw = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    checks.check('H-S60 setup: paused replay host 4h→1m with coarse panel B', sw.ok, sw.reason || '');
+    if (!sw.ok) return checks;
+    const bFollow = await readPanelFollow(page, 'B');
+    const greenHeal = !!(bFollow && (bFollow.playheadVisible === true
+      || (Number.isFinite(bFollow.offsetToTarget) && bFollow.offsetToTarget <= followSlackPx(bFollow) * 4)));
+    checks.check('H-S60 GREEN: B-FIX-I self-heal keeps coarse B viewport usable after host settle',
+      greenHeal, JSON.stringify(bFollow));
+    await setEngineFlagAll(page, T8_S60, true);
+    const sw2 = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    const bRed = await readPanelFollow(page, 'B');
+    const redOffScreen = !!(bRed && bRed.playheadVisible === false
+      && Number.isFinite(bRed.barsPastRightEdge) && bRed.barsPastRightEdge > 2);
+    checks.check(`H-S60 RED: ${T8_S60}=true leaves coarse B off-screen (no self-heal)`,
+      sw2.ok && redOffScreen, JSON.stringify(bRed));
+    await setEngineFlagAll(page, T8_S60, false);
+    notes.push('H-S60 (B-FIX-I): host TF switch with coarse peer; self-heal re-anchors off-screen panels.');
+    return checks;
+  });
+}
+
+async function hS61(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const sw = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    checks.check('H-S61 setup: paused replay host 4h→1m', sw.ok, sw.reason || '');
+    if (!sw.ok) return checks;
+    const greenBars = allEqual(ids.map((i) => sw.after[i]?.lastBarT));
+    checks.check('H-S61 GREEN: B-FIX-F hold — peers mirror host last bar at settle',
+      greenBars, ids.map((i) => `${i}=${sw.after[i]?.lastBarT}`).join(' '));
+    await setEngineFlagAll(page, T8_S61, true);
+    const sw2 = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    const diverged = ['B', 'C', 'D'].some((i) => sw2.after && sw2.after.A
+      && sw2.after[i]?.lastBarT != null && sw2.after.A.lastBarT != null
+      && sw2.after[i].lastBarT !== sw2.after.A.lastBarT);
+    checks.check(`H-S61 RED: ${T8_S61}=true peers diverge from host bars at settle`,
+      sw2.ok && diverged, ids.map((i) => `${i}=${sw2.after?.[i]?.lastBarT} host=${sw2.after?.A?.lastBarT}`).join(' '));
+    await setEngineFlagAll(page, T8_S61, false);
+    notes.push('H-S61 (B-FIX-F): unsettled-host hold keeps same-pair bars aligned through host TF switch.');
+    return checks;
+  });
+}
+
+async function hS62(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S62 replay ts', false, 'no ts'); return checks; }
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    await fanOutTf(page, '4h');
+    await sleep(2000);
+    await hostSetTimeframe(page, '1m');
+    await sleep(2500);
+    const mid = await readPanels(page);
+    const greenSync = allEqual(ids.map((i) => mid[i]?.lastBarT));
+    checks.check('H-S62 GREEN: B-FIX-G one-shot resync — all panels share last bar after 4h→1m',
+      greenSync, ids.map((i) => `${i}=${mid[i]?.lastBarT}`).join(' '));
+    await setEngineFlagAll(page, T8_S62, true);
+    await fanOutTf(page, '4h');
+    await sleep(2000);
+    await hostSetTimeframe(page, '1m');
+    await sleep(2500);
+    const redPanels = await readPanels(page);
+    const stale = ['C', 'D'].some((i) => redPanels.A && redPanels[i]
+      && redPanels[i].lastBarT != null && redPanels.A.lastBarT != null
+      && redPanels[i].lastBarT !== redPanels.A.lastBarT);
+    checks.check(`H-S62 RED: ${T8_S62}=true C/D stale after host 4h→1m back`,
+      stale, ids.map((i) => `${i}=${redPanels[i]?.lastBarT}`).join(' '));
+    await setEngineFlagAll(page, T8_S62, false);
+    notes.push('H-S62 (B-FIX-G): settled re-mirror keeps same-TF peers aligned on host switch-back.');
+    return checks;
+  });
+}
+
+async function hS63(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S63 replay entered paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await resetDiag(page);
+    const before = await readPanels(page);
+    await dragCellRight(page, 'A', { screens: 12 });
+    await sleep(1500);
+    const after = await readPanels(page);
+    const greenMirror = !!(after.A && after.B && after.A.firstBarT != null
+      && after.B.firstBarT === after.A.firstBarT);
+    checks.check('H-S63 GREEN: host history growth mirrors to same-pair peer B (firstBarT equal)',
+      greenMirror, `A.first=${after.A?.firstBarT} B.first=${after.B?.firstBarT} A.fetches=${after.A?.fetches}`);
+    await setEngineFlagAll(page, T8_S63, true);
+    await enterReplayPausedAll(page);
+    await resetDiag(page);
+    const b0 = await readPanel(page, 'B');
+    await dragCellRight(page, 'A', { screens: 12 });
+    await sleep(1500);
+    const b1 = await readPanel(page, 'B');
+    const a1 = await readHost(page);
+    const redStale = !!(a1 && b1 && a1.firstBarT != null && b1.firstBarT != null
+      && b1.firstBarT !== a1.firstBarT && (before.B?.firstBarT === b0?.firstBarT || b1.firstBarT > a1.firstBarT));
+    checks.check(`H-S63 RED: ${T8_S63}=true peer B firstBarT does not track host prepend`,
+      redStale, `host.first=${a1?.firstBarT} B.first=${b1?.firstBarT}`);
+    await setEngineFlagAll(page, T8_S63, false);
+    notes.push('H-S63: host left-load growth must mirror to same-pair peers.');
+    return checks;
+  });
+}
+
+async function hS64(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, true);
+    await sleep(300);
+    await resetDiag(page);
+    const beforeH = await readPanels(page);
+    await fanOutTf(page, '1h');
+    await sleep(2500);
+    const afterH = await readPanels(page);
+    const greenFetch = panelsThatFetched(beforeH, afterH, ids).length <= 1;
+    checks.check('H-S64 GREEN: host TF mirror-wait — ≤1 owner fetch on 1m→1h fan-out',
+      greenFetch, `fetched=${JSON.stringify(panelsThatFetched(beforeH, afterH, ids))}`);
+    await setEngineFlagAll(page, T8_S64, true);
+    await resetDiag(page);
+    const b2 = await readPanels(page);
+    await fanOutTf(page, '1m');
+    await sleep(800);
+    await fanOutTf(page, '1h');
+    await sleep(2500);
+    const afterRed = await readPanels(page);
+    const redStorm = panelsThatFetched(b2, afterRed, ids).length >= 3;
+    checks.check(`H-S64 RED: ${T8_S64}=true peers self-fetch on fan-out (mirror-wait bypassed)`,
+      redStorm, `fetched=${JSON.stringify(panelsThatFetched(b2, afterRed, ids))}`);
+    await setEngineFlagAll(page, T8_S64, false);
+    notes.push('H-S64: host TF mirror-wait prevents peer self-fetch storm on fan-out.');
+    return checks;
+  });
+}
+
+async function hS65(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+    const sw = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    checks.check('H-S65 setup: coarse B + host 4h→1m', sw.ok, sw.reason || '');
+    if (!sw.ok) return checks;
+    const bRenders = (sw.after.B?.renders || 0) - (sw.before.B?.renders || 0);
+    checks.check('H-S65 GREEN: BL-5 skip — coarse B render delta bounded during host switch',
+      bRenders <= 40, `B.rendersDelta=${bRenders}`);
+    await setEngineFlagAll(page, T8_S65, true);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(800);
+    const sw2 = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    const bStorm = (sw2.after?.B?.renders || 0) - (sw2.before?.B?.renders || 0);
+    checks.check(`H-S65 RED: ${T8_S65}=true coarse B per-candle seek storm`,
+      sw2.ok && bStorm > 80, `B.rendersDelta=${bStorm}`);
+    await setEngineFlagAll(page, T8_S65, false);
+    notes.push('H-S65 (BL-5): paused coarse-panel host-switch seek skip.');
+    return checks;
+  });
+}
+
+async function hS66(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const untouched = ['C', 'D'];
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S66 ts', false, 'no ts'); return checks; }
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ['A', 'B', 'C', 'D'], ts0, 15_000);
+    const before = await readPriceScalePanels(page, untouched);
+    await hostSetTimeframe(page, '4h');
+    await sleep(2500);
+    const after = await readPriceScalePanels(page, untouched);
+    let greenOk = true;
+    for (const id of untouched) {
+      const ok = priceScaleUnchanged(before[id], after[id]);
+      if (!ok) greenOk = false;
+      checks.check(`H-S66 GREEN: BL-2b ${id} price scale unchanged on host 1m→4h`,
+        ok, `before ${formatPriceSnap(before[id])} after ${formatPriceSnap(after[id])}`);
+    }
+    await setEngineFlagAll(page, T8_S66, true);
+    const before2 = await readPriceScalePanels(page, untouched);
+    await hostSetTimeframe(page, '1m');
+    await sleep(1200);
+    await hostSetTimeframe(page, '4h');
+    await sleep(2500);
+    const after2 = await readPriceScalePanels(page, untouched);
+    const redMoved = untouched.some((id) => !priceScaleUnchanged(before2[id], after2[id]));
+    checks.check(`H-S66 RED: ${T8_S66}=true host TF switch rescales peers`,
+      redMoved, untouched.map((id) => `${id}:${formatPriceSnap(after2[id])}`).join(' '));
+    await setEngineFlagAll(page, T8_S66, false);
+    notes.push('H-S66 (BL-2b): panel price-axis independence on host TF switch.');
+    return checks;
+  });
+}
+
+async function hS67(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S67 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    const b0 = await readPanel(page, 'B');
+    for (let i = 0; i < 80; i++) {
+      await broadcastCmd(page, 'replayTick', { timestamp: ts0 });
+      if (i % 10 === 0) await sleep(20);
+    }
+    await sleep(400);
+    const b1 = await readPanel(page, 'B');
+    const greenBounded = (b1?.renders || 0) - (b0?.renders || 0) <= 15;
+    checks.check('H-S67 GREEN: BL-8 aligned-seek guard — same-ts replayTick storm bounded',
+      greenBounded, `B.renders ${b0?.renders}->${b1?.renders}`);
+    await setEngineFlagAll(page, T8_S67, true);
+    const b2 = await readPanel(page, 'B');
+    for (let i = 0; i < 80; i++) {
+      await broadcastCmd(page, 'replayTick', { timestamp: ts0 });
+      if (i % 10 === 0) await sleep(20);
+    }
+    await sleep(400);
+    const b3 = await readPanel(page, 'B');
+    const redStorm = (b3?.renders || 0) - (b2?.renders || 0) > 40;
+    checks.check(`H-S67 RED: ${T8_S67}=true same-ts paused replayTick render storm`,
+      redStorm, `B.renders ${b2?.renders}->${b3?.renders}`);
+    await setEngineFlagAll(page, T8_S67, false);
+    notes.push('H-S67 (BL-8): skip redundant aligned paused replayTick seeks.');
+    return checks;
+  });
+}
+
+async function hS68(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+    const sw = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    checks.check('H-S68 setup', sw.ok, sw.reason || '');
+    if (!sw.ok) return checks;
+    const bF = await readPanelFollow(page, 'B');
+    const greenCenter = !!(bF && Number.isFinite(bF.offsetToTarget)
+      && bF.offsetToTarget <= followSlackPx(bF) * 6);
+    checks.check('H-S68 GREEN: BL-6 coarse viewport recenter after host 4h→1m',
+      greenCenter, JSON.stringify(bF));
+    await setEngineFlagAll(page, T8_S68, true);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(800);
+    const sw2 = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    const bRed = await readPanelFollow(page, 'B');
+    const redOff = !!(bRed && Number.isFinite(bRed.offsetToTarget)
+      && bRed.offsetToTarget > followSlackPx(bRed) * 10);
+    checks.check(`H-S68 RED: ${T8_S68}=true coarse B stays off leading edge`,
+      sw2.ok && redOff, JSON.stringify(bRed));
+    await setEngineFlagAll(page, T8_S68, false);
+    notes.push('H-S68 (BL-6): coarse panel viewport recenter on host switch.');
+    return checks;
+  });
+}
+
+async function hS69(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1h' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const panels = await readPanels(page);
+    const peerFetch = sumFetches(panels, ['B', 'C', 'D']);
+    checks.check('H-S69 GREEN: display-TF master — peers mirror host 1h at boot (peer fetches==0)',
+      peerFetch === 0, `B=${panels.B?.fetches} C=${panels.C?.fetches} D=${panels.D?.fetches}`);
+    await setEngineFlagAll(page, T8_S69, true);
+    const boot2 = await bootLayout(ctx.browser, ctx.srv, { pair: 'same', panels: 4, tf: '1h', bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+    try {
+      await waitBootSettled(boot2.page, ids, 20_000, boot2.getInFlightDataRequests);
+      const p2 = await readPanels(boot2.page);
+      const redFetch = sumFetches(p2, ['B', 'C', 'D']) >= 2;
+      checks.check(`H-S69 RED: ${T8_S69}=true peers self-fetch instead of mirroring host display TF`,
+        redFetch, `B=${p2.B?.fetches} C=${p2.C?.fetches} D=${p2.D?.fetches}`);
+    } finally {
+      await boot2.close();
+    }
+    await setEngineFlagAll(page, T8_S69, false);
+    notes.push('H-S69 (B-FIX-6a): idle host display-TF master on panel boot.');
+    return checks;
+  });
+}
+
+async function hS70(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1h' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S70 ts', false, 'no ts'); return checks; }
+    ctx.srv.resetApiLog();
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await sleep(2000);
+    const greenFetches = totalDataFetches(ctx.srv.getApiLog());
+    checks.check('H-S70 GREEN: high-limit bulk — replay enter on 1h host uses ≤5 data fetches',
+      greenFetches <= 5, `fetches=${greenFetches}`);
+    await setEngineFlagAll(page, T8_S70, true);
+    ctx.srv.resetApiLog();
+    const ts1 = await replayStartTs(page);
+    await hostReplayEnter(page, ts1);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts1 });
+    await sleep(3000);
+    const redFetches = totalDataFetches(ctx.srv.getApiLog());
+    checks.check(`H-S70 RED: ${T8_S70}=true replay enter reverts to many small fetches`,
+      redFetches > greenFetches + 5, `fetches=${redFetches} (green=${greenFetches})`);
+    await setEngineFlagAll(page, T8_S70, false);
+    notes.push('H-S70 (B-FIX-6c): high-limit bulk history on lazy replay hydration.');
+    return checks;
+  });
+}
+
+async function hS71(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S71 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await fanOutTf(page, '4h');
+    await sleep(2000);
+    ctx.srv.resetApiLog();
+    await hostSetTimeframe(page, '1m');
+    await sleep(3000);
+    const greenFetches = totalDataFetches(ctx.srv.getApiLog());
+    const greenChunks = countChunkWalk(ctx.srv.getApiLog());
+    checks.check('H-S71 GREEN: fill-storm guard — host 4h→1m uses bounded fetches (≤6, no chunk-walk)',
+      greenFetches <= 6 && greenChunks === 0, `fetches=${greenFetches} chunkWalk=${greenChunks}`);
+    await setEngineFlagAll(page, T8_S71, true);
+    await fanOutTf(page, '4h');
+    await sleep(2000);
+    ctx.srv.resetApiLog();
+    await hostSetTimeframe(page, '1m');
+    await sleep(4000);
+    const redFetches = totalDataFetches(ctx.srv.getApiLog());
+    const redChunks = countChunkWalk(ctx.srv.getApiLog());
+    checks.check(`H-S71 RED: ${T8_S71}=true host 4h→1m chunk-walk storm`,
+      redFetches > 8 || redChunks > 0, `fetches=${redFetches} chunkWalk=${redChunks}`);
+    await setEngineFlagAll(page, T8_S71, false);
+    notes.push('H-S71 (B-FIX-D): TF-switch fill-storm plateau guard.');
+    return checks;
+  });
+}
+
+async function hS72(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1000);
+    const b0 = await readPanel(page, 'B');
+    const sw = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    checks.check('H-S72 setup', sw.ok, sw.reason || '');
+    if (!sw.ok) return checks;
+    const bStorm = (sw.after.B?.renders || 0) - (b0?.renders || 0);
+    checks.check('H-S72 GREEN: B-FIX-J hostswitch quiet — coarse B render delta bounded',
+      bStorm <= 50, `B.rendersDelta=${bStorm}`);
+    await setEngineFlagAll(page, T8_S72, true);
+    const b1 = await readPanel(page, 'B');
+    const sw2 = await t8PausedReplayHostSwitch(page, '4h', '1m', ids);
+    const bRed = (sw2.after?.B?.renders || 0) - (b1?.renders || 0);
+    checks.check(`H-S72 RED: ${T8_S72}=true empty-recovery storm during host switch`,
+      sw2.ok && bRed > 100, `B.rendersDelta=${bRed}`);
+    await setEngineFlagAll(page, T8_S72, false);
+    notes.push('H-S72 (B-FIX-J): suppress empty-recovery mid host-switch.');
+    return checks;
+  });
+}
+
+async function hS73(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S73 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    const b0 = await readPanelFollow(page, 'B');
+    const a0 = await readHost(page);
+    await dragCellRight(page, 'A', { screens: 10 });
+    await sleep(1500);
+    const b1 = await readPanelFollow(page, 'B');
+    const a1 = await readHost(page);
+    const dataGrew = !!(a1 && a0 && a1.dataLen > a0.dataLen);
+    const offsetShifted = !!(b1 && b0 && Number.isFinite(b1.offsetX) && Number.isFinite(b0.offsetX)
+      && Math.abs(b1.offsetX - b0.offsetX) > 8);
+    checks.check('H-S73 GREEN: B-FIX-C prepend compensation shifts peer offsetX on host left-load',
+      dataGrew && offsetShifted,
+      `A.dataLen ${a0?.dataLen}->${a1?.dataLen} B.offsetX ${b0?.offsetX}->${b1?.offsetX}`);
+    await setEngineFlagAll(page, T8_S73, true);
+    await enterReplayPausedAll(page);
+    const b2 = await readPanelFollow(page, 'B');
+    const a2 = await readHost(page);
+    await dragCellRight(page, 'A', { screens: 10 });
+    await sleep(1500);
+    const b3 = await readPanelFollow(page, 'B');
+    const a3 = await readHost(page);
+    const redFlat = !!(a3 && a2 && a3.dataLen > a2.dataLen
+      && b3 && b2 && Math.abs(b3.offsetX - b2.offsetX) <= 2);
+    checks.check(`H-S73 RED: ${T8_S73}=true offsetX flat while master prepends`,
+      redFlat, `A.dataLen ${a2?.dataLen}->${a3?.dataLen} B.offsetX ${b2?.offsetX}->${b3?.offsetX}`);
+    await setEngineFlagAll(page, T8_S73, false);
+    notes.push('H-S73 (B-FIX-C): mirror prepend offsetX compensation.');
+    return checks;
+  });
+}
+
+async function hS74(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await setSync(page, false);
+    await fanOutTf(page, '1h');
+    await sleep(2000);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S74 ts', false, 'no ts'); return checks; }
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    const finer = await switchTfDuringReplayAndSample(page, 'B', '1m', { ratioLimit: 2.0 });
+    const fin = finer.settled;
+    checks.check('H-S74 GREEN: finer self-own acquires real 1m cadence',
+      !!(fin && fin.tf === '1m' && fin.dominantDelta === 60000 && fin.dataMatchesTf),
+      `B.tf=${fin?.tf} delta=${fin?.dominantDelta}`);
+    await setEngineFlagAll(page, T8_S74, true);
+    const coarser = await switchTfDuringReplayAndSample(page, 'C', '1m', { ratioLimit: 2.0 });
+    const cf = coarser.settled;
+    checks.check(`H-S74 RED: ${T8_S74}=true finer switch stays coarse cadence`,
+      !!(cf && cf.tf === '1m' && cf.dominantDelta !== 60000),
+      `C.tf=${cf?.tf} delta=${cf?.dominantDelta}`);
+    await setEngineFlagAll(page, T8_S74, false);
+    notes.push('H-S74 (B8): finer same-pair panel self-own on TF switch during replay.');
+    return checks;
+  });
+}
+
+async function hS75(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await setSync(page, false);
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S75 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await resetDiag(page);
+    const before = await readPanels(page);
+    await dragCellRight(page, 'B', { screens: 6 });
+    await sleep(1200);
+    const after = await readPanels(page);
+    const greenOwner = (after.B?.fetches || 0) - (before.B?.fetches || 0) === 0;
+    checks.check('H-S75 GREEN: same-pair pan host-owner — B self-fetch==0 on drag',
+      greenOwner, `B.fetches ${before.B?.fetches}->${after.B?.fetches}`);
+    await setEngineFlagAll(page, T8_S75, true);
+    await resetDiag(page);
+    const b2 = await readPanels(page);
+    await dragCellRight(page, 'B', { screens: 6 });
+    await sleep(1200);
+    const b3 = await readPanels(page);
+    const redSelf = (b3.B?.fetches || 0) - (b2.B?.fetches || 0) > 0;
+    checks.check(`H-S75 RED: ${T8_S75}=true panel B self-fetches on same-pair drag`,
+      redSelf, `B.fetches ${b2.B?.fetches}->${b3.B?.fetches}`);
+    await setEngineFlagAll(page, T8_S75, false);
+    notes.push('H-S75: same-pair pan delegates to host owner.');
+    return checks;
+  });
+}
+
+async function hS76(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    await page.setViewport({ width: 2600, height: 1400 });
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S76 ts', false, 'no ts'); return checks; }
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+    let ts = ts0;
+    ts = await streamPlayFramesNoDrag(page, ts, 120, 60_000);
+    await dragCellRight(page, 'B', { screens: 3 });
+    await sleep(300);
+    ts = await streamPlayFramesNoDrag(page, ts, 60, 60_000);
+    await sleep(500);
+    const bGreen = await readPanelFollow(page, 'B');
+    const greenFallback = !!(bGreen && (bGreen.playheadVisible === true
+      || (Number.isFinite(bGreen.barsPastRightEdge) && bGreen.barsPastRightEdge <= 2)));
+    checks.check('H-S76 GREEN: replay follow fallback keeps B playhead in/near viewport',
+      greenFallback, JSON.stringify(bGreen));
+    await setEngineFlagAll(page, T8_S76, true);
+    ts = await streamPlayFramesNoDrag(page, ts, 80, 60_000);
+    await dragCellRight(page, 'B', { screens: 4 });
+    await sleep(300);
+    ts = await streamPlayFramesNoDrag(page, ts, 80, 60_000);
+    await sleep(500);
+    const bRed = await readPanelFollow(page, 'B');
+    const redOutside = !!(bRed && bRed.playheadVisible === false
+      && Number.isFinite(bRed.barsPastRightEdge) && bRed.barsPastRightEdge > 5);
+    checks.check(`H-S76 RED: ${T8_S76}=true playhead marches off-screen (no fallback)`,
+      redOutside, JSON.stringify(bRed));
+    await setEngineFlagAll(page, T8_S76, false);
+    notes.push('H-S76 (B-FIX-1): replay follow fallback offset restore.');
+    return checks;
+  });
+}
+
+async function hS77(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S77 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    const frameB = panelFrameMap(page).B;
+    const probeGreen = await frameB.evaluate(() => {
+      const ch = window.chart;
+      const rs = ch && ch.replaySystem;
+      if (!ch || !rs || typeof rs.updateChartData !== 'function') return { ok: false };
+      const beforeOff = Number(ch.offsetX);
+      const beforeLen = Array.isArray(ch.data) ? ch.data.length : 0;
+      const bar = { t: beforeLen ? ch.data[0].t - 60_000 : Date.now(), o: 1, h: 1, l: 1, c: 1 };
+      const prepended = [bar, ...ch.data];
+      rs.updateChartData(prepended, { isPrepend: true });
+      return { ok: true, beforeOff, afterOff: Number(ch.offsetX), beforeLen, afterLen: prepended.length };
+    }).catch(() => ({ ok: false }));
+    checks.check('H-S77 GREEN: master-growth offset shifts on prepend',
+      probeGreen.ok && Math.abs(probeGreen.afterOff - probeGreen.beforeOff) > 4,
+      JSON.stringify(probeGreen));
+    await setEngineFlagAll(page, T8_S77, true);
+    const probeRed = await frameB.evaluate(() => {
+      const ch = window.chart;
+      const rs = ch && ch.replaySystem;
+      if (!ch || !rs || typeof rs.updateChartData !== 'function') return { ok: false };
+      const beforeOff = Number(ch.offsetX);
+      const bar = { t: ch.data[0].t - 120_000, o: 1, h: 1, l: 1, c: 1 };
+      const prepended = [bar, ...ch.data];
+      rs.updateChartData(prepended, { isPrepend: true });
+      return { ok: true, beforeOff, afterOff: Number(ch.offsetX) };
+    }).catch(() => ({ ok: false }));
+    checks.check(`H-S77 RED: ${T8_S77}=true offsetX flat on master prepend`,
+      probeRed.ok && Math.abs(probeRed.afterOff - probeRed.beforeOff) <= 2,
+      JSON.stringify(probeRed));
+    await setEngineFlagAll(page, T8_S77, false);
+    notes.push('H-S77 (B-FIX-C): panel master-growth offset in updateChartData.');
+    return checks;
+  });
+}
+
+async function hS78(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const SMALL = 12;
+    await page.setViewport({ width: 2600, height: 1400 });
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+    const ts0 = await replayStartTs(page);
+    if (ts0 == null) { checks.check('H-S78 ts', false, 'no ts'); return checks; }
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1200);
+    let ts = ts0;
+    ts = await streamPlayFramesNoDrag(page, ts, 60, 60_000);
+    const bBefore = await readPanelFollow(page, 'B');
+    const follow0 = Number(bBefore?.followRenders) || 0;
+    const off0 = Number(bBefore?.offsetX);
+    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: 50, stepMs: 60_000, playing: true, distancePx: 700 });
+    const bDrag = await readPanelFollow(page, 'B');
+    const tracked = !!(bDrag && Number.isFinite(bDrag.offsetX) && Number.isFinite(off0)
+      && bDrag.offsetX > off0 + 40 && bDrag.userHasPanned === true);
+    checks.check('H-S78 GREEN (A9): offsetX tracks play-drag smoothly (moved right)',
+      tracked, `offsetX ${off0}->${bDrag?.offsetX} userHasPanned=${bDrag?.userHasPanned}`);
+    const followDrag = (Number(bDrag?.followRenders) || 0) - follow0;
+    checks.check('H-S78 GREEN (A9): follow suspended during play-drag',
+      followDrag <= SMALL, `followRendersDelta=${followDrag}`);
+    ts = await streamPlayFramesNoDrag(page, ts, 50, 60_000);
+    await sleep(500);
+    const bAfter = await readPanelFollow(page, 'B');
+    const noSnap = !!(bAfter && bDrag && bAfter.userHasPanned === true
+      && Number.isFinite(bAfter.offsetToTarget) && bAfter.offsetToTarget > followSlackPx(bAfter));
+    checks.check('H-S78 GREEN (A9): no snap-back to playhead after release while play continues',
+      noSnap, `offsetToTarget=${bAfter?.offsetToTarget} offsetX=${bAfter?.offsetX}`);
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', true);
+    const bPre = await readPanelFollow(page, 'B');
+    ts = await dragPanelWhileStreaming(page, 'B', ts, { moves: 40, stepMs: 60_000, playing: true, distancePx: 500 });
+    ts = await streamPlayFramesNoDrag(page, ts, 30, 60_000);
+    await sleep(400);
+    const bSnap = await readPanelFollow(page, 'B');
+    const snapped = !!(bPre && bSnap && Number.isFinite(bPre.offsetToTarget) && Number.isFinite(bSnap.offsetToTarget)
+      && bSnap.offsetToTarget < bPre.offsetToTarget * 0.5);
+    checks.check('H-S78 RED (BL-16): follow-off causes snap-back toward playhead during/after drag',
+      snapped, `offsetToTarget ${bPre?.offsetToTarget}->${bSnap?.offsetToTarget}`);
+    await setEngineFlagAll(page, '__TALARIA_MC_DISABLE_PANEL_PLAY_VIEWPORT_FOLLOW', false);
+    notes.push('H-S78 (BL-16/A9): dedicated drag-during-play — smooth offsetX, follow suspended, no snap-back.');
     return checks;
   });
 }
@@ -6378,7 +7100,32 @@ export function scenarioList() {
     { id: 'H-S56', title: 'A3 TAL-01581: candle+4h interval steps consistent buckets on 1m master', run: hS56 },
     { id: 'H-S57', title: 'A3 TAL-01581: single interval owner (resolve === sync)', run: hS57 },
     { id: 'H-S58', title: 'T4 step 8: multi-entry close hit-target + remove sync (TAL-00752#10/#20/#22)', run: hS58 },
+  ];
+}
+
+/** T8 step-1 pending coverage — not in gate baseline (I9). */
+export function t8PendingScenarioList() {
+  return [
     { id: 'H-S59', title: 'independent-symbol panels advance playhead during replay PLAY (TAL-01590)', run: hS59 },
+    { id: 'H-S60', title: 'B-FIX-I panel settled self-heal after host TF switch', run: hS60 },
+    { id: 'H-S61', title: 'B-FIX-F hold mirror while host unsettled on TF switch', run: hS61 },
+    { id: 'H-S62', title: 'B-FIX-G one-shot settled resync on host switch-back', run: hS62 },
+    { id: 'H-S63', title: 'host history growth mirrors to same-pair peers', run: hS63 },
+    { id: 'H-S64', title: 'host TF mirror-wait prevents peer self-fetch on fan-out', run: hS64 },
+    { id: 'H-S65', title: 'BL-5 skip coarse paused host-switch seek storm', run: hS65 },
+    { id: 'H-S66', title: 'BL-2b panel price independence on host TF switch', run: hS66 },
+    { id: 'H-S67', title: 'BL-8 paused aligned replayTick seek guard', run: hS67 },
+    { id: 'H-S68', title: 'BL-6 coarse panel viewport recenter on host switch', run: hS68 },
+    { id: 'H-S69', title: 'B-FIX-6a display-TF master on panel boot', run: hS69 },
+    { id: 'H-S70', title: 'B-FIX-6c high-limit bulk replay hydration', run: hS70 },
+    { id: 'H-S71', title: 'B-FIX-D TF-switch fill-storm guard', run: hS71 },
+    { id: 'H-S72', title: 'B-FIX-J panel hostswitch quiet (no empty-recovery storm)', run: hS72 },
+    { id: 'H-S73', title: 'B-FIX-C mirror prepend offsetX compensation', run: hS73 },
+    { id: 'H-S74', title: 'B8 finer panel self-own on TF switch during replay', run: hS74 },
+    { id: 'H-S75', title: 'same-pair pan host-owner (no peer self-fetch)', run: hS75 },
+    { id: 'H-S76', title: 'B-FIX-1 replay follow fallback offset restore', run: hS76 },
+    { id: 'H-S77', title: 'B-FIX-C panel master-growth offset on prepend', run: hS77 },
+    { id: 'H-S78', title: 'BL-16 dedicated drag-during-play (A9)', run: hS78 },
   ];
 }
 

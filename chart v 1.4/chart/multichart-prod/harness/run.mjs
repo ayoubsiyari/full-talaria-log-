@@ -52,13 +52,14 @@
 
 import { startServer } from './serve.mjs';
 import { launchBrowser } from './harness-lib.mjs';
-import { scenarioList } from './scenarios.mjs';
+import { scenarioList, t8PendingScenarioList } from './scenarios.mjs';
 
 function parseArgs(argv) {
-  const args = { runs: 1, only: null, bug: false, headful: false, bugSwitches: null };
+  const args = { runs: 1, only: null, bug: false, headful: false, bugSwitches: null, pending: false };
   for (const a of argv.slice(2)) {
     if (a === '--bug') args.bug = true;
     else if (a === '--headful') args.headful = true;
+    else if (a === '--pending') args.pending = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
     else if (a.startsWith('--bugswitch=')) {
@@ -83,9 +84,11 @@ async function main() {
   const args = parseArgs(process.argv);
   const srv = await startServer(0);
   console.log(`[run] stub server: ${srv.url}`);
-  console.log(`[run] mode: runs=${args.runs} bug=${args.bug} only=${args.only ? args.only.join(',') : 'ALL'}`);
+  console.log(`[run] mode: runs=${args.runs} bug=${args.bug} pending=${args.pending} only=${args.only ? args.only.join(',') : 'ALL'}`);
 
-  const scenarios = scenarioList().filter((s) => !args.only || args.only.includes(s.id));
+  let allScenarios = scenarioList();
+  if (args.pending) allScenarios = [...allScenarios, ...t8PendingScenarioList()];
+  const scenarios = allScenarios.filter((s) => !args.only || args.only.includes(s.id));
   if (!scenarios.length) {
     console.error('[run] no scenarios matched --only filter');
     await srv.close();

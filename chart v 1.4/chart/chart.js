@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260712b1';
+const CHART_ENGINE_BUILD = '20260714a1';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -24085,13 +24085,9 @@ class Chart {
             this._panSnapYDomain = null;
         }
         this._panScalesCalculated = true;
-        if (!this._panTimeTickCache && typeof this._buildTimeTicks === 'function') {
+        if (!this._panTimeTickCache && typeof this._seedPanTimeTickCache === 'function') {
             try {
-                const panTicks = this._buildTimeTicks({ panCache: true });
-                this._panTimeTickCache = {
-                    baseOffsetX: this.offsetX,
-                    ticks: panTicks.map((t) => ({ ...t })),
-                };
+                this._seedPanTimeTickCache();
             } catch (_) { /* ignore */ }
         }
     }
@@ -25189,12 +25185,9 @@ class Chart {
         } else {
             this._overlaySnapDomains = null;
         }
-        // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
-        const panTicks = this._buildTimeTicks({ panCache: true });
-        this._panTimeTickCache = {
-            baseOffsetX: this.offsetX,
-            ticks: panTicks.map((t) => ({ ...t })),
-        };
+        // Seed pan ticks from the CURRENT idle axis (e.g. 9:00) — never from the
+        // fast builder, which realigns to off-grid times (8:45) the moment drag starts.
+        this._seedPanTimeTickCache();
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
@@ -25279,29 +25272,65 @@ class Chart {
         }
     }
 
-    /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
+    /** Seed pan tick cache from idle clock-aligned labels (TradingView-stable). */
+    _seedPanTimeTickCache() {
+        const source = (Array.isArray(this._timeTicks) && this._timeTicks.length)
+            ? this._timeTicks
+            : this._buildTimeTicks({ full: true });
+        const ticks = source.map((t) => ({ ...t }));
+        let step = 30;
+        for (let i = 1; i < ticks.length; i++) {
+            if (ticks[i].idx != null && ticks[i - 1].idx != null) {
+                const d = Math.abs(ticks[i].idx - ticks[i - 1].idx);
+                if (d > 0) { step = d; break; }
+            }
+        }
+        this._panTimeTickCache = {
+            baseOffsetX: this.offsetX,
+            ticks,
+            step,
+        };
+        return ticks;
+    }
+
+    /**
+     * Pan time-axis: keep the same label timestamps (9:00 stays 9:00) and only
+     * move their x via bar index → pixel. Rebuilding with the fast path was
+     * flipping labels to off-grid times (8:45) on finger-down / zoom.
+     */
     _buildPanTimeTicks() {
         const m = this.margin || { l: 60, r: 60 };
-        const cw = Math.max(1, this.w - m.l - m.r);
+        const plotLeft = m.l;
+        const plotRight = this.w - (m.r || 0);
+        const cw = Math.max(1, plotRight - plotLeft);
         const maxShift = Math.max(240, cw * 0.35);
-        if (!this._panTimeTickCache) {
-            const ticks = this._buildTimeTicks({ panCache: true });
-            this._panTimeTickCache = {
-                baseOffsetX: this.offsetX,
-                ticks: ticks.map((t) => ({ ...t })),
-            };
-            return ticks;
+        if (!this._panTimeTickCache || !Array.isArray(this._panTimeTickCache.ticks)
+            || !this._panTimeTickCache.ticks.length) {
+            return this._seedPanTimeTickCache().map((t) => {
+                if (t.idx != null && typeof this.dataIndexToPixel === 'function') {
+                    return { ...t, x: this.dataIndexToPixel(t.idx) };
+                }
+                return { ...t };
+            });
         }
         const dx = this.offsetX - this._panTimeTickCache.baseOffsetX;
-        if (Math.abs(dx) > maxShift) {
-            const ticks = this._buildTimeTicks({ panCache: true });
+        let mapped = this._panTimeTickCache.ticks.map((t) => {
+            if (t.idx != null && typeof this.dataIndexToPixel === 'function') {
+                return { ...t, x: this.dataIndexToPixel(t.idx) };
+            }
+            return { ...t, x: t.x + dx };
+        });
+        const stillVisible = mapped.some((t) => t.x >= plotLeft - 40 && t.x <= plotRight + 40);
+        if (!stillVisible || Math.abs(dx) > maxShift) {
+            const ticks = this._buildTimeTicks({ full: true });
             this._panTimeTickCache = {
                 baseOffsetX: this.offsetX,
                 ticks: ticks.map((t) => ({ ...t })),
+                step: this._panTimeTickCache.step || 30,
             };
             return ticks;
         }
-        return this._panTimeTickCache.ticks.map((t) => ({ ...t, x: t.x + dx }));
+        return mapped;
     }
 
     _startChartPanRenderLoop() {
@@ -25962,25 +25991,20 @@ class Chart {
             this._paintSeparatePanelStackBackground();
         }
 
-        // Build time-axis ticks — pan shifts cached ticks; wheel/time-axis zoom rebuilds every frame
-        // so vertical grid lines stay aligned with candles (cached ticks looked "stuck" until release).
+        // Build time-axis ticks.
+        // Pan: shift/reproject the idle cache (same labels) — never _buildTimeTicksFast()
+        // which realigns to off-grid times (9:00 → 8:45) the moment drag/zoom starts.
+        // Zoom: full clock-aligned builder only (same as idle).
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
-        if (skipHeavyChrome) {
-            // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
-            this._timeTicks = this._buildTimeTicksFast();
+        if (chartViewPanning) {
+            this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
-        } else if (chartViewPanning) {
-            this._timeTicks = interactionLiteEarly
-                ? this._buildTimeTicksFast()
-                : this._buildTimeTicks();
+        } else if (skipHeavyChrome || wheelBurstLight || timeAxisZoomDragging) {
+            this._timeTicks = this._buildTimeTicks({ full: true });
             this._cachedInteractionTimeTicks = this._timeTicks;
-        } else if (wheelBurstLight || timeAxisZoomDragging) {
-            this._timeTicks = interactionLiteEarly
-                ? this._buildTimeTicksFast()
-                : this._buildTimeTicks();
-            this._cachedInteractionTimeTicks = this._timeTicks;
+            this._idleTimeAxisKeyCached = null;
         } else if (interactionLightPaint && priceAxisZoomDragging) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {

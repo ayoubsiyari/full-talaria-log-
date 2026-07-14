@@ -2,6 +2,38 @@
 
 ---
 
+## D-013 — PO priority directive: T8 (synced-multichart replay experience) pulled forward; starts now on Lane 2
+
+**Date:** 2026-07-14
+**Origin:** PO directive (not an escalation) — "visually and from UX, the T8-related issues are the most annoying: playing and replaying the synced multicharts. Make it a priority and close it early with high quality so the testers can test properly."
+**Track:** T8 (Lane 2)
+**RC:** RC-8
+
+### Why the re-sequencing is safe now
+T8 was gated behind T3 (same bridge files) and a "quiet period." D-012 froze the multichart **interaction** family pending Lane 4's honest-harness rebuild — which idles exactly the Lane 2 work that was ahead of T8, while T8 itself lives on the **data/X/Y replay policy path**, a different subsystem untouched by the freeze. The quiet period the plan asked for has effectively arrived, just not the way we expected. The strongest live evidence this week (TAL-01590 replay freeze; the 8 intake evidence rows) is all T8-family.
+
+### Rulings
+
+**1. T8 starts NOW on Lane 2, in the plan's own safety order — no phase is skipped:**
+- **Step 1 (immediately, non-invasive): coverage hardening.** RED scenarios for the ~17 kill-switches without dedicated coverage + BL-16 (T8 §3 debt item, already specced "do this first"). This hardens the acceptance contract before any refactor and produces zero product risk. File check: this edits `harness/scenarios.mjs` etc., NOT `react-parity-lib.mjs` (Lane 4's exclusive file under D-012) — no collision.
+- **Step 2 (parallel, read-only): policy-table design doc** (T8 §1). Full matrix (TF relation × replay state × sync per axis), each existing guard's decision extracted into its cell; conflicts/gaps escalate. **The A5 diagnostic (TAL-01590, independent-symbol replay freeze) is folded in as the design's first mandatory input** — the independent-symbol × playing column must be specified from its trace, since that's where the live freeze is. The 2026-07-13 intake evidence rows (TAL-01560/62/63/73/75/77/78/79) map to cells per the existing plan text.
+- **Step 3 (after Director approves the table): guard-by-guard migration** behind `__TALARIA_DISABLE_MIRROR_POLICY_V2`, full gate re-run per migration, superseded guards retired only after their scenarios pass through the policy path. Unchanged from the plan.
+
+**2. Priority order inside Lane 2:** T8 steps 1–2 + A5 diagnostic **ahead of** TAL-01564 and the T3 layout-state rows 13–16 (those rows still need my owner approval and are less painful than replay). The frozen T3 interaction rows stay frozen per D-012 regardless.
+
+**3. Quality bar (the PO asked for early AND high quality — these are the non-negotiables):**
+- Zero-behavior-change constraint stands: any cell whose policy value differs from shipped behavior is an **escalation with its ticket as evidence**, never a silent correction. TAL-01590's freeze cell will be exactly such an escalation — that is the designed path for it.
+- The plan-1 29-scenario gate + the new coverage scenarios are the acceptance contract; gate green after every migration.
+- PO live-confirm on the synced-replay feel (play, pause, scrub, TF mix, different symbols) is part of T8's exit — matching the D-012 posture that live confirmation is the trusted authority.
+- Deploy freeze note: T8 builds ship to **staging** for PO confirm while the D-012 freeze holds; the freeze is about the interaction family, and lifting it is a separate decision.
+
+**4. What this does NOT change:** Lane 4 stays on the honest-harness rebuild (D-012 critical path). Lane 1 stays on the settings-transport diagnostic. Lane 3 stays on the A3 replay fixes (D-009) — which are themselves replay-UX wins that land independently and soon. Nothing D-012-critical is preempted.
+
+### Expected effect
+The tester-facing replay pain (gaps, group-advance, freezes, viewport shifts, snap-backs) is concentrated in the policy table's cells. Closing T8 converts 9+ open evidence tickets into retest-closures in one consolidation instead of nine guard patches — that is the fastest *honest* route to "testers can test properly."
+
+---
+
 ## D-012 — ESC-011: false-green retraction ratified; measurement repaired before/alongside fixes; PO live-confirm is the interim acceptance authority
 
 **Date:** 2026-07-14
