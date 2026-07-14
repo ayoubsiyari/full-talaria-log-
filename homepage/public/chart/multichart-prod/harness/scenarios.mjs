@@ -67,6 +67,23 @@ import {
   pressEscape,
   defaultTrendlinePoints,
   defaultRectanglePoints,
+  focusPanelByClick,
+  drawRectangleViaMouse,
+  drawTrendlineViaMouse,
+  readIndicatorState,
+  addIndicator,
+  removeAllIndicators,
+  commitDrawingStyleInPanel,
+  probeDrawingDragPastTile,
+  probePanDragPastTile,
+  frameRectForPanel,
+  layoutIdToPanelCount,
+  seedChartPanelState,
+  readLayoutPersistenceProbe,
+  readTileGeometryProbe,
+  readPanelFileIds,
+  enableHarnessSymbolSync,
+  readHarnessFocusedPanelId,
 } from './interactive-helpers.mjs';
 
 const HOST_FILE = '25';
@@ -2790,16 +2807,45 @@ async function hS22(ctx) {
       killedShown === false && killedDom === false,
       `returned=${killedShown} dom=${killedDom}`);
 
+    // (4) TAL-01564: dismiss suppresses immediate re-nag + persists in sessionStorage.
+    await page.evaluate((d) => {
+      window.__TalariaVersionReload.clear();
+      try { delete window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT; } catch (_) { window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = false; }
+      try { sessionStorage.removeItem(window.__TalariaVersionReload._dismissStorageKey); } catch (_) {}
+      window.__TALARIA_CHART_BUILD_ID = d + '-OLD';
+    }, deployed);
+    const mismatchBeforeDismiss = await page.evaluate(() => window.__TalariaVersionReload.check());
+    const domBeforeDismiss = await toastShown();
+    checks.check('H-S22 dismiss setup: mismatch shows toast',
+      mismatchBeforeDismiss === true && domBeforeDismiss === true,
+      `returned=${mismatchBeforeDismiss} dom=${domBeforeDismiss}`);
+    const dismissed = await page.evaluate((d) => {
+      window.__TalariaVersionReload.writeDismissedFor(d);
+      window.__TalariaVersionReload.clear();
+      const stored = window.__TalariaVersionReload.readDismissedFor();
+      return { stored, key: window.__TalariaVersionReload._dismissStorageKey };
+    }, deployed);
+    checks.check('H-S22 dismiss: sessionStorage records deployed id',
+      dismissed.stored === deployed,
+      `stored=${JSON.stringify(dismissed.stored)} expected=${deployed}`);
+    const afterDismissShown = await page.evaluate(() => window.__TalariaVersionReload.check());
+    const afterDismissDom = await toastShown();
+    checks.check('H-S22 TAL-01564: dismiss suppresses re-nag on second check()',
+      afterDismissShown === false && afterDismissDom === false,
+      `returned=${afterDismissShown} dom=${afterDismissDom}`);
+
     // Clean up mutated globals + any lingering toast for H-INV.
     await page.evaluate(() => {
       try { window.__TalariaVersionReload.clear(); } catch (_) {}
       try { delete window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT; } catch (_) { window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = false; }
+      try { sessionStorage.removeItem(window.__TalariaVersionReload._dismissStorageKey); } catch (_) {}
     });
 
     notes.push('H-S22 (UX hygiene): host-only "new version available — Reload" toast. Kill switch '
       + '__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT (default ON). Deterministic build-id compare: deployed id '
-      + `("${deployed}") is read from the real fetch/parse of the host document; MATCH => no toast, MISMATCH => toast, `
-      + 'kill switch => no toast. RED under --bugswitch=__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT (mismatch sub-check '
+      + `("${deployed}") is read from the real fetch/parse of /chart/sw.js; MATCH => no toast, MISMATCH => toast, `
+      + 'kill switch => no toast; dismiss persists in sessionStorage and suppresses re-nag (TAL-01564). '
+      + 'RED under --bugswitch=__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT (mismatch sub-check '
       + 'expects a prompt but the switch suppresses it). No timers asserted; additive UI only (no SW/security change).');
     return checks;
   });
@@ -5356,22 +5402,6 @@ async function readPanelDrawingGeometry(page, panelId) {
   });
 }
 
-async function frameRectForPanel(page, panelId) {
-  return page.evaluate((pid) => {
-    const frames = Array.from(document.querySelectorAll('iframe'));
-    for (const el of frames) {
-      try {
-        const u = new URL(el.src, location.href);
-        if (u.searchParams.get('panelId') === pid) {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, top: r.top, width: r.width, height: r.height };
-        }
-      } catch (_) {}
-    }
-    return null;
-  }, panelId);
-}
-
 // ── H-S43 ────────────────────────────────────────────────────────────────
 // TAL-01498 / T3 row 2: Ctrl-select in panel B must add two drawings exactly
 // once. The RED was a panel-local double-toggle: canvas capture selected a
@@ -5483,6 +5513,448 @@ async function hS44(ctx) {
   });
 }
 
+// ── H-S45 ────────────────────────────────────────────────────────────────
+// TAL-01495: drawing target follows focused panel — arm + draw on panel B while
+// B is focused must land only on B (independent pair), never on host A.
+async function hS45(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const beforeA = await readInteractiveState(page, 'A');
+    const beforeB = await readInteractiveState(page, 'B');
+    checks.check('H-S45 setup: host starts with no drawings', beforeA && beforeA.drawingCount === 0,
+      `A.count=${beforeA?.drawingCount}`);
+    checks.check('H-S45 setup: panel B starts with no drawings', beforeB && beforeB.drawingCount === 0,
+      `B.count=${beforeB?.drawingCount}`);
+
+    const focusRes = await focusPanelByClick(page, 'B');
+    checks.check('H-S45 setup: panel B focus click dispatched', focusRes && focusRes.ok, focusRes?.reason || '');
+    const drawRes = await drawRectangleViaMouse(page, 'B');
+    checks.check('H-S45 probe: rectangle drawn via mouse on focused panel B', drawRes && drawRes.ok && drawRes.drawingCount >= 1,
+      `drawRes=${JSON.stringify(drawRes || null)}`);
+
+    const afterA = await readInteractiveState(page, 'A');
+    const afterB = await readInteractiveState(page, 'B');
+    checks.check(
+      'H-S45 CORE: focused-panel draw lands on B only (host A stays empty)',
+      afterB && afterB.drawingCount >= 1 && afterA && afterA.drawingCount === 0,
+      `A.count=${afterA?.drawingCount} B.count=${afterB?.drawingCount}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S46 ────────────────────────────────────────────────────────────────
+// TAL-01498: Ctrl-select inside panel B with locally drawn tools — both stay
+// selected once; handle centers remain separated (no stacked blob).
+async function hS46(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await focusPanelByClick(page, 'B');
+    await sleep(250);
+
+    const first = await drawTrendlineViaMouse(page, 'B');
+    checks.check('H-S46 setup: first trendline via mouse on panel B', first && first.ok && first.drawingCount >= 1,
+      JSON.stringify(first || null));
+    await sleep(300);
+    const second = await drawTrendlineViaMouse(page, 'B');
+    checks.check('H-S46 setup: second trendline via mouse on panel B', second && second.ok && second.drawingCount >= 2,
+      JSON.stringify(second || null));
+    await sleep(400);
+
+    const before = await readPanelDrawingGeometry(page, 'B');
+    checks.check('H-S46 setup: panel B has two drawable tools', before?.ok && before.drawings.length >= 2,
+      `count=${before?.drawings?.length || 0}`);
+    const centers = drawingClientCenters(before?.drawings).slice(0, 2);
+    checks.check('H-S46 setup: centers are separated before Ctrl-select', centers.length === 2,
+      `centers=${JSON.stringify(centers)}`);
+    if (centers.length !== 2) return checks;
+
+    const frameRect = await frameRectForPanel(page, 'B');
+    checks.check('H-S46 setup: panel B iframe rect resolved', !!frameRect, JSON.stringify(frameRect || null));
+    if (!frameRect) return checks;
+
+    await page.keyboard.down('Control');
+    try {
+      for (const c of centers) {
+        await page.mouse.click(Math.round(frameRect.left + c.x), Math.round(frameRect.top + c.y), { delay: 30 });
+        await sleep(180);
+      }
+    } finally {
+      await page.keyboard.up('Control');
+    }
+    await sleep(250);
+
+    const after = await readPanelDrawingGeometry(page, 'B');
+    const dist = centers.length === 2 && after?.drawings?.length >= 2
+      ? Math.sqrt(
+        (after.drawings[0].client.cx - after.drawings[1].client.cx) ** 2
+        + (after.drawings[0].client.cy - after.drawings[1].client.cy) ** 2,
+      )
+      : 0;
+    const expected = centers.map((c) => String(c.id)).sort();
+    const actual = (after?.selectedIds || []).map(String).sort();
+    checks.check(
+      'H-S46 CORE: panel-B Ctrl-select keeps both tools selected once',
+      expected.length === 2 && actual.length === 2 && expected.every((id, i) => id === actual[i]),
+      `selected=${JSON.stringify(after?.selectedIds)} expected=${JSON.stringify(expected)}`,
+    );
+    checks.check(
+      'H-S46 CORE: selected tools stay geometrically separated (no stacked blob)',
+      dist >= 12,
+      `centerDistancePx=${Number.isFinite(dist) ? dist.toFixed(1) : 'n/a'}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S47 ────────────────────────────────────────────────────────────────
+// TAL-01499: quick menu must appear on panel B immediately after placement
+// completes — without a follow-up select click (placement-complete path).
+async function hS47(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await installParentSettingsProbe(page);
+    await focusPanelByClick(page, 'B');
+    await sleep(200);
+
+    const drawRes = await drawTrendlineViaMouse(page, 'B');
+    checks.check('H-S47 probe: trendline drawn on panel B', drawRes && drawRes.ok && drawRes.drawingCount >= 1,
+      JSON.stringify(drawRes || null));
+    await sleep(250);
+    const after = await readInteractiveState(page, 'B');
+    const parentMenu = await page.evaluate(() => {
+      const selectors = [
+        '.v9-drawing-toolbar',
+        '.multichart-quick-menu',
+        '#drawingQuickMenu',
+        '[data-testid="drawing-quick-menu"]',
+        '.drawing-toolbar-host',
+      ];
+      let n = 0;
+      selectors.forEach((sel) => { n += document.querySelectorAll(sel).length; });
+      return n;
+    });
+    checks.check(
+      'H-S47 CORE: parent shell owns the Quick Menu chrome (not iframe-only toolbar)',
+      parentMenu > 0 && after?.toolbarVisible === true,
+      `parentMenu=${parentMenu} B.toolbarVisible=${after?.toolbarVisible}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S48 ────────────────────────────────────────────────────────────────
+// TAL-01500 / TAL-01501: indicator state is isolated per panel — deleting on B
+// must not leave ghost enabled rows in persisted indicator storage that A reads.
+async function hS48(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const addB = await addIndicator(page, 'B', 'macd', { fast: 12, slow: 26, signal: 9 });
+    checks.check('H-S48 setup: MACD added on panel B', addB && addB.ok && addB.count >= 1,
+      JSON.stringify(addB || null));
+    await sleep(300);
+
+    const listProbeOn = await page.evaluate(() => {
+      const frames = Array.from(document.querySelectorAll('iframe'));
+      let frameListActive = 0;
+      for (const el of frames) {
+        try {
+          const u = new URL(el.src, location.href);
+          if (u.searchParams.get('panelId') !== 'B') continue;
+          const doc = el.contentDocument;
+          if (!doc) continue;
+          frameListActive = doc.querySelectorAll(
+            '.indicator-list-item.active, [data-indicator-active="true"], .indicator-item.enabled',
+          ).length;
+        } catch (_) {}
+      }
+      return { frameListActive };
+    });
+    const indBOn = await readIndicatorState(page, 'B');
+    checks.check(
+      'H-S48 CORE: indicator list ON-state matches chart on first open after add',
+      (indBOn?.count || 0) >= 1 && listProbeOn.frameListActive >= 1,
+      `chartActive=${indBOn?.count || 0} listActive=${listProbeOn.frameListActive}`,
+    );
+
+    const rmB = await removeAllIndicators(page, 'B');
+    checks.check('H-S48 setup: indicators removed from panel B chart', rmB && rmB.ok && rmB.remaining === 0,
+      JSON.stringify(rmB || null));
+    await sleep(200);
+
+    const listProbe = await page.evaluate(() => {
+      const frames = Array.from(document.querySelectorAll('iframe'));
+      let frameListActive = 0;
+      let frameActiveCount = 0;
+      for (const el of frames) {
+        try {
+          const u = new URL(el.src, location.href);
+          if (u.searchParams.get('panelId') !== 'B') continue;
+          const doc = el.contentDocument;
+          if (!doc) continue;
+          frameListActive = doc.querySelectorAll(
+            '.indicator-list-item.active, [data-indicator-active="true"], .indicator-item.enabled',
+          ).length;
+        } catch (_) {}
+      }
+      return { frameListActive, frameActiveCount };
+    });
+    const indBAfterDelete = await readIndicatorState(page, 'B');
+    listProbe.frameActiveCount = indBAfterDelete?.count || 0;
+    checks.check(
+      'H-S48 CORE: indicator list ON-state matches chart after delete (no ghost enabled rows)',
+      listProbe.frameActiveCount === 0 && listProbe.frameListActive === 0,
+      `chartActive=${listProbe.frameActiveCount} listActive=${listProbe.frameListActive}`,
+    );
+
+    await focusPanelByClick(page, 'A');
+    await sleep(200);
+    const indA = await readIndicatorState(page, 'A');
+    checks.check(
+      'H-S48 CORE: deleted panel-B indicators do not reappear on host A chart',
+      indA && indA.count === 0,
+      `A.active=${JSON.stringify(indA?.active)}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S49 ────────────────────────────────────────────────────────────────
+// TAL-01491 / TAL-01587: drawing/pan drag must survive cursor leaving the React
+// layout tile (pointer-capture via parent shell). Harness host.html lacks the
+// production MultichartGrid chrome — proxy: parent shell must participate.
+async function hS49(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    try {
+      await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+      await sleep(400);
+
+      const placed = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+      checks.check('H-S49 setup: host trendline placed', placed && placed.id, placed ? placed.id : 'null');
+      await selectTool(page, 'A', placed, { click: true });
+      await sleep(200);
+
+      const probe = await probeDrawingDragPastTile(page, 'A', placed);
+      checks.check('H-S49 probe: drawing drag-past-tile constructed', probe && probe.ok, probe?.reason || '');
+      const shell = await page.evaluate(() => ({
+        hasReactGrid: !!window.__multichartGrid,
+        hasPointerCaptureHook: !!(window.__multichartGrid && window.__multichartGrid.focusPanelById),
+      }));
+      checks.check(
+        'H-S49 CORE: parent MultichartGrid shell retains pointer-capture past tile bounds (TAL-01587)',
+        shell.hasReactGrid && shell.hasPointerCaptureHook && probe && probe.stillDraggingOutside === true,
+        `shell=${JSON.stringify(shell)} stillDraggingOutside=${probe?.stillDraggingOutside} moved=${probe?.movedDuringDrag}`,
+      );
+    } catch (err) {
+      checks.check('H-S49 probe: interaction path constructed', false, String((err && err.stack) || err));
+      checks.check(
+        'H-S49 CORE: parent MultichartGrid shell retains pointer-capture past tile bounds (TAL-01587)',
+        false,
+        'scenario threw before CORE probe completed',
+      );
+    }
+    return checks;
+  });
+}
+
+// ── H-S50 ────────────────────────────────────────────────────────────────
+// TAL-01484 / TAL-01490: host replay step-forward must update panel B without a
+// follow-up click on B (command-driven repaint / viewport convergence).
+async function hS50(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S50 setup: replay paused on host + peers', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await dragCellRight(page, 'A', { screens: 4 });
+    await sleep(700);
+
+    const beforeHost = await readHost(page);
+    const beforeB = await readPanel(page, 'B');
+    const rendersBefore = await readRenderCount(page, 'B');
+    const step = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs || typeof rs.stepForward !== 'function') return { ok: false, reason: 'no stepForward' };
+      const tsBefore = Number(rs.replayTimestamp);
+      rs.stepForward();
+      return { ok: true, tsBefore, tsAfter: Number(rs.replayTimestamp) };
+    });
+    checks.check('H-S50 probe: host step-forward invoked', step && step.ok, step?.reason || '');
+    await sleep(600);
+
+    const afterHost = await readHost(page);
+    const afterB = await readPanel(page, 'B');
+    const rendersAfter = await readRenderCount(page, 'B');
+    const hostReplayMoved = beforeHost && afterHost
+      && beforeHost.replayTs != null && afterHost.replayTs != null
+      && afterHost.replayTs !== beforeHost.replayTs;
+    const peerReplayMoved = beforeB && afterB
+      && beforeB.replayTs != null && afterB.replayTs != null
+      && afterB.replayTs !== beforeB.replayTs;
+    const peerRepainted = rendersBefore != null && rendersAfter != null && rendersAfter > rendersBefore;
+    checks.check(
+      'H-S50 CORE: panel B updates after host step-forward without click on B',
+      hostReplayMoved && peerReplayMoved && peerRepainted,
+      `hostReplay ${beforeHost?.replayTs}->${afterHost?.replayTs} B.replay ${beforeB?.replayTs}->${afterB?.replayTs} renders ${rendersBefore}->${rendersAfter}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-S51 ────────────────────────────────────────────────────────────────
+// TAL-01571 (row 13): layout persistence across refresh — chart_panel_state
+// blob carries layout id; boot must hydrate panel count (D-008: corrupt → single).
+async function hS51(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const seeded = await seedChartPanelState(page, '2v');
+    checks.check('H-S51 setup: chart_panel_state seeded with layout 2v', seeded && seeded.ok,
+      JSON.stringify(seeded || null));
+
+    const reloadUrl = page.url().replace(/([?&])panels=\d+/, '$1panels=1').replace(/panels=\d+/, 'panels=1');
+    const finalUrl = reloadUrl.includes('panels=') ? reloadUrl : `${reloadUrl}${reloadUrl.includes('?') ? '&' : '?'}panels=1`;
+    await page.goto(finalUrl, { waitUntil: 'networkidle2', timeout: 120_000 });
+    await sleep(800);
+
+    const probe = await readLayoutPersistenceProbe(page);
+    const expectedPanels = layoutIdToPanelCount('2v');
+    checks.check('H-S51 setup: blob still holds 2v after reload-with-default URL',
+      probe && probe.savedLayout === '2v',
+      `savedLayout=${probe?.savedLayout}`);
+    checks.check(
+      'H-S51 CORE: 2v layout survives refresh (hydrate applies saved layout)',
+      probe && probe.appliedPanels === expectedPanels,
+      `saved=${probe?.savedLayout} appliedPanels=${probe?.appliedPanels} expected=${expectedPanels}`,
+    );
+
+    await page.evaluate(() => {
+      try { localStorage.setItem('chart_panel_state', 'not-json{{{'); } catch (_) {}
+    });
+    await page.reload({ waitUntil: 'networkidle2', timeout: 120_000 });
+    await sleep(600);
+    const corrupt = await readLayoutPersistenceProbe(page);
+    checks.check(
+      'H-S51 corrupt blob: silent fallback to single-chart boot',
+      corrupt && corrupt.appliedPanels === 1 && !corrupt.bootError,
+      `appliedPanels=${corrupt?.appliedPanels} bootError=${corrupt?.bootError}`,
+    );
+
+    notes.push('H-S51 (row 13 / TAL-01571): extend chart_panel_state blob; hydrate layout id on V9 boot '
+      + 'before MultichartGrid mount. Harness proxy: URL panels=1 simulates fresh default; appliedPanels '
+      + 'must match saved 2v. Corrupt-value cell mandatory per D-008. I13: React kill-switch + parity checklist.');
+    return checks;
+  });
+}
+
+// ── H-S52 ────────────────────────────────────────────────────────────────
+// TAL-01574 (row 14): tile clip/visibility — canvas must fill cell (no dead zone).
+async function hS52(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const geomA = await readTileGeometryProbe(page, 'A');
+    const geomB = await readTileGeometryProbe(page, 'B');
+    checks.check('H-S52 setup: host tile geometry probe', geomA && geomA.ok, geomA?.reason || '');
+    checks.check('H-S52 setup: iframe tile geometry probe', geomB && geomB.ok, geomB?.reason || '');
+
+    const minFill = 0.88;
+    const maxGap = 6;
+    checks.check(
+      'H-S52 CORE: host canvas fills tile (no clip dead zone)',
+      geomA && geomA.fillRatio >= minFill && geomA.gapBottom <= maxGap && geomA.bufferRatio >= minFill,
+      `fill=${geomA?.fillRatio?.toFixed(3)} buffer=${geomA?.bufferRatio?.toFixed(3)} gapBottom=${geomA?.gapBottom}`,
+    );
+    checks.check(
+      'H-S52 CORE: iframe canvas fills tile (no clip dead zone)',
+      geomB && geomB.fillRatio >= minFill && geomB.gapBottom <= maxGap && geomB.bufferRatio >= minFill,
+      `fill=${geomB?.fillRatio?.toFixed(3)} buffer=${geomB?.bufferRatio?.toFixed(3)} gapBottom=${geomB?.gapBottom}`,
+    );
+
+    const shell = await page.evaluate(() => ({
+      hasReactGrid: !!window.__multichartGrid,
+      hasHostSlot: typeof document.getElementById('chartWrapper') !== 'undefined',
+      hasRepaintHook: !!(window.__multichartGrid && (
+        typeof window.__multichartGrid.repaintAllPanelSurfaces === 'function'
+        || typeof window.__multichartGrid.runCommand === 'function'
+      )),
+    }));
+    checks.check(
+      'H-S52 CORE: parent MultichartGrid shell orchestrates tile resize after layout settle (TAL-01574)',
+      shell.hasReactGrid && shell.hasRepaintHook,
+      `shell=${JSON.stringify(shell)} — harness host lacks production React grid; live parity row required for screenshot layout`,
+    );
+
+    notes.push('H-S52 (row 14 / TAL-01574): parent shell owns tile bbox + resize orchestration. '
+      + 'Harness locks boot-time fillRatio; CORE RED proxies missing MultichartGrid resize path. '
+      + 'TAL-01574 screenshot layout needs live parity checklist. I13: React kill-switch.');
+    return checks;
+  });
+}
+
+// ── H-S53 ────────────────────────────────────────────────────────────────
+// TAL-01586 (row 15): symbol-sync false→true converges all panels to focused ticker.
+async function hS53(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const before = await readPanelFileIds(page);
+    checks.check('H-S53 setup: independent pair starts split',
+      before.A && before.B && String(before.A) !== String(before.B),
+      `fileIds=${JSON.stringify(before)}`);
+
+    const focusRes = await focusPanelByClick(page, 'B');
+    checks.check('H-S53 setup: panel B focused before symbol-sync toggle', focusRes && focusRes.ok,
+      focusRes?.reason || '');
+    const focusedFile = before.B;
+    checks.check('H-S53 setup: focused panel fileId captured', !!focusedFile,
+      `fileId=${focusedFile}`);
+
+    const toggle = await enableHarnessSymbolSync(page);
+    checks.check('H-S53 probe: symbol sync toggled ON (false→true edge)',
+      toggle && toggle.ok && toggle.wasOn === false && toggle.nowOn === true,
+      JSON.stringify(toggle || null));
+    await sleep(1200);
+
+    const after = await readPanelFileIds(page);
+    const converged = after.A && after.B
+      && String(after.A) === String(focusedFile)
+      && String(after.B) === String(focusedFile);
+    checks.check(
+      'H-S53 CORE: symbol-sync ON converges all panels to focused panel ticker',
+      converged,
+      `before=${JSON.stringify(before)} after=${JSON.stringify(after)} focusedFile=${focusedFile}`,
+    );
+
+    notes.push('H-S53 (row 15 / TAL-01586): false→true toggle edge only (D-008); focused panel '
+      + 'owns source fileId; fan-out via runCommand(loadFile). Boot-with-sync-ON out of scope. '
+      + 'Harness uses manager.setSyncMode — production converge lives in MultichartGrid.jsx. I13: React kill-switch.');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -5527,6 +5999,15 @@ export function scenarioList() {
     { id: 'H-S42', title: 'anchoring: anchored volume profile timestamp+price survives timeframe switch (RC-3)', run: hS42 },
     { id: 'H-S43', title: 'panel Ctrl-select selects two drawings once; no iframe double-toggle (TAL-01498)', run: hS43 },
     { id: 'H-S44', title: 'panel single-click settings flow: select, open settings, Esc closes settings (T1 step 5)', run: hS44 },
+    { id: 'H-S45', title: 'drawing-target-focused-panel: focused B draw lands on B only (TAL-01495)', run: hS45 },
+    { id: 'H-S46', title: 'panel-ctrl-select-local: panel-B local Ctrl-select stays separated (TAL-01498)', run: hS46 },
+    { id: 'H-S47', title: 'panel-quick-menu: panel-B draw shows Quick Menu immediately (TAL-01499)', run: hS47 },
+    { id: 'H-S48', title: 'indicator-isolation: panel-B indicators do not leak to host (TAL-01500/01501)', run: hS48 },
+    { id: 'H-S49', title: 'drag-pointer-capture: drawing drag survives cursor leaving tile bounds (TAL-01491/01587)', run: hS49 },
+    { id: 'H-S50', title: 'panel-repaint-without-click: panel-B style commit repaints without follow-up click (TAL-01484/01490)', run: hS50 },
+    { id: 'H-S51', title: 'layout-persistence: 2v layout survives refresh via chart_panel_state (TAL-01571 row 13)', run: hS51 },
+    { id: 'H-S52', title: 'tile-clip-geometry: canvas fills tile without dead zones (TAL-01574 row 14)', run: hS52 },
+    { id: 'H-S53', title: 'symbol-sync-converge: symbol sync ON aligns panels to focused ticker (TAL-01586 row 15)', run: hS53 },
   ];
 }
 

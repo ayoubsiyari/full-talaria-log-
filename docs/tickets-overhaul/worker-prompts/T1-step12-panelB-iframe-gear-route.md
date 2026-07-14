@@ -2,6 +2,19 @@
 
 > Hand to the Lane 1 worker ONLY if the PO confirms both panels are on build `20260713b6` and panel B's gear still fails (i.e. not a stale iframe). Reproduce in the fast loop first (T0 step 6 now mounts real iframe panels).
 
+## COLD-START (read first — you may be a NEW agent taking this over)
+You are picking up a task that a previous agent started; the state below is where they got to — **do not restart from scratch, continue from here.** Before touching anything, read: `docs/tickets-overhaul/INVARIANTS.md`, `docs/tickets-overhaul/WORKER-REPORT-STANDARD.md` (your report MUST follow all 8 sections), and `docs/tickets-overhaul/MULTICHART-PARITY-CHECKLIST.md`. The chart engine is **mirrored** across `chart v 1.4/chart/...` and `homepage/public/chart/...` — every engine edit goes into **both** trees, byte-identical (SHA256 both). Kill-switch discipline (I3/I13): the fix stays behind `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2`; switch OFF must fully revert in every file you touch.
+
+### STATE FROM THE PRIOR AGENT (2026-07-14) — continue from here
+- Confirmed real gap: on live `b6`, host-tile A gear opens settings, **iframe panel B gear does nothing** (double-click on B works, so the iframe→parent transport is fine; only the gear button doesn't use it).
+- Prior agent found the **patched path CAN recover the iframe toolbar and the gear becomes visible** — the mechanism is on the right track.
+- **Open problem (do not paper over):** their click-proof "sampled too early" in the rescue/re-render timing and only passed when they waited longer before clicking `#tb-settings`. **A green that needs an artificial fixed `sleep()` = RED (a masked race), not a fix.** Your job is to make it deterministic.
+
+### ACCEPTANCE BAR (hard requirements for this handoff)
+1. Gear is present **and** clickable on **real user-interaction timing** (select → click gear immediately, no artificial delay).
+2. **Determinism: run the proof ~10× and report the pass count (must be 10/10).** Any flaky miss = still RED.
+3. If a wait is genuinely needed, gate the gear's exposure on the **rescue/re-render completing** (a render/settle signal or callback) — **not** a fixed sleep tuned until it passes. State which signal you gated on.
+
 ## ROLE
 Worker on Talaria **tickets-overhaul (Plan 2)**, task **T1 step 12**, Lane 1. RC-1.
 

@@ -31,12 +31,14 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 2. Design doc (Director approves before impl): single selection/lifecycle store + events (`toolSelected`, `toolEdited`, `toolDeleted`, `toolHidden`); Quick Menu, settings dialog, price/time labels, objects tree become subscribers. Migration order: menus/labels first (highest ticket density), tool classes after.
 3. Implement behind `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2`. RED-first per symptom family: first-click (30 tickets), ghost-after-delete (19), selection-desync (43), stale quick-menu (24).
 **Exit:** the four family suites GREEN; spot-check 10 named tickets from the registry manually; no per-tool patches were needed (I4 holds).
+**Intake additions (2026-07-13, `DAILY-INTAKE.md`):** step-8/recovery acceptance also covers TAL-01569 (Ctrl-select stuck during drag — R1/R2 residual family), TAL-01584 (crosshair snaps to tool's previous position — TAL-00157#11 resurfaced), TAL-01570 (crosshair jumps to chart center on tool arm), TAL-01568 (brush first-move fails — first-click family, per-tool subscriber slice). All four retest first on the fallback-B/step-8 build before new work.
 
 ## T2 — Invalidation contract sweep (RC-2) (Lane 1, after T1)
 
 1. Add `__TALARIA_ASSERT_INVALIDATION` debug mode: wrap render-relevant setters; log mutation-without-repaint within N ms.
 2. Run the harness + a scripted interaction tour under the assertion; fix every hit by routing through `scheduleRender` (each batch gated).
-**Exit:** assertion-clean tour; "stuck until click" family suite GREEN (38 tickets).
+3. **Axis label & gesture correctness sub-task (intake amendment A1, 2026-07-13):** (i) time-axis tick/label stability on click and crosshair move (TAL-01565/01583); (ii) custom-interval (e.g. 3m) tick basis parity with native TFs (TAL-01572); (iii) price-axis drag gesture isolated from chart pan (TAL-01566); (iv) last-gridline interval correctness (TAL-01565). RED-first per symptom, one gated fix each.
+**Exit:** assertion-clean tour; "stuck until click" family suite GREEN (38 tickets); A1 axis rows GREEN with tester confirmation.
 
 ## T3 — Multichart interaction parity (RC-4) (Lane 2, parallel with T1)
 
@@ -47,6 +49,7 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 2. RED-first harness scenarios per surviving contract row, reusing the existing 29-scenario panel harness topology. Likely-surviving rows (interaction-layer, untouched by plan 1): drawing-targets-focused-panel (01495), Ctrl-select-in-panel (01498), quick-menu-in-panel (01499), indicator-state-isolation (01500/01501), drag-stops-at-frame-box (01491).
 3. One gated fix per row.
 **Constraints:** the plan-1 gate (29 scenarios) stays green (I9). Anything whose mechanism is mirror-frame application policy is deferred to T8 per the Lane-2 standing rule — T3 fixes interaction surfaces only, it does not add replay-frame guards.
+**Intake amendments (2026-07-13, `DAILY-INTAKE.md`):** contract gains **row 13** (layout persistence across refresh — TAL-01571), **row 14** (tile clip/visibility geometry — TAL-01574), and **row 15** (symbol-sync enable converges all panels to the focused ticker — TAL-01586, spec PO-confirmed 2026-07-13); target owners need Director approval like rows 1–12. **Row 11 reopened** by TAL-01587 (drag dies when cursor leaves layout bounds): the D-004 retest-close path is void; live drag-trace mandatory; hypothesis shifts from plot-rect geometry to pointer-capture/`mouseleave` handling on the host tile. Plan-1 hygiene regression TAL-01564 (reload prompt returns after click/cancel) queues in this lane as a small standalone RED-first fix — not part of T8.
 **Exit:** every multichart registry row dispositioned as retest-closed / fixed-in-T3 / deferred-to-T8; contract rows GREEN; tester confirmation on a named build.
 
 ## T4 — Order-entry state model (RC-5) (Lane 3, parallel)
@@ -56,7 +59,8 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 1. Extract the multi-entry state into pure functions: `aggregates = f(entries[])` recomputed on every mutation. Property tests over random add/move/delete sequences (Node-side, no browser needed): average always within entry range, risk always sums to configured total, deleting the last extra entry restores single-entry state, order type never mutates on move.
 2. Separate display-threshold bugs (SL/TP <10 not rendered; trailing-zero parsing) as individually gated fixes.
 3. Replay-interaction rows (entry fills on wrong candle, TP line flicker per candle) are RED-first harness scenarios — they touch the replay bus, so state-matrix discipline applies.
-**Exit:** property suite green in CI; TAL-00752 registry rows individually dispositioned.
+4. **Replay mode + interval cadence diagnostic (intake amendment A3, 2026-07-13; scope finalized after PO clarification):** two sibling defects in replay mode/cadence selection — (a) tick-by-tick mode silently reverts to candle-by-candle when replay starts (TAL-01582); (b) candle-by-candle with an interval selected (e.g. 4h interval on 4h TF) plays and steps-forward erratically (TAL-01581). Timeboxed diagnostic: find the mode/interval-selection owner, the override site for (a), and the cadence computation for (b); report mechanisms before any fix. Lane 3 picks this up when its T4 queue clears.
+**Exit:** property suite green in CI; TAL-00752 registry rows individually dispositioned; A3 mechanism reported (fix scoped separately once known).
 
 ## T5 — Anchoring unification (RC-3) (Lane 1, after T2)
 
@@ -84,7 +88,8 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
    - RED scenarios for the ~17 kill-switches with no dedicated coverage + BL-16 (do this **first** within T8 — it hardens the acceptance contract before the refactor).
    - Delete or mark-unmaintained the legacy `multichart/` dev-shell tree.
    - PO explicitly confirms or re-raises the BL-2b residual Y-nudge; record terminal status.
-**Constraint:** zero behavior change is the goal — this is a consolidation, not a fix. Any cell whose policy-table value differs from shipped behavior is an escalation, not a silent correction.
+4. **Intake evidence rows (2026-07-13):** TAL-01560/01562/01563/01573/01575/01577/01578/01579 are new live evidence for the policy table (gaps during replay, group-advance cadence, rescale re-render, replay-start viewport shift, coarse-TF seam, drag freeze, snap-back). They are **inputs to the policy design, not separate fixes** — each maps to a table cell; if a cell's correct policy makes one of these vanish, close it by retest; any that survive the consolidation get individually scoped then.
+**Constraint:** zero behavior change is the goal — this is a consolidation, not a fix. Any cell whose policy-table value differs from shipped behavior is an escalation, not a silent correction. (The intake rows above may change cells — those go through the escalation path with their ticket as evidence.)
 **Exit:** policy function live, superseded guards retired, gate GREEN (29 + new coverage scenarios), kill-switch inventory shrunk, all five debt items terminal.
 
 ## T7 — Backlog sweep + closure (all lanes converge)

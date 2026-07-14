@@ -50,6 +50,9 @@
 
     var TOAST_KEY = 'talaria-version-reload';
     var TOAST_ATTR = 'data-talaria-version-reload';
+    // sessionStorage survives reload/cancel within the tab — in-memory _dismissedFor alone
+    // let focus/visibility checks re-nag immediately after dismiss (TAL-01564).
+    var DISMISS_STORAGE_KEY = 'talaria_vr_dismissed_for';
     // Low-frequency safety-net poll (window focus is the primary trigger).
     var POLL_MS = 15 * 60 * 1000;
 
@@ -120,6 +123,27 @@
 
     // Deployed id the user explicitly dismissed → do not re-nag for the same id.
     var _dismissedFor = null;
+    var _checkInFlight = null;
+
+    function readDismissedFor() {
+        if (_dismissedFor) return _dismissedFor;
+        try {
+            var raw = sessionStorage.getItem(DISMISS_STORAGE_KEY);
+            if (raw != null && String(raw).trim() !== '') {
+                _dismissedFor = String(raw).trim();
+                return _dismissedFor;
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    function writeDismissedFor(deployedId) {
+        _dismissedFor = deployedId ? String(deployedId).trim() : null;
+        try {
+            if (_dismissedFor) sessionStorage.setItem(DISMISS_STORAGE_KEY, _dismissedFor);
+            else sessionStorage.removeItem(DISMISS_STORAGE_KEY);
+        } catch (_) { /* ignore */ }
+    }
 
     function toastStack() {
         return root.__TalariaToastStack || null;
@@ -197,8 +221,22 @@
         // plain hard reload without throwing.
         if (!tasks.length) { reloadNow(); return; }
 
+        // Let unregister + cache-delete settle before navigation — an immediate
+        // reload can re-attach a controlling SW still serving stale HTML (TAL-01564).
+        function settleThenReload() {
+            try {
+                return new Promise(function (resolve) {
+                    root.setTimeout(resolve, 80);
+                });
+            } catch (_) {
+                return Promise.resolve();
+            }
+        }
+
         try {
-            Promise.allSettled(tasks).then(reloadNow, reloadNow);
+            Promise.allSettled(tasks)
+                .then(settleThenReload, settleThenReload)
+                .then(reloadNow, reloadNow);
         } catch (_) {
             reloadNow();
         }
@@ -278,7 +316,7 @@
             pointerEvents: 'auto',
         });
         dismiss.addEventListener('click', function () {
-            _dismissedFor = deployedId || null;
+            writeDismissedFor(deployedId || null);
             clearToast();
         });
         wrap.appendChild(dismiss);
@@ -287,6 +325,7 @@
     }
 
     function showToast(deployedId) {
+        if (deployedId && deployedId === readDismissedFor()) return null;
         var el = buildToastEl(deployedId);
         var ts = toastStack();
         if (ts && typeof ts.setPinned === 'function') {
@@ -315,14 +354,22 @@
         if (killed() || isPanel()) { clearToast(); return Promise.resolve(false); }
         var loaded = loadedBuildId();
         if (!loaded) return Promise.resolve(false);
-        return fetchDeployedId().then(function (deployed) {
+        if (_checkInFlight) return _checkInFlight;
+        _checkInFlight = fetchDeployedId().then(function (deployed) {
             if (killed() || isPanel()) { clearToast(); return false; }
             if (!deployed) return false;                    // no false alarm on network hiccup
-            if (deployed === loaded) { clearToast(); return false; }
-            if (deployed === _dismissedFor) return false;   // user already dismissed this id
+            if (deployed === loaded) {
+                clearToast();
+                writeDismissedFor(null);
+                return false;
+            }
+            if (deployed === readDismissedFor()) return false;   // user already dismissed this id
             showToast(deployed);
             return true;
-        }).catch(function () { return false; });
+        }).catch(function () { return false; }).finally(function () {
+            _checkInFlight = null;
+        });
+        return _checkInFlight;
     }
 
     var _pollTimer = null;
@@ -359,8 +406,11 @@
         clear: clearToast,
         fetchDeployedId: fetchDeployedId,
         parseBuildId: parseBuildId,
+        readDismissedFor: readDismissedFor,
+        writeDismissedFor: writeDismissedFor,
         _key: TOAST_KEY,
         _attr: TOAST_ATTR,
+        _dismissStorageKey: DISMISS_STORAGE_KEY,
     };
 
     // Auto-start unless disabled. Wait for the DOM so document.body + the shared

@@ -2,9 +2,9 @@
  * interactive-helpers.mjs — T0 Lane 4 page-object helpers for drawing-tool
  * interactive flows on the multichart harness host (tile A).
  *
- * Used by H-S32 (first-click-fails) and H-S33 (ghost-after-delete) and future
- * symptom-family suites. Operates on the real engine via page.evaluate /
- * puppeteer mouse events — no forked harness.
+ * Used by H-S32 (first-click-fails), H-S33 (ghost-after-delete), and the
+ * T0 step-7 RC-4 multichart interaction-parity family (H-S45+). Operates on
+ * the real engine via page.evaluate / puppeteer mouse events — no forked harness.
  */
 
 import { panelFrameMap, sleep } from './harness-lib.mjs';
@@ -80,6 +80,13 @@ export async function installParentSettingsProbe(page) {
         });
       }
       if (msg.type === 'multichart-drawing-deselected') {
+        window.__harnessDrawingSettingsMessages.push({
+          type: msg.type,
+          source: msg.source || null,
+          drawingId: msg.drawingId != null ? String(msg.drawingId) : null,
+        });
+      }
+      if (msg.type === 'multichart-drawing-selected') {
         window.__harnessDrawingSettingsMessages.push({
           type: msg.type,
           source: msg.source || null,
@@ -355,6 +362,524 @@ export async function defaultRectanglePoints(page, panelId = 'A') {
     const yTop = Math.max(p0.h, p1.h);
     const yBot = Math.min(p0.l, p1.l);
     return [{ x: i0, y: yTop }, { x: i1, y: yBot }];
+  });
+}
+
+/** Iframe / host cell rect in top-page coordinates (harness grid cell). */
+export async function frameRectForPanel(page, panelId) {
+  if (panelId === 'A') {
+    return page.evaluate(() => {
+      const cell = window.__harnessCells && window.__harnessCells.A;
+      if (!cell) return null;
+      const r = cell.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    });
+  }
+  return page.evaluate((pid) => {
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    for (const el of frames) {
+      try {
+        const u = new URL(el.src, location.href);
+        if (u.searchParams.get('panelId') === pid) {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, width: r.width, height: r.height };
+        }
+      } catch (_) {}
+    }
+    return null;
+  }, panelId);
+}
+
+/** Click a panel body to raise panel-focus (mirrors user focusing a tile). */
+export async function focusPanelByClick(page, panelId = 'B') {
+  const pt = await chartCanvasPagePoint(page, panelId, 0.42, 0.48);
+  if (!pt) return { ok: false, reason: `no canvas point for panel ${panelId}` };
+  await page.mouse.click(pt.x, pt.y, { delay: 25 });
+  await sleep(200);
+  return { ok: true, ...pt };
+}
+
+/** Canvas point at fractional position → top-page mouse coordinates. */
+export async function chartCanvasPagePoint(page, panelId, fracX, fracY) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return null;
+  const local = await frame.evaluate((fx, fy) => {
+    const canvas = document.getElementById('chartCanvas');
+    if (!canvas) return null;
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + r.width * fx, y: r.top + r.height * fy };
+  }, fracX, fracY);
+  if (!local) return null;
+  if (panelId === 'A') {
+    return { x: Math.round(local.x), y: Math.round(local.y) };
+  }
+  const fr = await frameRectForPanel(page, panelId);
+  if (!fr) return null;
+  return {
+    x: Math.round(fr.left + local.x),
+    y: Math.round(fr.top + local.y),
+  };
+}
+
+export async function armDrawTool(page, panelId, toolType) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  return frame.evaluate((tool) => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm || typeof dm.setTool !== 'function') return { ok: false, reason: 'no setTool' };
+    dm.setTool(tool);
+    return { ok: true, tool: dm.currentTool };
+  }, toolType);
+}
+
+/** Complete a rectangle via real mouse clicks on the panel canvas. */
+export async function drawRectangleViaMouse(page, panelId) {
+  const armed = await armDrawTool(page, panelId, 'rectangle');
+  if (!armed || !armed.ok) return armed || { ok: false, reason: 'arm failed' };
+  await sleep(120);
+  const p1 = await chartCanvasPagePoint(page, panelId, 0.32, 0.38);
+  const p2 = await chartCanvasPagePoint(page, panelId, 0.58, 0.62);
+  if (!p1 || !p2) return { ok: false, reason: 'no canvas points' };
+  await page.mouse.click(p1.x, p1.y, { delay: 35 });
+  await sleep(150);
+  await page.mouse.click(p2.x, p2.y, { delay: 35 });
+  await sleep(350);
+  const st = await readInteractiveState(page, panelId);
+  return {
+    ok: true,
+    drawingCount: st && st.ok ? st.drawingCount : null,
+    selectedIds: st && st.ok ? st.selectedIds : [],
+    toolbarVisible: st && st.ok ? st.toolbarVisible : false,
+  };
+}
+
+/** Complete a trendline via real mouse clicks on the panel canvas. */
+export async function drawTrendlineViaMouse(page, panelId) {
+  const armed = await armDrawTool(page, panelId, 'trendline');
+  if (!armed || !armed.ok) return armed || { ok: false, reason: 'arm failed' };
+  await sleep(120);
+  const p1 = await chartCanvasPagePoint(page, panelId, 0.28, 0.42);
+  const p2 = await chartCanvasPagePoint(page, panelId, 0.62, 0.55);
+  if (!p1 || !p2) return { ok: false, reason: 'no canvas points' };
+  await page.mouse.click(p1.x, p1.y, { delay: 35 });
+  await sleep(150);
+  await page.mouse.click(p2.x, p2.y, { delay: 35 });
+  await sleep(350);
+  const st = await readInteractiveState(page, panelId);
+  return {
+    ok: true,
+    drawingCount: st && st.ok ? st.drawingCount : null,
+    selectedIds: st && st.ok ? st.selectedIds : [],
+    toolbarVisible: st && st.ok ? st.toolbarVisible : false,
+  };
+}
+
+export async function readIndicatorState(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    const ind = ch && ch.indicators;
+    if (!ind) return { ok: false, reason: 'no indicators object' };
+    const active = (ind.active || []).map((i) => ({
+      id: i.id,
+      type: i.type,
+      name: i.name,
+    }));
+    return { ok: true, count: active.length, active };
+  }).catch(() => null);
+}
+
+export async function addIndicator(page, panelId, type, params = {}) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  return frame.evaluate((t, p) => {
+    const ch = window.chart;
+    if (!ch || typeof ch.addIndicator !== 'function') return { ok: false, reason: 'no addIndicator' };
+    try {
+      ch.addIndicator(t, p);
+      const active = (ch.indicators && ch.indicators.active) || [];
+      return {
+        ok: true,
+        count: active.length,
+        types: active.map((i) => i.type),
+        ids: active.map((i) => i.id),
+      };
+    } catch (e) {
+      return { ok: false, reason: String((e && e.message) || e) };
+    }
+  }, type, params);
+}
+
+export async function removeAllIndicators(page, panelId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    const ind = ch && ch.indicators;
+    if (!ind || !Array.isArray(ind.active)) return { ok: false, reason: 'no indicators.active' };
+    const ids = ind.active.map((i) => i.id);
+    ids.slice().forEach((id) => {
+      if (typeof ch.removeIndicator === 'function') ch.removeIndicator(id);
+    });
+    if (ch.scheduleRender) ch.scheduleRender();
+    const remaining = (ch.indicators && ch.indicators.active) || [];
+    return { ok: true, removed: ids.length, remaining: remaining.length };
+  });
+}
+
+/** Commit a style patch inside a panel frame and read render counter delta. */
+export async function commitDrawingStyleInPanel(page, panelId, ref, stylePatch) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  const id = typeof ref === 'string' ? ref : ref.id;
+  return frame.evaluate(async (drawId, patch) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const drawing = dm && dm.drawings.find((d) => d && String(d.id) === String(drawId));
+    if (!drawing) return { ok: false, reason: 'drawing not found' };
+    const before = ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0;
+    Object.assign(drawing.style, patch);
+    dm.renderDrawing(drawing);
+    dm.saveDrawings();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const after = ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0;
+    return { ok: true, before, after, style: { ...drawing.style } };
+  }, id, stylePatch);
+}
+
+/**
+ * Drag a selected drawing handle while moving the cursor past the tile bounds.
+ * Models the pointer-capture / mouseleave path (TAL-01491 / TAL-01587).
+ */
+export async function probeDrawingDragPastTile(page, panelId, ref) {
+  const id = typeof ref === 'string' ? ref : ref.id;
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+
+  const cellBox = await page.evaluate((pid) => {
+    const cell = window.__harnessCells && window.__harnessCells[pid];
+    if (!cell) return null;
+    const r = cell.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  }, panelId);
+  if (!cellBox) return { ok: false, reason: 'no cell box' };
+
+  const hit = await frame.evaluate((drawId) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const d = dm && dm.drawings.find((x) => x && String(x.id) === String(drawId));
+    if (!d || !d.group) return { ok: false, reason: 'drawing not found' };
+    dm.selectDrawing(d, false);
+    const node = d.group.node();
+    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
+    const bb = node.getBBox();
+    const svg = dm.svg && dm.svg.node();
+    if (!svg) return { ok: false, reason: 'no svg' };
+    const sr = svg.getBoundingClientRect();
+    const localX = bb.x + bb.width * 0.75;
+    const localY = bb.y + bb.height * 0.5;
+    const startY = d.points && d.points[0] ? Number(d.points[0].y) : null;
+    return {
+      ok: true,
+      pageX: Math.round(sr.left + localX),
+      pageY: Math.round(sr.top + localY),
+      startY,
+    };
+  }, id);
+  if (!hit || !hit.ok) return hit;
+
+  let startX = hit.pageX;
+  let startY = hit.pageY;
+  if (panelId !== 'A') {
+    const fr = await frameRectForPanel(page, panelId);
+    if (!fr) return { ok: false, reason: 'no iframe rect' };
+    // frame-local evaluate already returns iframe-viewport coords; translate to page.
+    const local = await frame.evaluate((drawId) => {
+      const dm = window.chart && window.chart.drawingManager;
+      const d = dm && dm.drawings.find((x) => x && String(x.id) === String(drawId));
+      if (!d || !d.group) return null;
+      const node = d.group.node();
+      const bb = node.getBBox();
+      const svg = dm.svg && dm.svg.node();
+      const sr = svg.getBoundingClientRect();
+      return {
+        x: sr.left + bb.x + bb.width * 0.75,
+        y: sr.top + bb.y + bb.height * 0.5,
+      };
+    }, id);
+    if (!local) return { ok: false, reason: 'no iframe-local hit' };
+    startX = Math.round(fr.left + local.x);
+    startY = Math.round(fr.top + local.y);
+  }
+
+  const outsideX = Math.round(cellBox.left - 40);
+  const outsideY = startY;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await sleep(80);
+  await page.mouse.move(outsideX, outsideY, { steps: 18 });
+  await sleep(80);
+
+  await page.evaluate((pid) => {
+    const cell = window.__harnessCells && window.__harnessCells[pid];
+    if (cell) {
+      try { cell.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true })); } catch (_) {}
+    }
+  }, panelId);
+  await frame.evaluate(() => {
+    const canvas = document.getElementById('chartCanvas');
+    if (canvas) {
+      try { canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true })); } catch (_) {}
+    }
+  }).catch(() => null);
+  await sleep(120);
+
+  const mid = await frame.evaluate(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return { ok: false };
+    const d = dm.draggingDrawing;
+    const y0 = d && d.points && d.points[0] ? Number(d.points[0].y) : null;
+    return {
+      ok: true,
+      isDragging: !!dm.isDragging,
+      draggingId: d && d.id != null ? String(d.id) : null,
+      pointY: y0,
+    };
+  }).catch(() => null);
+
+  await page.mouse.up();
+  await sleep(200);
+
+  const after = await frame.evaluate((drawId) => {
+    const dm = window.chart && window.chart.drawingManager;
+    const d = dm && dm.drawings.find((x) => x && String(x.id) === String(drawId));
+    const y0 = d && d.points && d.points[0] ? Number(d.points[0].y) : null;
+    return {
+      isDragging: !!(dm && dm.isDragging),
+      pointY: y0,
+    };
+  }, id).catch(() => null);
+
+  return {
+    ok: true,
+    start: { x: startX, y: startY },
+    outside: { x: outsideX, y: outsideY },
+    mid,
+    after,
+    startPointY: hit.startY,
+    movedDuringDrag: mid && hit.startY != null && mid.pointY != null
+      && Math.abs(mid.pointY - hit.startY) > 0.00001,
+    stillDraggingOutside: !!(mid && mid.isDragging),
+  };
+}
+
+/**
+ * Pan a panel while the cursor travels past the tile's left edge; sample whether
+ * offsetX still moves (pointer-capture) vs dies at the frame box.
+ */
+export async function probePanDragPastTile(page, panelId = 'A') {
+  const cellBox = await page.evaluate((pid) => {
+    const cell = window.__harnessCells && window.__harnessCells[pid];
+    if (!cell) return null;
+    const r = cell.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
+  }, panelId);
+  if (!cellBox) return { ok: false, reason: 'no cell box' };
+
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
+
+  const y = Math.round(cellBox.top + cellBox.height * 0.5);
+  const xStart = Math.round(cellBox.left + cellBox.width * 0.55);
+  const xMid = Math.round(cellBox.left + cellBox.width * 0.2);
+  const xOutside = Math.round(cellBox.left - 50);
+
+  const offsetStart = await frame.evaluate(() => Number(window.chart && window.chart.offsetX)).catch(() => null);
+  await page.mouse.move(xStart, y);
+  await page.mouse.down();
+  await sleep(60);
+  await page.mouse.move(xMid, y, { steps: 8 });
+  await sleep(60);
+  const offsetMid = await frame.evaluate(() => Number(window.chart && window.chart.offsetX)).catch(() => null);
+  await page.mouse.move(xOutside, y, { steps: 12 });
+  await sleep(60);
+  await page.evaluate(() => {
+    try { document.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true })); } catch (_) {}
+  });
+  await sleep(80);
+  const offsetOutside = await frame.evaluate(() => Number(window.chart && window.chart.offsetX)).catch(() => null);
+  await page.mouse.up();
+  await sleep(150);
+  const offsetEnd = await frame.evaluate(() => Number(window.chart && window.chart.offsetX)).catch(() => null);
+
+  const deltaInside = (offsetStart != null && offsetMid != null) ? Math.abs(offsetMid - offsetStart) : 0;
+  const deltaOutside = (offsetMid != null && offsetOutside != null) ? Math.abs(offsetOutside - offsetMid) : 0;
+  return {
+    ok: true,
+    offsetStart,
+    offsetMid,
+    offsetOutside,
+    offsetEnd,
+    deltaInside,
+    deltaOutside,
+    continuedOutside: deltaOutside > 2,
+  };
+}
+
+/** Map persisted layout id → expected panel count (D-008 row 13 contract). */
+export function layoutIdToPanelCount(layoutId) {
+  const id = String(layoutId || '').trim().toLowerCase();
+  if (!id || id === '1') return 1;
+  if (id === '2' || id === '2v' || id === '2h') return 2;
+  if (id === '3') return 3;
+  if (id === '4' || id === '2x2') return 4;
+  if (/^[5-8]$/.test(id)) return parseInt(id, 10);
+  return 1;
+}
+
+/** Write chart_panel_state blob (panel-managerv2 schema) for layout persistence probes. */
+export async function seedChartPanelState(page, layoutId) {
+  return page.evaluate((layout) => {
+    const blob = {
+      layout: String(layout),
+      selectedPanelIndex: 0,
+      panels: [],
+    };
+    try {
+      localStorage.setItem('chart_panel_state', JSON.stringify(blob));
+      return { ok: true, layout: blob.layout };
+    } catch (e) {
+      return { ok: false, reason: e && e.message ? e.message : String(e) };
+    }
+  }, layoutId);
+}
+
+/** Read persisted layout + live harness panel count after refresh. */
+export async function readLayoutPersistenceProbe(page) {
+  return page.evaluate(() => {
+    let savedLayout = null;
+    let parseOk = true;
+    try {
+      const raw = localStorage.getItem('chart_panel_state');
+      if (raw) {
+        const state = JSON.parse(raw);
+        savedLayout = state && state.layout != null ? String(state.layout) : null;
+      }
+    } catch (_) {
+      parseOk = false;
+    }
+    const appliedPanels = (window.__harnessManager && window.__harnessManager.charts)
+      ? window.__harnessManager.charts.size
+      : 1;
+    return {
+      savedLayout,
+      parseOk,
+      appliedPanels,
+      bootError: window.__harnessBootError || null,
+    };
+  });
+}
+
+/** Cell vs canvas geometry for tile clip probes (row 14). */
+export async function readTileGeometryProbe(page, panelId) {
+  if (panelId === 'A') {
+    return page.evaluate(() => {
+      const cell = window.__harnessCells && window.__harnessCells.A;
+      const ch = window.chart;
+      if (!cell || !ch || !ch.canvas) return { ok: false, reason: 'no host cell/canvas' };
+      const cellR = cell.getBoundingClientRect();
+      const canvasR = ch.canvas.getBoundingClientRect();
+      const cellH = Math.max(1, cellR.height);
+      const canvasH = Math.max(0, canvasR.height);
+      return {
+        ok: true,
+        panelId: 'A',
+        cellH,
+        canvasH,
+        bufferH: Number(ch.h) || 0,
+        gapBottom: Math.max(0, cellR.bottom - canvasR.bottom),
+        fillRatio: canvasH / cellH,
+        bufferRatio: (Number(ch.h) || 0) / cellH,
+      };
+    });
+  }
+  return page.evaluate((pid) => {
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    let ifr = null;
+    for (const el of frames) {
+      try {
+        const u = new URL(el.src, location.href);
+        if (u.searchParams.get('panelId') === pid) { ifr = el; break; }
+      } catch (_) {}
+    }
+    if (!ifr) return { ok: false, reason: 'no iframe for ' + pid };
+    const cell = ifr.parentElement;
+    const ch = ifr.contentWindow && ifr.contentWindow.chart;
+    if (!cell || !ch || !ch.canvas) return { ok: false, reason: 'no cell/canvas for ' + pid };
+    const cellR = cell.getBoundingClientRect();
+    const canvasR = ch.canvas.getBoundingClientRect();
+    const cellH = Math.max(1, cellR.height);
+    const canvasH = Math.max(0, canvasR.height);
+    return {
+      ok: true,
+      panelId: pid,
+      cellH,
+      canvasH,
+      bufferH: Number(ch.h) || 0,
+      gapBottom: Math.max(0, cellR.bottom - canvasR.bottom),
+      fillRatio: canvasH / cellH,
+      bufferRatio: (Number(ch.h) || 0) / cellH,
+    };
+  }, panelId);
+}
+
+/** Per-panel fileId map from harness manager state. */
+export async function readPanelFileIds(page) {
+  return page.evaluate(() => {
+    const out = {};
+    const mgr = window.__harnessManager;
+    if (!mgr || !mgr.charts) return out;
+    for (const c of mgr.charts.values()) {
+      if (!c) continue;
+      if (c.host && window.chart && window.chart.currentFileId != null) {
+        out[c.id] = String(window.chart.currentFileId);
+      } else if (c.state && c.state.fileId != null) {
+        out[c.id] = String(c.state.fileId);
+      }
+    }
+    return out;
+  });
+}
+
+/** Flip symbol sync OFF→ON on harness manager (row 15 toggle-edge probe). */
+export async function enableHarnessSymbolSync(page) {
+  return page.evaluate(() => {
+    const mgr = window.__harnessManager;
+    if (!mgr || typeof mgr.setSyncMode !== 'function') {
+      return { ok: false, reason: 'no harness manager' };
+    }
+    const prev = !!(mgr.syncMode && mgr.syncMode.symbol);
+    mgr.setSyncMode(Object.assign({}, mgr.syncMode || {}, { symbol: true }));
+    try {
+      const hostBridge = window.__harnessHostBridge;
+      if (hostBridge && typeof hostBridge.setSyncModeGate === 'function') {
+        hostBridge.setSyncModeGate(mgr.syncMode);
+      }
+    } catch (_) {}
+    return { ok: true, wasOn: prev, nowOn: !!(mgr.syncMode && mgr.syncMode.symbol) };
+  });
+}
+
+/** Focused panel id from harness manager selection (proxy for V9 focusedPanelId). */
+export async function readHarnessFocusedPanelId(page) {
+  return page.evaluate(() => {
+    const mgr = window.__harnessManager;
+    if (!mgr) return null;
+    if (mgr.focusedPanelId != null) return String(mgr.focusedPanelId);
+    if (mgr.selectedPanelId != null) return String(mgr.selectedPanelId);
+    return 'A';
   });
 }
 

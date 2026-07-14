@@ -811,3 +811,31 @@ TAL-01358,replay,screen on replay,resolved,2,2026-07-01,2026-07-01,,
 TAL-01416,replay,Replay chart,resolved,2,2026-07-02,2026-07-02,,
 TAL-01419,replay,Replay with refresh,resolved,1,2026-07-02,2026-07-02,,
 TAL-01492,replay,Replay with price label,open,1,2026-07-04,2026-07-04,,yes
+TAL-01560,multichart_layouts,Layouts - unexpected gaps on chart,open,1,2026-07-13,2026-07-13,,yes
+TAL-01561,multichart_layouts,Layouts - rendering slow,open,1,2026-07-13,2026-07-13,,yes
+TAL-01562,multichart_layouts,Layouts - price gaps during manual replay,open,1,2026-07-13,2026-07-13,,yes
+TAL-01563,multichart_layouts,Layouts - replay advances in candle groups + mismatch,open,1,2026-07-13,2026-07-13,,yes
+TAL-01564,chart_core_ui,Reload prompt returns after click/cancel,open,1,2026-07-13,2026-07-13,,yes
+TAL-01565,chart_core_ui,Time label changes on click; last gridlines wrong,open,1,2026-07-13,2026-07-13,,yes
+TAL-01566,chart_core_ui,Price-label drag moves chart down,open,1,2026-07-13,2026-07-13,,yes
+TAL-01567,chart_core_ui,Chart brightness drops panning left in an area,open,1,2026-07-13,2026-07-13,,yes
+TAL-01568,drawing_tools,Brush tools do not move until clicked first,open,1,2026-07-13,2026-07-13,,yes
+TAL-01569,drawing_tools,"Ctrl-select: chart stuck during drag, selects on release",open,1,2026-07-13,2026-07-13,,yes
+TAL-01570,drawing_tools,Crosshair appears at chart center when clicking tool,open,1,2026-07-13,2026-07-13,,yes
+TAL-01571,multichart_layouts,Layout resets to single on page refresh,open,1,2026-07-13,2026-07-13,,yes
+TAL-01572,chart_core_ui,Custom TF (3m): time label moves with price,open,1,2026-07-13,2026-07-13,,yes
+TAL-01573,multichart_layouts,Manual rescale triggers re-render,open,1,2026-07-13,2026-07-13,,yes
+TAL-01574,multichart_layouts,Chart disappears below area,open,1,2026-07-13,2026-07-13,,yes
+TAL-01575,multichart_layouts,Replay start shifts chart position in some layouts,open,1,2026-07-13,2026-07-13,,yes
+TAL-01576,multichart_layouts,Add-layout menu flashes broken state,open,1,2026-07-13,2026-07-13,,yes
+TAL-01577,multichart_layouts,1D/4H few candles; rescale shows gap; re-render,open,1,2026-07-13,2026-07-13,,yes
+TAL-01578,multichart_layouts,Drag freeze - chart cannot be moved,open,1,2026-07-13,2026-07-13,,yes
+TAL-01579,multichart_layouts,Chart snaps back to grab point on release,open,1,2026-07-13,2026-07-13,,yes
+TAL-01580,journal_app,EU news flag icon missing,open,1,2026-07-13,2026-07-13,,yes
+TAL-01581,replay,Interval replay not work,open,1,2026-07-13,2026-07-13,,yes
+TAL-01582,replay,Tick-by-tick auto-changes to candle-by-candle,open,1,2026-07-13,2026-07-13,,yes
+TAL-01583,chart_core_ui,Clicking chart changes time and day label,open,1,2026-07-13,2026-07-13,,yes
+TAL-01584,drawing_tools,Crosshair returns to tool prev position on Ctrl-hold,open,1,2026-07-13,2026-07-13,,yes
+TAL-01585,drawing_tools,Drawing layer moves with chart during TF-switch wait,open,1,2026-07-13,2026-07-13,,yes
+TAL-01586,multichart_layouts,Symbol sync should consolidate pairs,open,1,2026-07-13,2026-07-13,,yes
+TAL-01587,multichart_layouts,Drag beyond layout boundary loses control,open,1,2026-07-13,2026-07-13,,yes

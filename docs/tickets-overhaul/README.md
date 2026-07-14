@@ -13,6 +13,7 @@ This runs the same operating model that closed the multichart data overhaul (`do
 | `TICKET-REGISTRY.csv` | All 812 tickets with cluster assignment, status, reopen flag |
 | `INVARIANTS.md` | Non-negotiable rules injected into every worker prompt |
 | `TRACKS.md` | The work, phased and parallelized, with team assignment |
+| `DAILY-INTAKE.md` | Daily tester-ticket triage vs plan 2 (Director-owned, one section per test day) |
 | `MANAGER-FINDINGS.md` | Manager's running log (created by manager) |
 | `MANAGER-ESCALATIONS.md` | Escalations to Director (created by manager) |
 | `DIRECTOR-DECISIONS.md` | Director rulings ledger (created as rulings occur) |

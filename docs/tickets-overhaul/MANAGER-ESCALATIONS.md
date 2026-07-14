@@ -272,3 +272,69 @@ Approve both. Implement as its own gated fix; keep T4 step 1/step 2 switches int
 
 **Director ruling:** D-004 (2026-07-12)  
 **Outcome:** Row 2 — updated mechanism (local Ctrl-click double-toggle) acknowledged; gated fix authorized on the panel-local selection dispatch (one select-vs-toggle decision per interaction), plain-click and single-chart cells unchanged, probe RED promoted to gate with the fix. Row 11 — disposition (i): drag-trace folded into the existing PO retest row using the ticket's exact layout; no repro with build-id confirmed → retest-close; repro → targeted probe before any fix. No host offset constant on current evidence.
+
+---
+
+## ESC-007 — T3 contract intake rows 13–15: approve owner/transport + resolve 2 open questions
+
+**Date:** 2026-07-14  
+**Track:** T3 step 1 → step 2 (Lane 2)  
+**RC:** RC-4 (rows 13–15 are intake amendment A2/row-15 from `DAILY-INTAKE.md`)  
+**Urgency:** Blocks T3 step-2 RED scenarios for the three new rows. Lane 2 is NOT idle (now on TAL-01564 SW-hygiene), so this is not lane-blocking — but the rows can't advance to fixes without ratification, same P4 process as rows 1–12.
+
+### Context
+Worker 2 delivered the updated contract (`T3-INTERACTION-PARITY-CONTRACT.md`, 15 rows) + report (`worker-reports/T3-step1-parity-contract-report.md`), docs-only, no engine/React edits (confirmed; legacy `multichart/` untouched). Report meets `WORKER-REPORT-STANDARD`. Proposed owner/transport for the new rows:
+
+| # | Surface | Ticket | Proposed owner | Proposed transport |
+|---|---|---|---|---|
+| 13 | Layout persistence across refresh | TAL-01571 | Parent shell (V9 React) | `userStorage` save `{layoutId, panelCount, layoutIndex}` on picker change; hydrate before `MultichartGrid` mount (gate `layoutPanels.n > 1`) |
+| 14 | Tile geometry / clip (chart fills tile) | TAL-01574 | Parent shell orchestrates bbox; each panel resizes canvas | host: `applyHostSlot` DOM overlay; iframe: `ResizeObserver → chart.resize()` + layout-settle `repaintAllPanelSurfaces` |
+| 15 | Symbol-sync ON converges panels to focused ticker | TAL-01586 | Parent shell on toggle edge; focused panel owns source ticker | on false→true: read focused `fileId`, fan `runCommand('loadFile')` to peers (mirror `visibleRange` snap, `multichart-manager.js:181-198`) |
+
+Row 11 also updated in the contract with **TAL-01587 REOPENED** (pointer-capture/`mouseleave` on host tile; live drag-trace mandatory) — consistent with the DAILY-INTAKE Row-11 reopen; no new decision needed beyond D-004's superseded retest-close path.
+
+### Decision requested
+1. **Approve rows 13–15 owner/transport** as specced (all parent-shell-owned — consistent with the D-002 ratified split where the parent owns focus/quick-menu/settings/layout chrome).
+2. **Row 13 open question:** persist via a **new V9 storage key** vs **extend the existing `chart_panel_state` blob**?
+3. **Row 15 open question:** convergence source = **focused panel** (worker-recommended) vs **always host tile A**?
+
+### Manager recommendation
+- Approve 1 — the split is consistent with the ratified contract; layout structure/persistence is parent-shell by nature.
+- Row 13 → **extend the existing `chart_panel_state` blob** (add a `layout` field) rather than a second key, to keep a **single persistence owner** and avoid restore desync between two stores (a fresh key risks the two drifting on partial writes). Only split to a new key if the existing blob is per-panel-content-scoped and can't carry layout-level structure — Worker 2 to confirm the blob's scope in step 2.
+- Row 15 → **focused panel** as source. "Always host tile A" is surprising when the user has focused another panel to sync from; focused-panel matches the ratified "focused panel owns source ticker" model and the PO's spec wording ("converge all panels to the same ticker (the focused/host panel's)").
+- Row 11 → no new ruling needed; proceed under the DAILY-INTAKE reopen (live drag-trace mandatory before any fix).
+
+---
+
+## ESC-007 — RESOLVED
+
+**Director ruling:** D-008 (2026-07-14)  
+**Outcome:** Rows 13–15 owner/transport ratified (all parent-shell, consistent with D-002). Row 13 = extend `chart_panel_state` blob (worker confirms schema fits; corrupt-value fallback to single layout is mandatory and in the RED; structure-only restore). Row 15 = focused-panel source, **toggle-edge only** (boot/panel-added cells out of scope without new PO spec; no-fileId-at-edge behavior stated in fix spec); fan-out via existing `runCommand('loadFile')`. I13 binding on all three (React files gated; acceptance = `build:live` + parity checklist, not harness). RED scenarios may start now; fixes sequence after TAL-01564 by evidence readiness.
+
+---
+
+## ESC-008 — A3 replay mode/cadence: authorize 2 fix tasks + rule on the TAL-01582 behavioral fork
+
+**Date:** 2026-07-14  
+**Track:** A3 (Lane 3), diagnostic on build `20260712b8`  
+**RC:** RC-5 adjacent (plan-2 amendment A3)  
+**Urgency:** Not lane-blocking (Lane 3 proceeds on ruling-independent harness prep) — but the fixes can't land without the behavioral ruling.
+
+### Context
+Lane 3 delivered `worker-reports/A3-lane3-replay-mode-cadence-diagnostic-report.md` (per WORKER-REPORT-STANDARD; diagnostic-only, no edits, mirror confirmed byte-identical). Root cause: replay **interval ownership is split across three stale layers** — the V9 slider writes a dead `_replayIntervalRawCandles` field the engine no longer reads; the canonical `setStepTimeframe()`/`stepTimeframeOverride` path is used only by multichart iframe sync; and the hidden-select `change` handler is a no-op. Two separate mechanisms:
+- **(a) TAL-01582:** `play()` gates `useTickAnimation = tick && !explicitInterval`, so any path that sets `stepTimeframeOverride` (multichart sync) silently falls back to the candle loop while the UI still shows "Tick."
+- **(b) TAL-01581:** step size reads the hidden select while routing/sync read the override → inconsistent bucket math (4h-interval-on-4h-TF/1m-master = 240-bar jumps), double-step on play start, intermittent edge stalls.
+
+### Decision requested
+1. **Authorize two gated fix tasks** (two kill-switches, per the worker's §3): `__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING` (a) and `__TALARIA_FIX_REPLAY_INTERVAL_CADENCE` (b), sharing a small prelude (wire the V9 slider → `setStepTimeframe`, delete the dead field).
+2. **Rule on the (a) behavioral fork** (product decision, like D-005): when Tick mode has an explicit interval set — **(A)** allow tick animation with the interval controlling step boundaries only, or **(B)** force the candle path but update the UI/label so mode matches behavior? PO input likely needed.
+
+### Manager recommendation
+Approve (1). For (2), recommend **(A)** — the user selected Tick deliberately; the interval should bound steps, not silently override the mode. Fix (b) lands first (pure correctness, no fork), fix (a) after the (A)/(B) ruling. Each RED-first against the new replay-mode harness scenarios (Lane 3 authoring now). P6: both tickets quoted in the report.
+
+---
+
+## ESC-008 — RESOLVED
+
+**Director ruling:** D-009 (2026-07-14)  
+**Outcome:** Both fixes authorized (`__TALARIA_FIX_REPLAY_INTERVAL_CADENCE` first — pure correctness; `__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING` second). Fork ruled **(A)** on P6 grounds (tester's TAL-01582 wording is a complaint that the mode changed): tick persists, interval bounds steps only; UI must reflect both mode and interval. PO live-confirm of (A) is part of (a)'s acceptance — if overruled live, (B) swaps in via the switch, no redesign. Prelude rides (b)'s switch; switch-off cell must render today's behavior. State matrix must cover the multichart `stepTimeframeOverride` consumer.

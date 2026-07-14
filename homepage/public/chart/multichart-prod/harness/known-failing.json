@@ -41,7 +41,16 @@
     "H-S41",
     "H-S42",
     "H-S43",
-    "H-S44"
+    "H-S44",
+    "H-S45",
+    "H-S46",
+    "H-S47",
+    "H-S48",
+    "H-S49",
+    "H-S50",
+    "H-S51",
+    "H-S52",
+    "H-S53"
   ],
   "knownFailing": {
     "H-S34": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands",
@@ -49,6 +58,30 @@
     "H-S40": "T0 step 4 tracked-red: RC-3 anchored VWAP shifts timestamp anchor across timeframe switch",
     "H-S41": "T0 step 4 tracked-red: RC-3 fixed range volume profile shifts endpoint anchors across timeframe switch",
     "H-S42": "T0 step 4 tracked-red: RC-3 anchored volume profile shifts timestamp anchor across timeframe switch",
-    "H-S44": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands"
+    "H-S44": "T1 fallback-(b) rollback window - migrated multichart behavior intentionally disabled; restore when T1 re-migration lands",
+    "H-S45": "T0 step 7 RC-4 tracked-red: drawing target must follow focused panel (TAL-01495)",
+    "H-S46": "T0 step 7 RC-4 tracked-red: panel-B local Ctrl-select must stay separated (TAL-01498)",
+    "H-S47": "T0 step 7 RC-4 tracked-red: panel-B draw must show Quick Menu immediately (TAL-01499)",
+    "H-S48": "T0 step 7 RC-4 tracked-red: indicator state must not leak across panels (TAL-01500/01501)",
+    "H-S49": "T0 step 7 RC-4 tracked-red: drawing drag must survive cursor leaving tile bounds (TAL-01491/01587)",
+    "H-S50": "T0 step 7 RC-4 tracked-red: panel-B command-driven repaint without follow-up click (TAL-01484/01490)",
+    "H-S51": "T3 row 13: layout persistence across refresh — chart_panel_state hydrate (TAL-01571)",
+    "H-S52": "T3 row 14: tile clip/visibility geometry — canvas must fill cell (TAL-01574)",
+    "H-S53": "T3 row 15: symbol-sync false→true converges panels to focused ticker (TAL-01586)"
+  },
+  "reactParity": {
+    "expectedTests": [
+      "H-R01",
+      "H-R02",
+      "H-R03",
+      "H-R04",
+      "H-R05",
+      "H-R06",
+      "H-R07",
+      "H-R08",
+      "H-R09",
+      "H-R12"
+    ],
+    "knownFailing": {}
   }
 }

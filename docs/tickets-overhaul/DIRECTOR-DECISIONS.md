@@ -2,6 +2,53 @@
 
 ---
 
+## D-009 — ESC-008: A3 replay fixes authorized; behavioral fork ruled (A) — tick mode persists, interval bounds steps
+
+**Date:** 2026-07-14
+**Escalation:** ESC-008
+**Track:** A3 (Lane 3)
+**RC:** RC-5-adjacent (intake amendment A3; TAL-01581/01582)
+
+### Rulings
+
+**1. Both gated fix tasks AUTHORIZED:** `__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING` (a) and `__TALARIA_FIX_REPLAY_INTERVAL_CADENCE` (b), sharing the prelude (V9 slider wired to the canonical `setStepTimeframe()`; dead `_replayIntervalRawCandles` field deleted). The diagnostic's quality is noted — three stale ownership layers is exactly the kind of mechanism finding A3 was scoped for.
+
+**2. Behavioral fork ruled (A): tick mode persists; an explicit interval bounds step boundaries, it does not silently change the animation mode.** Grounds (P6): the tester's own words — *"When I select TICK BY TICK and enable Replay, it automatically changes to candle by candle"* (TAL-01582) — are a complaint that the mode changed out from under them. The user's explicit mode selection wins; option (B) would codify the surprise instead of removing it. Constraint: with (A), the UI must show both facts (mode = Tick, interval = X) — no state that the label doesn't reflect.
+**PO confirmation step:** the (a) acceptance includes a one-line PO live confirm of the (A) behavior (select Tick + interval 4h, press play, verify tick animation with 4h step bounds). If the PO overrules live, (B) is the fallback and the fix's switch makes the swap cheap — do not redesign.
+
+**3. Sequencing CONFIRMED as recommended:** fix (b) first (pure correctness, no fork risk), fix (a) second. Both RED-first against Lane 3's new replay-mode harness scenarios; both quoted to their source tickets (P6); state matrix must cover: single chart + multichart panel × tick/candle × interval set/unset × play/step-forward — the multichart-sync path (`stepTimeframeOverride`) is where (a)'s regression risk lives, since that's the one consumer of the canonical path today.
+
+**4. Standing note:** the prelude deletes a dead field the V9 slider currently writes. Per I3, the prelude rides with fix (b)'s switch (it is load-bearing for both fixes); if (b) is ever kill-switched off live, the slider must still write somewhere coherent — worker verifies the switch-off cell renders today's behavior, not a third broken state.
+
+---
+
+## D-008 — ESC-007: T3 contract rows 13–15 ratified; both open questions ruled per Manager recommendation
+
+**Date:** 2026-07-14
+**Escalation:** ESC-007
+**Track:** T3 step 1→2 (Lane 2)
+**RC:** RC-4
+
+### Rulings
+
+**1. Rows 13–15 owner/transport APPROVED as specced.** All three are parent-shell-owned, consistent with the D-002 split (parent owns focus/chrome/layout structure). Row 11's contract update (TAL-01587 reopen, pointer-capture hypothesis) is noted; it proceeds under the DAILY-INTAKE reopen — no new ruling.
+
+**2. Row 13 storage: extend the existing `chart_panel_state` blob** (Manager recommendation accepted). One persistence owner; a second key invites restore desync on partial writes. Conditions:
+- Worker 2 confirms in step 2 that the blob's schema can carry layout-level structure; if it is strictly per-panel-content-scoped, come back with the finding rather than forcing it.
+- **Hydrate defensively:** a missing/corrupt/unparseable `layout` field falls back to single-chart layout silently — a bad persisted value must never brick boot. The RED scenario must include the corrupt-value cell.
+- Restore is structure-only (layout id + panel count); panel *content* restore stays whatever it is today — no scope growth into content persistence.
+
+**3. Row 15 convergence source: focused panel** (Manager recommendation accepted — matches the ratified "focused panel owns source ticker" model and the PO's spec wording). Constraints:
+- Convergence fires on the **false→true toggle edge only**. Boot-with-sync-already-ON and panel-added-while-ON cells are explicitly out of this row's scope; if the PO wants convergence there too, that's a follow-up spec, not silent scope growth (P6 applies — quote the PO's words).
+- If the focused panel has no committed `fileId` at the toggle edge (mid-load), the toggle waits for commit or falls back to host A — worker picks one, states it in the fix spec, and the state matrix covers it.
+- Peer fan-out must route through the existing `runCommand('loadFile')` path (no new bus). I11 untouched.
+
+**4. I13 reminder binding on all three rows (React work):** rows 13–15 are parent-shell React changes. Kill-switches must cover the React files; harness-green is not acceptance — each row needs `npm run build:live` + the production parity checklist run (per D-006), with build id confirmed per L1. Add one parity-checklist row per contract row when the fixes land.
+
+**5. Sequencing:** RED scenarios for rows 13–15 may be written now (step 2). Fixes dispatch in registry-priority order after the current Lane-2 item (TAL-01564 SW-hygiene) lands; rows 13/15 are independent of each other and of row 14 — Manager may sequence by evidence readiness (row 14 needs the TAL-01574 layout reproduced first).
+
+---
+
 ## D-007 — T1 step-7 retest: three-switch isolation matrix + PO spec before step 8
 
 **Date:** 2026-07-13

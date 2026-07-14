@@ -5079,6 +5079,18 @@ function v9ShouldSkipLegacyDrawingToolbarShow() {
   return false;
 }
 
+/** Iframe embed tiles keep the engine floating toolbar when the quick-bar gear fix is ON. */
+function v9PreserveIframeEngineToolbarOnHide(dm) {
+  if (!v9QuickBarPanelSettingsFixEnabled()) return false;
+  try {
+    const ch = dm && dm.chart;
+    if (ch && typeof ch._isMultichartEmbedPanel === "function" && ch._isMultichartEmbedPanel()) {
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 const V9_TL_BAR_POS_KEY = "v9TlBarPosition";
 const V9_TL_BAR_POS_LEGACY_KEY = "drawingToolbarPosition";
 /** True once the user drags tlBar/txtBar or a saved position is loaded from storage. */
@@ -20635,6 +20647,21 @@ const TalariaV8bLive = () => {
       tb.__v9OrigHide = origHide;
       tb.show = function (drawing, x, y) {
         try {
+          const chEmbed = dm && dm.chart;
+          if (chEmbed && typeof chEmbed._isMultichartEmbedPanel === "function" && chEmbed._isMultichartEmbedPanel()) {
+            if (!v9QuickBarPanelSettingsFixEnabled()) return undefined;
+            if (drawing && drawing.type && v9MultichartGridApi()) {
+              v9RememberQuickBarSelection(dm, drawing);
+              try {
+                const br = v9ToolbarBridgeActRef.current;
+                br.setTlBarSelected(true);
+                br.setTlBarSelectedType(drawing.type);
+                v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawing.type);
+              } catch (_) {}
+            }
+            if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
+            return origShow ? origShow(drawing, x, y) : undefined;
+          }
           if (drawing && drawing.type && v9MultichartGridApi()) {
             v9RememberQuickBarSelection(dm, drawing);
           }
@@ -20870,6 +20897,9 @@ const TalariaV8bLive = () => {
       };
       tb.hide = function () {
         try {
+          if (v9PreserveIframeEngineToolbarOnHide(dm)) {
+            return undefined;
+          }
           if (typeof window !== "undefined") {
             const until = Number(window.__v9SuppressToolbarHideUntil || 0);
             if (until > 0 && Date.now() <= until) {

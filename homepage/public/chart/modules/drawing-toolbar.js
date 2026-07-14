@@ -1785,6 +1785,18 @@ class DrawingToolbar {
                 // performance.now() is per-document (different time origin per window),
                 // so arm each window's guard using ITS OWN clock — never copy one window's
                 // value into another.
+                const quickbarFixOn = (() => {
+                    try {
+                        const flagSet = (w) => !!(w && w.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2);
+                        if (typeof window === 'undefined') return true;
+                        if (flagSet(window)) return false;
+                        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+                        if (window.top && window.top !== window && flagSet(window.top)) return false;
+                        return true;
+                    } catch (_) {
+                        return true;
+                    }
+                })();
                 const armSelectionGuard = (win) => {
                     try {
                         if (!win) return;
@@ -1793,10 +1805,24 @@ class DrawingToolbar {
                         win.__v9DrawingSelectionGuardUntil = nowTs + 700;
                     } catch (_) { /* cross-origin / ignore */ }
                 };
+                const armSettingsOpenGuard = (win, panelId) => {
+                    try {
+                        if (!win || !quickbarFixOn) return;
+                        const perf = win.performance;
+                        const nowTs = (perf && typeof perf.now === 'function') ? perf.now() : Date.now();
+                        win.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
+                        win.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+                    } catch (_) { /* cross-origin / ignore */ }
+                };
                 if (typeof window !== 'undefined') {
                     armSelectionGuard(window);
                     if (window.parent && window.parent !== window) {
                         armSelectionGuard(window.parent);
+                        let panelId = 'embed';
+                        try {
+                            panelId = new URLSearchParams(window.location.search || '').get('panelId') || panelId;
+                        } catch (_) { /* ignore */ }
+                        armSettingsOpenGuard(window.parent, panelId);
                     }
                 }
                 if (this.onSettings) {

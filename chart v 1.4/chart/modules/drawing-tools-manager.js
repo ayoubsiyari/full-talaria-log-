@@ -8980,6 +8980,19 @@ class DrawingToolsManager {
         this._raiseResizeHandles(drawing);
     }
 
+    /** Bypass parent V9 toolbar hooks — iframe tiles need the engine #tb-settings surface. */
+    _invokeIframeToolbarOrigShow(drawing, x, y) {
+        if (!this.toolbar || !drawing) return;
+        const origShow = this.toolbar.__v9OrigShow;
+        if (typeof origShow === 'function') {
+            origShow(drawing, x, y);
+            return;
+        }
+        if (typeof this.toolbar.show === 'function') {
+            this.toolbar.show(drawing, x, y);
+        }
+    }
+
     /** Render + show handles after select (geometry first, then chrome). */
     _commitSelectedDrawingVisual(drawing, suppressToolbar = false) {
         if (!drawing) return;
@@ -8999,49 +9012,97 @@ class DrawingToolsManager {
             const x = svgRect.left + bbox.x + (bbox.width / 2);
             const y = svgRect.top + bbox.y;
             if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
-            this.toolbar.show(drawing, x, y);
+            if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                this._invokeIframeToolbarOrigShow(drawing, x, y);
+            } else {
+                this.toolbar.show(drawing, x, y);
+            }
             notifyV9SelectionSync(this.chart, drawing);
             this._rescueMultichartIframeToolbarAfterSelection(drawing);
         }
     }
 
+    _isIframeToolbarGearReady(drawing) {
+        if (!drawing || !this.toolbar) return false;
+        try {
+            const stillSelected = Array.isArray(this.selectedDrawings)
+                && this.selectedDrawings.some((d) => d && drawing && String(d.id) === String(drawing.id));
+            if (!stillSelected || !drawing.group) return false;
+            const gear = typeof document !== 'undefined' ? document.getElementById('tb-settings') : null;
+            const gearRect = gear && typeof gear.getBoundingClientRect === 'function' ? gear.getBoundingClientRect() : null;
+            const gearVisible = !!(gearRect && gearRect.width > 0 && gearRect.height > 0);
+            return !!(this.toolbar.visible && gearVisible);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _emitIframeToolbarGearReady(drawing) {
+        if (!drawing || typeof window === 'undefined') return;
+        let panelId = null;
+        try {
+            panelId = new URLSearchParams(window.location.search || '').get('panelId');
+        } catch (_) { /* ignore */ }
+        const detail = {
+            drawingId: drawing.id != null ? drawing.id : null,
+            panelId,
+        };
+        try {
+            const perf = typeof performance !== 'undefined' ? performance : null;
+            window.__talariaIframeToolbarGearReady = {
+                ...detail,
+                settledAt: perf && typeof perf.now === 'function' ? perf.now() : Date.now(),
+            };
+        } catch (_) { /* ignore */ }
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:iframe-toolbar-gear-ready', { detail }));
+        } catch (_) { /* ignore */ }
+    }
+
+    _ensureIframeToolbarGearVisible(drawing) {
+        if (!drawing || !this.toolbar || !drawing.group) return false;
+        if (this._isIframeToolbarGearReady(drawing)) return true;
+        try {
+            const node = drawing.group.node && drawing.group.node();
+            const bbox = node && typeof node.getBBox === 'function' ? node.getBBox() : null;
+            const svgNode = this.svg && this.svg.node && this.svg.node();
+            const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
+                ? svgNode.getBoundingClientRect()
+                : null;
+            if (!bbox || !svgRect || bbox.width <= 0) return false;
+            const x = svgRect.left + bbox.x + (bbox.width / 2);
+            const y = svgRect.top + bbox.y;
+                if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
+                this._invokeIframeToolbarOrigShow(drawing, x, y);
+            } catch (_) { /* best-effort iframe quick-bar recovery */ }
+        return this._isIframeToolbarGearReady(drawing);
+    }
+
     _rescueMultichartIframeToolbarAfterSelection(drawing) {
         if (!drawing || !this.toolbar || !isMultichartIframeEmbed() || !multichartQuickbarSettingsFixEnabled()) return;
-        const rescue = () => {
-            try {
-                const stillSelected = Array.isArray(this.selectedDrawings)
-                    && this.selectedDrawings.some((d) => d && drawing && String(d.id) === String(drawing.id));
-                if (!stillSelected || !drawing.group) return;
-                const gear = typeof document !== 'undefined' ? document.getElementById('tb-settings') : null;
-                const gearRect = gear && typeof gear.getBoundingClientRect === 'function' ? gear.getBoundingClientRect() : null;
-                const gearVisible = !!(gearRect && gearRect.width > 0 && gearRect.height > 0);
-                if (this.toolbar.visible && gearVisible) return;
-                const node = drawing.group.node && drawing.group.node();
-                const bbox = node && typeof node.getBBox === 'function' ? node.getBBox() : null;
-                const svgNode = this.svg && this.svg.node && this.svg.node();
-                const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
-                    ? svgNode.getBoundingClientRect()
-                    : null;
-                if (!bbox || !svgRect || bbox.width <= 0) return;
-                const x = svgRect.left + bbox.x + (bbox.width / 2);
-                const y = svgRect.top + bbox.y;
-                if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
-                const toolbarEl = this.toolbar.toolbar;
-                if (gear && toolbarEl) {
-                    this.toolbar.currentDrawing = drawing;
-                    this.toolbar.visible = true;
-                    toolbarEl.style.display = 'flex';
-                    if (typeof this.toolbar.position === 'function') {
-                        this.toolbar.position(x, y);
-                    }
-                    return;
-                }
-                this.toolbar.show(drawing, x, y);
-            } catch (_) { /* best-effort iframe quick-bar recovery */ }
+        let frame = 0;
+        const maxFrames = 16;
+        const settle = () => {
+            frame += 1;
+            this._ensureIframeToolbarGearVisible(drawing);
+            if (this._isIframeToolbarGearReady(drawing)) {
+                this._emitIframeToolbarGearReady(drawing);
+                return;
+            }
+            if (frame < maxFrames && typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(settle);
+                return;
+            }
+            this._ensureIframeToolbarGearVisible(drawing);
+            if (this._isIframeToolbarGearReady(drawing)) {
+                this._emitIframeToolbarGearReady(drawing);
+            }
         };
-        setTimeout(rescue, 0);
-        setTimeout(rescue, 80);
-        setTimeout(rescue, 200);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(settle);
+        } else {
+            settle();
+        }
     }
 
     /** Keep resize targets above rebuilt shape borders during live edits / hover. */
@@ -9834,7 +9895,11 @@ class DrawingToolsManager {
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
-                    this.toolbar.show(lastDrawing, x, y);
+                    if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                        this._invokeIframeToolbarOrigShow(lastDrawing, x, y);
+                    } else {
+                        this.toolbar.show(lastDrawing, x, y);
+                    }
                 }
             }
         } else {
@@ -9966,7 +10031,9 @@ class DrawingToolsManager {
                 source: fromCanvasBackground ? 'canvas-background' : 'manager-deselect',
             });
         }
-        this.toolbar.hide(); // Hide toolbar
+        if (!(forSelectionChange && isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled())) {
+            this.toolbar.hide(); // Hide toolbar
+        }
         if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
             this.settingsPanel.hide();
         }

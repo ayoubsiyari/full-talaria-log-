@@ -7,6 +7,9 @@
   "scripts": {
     "test": "node run.mjs",
     "gate": "node gate.mjs",
+    "test:react": "node react-run.mjs",
+    "gate:react": "node react-gate.mjs",
+    "test:react:flake": "node react-run.mjs --runs=3",
     "test:flake": "node run.mjs --runs=5",
     "test:bugproof": "node run.mjs --only=H-S12 --bug",
     "test:bugproof:baseline": "node run.mjs --only=H-S12",

@@ -37,6 +37,11 @@
 |---|---|---|
 | 11 | Set the fix's named switch OFF → the fixed behaviors revert (proves the switch covers **every** file, React included). | ☐ |
 
+## Observation rows (not pass/fail gates — capture evidence for triage)
+| # | Observe | Notes / capture |
+|---|---|---|
+| O1 | **Panning brightness/quality drop (TAL-01567, GAP-RENDER):** while panning into a region, does the chart visibly dim / lose rendering quality? Suspected interaction-lite LOD threshold, not data. **Attach a screenshot** if seen — this is a live capture the Director needs before scoping. | _______ |
+
 ---
 
 **Verdict:** ☐ PASS (all boxes) → eligible for acceptance ☐ FAIL → back to Lane 1 with the failing row(s).
