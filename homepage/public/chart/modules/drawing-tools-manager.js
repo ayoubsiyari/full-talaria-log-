@@ -10324,13 +10324,19 @@ class DrawingToolsManager {
             return;
         }
 
-        // Multichart host tile A: route through the grid so coords + dismiss match iframe path.
+        // Multichart host tile: route through the grid so coords + dismiss match iframe path.
         try {
             const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
             if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
-                const hostId = grid.hostPanelId || 'A';
+                let panelId = grid.hostPanelId || 'A';
+                try {
+                    if (typeof grid.getPanelIdForDrawingManager === 'function') {
+                        const pid = grid.getPanelIdForDrawingManager(this);
+                        if (pid) panelId = pid;
+                    }
+                } catch (_) { /* ignore */ }
                 this._bindLifecycleSettingsSurface(drawing);
-                grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
+                grid.openDrawingSettingsForPanel(panelId, drawing, x, y);
                 return;
             }
         } catch (_grid) { /* ignore */ }
@@ -10370,9 +10376,15 @@ class DrawingToolsManager {
             try {
                 const grid = window.__multichartGrid;
                 if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
-                    const hostId = grid.hostPanelId || 'A';
+                    let panelId = grid.hostPanelId || 'A';
+                    try {
+                        if (typeof grid.getPanelIdForDrawingManager === 'function') {
+                            const pid = grid.getPanelIdForDrawingManager(this);
+                            if (pid) panelId = pid;
+                        }
+                    } catch (_) { /* ignore */ }
                     this._bindLifecycleSettingsSurface(drawing);
-                    grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
+                    grid.openDrawingSettingsForPanel(panelId, drawing, x, y);
                 }
             } catch (_grid) { /* ignore */ }
             return;

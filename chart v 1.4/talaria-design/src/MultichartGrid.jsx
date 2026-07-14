@@ -2701,6 +2701,16 @@ export default function MultichartGrid({
             try {
                 if (ev && ev.target && typeof ev.target.closest === "function") {
                     if (ev.target.closest("#multichart-global-settings-root")) return;
+                    if (ev.target.closest("[data-tlbar]")) return;
+                    if (ev.target.closest("[data-sdrop]")) return;
+                }
+            } catch (_) {}
+            try {
+                if (typeof window !== "undefined"
+                    && window.__v9DrawingSettingsOpenGuardUntil
+                    && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
+                    && multichartSettingsFlashFixEnabled()) {
+                    return;
                 }
             } catch (_) {}
             // Shape select runs in drawing-tools-manager document capture (svg + canvas).
@@ -2717,6 +2727,11 @@ export default function MultichartGrid({
                 try {
                     if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
                         if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+                    }
+                    if (typeof window !== "undefined"
+                        && window.__v9DrawingSettingsOpenGuardUntil
+                        && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
+                        return;
                     }
                 } catch (_) {}
                 if (prev !== HOST_PANEL_ID) {
@@ -4932,6 +4947,11 @@ export default function MultichartGrid({
 
         function closeDrawingSettingsForPanel(sourceId) {
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            // Explicit close — drop the open-guard so dismiss is not swallowed.
+            try {
+                window.__v9DrawingSettingsOpenGuardUntil = 0;
+                window.__v9DrawingSettingsOpenSource = null;
+            } catch (_) {}
             closeGlobalLegacyDrawingSettings();
             try {
                 window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
@@ -4999,23 +5019,28 @@ export default function MultichartGrid({
             const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
             const ownershipV2 = multichartOwnershipV2Enabled();
             const settingsFlashFix = multichartSettingsFlashFixEnabled();
-            // If a V9 settings panel was just opened for THIS source, protect it:
-            // the global dismiss below is not source-aware and would close the panel
-            // we just opened (the "open-then-flash-closed" bug on multichart). The
-            // guard is short-lived, so normal close/deselect still works afterward.
+            // If a V9 settings panel was just opened, protect it. Peer focus/clear
+            // often arrives with a *different* sourceId than the panel that opened
+            // settings (gear click over a divider, deferred host pointerdown, etc.).
+            // Matching only on source previously skipped protection and flash-closed
+            // the panel — gear looked dead while shape double-click still worked.
             let protectSource = false;
+            let protectOpenSource = null;
             try {
                 if (settingsFlashFix
                     && typeof window !== "undefined"
                     && window.__v9DrawingSettingsOpenGuardUntil
-                    && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
-                    && String(window.__v9DrawingSettingsOpenSource) === String(source)) {
+                    && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
                     protectSource = true;
+                    if (window.__v9DrawingSettingsOpenSource != null) {
+                        protectOpenSource = String(window.__v9DrawingSettingsOpenSource);
+                    }
                 }
             } catch (_) {}
             const skipDismiss = protectSource || (ownershipV2 && !!(opts && opts.skipV9Dismiss));
             const preserveSourceSettings = protectSource
                 || (ownershipV2 && !!(opts && (opts.skipV9Dismiss || opts.preserveSourceSettings)));
+            const preserveId = protectOpenSource || source;
             if (!skipDismiss) {
                 closeGlobalLegacyDrawingSettings();
                 try {
@@ -5029,7 +5054,7 @@ export default function MultichartGrid({
                     ? deselectDrawingsOnNonFocusedPanels(source, opts)
                     : Promise.resolve(),
                 preserveSourceSettings
-                    ? closeDrawingSettingsPreservingSource(source)
+                    ? closeDrawingSettingsPreservingSource(preserveId)
                     : closeDrawingSettingsOnAllPanels(),
             ]);
         }
@@ -6700,7 +6725,20 @@ export default function MultichartGrid({
                         onMouseDownCapture={(ev) => {
                             if (ev && ev.target && typeof ev.target.closest === "function") {
                                 if (ev.target.closest("#multichart-global-settings-root")) return;
+                                if (ev.target.closest("[data-tlbar]")) return;
+                                if (ev.target.closest("[data-sdrop]")) return;
                             }
+                            // Gear/settings-open race: do not steal focus / peer-clear
+                            // while a settings open is in flight (toolbar often floats
+                            // over a neighbor tile or splitter).
+                            try {
+                                if (typeof window !== "undefined"
+                                    && window.__v9DrawingSettingsOpenGuardUntil
+                                    && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
+                                    && multichartSettingsFlashFixEnabled()) {
+                                    return;
+                                }
+                            } catch (_) {}
                             focusPanelById(tile.id);
                             const grid = window.__multichartGrid;
                             if (!grid || typeof grid.clearDrawingUiOnOtherPanels !== "function") return;
@@ -6708,6 +6746,11 @@ export default function MultichartGrid({
                                 try {
                                     if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
                                         if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+                                    }
+                                    if (typeof window !== "undefined"
+                                        && window.__v9DrawingSettingsOpenGuardUntil
+                                        && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
+                                        return;
                                     }
                                 } catch (_) {}
                                 grid.clearDrawingUiOnOtherPanels(tile.id);

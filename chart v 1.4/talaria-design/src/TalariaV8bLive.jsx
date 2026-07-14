@@ -5068,22 +5068,63 @@ function v9ResolveDrawingForGearClick(editingRefDrawing) {
 function v9OpenQuickBarSettingsViaEditDrawing(drawing, x, y) {
   if (!drawing || !v9QuickBarPanelSettingsFixEnabled()) return false;
   const grid = v9MultichartGridApi();
-  if (!grid || typeof grid.openDrawingSettingsForPanel !== "function") return false;
+  let inIframe = false;
+  try { inIframe = v9IsMultichartIframeEmbed(); } catch (_) { inIframe = false; }
+  // Multichart-only: single-chart gear keeps the local V9 hook path below.
+  if (!grid && !inIframe) return false;
   try {
     const dm = resolveDrawingManagerForDrawing(drawing);
     const live = (dm && resolveLiveDrawingInDm(dm, drawing)) || drawing;
     let panelId = null;
-    if (dm && typeof grid.getPanelIdForDrawingManager === "function") {
-      panelId = grid.getPanelIdForDrawingManager(dm);
+    if (grid) {
+      if (dm && typeof grid.getPanelIdForDrawingManager === "function") {
+        panelId = grid.getPanelIdForDrawingManager(dm);
+      }
+      if (!panelId && typeof grid.getFocusedPanelId === "function") {
+        panelId = grid.getFocusedPanelId();
+      }
+      panelId = panelId || grid.hostPanelId || "A";
+    } else {
+      try {
+        panelId = new URLSearchParams(window.location.search).get("panelId") || "embed";
+      } catch (_) {
+        panelId = "embed";
+      }
     }
-    if (!panelId && typeof grid.getFocusedPanelId === "function") {
-      panelId = grid.getFocusedPanelId();
-    }
-    panelId = panelId || grid.hostPanelId || "A";
+    // Arm BEFORE editDrawing / peer-clear can run — same guards dblclick relies on.
     v9ArmParentSettingsOpenGuard(panelId);
-    grid.openDrawingSettingsForPanel(panelId, live, x, y);
-    return true;
+    try {
+      const perf = window.performance;
+      const nowTs = (perf && typeof perf.now === "function") ? perf.now() : Date.now();
+      window.__v9DrawingSelectionGuardUntil = nowTs + 700;
+      window.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
+      window.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+      window.__v9MultichartSettingsPanelId = panelId;
+    } catch (_) {}
+    // Match shape double-click: dm.editDrawing → parent openDrawingSettingsForPanel.
+    if (dm && typeof dm.editDrawing === "function") {
+      try {
+        dm.editDrawing(live, x, y);
+        try { delete window.__v9MultichartSettingsPanelId; } catch (_) {}
+        return true;
+      } catch (_) {}
+    }
+    if (grid && typeof grid.openDrawingSettingsForPanel === "function") {
+      grid.openDrawingSettingsForPanel(panelId, live, x, y);
+      try { delete window.__v9MultichartSettingsPanelId; } catch (_) {}
+      return true;
+    }
+    const hook = v9ResolveOpenDrawingSettingsHook();
+    if (typeof hook === "function") {
+      try {
+        if (hook(live, x, y)) {
+          try { delete window.__v9MultichartSettingsPanelId; } catch (_) {}
+          return true;
+        }
+      } catch (_) {}
+    }
   } catch (_) {}
+  try { delete window.__v9MultichartSettingsPanelId; } catch (_) {}
   return false;
 }
 
@@ -15116,6 +15157,10 @@ const TalariaV8bLive = () => {
   };
   const finishTlSettPanel = ({ save = false, restore = false } = {}) => {
     clearSettingsPanelHover();
+    try {
+      window.__v9DrawingSettingsOpenGuardUntil = 0;
+      window.__v9DrawingSettingsOpenSource = null;
+    } catch (_) {}
     if (restore) {
       const editing = editingDrawingRef.current;
       if (editing?.editSnapshot) {
@@ -15145,6 +15190,10 @@ const TalariaV8bLive = () => {
   /** User clicked a different shape while settings were open — drop panel state immediately. */
   const dismissShapeSettingsForNewSelection = () => {
     clearSettingsPanelHover();
+    try {
+      window.__v9DrawingSettingsOpenGuardUntil = 0;
+      window.__v9DrawingSettingsOpenSource = null;
+    } catch (_) {}
     const editing = editingDrawingRef.current;
     if (editing?.editSnapshot) {
       suppressForwardBridge.current = true;
@@ -15313,6 +15362,10 @@ const TalariaV8bLive = () => {
   /** Close every V9 drawing settings window synchronously (no 155ms overlap flash on dblclick). */
   const v9DismissAllDrawingSettingsImmediate = () => {
     clearSettingsPanelHover();
+    try {
+      window.__v9DrawingSettingsOpenGuardUntil = 0;
+      window.__v9DrawingSettingsOpenSource = null;
+    } catch (_) {}
     v9DismissQuickBarPopoversSync();
     setTlSettTplDrop(false);
     setTlSaveAsMode(false);
@@ -19712,6 +19765,17 @@ const TalariaV8bLive = () => {
   // Multichart: close parent V9 settings when another panel takes focus or opens its own.
   useEffect(() => {
     const onDismissMcSettings = () => {
+      // Gear / dblclick arm __v9DrawingSettingsOpenGuardUntil before open. Peer-clear
+      // often still dispatches this event in the same tick — honor the guard here so
+      // a single gear click cannot open-then-instant-close.
+      try {
+        if (typeof window !== "undefined"
+          && window.__v9DrawingSettingsOpenGuardUntil
+          && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
+          && !window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) {
+          return;
+        }
+      } catch (_) {}
       try {
         document.querySelectorAll(".tv-settings-modal").forEach((el) => {
           try {
@@ -20592,7 +20656,12 @@ const TalariaV8bLive = () => {
             setAvSettTab("style");
           });
         } else {
-          v9SettingsChartDismissLockUntilRef.current = 0;
+          // Multichart: brief chart-dismiss lock so the same pointer sequence /
+          // deferred peer-clear cannot treat the just-opened panel as an
+          // outside-chart click (single-chart stays unlocked for immediate dismiss).
+          let inMc = false;
+          try { inMc = !!(typeof window !== "undefined" && window.__multichartGrid); } catch (_) {}
+          v9SettingsChartDismissLockUntilRef.current = inMc ? Date.now() + 700 : 0;
           flushSync(() => {
             setTlBarSelected(true);
             setTlBarSelectedType(drawing.type);
@@ -31427,6 +31496,7 @@ const TalariaV8bLive = () => {
             onClick={e=>{
               e.stopPropagation();
               v9SuppressNextChartDeselect();
+              try { v9FocusPanelForQuickBarSelection(); } catch (_) {}
               if (dropdown) closeDropdown();
               v9DismissQuickBarPopoversSync();
               if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }

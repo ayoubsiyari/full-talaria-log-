@@ -516,6 +516,12 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **BLOCKS DEPLOY:** do NOT finalize the canonical deploy build until the gear route is fixed + verified on the real built product. Freeze stays.
 - **Dispatched:** Lane 1 urgent `worker-prompts/T1-step18-lane1-gear-settings-regression.md` (reproduce on built product BOTH panels → root → fix → prove; coordinate H-R13 probe with Lane 4 so the harness can catch it). Awaiting PO build id + double-click isolation before worker begins repro.
 
+### T0 step 12 audit — the false-green disease is suite-wide (2026-07-14)
+- Lane 4's honesty audit: even H-R01/H-R02/H-R03/H-R07 (I'd called "genuinely green") are **NOT trustworthy** — `selectDrawing`/`editDrawing` synthetic fallbacks, `toolbarVisible`/handle-count proxies, H-R04 only checks click dispatched. Host H-S32/H-S33 also proxy/synthetic.
+- **No trustworthy automated multichart-interaction coverage exists right now.** PO live-confirm on the real product is the only reliable acceptance authority for multichart until the harness is rebuilt.
+- Amended **ESC-011** (addendum + decision #5): recommend **harness-first** — Lane 4 rebuilds real cross-frame actuation (CDP `Input.dispatch*`) + real-state assertions, removing synthetic fallbacks; THEN Lane 1's fix proven against it + PO live-confirm.
+- **react-parity-lib.mjs collision:** Lane 1 (step 18) and Lane 4 (rebuild) can't both edit it → sequenced. Lane 4 held on read-only real-actuation SPEC (T0 step 13) until ruling + file free.
+
 ### CRITICAL — multichart interaction fixes were FALSE-GREEN; ESC-011 filed (2026-07-14)
 - **Lane 4 T0 step 11 (honest-probe reconcile) ACCEPTED as truth-telling** (not as acceptance). Fixed `readParentReactSettings` to stop counting the V9 quick-bar shell as "settings open". On the true combined build **b88** (verified to contain routing V3, peer V1, deleteSelectedDrawings, dismissActiveDrawingTool, A3, order-entry family 1):
   - **Genuinely GREEN:** H-R01 (select→chrome), H-R07 (peer isolation), H-R02, H-R03.

@@ -493,16 +493,22 @@ export async function waitForV9QuickBarReady(page, drawingId, timeoutMs = 5000) 
 }
 
 export async function clickV9QuickBarGear(page) {
-  return page.evaluate(() => {
+  const rect = await page.evaluate(() => {
     const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
     if (!gear) return { ok: false, reason: 'no #tl-sett' };
-    const rect = gear.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return { ok: false, reason: 'v9 gear not visible', rect: { w: rect.width, h: rect.height } };
+    const r = gear.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) {
+      return { ok: false, reason: 'v9 gear not visible', rect: { w: r.width, h: r.height } };
     }
-    gear.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    return { ok: true };
+    return {
+      ok: true,
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+    };
   });
+  if (!rect || !rect.ok) return rect;
+  await page.mouse.click(rect.x, rect.y, { delay: 30 });
+  return { ok: true, clicked: { x: rect.x, y: rect.y } };
 }
 /** Place + deselect a drawing on a panel; returns { id, panelId }. */
 export async function seedDrawing(page, panelId, toolType = 'trendline') {
