@@ -6152,6 +6152,100 @@ async function hS57(ctx) {
   });
 }
 
+// ── H-S59 ────────────────────────────────────────────────────────────────
+// GAP-MC-REPLAY-INDEP (TAL-01590): 2 panels, DIFFERENT symbols (host file25,
+// panel B file27), replay PLAY → BOTH panels must advance playhead. Plan-1
+// covered same-pair play exhaustively (H-S8/H-S17 BL-10 family); independent-
+// symbol panels during PLAY were never scenario-tested. Mechanism: BL-10's
+// play-advance cell (scheduleCoalescedSeek during args.isPlaying) lives inside
+// isSameSymbolAsHost() in panel-cmd-bridge.js — independent panels skip it and
+// rely on applyMultichartMirrorFrame + async scheduleMirrorCatchUp only; replayTick
+// is suppressed while playing (pendingPlayDesired). RED-first: B freezes at ts0.
+async function hS59(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B'];
+    await page.setViewport({ width: 1600, height: 900 });
+    await sleep(400);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const bootSnap = await readPanels(page);
+    const symbolsOk = !!(bootSnap.A && bootSnap.B
+      && bootSnap.A.fileId === HOST_FILE && bootSnap.B.fileId === IND_FILE);
+    checks.check('H-S59 setup: host A + independent B on different fileIds',
+      symbolsOk, `A.fileId=${bootSnap.A?.fileId} B.fileId=${bootSnap.B?.fileId} (want ${HOST_FILE}/${IND_FILE})`);
+    if (!symbolsOk) return checks;
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S59 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S59 replay entered + playhead settled on A and B @ ts0', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    const hostAtStart = await readHost(page);
+    const bAtStart = await readPanel(page, 'B');
+    const setupOk = !!(hostAtStart && bAtStart
+      && hostAtStart.replayActive && bAtStart.replayActive
+      && hostAtStart.replayTs != null && bAtStart.replayTs != null);
+    checks.check('H-S59 both panels replay-active before play',
+      setupOk, `host.replayTs=${hostAtStart?.replayTs} B.replayTs=${bAtStart?.replayTs}`);
+    if (!setupOk) return checks;
+
+    await resetDiag(page);
+    const stepMs = 60_000;
+    const FRAMES = 60;
+    let ts = ts0;
+    await setHostReplayPlaying(page, true);
+    for (let i = 0; i < FRAMES; i++) {
+      ts += stepMs;
+      await hostReplaySeek(page, ts);
+      await broadcastCmd(page, 'replayFrame', { timestamp: ts, isPlaying: true });
+      if (i % 10 === 0) await sleep(35);
+    }
+    await sleep(1200);
+    const lastTs = ts;
+
+    const hostAfter = await readHost(page);
+    const bAfter = await readPanel(page, 'B');
+
+    const hostAdvanced = !!(hostAfter && hostAfter.replayTs != null
+      && Number(hostAfter.replayTs) > Number(ts0));
+    checks.check('H-S59 host A playhead advanced during play',
+      hostAdvanced, `host.replayTs ${hostAtStart?.replayTs} -> ${hostAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
+
+    const bAdvanced = !!(bAfter && bAfter.replayTs != null
+      && Number(bAfter.replayTs) > Number(ts0));
+    checks.check('H-S59 independent panel B playhead ADVANCED during play (not frozen)',
+      bAdvanced, `B.replayTs ${bAtStart?.replayTs} -> ${bAfter?.replayTs} (ts0=${ts0}, lastTs=${lastTs})`);
+
+    const MINUTE = 60_000;
+    const bTracksHost = bAdvanced && hostAdvanced
+      && Math.abs(Number(bAfter.replayTs) - Number(hostAfter.replayTs)) <= MINUTE * 2;
+    checks.check('H-S59 independent B playhead tracks host wall-clock (±2m)',
+      bTracksHost, `B.replayTs=${bAfter?.replayTs} host.replayTs=${hostAfter?.replayTs}`);
+
+    const barAdvanced = !!(bAfter && bAtStart && bAfter.lastBarT != null
+      && bAtStart.lastBarT != null && Number(bAfter.lastBarT) >= Number(bAtStart.lastBarT));
+    checks.check('H-S59 independent B last visible bar did not regress (no gap/freeze artifact)',
+      barAdvanced, `B.lastBarT ${bAtStart?.lastBarT} -> ${bAfter?.lastBarT} B.dataLen ${bAtStart?.dataLen} -> ${bAfter?.dataLen}`);
+
+    notes.push('H-S59 (GAP-MC-REPLAY-INDEP, TAL-01590): 2-panel independent-symbol layout (A=file25, B=file27), '
+      + 'all sync OFF, paused replay entered, then real PLAY fan-out (hostReplaySeek + replayFrame isPlaying=true, '
+      + `${FRAMES}×1m frames). Independent panel must advance playhead on its OWN master at the shared wall-clock ts — `
+      + 'not only same-pair BL-10 paths. RED-first: B.replayTs stays at ts0 when the play-advance cell is gated '
+      + 'inside isSameSymbolAsHost() only. '
+      + `host.replayTs ${hostAtStart?.replayTs}->${hostAfter?.replayTs}; B.replayTs ${bAtStart?.replayTs}->${bAfter?.replayTs}.`);
+    return checks;
+  });
+}
+
 // ── H-S58 ────────────────────────────────────────────────────────────────
 // TAL-00752#10/#20/#22: multi-entry close — stacked legs get pixel offsets;
 // removeMultiEntryLevel keeps splitEntries synced to levels[].
@@ -6284,6 +6378,7 @@ export function scenarioList() {
     { id: 'H-S56', title: 'A3 TAL-01581: candle+4h interval steps consistent buckets on 1m master', run: hS56 },
     { id: 'H-S57', title: 'A3 TAL-01581: single interval owner (resolve === sync)', run: hS57 },
     { id: 'H-S58', title: 'T4 step 8: multi-entry close hit-target + remove sync (TAL-00752#10/#20/#22)', run: hS58 },
+    { id: 'H-S59', title: 'independent-symbol panels advance playhead during replay PLAY (TAL-01590)', run: hS59 },
   ];
 }
 

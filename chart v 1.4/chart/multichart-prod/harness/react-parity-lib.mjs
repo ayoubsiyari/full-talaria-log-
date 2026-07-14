@@ -193,6 +193,82 @@ export async function reactChartCanvasPagePoint(page, panelId, fracX, fracY) {
   };
 }
 
+/** Local iframe/host viewport point → top-page Puppeteer mouse coordinates. */
+export async function localToPagePoint(page, panelId, localX, localY) {
+  if (panelId === 'A') {
+    return { x: Math.round(localX), y: Math.round(localY) };
+  }
+  const fr = await reactFrameRectForPanel(page, panelId);
+  if (!fr) return null;
+  return {
+    x: Math.round(fr.left + localX),
+    y: Math.round(fr.top + localY),
+  };
+}
+
+/** Hit point on a drawing in panel-local viewport coords (I15: geometry only, no actuation). */
+export async function drawingHitLocalPoint(page, panelId, drawId, { aim = 'body' } = {}) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
+  return frame.evaluate((id, aimMode) => {
+    const dm = window.chart && window.chart.drawingManager;
+    const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
+    if (!d || !d.group) return { ok: false, reason: 'no group' };
+    const node = d.group.node();
+    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
+    const bb = node.getBBox();
+    const svg = dm.svg && dm.svg.node();
+    if (!svg) return { ok: false, reason: 'no svg' };
+    const sr = svg.getBoundingClientRect();
+    const line = node.querySelector('line');
+    if (aimMode === 'center' && line) {
+      const x1 = parseFloat(line.getAttribute('x1'));
+      const y1 = parseFloat(line.getAttribute('y1'));
+      const x2 = parseFloat(line.getAttribute('x2'));
+      const y2 = parseFloat(line.getAttribute('y2'));
+      return {
+        ok: true,
+        x: Math.round(sr.left + (x1 + x2) / 2),
+        y: Math.round(sr.top + (y1 + y2) / 2),
+      };
+    }
+    return {
+      ok: true,
+      x: Math.round(sr.left + bb.x + Math.max(4, bb.width * 0.22)),
+      y: Math.round(sr.top + bb.y + Math.max(4, bb.height * 0.35)),
+    };
+  }, drawId, aim);
+}
+
+/** Engine store: is drawing id in selectedDrawings or d.selected? (I15 — no handle proxy). */
+export async function readDrawingSelectedInStore(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return false;
+  return frame.evaluate((id) => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return false;
+    const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(id));
+    const d = (dm.drawings || []).find((x) => x && String(x.id) === String(id));
+    return inSel || !!(d && d.selected);
+  }, drawId);
+}
+
+/** Parent V9 quick-bar visible for the focused panel (I15 — not dm.toolbar.visible). */
+export async function readParentV9BarVisible(page, panelId) {
+  const focusedId = await page.evaluate(() => {
+    try {
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.getFocusedPanelId === 'function') {
+        return String(grid.getFocusedPanelId() || 'A');
+      }
+    } catch (_) { /* ignore */ }
+    return 'A';
+  });
+  if (String(focusedId) !== String(panelId)) return false;
+  const v9 = await readV9QuickBarState(page);
+  return !!(v9 && v9.v9Visible);
+}
+
 /**
  * Seed harness backtest session + optional I13 switches before chart boots.
  * migrationOn=true (D-011 step 0): re-enable retained T1 migration in panel + parent shell.
@@ -428,12 +504,11 @@ export async function readSelectionChrome(page, panelId, drawId) {
       ? node.querySelectorAll('.resize-handle, .resize-handle-group circle, .custom-handle').length
       : 0;
     const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(id));
+    const selected = inSel || !!d.selected;
     const hasBlueBorder = handles > 0;
-    const orphanPeerDeselectHandles = hasBlueBorder && !d.selected && !inSel
-      && (dm.selectedDrawings || []).length === 0;
     return {
       ok: true,
-      selected: !!d.selected || inSel || (hasBlueBorder && !orphanPeerDeselectHandles),
+      selected,
       handleCount: handles,
       axisHighlightCount: 0,
       hasBlueBorder,
@@ -536,143 +611,23 @@ export async function seedDrawing(page, panelId, toolType = 'trendline') {
 }
 
 export async function singleClickDrawing(page, panelId, drawId) {
-  const frame = chartTarget(page, panelId);
-  const hit = await frame.evaluate((id) => {
-    const dm = window.chart.drawingManager;
-    const d = dm.drawings.find((x) => x && String(x.id) === String(id));
-    if (!d || !d.group) return { ok: false, reason: 'no group' };
-    const node = d.group.node();
-    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
-    const bb = node.getBBox();
-    const svg = dm.svg && dm.svg.node();
-    if (!svg) return { ok: false, reason: 'no svg' };
-    const sr = svg.getBoundingClientRect();
-    // Aim at line body (upper-left of bbox), not center — avoids handle clusters / overlap.
-    return {
-      ok: true,
-      x: Math.round(sr.left + bb.x + Math.max(4, bb.width * 0.22)),
-      y: Math.round(sr.top + bb.y + Math.max(4, bb.height * 0.35)),
-    };
-  }, drawId);
+  const hit = await drawingHitLocalPoint(page, panelId, drawId, { aim: 'body' });
   if (!hit || !hit.ok) return hit;
-  const pagePt = panelId === 'A'
-    ? hit
-    : await (async () => {
-      const fr = await reactFrameRectForPanel(page, panelId);
-      if (!fr) return null;
-      return { x: Math.round(fr.left + hit.x), y: Math.round(fr.top + hit.y) };
-    })();
+  const pagePt = await localToPagePoint(page, panelId, hit.x, hit.y);
   if (!pagePt) return { ok: false, reason: 'no page point' };
   await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 1, delay: 30 });
-  await frame.evaluate((id) => {
-    const dm = window.chart && window.chart.drawingManager;
-    if (!dm) return;
-    if (dm.ctrlSelectMode) return;
-    const sel = dm.selectedDrawings || [];
-    if (sel.length > 0) return;
-    const inSel = sel.some((x) => x && String(x.id) === String(id));
-    if (inSel) return;
-    const d = (dm.drawings || []).find((x) => x && String(x.id) === String(id));
-    if (d && typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
-  }, drawId).catch(() => {});
   await waitForPanelSettle(page, panelId);
-  return { ok: true, clicked: pagePt };
+  return { ok: true, clicked: pagePt, actuation: 'page.mouse.click' };
 }
 
 export async function doubleClickDrawing(page, panelId, drawId) {
-  const frame = chartTarget(page, panelId);
-  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
-  if (panelId !== 'A') {
-    const result = await frame.evaluate((id) => {
-      const dm = window.chart && window.chart.drawingManager;
-      const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
-      if (!d || !d.group) return { ok: false, reason: 'no drawing' };
-      const node = d.group.node();
-      if (!node) return { ok: false, reason: 'no group node' };
-      const line = node.querySelector('line');
-      const target = line || node;
-      const svg = dm.svg && dm.svg.node();
-      if (!svg) return { ok: false, reason: 'no svg' };
-      const sr = svg.getBoundingClientRect();
-      let cx;
-      let cy;
-      if (line) {
-        const x1 = parseFloat(line.getAttribute('x1'));
-        const y1 = parseFloat(line.getAttribute('y1'));
-        const x2 = parseFloat(line.getAttribute('x2'));
-        const y2 = parseFloat(line.getAttribute('y2'));
-        cx = sr.left + (x1 + x2) / 2;
-        cy = sr.top + (y1 + y2) / 2;
-      } else if (node.getBBox) {
-        const bb = node.getBBox();
-        cx = sr.left + bb.x + bb.width / 2;
-        cy = sr.top + bb.y + bb.height / 2;
-      } else {
-        return { ok: false, reason: 'no hit geometry' };
-      }
-      const mk = (type) => new MouseEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: cx,
-        clientY: cy,
-        button: 0,
-      });
-      target.dispatchEvent(mk('mousedown'));
-      target.dispatchEvent(mk('mouseup'));
-      target.dispatchEvent(mk('dblclick'));
-      return { ok: true, clicked: { x: Math.round(cx), y: Math.round(cy) } };
-    }, drawId);
-    await waitForPanelSettle(page, panelId);
-    // Synthetic dblclick on SVG children does not always reach d3 handlers — fall back to
-    // the same editDrawing route the product uses when settings did not open.
-    const opened = await page.evaluate(() => {
-      const root = document.getElementById('multichart-global-settings-root');
-      const text = String((root && root.innerText) || '');
-      return /\bstyle\b/i.test(text);
-    }).catch(() => false);
-    if (!opened) {
-      await frame.evaluate((id) => {
-        const dm = window.chart && window.chart.drawingManager;
-        const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
-        if (!d || typeof dm.editDrawing !== 'function') return { ok: false, reason: 'no editDrawing' };
-        const svg = dm.svg && dm.svg.node();
-        const sr = svg ? svg.getBoundingClientRect() : { left: 0, top: 0 };
-        dm.editDrawing(d, sr.left + 100, sr.top + 100);
-        return { ok: true, fallback: 'editDrawing' };
-      }, drawId).catch(() => ({ ok: false, reason: 'evaluate failed' }));
-      await waitForPanelSettle(page, panelId);
-    }
-    return result;
-  }
-  const hit = await frame.evaluate((id) => {
-    const dm = window.chart.drawingManager;
-    const d = dm.drawings.find((x) => String(x.id) === String(id));
-    if (!d || !d.group) return { ok: false, reason: 'no group' };
-    const node = d.group.node();
-    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
-    const bb = node.getBBox();
-    const svg = dm.svg && dm.svg.node();
-    if (!svg) return { ok: false, reason: 'no svg' };
-    const sr = svg.getBoundingClientRect();
-    return {
-      ok: true,
-      x: Math.round(sr.left + bb.x + bb.width / 2),
-      y: Math.round(sr.top + bb.y + bb.height / 2),
-    };
-  }, drawId);
+  const hit = await drawingHitLocalPoint(page, panelId, drawId, { aim: 'center' });
   if (!hit || !hit.ok) return hit;
-  const pagePt = panelId === 'A'
-    ? hit
-    : await (async () => {
-      const fr = await reactFrameRectForPanel(page, panelId);
-      if (!fr) return null;
-      return { x: Math.round(fr.left + hit.x), y: Math.round(fr.top + hit.y) };
-    })();
+  const pagePt = await localToPagePoint(page, panelId, hit.x, hit.y);
   if (!pagePt) return { ok: false, reason: 'no page point' };
   await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 2, delay: 40 });
   await waitForPanelSettle(page, panelId);
-  return { ok: true, clicked: pagePt };
+  return { ok: true, clicked: pagePt, actuation: 'page.mouse.dblclick' };
 }
 
 export async function ctrlClickDrawing(page, panelId, drawId) {
@@ -684,98 +639,21 @@ export async function ctrlClickDrawing(page, panelId, drawId) {
   }
 }
 
-/** Ctrl+drag marquee inside an iframe panel (page.keyboard ctrlKey does not cross the boundary). */
-async function ctrlDragMarqueeInIframe(page, panelId) {
-  const frame = chartTarget(page, panelId);
-  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
-  const result = await frame.evaluate(() => {
-    const ch = window.chart;
-    const canvas = ch && ch.canvas;
-    if (!canvas) return { ok: false, reason: 'no canvas' };
-    const dm = ch.drawingManager;
-    if (ch) ch.tool = null;
-    if (dm && typeof dm.clearTool === 'function') dm.clearTool(true);
-    if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
-    const cRect = canvas.getBoundingClientRect();
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    const absorb = (x, y) => {
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    };
-    (dm && dm.drawings ? dm.drawings : []).forEach((d) => {
-      const node = d && d.group && d.group.node ? d.group.node() : null;
-      if (!node) return;
-      node.querySelectorAll('line').forEach((line) => {
-        absorb(parseFloat(line.getAttribute('x1')), parseFloat(line.getAttribute('y1')));
-        absorb(parseFloat(line.getAttribute('x2')), parseFloat(line.getAttribute('y2')));
-      });
-    });
-    const m = ch.margin || { t: 0, r: 61, b: 30, l: 0 };
-    const plotL = m.l + 4;
-    const plotR = cRect.width - m.r - 4;
-    const plotT = m.t + 4;
-    const plotB = cRect.height - m.b - 4;
-    let lx1;
-    let ly1;
-    let lx2;
-    let ly2;
-    if (Number.isFinite(minX) && Number.isFinite(maxX)) {
-      lx1 = plotL;
-      lx2 = plotR;
-      ly1 = plotT;
-      ly2 = plotB;
-    } else {
-      lx1 = cRect.width * 0.12;
-      ly1 = cRect.height * 0.18;
-      lx2 = cRect.width * 0.78;
-      ly2 = cRect.height * 0.82;
-    }
-    const x1 = cRect.left + lx1;
-    const y1 = cRect.top + ly1;
-    const x2 = cRect.left + lx2;
-    const y2 = cRect.top + ly2;
-    const mk = (type, x, y, buttons) => new MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: x,
-      clientY: y,
-      button: 0,
-      buttons: buttons ?? (type === 'mouseup' ? 0 : 1),
-      ctrlKey: true,
-    });
-    canvas.dispatchEvent(mk('mousedown', x1, y1, 1));
-    canvas.dispatchEvent(mk('pointerdown', x1, y1, 1));
-    let during = { active: false, w: 0, h: 0 };
-    for (let step = 1; step <= 20; step += 1) {
-      const fx = x1 + ((x2 - x1) * step) / 20;
-      const fy = y1 + ((y2 - y1) * step) / 20;
-      document.dispatchEvent(mk('mousemove', fx, fy, 1));
-      const m = ch.ctrlMarqueeSelect;
-      const w = Math.abs(Number(m.endX || 0) - Number(m.startX || 0));
-      const h = Math.abs(Number(m.endY || 0) - Number(m.startY || 0));
-      const snap = { active: !!m.active, w, h };
-      if (snap.active && (snap.w > during.w || snap.h > during.h)) during = { ...snap };
-      else if (!during.active && (snap.w > during.w || snap.h > during.h)) during = snap;
-    }
-    document.dispatchEvent(mk('mouseup', x2, y2, 0));
-    return { ok: true, during, p1: { x: Math.round(x1), y: Math.round(y1) }, p2: { x: Math.round(x2), y: Math.round(y2) } };
-  });
-  await waitForPanelSettle(page, panelId);
-  return result;
-}
-
+/** Ctrl+drag marquee via real page.mouse at iframe-translated coords (I15 — all panels). */
 export async function ctrlDragMarquee(page, panelId) {
   await focusReactPanel(page, panelId);
-  if (panelId !== 'A') {
-    return ctrlDragMarqueeInIframe(page, panelId);
-  }
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
+  await frame.evaluate(() => {
+    try {
+      const ch = window.chart;
+      const dm = ch && ch.drawingManager;
+      if (ch) ch.tool = null;
+      if (dm && typeof dm.clearTool === 'function') dm.clearTool(true);
+      if (dm && typeof dm.deselectAll === 'function') dm.deselectAll();
+    } catch (_) { /* ignore */ }
+  });
+  await waitForPanelSettle(page, panelId);
   await page.keyboard.down('Control');
   try {
     const p1 = await reactChartCanvasPagePoint(page, panelId, 0.12, 0.18);
@@ -797,78 +675,26 @@ export async function ctrlDragMarquee(page, panelId) {
     }
     await page.mouse.up();
     await waitForPanelSettle(page, panelId);
-    return { ok: true, during, p1, p2 };
+    return { ok: true, during, p1, p2, actuation: 'page.mouse.ctrlDrag' };
   } finally {
     await page.keyboard.up('Control');
   }
 }
 
+/** Press Escape via real page.keyboard (I15 — no handleKeyDown / dispatchEvent). */
 export async function pressEscapeReact(page, panelId) {
   await focusReactPanel(page, panelId);
-  const frame = chartTarget(page, panelId);
   await page.keyboard.press('Escape');
-  if (frame) {
-    await frame.evaluate(() => {
-      const ch = window.chart;
-      const dm = ch && ch.drawingManager;
-      const ev = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        code: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      });
-      if (dm && typeof dm.handleKeyDown === 'function') dm.handleKeyDown(ev);
-      const ks = ch && ch.keyboardShortcuts;
-      if (ks && typeof ks.handleKeyDown === 'function') ks.handleKeyDown(ev);
-    }).catch(() => {});
-  }
-  if (panelId === 'A') {
-    await page.evaluate(() => {
-      const ev = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        code: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      });
-      document.dispatchEvent(ev);
-    }).catch(() => {});
-  }
   await waitForPanelSettle(page, panelId);
-  return { ok: true };
+  return { ok: true, actuation: 'page.keyboard.press(Escape)' };
 }
 
+/** Delete selected drawing via real page.keyboard (I15). */
 export async function deleteSelectedViaKeyboard(page, panelId) {
   await focusReactPanel(page, panelId);
-  const frame = chartTarget(page, panelId);
   await page.keyboard.press('Delete');
-  if (frame) {
-    await frame.evaluate(() => {
-      const ch = window.chart;
-      const dm = ch && ch.drawingManager;
-      const ev = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
-        bubbles: true,
-        cancelable: true,
-      });
-      if (dm && typeof dm.handleKeyDown === 'function') dm.handleKeyDown(ev);
-      const ks = ch && ch.keyboardShortcuts;
-      if (ks && typeof ks.handleKeyDown === 'function') ks.handleKeyDown(ev);
-    }).catch(() => {});
-  }
-  if (panelId === 'A') {
-    await page.evaluate(() => {
-      const ev = new KeyboardEvent('keydown', {
-        key: 'Delete',
-        code: 'Delete',
-        bubbles: true,
-        cancelable: true,
-      });
-      document.dispatchEvent(ev);
-    }).catch(() => {});
-  }
   await waitForPanelSettle(page, panelId);
-  return { ok: true };
+  return { ok: true, actuation: 'page.keyboard.press(Delete)' };
 }
 
 export async function readV9QuickBarState(page) {
@@ -940,10 +766,7 @@ export async function disarmDrawTool(page, panelId) {
 }
 
 export async function isDrawingSelected(page, panelId, drawId) {
-  const chrome = await readSelectionChrome(page, panelId, drawId);
-  if (chrome && chrome.ok && chrome.selected) return true;
-  const st = await readReactParityState(page, panelId);
-  return (st?.selectedIds || []).map(String).includes(String(drawId));
+  return readDrawingSelectedInStore(page, panelId, drawId);
 }
 
 export async function waitForReactSelection(page, panelId, expectedIds, timeoutMs = 6000) {
@@ -975,25 +798,26 @@ export async function drawingExists(page, panelId, drawId) {
   }, drawId);
 }
 
-/** V9 multichart: dm.selectedDrawings may lag; chrome handles + parent V9 bar are authoritative. */
+/** V9 multichart: store selection + parent V9 bar for focused panel (I15). */
 export async function assertReactMenuState(checks, label, expected, actual, page, panelId) {
-  const merged = {
-    ...actual,
-    toolbarVisible: !!(actual?.v9QuickBarVisible || actual?.toolbarVisible),
-  };
+  const toolbarVisible = await readParentV9BarVisible(page, panelId);
   const parts = [];
   let ok = true;
   if (expected.selectedIds != null) {
     for (const id of expected.selectedIds) {
       if (!(await isDrawingSelected(page, panelId, id))) ok = false;
     }
-    parts.push(`selectedIds=${JSON.stringify(actual?.selectedIds)} chromeOk=${ok}`);
+    parts.push(`selectedIds=${JSON.stringify(expected.selectedIds)} storeOk=${ok}`);
   }
-  if (expected.toolbarVisible != null && !!merged.toolbarVisible !== !!expected.toolbarVisible) {
+  if (expected.toolbarVisible != null && !!toolbarVisible !== !!expected.toolbarVisible) {
     ok = false;
-    parts.push(`toolbarVisible=${merged.toolbarVisible} expected=${expected.toolbarVisible}`);
+    parts.push(`v9BarVisible=${toolbarVisible} expected=${expected.toolbarVisible}`);
   }
   if (expected.selectedIds == null && expected.toolbarVisible == null) {
+    const merged = {
+      ...actual,
+      toolbarVisible: !!(actual?.v9QuickBarVisible || actual?.toolbarVisible),
+    };
     return assertMenuState(checks, label, expected, merged);
   }
   return checks.check(label, ok, parts.join('; '));

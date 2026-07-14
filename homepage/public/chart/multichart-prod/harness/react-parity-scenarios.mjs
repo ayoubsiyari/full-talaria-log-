@@ -94,8 +94,12 @@ async function hR02(ctx) {
       await singleClickDrawing(page, pid, tool.id);
       await waitForReactSelection(page, pid, [tool.id]);
       const chrome = await readSelectionChrome(page, pid, tool.id);
-      checks.check(`H-R02 CORE (${label}): drawing selected with visible chrome`,
-        chrome && chrome.ok && chrome.selected && chrome.hasBlueBorder,
+      const storeSel = await isDrawingSelected(page, pid, tool.id);
+      checks.check(`H-R02 CORE (${label}): drawing selected in engine store`,
+        storeSel,
+        JSON.stringify(chrome));
+      checks.check(`H-R02 CORE (${label}): selection chrome visible when store-selected`,
+        !storeSel || (chrome && chrome.ok && chrome.hasBlueBorder),
         JSON.stringify(chrome));
     }
     return checks;
@@ -147,14 +151,12 @@ async function hR04(ctx) {
       await waitForReactSelection(page, pid, [tool.id]);
       await waitForV9QuickBarReady(page, tool.id, 4000);
       const dbl = await doubleClickDrawing(page, pid, tool.id);
-      checks.check(`H-R04 probe (${label}): double-click opens settings`, dbl && dbl.ok, dbl?.reason || '');
-      await waitForPanelSettle(page, pid);
-      const parent = await readParentReactSettings(page);
-      const local = await readReactParityState(page, pid);
-      const settingsOpen = parent.open || (local && local.settingsOpen);
-      checks.check(`H-R04 CORE (${label}): settings stay open after dbl-click`,
-        !!settingsOpen,
-        `parent=${JSON.stringify(parent)} local.settingsOpen=${local?.settingsOpen}`);
+      checks.check(`H-R04 probe (${label}): double-click dispatched`, dbl && dbl.ok, dbl?.reason || '');
+      const settingsWait = await waitForParentDrawingSettingsOpen(page, 5000);
+      checks.check(`H-R04 CORE (${label}): settings open after real dbl-click`,
+        settingsWait.ok && settingsWait.settings && !settingsWait.settings.quickBarShellOnly
+          && settingsWait.settings.hasStyleSection,
+        JSON.stringify(settingsWait.settings));
       await pressEscapeReact(page, pid);
     }
     return checks;
@@ -170,17 +172,20 @@ async function hR05(ctx) {
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
       await singleClickDrawing(page, pid, tool.id);
+      await waitForReactSelection(page, pid, [tool.id]);
       await doubleClickDrawing(page, pid, tool.id);
-      await waitForPanelSettle(page, pid);
+      const settingsBefore = await waitForParentDrawingSettingsOpen(page, 5000);
+      checks.check(`H-R05 setup (${label}): settings open before Esc`,
+        settingsBefore.ok, JSON.stringify(settingsBefore.settings));
       await pressEscapeReact(page, pid);
       const after = await readReactParityState(page, pid);
-      const parent = await readParentSettingsProbe(page);
+      const parent = await readParentReactSettings(page);
       const deselected = !(await isDrawingSelected(page, pid, tool.id));
-      checks.check(`H-R05 CORE (${label}): Esc deselects drawing`,
-        deselected && after && after.selectedIds.length === 0, JSON.stringify(after?.selectedIds));
+      checks.check(`H-R05 CORE (${label}): Esc deselects drawing in store`,
+        deselected, JSON.stringify(after?.selectedIds));
       checks.check(`H-R05 CORE (${label}): Esc closes settings surfaces`,
-        !after?.toolbarVisible && !parent.open,
-        `toolbar=${after?.toolbarVisible} parentOpen=${parent.open}`);
+        !parent.open && !parent.hasStyleSection,
+        `parentOpen=${parent.open} hasStyle=${parent.hasStyleSection}`);
     }
     return checks;
   });
@@ -308,22 +313,21 @@ async function hR09(ctx) {
 
       const dbl = await doubleClickDrawing(page, pid, tool.id);
       checks.check(`H-R09 probe (${label}): double click`, dbl && dbl.ok, dbl?.reason || '');
-      await waitForPanelSettle(page, pid);
-      const settings = await readParentReactSettings(page);
-      const localSettings = await readReactParityState(page, pid);
-      const settingsOpen = settings.open || (localSettings && localSettings.settingsOpen);
-      checks.check(`H-R09 CORE (${label}): double click opens settings`,
-        !!settingsOpen, JSON.stringify(settings));
+      const settingsWait = await waitForParentDrawingSettingsOpen(page, 5000);
+      checks.check(`H-R09 CORE (${label}): double click opens real settings`,
+        settingsWait.ok && settingsWait.settings && !settingsWait.settings.quickBarShellOnly
+          && settingsWait.settings.hasStyleSection,
+        JSON.stringify(settingsWait.settings));
 
       await pressEscapeReact(page, pid);
       const afterEsc = await readReactParityState(page, pid);
-      const parent = await readParentSettingsProbe(page);
+      const parent = await readParentReactSettings(page);
       const deselected = !(await isDrawingSelected(page, pid, tool.id));
-      checks.check(`H-R09 CORE (${label}): Esc deselects after chain`,
-        deselected && afterEsc && afterEsc.selectedIds.length === 0, JSON.stringify(afterEsc?.selectedIds));
+      checks.check(`H-R09 CORE (${label}): Esc deselects after chain (store)`,
+        deselected, JSON.stringify(afterEsc?.selectedIds));
       checks.check(`H-R09 CORE (${label}): Esc closes settings after chain`,
-        !afterEsc?.toolbarVisible && !parent.open,
-        `toolbar=${afterEsc?.toolbarVisible} parentOpen=${parent.open}`);
+        !parent.open && !parent.hasStyleSection,
+        `parentOpen=${parent.open} hasStyle=${parent.hasStyleSection}`);
     }
     return checks;
   });
@@ -347,12 +351,8 @@ async function hR12(ctx) {
     const placed = await placeTool(page, 'B', 'trendline', pts);
     checks.check('H-R12 setup: panel-B trendline placed on real bars', placed && placed.id, placed ? placed.id : 'null');
 
-    await frameB.evaluate((drawId) => {
-      const dm = window.chart.drawingManager;
-      const d = dm.drawings.find((x) => x && String(x.id) === String(drawId));
-      if (!d) throw new Error(`drawing ${drawId} not found`);
-      dm.selectDrawing(d, false);
-    }, placed.id);
+    await singleClickDrawing(page, 'B', placed.id);
+    await waitForReactSelection(page, 'B', [placed.id]);
 
     const iframeToolbar = await readIframeToolbarState(frameB);
     checks.check('H-R12 probe: panel-B iframe toolbar state',
@@ -396,12 +396,8 @@ async function hR12a(ctx) {
     const placed = await placeTool(page, 'A', 'trendline', pts);
     checks.check('H-R12A setup: panel-A trendline placed', placed && placed.id, placed ? placed.id : 'null');
 
-    await page.evaluate((drawId) => {
-      const dm = window.chart && window.chart.drawingManager;
-      const d = dm && dm.drawings.find((x) => x && String(x.id) === String(drawId));
-      if (!d) throw new Error(`drawing ${drawId} not found`);
-      dm.selectDrawing(d, false);
-    }, placed.id);
+    await singleClickDrawing(page, 'A', placed.id);
+    await waitForReactSelection(page, 'A', [placed.id]);
 
     const ready = await waitForV9QuickBarReady(page, placed.id);
     checks.check('H-R12A probe: parent V9 quick-bar gear-ready settle signal',
@@ -485,10 +481,11 @@ async function hR14(ctx) {
     checks.check('H-R14 CORE: marquee border active during drag (w/h > 8px)',
       drag && drag.during && drag.during.active && drag.during.w > 8 && drag.during.h > 8,
       JSON.stringify(drag?.during));
-    const state = await readInteractiveState(page, 'B');
-    checks.check('H-R14 CORE: marquee multi-selects drawings in panel-B iframe',
-      state && state.selectedIds && state.selectedIds.length >= 2,
-      JSON.stringify(state?.selectedIds));
+    const sel1 = await isDrawingSelected(page, 'B', first.id);
+    const sel2 = await isDrawingSelected(page, 'B', second.id);
+    checks.check('H-R14 CORE: marquee multi-selects drawings in panel-B iframe (store)',
+      sel1 && sel2,
+      `t1=${sel1} t2=${sel2}`);
     return checks;
   });
 }

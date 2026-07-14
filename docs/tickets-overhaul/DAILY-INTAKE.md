@@ -89,3 +89,49 @@ All 28 tickets from this intake are now dispositioned with no open questions.
 ### Priority note for the manager
 
 Do not fan these out as 28 tasks. This intake adds: **zero new lanes**, 3 regression rows into existing recovery work (T1 step 8 + one plan-1 hygiene item), 2 new T3 contract rows, 1 Lane 3 diagnostic, and 1 T2 scope extension. Everything else rides existing tracks or waits on retest/clarification. The single most important sequencing fact: **a third of this batch was filed against the known-unstable T1 multichart window — land fallback-B/step-8, rebuild, and burn down the retest list before dispatching anything new from this intake.**
+
+---
+
+## Intake 2026-07-14 (export `tickets/support-export-full-15-07-26`, 5 new tickets: TAL-01588–TAL-01592)
+
+**Context for this batch:** filed on 2026-07-14 — the same day ESC-011 (false-green retraction, D-012) landed. The live product is on **fallback-B** with the deploy frozen, so none of these were filed against the retracted interaction fixes. Three of five are Layouts (multichart) tickets from the same tester — consistent with the harness's honest finding that multichart is the weak surface. Screenshots reviewed for all five.
+
+### IN-PLAN (mechanism already owned by an open track) — 2 tickets
+
+| Ticket | Symptom | Rides with |
+|---|---|---|
+| TAL-01592 | Resizing the layout breaks the price scale AND the time/date scale in panels (screenshots: axes compressed/blank, tick labels wrong after resize) | **T3 row 14 (GAP-T3-GEOM, scope clarified)** — row 14 was "tile clip/visibility geometry (chart must fill its tile)"; this is the same resize-invalidation family, and the row's acceptance now explicitly includes **axis re-layout on tile resize** (price scale + time scale must recompute for the new tile dimensions, not keep stale metrics). Same owner decision as rows 13–15. Cite TAL-01574 + TAL-01592 together in the row's acceptance. |
+| TAL-01589 | Drawing-tool settings (Fib speed fan, Visibility tab): press *Apply default*, then hide a timeframe row → it hides; pressing *show* again doesn't re-show unless the cycle is repeated several times | **T1 lifecycle (visibility state) + T2 invalidation** — the lifecycle store owns `visibility`; "toggle back on does nothing until repeated" is the classic stuck-state + missing-invalidation pair (RC-1 state desync after *Apply default* rewrites the config object; RC-2 no render/state refresh on the re-show edge). Cite in T1's visibility-migration acceptance; if isolation shows the settings panel writes to a stale drawing ref after Apply-default (ghost-ref family, ESC-001 finding 2), it stays T1 outright. |
+
+### GAP (not covered by remaining plan-2 work — plan amended) — 2 tickets
+
+| Ticket | Symptom | Gap + amendment |
+|---|---|---|
+| TAL-01591 | With the layout **Interval** sync option enabled, all panels should converge to the same timeframe — today they don't | **GAP-T3-SYNC (amendment A4):** exact sibling of row 15 (symbol-sync convergence, TAL-01586) but for the **interval/TF toggle**. New **T3 contract row 16**: on Interval-sync enable (false→true edge), all panels converge to the focused/host panel's TF; while enabled, a TF change on any synced panel fans out. Same owner/transport pattern as row 15 (parent shell `runCommand` fan-out) — Lane 2 drafts, Director approves the owner line, one gated fix. Rows 15 and 16 should be designed together: they are the same convergence mechanism parameterized by (symbol | interval). |
+| TAL-01590 | Replay across panels with **different symbols**: only one layout advances correctly; others freeze entirely or show gaps | **GAP-MC-REPLAY-INDEP (amendment A5):** plan 1 proved same-pair replay ownership exhaustively, but **independent-symbol panels during replay** were only covered by the ownership table's "self-owned" row — never by a play-advance scenario. Freeze = the independent panel's playhead-advance path likely gated on same-pair predicates (BL-10 family, but the independent-symbol branch); gaps = self-owned acquisition seam during play. Amendment: one **timeboxed diagnostic** (read-only) — trace how an independent-symbol panel receives/advances the shared playhead during play vs. the same-pair path — plus one RED harness scenario (2 panels, different symbols, play → assert both advance). Owner: the plan-1-experienced lane (Lane 2 or Lane 3 when free — Manager's call by queue); the fix itself waits for the diagnostic. **Priority high**: full replay freeze is a P1-severity symptom, and it is NOT covered by the frozen interaction family (data/replay path, unaffected by D-012's freeze on interaction fixes). |
+
+### OUT-OF-SCOPE / product decision — 1 ticket
+
+| Ticket | Disposition |
+|---|---|
+| TAL-01588 | Desktop install: app opens into the chart session pinned to a pair different from the backtest pair, with "No data to display"; tester asks that the app open on the dashboard first. **CLOSED — fixed directly by the PO (2026-07-14); no lane work.** Retained note: the ticket's screenshot also showed the "A new version is available" prompt — that evidence stays attached to the existing TAL-01564 row (reload-prompt hygiene, Lane 2 queue). |
+
+### Summary counts
+
+| Disposition | Count |
+|---|---|
+| IN-PLAN (T3 row 14: 1, T1/T2: 1) | 2 |
+| GAP → plan amended (A4: T3 row 16, A5: independent-symbol replay diagnostic) | 2 |
+| OUT-OF-SCOPE → CLOSED (fixed directly by PO) | 1 |
+
+All 5 tickets dispositioned; registry append pending with the next registry build.
+
+### Plan-2 amendments issued today
+
+- **A4 (T3 contract row 16 — interval-sync convergence):** TAL-01591. Same convergence mechanism as row 15 parameterized by interval instead of symbol; Lane 2 drafts both rows together; Director approves owners before any fix (rows 13–16 now form the T3 "layout state" block).
+- **A5 (independent-symbol replay diagnostic — GAP-MC-REPLAY-INDEP):** TAL-01590. Timeboxed read-only diagnostic + one RED scenario (different-symbol panels must both advance during play, no freeze/gaps). High priority; not blocked by the D-012 interaction freeze (different subsystem). Fix authorized only after the mechanism report.
+- **T3 row 14 scope clarified:** acceptance explicitly includes axis re-layout (price + time scale) on tile resize (TAL-01592 + TAL-01574 cited together).
+
+### Priority note for the manager
+
+Small batch, but **TAL-01590 is the standout** — a full replay freeze on independent-symbol layouts is the most severe symptom on the board this week and it runs on the data/replay path, which is *not* under the D-012 interaction freeze. Sequence: A5 diagnostic dispatches as soon as a plan-1-experienced lane is free (don't preempt Lane 4's harness rebuild or Lane 1's transport diagnostic — both are D-012 critical path). Rows 13–16 go to the Director as one T3 "layout state" contract block rather than four separate escalations. TAL-01588 is closed (PO fixed it directly).

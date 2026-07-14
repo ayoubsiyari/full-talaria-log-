@@ -25240,6 +25240,7 @@ class Chart {
      */
     _invalidateTimeAxisTickCaches() {
         this._cachedInteractionTimeTicks = null;
+        this._idleTimeAxisKeyCached = null;
         if (typeof this._clearPanTimeTickCache === 'function') {
             this._clearPanTimeTickCache();
         }
@@ -25248,6 +25249,34 @@ class Chart {
         this._wheelBurstSnapLabelInterval = null;
         this._wheelBurstSnapLabelIntervalTf = null;
         this._wheelBurstUntil = 0;
+    }
+
+    /** Stable key for idle time-axis ticks — reuse when viewport/data unchanged. */
+    _idleTimeAxisKey() {
+        try {
+            const m = this.margin || {};
+            const n = this.data ? this.data.length : 0;
+            const t0 = n && this.data[0] ? this.data[0].t : 0;
+            const t1 = n && this.data[n - 1] ? this.data[n - 1].t : 0;
+            const tf = typeof this._getRenderTimeframe === 'function'
+                ? this._getRenderTimeframe()
+                : '';
+            return [
+                Math.round((this.offsetX || 0) * 1000) / 1000,
+                this.candleWidth,
+                this.w,
+                this.h,
+                m.l,
+                m.r,
+                m.b,
+                n,
+                t0,
+                t1,
+                tf,
+            ].join('|');
+        } catch (_) {
+            return null;
+        }
     }
 
     /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
@@ -25596,7 +25625,9 @@ class Chart {
             this._chartPanFrameRaf = null;
         }
         this._stopChartPanRenderLoop();
-        if (this._isChartPanDragging()) {
+        // Only paint when a real pan was committed — finger-down/click must not
+        // force a tick rebuild (that was flipping the time axis on every click).
+        if (this._isChartPanDragging() && this.drag && this.drag.panCommitted) {
             this.renderPending = false;
             this.render();
         }
@@ -25953,7 +25984,18 @@ class Chart {
         } else if (interactionLightPaint && priceAxisZoomDragging) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
-            this._timeTicks = this._buildTimeTicks();
+            // Idle paint: reuse ticks when nothing viewport-relevant changed.
+            // Prevents click / selection re-renders from reshuffling the axis/grid.
+            const idleKey = this._idleTimeAxisKey();
+            if (idleKey
+                && idleKey === this._idleTimeAxisKeyCached
+                && Array.isArray(this._timeTicks)
+                && this._timeTicks.length) {
+                // keep this._timeTicks
+            } else {
+                this._timeTicks = this._buildTimeTicks();
+                this._idleTimeAxisKeyCached = idleKey;
+            }
             this._cachedInteractionTimeTicks = this._timeTicks;
         }
 
@@ -31623,10 +31665,9 @@ class Chart {
                 }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
-                // Do NOT pan-paint until movement exceeds the click threshold.
-                // Finger-down used to call render() immediately → _buildTimeTicksFast()
-                // while drag.active, then mouseup rebuilt full ticks — so a plain
-                // click flipped the time axis / grid with no viewport change.
+                // Click candidate: no snapshot / onUserPan / pan-paint until movement
+                // exceeds the threshold. Those used to rebuild time ticks + grid on
+                // every plain click (TradingView-style: click must not move the axis).
                 this.drag.panCommitted = false;
                 if (mode === 'separatePanelPlot' && this.cursor.separatePanelSlot) {
                     this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
@@ -31637,12 +31678,7 @@ class Chart {
                 }
                 this._tryCapturePanPointer(e);
                 this._installDragEndGuard();
-                this._snapshotPanDrawingsLayer();
                 this._lockDragCursor(mode === 'separatePanelPlot' ? 'ns-resize' : this._panDragCursorStyle());
-                
-                if (this.replaySystem?.isActive) {
-                    this.replaySystem.onUserPan();
-                }
             }
         });
 
@@ -31711,6 +31747,10 @@ class Chart {
                             this.drag.lastY = e.clientY;
                         } else {
                             this.drag.panCommitted = true;
+                            this._snapshotPanDrawingsLayer();
+                            if (this.replaySystem?.isActive) {
+                                this.replaySystem.onUserPan();
+                            }
                             this._scheduleChartPanRender();
                             this._scheduleChartPanFrame(e.clientX, e.clientY);
                         }
@@ -31945,13 +31985,13 @@ class Chart {
             // Handle pan end — stop immediately on release (no post-release slide)
             else             if (dragType === 'pan' && wasDragging) {
                 this._releasePanPointerCapture();
-                this._flushChartPanFrame();
-                this._cancelChartPanFrame();
                 const panClickThresholdPx = 5;
                 const zc = this._v9LayoutZoom();
                 const panDx = ((e.clientX - (this.drag.startX ?? e.clientX)) / zc);
                 const panDy = ((e.clientY - (this.drag.startY ?? e.clientY)) / zc);
-                const isChartClick = e.button === 0 && Math.hypot(panDx, panDy) < panClickThresholdPx;
+                const isChartClick = e.button === 0
+                    && (this.drag.panCommitted !== true)
+                    && Math.hypot(panDx, panDy) < panClickThresholdPx;
                 // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
                 // click handler can align by bar time without fighting right-edge sync.
                 if (this._panScrollSyncRaf) {
@@ -31961,10 +32001,12 @@ class Chart {
                 this.inertia.active = false;
                 this.inertia.velocityX = 0;
                 this.inertia.velocityY = 0;
-                this._stopChartPanRenderLoop();
-                this._clearPanTimeTickCache();
-                this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
+                    this._flushChartPanFrame();
+                    this._cancelChartPanFrame();
+                    this._stopChartPanRenderLoop();
+                    this._clearPanTimeTickCache();
+                    this._clearPanDrawingsLayerTransform();
                     this.dispatchScrollSync(true);
                     this._snapPanOffsetToHardBounds();
                     this.constrainOffset();
@@ -31976,8 +32018,11 @@ class Chart {
                     this.renderPending = false;
                     this.render();
                 } else {
-                    // Pure click (no pan): do NOT rebuild time ticks / grid.
-                    // Re-rendering here used to flip idle full ticks ↔ pan-fast ticks.
+                    // Pure click: cancel any armed pan state without painting.
+                    // (flush used to call render() here and rebuild the time axis.)
+                    this._cancelChartPanFrame();
+                    this._stopChartPanRenderLoop();
+                    this._clearPanDrawingsLayerTransform();
                     this.drag.panCommitted = false;
                 }
                 this.scheduleChartViewSave();

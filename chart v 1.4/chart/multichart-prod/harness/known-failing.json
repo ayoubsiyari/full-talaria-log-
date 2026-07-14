@@ -88,12 +88,18 @@
       "H-R14"
     ],
     "knownFailing": {
-      "H-R04": "T0 step 12 audit: settings-open still proxy/synthetic on panel-B dbl-click path",
-      "H-R05": "T0 step 12 audit: Esc uses synthetic handleKeyDown + toolbar proxy",
-      "H-R06": "T0 step 12 audit: Delete uses synthetic handleKeyDown; parent forwarder unverified",
-      "H-R08": "T0 step 12 audit: panel-B Ctrl+drag marquee uses synthetic iframe events",
-      "H-R09": "T0 step 12 audit: settings/Esc chain proxy-heavy on panel-B",
-      "H-R14": "T0 step 12 audit: panel-B Ctrl+drag marquee synthetic; border probe RED"
+      "H-R01": "T0 step 14 honest actuation: real click does not set engine store selection / V9 bar (host+panel-B)",
+      "H-R02": "T0 step 14 honest actuation: store selected=false while chrome handles visible (orphan handles)",
+      "H-R03": "T0 step 14 honest actuation: real Ctrl+click does not multi-select in store",
+      "H-R04": "T0 step 14 honest actuation: real dbl-click does not open parent settings modal",
+      "H-R05": "T0 step 14 honest actuation: settings never open before Esc chain (host+panel-B)",
+      "H-R06": "T0 step 14 honest actuation: real Delete does not remove drawing from store (host; panel-B partial)",
+      "H-R07": "T0 step 14 honest actuation: cross-panel real clicks leave neither drawing store-selected",
+      "H-R08": "T0 step 14 honest actuation: panel-B real Ctrl+drag marquee inactive (host passes)",
+      "H-R09": "T0 step 14 honest actuation: real select/settings/Esc chain fails store+V9+settings asserts",
+      "H-R12": "T0 step 14 honest actuation: panel-B real click does not surface parent V9 gear/settings",
+      "H-R13": "T0 step 14 honest actuation: panel-B real dbl-click does not open/persist parent settings",
+      "H-R14": "T0 step 14 honest actuation: panel-B real Ctrl+drag marquee inactive + no store multi-select"
     }
   }
 }

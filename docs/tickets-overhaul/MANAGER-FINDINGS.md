@@ -516,6 +516,25 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **BLOCKS DEPLOY:** do NOT finalize the canonical deploy build until the gear route is fixed + verified on the real built product. Freeze stays.
 - **Dispatched:** Lane 1 urgent `worker-prompts/T1-step18-lane1-gear-settings-regression.md` (reproduce on built product BOTH panels → root → fix → prove; coordinate H-R13 probe with Lane 4 so the harness can catch it). Awaiting PO build id + double-click isolation before worker begins repro.
 
+### Daily intake absorbed — 2026-07-13 (28) + 2026-07-14 (5) (Director-triaged)
+- Both batches already dispositioned by the Director in `DAILY-INTAKE.md`. No new lanes; everything rides existing tracks or is a small amendment. Manager sequencing (respecting D-012 critical path = Lane 4 harness rebuild + Lane 1 transport diagnostic — do NOT preempt):
+  - **A5 / TAL-01590 (P1, independent-symbol replay FREEZE):** the standout. On the **data/replay path — NOT under D-012 freeze** → actionable now. Dispatched `worker-prompts/A5-lane2or3-independent-symbol-replay-freeze-diagnostic.md` (read-only diagnostic + one RED host scenario). Owner = next free plan-1-experienced lane (**Lane 2** after its T7 sweep, else Lane 3 after order-entry). Fix authorized only post-mechanism-report.
+  - **A4 / TAL-01591 → T3 row 16 (interval-sync convergence):** Lane 2 drafts rows 15+16 together (same convergence mechanism, symbol|interval); Director approves owners. Folds into Lane 2's T3 contract work (post-freeze / when Lane 2 resumes T3).
+  - **T3 row 14 scope clarified (TAL-01592 + TAL-01574):** acceptance now includes axis re-layout (price+time scale) on tile resize. Lane 2 T3 (post-freeze).
+  - **TAL-01589 (visibility toggle stuck after Apply-default):** T1 lifecycle (visibility state) + T2 invalidation — cite in T1 visibility-migration acceptance; possible ghost-ref (ESC-001 finding 2) → stays T1.
+  - **2026-07-13 rides:** T8 family (8 tickets), T1 step-8/lifecycle (TAL-01568/01570 + regressions TAL-01569/01584), T5 live-evidence (TAL-01585), T3 Row 11 reopen (TAL-01587), GAP-AXIS→T2 A1 (TAL-01565/01572/01566/01583), UI-polish batch (TAL-01576/01580). No dispatch now; ride owning tracks.
+  - **TAL-01588 CLOSED** (PO fixed directly). **TAL-01564** reload-prompt hygiene = Lane 2 plan-1 queue (small, RED-first; not folded into T8).
+- **Sequencing rule honored:** A5 is the only immediate new dispatch (P1, freeze-exempt). Everything else waits so Lane 4 (harness) + Lane 1 (transport) stay uninterrupted.
+
+### T1 step 19 diagnostic + Lane 4 go-ahead (2026-07-14)
+- **Lane 1 step 19 (DIAGNOSTIC-ONLY, prototypes staged on b105):** confirmed Esc+Delete+marquee are ONE transport family under `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2`.
+  - **Esc/Delete root:** `isDrawingToolDismissKeyTarget` ignored `dm.selectedDrawing` (single-click path); iframe had no Delete capture. Prototype: widen dismiss-target + new `onDeleteDrawingKey` iframe capture. Staged, needs PO live-confirm.
+  - **Objects Tree dup (PLAN2-FOUND#3):** dedupe keyed on panel-local `points.x` geometry (differs per tile) instead of stable `id`/`__syncId`. Prototype: id-first dedupe behind `__TALARIA_DISABLE_OBJECTS_TREE_MULTICHART_DEDUPE_V1`. Staged, needs PO live-confirm.
+  - **Marquee:** no new patch — engine path (step-8/16) correct; failure is real-pointer delivery/measurement → resolved only by Lane 4 honest harness (real Ctrl+mouse at iframe coords) + PO confirm.
+  - Built to **b105**; SHA256 for MultichartGrid.jsx / TalariaV8bLive.jsx / panel-cmd-bridge.js recorded. No harness/react-parity-lib edits (Lane 4 exclusive respected).
+- **Lane 4 GO-AHEAD given for T0 step 14 build.** Instruction: build the honest harness on the CURRENT tree (which now includes Worker 1's b105 prototypes) so the honest baseline actually measures whether Esc/Delete/Objects-Tree now pass and reveals marquee's true state.
+- **PO live-confirm available now on b105** (local or staging): settings (re-confirm) + Esc + Delete + Objects-Tree dedupe, per step-19 §7. Marquee waits for the honest harness.
+
 ### D-012 (resolves ESC-011) APPLIED — harness-first + I15 (2026-07-14)
 - Applied D-012 + I15 across docs (report standard updated for I15; ESC-011 marked resolved). Retracted all "proven" multichart interaction rows.
 - **Settings-open family already satisfies ruling #3:** T1 step 18 is the authorized consolidated fix, done the D-012 way (real mouse + honest probe), PO-confirmed 4/4 local. → needs a **staging** live-confirm (ruling #5), not re-work.
