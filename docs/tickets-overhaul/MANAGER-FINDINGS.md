@@ -591,6 +591,21 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### T8 step 7 (refresh-persistence fix) SHIPPED to staging 20260715a4 (2026-07-15)
+- **Track A (playhead restore):** on refresh mid-replay, host awaits session hydrate before `enterReplayMode`, merges local+server+backup replay blobs (picks most-advanced `replayTimestamp`), restores **paused** at the correct playhead via `applyPersistedState`. Switch `__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE` (default ON). Matches PO-confirmed spec.
+- **Track B (boot reanchor / H-S28):** `_mcBootHostRightIdx` capture no longer requires `getPanelIds().length > 1` under the boot-freeze flag — the harness panels=1 stub was blocking capture (why reanchor never fired). Now fires.
+- **Harness:** new **H-S79 PASS** (advance 48 → reload → Δ=0, paused, one-candle step after restore); **H-S28 PASS** (drift=0, reanchorPasses=1); fence H-S17/H-S19/H-S19b/H-S20 PASS.
+- **⚠ PROCESS FLAG:** Worker 2 edited `known-failing.json` (removed now-green H-S28 + H-S27) — that file is **Lane 4 sole-ownership**. Edits are correct but **Lane 4 must absorb the delta** (baseline diverges from step-15 SHA `0A320A0C`). Gate re-run was in progress — confirm it lands 0-regressions. → Lane 4 coordination item.
+- **CONSOLIDATION:** a4 = a3 + refresh fix, so it also carries the D-015 edge-park fix. **PO can get BOTH verdicts on a4:** (1) panel-freeze (mixed-TF + independent, no parks) = TAL-01590 acceptance; (2) refresh persistence (single + multichart: same timestamp, paused, one-candle step; no viewport drift/hide) = PLAN2-FOUND#5 acceptance.
+
+### PLAN2-FOUND#5 diagnostic DONE → two-track fix dispatched (2026-07-15)
+- **Step 0: PRE-EXISTING, not a3/D-015** (host `chart.js`/`replay-system.js` untouched in the D-015→a3 window; fresh session clean). Freeze-fix acceptance NOT blocked by this.
+- **H-S28 nuance:** it's NOT the playhead-jump repro — it's boot host cell resize offsetX drift (viewport pin), a **co-factor for the "content hides off-screen"** on multichart reload, not `replayTimestamp` persistence. H-S6/H-S27/H-S30 no overlap.
+- **Two roots:**
+  - **Track A (primary):** session replay playhead save/restore race → the jump-to-refresh-date + catch-up candle leap.
+  - **Track B (H-S28):** boot host reanchor doesn't actuate (fix exists at `chart.js:17080–17241` behind `__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR`) → viewport hide on multichart refresh.
+- **Dispatched Lane 2 `T8-step7-lane2-replay-refresh-persistence-FIX.md`** — Track A (new `__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE` + RED-first refresh scenario) + Track B (make the reanchor actuate, H-S28→green). **P6 spec stated:** refresh mid-replay restores the playhead where replay was, PAUSED — no auto-jump, no auto-play. **PO to confirm this spec.** Ships staging; acceptance = PO refresh live-confirm (single + multichart).
+
 ### T0 step 15 ACCEPTED — manager gate genuinely green again (2026-07-15)
 - **`[gate] PASS: no new regressions; 36 known-failing tracked.`** expectedTests 80, knownFailing 36, regressions 0. Baseline SHA256 `0A320A0C…` (both trees). Fence H-S17/H-S19/H-S19b/H-S20 green 2/2 (step-5b holds).
 - **Every drift row now classified with a reason** (no silent burying): H-S6 = RC-8 (all panels self-fetch on 1m→1h fan-out); **H-S25 = deterministic defect** (eased-follow seam — reclassified from "flake" to real defect, needs a registry row); **H-S28 = boot reanchor absent, ~612px drift** (RC-8/boot — *strong candidate as the harness proxy for PLAN2-FOUND#5*); H-S32/H-S33 = D-012 RC-4/T1 frozen interaction rows. H-S27/H-S30 surfaced + baselined.

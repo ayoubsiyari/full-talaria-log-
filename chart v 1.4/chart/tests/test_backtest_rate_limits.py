@@ -49,3 +49,13 @@ def test_backtest_admin_exempt(fake_redis, monkeypatch):
     admin = _FakeUser(1, role="admin")
     assert api._backtest_user_rate_allow(admin, "whatif") is True
     assert api._backtest_user_rate_allow(admin, "whatif") is True
+
+
+def test_product_workload_paths_are_not_security_signals():
+    import api_server as api
+
+    assert api._sec_is_product_workload_path("/api/file/31/smart") is True
+    assert api._sec_is_product_workload_path("/api/sessions/659/state") is True
+    assert api._sec_is_product_workload_path("/api/analytics/backtest/whatif") is True
+    assert api._sec_is_product_workload_path("/api/auth/login") is False
+    assert api._sec_is_product_workload_path("/api/admin/security/block-ip") is False

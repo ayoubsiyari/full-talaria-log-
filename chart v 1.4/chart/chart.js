@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714b5';
+const CHART_ENGINE_BUILD = '20260715a4';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -1983,7 +1983,8 @@ class Chart {
             }
 
             const restoreSessionId = this.getActiveTradingSessionId();
-            const savedReplayRestore = restoreSessionId
+            const restoreOn = this._replaySessionPlayheadRestoreEnabled();
+            const savedReplayRestore = (restoreSessionId && restoreOn)
                 ? this._getSavedReplayRestoreState(restoreSessionId)
                 : null;
             // Multichart panels: parent playhead ALWAYS wins over saved
@@ -9791,44 +9792,65 @@ class Chart {
         }
 
         if (this.replaySystem) {
-            queueMicrotask(() => {
-                const restore = this._pendingReplayRestore;
-                const restoreTs = restore && Number.isFinite(restore.replayTimestamp)
-                    ? restore.replayTimestamp
-                    : null;
-                this.replaySystem.enterReplayMode({
-                    preservePlayhead: Number.isFinite(restoreTs),
-                    initialReplayTimestamp: restoreTs,
-                });
-                if (this.replaySystem.isActive
-                    && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
-                    // Refresh / session start: clean right-anchored, auto-scaled view
-                    // (latest candle at the right edge, like TradingView) — not centered.
-                    this.replaySystem.syncReplayViewportToPlayhead(this, {
-                        centerPlayhead: false,
-                        resetPriceScale: true,
-                        render: true,
-                    });
-                }
-                this.loadTradingSessionStateIfNeeded();
-                this.loadLocalRuntimeOrdersIfNoSession();
-                if (this.orderManager) {
-                    this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
-                }
-                this._pendingReplayRestore = null;
-                this.updateLoaderProgress(100, 'Replay mode active!');
-                this.updateLoaderStep(3, 'completed');
-                requestAnimationFrame(() => this.hideLoader());
-                // Prefetch common TFs in idle time so first 1m/5m switch during replay is faster.
-                const fid = this.currentFileId;
-                const sess = session;
-                setTimeout(() => {
-                    if (String(this.currentFileId) !== String(fid)) return;
-                    if (this._timeframeSwitching || this._pairSwitchLoading) return;
-                    if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
-                        this._scheduleBacktestTimeframePrefetch(fid, sess);
+            queueMicrotask(async () => {
+                try {
+                    let restore = this._pendingReplayRestore;
+                    const restoreOn = this._replaySessionPlayheadRestoreEnabled();
+                    if (restoreOn) {
+                        // Hydrate journal/runtime + server/local replay blob BEFORE
+                        // enterReplayMode so refresh restores the advanced playhead
+                        // (paused) instead of racing async GET /state over sync local.
+                        await this.loadTradingSessionStateIfNeeded();
+                        restore = this._resolveReplayPlayheadRestoreState(restore);
                     }
-                }, 2000);
+                    const restoreTs = restore && Number.isFinite(restore.replayTimestamp)
+                        ? restore.replayTimestamp
+                        : null;
+                    this.replaySystem.enterReplayMode({
+                        preservePlayhead: restoreOn && Number.isFinite(restoreTs),
+                        initialReplayTimestamp: restoreTs,
+                        initialCurrentIndex: (restore && Number.isFinite(restore.currentIndex))
+                            ? restore.currentIndex
+                            : undefined,
+                        initialTickElapsedMs: (restore && typeof restore.tickElapsedMs === 'number')
+                            ? restore.tickElapsedMs
+                            : undefined,
+                    });
+                    if (this.replaySystem.isActive
+                        && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                        // Refresh / session start: clean right-anchored, auto-scaled view
+                        // (latest candle at the right edge, like TradingView) — not centered.
+                        this.replaySystem.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: false,
+                            resetPriceScale: true,
+                            render: true,
+                        });
+                    }
+                    if (!restoreOn) {
+                        this.loadTradingSessionStateIfNeeded();
+                    }
+                    this.loadLocalRuntimeOrdersIfNoSession();
+                    if (this.orderManager) {
+                        this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
+                    }
+                    this._pendingReplayRestore = null;
+                    this.updateLoaderProgress(100, 'Replay mode active!');
+                    this.updateLoaderStep(3, 'completed');
+                    requestAnimationFrame(() => this.hideLoader());
+                    // Prefetch common TFs in idle time so first 1m/5m switch during replay is faster.
+                    const fid = this.currentFileId;
+                    const sess = session;
+                    setTimeout(() => {
+                        if (String(this.currentFileId) !== String(fid)) return;
+                        if (this._timeframeSwitching || this._pairSwitchLoading) return;
+                        if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
+                            this._scheduleBacktestTimeframePrefetch(fid, sess);
+                        }
+                    }, 2000);
+                } catch (e) {
+                    console.warn('[backtest] replay session restore failed', e);
+                    this.hideLoader();
+                }
             });
         } else {
             console.error('❌ Replay system not available!');
@@ -10327,6 +10349,69 @@ class Chart {
         }
     }
 
+    /** Default-ON kill-switch for refresh playhead restore (I13). Set false to revert. */
+    _replaySessionPlayheadRestoreEnabled() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE === false) {
+                return false;
+            }
+        } catch (_e) { /* ignore */ }
+        return true;
+    }
+
+    _parseReplayRestoreTimestamp(replay) {
+        if (!replay || typeof replay !== 'object') return null;
+        const rawTs = replay.replayTimestamp;
+        if (typeof rawTs === 'number' && Number.isFinite(rawTs)) return rawTs;
+        if (typeof rawTs === 'string') {
+            const n = Number(rawTs);
+            if (Number.isFinite(n)) return n;
+            const parsed = Date.parse(rawTs);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+    }
+
+    /**
+     * Merge sync-local, hydrated server, and backup replay blobs — pick the most
+     * advanced wall-clock playhead so refresh never restarts at session start.
+     */
+    _resolveReplayPlayheadRestoreState(localPending) {
+        const sessionId = this.getActiveTradingSessionId();
+        const candidates = [];
+        if (localPending && typeof localPending === 'object') candidates.push(localPending);
+        if (this._pendingReplayState && typeof this._pendingReplayState === 'object') {
+            candidates.push(this._pendingReplayState);
+        }
+        if (sessionId) {
+            const backup = this._readTradingSessionLocalBackup(sessionId);
+            if (backup && backup.replay && typeof backup.replay === 'object') {
+                candidates.push(backup.replay);
+            }
+        }
+        let winner = null;
+        let winTs = null;
+        for (const c of candidates) {
+            const ts = this._parseReplayRestoreTimestamp(c);
+            if (!Number.isFinite(ts)) continue;
+            if (winTs == null || ts > winTs) {
+                winTs = ts;
+                winner = c;
+            }
+        }
+        if (!winner || !Number.isFinite(winTs)) {
+            return localPending && typeof localPending === 'object' ? localPending : null;
+        }
+        return {
+            replayTimestamp: winTs,
+            currentIndex: Number.isFinite(winner.currentIndex) ? winner.currentIndex : undefined,
+            timeframe: this._normalizeBacktestTimeframe(winner.timeframe),
+            speed: typeof winner.speed === 'number' ? winner.speed : undefined,
+            playbackMode: winner.playbackMode,
+            tickElapsedMs: winner.tickElapsedMs,
+        };
+    }
+
     /** Sync read of last saved replay playhead for refresh restore (before OHLC fetch). */
     _getSavedReplayRestoreState(sessionId) {
         if (!sessionId) return null;
@@ -10423,7 +10508,8 @@ class Chart {
             om.updatePositionsPanel();
         }
 
-        if (backup.replay && typeof backup.replay === 'object' && backup.replay.isActive) {
+        if (this._replaySessionPlayheadRestoreEnabled()
+            && backup.replay && typeof backup.replay === 'object' && backup.replay.isActive) {
             this._pendingReplayState = backup.replay;
             if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                 this.replaySystem.applyPersistedState(backup.replay);
@@ -10670,7 +10756,8 @@ class Chart {
                 }
             }
 
-            if (state.replay && typeof state.replay === 'object') {
+            if (this._replaySessionPlayheadRestoreEnabled()
+                && state.replay && typeof state.replay === 'object') {
                 this._pendingReplayState = state.replay;
                 const rd = state.replay.dashboard;
                 if (rd && typeof rd === 'object' && Number.isFinite(Number(rd.furthest_replay_ts))) {
@@ -10681,22 +10768,26 @@ class Chart {
                     this._dashboardFurthestReplayTs = NaN;
                 }
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
-                    this.replaySystem.applyPersistedState(state.replay);
+                    const skipStaleReplay = this._replaySessionPlayheadRestoreEnabled()
+                        && this.replaySystem._persistedPlayheadApplied;
+                    if (!skipStaleReplay) {
+                        this.replaySystem.applyPersistedState(state.replay);
+                        if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                            try {
+                                // Refresh: clean right-anchored, auto-scaled view (latest
+                                // candle at the right edge, like TradingView) — not centered.
+                                this.replaySystem.syncReplayViewportToPlayhead(this, {
+                                    centerPlayhead: false,
+                                    resetPriceScale: true,
+                                    render: true,
+                                });
+                            } catch (_) { /* ignore */ }
+                        }
+                        if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
+                            try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
+                        }
+                    }
                     this._pendingReplayState = null;
-                    if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
-                        try {
-                            // Refresh: clean right-anchored, auto-scaled view (latest
-                            // candle at the right edge, like TradingView) — not centered.
-                            this.replaySystem.syncReplayViewportToPlayhead(this, {
-                                centerPlayhead: false,
-                                resetPriceScale: true,
-                                render: true,
-                            });
-                        } catch (_) { /* ignore */ }
-                    }
-                    if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
-                        try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
-                    }
                 }
             }
 
@@ -17088,14 +17179,16 @@ class Chart {
         // drift-free and keeps panel A bar-aligned with its mirror panels.
         let _mcBootHostRightIdx = null;
         try {
+            // The freeze flag alone scopes this to multichart boot host-resize
+            // (MultichartGrid sets it until allDataReady). Do not also require
+            // getPanelIds().length > 1 — harness single-tile boot and the first
+            // host cell-resize tick can legitimately see a 1-id grid stub while
+            // the freeze is armed, which left _mcBootHostRightIdx null (H-S28 RED).
             if (this._multichartSkipResizeOffsetAdjust
                 && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_BOOT_HOST_REANCHOR)
                 && Array.isArray(this.data) && this.data.length
                 && typeof this._isMultichartHostPanel === 'function'
-                && this._isMultichartHostPanel()
-                && window.__multichartGrid
-                && typeof window.__multichartGrid.getPanelIds === 'function'
-                && window.__multichartGrid.getPanelIds().length > 1) {
+                && this._isMultichartHostPanel()) {
                 _mcBootHostRightIdx = (typeof this.getVisibleEndIndex === 'function')
                     ? this.getVisibleEndIndex()
                     : this.data.length - 1;
@@ -26790,36 +26883,83 @@ class Chart {
         return Math.ceil(n / 60) * 60;
     }
 
-    /**
-     * TradingView zoom tiers (intraday only):
-     * - normal: vertical grid = clock-aligned label positions only
-     * - wide bars: one grid line per candle (labels thinned so they stay readable)
-     * - very wide bars: one grid line + one HH:MM label per candle (TV max-zoom)
-     * Daily/weekly/monthly never use per-candle mesh — TV shows month majors there.
-     */
-    _isMaxZoomPerCandleGrid() {
-        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
-        if (/w$/i.test(timeframe) || /mo$/i.test(timeframe)) return false;
-        let timeframeMs = this.parseTimeframe(timeframe);
-        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) timeframeMs = 60000;
-        if (timeframeMs >= 86400000) return false;
+    /** Visible bar count for current plot width (used by zoom-tier grid). */
+    _getVisibleBarsCountForGrid() {
         const spacing = Math.max(1e-6, typeof this.getCandleSpacing === 'function'
             ? this.getCandleSpacing() : 1);
+        const m = this.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, this.w - m.l - m.r);
+        const first = -this.offsetX / spacing;
+        const last = first + cw / spacing;
+        return Math.max(1, Math.ceil(Math.max(0, last - first)));
+    }
+
+    /**
+     * Zoom tiers (all TFs):
+     * - overview: clock/calendar majors only (e.g. 1D months)
+     * - zoomed in: one vertical grid line per candle (incl. empty slots)
+     * - very wide: also one label per candle when there is room
+     */
+    _isMaxZoomPerCandleGrid() {
+        const spacing = Math.max(1e-6, typeof this.getCandleSpacing === 'function'
+            ? this.getCandleSpacing() : 1);
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) timeframeMs = 60000;
+        const visibleBars = this._getVisibleBarsCountForGrid();
+        const isCalendarTf = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
+        const isDailyOrHigher = timeframeMs >= 86400000 || isCalendarTf;
+
+        if (isDailyOrHigher) {
+            // Overview (many months / tight bars) → month majors, no per-candle mesh.
+            // Zoomed in on 1D → one line per daily candle (user request).
+            if (visibleBars > 70 && spacing < 20) return false;
+            return spacing >= 16 || visibleBars <= 55;
+        }
         return spacing >= 36;
     }
 
-    /** True when each candle slot is wide enough for its own HH:MM label (TV max-zoom). */
+    /** True when each candle slot is wide enough for its own axis label. */
     _shouldLabelEveryCandle() {
         const spacing = Math.max(1e-6, typeof this.getCandleSpacing === 'function'
             ? this.getCandleSpacing() : 1);
-        return spacing >= 70;
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) timeframeMs = 60000;
+        const isDailyOrHigher = timeframeMs >= 86400000
+            || /w$/i.test(timeframe) || /mo$/i.test(timeframe);
+        // Day numbers are shorter than HH:MM — label every bar a bit earlier on 1D.
+        return spacing >= (isDailyOrHigher ? 40 : 70);
     }
 
-    /** HH:MM (or 12h) for a bar index — never calendar/date strings on max-zoom ticks. */
+    /**
+     * Max-zoom tick label: HH:MM intraday; day-of-month (or month name) on daily+.
+     */
     _formatMaxZoomBarClockLabel(idx) {
         const ts = this._projectBarIndexTimestamp(idx);
         if (!Number.isFinite(ts)) return '';
         const tzDate = this.convertToTimezone(ts);
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) timeframeMs = 60000;
+        const isDailyOrHigher = timeframeMs >= 86400000
+            || /w$/i.test(timeframe) || /mo$/i.test(timeframe);
+        if (isDailyOrHigher) {
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const day = tzDate.getUTCDate();
+            const month = tzDate.getUTCMonth();
+            const prevTs = this._projectBarIndexTimestamp(idx - 1);
+            if (Number.isFinite(prevTs)) {
+                const prev = this.convertToTimezone(prevTs);
+                if (prev.getUTCMonth() !== month || prev.getUTCFullYear() !== tzDate.getUTCFullYear()) {
+                    return monthNames[month];
+                }
+            } else if (day === 1) {
+                return monthNames[month];
+            }
+            return String(day);
+        }
         if (typeof this._formatSessionClock === 'function') {
             return this._formatSessionClock(tzDate, false) || '';
         }

@@ -527,7 +527,24 @@ async def _security_monitor_middleware(request: Request, call_next):
         # skip auth paths here to avoid double counting.
         is_auth = path.startswith("/api/auth/login") or path.startswith("/api/auth/signup")
         if sc == 429:
-            record_security_event("rate_limited", request=request, ip=ip, status_code=sc, path=path, method=method)
+            # Chart/backtest candle fetches can legitimately hit app or nginx
+            # throttles. Log those as product_throttled (info) so they do NOT
+            # look like attacks, inflate threat level, or tempt admins to block users.
+            if _sec_is_product_workload_path(path):
+                record_security_event(
+                    "product_throttled",
+                    request=request,
+                    ip=ip,
+                    severity="info",
+                    status_code=sc,
+                    path=path,
+                    method=method,
+                    details={"scope": "product", "note": "Normal chart/backtest throttle — not an attack"},
+                )
+            else:
+                record_security_event(
+                    "rate_limited", request=request, ip=ip, status_code=sc, path=path, method=method,
+                )
         elif sc == 403 and is_api and not is_auth:
             evt = "admin_denied" if path.startswith("/api/admin/") else "forbidden"
             record_security_event(evt, request=request, ip=ip, status_code=sc, path=path, method=method)
@@ -1418,7 +1435,7 @@ SEC_IP_ALLOWLIST = {
     s.strip() for s in (os.getenv("SECURITY_IP_ALLOWLIST", "") or "").split(",") if s.strip()
 }
 
-_sec_fail_counts: dict[str, deque] = {}          # ip -> recent auth/ratelimit failure timestamps
+_sec_fail_counts: dict[str, deque] = {}          # ip -> recent failed_login timestamps (auth only; never product 429s)
 _sec_alert_last: dict[str, float] = {}           # alert-key -> last sent monotonic ts
 _sec_event_window: deque = deque()               # monotonic ts of recent non-info events (spike detector)
 _sec_blockhit_last: dict[str, float] = {}        # ip -> last "blocked hit" logged ts (throttle noise)
@@ -1431,9 +1448,28 @@ _SEC_SCAN_MARKERS = (
     "/.well-known/security", "/administrator", "/solr/", "/shell", "/.svn",
 )
 
+# Authenticated product hot-paths: candle/tile/bars loads, session sync, backtests.
+# 429 here = "slow down the chart", not "block this attacker".
+_SEC_PRODUCT_PATH_PREFIXES = (
+    "/api/file/",
+    "/api/sessions/",
+    "/api/analytics/backtest/",
+    "/api/chart/",
+)
+
+
+def _sec_is_product_workload_path(path: str | None) -> bool:
+    """True for chart/backtest data endpoints that users hammer during normal use."""
+    if not path:
+        return False
+    p = path.split("?", 1)[0]
+    return any(p.startswith(prefix) for prefix in _SEC_PRODUCT_PATH_PREFIXES)
+
+
 _SEC_DEFAULT_SEVERITY = {
     "failed_login": "warning",
     "rate_limited": "warning",
+    "product_throttled": "info",
     "forbidden": "warning",
     "csrf_blocked": "warning",
     "unauthorized": "info",
@@ -1639,6 +1675,7 @@ def record_security_event(
 _SEC_ALERT_LABELS = {
     "failed_login": "Failed login attempts",
     "rate_limited": "Rate limit triggered",
+    "product_throttled": "Chart/backtest throttle (not an attack)",
     "forbidden": "Forbidden request blocked",
     "csrf_blocked": "CSRF check blocked a request",
     "unauthorized": "Unauthorized request",
@@ -2631,10 +2668,12 @@ def _auth_ip_rate_allow(
 
 
 # Backtest / chart hot paths — per-user limits (Redis when configured, else in-memory per worker).
-BACKTEST_SMART_RATE_PER_MINUTE = max(10, int(os.getenv("BACKTEST_SMART_RATE_PER_MINUTE", "90")))
-BACKTEST_WHATIF_RATE_PER_MINUTE = max(5, int(os.getenv("BACKTEST_WHATIF_RATE_PER_MINUTE", "30")))
+# These protect the API from overload; they are NOT security blocks. Defaults are high enough
+# for multi-symbol backtests / candle fetches. 429s on these paths log as product_throttled.
+BACKTEST_SMART_RATE_PER_MINUTE = max(10, int(os.getenv("BACKTEST_SMART_RATE_PER_MINUTE", "180")))
+BACKTEST_WHATIF_RATE_PER_MINUTE = max(5, int(os.getenv("BACKTEST_WHATIF_RATE_PER_MINUTE", "45")))
 BACKTEST_SESSION_PATCH_RATE_PER_MINUTE = max(
-    5, int(os.getenv("BACKTEST_SESSION_PATCH_RATE_PER_MINUTE", "60"))
+    5, int(os.getenv("BACKTEST_SESSION_PATCH_RATE_PER_MINUTE", "120"))
 )
 _backtest_rate_lock = threading.Lock()
 _backtest_smart_user_times: dict[int, deque] = {}
@@ -2674,8 +2713,12 @@ def _enforce_backtest_user_rate(user: User, scope: str) -> None:
         return
     raise HTTPException(
         status_code=429,
-        detail="Too many requests. Please try again in a minute.",
-        headers={"Retry-After": "60"},
+        detail="Too many chart/backtest requests. Please wait a moment and try again — this is not a security block.",
+        headers={
+            "Retry-After": "60",
+            "X-Talaria-Throttle": "product",
+            "X-Talaria-Throttle-Scope": scope,
+        },
     )
 
 

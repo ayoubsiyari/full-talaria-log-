@@ -6152,6 +6152,213 @@ async function hS57(ctx) {
   });
 }
 
+// ── H-S79 ────────────────────────────────────────────────────────────────
+// PLAN2-FOUND#5 Track A: host backtest replay playhead survives hard refresh
+// (paused at pre-refresh wall-clock, not session-start / refresh-point).
+const H_S79_SESSION_ID = 'harness-rs-refresh';
+const H_S79_RESTORE_SWITCH = '__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE';
+const H_S79_STEP_N = 48;
+const H_S79_STEP_MS = 60_000;
+
+async function waitBacktestReplayReady(page, budgetMs = 90_000) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const st = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs || !rs.isActive) return null;
+      const ts = Number(rs.replayTimestamp);
+      return {
+        ts: Number.isFinite(ts) ? ts : null,
+        playing: !!rs.isPlaying,
+      };
+    }).catch(() => null);
+    if (st && st.ts != null && !st.playing) return st;
+    await sleep(250);
+  }
+  return null;
+}
+
+function buildBacktestReloadUrl(baseUrl, sessionId) {
+  const u = new URL(baseUrl);
+  u.searchParams.set('mode', 'backtest');
+  u.searchParams.set('sessionId', sessionId);
+  u.searchParams.set('fileId', '25');
+  u.searchParams.set('panels', '1');
+  u.searchParams.set('pair', 'same');
+  u.searchParams.set('tf', '1m');
+  return u.toString();
+}
+
+async function advanceReplaySteps(page, n) {
+  return page.evaluate((steps) => {
+    const rs = window.chart && window.chart.replaySystem;
+    if (!rs || typeof rs.stepForward !== 'function') return { ok: false, reason: 'no stepForward' };
+    const startTs = Number(rs.replayTimestamp);
+    for (let i = 0; i < steps; i++) rs.stepForward();
+    rs.isPlaying = false;
+    return {
+      ok: true,
+      startTs,
+      endTs: Number(rs.replayTimestamp),
+    };
+  }, n);
+}
+
+async function flushSessionPlayheadBackup(page, sessionId) {
+  return page.evaluate((sid) => {
+    const ch = window.chart;
+    if (!ch) return { ok: false, reason: 'no chart' };
+    ch.activeTradingSessionId = sid;
+    try {
+      if (typeof userStorage !== 'undefined') {
+        userStorage.setItem('active_trading_session_id', sid);
+        if (ch.backtestingSession) {
+          userStorage.setItem('backtestingSession', JSON.stringify(ch.backtestingSession));
+        }
+      }
+    } catch (_) {}
+    if (typeof ch._writeTradingSessionLocalBackup === 'function') {
+      ch._writeTradingSessionLocalBackup();
+    }
+    let backupTs = null;
+    try {
+      const raw = (typeof userStorage !== 'undefined')
+        ? userStorage.getItem(`talaria_bt_sess_v1_${sid}`)
+        : null;
+      const snap = raw ? JSON.parse(raw) : null;
+      backupTs = snap && snap.replay ? Number(snap.replay.replayTimestamp) : null;
+    } catch (_) {}
+    return {
+      ok: true,
+      liveTs: ch.replaySystem ? Number(ch.replaySystem.replayTimestamp) : null,
+      backupTs,
+    };
+  }, sessionId);
+}
+
+async function hS79(ctx) {
+  const checks = makeChecks();
+  const notes = [];
+  let inv;
+
+  const main = await runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot, runNotes) => {
+    const { page } = boot;
+    const DAY = 86_400_000;
+    await waitBootSettled(page, ['A'], 30_000, boot.getInFlightDataRequests);
+
+    const hostExtent = await page.evaluate(() => {
+      const d = window.chart && window.chart.data;
+      if (!Array.isArray(d) || !d.length) return null;
+      return { lastT: Number(d[d.length - 1].t) };
+    }).catch(() => null);
+    const sessEndMs = hostExtent ? hostExtent.lastT : Date.now();
+    const session = {
+      startDate: new Date(sessEndMs - 60 * DAY).toISOString(),
+      endDate: new Date(sessEndMs).toISOString(),
+      instruments: { TEST: { ticker: 'TEST', fileId: 25 } },
+    };
+    await enterBacktestSessionAllFrames(page, session);
+    await sleep(300);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S79 setup: replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    await hostReplayEnter(page, ts0);
+    await sleep(1200);
+    const advanced = await advanceReplaySteps(page, H_S79_STEP_N);
+    checks.check('H-S79 setup: advanced replay N candles', advanced && advanced.ok && advanced.endTs > advanced.startTs,
+      JSON.stringify(advanced || null));
+    if (!advanced || !advanced.ok) return checks;
+
+    const preReloadTs = advanced.endTs;
+    const flush = await flushSessionPlayheadBackup(page, H_S79_SESSION_ID);
+    checks.check('H-S79 setup: local backup flushed with advanced playhead',
+      flush && flush.ok && Number.isFinite(flush.backupTs) && Math.abs(flush.backupTs - preReloadTs) <= H_S79_STEP_MS * 2,
+      JSON.stringify(flush || null));
+
+    const reloadUrl = buildBacktestReloadUrl(page.url(), H_S79_SESSION_ID);
+    await page.goto(reloadUrl, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+    await sleep(2000);
+    const restored = await waitBacktestReplayReady(page, 90_000);
+    checks.check('H-S79 setup: replay active + paused after reload', restored && restored.ts != null,
+      JSON.stringify(restored || null));
+    checks.check('H-S79 CORE: restored replayTimestamp matches pre-reload playhead',
+      restored && Math.abs(restored.ts - preReloadTs) <= H_S79_STEP_MS,
+      `pre=${preReloadTs} post=${restored?.ts} Δ=${restored ? Math.abs(restored.ts - preReloadTs) : 'n/a'}`);
+
+    const playStep = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs || typeof rs.stepForward !== 'function') return { ok: false };
+      const before = Number(rs.replayTimestamp);
+      rs.stepForward();
+      const after = Number(rs.replayTimestamp);
+      return { ok: true, before, after, leap: after - before };
+    });
+    checks.check('H-S79 CORE: single step after restore advances ~one candle (no catch-up leap)',
+      playStep && playStep.ok && playStep.leap > 0 && playStep.leap <= H_S79_STEP_MS * 2,
+      JSON.stringify(playStep || null));
+
+    runNotes.push(`H-S79 advancedTs=${preReloadTs}`);
+    return checks;
+  });
+  inv = main.inv;
+  notes.push(...(main.notes || []));
+
+  const off = await runWith(ctx, {
+    pair: 'same',
+    panels: 1,
+    tf: '1m',
+    preDocument: { fn: (sw) => { window[sw] = false; }, args: [H_S79_RESTORE_SWITCH] },
+  }, async (boot, runNotes) => {
+    const { page } = boot;
+    await waitBootSettled(page, ['A'], 30_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    const advancedTs = ts0 != null ? ts0 + H_S79_STEP_N * H_S79_STEP_MS : null;
+    checks.check('H-S79 switch-OFF setup: synthetic advanced playhead', advancedTs != null, `ts0=${ts0}`);
+    if (advancedTs == null) return checks;
+
+    const DAY = 86_400_000;
+    const hostExtent = await page.evaluate(() => {
+      const d = window.chart && window.chart.data;
+      if (!Array.isArray(d) || !d.length) return null;
+      return { lastT: Number(d[d.length - 1].t) };
+    }).catch(() => null);
+    const sessEndMs = hostExtent ? hostExtent.lastT : Date.now();
+    await page.evaluate((sid, ts, sessEnd) => {
+      const session = {
+        startDate: new Date(sessEnd - 60 * 86400000).toISOString(),
+        endDate: new Date(sessEnd).toISOString(),
+        instruments: { TEST: { ticker: 'TEST', fileId: 25 } },
+      };
+      if (typeof userStorage !== 'undefined') {
+        userStorage.setItem('backtestingSession', JSON.stringify(session));
+        userStorage.setItem('active_trading_session_id', sid);
+        userStorage.setItem(`talaria_bt_sess_v1_${sid}`, JSON.stringify({
+          replay: { isActive: true, replayTimestamp: ts, timeframe: '1m' },
+          chartView: { timeframe: '1m' },
+        }));
+      }
+    }, H_S79_SESSION_ID, advancedTs, sessEndMs);
+
+    const reloadUrl = buildBacktestReloadUrl(page.url(), H_S79_SESSION_ID);
+    await page.goto(reloadUrl, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+    await sleep(2000);
+    const restoredOff = await waitBacktestReplayReady(page, 90_000);
+    checks.check('H-S79 switch-OFF: playhead NOT restored to advanced position',
+      restoredOff && Math.abs(restoredOff.ts - advancedTs) > H_S79_STEP_MS * 5,
+      `advanced=${advancedTs} restored=${restoredOff?.ts}`);
+    runNotes.push('H-S79 switch-OFF: __TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE=false reverts to session-start playhead.');
+    return checks;
+  });
+  inv = off.inv;
+
+  notes.push('H-S79 (PLAN2-FOUND#5 Track A): talaria_bt_sess backup + mode=backtest reload '
+    + '→ paused playhead at pre-refresh ts; kill-switch OFF reverts.');
+  return { checks, inv, notes };
+}
+
 // ── H-S59 ────────────────────────────────────────────────────────────────
 // GAP-MC-REPLAY-INDEP (TAL-01590): 2 panels, DIFFERENT symbols (host file25,
 // panel B file27), replay PLAY → BOTH panels must advance playhead. Plan-1
@@ -7608,6 +7815,7 @@ export function scenarioList() {
     { id: 'H-S76', title: 'B-FIX-1 replay follow fallback offset restore', run: hS76 },
     { id: 'H-S77', title: 'B-FIX-C panel master-growth offset on prepend', run: hS77 },
     { id: 'H-S78', title: 'BL-16 dedicated drag-during-play (A9)', run: hS78 },
+    { id: 'H-S79', title: 'PLAN2-FOUND#5: backtest replay playhead survives refresh (paused restore)', run: hS79 },
   ];
 }
 

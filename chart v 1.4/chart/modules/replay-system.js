@@ -2563,17 +2563,43 @@ class ReplaySystem {
         // === INITIALIZE VIRTUAL TIMESTAMP TRACKING ===
         this.replayStartTimestamp = this.fullRawData[0].t;
         this.replayEndTimestamp = this.fullRawData[this.fullRawData.length - 1].t;
-        this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-        this.tickElapsedMs = 0;
+        const restoreOn = !(typeof window !== 'undefined'
+            && window.__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE === false);
+        if (!restoreOn || !preservePlayhead || initialReplayTs == null) {
+            this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            this.tickElapsedMs = 0;
+        } else {
+            if (!Number.isFinite(this.replayTimestamp)) {
+                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            }
+            if (typeof options.initialTickElapsedMs === 'number'
+                && Number.isFinite(options.initialTickElapsedMs)) {
+                this.tickElapsedMs = options.initialTickElapsedMs;
+            }
+        }
 
         this._persistedPlayheadApplied = false;
 
         // Apply persisted replay state (if loaded earlier) once fullRawData exists
         try {
-            const pending = this.chart && this.chart._pendingReplayState ? this.chart._pendingReplayState : null;
+            let pending = this.chart && this.chart._pendingReplayState
+                ? this.chart._pendingReplayState
+                : null;
+            if (!pending && restoreOn && this.chart && this.chart._pendingReplayRestore) {
+                const r = this.chart._pendingReplayRestore;
+                pending = {
+                    replayTimestamp: r.replayTimestamp,
+                    timeframe: r.timeframe,
+                    speed: r.speed,
+                    playbackMode: r.playbackMode,
+                    tickElapsedMs: r.tickElapsedMs,
+                    currentIndex: this.currentIndex,
+                    isActive: true,
+                };
+            }
             if (pending && typeof this.applyPersistedState === 'function') {
                 this.applyPersistedState(pending);
-                this.chart._pendingReplayState = null;
+                if (this.chart) this.chart._pendingReplayState = null;
             } else {
                 this._persistedPlayheadApplied = true;
             }

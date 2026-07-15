@@ -5258,11 +5258,11 @@ select { cursor: default; }
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:14px">
               <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
                 <div style="font-weight:600;color:var(--success,#34d399);margin-bottom:6px">Good news first</div>
-                <p style="margin:0">Seeing <code>warning</code> rows with status <strong>403</strong> or <strong>429</strong> usually means protection worked — the request was refused. That is not a successful hack or a data leak.</p>
+                <p style="margin:0">Seeing <code>product_throttled</code> on <code>/api/file/.../smart</code> or <code>/api/sessions/.../state</code> means a user is loading candles / backtesting fast — <strong>do not block them</strong>. Status <strong>403</strong> on blocked IPs also means protection worked, not a leak.</p>
               </div>
               <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
                 <div style="font-weight:600;color:var(--warn,#fbbf24);margin-bottom:6px">When to worry</div>
-                <p style="margin:0">Worry if you see many <code>failed_login</code> spikes, unexpected <code>login_success</code> from unknown IPs, or Integrity Verify failing. Then block the IP, force-logout the user, and rotate that password.</p>
+                <p style="margin:0">Worry if you see many <code>failed_login</code> spikes, <code>rate_limited</code> on login/admin paths, unexpected <code>login_success</code> from unknown IPs, or Integrity Verify failing. Then block the IP, force-logout the user, and rotate that password.</p>
               </div>
               <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
                 <div style="font-weight:600;color:var(--accent,#60a5fa);margin-bottom:6px">What to do</div>
@@ -5279,7 +5279,8 @@ select { cursor: default; }
               <table>
                 <thead><tr><th>Type</th><th>Meaning</th><th>Data leaked?</th></tr></thead>
                 <tbody>
-                  <tr><td><code>rate_limited</code></td><td>Too many requests — API returned 429 and stopped them.</td><td>No</td></tr>
+                  <tr><td><code>product_throttled</code></td><td><strong>Normal use.</strong> Chart/backtest/candle fetch hit a soft speed limit (429). Do <em>not</em> block the IP.</td><td>No</td></tr>
+                  <tr><td><code>rate_limited</code></td><td>Too many requests on a non-chart path (login, admin, etc.) — real abuse signal.</td><td>No</td></tr>
                   <tr><td><code>ip_blocked_hit</code></td><td>A blocked IP tried again and was refused (403).</td><td>No</td></tr>
                   <tr><td><code>manual_block</code> / <code>auto_block</code></td><td>An IP was blocked by an admin or automatically after abuse.</td><td>No — protection stepped in</td></tr>
                   <tr><td><code>failed_login</code></td><td>Wrong password / login attempt failed. Watch for many from one IP.</td><td>No (unless they later succeed)</td></tr>
@@ -5372,7 +5373,8 @@ select { cursor: default; }
                 <select id="secFilterType" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
                   <option value="">Any</option>
                   <option value="failed_login">Failed login</option>
-                  <option value="rate_limited">Rate limited (429)</option>
+                  <option value="product_throttled">Chart/backtest throttle (OK)</option>
+                  <option value="rate_limited">Security rate limited (429)</option>
                   <option value="forbidden">Forbidden (403)</option>
                   <option value="admin_denied">Admin denied</option>
                   <option value="path_scan">Path scan (bot probe)</option>
@@ -7601,7 +7603,8 @@ function secThreatColor(tl) {
 
 const SEC_EVENT_META = {
   failed_login: { label: 'Failed login', tip: 'Wrong password or failed sign-in. Not a breach unless they succeed later.' },
-  rate_limited: { label: 'Rate limited', tip: 'Too many requests — API returned 429 and stopped them. Protection working.' },
+  product_throttled: { label: 'Chart/backtest throttle', tip: 'User fetching candles/session/backtest data hit a soft limit. Normal — do NOT block this IP.' },
+  rate_limited: { label: 'Security rate limited', tip: 'Too many requests on a sensitive path (login/admin/etc). Real abuse signal.' },
   forbidden: { label: 'Forbidden', tip: 'Request refused (403 / CSRF). Access was denied.' },
   csrf_blocked: { label: 'CSRF blocked', tip: 'Cross-site request forgery check blocked the call.' },
   unauthorized: { label: 'Unauthorized', tip: 'Caller was not signed in or token was invalid.' },
