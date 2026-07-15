@@ -1495,6 +1495,10 @@
                 if (Number.isFinite(t0)) firstBarMs = t0 > 1e12 ? t0 : t0 * 1000;
                 if (Number.isFinite(tN)) lastBarMs  = tN > 1e12 ? tN : tN * 1000;
             }
+            const hasBars = chart.data && chart.data.length > 0;
+            const engineTf = hasBars && chart.currentTimeframe
+                ? chart.currentTimeframe
+                : (d.timeframe || chart.currentTimeframe || null);
             try {
                 global.parent.postMessage({
                     type: 'chart-state',
@@ -1506,7 +1510,7 @@
                         // on inbound; fileId is not in the forbidden list.
                         fileId: d.fileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
-                        timeframe: d.timeframe || chart.currentTimeframe || null,
+                        timeframe: engineTf,
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,

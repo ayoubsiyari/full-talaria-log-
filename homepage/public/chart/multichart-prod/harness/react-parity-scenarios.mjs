@@ -34,6 +34,7 @@ import {
   disarmDrawTool,
   drawingExists,
   isDrawingSelected,
+  waitForPanelData,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -43,7 +44,11 @@ import {
   assertCanvasRepainted,
   assertNoGhostAfterDelete,
   readParentSettingsProbe,
+  seedChartPanelState,
+  readParentTopbarActiveTf,
+  readPanelEngineTf,
 } from './interactive-helpers.mjs';
+import { hostSetTimeframe } from './harness-lib.mjs';
 
 async function runPanelClickRow(page, checks, prefix, panelId, toolType = 'trendline') {
   const label = panelId === 'A' ? 'host' : 'panelB';
@@ -490,6 +495,62 @@ async function hR14(ctx) {
   });
 }
 
+// ── H-S80 — PLAN2-FOUND#6: panel TF label sync after refresh (built V9) ───
+const H_S80_LABEL_SYNC_SWITCH = '__TALARIA_MC_PANEL_TF_LABEL_SYNC';
+
+async function reactPanelSetTimeframe(page, panelId, tf) {
+  return page.evaluate(async (pid, t) => {
+    const grid = window.__multichartGrid;
+    if (grid && typeof grid.runCommand === 'function') {
+      return grid.runCommand('setTimeframe', { tf: t }, { panelId: pid });
+    }
+    const mgr = window.__harnessManager;
+    if (mgr && typeof mgr.sendCommand === 'function') {
+      return mgr.sendCommand(pid, 'setTimeframe', { tf: t });
+    }
+    return false;
+  }, panelId, tf);
+}
+
+async function waitPanelEngineTf(page, panelId, wantTf, budgetMs = 20000) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const cur = await readPanelEngineTf(page, panelId);
+    if (cur === wantTf) return cur;
+    await sleep(200);
+  }
+  return readPanelEngineTf(page, panelId);
+}
+
+async function hS80React(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await hostSetTimeframe(page, '15m');
+    await reactPanelSetTimeframe(page, 'B', '15m');
+    await waitForPanelData(page, 'B');
+    await waitPanelEngineTf(page, 'B', '15m');
+    await focusReactPanel(page, 'B');
+    await sleep(500);
+    const preEngine = await readPanelEngineTf(page, 'B');
+    checks.check('H-S80 setup (react): B engine 15m before reload', preEngine === '15m', `engine=${preEngine}`);
+    await seedChartPanelState(page, '2v');
+    await page.reload({ waitUntil: 'networkidle2', timeout: 120_000 });
+    await waitForPanelData(page, 'B');
+    await hostSetTimeframe(page, '15m');
+    await reactPanelSetTimeframe(page, 'B', '15m');
+    await waitPanelEngineTf(page, 'B', '15m');
+    await focusReactPanel(page, 'B');
+    await sleep(1200);
+    const engineTf = await readPanelEngineTf(page, 'B');
+    const topbarTf = await readParentTopbarActiveTf(page);
+    checks.check('H-S80 CORE (react): B engine TF is 15m', engineTf === '15m', `engine=${engineTf}`);
+    checks.check('H-S80 CORE (react): parent topbar pill is 15m', topbarTf === '15m',
+      `topbar=${topbarTf} engine=${engineTf}`);
+    return checks;
+  });
+}
+
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -505,5 +566,6 @@ export function reactScenarioList() {
     { id: 'H-R07', title: 'parity row 7: peer isolation on cross-panel select', run: hR07 },
     { id: 'H-R08', title: 'parity row 8: Ctrl+drag marquee (host + panel B)', run: hR08 },
     { id: 'H-R09', title: 'parity row 9: single→double-click chain + Esc (host + panel B)', run: hR09 },
+    { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label sync after refresh (built V9)', run: hS80React },
   ];
 }

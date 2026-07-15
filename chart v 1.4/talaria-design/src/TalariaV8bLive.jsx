@@ -966,6 +966,26 @@ function v9IsMultichartIframeEmbed() {
   }
 }
 
+/** T8 step 9: parent topbar TF pills track focused iframe engine TF (I14 focus-mirror). Default ON. */
+function mcPanelTfLabelSyncEnabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_MC_PANEL_TF_LABEL_SYNC === false);
+  } catch (_) {
+    return true;
+  }
+}
+
+/** Focused iframe panel id when multichart is active; null when host A owns focus. */
+function v9FocusedNonHostPanelId() {
+  try {
+    if (!v9IsMultiPanelLayoutActive()) return null;
+    const grid = window.__multichartGrid;
+    const fp = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+    if (fp && fp !== "A") return fp;
+  } catch (_) {}
+  return null;
+}
+
 /** Parent multichart shell window (iframe tiles portal UI into the parent document). */
 function v9MultichartShellWindow() {
   if (typeof window === "undefined") return null;
@@ -12239,8 +12259,10 @@ const TalariaV8bLive = () => {
       apply(d.symbol, "event");
       const mappedTf = chartTfDetailToV9(d.timeframe);
       if (mappedTf && mappedTf !== lastMappedTf) {
-        lastMappedTf = mappedTf;
-        setTf(mappedTf);
+        if (!(mcPanelTfLabelSyncEnabled() && v9FocusedNonHostPanelId())) {
+          lastMappedTf = mappedTf;
+          setTf(mappedTf);
+        }
       }
       scheduleRefreshSessionPairs();
     };
@@ -12620,7 +12642,10 @@ const TalariaV8bLive = () => {
       }
       if (!cTf) return;
       const mapped = chartTfToV9(cTf);
-      if (mapped) setTf(mapped);
+      if (mapped) {
+        if (mcPanelTfLabelSyncEnabled() && v9FocusedNonHostPanelId()) return;
+        setTf(mapped);
+      }
     };
 
     window.addEventListener("timeframeChanged", handleTfChanged);

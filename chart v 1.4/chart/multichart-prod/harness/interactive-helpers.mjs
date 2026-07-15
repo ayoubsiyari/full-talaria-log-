@@ -396,6 +396,12 @@ export async function focusPanelByClick(page, panelId = 'B') {
   if (!pt) return { ok: false, reason: `no canvas point for panel ${panelId}` };
   await page.mouse.click(pt.x, pt.y, { delay: 25 });
   await sleep(200);
+  await page.evaluate((pid) => {
+    if (typeof window.harnessSetFocusedPanel === 'function') {
+      window.harnessSetFocusedPanel(pid);
+    }
+  }, panelId).catch(() => {});
+  await sleep(100);
   return { ok: true, ...pt };
 }
 
@@ -881,6 +887,40 @@ export async function readHarnessFocusedPanelId(page) {
     if (mgr.selectedPanelId != null) return String(mgr.selectedPanelId);
     return 'A';
   });
+}
+
+/** Parent V9 topbar active TF pill (`data-tf` with active font-weight). */
+export async function readParentTopbarActiveTf(page) {
+  return page.evaluate(() => {
+    const stub = document.getElementById('harnessTopbarTf');
+    if (stub && stub.getAttribute('data-tf')) {
+      return stub.getAttribute('data-tf');
+    }
+    const pills = document.querySelectorAll('[data-tf]');
+    for (const el of pills) {
+      const fw = window.getComputedStyle(el).fontWeight;
+      if (fw === '700' || Number(fw) >= 700) {
+        return el.getAttribute('data-tf');
+      }
+    }
+    for (const el of pills) {
+      const bg = el.style.background || '';
+      if (bg.includes('74,106,255') || bg.includes('4a6aff')) {
+        return el.getAttribute('data-tf');
+      }
+    }
+    return window.__harnessTopbarTf || null;
+  });
+}
+
+/** chart.currentTimeframe inside a panel iframe (or host when panelId A). */
+export async function readPanelEngineTf(page, panelId = 'B') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    return ch && ch.currentTimeframe != null ? String(ch.currentTimeframe) : null;
+  }).catch(() => null);
 }
 
 export { resolveDrawing };

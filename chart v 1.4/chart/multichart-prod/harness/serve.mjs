@@ -489,7 +489,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260715a4';
+  const buildId = '20260715a5';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -617,6 +617,9 @@ function hostPageHtml(query) {
     <div id="replayToolbarHandle" style="display:none;"></div>
     <button type="button" id="replayModeBtn" tabindex="-1"></button>
   </div>
+  <!-- T8 step 9: harness topbar TF pill stub (mirrors V9 data-tf active pill). -->
+  <button type="button" id="harnessTopbarTf" data-tf="1m"
+    style="position:fixed;top:6px;right:8px;z-index:99999;font:12px sans-serif;font-weight:500;padding:4px 8px;background:rgba(74,106,255,0.08);border:none;color:#8af;pointer-events:none">1m</button>
   <script>
   (function () {
     var CFG = ${JSON.stringify(cfg)};
@@ -689,8 +692,72 @@ function hostPageHtml(query) {
           return '/chart/multichart-prod/chart-embed.html?' + params.toString();
         },
         onLog: function (e) { window.__mgrLog.push(e); },
+        onState: function (id, state) {
+          harnessFocusMirrorOnState(id, state);
+        },
       });
       window.__harnessManager = mgr;
+      window.__harnessFocusedPanelId = 'A';
+      window.__harnessLastFocusMirrorKey = '';
+
+      function mcPanelTfLabelSyncEnabled() {
+        return window.__TALARIA_MC_PANEL_TF_LABEL_SYNC !== false;
+      }
+      function chartTfToV9Harness(cTf) {
+        if (!cTf) return null;
+        var s = String(cTf).toLowerCase().trim();
+        if (s === '1mo') return '1M';
+        if (/^\\d+h$/.test(s)) return s.toUpperCase();
+        if (/^\\d+d$/.test(s) || /^\\d+w$/.test(s)) return s.toUpperCase();
+        return s;
+      }
+      function readPanelStateHarness(panelId) {
+        if (panelId === 'A') {
+          var host = window.chart;
+          if (!host) return null;
+          return { timeframe: host.currentTimeframe || null };
+        }
+        var ent = mgr.charts && mgr.charts.get(panelId);
+        if (!ent || !ent.state) return null;
+        return { timeframe: ent.state.timeframe || null };
+      }
+      function setHarnessTopbarTf(v9tf) {
+        if (!v9tf) return;
+        window.__harnessTopbarTf = v9tf;
+        var el = document.getElementById('harnessTopbarTf');
+        if (el) {
+          el.setAttribute('data-tf', v9tf);
+          el.textContent = v9tf;
+          el.style.fontWeight = '700';
+        }
+      }
+      function dispatchHarnessFocusChanged(panelId, force) {
+        if (!mcPanelTfLabelSyncEnabled()) return;
+        var st = readPanelStateHarness(panelId);
+        var key = String(panelId) + '|' + String(st && st.timeframe || '');
+        if (!force && key === window.__harnessLastFocusMirrorKey) return;
+        window.__harnessLastFocusMirrorKey = key;
+        var mapped = chartTfToV9Harness(st && st.timeframe);
+        if (mapped) setHarnessTopbarTf(mapped);
+        try {
+          window.dispatchEvent(new CustomEvent('multichartFocusChanged', {
+            detail: { panelId: panelId, timeframe: st && st.timeframe || null },
+          }));
+        } catch (_) {}
+      }
+      window.harnessFocusMirrorOnState = function (id, state) {
+        if (!mcPanelTfLabelSyncEnabled()) return;
+        if (id !== window.__harnessFocusedPanelId) return;
+        if (state && state.timeframe && Number(state.candleCount) > 0) {
+          window.__harnessLastFocusMirrorKey = '';
+        }
+        dispatchHarnessFocusChanged(id, !!(state && state.timeframe && Number(state.candleCount) > 0));
+      };
+      window.harnessSetFocusedPanel = function (panelId) {
+        window.__harnessFocusedPanelId = panelId || 'A';
+        window.__harnessLastFocusMirrorKey = '';
+        dispatchHarnessFocusChanged(window.__harnessFocusedPanelId, true);
+      };
 
       // Install the host bridge on window.chart and register it as the HOST
       // panel — mirrors MultichartGrid ensureHostBridge + addHostChart +

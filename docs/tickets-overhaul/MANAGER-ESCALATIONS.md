@@ -4,6 +4,32 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-014 — Replay cadence master: PO wants finest-TF, not selected-panel (the parked D-015 secondary, now reopened)
+
+**Date:** 2026-07-15
+**Track:** T8 (Lane 2)
+**RC:** RC-8
+**Trigger:** Freeze fix (TAL-01590) PO-CONFIRMED on a4 — none stuck. With the freeze gone, the cadence complaint remains, exactly the reopen D-015 anticipated.
+
+### PO spec
+In a multi-panel mixed-TF layout, on Play **all panels advance at the selected/Panel-A panel's TF** (e.g. host 4h → every panel, including 1m ones, steps 4h at a time). PO wants the replay clock to tick at the **smallest (finest) TF present across all panels**, regardless of which panel is selected — so a 1m panel advances 1m-by-1m and coarser panels form their candle over the finer ticks.
+
+### Why this is a Director design call (not a silent fix)
+- It **changes shipped behavior**: today the cadence master is the host/selected panel's TF. Proposed: the master = `min(TF)` across all present panels. Per D-013/D-015 zero-behavior-change, a cadence-policy change escalates.
+- **Performance implication (the real design question):** if the host is 4h and a panel is 1m, ticking the replay clock at 1m means ~240 sub-steps per host candle — the host and all coarser panels must advance/render at the finer cadence. Need a ruling on whether the whole replay clock runs at finest granularity, or only the finer panels sub-advance while the host keeps its own step (decoupled cadence).
+- Mechanism is already mapped (step-4 diagnostic: replay-master = host/selected panel; coarse/finer panels derive from it).
+
+### Open forks for the Director
+1. **Clock granularity:** whole replay clock at finest TF (simplest, heaviest) vs decoupled (host steps at its TF; finer panels interpolate/sub-advance).
+2. **Master re-derivation:** if the finest-TF panel is closed/added mid-replay, does the master re-compute live?
+3. **Independent-symbol panels:** does `min(TF)` include panels on different symbols, or only same-symbol?
+4. **Interaction with the edge-park fix (D-015):** own-master advance stays; this only changes the shared-clock cadence the panels key off.
+
+### Manager recommendation
+Authorize a **design doc first** (Lane 2), then implement behind a new switch (e.g. `__TALARIA_MC_FINEST_TF_REPLAY_CADENCE`), RED-first, staging PO confirm. Recommend the **decoupled** option (finer panels sub-advance; host keeps its cadence) to avoid a 240×-render blowup — but defer to the Director. Freeze-exempt; staging-only.
+
+---
+
 ## ESC-013 — RESOLVED
 
 **Director ruling:** D-015 (2026-07-15)

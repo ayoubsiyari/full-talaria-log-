@@ -85,6 +85,15 @@ function multichartPeerDeselectV1Enabled() {
     }
 }
 
+/** T8 step 9: parent topbar TF pills track iframe engine TF after refresh (I14 focus-mirror). Default ON. */
+function mcPanelTfLabelSyncEnabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_MC_PANEL_TF_LABEL_SYNC === false);
+    } catch (_) {
+        return true;
+    }
+}
+
 /** Strip stale resize-handle DOM left after peer deselect (I14 bridge; no engine edits). */
 function scrubHostStaleSelectionChrome() {
     try {
@@ -4045,6 +4054,21 @@ export default function MultichartGrid({
         return () => clearTimeout(t);
     }, [focusedPanelId]);
 
+    // T8 step 9: when a focused iframe panel's bars land after refresh, re-publish
+    // focus mirror so React tf state converges without waiting for Play.
+    useEffect(() => {
+        if (!mcPanelTfLabelSyncEnabled()) return;
+        const fp = focusedPanelId;
+        if (!fp || fp === HOST_PANEL_ID) return;
+        if (!dataReadyPanels.has(fp)) return;
+        const t = setTimeout(() => {
+            lastFocusMirrorKeyRef.current = "";
+            dispatchFocusChanged(fp, { force: true });
+        }, 0);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataReadyPanels, focusedPanelId]);
+
     // Stable ref to the latest layoutSync so the onState delegate below
     // can read it without re-running on every toggle change.
     // (layoutSyncRef declared at component top)
@@ -4097,8 +4121,16 @@ export default function MultichartGrid({
             }
         }
 
-        // (a) focus mirror
+        // (a) focus mirror — T8 step 9: once bars + engine TF land via chart-state,
+        // force a fresh multichartFocusChanged so the parent topbar pills match
+        // the iframe (manager cache may still hold the early addChart seed).
         if (id === focusedPanelIdRef.current) {
+            if (mcPanelTfLabelSyncEnabled()
+                && state
+                && state.timeframe
+                && Number(state.candleCount) > 0) {
+                lastFocusMirrorKeyRef.current = "";
+            }
             dispatchFocusChanged(id);
         }
 

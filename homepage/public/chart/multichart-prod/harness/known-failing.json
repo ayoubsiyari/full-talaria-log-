@@ -79,7 +79,8 @@
     "H-S76",
     "H-S77",
     "H-S78",
-    "H-S79"
+    "H-S79",
+    "H-S80"
   ],
   "knownFailing": {
     "H-S6": "T0 step 15 baseline drift: TF fan-out 1m→1h all panels self-fetch (owner-fetch contract; RC-8 BL-18)",

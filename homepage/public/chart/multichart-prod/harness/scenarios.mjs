@@ -84,6 +84,8 @@ import {
   readPanelFileIds,
   enableHarnessSymbolSync,
   readHarnessFocusedPanelId,
+  readParentTopbarActiveTf,
+  readPanelEngineTf,
 } from './interactive-helpers.mjs';
 
 const HOST_FILE = '25';
@@ -6152,6 +6154,99 @@ async function hS57(ctx) {
   });
 }
 
+// ── H-S80 ────────────────────────────────────────────────────────────────
+// PLAN2-FOUND#6 (T8 step 9): parent topbar TF pills match iframe engine TF
+// after refresh + focus — label-only; engine TF assert GREEN pre-fix.
+const H_S80_LABEL_SYNC_SWITCH = '__TALARIA_MC_PANEL_TF_LABEL_SYNC';
+
+async function hS80(ctx) {
+  const checks = makeChecks();
+  const notes = [];
+
+  const main = await runWith(ctx, { pair: 'same', panels: 2, tf: '15m' }, async (boot, runNotes) => {
+    const { page } = boot;
+    await waitBootSettled(page, ['A', 'B'], 45_000, boot.getInFlightDataRequests);
+
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '15m' }).catch(() => {});
+    await sleep(600);
+    const focusSetup = await focusPanelByClick(page, 'B');
+    checks.check('H-S80 setup: focus panel B', focusSetup && focusSetup.ok, JSON.stringify(focusSetup || null));
+    await sleep(400);
+
+    const preEngine = await readPanelEngineTf(page, 'B');
+    checks.check('H-S80 setup: B engine TF is 15m before reload', preEngine === '15m', `engine=${preEngine}`);
+
+    await seedChartPanelState(page, '2v');
+    await page.reload({ waitUntil: 'networkidle2', timeout: 120_000 });
+    await sleep(1200);
+    await waitBootSettled(page, ['A', 'B'], 45_000, boot.getInFlightDataRequests);
+
+    const focusPost = await focusPanelByClick(page, 'B');
+    checks.check('H-S80 setup: focus panel B after reload', focusPost && focusPost.ok, JSON.stringify(focusPost || null));
+    await sleep(800);
+
+    const engineTf = await readPanelEngineTf(page, 'B');
+    const topbarTf = await readParentTopbarActiveTf(page);
+    checks.check(
+      'H-S80 CORE: B iframe engine TF is 15m after refresh',
+      engineTf === '15m',
+      `engine=${engineTf}`,
+    );
+    checks.check(
+      'H-S80 CORE: parent topbar active pill is 15m when B focused',
+      topbarTf === '15m',
+      `topbar=${topbarTf} engine=${engineTf}`,
+    );
+
+    runNotes.push(`H-S80 post-refresh topbar=${topbarTf} engine=${engineTf}`);
+    return checks;
+  });
+  notes.push(...(main.notes || []));
+
+  const off = await runWith(ctx, {
+    pair: 'same',
+    panels: 2,
+    tf: '15m',
+    preDocument: {
+      fn: (sw) => { window[sw] = false; },
+      args: [H_S80_LABEL_SYNC_SWITCH],
+    },
+  }, async (boot, runNotes) => {
+    const { page } = boot;
+    await waitBootSettled(page, ['A', 'B'], 45_000, boot.getInFlightDataRequests);
+
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '15m' }).catch(() => {});
+    await sleep(600);
+    await focusPanelByClick(page, 'B');
+    await seedChartPanelState(page, '2v');
+    await page.reload({ waitUntil: 'networkidle2', timeout: 120_000 });
+    await sleep(1200);
+    await waitBootSettled(page, ['A', 'B'], 45_000, boot.getInFlightDataRequests);
+    await focusPanelByClick(page, 'B');
+    await sleep(800);
+
+    const engineTf = await readPanelEngineTf(page, 'B');
+    const topbarTf = await readParentTopbarActiveTf(page);
+    checks.check(
+      'H-S80 switch-OFF: engine still 15m',
+      engineTf === '15m',
+      `engine=${engineTf}`,
+    );
+    checks.check(
+      'H-S80 switch-OFF: topbar label desync (not 15m)',
+      topbarTf !== '15m',
+      `topbar=${topbarTf} engine=${engineTf}`,
+    );
+    runNotes.push('H-S80 switch-OFF: __TALARIA_MC_PANEL_TF_LABEL_SYNC=false reverts stuck-label behavior.');
+    return checks;
+  });
+  notes.push(...(off.notes || []));
+
+  notes.push('H-S80 (PLAN2-FOUND#6 / T8 step 9): label-only — parent topbar TF pills track '
+    + 'iframe engine TF via focus-mirror after refresh; I14 postMessage chart-state only.');
+  return { checks, notes, inv: main.inv };
+}
+
 // ── H-S79 ────────────────────────────────────────────────────────────────
 // PLAN2-FOUND#5 Track A: host backtest replay playhead survives hard refresh
 // (paused at pre-refresh wall-clock, not session-start / refresh-point).
@@ -7816,6 +7911,7 @@ export function scenarioList() {
     { id: 'H-S77', title: 'B-FIX-C panel master-growth offset on prepend', run: hS77 },
     { id: 'H-S78', title: 'BL-16 dedicated drag-during-play (A9)', run: hS78 },
     { id: 'H-S79', title: 'PLAN2-FOUND#5: backtest replay playhead survives refresh (paused restore)', run: hS79 },
+    { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label syncs to engine TF after refresh (T8 step 9)', run: hS80 },
   ];
 }
 

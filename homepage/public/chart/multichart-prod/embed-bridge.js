@@ -1125,6 +1125,12 @@
                 if (samePairBoot
                     && typeof ch._multichartMirrorViewportFromHost === 'function'
                     && ch._multichartMirrorViewportFromHost()) {
+                    try {
+                        var pcTf = readParentChart();
+                        if (pcTf && pcTf.currentTimeframe) {
+                            ch.currentTimeframe = String(pcTf.currentTimeframe);
+                        }
+                    } catch (_) {}
                     reportToShell('info', 'boot: parent mirror viewport (no fetch) fileId=' + loadFid);
                     notifyPanelCacheReady();
                     markViewportBootSettle(ch, 3200);
