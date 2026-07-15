@@ -39,24 +39,13 @@ const spaceMono = Space_Mono({
 });
 
 /**
- * Resolve chart API URLs.
- * Prefer same-origin relative paths (`/api/...`) — nginx already proxies them.
- * `NEXT_PUBLIC_CHART_API_ORIGIN` is only used when it matches the page origin.
- * A baked-in IP (e.g. http://31.97.192.82) while the user is on the public domain
- * breaks CSP connect-src 'self' and cookies → "Failed to fetch" on sessions.
+ * Always same-origin relative `/api/...`.
+ * nginx proxies chart API on the page host. Never use NEXT_PUBLIC_CHART_API_ORIGIN
+ * in the browser — a baked IP (http://x.x.x.x without :3000, or vs HTTPS domain)
+ * violates CSP connect-src 'self' and causes "Failed to fetch" on sessions.
  */
 function chartApiUrl(path: string): string {
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const base = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_CHART_API_ORIGIN?.trim() : "";
-  if (!base || !/^https?:\/\//i.test(base)) return p;
-  if (typeof window !== "undefined") {
-    try {
-      if (new URL(base).origin !== window.location.origin) return p;
-    } catch {
-      return p;
-    }
-  }
-  return `${base.replace(/\/$/, "")}${p}`;
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 type Trade = {

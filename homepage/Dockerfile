@@ -65,6 +65,13 @@ ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 ARG NEXT_PUBLIC_SITE_URL=https://www.talaria-log.com
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 
+# Never bake a chart API host into the static export. Browser fetches must stay
+# same-origin (/api/...) so CSP connect-src 'self' works. A host env like
+# NEXT_PUBLIC_CHART_API_ORIGIN=http://x.x.x.x breaks sessions when the user
+# opens :3000 or the HTTPS domain (different origin than the baked IP).
+ENV NEXT_PUBLIC_CHART_API_ORIGIN=
+ENV NEXT_PUBLIC_JOURNAL_API_ORIGIN=
+
 # Client-side error tracking (optional). Empty DSN = Sentry never initializes.
 # NEXT_PUBLIC_* must be present at build time to be embedded in the static export.
 ARG NEXT_PUBLIC_SENTRY_DSN=
