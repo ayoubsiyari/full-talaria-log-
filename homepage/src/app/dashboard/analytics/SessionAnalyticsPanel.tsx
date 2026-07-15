@@ -39,13 +39,36 @@ const spaceMono = Space_Mono({
 });
 
 /**
- * Always same-origin relative `/api/...`.
- * nginx proxies chart API on the page host. Never use NEXT_PUBLIC_CHART_API_ORIGIN
- * in the browser — a baked IP (http://x.x.x.x without :3000, or vs HTTPS domain)
- * violates CSP connect-src 'self' and causes "Failed to fetch" on sessions.
+ * Force same-origin chart API URLs.
+ *
+ * Bug we hit in prod: page is http://IP:3000 (CSP 'self') but a baked
+ * NEXT_PUBLIC_CHART_API_ORIGIN=http://IP (no port) made fetch go to :80 → CSP block
+ * → "Failed to fetch" / "Failed to start session".
+ * Always resolve to the current page origin (or a relative path).
  */
 function chartApiUrl(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
+  const raw = (path || "").trim();
+  if (!raw) return "/";
+
+  if (typeof window !== "undefined") {
+    try {
+      const abs = new URL(raw, window.location.origin);
+      // Drop any baked host/port (e.g. http://31.97.192.82 without :3000).
+      return `${abs.pathname}${abs.search}${abs.hash}` || "/";
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const abs = new URL(raw);
+      return `${abs.pathname}${abs.search}${abs.hash}` || "/";
+    } catch {
+      return raw.startsWith("/") ? raw : `/${raw}`;
+    }
+  }
+  return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
 type Trade = {
