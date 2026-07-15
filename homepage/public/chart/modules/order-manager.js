@@ -32,6 +32,72 @@ function _orderEntryCloseHitTargetFixEnabled() {
 }
 
 const ENTRY_STACK_OFFSET_PX = 16;
+const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
+
+/** T4 step 9: default ON — lot stepper full recalc + SL/TP stepper seed from entry; own kill-switch. */
+function _orderEntryParseDragInputFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PARSE_DRAG_INPUT_FIX;
+}
+
+/** @param {'slPrice'|'tpPrice'|string} fieldId @param {number} currentValue */
+function _resolveSltpStepperSeedPrice(fieldId, currentValue, entryPrice, side, pipSize) {
+    if (!_orderEntryParseDragInputFixEnabled()) return currentValue;
+    const v = parseFloat(currentValue);
+    if (Number.isFinite(v) && v > 0) return v;
+    const entry = Number(entryPrice);
+    if (!(entry > 0)) return Number.isFinite(v) ? v : 0;
+    const ps = Number(pipSize) > 0 ? Number(pipSize) : 0.0001;
+    const offset = ps * DEFAULT_SLTP_STEPPER_OFFSET_PIPS;
+    const s = String(side || 'BUY').toUpperCase();
+    if (fieldId === 'slPrice') return s === 'BUY' ? entry - offset : entry + offset;
+    if (fieldId === 'tpPrice') return s === 'BUY' ? entry + offset : entry - offset;
+    return Number.isFinite(v) ? v : 0;
+}
+
+/** T4 step 10: default ON — preview color + per-leg min-lot validity (TAL-00752 #1/#13). */
+function _orderEntryPreviewColorFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PREVIEW_COLOR_FIX;
+}
+
+/** T4 step 10: default ON — limit second-entry offsets toward market, not TP (TAL-00752 #9). */
+function _orderEntrySecondEntryOffsetFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_SECOND_ENTRY_OFFSET_FIX;
+}
+
+/** T4 step 10: default ON — pending-limit SL clamp uses loss-side entry anchor (TAL-00752 #11). */
+function _orderEntryPendingSlClampFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PENDING_SL_CLAMP_FIX;
+}
+
+/** T4 step 10: default ON — chart ✕ cancel clears draft + rail state (TAL-00752 #14). */
+function _orderEntryCancelCleanupFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_CANCEL_CLEANUP_FIX;
+}
+
+/** T4 step 10: default ON — SL/TP panel steppers run full recalc path (TAL-00752 #15). */
+function _orderEntryPanelSltpFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
+}
+
+/** @param {string} side @param {string} [legOrderType] */
+function _resolvePreviewEntryColor(side, legOrderType = 'limit') {
+    if (!_orderEntryPreviewColorFixEnabled()) {
+        const ot = String(legOrderType || '').toLowerCase();
+        if (ot === 'stop') return '#f23645';
+    }
+    return String(side || 'BUY').toUpperCase() === 'BUY' ? '#2962ff' : '#f23645';
+}
+
+/** @param {string} side @param {number[]} entryPrices */
+function _resolvePendingLimitSlEntryAnchor(side, entryPrices) {
+    const prices = (entryPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+    if (!prices.length) return 0;
+    if (!_orderEntryPendingSlClampFixEnabled()) {
+        return prices.reduce((s, p) => s + p, 0) / prices.length;
+    }
+    const s = String(side || 'BUY').toUpperCase();
+    return s === 'BUY' ? Math.min(...prices) : Math.max(...prices);
+}
 
 /** @param {Array<{id:number,price:number}>} levels @param {number} [pricePrecision] @returns {Map<number, number>} */
 function _computeMultiEntryStackIndices(levels, pricePrecision = 5) {
@@ -12685,7 +12751,14 @@ class OrderManager {
             const splitOrderType = (parts[1] || this.orderType || 'limit').toUpperCase();
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
             const levelIndex = parseInt(levelNum, 10) - 1;
-            const level = (this.multiEntryLevels || [])[levelIndex];
+            let level = (this.multiEntryLevels || [])[levelIndex];
+            if (this.isMultiEntryMode && this.splitEntries?.length && levelIndex > 0) {
+                const splitIx = levelIndex - 1;
+                const split = this.splitEntries[splitIx];
+                if (split?.multiEntryLevelId != null) {
+                    level = (this.multiEntryLevels || []).find((l) => l.id === split.multiEntryLevelId) || level;
+                }
+            }
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
@@ -13534,12 +13607,39 @@ class OrderManager {
                 try {
                     window.parent.postMessage({ type: 'talaria-multichart-close-order-rail' }, '*');
                 } catch (_e1) { /* ignore */ }
-                this.removePreviewLines();
-                try { window.__talariaMultichartDraftActive = false; } catch (_e2) { /* ignore */ }
+                if (_orderEntryCancelCleanupFixEnabled()) {
+                    this._draftCancelCleanupFromChart();
+                } else {
+                    this.removePreviewLines();
+                    try { window.__talariaMultichartDraftActive = false; } catch (_e2) { /* ignore */ }
+                }
                 return;
             }
         } catch (_e0) { /* ignore */ }
+        if (_orderEntryCancelCleanupFixEnabled()) {
+            this._draftCancelCleanupFromChart();
+        }
         this.toggleOrderPanel();
+    }
+
+    /** T4 step 10: reset draft state when chart preview ✕ is clicked (TAL-00752 #14). */
+    _draftCancelCleanupFromChart() {
+        this.removePreviewLines();
+        this.clearPendingOrderEditingState();
+        this._orderPlacedAwaitingReset = false;
+        this._resetMultiEntryStateForNewOrder();
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+        this.isDraggingPreviewLine = false;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        try { window.__talariaMultichartDraftActive = false; } catch (_e1) { /* ignore */ }
+        const panel = document.getElementById('orderPanel');
+        if (panel?.classList.contains('visible')) {
+            panel.classList.remove('visible');
+            const backdrop = document.getElementById('orderPanelBackdrop');
+            if (backdrop) backdrop.classList.remove('visible');
+        }
     }
 
     /**
@@ -14712,11 +14812,21 @@ class OrderManager {
                 }
             } else if (bareId.startsWith('multiEntryPrice_') || ['orderEntryPrice', 'slPrice', 'tpPrice'].includes(bareId)) {
                 const p = this.getPricePrecision();
-                newValue = parseFloat(this.formatPrice(newValue, p));
+                let base = currentValue;
+                if (bareId === 'slPrice' || bareId === 'tpPrice') {
+                    const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    base = _resolveSltpStepperSeedPrice(
+                        bareId,
+                        currentValue,
+                        entryPrice,
+                        this.orderSide,
+                        this.pipSize
+                    );
+                }
+                newValue = parseFloat(this.formatPrice(base + step, p));
             }
 
             input.value = newValue;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
 
             const peerId = targetId.startsWith('rrMirror_') ? bareId : `rrMirror_${bareId}`;
             const peer = document.getElementById(peerId);
@@ -14724,9 +14834,18 @@ class OrderManager {
                 peer.value = newValue;
             }
 
-            if (['riskAmountUSD', 'riskAmountPercent', 'lotSizeAmount'].includes(bareId)) {
-                this.calculateAdvancedRiskReward();
-                this.updatePlaceButtonText();
+            if (bareId === 'lotSizeAmount' && _orderEntryParseDragInputFixEnabled()) {
+                this._applyLotSizeStepperSideEffects();
+            } else if ((bareId === 'slPrice' || bareId === 'tpPrice') && _orderEntryPanelSltpFixEnabled()) {
+                input.value = newValue;
+                if (peer && peer !== input) peer.value = newValue;
+                this._applySltpStepperSideEffects();
+            } else {
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                if (['riskAmountUSD', 'riskAmountPercent', 'lotSizeAmount'].includes(bareId)) {
+                    this.calculateAdvancedRiskReward();
+                    this.updatePlaceButtonText();
+                }
             }
 
             this.syncSelectedRiskRewardDrawingFromPanelDebounced();
@@ -15458,6 +15577,46 @@ class OrderManager {
         const valueEl = document.getElementById('calculatedValue');
         if (labelEl) labelEl.textContent = parts.label;
         if (valueEl) valueEl.textContent = parts.value;
+    }
+
+    /**
+     * T4 step 9: lot +/- stepper must run the same recalc path as typing in #lotSizeAmount (TAL-00752#8).
+     */
+    _applyLotSizeStepperSideEffects() {
+        if (!_orderEntryParseDragInputFixEnabled()) {
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            return;
+        }
+        this.calculatePositionFromRisk();
+        this._refreshMultiEntryRowsIfNeeded();
+        const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked;
+        if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+            this.calculateTPTargetsFromNumber(this.tpTargets.length);
+        }
+        this.updatePreviewLines();
+        this.syncSelectedRiskRewardDrawingFromPanelDebounced();
+    }
+
+    /** T4 step 10: SL/TP +/- stepper runs full recalc + preview refresh (TAL-00752#15). */
+    _applySltpStepperSideEffects() {
+        if (!_orderEntryPanelSltpFixEnabled()) return;
+        this.calculatePositionFromRisk();
+        this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
+        this.syncSelectedRiskRewardDrawingFromPanelDebounced();
+    }
+
+    /** T4 step 9: expose seed helper for tests (TAL-00752#19). */
+    _resolveSltpStepperSeedPriceForTest(fieldId, currentValue) {
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        return _resolveSltpStepperSeedPrice(
+            fieldId,
+            currentValue,
+            entryPrice,
+            this.orderSide,
+            this.pipSize
+        );
     }
 
     /**
@@ -17990,7 +18149,8 @@ class OrderManager {
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
         
         // Draw entry price preview line (dashed blue/red) - now draggable!
-        const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
+        const mainLegOrderType = this.orderType || 'market';
+        const entryColor = _resolvePreviewEntryColor(this.orderSide, mainLegOrderType);
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
@@ -18028,7 +18188,7 @@ class OrderManager {
                             splitOpts = { disabled: true };
                         }
                     }
-                    const splitColor = entryColor; // Same color as main entry
+                    const splitColor = _resolvePreviewEntryColor(this.orderSide, splitOrderType);
                     const splitOrderType = splitEntry.orderType || this.orderType;
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
                     const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
@@ -18640,7 +18800,7 @@ class OrderManager {
                     if (tpRef != null) {
                         newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
                     }
-                    const entryPxSl = self._getReferenceEntryForOrderMath();
+                    const entryPxSl = self._getPreviewSlEntryAnchor();
                     if (entryPxSl > 0) {
                         newPrice = self._clampPreviewSlDragPriceVsEntry(self.orderSide, newPrice, entryPxSl, self.pipSize);
                     }
@@ -19596,7 +19756,7 @@ class OrderManager {
                     if (tpRef != null) {
                         newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
                     }
-                    const entryPxSl = self._getReferenceEntryForOrderMath();
+                    const entryPxSl = self._getPreviewSlEntryAnchor();
                     if (entryPxSl > 0) {
                         newPrice = self._clampPreviewSlDragPriceVsEntry(self.orderSide, newPrice, entryPxSl, self.pipSize);
                     }
@@ -20023,6 +20183,33 @@ class OrderManager {
      * @param {number} proposedPrice
      * @param {number[]} siblingPrices - priced levels already on the ladder (BUY: new step is below min; SELL: above max)
      */
+    /**
+     * Default second multi-entry price for limit/stop ladders (TAL-00752 #9).
+     * @param {number} mainPrice
+     * @param {number[]} siblingPrices
+     */
+    _resolveDefaultSecondEntryPrice(mainPrice, siblingPrices) {
+        if (!(mainPrice > 0)) return 0;
+        const side = this.orderSide || 'BUY';
+        const orderType = this.orderType || 'limit';
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        const step = Math.max(mainPrice * 0.001, pip * 10);
+        const offsetDir = (side === 'SELL') ? -1 : 1;
+
+        if (!_orderEntrySecondEntryOffsetFixEnabled()) {
+            const rawLegacy = mainPrice + offsetDir * step;
+            return this._clampMultiEntryPriceForReward(rawLegacy, siblingPrices);
+        }
+
+        const towardMarket = orderType === 'limit' || orderType === 'market';
+        const raw = towardMarket
+            ? mainPrice - offsetDir * step
+            : mainPrice + offsetDir * step;
+        return towardMarket
+            ? this._clampMultiEntryPriceForStop(raw, siblingPrices)
+            : this._clampMultiEntryPriceForReward(raw, siblingPrices);
+    }
+
     _clampMultiEntryPriceForStop(proposedPrice, siblingPrices) {
         if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
         const prec = this.getPricePrecision();
@@ -20167,7 +20354,9 @@ class OrderManager {
                     ? currentPrice * (1 + offsetDir * 0.001)
                     : 0;
                 const secondPrice = currentPrice > 0
-                    ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
+                    ? (_orderEntrySecondEntryOffsetFixEnabled()
+                        ? this._resolveDefaultSecondEntryPrice(currentPrice, [currentPrice])
+                        : this._clampMultiEntryPriceForReward(rawSecond, [currentPrice]))
                     : 0;
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
@@ -20660,15 +20849,18 @@ class OrderManager {
         // 3. Must meet minimum lot size
         if (!Number.isFinite(lots) || lots < minLot - 1e-6) return false;
 
-        // 4. Single level lot size must not exceed what the full risk would produce at a
-        //    reasonable distance — prevents one close-to-SL entry from dominating the position
+        // 4. Lot cap: per-leg risk when preview-color fix ON; total risk legacy (TAL-00752 #1/#13)
         if (mode !== 'lot-size' && slPrice > 0) {
-            const totalRisk = this._getMultiEntryTotalIntendedRisk();
-            if (totalRisk > 0) {
-                // Max lots = what the TOTAL risk would produce if all of it were at THIS entry's distance
-                const distPips = Math.abs(level.price - slPrice) / ps;
-                if (distPips > 0) {
-                    const maxLotsAtThisDistance = totalRisk / (distPips * pv);
+            const distPips = Math.abs(level.price - slPrice) / ps;
+            if (distPips > 0) {
+                let capRisk = 0;
+                if (_orderEntryPreviewColorFixEnabled()) {
+                    capRisk = this._getMultiEntryLevelRiskUsd(level);
+                } else {
+                    capRisk = this._getMultiEntryTotalIntendedRisk();
+                }
+                if (capRisk > 0) {
+                    const maxLotsAtThisDistance = capRisk / (distPips * pv);
                     if (lots > maxLotsAtThisDistance * 1.05) return false;
                 }
             }
@@ -21272,6 +21464,24 @@ class OrderManager {
             if (avg > 0) return avg;
         }
         return main;
+    }
+
+    /** Entry anchor for preview SL clamp — loss-side extreme on pending limit drafts (#11). */
+    _getPreviewSlEntryAnchor() {
+        const main = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const isPendingLimit = (this.orderType === 'limit' || this.orderType === 'stop')
+            && (this.editingPendingOrderId || this._isDraftOrderPreviewActive());
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length) {
+            const prices = this.multiEntryLevels.filter((l) => l && l.price > 0).map((l) => l.price);
+            if (prices.length) {
+                if (isPendingLimit && _orderEntryPendingSlClampFixEnabled()) {
+                    return _resolvePendingLimitSlEntryAnchor(this.orderSide, prices);
+                }
+                const avg = this._calcMultiEntryAvgPrice();
+                if (avg > 0) return avg;
+            }
+        }
+        return main > 0 ? main : this._getReferenceEntryForOrderMath();
     }
 
     /**
@@ -23234,7 +23444,9 @@ class OrderManager {
         const step = this._riskRewardMultiEntryStepPx(drawing, currentPrice);
         const rawSecond = currentPrice > 0 ? currentPrice + offsetDir * step : 0;
         const secondPrice = currentPrice > 0
-            ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
+            ? (_orderEntrySecondEntryOffsetFixEnabled()
+                ? this._resolveDefaultSecondEntryPrice(currentPrice, [currentPrice])
+                : this._clampMultiEntryPriceForReward(rawSecond, [currentPrice]))
             : 0;
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,

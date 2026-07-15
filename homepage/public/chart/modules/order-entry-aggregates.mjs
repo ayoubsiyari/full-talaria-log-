@@ -103,6 +103,240 @@ export function computeMultiEntryStackIndices(levels, pricePrecision = 5) {
     return out;
 }
 
+const DEFAULT_SLTP_STEPPER_OFFSET_PIPS = 10;
+
+/**
+ * When SL/TP panel value is unset (0), seed stepper base from entry ± offset (TAL-00752 #19).
+ * @param {'slPrice'|'tpPrice'|string} fieldId
+ * @param {number|string} currentValue
+ * @param {number} entryPrice
+ * @param {string} [side]
+ * @param {number} [pipSize]
+ */
+export function resolveSltpStepperSeedPrice(fieldId, currentValue, entryPrice, side = 'BUY', pipSize = 0.0001) {
+    const v = parseFloat(currentValue);
+    if (Number.isFinite(v) && v > 0) return v;
+    const entry = Number(entryPrice);
+    if (!(entry > 0)) return Number.isFinite(v) ? v : 0;
+    const ps = Number(pipSize) > 0 ? Number(pipSize) : 0.0001;
+    const offset = ps * DEFAULT_SLTP_STEPPER_OFFSET_PIPS;
+    const s = String(side || 'BUY').toUpperCase();
+    if (fieldId === 'slPrice') {
+        return s === 'BUY' ? entry - offset : entry + offset;
+    }
+    if (fieldId === 'tpPrice') {
+        return s === 'BUY' ? entry + offset : entry - offset;
+    }
+    return Number.isFinite(v) ? v : 0;
+}
+
+export function orderEntryPreviewColorFixEnabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_ENTRY_PREVIEW_COLOR_FIX) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_ENTRY_PREVIEW_COLOR_FIX === '0') return false;
+    return true;
+}
+
+export function orderEntrySecondEntryOffsetFixEnabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_ENTRY_SECOND_ENTRY_OFFSET_FIX) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_ENTRY_SECOND_ENTRY_OFFSET_FIX === '0') return false;
+    return true;
+}
+
+export function orderEntryPendingSlClampFixEnabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_ENTRY_PENDING_SL_CLAMP_FIX) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_ENTRY_PENDING_SL_CLAMP_FIX === '0') return false;
+    return true;
+}
+
+export function orderEntryCancelCleanupFixEnabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_ENTRY_CANCEL_CLEANUP_FIX) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_ENTRY_CANCEL_CLEANUP_FIX === '0') return false;
+    return true;
+}
+
+export function orderEntryPanelSltpFixEnabled() {
+    if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_ENTRY_PANEL_SLTP_FIX === '0') return false;
+    return true;
+}
+
+/** Preview entry line color follows side only — not leg order type (TAL-00752 #1). */
+export function resolvePreviewEntryColor(side, legOrderType = 'limit') {
+    if (!orderEntryPreviewColorFixEnabled()) {
+        const ot = String(legOrderType || '').toLowerCase();
+        if (ot === 'stop') return '#f23645';
+    }
+    return String(side || 'BUY').toUpperCase() === 'BUY' ? '#2962ff' : '#f23645';
+}
+
+/**
+ * Rule 4 uses per-leg risk instead of total intended risk (TAL-00752 #1/#13).
+ * @param {EntryLevel} level
+ * @param {AggregateOpts} opts
+ * @param {EntryLevel[]} allLevels
+ * @param {number} [minLot]
+ */
+export function multiEntryLegMeetsMinLot(level, opts, allLevels, minLot = 0.01) {
+    const mode = opts.positionSizeMode || 'risk-usd';
+    const slPrice = opts.slPrice || 0;
+    if (mode !== 'lot-size' && (!slPrice || slPrice <= 0)) return true;
+    if (!level || !level.price || level.price <= 0) return false;
+    const ps = opts.pipSize || 0.0001;
+    const pv = opts.pipValuePerLot || 10;
+    const side = String(opts.side || 'BUY').toUpperCase();
+
+    if (slPrice > 0) {
+        if (side === 'BUY' && level.price <= slPrice) return false;
+        if (side === 'SELL' && level.price >= slPrice) return false;
+        const distPips = Math.abs(level.price - slPrice) / ps;
+        if (distPips < 2) return false;
+    }
+
+    const lots = calcLevelLotSizeNumeric(level, opts, allLevels);
+    if (!Number.isFinite(lots) || lots < minLot - 1e-6) return false;
+
+    if (!orderEntryPreviewColorFixEnabled()) {
+        if (mode !== 'lot-size' && slPrice > 0) {
+            let totalRisk = 0;
+            if (mode === 'risk-usd') totalRisk = opts.totalRiskTarget || 0;
+            else if (mode === 'risk-percent') {
+                totalRisk = (opts.balance || 100000) * ((opts.riskPercent || 1) / 100);
+            }
+            if (totalRisk > 0) {
+                const distPips = Math.abs(level.price - slPrice) / ps;
+                if (distPips > 0) {
+                    const maxLotsAtThisDistance = totalRisk / (distPips * pv);
+                    if (lots > maxLotsAtThisDistance * 1.05) return false;
+                }
+            }
+        }
+    } else if (mode !== 'lot-size' && slPrice > 0) {
+        const legRisk = levelRiskUsd(level, opts, allLevels);
+        const distPips = Math.abs(level.price - slPrice) / ps;
+        if (distPips > 0 && legRisk > 0) {
+            const maxLotsAtThisDistance = legRisk / (distPips * pv);
+            if (lots > maxLotsAtThisDistance * 1.05) return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Loss-side entry anchor for preview SL clamp on pending limit drafts (TAL-00752 #11).
+ * @param {string} side
+ * @param {number[]} entryPrices
+ */
+export function resolvePendingLimitSlEntryAnchor(side, entryPrices) {
+    const prices = (entryPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+    if (!prices.length) return 0;
+    if (!orderEntryPendingSlClampFixEnabled()) {
+        return prices.reduce((s, p) => s + p, 0) / prices.length;
+    }
+    const s = String(side || 'BUY').toUpperCase();
+    return s === 'BUY' ? Math.min(...prices) : Math.max(...prices);
+}
+
+/**
+ * Clamp toward stop-side (limit ladder) vs reward-side (stop ladder).
+ * @param {number} proposedPrice
+ * @param {number[]} siblingPrices
+ * @param {AggregateOpts} opts
+ */
+function clampMultiEntryPriceForStopPure(proposedPrice, siblingPrices, opts) {
+    if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
+    const prec = Number.isFinite(opts.pricePrecision) ? opts.pricePrecision : 5;
+    const slPrice = opts.slPrice || 0;
+    if (!slPrice || slPrice <= 0) return parseFloat(proposedPrice.toFixed(prec));
+    const pip = Number(opts.pipSize) > 0 ? Number(opts.pipSize) : 0.0001;
+    const sep = Math.max(pip * 0.5, 1e-12);
+    const sibs = (siblingPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+    const side = String(opts.side || 'BUY').toUpperCase();
+
+    if (side === 'BUY') {
+        const ceiling = sibs.length ? Math.min(...sibs) : Infinity;
+        if (!(slPrice < ceiling)) return parseFloat(proposedPrice.toFixed(prec));
+        let p = Math.max(proposedPrice, slPrice + sep);
+        if (Number.isFinite(ceiling) && p >= ceiling - sep) {
+            p = Math.max(slPrice + sep, ceiling - Math.max(sep, pip));
+        }
+        return parseFloat(p.toFixed(prec));
+    }
+
+    const floor = sibs.length ? Math.max(...sibs) : -Infinity;
+    if (!(slPrice > floor)) return parseFloat(proposedPrice.toFixed(prec));
+    let p = Math.min(proposedPrice, slPrice - sep);
+    if (Number.isFinite(floor) && p <= floor + sep) {
+        p = Math.min(slPrice - sep, floor + Math.max(sep, pip));
+    }
+    return parseFloat(p.toFixed(prec));
+}
+
+/** @param {number} proposedPrice @param {number[]} siblingPrices @param {AggregateOpts} opts */
+function clampMultiEntryPriceForRewardPure(proposedPrice, siblingPrices, opts) {
+    if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
+    const prec = Number.isFinite(opts.pricePrecision) ? opts.pricePrecision : 5;
+    const pip = Number(opts.pipSize) > 0 ? Number(opts.pipSize) : 0.0001;
+    const sep = Math.max(pip * 0.5, 1e-12);
+    const sibs = (siblingPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+    const slPrice = opts.slPrice || 0;
+    let tpFar = opts.tpPrice || 0;
+    const side = String(opts.side || 'BUY').toUpperCase();
+
+    if (side === 'BUY') {
+        const sibsMax = sibs.length ? Math.max(...sibs) : -Infinity;
+        if (slPrice > 0 && sibs.length) {
+            const sibsMin = Math.min(...sibs);
+            if (!(slPrice < sibsMin)) return parseFloat(proposedPrice.toFixed(prec));
+        }
+        let p = proposedPrice;
+        if (slPrice > 0) p = Math.max(p, slPrice + sep);
+        if (Number.isFinite(sibsMax)) p = Math.max(p, sibsMax + Math.max(sep, pip));
+        if (tpFar > 0) p = Math.min(p, tpFar - Math.max(sep, pip));
+        return parseFloat(p.toFixed(prec));
+    }
+
+    const sibsMin = sibs.length ? Math.min(...sibs) : Infinity;
+    if (slPrice > 0 && sibs.length) {
+        const sibsMax = Math.max(...sibs);
+        if (!(slPrice > sibsMax)) return parseFloat(proposedPrice.toFixed(prec));
+    }
+    let p = proposedPrice;
+    if (slPrice > 0) p = Math.min(p, slPrice - sep);
+    if (Number.isFinite(sibsMin)) p = Math.min(p, sibsMin - Math.max(sep, pip));
+    if (tpFar > 0) p = Math.max(p, tpFar + Math.max(sep, pip));
+    return parseFloat(p.toFixed(prec));
+}
+
+/**
+ * Default second multi-entry price: limit ladders step toward market, not TP (TAL-00752 #9).
+ * @param {string} side
+ * @param {string} orderType
+ * @param {number} mainPrice
+ * @param {number[]} siblingPrices
+ * @param {AggregateOpts} opts
+ */
+export function resolveDefaultSecondEntryPrice(side, orderType, mainPrice, siblingPrices, opts = {}) {
+    if (!(mainPrice > 0)) return 0;
+    const s = String(side || 'BUY').toUpperCase();
+    const ot = String(orderType || 'limit').toLowerCase();
+    const pip = Number(opts.pipSize) > 0 ? Number(opts.pipSize) : 0.0001;
+    const step = Math.max(mainPrice * 0.001, pip * 10);
+    const offsetDir = s === 'SELL' ? -1 : 1;
+
+    if (!orderEntrySecondEntryOffsetFixEnabled()) {
+        const rawLegacy = mainPrice + offsetDir * step;
+        return clampMultiEntryPriceForRewardPure(rawLegacy, siblingPrices, { ...opts, side: s });
+    }
+
+    const towardMarket = ot === 'limit' || ot === 'market';
+    const raw = towardMarket
+        ? mainPrice - offsetDir * step
+        : mainPrice + offsetDir * step;
+    const clampFn = towardMarket ? clampMultiEntryPriceForStopPure : clampMultiEntryPriceForRewardPure;
+    return clampFn(raw, siblingPrices, { ...opts, side: s });
+}
+
 /**
  * Pure recompute-from-entries aggregate model (RC-5 fix).
  * @param {EntryLevel[]} entries
