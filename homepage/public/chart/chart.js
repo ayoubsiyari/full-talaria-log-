@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714b3';
+const CHART_ENGINE_BUILD = '20260714b5';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -25327,6 +25327,8 @@ class Chart {
         }
         const cache = this._panTimeTickCache;
         const maxZoomGrid = !!cache.maxZoomGrid;
+        const labelEvery = maxZoomGrid && typeof this._shouldLabelEveryCandle === 'function'
+            && this._shouldLabelEveryCandle();
         const step = Math.max(1, Math.floor(maxZoomGrid ? 1 : (cache.step || cache.labelStep || 1)));
         const labelStep = Math.max(step, Math.floor(cache.labelStep || step));
         const anchor = Number.isFinite(cache.anchor) ? cache.anchor
@@ -25345,10 +25347,13 @@ class Chart {
             ? this.dataIndexToPixel(idx)
             : (plotLeft + this.offsetX + idx * spacing));
         const labelFor = (idx) => {
-            if (!maxZoomGrid) {
-                const rem = ((anchor - idx) % labelStep + labelStep) % labelStep;
-                if (rem !== 0) return '';
+            if (maxZoomGrid) {
+                return (typeof this._formatMaxZoomBarClockLabel === 'function')
+                    ? this._formatMaxZoomBarClockLabel(idx)
+                    : '';
             }
+            const rem = ((anchor - idx) % labelStep + labelStep) % labelStep;
+            if (rem !== 0) return '';
             return (typeof this._formatTimeLabelForBarIndex === 'function')
                 ? (this._formatTimeLabelForBarIndex(idx) || '')
                 : '';
@@ -25373,23 +25378,28 @@ class Chart {
         const hi = plotRight + spacing * (step + 2);
         mapped = mapped.filter((t) => t.x >= lo && t.x <= hi);
 
-        // At max zoom keep a label on every line (TV). Otherwise thin for readability.
-        if (!maxZoomGrid) {
-            let lastLabelX = -Infinity;
-            for (let i = 0; i < mapped.length; i++) {
-                const t = mapped[i];
-                if (!t.label) continue;
-                if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
-                    t.label = '';
-                } else {
-                    lastLabelX = t.x;
-                }
-            }
-        } else {
-            for (let i = 0; i < mapped.length; i++) {
-                const t = mapped[i];
-                if (t.label) continue;
+        // Refresh labels: every candle only when very wide; else thin by pixels.
+        let lastLabelX = -Infinity;
+        for (let i = 0; i < mapped.length; i++) {
+            const t = mapped[i];
+            if (labelEvery) {
                 t.label = labelFor(t.idx);
+                continue;
+            }
+            if (maxZoomGrid) {
+                if (lastLabelX === -Infinity || (t.x - lastLabelX) >= minLabelPx * 0.9) {
+                    t.label = labelFor(t.idx);
+                    if (t.label) lastLabelX = t.x;
+                } else {
+                    t.label = '';
+                }
+                continue;
+            }
+            if (!t.label) continue;
+            if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
+                t.label = '';
+            } else {
+                lastLabelX = t.x;
             }
         }
 
@@ -26781,12 +26791,18 @@ class Chart {
     }
 
     /**
-     * TradingView zoom tiers:
+     * TradingView zoom tiers (intraday only):
      * - normal: vertical grid = clock-aligned label positions only
      * - wide bars: one grid line per candle (labels thinned so they stay readable)
      * - very wide bars: one grid line + one HH:MM label per candle (TV max-zoom)
+     * Daily/weekly/monthly never use per-candle mesh — TV shows month majors there.
      */
     _isMaxZoomPerCandleGrid() {
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
+        if (/w$/i.test(timeframe) || /mo$/i.test(timeframe)) return false;
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) timeframeMs = 60000;
+        if (timeframeMs >= 86400000) return false;
         const spacing = Math.max(1e-6, typeof this.getCandleSpacing === 'function'
             ? this.getCandleSpacing() : 1);
         return spacing >= 36;
@@ -26936,8 +26952,10 @@ class Chart {
             else if (visibleBarsCount > 75)  labelInterval = 3;
             else labelInterval = 1;
         } else if (timeframe === '1d') {
-            if (visibleBarsCount > 150) labelInterval = 30;
-            else if (visibleBarsCount > 75)  labelInterval = 7;
+            // TradingView 1D overview: month majors, not every few days.
+            if (visibleBarsCount > 90) labelInterval = 30;
+            else if (visibleBarsCount > 40) labelInterval = 20;
+            else if (visibleBarsCount > 20) labelInterval = 7;
             else labelInterval = 1;
         } else if (timeframe === '1w') {
             if (visibleBarsCount > 120) labelInterval = 4;
@@ -26960,9 +26978,11 @@ class Chart {
         const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
         const suppressIntradayBoundaryLabels = useUniformIntradayTicks;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
-        // When zoomed out on daily+ or intraday-calendar-mode with many days, show only month/year
-        const suppressDayBoundaries = (isDailyOrHigher && visibleBarsCount > 90)
-            || (intradayCalendarMode && visibleDays > 120);
+        // TradingView 1D (~2+ months on screen): ONLY month/year labels + matching
+        // vertical grid — not day numbers every ~5 candles (left vs right screenshot).
+        const suppressDayBoundaries = (isDailyOrHigher && (visibleBarsCount > 40 || visibleDays > 45))
+            || (intradayCalendarMode && visibleDays > 120)
+            || isCalendarTf;
         const monthNames        = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const minSpacing        = 50;
         const minBarsPerTick = Math.max(1, Math.ceil(minSpacing / Math.max(0.0001, candleSpacing)));

@@ -1588,9 +1588,18 @@ def record_security_event(
                 db.close()
         # Fire an alert for critical events (auto-block etc.).
         if sev == "critical":
+            friendly = _security_alert_copy(
+                event_type=event_type,
+                ip=ip,
+                path=path,
+                status_code=status_code,
+                details=details_s,
+                kind="critical",
+            )
             _security_alert(
-                subject=f"[Talaria security] {event_type} from {ip or 'unknown'}",
-                body=f"type={event_type} ip={ip} path={path} status={status_code} details={details_s}",
+                subject=friendly["subject"],
+                body=friendly["plain"],
+                html_body=friendly["html"],
                 key=f"crit:{event_type}",
             )
         # Aggregate "spike" alert: a burst of suspicious (non-info) events signals an
@@ -1603,16 +1612,22 @@ def record_security_event(
                 while _sec_event_window and _sec_event_window[0] < cutoff:
                     _sec_event_window.popleft()
                 if len(_sec_event_window) >= SEC_SPIKE_THRESHOLD:
+                    n = len(_sec_event_window)
+                    window_s = int(SEC_SPIKE_WINDOW_SEC)
+                    friendly = _security_alert_copy(
+                        event_type=event_type,
+                        ip=ip,
+                        path=path,
+                        status_code=status_code,
+                        details=details_s,
+                        kind="spike",
+                        spike_count=n,
+                        spike_window_s=window_s,
+                    )
                     _security_alert(
-                        subject=(
-                            f"[Talaria security] event spike: "
-                            f"{len(_sec_event_window)} events in {int(SEC_SPIKE_WINDOW_SEC)}s"
-                        ),
-                        body=(
-                            f"Possible attack in progress. Latest: type={event_type} "
-                            f"ip={ip} path={path} status={status_code}. "
-                            f"Open the admin dashboard → Security monitor."
-                        ),
+                        subject=friendly["subject"],
+                        body=friendly["plain"],
+                        html_body=friendly["html"],
                         key="spike",
                     )
             except Exception:
@@ -1621,7 +1636,161 @@ def record_security_event(
         pass
 
 
-def _security_alert(subject: str, body: str, key: str = "") -> None:
+_SEC_ALERT_LABELS = {
+    "failed_login": "Failed login attempts",
+    "rate_limited": "Rate limit triggered",
+    "forbidden": "Forbidden request blocked",
+    "csrf_blocked": "CSRF check blocked a request",
+    "unauthorized": "Unauthorized request",
+    "path_scan": "Bot path scan blocked",
+    "admin_denied": "Admin access denied",
+    "ip_blocked_hit": "Blocked IP tried again",
+    "auto_block": "IP automatically blocked",
+    "manual_block": "IP manually blocked",
+    "manual_unblock": "IP unblocked",
+    "force_logout": "User force-logged out",
+    "login_success": "Successful login",
+}
+
+
+def _security_alert_copy(
+    *,
+    event_type: str = "",
+    ip: str | None = None,
+    path: str | None = None,
+    status_code: int | None = None,
+    details: str | None = None,
+    kind: str = "critical",
+    spike_count: int = 0,
+    spike_window_s: int = 0,
+    host: str | None = None,
+    app_role: str | None = None,
+    started_at: str | None = None,
+    pid: int | None = None,
+) -> dict:
+    """Build plain + HTML copy for security emails (friendly, scannable)."""
+    import html as _html
+
+    label = _SEC_ALERT_LABELS.get(event_type, (event_type or "security event").replace("_", " "))
+    ip_s = ip or "unknown"
+    path_s = path or "—"
+    status_s = str(status_code) if status_code is not None else "—"
+    details_s = (details or "").strip() or "—"
+    when = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+
+    if kind == "startup":
+        subject = "Talaria service restarted"
+        happened = (
+            f"The API service ({app_role or 'api'}) started on host {host or 'unknown'} "
+            f"(pid {pid or '?'})."
+        )
+        means = (
+            "This is normal after a deploy. If you did not deploy just now, the process "
+            "may have crashed and auto-restarted — worth a quick check."
+        )
+        todo = "If this was unexpected, check the server and recent logs for the crash reason."
+        rows = (
+            ("Service", app_role or "api"),
+            ("Host", host or "unknown"),
+            ("Started", started_at or when),
+            ("Process ID", str(pid or "—")),
+        )
+    elif kind == "spike":
+        subject = f"Busy security traffic ({spike_count} events in {spike_window_s}s)"
+        happened = (
+            f"Talaria saw {spike_count} security events in about {spike_window_s} seconds. "
+            f"Latest event: {label} from {ip_s} on {path_s} (status {status_s})."
+        )
+        means = (
+            "This often means a bot, brute-force attempt, or scan storm. "
+            "It does not by itself mean data was leaked — check whether responses were 403/429."
+        )
+        todo = (
+            "Open Admin Dashboard → Security monitor. If one IP dominates the list, block it "
+            "for 24 hours (or longer)."
+        )
+        rows = (
+            ("Latest type", label),
+            ("IP address", ip_s),
+            ("Path", path_s),
+            ("Status", status_s),
+            ("When", when),
+        )
+    else:
+        subject = f"{label} — {ip_s}"
+        happened = f"{label} from IP {ip_s}."
+        if path_s != "—":
+            happened += f" Path: {path_s}."
+        if status_s != "—":
+            happened += f" Status: {status_s}."
+        if details_s != "—":
+            happened += f" Details: {details_s}."
+        if event_type == "auto_block":
+            means = (
+                "Protection stepped in and blocked this IP automatically. "
+                "That usually means repeated abuse was stopped — not that data was stolen."
+            )
+            todo = (
+                "Review Admin Dashboard → Security monitor → Blocked IPs. "
+                "Leave the block in place unless you recognize a legitimate user/office VPN."
+            )
+        else:
+            means = (
+                "A critical security event was recorded. Status 403/429 means the request "
+                "was refused. Review the dashboard before assuming a breach."
+            )
+            todo = "Open Admin Dashboard → Security monitor and review this IP and path."
+        rows = (
+            ("Event", label),
+            ("IP address", ip_s),
+            ("Path", path_s),
+            ("Status", status_s),
+            ("Details", details_s),
+            ("When", when),
+        )
+
+    row_html = "".join(
+        f'<tr><td style="padding:10px 12px;font-size:13px;color:#64748b;width:120px;'
+        f'{"border-top:1px solid #e2e8f0;" if i else ""}">{k}</td>'
+        f'<td style="padding:10px 12px;font-size:14px;color:#0f172a;'
+        f'font-family:ui-monospace,Consolas,monospace;'
+        f'{"border-top:1px solid #e2e8f0;" if i else ""}">{_html.escape(str(v))}</td></tr>'
+        for i, (k, v) in enumerate(rows)
+    )
+    html = f"""
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f8fafc;">
+      <div style="background:#0f172a;padding:22px 24px;border-radius:12px 12px 0 0;">
+        <p style="margin:0 0 6px;color:#94a3b8;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;">Talaria Security</p>
+        <h1 style="color:#ffffff;margin:0;font-size:22px;line-height:1.3;">{_html.escape(subject)}</h1>
+      </div>
+      <div style="background:#ffffff;padding:28px 24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;color:#334155;">
+        <p style="margin:0 0 18px;font-size:15px;line-height:1.55;color:#475569;">{_html.escape(happened)}</p>
+        <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;background:#f1f5f9;border-radius:8px;">{row_html}</table>
+        <div style="margin:0 0 14px;padding:14px 16px;background:#ecfdf5;border-radius:8px;border-left:4px solid #10b981;">
+          <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#047857;text-transform:uppercase;letter-spacing:0.03em;">What this means</p>
+          <p style="margin:0;font-size:14px;line-height:1.5;color:#065f46;">{_html.escape(means)}</p>
+        </div>
+        <div style="margin:0;padding:14px 16px;background:#fffbeb;border-radius:8px;border-left:4px solid #f59e0b;">
+          <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.03em;">What to do</p>
+          <p style="margin:0;font-size:14px;line-height:1.5;color:#92400e;">{_html.escape(todo)}</p>
+        </div>
+      </div>
+      <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:16px;line-height:1.4;">
+        Automated note from Talaria. A security alert is not the same as a data leak — check the status codes and dashboard.
+      </p>
+    </div>
+    """.strip()
+
+    plain = (
+        f"{subject}\n\n"
+        f"{happened}\n\n"
+        + "".join(f"{k}: {v}\n" for k, v in rows)
+        + f"\nWhat this means:\n{means}\n\nWhat to do:\n{todo}\n\n— Talaria Security"
+    )
+    return {"subject": f"Talaria Security: {subject}", "plain": plain, "html": html}
+
+
+def _security_alert(subject: str, body: str, key: str = "", html_body: str | None = None) -> None:
     """Env-gated, throttled alert to email (SECURITY_ALERT_EMAIL) and/or Slack
     (SECURITY_ALERT_SLACK_WEBHOOK). Runs in a daemon thread; never raises."""
     try:
@@ -1641,7 +1810,12 @@ def _security_alert(subject: str, body: str, key: str = "") -> None:
                 try:
                     server, port, use_tls, use_ssl, username, password, envelope_from = _bulk_email_smtp_params()
                     if username and password:
-                        msg = MIMEText(body, "plain", "utf-8")
+                        if html_body:
+                            msg = MIMEMultipart("alternative")
+                            msg.attach(MIMEText(body, "plain", "utf-8"))
+                            msg.attach(MIMEText(html_body, "html", "utf-8"))
+                        else:
+                            msg = MIMEText(body, "plain", "utf-8")
                         msg["Subject"] = subject[:200]
                         msg["From"] = f"Talaria Security <{envelope_from or username}>"
                         msg["To"] = to_email
@@ -25069,13 +25243,18 @@ async def _firstrate_scheduler_app_startup():
         try:
             import socket as _socket
             host = _socket.gethostname()
+            started_at = datetime.utcnow().isoformat() + "Z"
+            friendly = _security_alert_copy(
+                kind="startup",
+                host=host,
+                app_role=APP_ROLE,
+                started_at=started_at,
+                pid=os.getpid(),
+            )
             _security_alert(
-                subject=f"[Talaria] service started ({APP_ROLE}) on {host}",
-                body=(
-                    f"The API service ({APP_ROLE}) started at {datetime.utcnow().isoformat()}Z "
-                    f"on host={host} pid={os.getpid()}. If you did not deploy just now, it "
-                    f"likely crashed and auto-restarted — check the server and logs."
-                ),
+                subject=friendly["subject"],
+                body=friendly["plain"],
+                html_body=friendly["html"],
                 key="startup",
             )
         except Exception:

@@ -591,6 +591,20 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### T0 step 15 ACCEPTED — manager gate genuinely green again (2026-07-15)
+- **`[gate] PASS: no new regressions; 36 known-failing tracked.`** expectedTests 80, knownFailing 36, regressions 0. Baseline SHA256 `0A320A0C…` (both trees). Fence H-S17/H-S19/H-S19b/H-S20 green 2/2 (step-5b holds).
+- **Every drift row now classified with a reason** (no silent burying): H-S6 = RC-8 (all panels self-fetch on 1m→1h fan-out); **H-S25 = deterministic defect** (eased-follow seam — reclassified from "flake" to real defect, needs a registry row); **H-S28 = boot reanchor absent, ~612px drift** (RC-8/boot — *strong candidate as the harness proxy for PLAN2-FOUND#5*); H-S32/H-S33 = D-012 RC-4/T1 frozen interaction rows. H-S27/H-S30 surfaced + baselined.
+- **T8 coverage promoted:** H-S59–H-S78 in gated scenarioList — 6 green (H-S59/59b/59b-sameTF/59b-coarse/H-S74/H-S75), 16 tracked-red.
+- **Tracked known-failing defects to route by RC:** H-S6/H-S28 → T8 (RC-8 replay/boot); H-S25 → RC-3 anchoring/render seam; H-S32/H-S33 → T1/T3 frozen interaction family (await honest harness). Each is now a real tracked row, not hidden.
+- **H-S28 fed into the PLAN2-FOUND#5 step-6 diagnostic as the lead.**
+
+### PLAN2-FOUND#5 — main-chart replay refresh-persistence bug (PO on a3) → Lane 2 diagnostic (2026-07-15)
+- **PO on `20260715a3`, MAIN/host chart replay:** plays normally then **jumps many candles at once**; **TF switch during replay → chart drifts & hides**; **fresh session OK but after a page refresh the replay position isn't saved → Play jumps to the refresh-point date.**
+- **Read:** replay-state persistence gap across reload (playhead/anchor not persisted or restored to wrong anchor); candle-jump + TF-drift are likely downstream. **Host/main chart, NOT the panel bridge** → separate from the D-015 edge-park fix.
+- **Freeze-fix acceptance NOT yet reported by PO** — this new report is a different symptom; still need the explicit mixed-TF/independent freeze verdict on a3.
+- **PO confirmed: fresh session never shows it — strictly refresh-triggered.** Rules out host-tick cadence; points at the reload restore path restoring the playhead to the refresh-point anchor (candle-jump = catch-up reconciling the wrong playhead). Likely pre-existing (a3 only touched panel bridge).
+- **Dispatched Lane 2 `T8-step6-lane2-replay-refresh-persistence-diagnostic.md`** (read-only). **Mandatory step 0: regression-vs-pre-existing** — repro on a3 vs pre-D-015/fallback-B (D-015 touched only `panel-cmd-bridge.js`, so host path should be untouched — confirm). Then map replay persistence save/restore, the candle-jump mechanism, and the TF-switch drift/hide (ties T5/TAL-01575). RC verdict: RC-8 vs RC-3 vs a boot/persistence gap; fix track TBD.
+
 ### Staging 20260715a3 committed (4bb97a0b) — park cure ready for PO acceptance (2026-07-15)
 - **Commit `4bb97a0b`:** H-S20 coarse-path fix + build-id bump (embed/dist/sw/live/harness) + step-5b reconcile report; `panel-cmd-bridge.js` both trees. D-015 unified edge-park was already on main from earlier commits.
 - **a2 superseded → PO tests `20260715a3`** (confirm `window.__TALARIA_CHART_BUILD_ID === '20260715a3'` inside the panel iframe).

@@ -5243,8 +5243,54 @@ select { cursor: default; }
             <button type="button" class="btn sm primary" onclick="loadSecurityMonitor()">Refresh</button>
           </div>
           <div class="card-body" style="font-size:13px;line-height:1.5;color:var(--text-secondary)">
-            <p style="margin:0 0 12px">Live attack telemetry from the API edge: failed logins, rate-limit blocks, forbidden/CSRF hits, path scans, blocked-IP hits and auto-blocks. Rows are hash-chained (tamper-evident). <span id="secWindowLabel" style="color:var(--text-muted)"></span></p>
+            <p style="margin:0 0 12px">Live protection log for your API: failed logins, rate limits, blocked IPs, and scans. Events are hash-chained (tamper-evident). Email alerts fire for critical events and traffic spikes. <span id="secWindowLabel" style="color:var(--text-muted)"></span></p>
             <div class="stat-cards" id="secStatCards" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px" id="secSafetyGuide">
+          <div class="card-hdr" style="cursor:pointer;user-select:none" onclick="document.getElementById('secSafetyGuideBody').style.display=document.getElementById('secSafetyGuideBody').style.display==='none'?'block':'none'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent,#60a5fa)"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <div class="card-title">Safety guide — what you should know</div>
+            <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">click to show / hide</span>
+          </div>
+          <div class="card-body" id="secSafetyGuideBody" style="font-size:13px;line-height:1.55;color:var(--text-secondary)">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:14px">
+              <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
+                <div style="font-weight:600;color:var(--success,#34d399);margin-bottom:6px">Good news first</div>
+                <p style="margin:0">Seeing <code>warning</code> rows with status <strong>403</strong> or <strong>429</strong> usually means protection worked — the request was refused. That is not a successful hack or a data leak.</p>
+              </div>
+              <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
+                <div style="font-weight:600;color:var(--warn,#fbbf24);margin-bottom:6px">When to worry</div>
+                <p style="margin:0">Worry if you see many <code>failed_login</code> spikes, unexpected <code>login_success</code> from unknown IPs, or Integrity Verify failing. Then block the IP, force-logout the user, and rotate that password.</p>
+              </div>
+              <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-raised)">
+                <div style="font-weight:600;color:var(--accent,#60a5fa);margin-bottom:6px">What to do</div>
+                <ol style="margin:0;padding-left:18px">
+                  <li>Read the event type (hover the label for a plain-English tip).</li>
+                  <li>Block noisy IPs for 24h (or longer if it keeps returning).</li>
+                  <li>Force-logout a user if you suspect a stolen session.</li>
+                  <li>Use Verify integrity if you fear log tampering.</li>
+                </ol>
+              </div>
+            </div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:8px">Event types (plain English)</div>
+            <div style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+              <table>
+                <thead><tr><th>Type</th><th>Meaning</th><th>Data leaked?</th></tr></thead>
+                <tbody>
+                  <tr><td><code>rate_limited</code></td><td>Too many requests — API returned 429 and stopped them.</td><td>No</td></tr>
+                  <tr><td><code>ip_blocked_hit</code></td><td>A blocked IP tried again and was refused (403).</td><td>No</td></tr>
+                  <tr><td><code>manual_block</code> / <code>auto_block</code></td><td>An IP was blocked by an admin or automatically after abuse.</td><td>No — protection stepped in</td></tr>
+                  <tr><td><code>failed_login</code></td><td>Wrong password / login attempt failed. Watch for many from one IP.</td><td>No (unless they later succeed)</td></tr>
+                  <tr><td><code>path_scan</code></td><td>Bot probing common exploit URLs (.env, wp-admin, etc.).</td><td>No if they got 404/403</td></tr>
+                  <tr><td><code>forbidden</code> / <code>admin_denied</code></td><td>User tried something they are not allowed to do.</td><td>No</td></tr>
+                  <tr><td><code>force_logout</code></td><td>Admin revoked all sessions for a user.</td><td>No — safety action</td></tr>
+                  <tr><td><code>login_success</code></td><td>Someone logged in successfully. Check IP if unexpected.</td><td>Only if it was an attacker</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="margin:12px 0 0;font-size:12px;color:var(--text-muted)">Threat badge: <strong style="color:var(--success,#34d399)">green</strong> calm · <strong style="color:var(--warn,#fbbf24)">yellow/orange</strong> elevated noise · <strong style="color:var(--danger,#f87171)">red</strong> act now. Email alerts are already enabled when configured — they tell you the same story in plain language.</p>
           </div>
         </div>
 
@@ -5325,16 +5371,16 @@ select { cursor: default; }
               <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Type
                 <select id="secFilterType" style="padding:6px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--surface-raised);color:var(--text);font-size:12px">
                   <option value="">Any</option>
-                  <option value="failed_login">failed_login</option>
-                  <option value="rate_limited">rate_limited</option>
-                  <option value="forbidden">forbidden</option>
-                  <option value="admin_denied">admin_denied</option>
-                  <option value="path_scan">path_scan</option>
-                  <option value="ip_blocked_hit">ip_blocked_hit</option>
-                  <option value="auto_block">auto_block</option>
-                  <option value="manual_block">manual_block</option>
-                  <option value="force_logout">force_logout</option>
-                  <option value="login_success">login_success</option>
+                  <option value="failed_login">Failed login</option>
+                  <option value="rate_limited">Rate limited (429)</option>
+                  <option value="forbidden">Forbidden (403)</option>
+                  <option value="admin_denied">Admin denied</option>
+                  <option value="path_scan">Path scan (bot probe)</option>
+                  <option value="ip_blocked_hit">Blocked IP tried again</option>
+                  <option value="auto_block">Auto-blocked IP</option>
+                  <option value="manual_block">Manual block</option>
+                  <option value="force_logout">Force logout</option>
+                  <option value="login_success">Login success</option>
                 </select>
               </label>
               <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">Severity
@@ -7553,6 +7599,30 @@ function secThreatColor(tl) {
   return 'var(--success,#34d399)';
 }
 
+const SEC_EVENT_META = {
+  failed_login: { label: 'Failed login', tip: 'Wrong password or failed sign-in. Not a breach unless they succeed later.' },
+  rate_limited: { label: 'Rate limited', tip: 'Too many requests — API returned 429 and stopped them. Protection working.' },
+  forbidden: { label: 'Forbidden', tip: 'Request refused (403 / CSRF). Access was denied.' },
+  csrf_blocked: { label: 'CSRF blocked', tip: 'Cross-site request forgery check blocked the call.' },
+  unauthorized: { label: 'Unauthorized', tip: 'Caller was not signed in or token was invalid.' },
+  admin_denied: { label: 'Admin denied', tip: 'Non-admin tried an admin-only action and was refused.' },
+  path_scan: { label: 'Path scan', tip: 'Bot probing common exploit URLs. Harmless if status is 403/404.' },
+  ip_blocked_hit: { label: 'Blocked IP hit', tip: 'An already-blocked IP tried again and was refused (403).' },
+  auto_block: { label: 'Auto-blocked', tip: 'System automatically blocked this IP after repeated abuse.' },
+  manual_block: { label: 'Manual block', tip: 'An admin blocked this IP on purpose.' },
+  manual_unblock: { label: 'Unblocked', tip: 'An admin removed a block from this IP.' },
+  force_logout: { label: 'Force logout', tip: 'All sessions for a user were revoked by an admin.' },
+  login_success: { label: 'Login success', tip: 'Someone signed in successfully. Check the IP if unexpected.' },
+};
+function secEventLabel(type) {
+  const m = SEC_EVENT_META[type];
+  return m ? m.label : (type || '—');
+}
+function secEventTip(type) {
+  const m = SEC_EVENT_META[type];
+  return m ? m.tip : (type || '');
+}
+
 function securityMonitorEnter() {
   loadSecurityMonitor();
   const live = $('secLiveToggle');
@@ -7656,14 +7726,19 @@ function secEventRowHtml(e) {
   const detail = e.details ? ('<span style="color:var(--text-muted)">' + esc(String(e.details).slice(0, 160)) + '</span>') : '';
   const blockBtn = (e.ip_address && e.severity !== 'info')
     ? '<button type="button" class="btn sm" onclick="securityBlockIp(\'' + esc(e.ip_address) + '\')">Block</button>' : '';
+  const typeTip = secEventTip(e.event_type);
+  const statusTip = (e.status_code === 403 || e.status_code === 429)
+    ? 'Request was refused — protection working.'
+    : (e.status_code === 200 ? 'Request succeeded — review if unexpected.' : '');
   return '<tr data-eid="' + e.id + '">' +
     '<td style="white-space:nowrap;color:var(--text-muted)">' + esc(timeAgo(e.created_at)) + '</td>' +
     '<td><span style="color:' + secSevColor(e.severity) + ';font-weight:600;font-size:11px">' + esc(e.severity) + '</span></td>' +
-    '<td style="font-family:monospace;font-size:11px">' + esc(e.event_type) + '</td>' +
+    '<td style="font-size:12px" title="' + esc(typeTip) + '"><span style="font-weight:600">' + esc(secEventLabel(e.event_type)) + '</span>' +
+      '<div style="font-size:10px;color:var(--text-muted);font-family:monospace">' + esc(e.event_type || '') + '</div></td>' +
     '<td style="font-family:monospace;font-size:11px">' + esc(e.ip_address || '—') + '</td>' +
     '<td style="font-size:11px">' + esc(e.country || '—') + '</td>' +
     '<td style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(e.path || '') + '">' + esc(e.path || '—') + '</td>' +
-    '<td>' + (e.status_code || '') + '</td>' +
+    '<td title="' + esc(statusTip) + '">' + (e.status_code || '') + '</td>' +
     '<td style="max-width:260px">' + (e.email ? '<code style="font-size:11px">' + esc(e.email) + '</code> ' : '') + detail + '</td>' +
     '<td>' + blockBtn + '</td></tr>';
 }

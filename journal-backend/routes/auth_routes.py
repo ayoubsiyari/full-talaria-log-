@@ -172,42 +172,85 @@ def _signup_welcome_coupon():
     return (code, note)
 
 
-def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
-    """Send security alert email to admin."""
+def send_security_alert(subject, message, ip_address, event_type='attack_detected', what_happened=None, what_it_means=None, what_to_do=None):
+    """Send a clear, friendly security alert email to admin."""
     try:
         from flask_mail import Message
         from app import mail
-        
+
+        happened = what_happened or message
+        means = what_it_means or (
+            "Your security system noticed unusual login activity and is protecting the account."
+        )
+        todo = what_to_do or (
+            "Open Admin Dashboard → Security monitor, check this IP, and block it if the activity looks hostile."
+        )
+        when = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + ' UTC'
+        friendly_type = {
+            'suspicious_activity': 'Suspicious login activity',
+            'ip_blocked': 'IP automatically blocked',
+            'attack_detected': 'Security event',
+            'auto_block': 'IP automatically blocked',
+            'failed_login': 'Failed login attempts',
+        }.get(event_type, event_type.replace('_', ' ').title())
+
         html_content = f'''
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 20px; border-radius: 10px 10px 0 0;">
-                <h1 style="color: white; margin: 0; font-size: 24px;">🚨 Security Alert</h1>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8fafc;">
+            <div style="background: #0f172a; padding: 22px 24px; border-radius: 12px 12px 0 0;">
+                <p style="margin: 0 0 6px; color: #94a3b8; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;">Talaria Security</p>
+                <h1 style="color: #ffffff; margin: 0; font-size: 22px; line-height: 1.3;">{subject}</h1>
             </div>
-            <div style="background: #1e293b; padding: 30px; border-radius: 0 0 10px 10px; color: #e2e8f0;">
-                <h2 style="color: #f87171; margin-top: 0;">{subject}</h2>
-                <div style="background: #0f172a; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 0; color: #94a3b8;"><strong>IP Address:</strong> <span style="color: #ef4444; font-family: monospace;">{ip_address}</span></p>
-                    <p style="margin: 10px 0 0 0; color: #94a3b8;"><strong>Event Type:</strong> {event_type}</p>
-                    <p style="margin: 10px 0 0 0; color: #94a3b8;"><strong>Time:</strong> {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+            <div style="background: #ffffff; padding: 28px 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; color: #334155;">
+                <p style="margin: 0 0 18px; font-size: 15px; line-height: 1.55; color: #475569;">{happened}</p>
+
+                <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 0 0 18px; background: #f1f5f9; border-radius: 8px;">
+                    <tr>
+                        <td style="padding: 12px 14px; font-size: 13px; color: #64748b; width: 120px;">IP address</td>
+                        <td style="padding: 12px 14px; font-size: 14px; color: #0f172a; font-family: ui-monospace, Consolas, monospace;">{ip_address}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px 14px; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">What kind</td>
+                        <td style="padding: 12px 14px; font-size: 14px; color: #0f172a; border-top: 1px solid #e2e8f0;">{friendly_type}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px 14px; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0;">When</td>
+                        <td style="padding: 12px 14px; font-size: 14px; color: #0f172a; border-top: 1px solid #e2e8f0;">{when}</td>
+                    </tr>
+                </table>
+
+                <div style="margin: 0 0 14px; padding: 14px 16px; background: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981;">
+                    <p style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.03em;">What this means</p>
+                    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #065f46;">{means}</p>
                 </div>
-                <p style="color: #cbd5e1;">{message}</p>
-                <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                    <p style="margin: 0; color: #92400e; font-size: 14px;">
-                        <strong>Action Required:</strong> Review this activity in the Admin Dashboard → Health → Security section.
-                    </p>
+
+                <div style="margin: 0; padding: 14px 16px; background: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                    <p style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #b45309; text-transform: uppercase; letter-spacing: 0.03em;">What to do</p>
+                    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #92400e;">{todo}</p>
                 </div>
             </div>
-            <p style="text-align: center; color: #64748b; font-size: 12px; margin-top: 20px;">
-                Talaria Trading Journal Security System
+            <p style="text-align: center; color: #94a3b8; font-size: 12px; margin-top: 16px; line-height: 1.4;">
+                This is an automated note from Talaria. It does not mean data was leaked — it means a safety check fired.
             </p>
         </div>
         '''
-        
+
+        plain = (
+            f"{subject}\n\n"
+            f"{happened}\n\n"
+            f"IP address: {ip_address}\n"
+            f"What kind: {friendly_type}\n"
+            f"When: {when}\n\n"
+            f"What this means:\n{means}\n\n"
+            f"What to do:\n{todo}\n\n"
+            f"— Talaria Security"
+        )
+
         msg = Message(
-            subject=f"🚨 {subject}",
+            subject=f"Talaria Security: {subject}",
             sender=('Talaria Security', os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@talaria.services')),
             recipients=[ADMIN_EMAIL],
-            html=html_content
+            body=plain,
+            html=html_content,
         )
         mail.send(msg)
         current_app.logger.info(f"Security alert sent: {subject}")
@@ -254,13 +297,29 @@ def record_failed_login(ip_address, email_attempted=None):
         
         # Send warning alert at threshold (before block)
         if recent_attempts == ALERT_THRESHOLD:
+            target = email_attempted or 'an unknown email'
             send_security_alert(
-                subject="Suspicious Login Activity Detected",
-                message=f"Multiple failed login attempts ({recent_attempts}) detected from IP address {ip_address}. "
-                        f"Targeted email: {email_attempted or 'Unknown'}. "
-                        f"The IP will be automatically blocked after {MAX_FAILED_ATTEMPTS} attempts.",
+                subject="Someone is trying to sign in (and failing)",
+                message=(
+                    f"We saw {recent_attempts} failed login attempts from {ip_address} "
+                    f"trying to reach {target}."
+                ),
                 ip_address=ip_address,
-                event_type='suspicious_activity'
+                event_type='suspicious_activity',
+                what_happened=(
+                    f"Someone tried to sign in {recent_attempts} times from IP {ip_address} "
+                    f"using “{target}”, and each attempt failed."
+                ),
+                what_it_means=(
+                    f"Passwords were wrong, so no account was opened. "
+                    f"If this continues, Talaria will automatically block this IP after "
+                    f"{MAX_FAILED_ATTEMPTS} failed attempts."
+                ),
+                what_to_do=(
+                    "Check Admin Dashboard → Security monitor. If you do not recognize the IP, "
+                    "you can block it now. If the email belongs to a real user, ask them to "
+                    "confirm they were not locked out."
+                ),
             )
         
         # Auto-block if too many failures
@@ -286,14 +345,31 @@ def record_failed_login(ip_address, email_attempted=None):
                 db.session.add(log_entry)
                 
                 # Send CRITICAL alert for auto-block
+                target = email_attempted or 'an unknown email'
+                ua = (request.headers.get('User-Agent') or 'Unknown')[:100]
                 send_security_alert(
-                    subject="⛔ IP Address Auto-Blocked",
-                    message=f"IP address {ip_address} has been automatically blocked after {recent_attempts} failed login attempts. "
-                            f"Targeted email: {email_attempted or 'Unknown'}. "
-                            f"Block duration: {BLOCK_DURATION_HOURS} hours. "
-                            f"User Agent: {request.headers.get('User-Agent', 'Unknown')[:100]}",
+                    subject="We automatically blocked a suspicious IP",
+                    message=(
+                        f"IP {ip_address} was blocked for {BLOCK_DURATION_HOURS} hours after "
+                        f"{recent_attempts} failed logins targeting {target}."
+                    ),
                     ip_address=ip_address,
-                    event_type='ip_blocked'
+                    event_type='ip_blocked',
+                    what_happened=(
+                        f"Talaria automatically blocked {ip_address} for {BLOCK_DURATION_HOURS} hours "
+                        f"after {recent_attempts} failed login attempts aimed at “{target}”. "
+                        f"Browser/client: {ua}."
+                    ),
+                    what_it_means=(
+                        "This is protection working — not a successful breach. "
+                        "That IP can no longer reach the login endpoints until the block expires "
+                        "(or you unblock it)."
+                    ),
+                    what_to_do=(
+                        "No urgent action needed unless this looks like a real user’s office/VPN. "
+                        "Review it under Admin Dashboard → Security monitor → Blocked IPs. "
+                        "Unblock only if you trust the source."
+                    ),
                 )
         
         db.session.commit()
