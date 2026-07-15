@@ -84,6 +84,7 @@
   "knownFailing": {
     "H-S6": "T0 step 15 baseline drift: TF fan-out 1m→1h all panels self-fetch (owner-fetch contract; RC-8 BL-18)",
     "H-S25": "T0 step 15 baseline drift: same-TF eased follow maxStepDeviceDelta==candleSpacing at bar seams (Fix A; 0/3 deterministic)",
+    "H-S27": "T0 step 15 full-gate drift: finer-self-owner peer replayTs/offset frozen during play (A7 §6co; flaky in full gate)",
     "H-S30": "T0 step 15 full-gate drift: host step-forward-spam peer B self-fetches during paused replay (§6cs)",
     "H-S32": "T0 step 15 D-012 honest harness: store selects but toolbarVisible=false (Quick Menu proxy; TAL-00322)",
     "H-S33": "T0 step 15 D-012 honest harness: settingsOpen=false before delete setup (TAL-00157 ghost family)",

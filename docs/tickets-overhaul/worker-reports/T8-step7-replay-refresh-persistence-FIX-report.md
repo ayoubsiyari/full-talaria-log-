@@ -76,7 +76,7 @@ node run.mjs --only=H-S17,H-S19,H-S19b,H-S20 → all PASS
 npm run gate
 → H-S28 PASS, H-S79 PASS, H-S17/H-S19/H-S19b/H-S20 PASS
 → Regressions (not in baseline): (none)
-→ First run failed: baseline stale (H-S27 newly green) — removed H-S27 + H-S28 from known-failing.json; re-run pending.
+→ First run: baseline stale (H-S27 briefly green) — removed H-S27 from known-failing; **re-run failed: H-S27 regressed (flaky)** — restored to baseline. **No regressions from step-7 changes** (H-S28/H-S79 green; fence green).
 ```
 
 **Determinism:** H-S79 main path 2/3 PASS on first attempts (one flaky miss when backup race lost to async PATCH); switch-OFF stable 3/3.
