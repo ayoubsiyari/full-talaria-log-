@@ -458,6 +458,7 @@ const ENGINE_MODULE_PATHS = [
   '/chart/modules/order-service.js',
   '/chart/modules/order-manager.js',
   '/chart/modules/indicator-performance.js',
+  '/chart/modules/indicator-persist-rehydrate.js',
   '/chart/modules/indicator-settings-apply.js',
   '/chart/modules/indicator-visibility.js',
   '/chart/modules/indicator-lifecycle-store.js',
@@ -492,7 +493,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260715b1';
+  const buildId = '20260715b2';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 

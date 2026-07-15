@@ -97,6 +97,12 @@
             : global.__TALARIA_RC6_INDICATOR_SETTINGS_APPLY_V2 !== false;
     }
 
+    function isRc6IndicatorPersistRehydrateV2Enabled() {
+        return typeof global.rc6IndicatorPersistRehydrateV2Enabled === 'function'
+            ? global.rc6IndicatorPersistRehydrateV2Enabled(global)
+            : global.__TALARIA_RC6_INDICATOR_PERSIST_REHYDRATE_V2 !== false;
+    }
+
     function resolveIndicatorShownState(indicator, chartSettings) {
         if (isRc6IndicatorVisibilityV2Enabled() && typeof global.resolveIndicatorShown === 'function') {
             return global.resolveIndicatorShown(indicator, chartSettings);
@@ -149,6 +155,10 @@
             } catch (_) {}
         }
         if (!isRc6IndicatorLifecycleStoreEnabled()) return;
+        if (typeof global.shouldSuppressStoreIncrementalDuringRehydrate === 'function'
+            && global.shouldSuppressStoreIncrementalDuringRehydrate(chart, action)) {
+            return;
+        }
         const store = getIndicatorLifecycleStore(chart);
         if (!store || !store.isEnabled()) return;
         store.emit(mapIndicatorActionToStoreEvent(action), {
@@ -5539,7 +5549,81 @@
                 self.render();
             }
         });
+        store.on('indicatorRehydrated', function() {
+            if (!store.isEnabled()) return;
+            if (typeof self.recalculateIndicators === 'function') {
+                self.recalculateIndicators();
+            }
+            if (typeof self.updateOHLCIndicators === 'function') {
+                self.updateOHLCIndicators();
+            }
+            if (typeof self.scheduleRender === 'function') {
+                self.scheduleRender();
+            } else if (typeof self.render === 'function') {
+                self.render();
+            }
+        });
     };
+
+    Chart.prototype._emitIndicatorRehydrateComplete = function() {
+        if (!isRc6IndicatorPersistRehydrateV2Enabled()) return;
+        const active = this.indicators && Array.isArray(this.indicators.active)
+            ? this.indicators.active.slice()
+            : [];
+        const pending = Array.isArray(this._indicatorRehydratePending)
+            ? this._indicatorRehydratePending.slice()
+            : [];
+        if (typeof global.endIndicatorRehydrate === 'function') {
+            global.endIndicatorRehydrate(this);
+        }
+        if (isRc6IndicatorLifecycleStoreEnabled()) {
+            const store = getIndicatorLifecycleStore(this);
+            if (store && store.isEnabled()) {
+                store.emit('indicatorRehydrated', {
+                    chart: this,
+                    action: 'rehydrate',
+                    indicator: null,
+                    indicators: active,
+                    pendingCount: pending.length,
+                    restoredCount: active.length,
+                });
+                return;
+            }
+        }
+        emitIndicatorsChanged(this, 'rehydrate', null);
+    };
+
+    function installIndicatorPersistRehydrateWrappers() {
+        if (typeof Chart === 'undefined' || Chart.prototype._indicatorPersistRehydrateWrapped) return;
+        const origApply = Chart.prototype._applyPersistedIndicators;
+        const origQueue = Chart.prototype._queuePersistedIndicatorsRestore;
+        if (typeof origApply !== 'function' && typeof origQueue !== 'function') return;
+
+        if (typeof origQueue === 'function') {
+            Chart.prototype._queuePersistedIndicatorsRestore = function(list) {
+                if (isRc6IndicatorPersistRehydrateV2Enabled()
+                    && typeof global.beginIndicatorRehydrate === 'function') {
+                    global.beginIndicatorRehydrate(this, list);
+                }
+                return origQueue.call(this, list);
+            };
+        }
+
+        if (typeof origApply === 'function') {
+            Chart.prototype._applyPersistedIndicators = function() {
+                if (!isRc6IndicatorPersistRehydrateV2Enabled()) {
+                    return origApply.call(this);
+                }
+                const out = origApply.call(this);
+                if (typeof this._emitIndicatorRehydrateComplete === 'function') {
+                    this._emitIndicatorRehydrateComplete();
+                }
+                return out;
+            };
+        }
+
+        Chart.prototype._indicatorPersistRehydrateWrapped = true;
+    }
 
     Chart.prototype._indicatorDataMatchesBars = function(indicator) {
         if (typeof global.indicatorDataMatchesBarCount === 'function') {
@@ -6532,6 +6616,10 @@
             }
             return base;
         });
+        if (typeof global.shouldBlockIndicatorPersistSnapshot === 'function'
+            && global.shouldBlockIndicatorPersistSnapshot(this, snapshot, options)) {
+            return;
+        }
         // During session restore, an empty in-memory list must not wipe saved indicators
         // before _applyPersistedIndicators runs — unless the user explicitly cleared them.
         if (!options.force && snapshot.length === 0) {
@@ -16722,6 +16810,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     }
 
     // Mark as loaded
+    installIndicatorPersistRehydrateWrappers();
     window.INDICATORS_MODULE_LOADED = true;
     global.talariaSeriesValueAtPlotOffset = seriesValueAtPlotOffset;
     global.talariaFormatOverlayLegendPrice = formatOverlayLegendPrice;
