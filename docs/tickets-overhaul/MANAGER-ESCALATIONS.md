@@ -4,6 +4,48 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-013 — RESOLVED
+
+**Director ruling:** D-015 (2026-07-15)
+**Outcome:** All four requests GRANTED. (1) Extension authorized as ONE root fix — all playing panels (same-TF, coarser, finer self-owner, independent) share one rule: advance on own loaded data during play, async catch-up = fallback for genuinely-missing data only. (2) Unified switch `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` approved; step-3's switch folded in, no double-gate window. (3) Finest-TF-master confirmed SECONDARY (cadence feel, not the freeze) — parked, evaluated after this fix lands. (4) Coarse-panel full re-render → RC-2/T2 render-invalidation track (with TAL-01573). **Hard constraint:** must NOT reintroduce the Plan-1 coarse-panel reslice storm — that scenario family stays GREEN as the regression fence. Acceptance = **PO staging confirm** (harness can't force the breaker). Policy table amended to match. → dispatched `T8-step5-lane2-unified-play-edge-park-advance-FIX.md`.
+
+---
+
+## ESC-013 — TAL-01590 freeze is broader than ruled: same-symbol mixed-TF play cells hit the same edge-park; extend the own-master advance
+
+**Date:** 2026-07-15
+**Track:** T8 (Lane 2), per D-013/D-014
+**RC:** RC-8
+**Urgency:** P1 — the freeze the PO reported is only partially cured by `20260715a1`; it still hits same-symbol mixed-TF layouts intermittently.
+
+### Finding (Lane 2 step-4 diagnostic + PO repro)
+The PO repro — "one panel stops while others play; **stays stuck until the TF is changed, then resumes**" — is the **same TAL-01590 edge-park / catch-up-breaker mechanism**, NOT a new bug class. `setTimeframe` refetches a window anchored on the host playhead (`panel-cmd-bridge.js:2387–2394`, `chart.js:6268+`) so the panel master finally covers the host `replayTimestamp` and the catch-up state clears (`_mcCatchUpFails`, `_mcCatchUpCooldownUntil`, `:1161–1162`). The step-3 fix does not reach it because it is gated to `!isSameSymbolAsHost` only (`panel-cmd-bridge.js:815–819`).
+
+Stuck-panel mechanisms in a mixed-TF layout:
+- **Same TF as host** — mirror fail → `scheduleMirrorCatchUp` → 3-strike breaker (`:1147–1154`) → 2.5s park at furthest-loaded edge (identical to TAL-01590).
+- **Coarser (e.g. 4h)** — BL-10 `scheduleCoalescedSeek` tries parent mirror first; fetch lag leaves the panel parked at loaded edge until a TF refetch.
+- **Finer self-owner (e.g. 1m vs host 4h)** — `forceReplaySeek` + `_ensureFinerPanelOwnerCoversPlayhead` fetch race.
+
+These cells were **ratified "current = correct" under D-014 ruling 1** — the PO evidence shows they are not; hence this escalation rather than a silent migration.
+
+### Decision requested
+1. **Authorize extending the step-3 own-master play-advance to the same-symbol PLAY cells** (same-TF×playing, coarser×playing — `scheduleCoalescedSeek(ch, ts, true)` during PLAY, skipping the mirror-first fetch that causes the park; finer self-owner covered by the same own-master principle). One root fix across the play cells, not per-cell patches.
+2. **Kill-switch granularity:** recommend a unified switch for the edge-park advance (e.g. broaden `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` → `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE`, covering independent + same-symbol) since it is one mechanism — or confirm you want it split.
+3. **Confirm the PO's finest-TF-master idea is SECONDARY** — the diagnostic says it addresses jump/group-advance *feel*, not the edge-park freeze. Defer it as a separate cadence policy cell after the freeze extension lands.
+4. **Confirm the coarse-panel full re-render + viewport-move-back is an RC-2/T2 cross-cut** (render-invalidation), routed out of T8 per the earlier TAL-01573 routing.
+
+### Manager recommendation
+Approve (1) with the unified switch (2). Acceptance stays PO-staging-confirm-led (the local harness can't force the breaker — proven by the H-S59b WEAK verdict), with the step-6/7 PO note in the diagnostic report (record the stuck panel's TF vs host TF when the freeze hits) as the disambiguating evidence. Extend H-S59b to a same-TF/coarser variant as dev evidence, labeled GREEN-SYNTHETIC. Freeze stays; ships to staging only.
+
+---
+
+## ESC-013 — RESOLVED
+
+**Director ruling:** D-015 (2026-07-15)  
+**Outcome:** All four granted. (1) **Extension authorized as one root fix across the PLAY cells** (same-TF, coarser, finer self-owner): own-master advance during PLAY, mirror-first fetch skipped, catch-up/breaker demoted to fallback-only; BL-5 storm + BL-10/11/12/13 + H-S17/H-S19 stay green as the regression fence. **D-014 ruling 1 formally amended** — the same-symbol play cells move from ratified to approved-changed; policy table updated so the migration implements the corrected cells. (2) **Unified switch approved:** `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE`; the step-3 `INDEPENDENT_PAIR_PLAY_ADVANCE` switch is superseded/folded in (no dual-gating window; H-S59b A/B re-run on the unified switch). (3) **Finest-TF-master confirmed secondary** — cadence-feel proposal parked until after the freeze extension + PO retest (the park may be the felt chunkiness). (4) **Coarse-panel re-render confirmed RC-2/T2 cross-cut**, routed out of T8. Acceptance = PO staging confirm-led; same-TF/coarser harness variant lands as labeled GREEN-SYNTHETIC dev evidence; PO records stuck-panel TF vs host TF on retest; deploy freeze unaffected.
+
+---
+
 ## ESC-012 — RESOLVED
 
 **Director ruling:** D-014 (2026-07-15)

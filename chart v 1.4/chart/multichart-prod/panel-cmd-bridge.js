@@ -691,6 +691,28 @@
             pendingPlayDesired = true;
         }
 
+        // D-015 (T8 step 5): unified play edge-park advance — during PLAY every
+        // panel advances on its OWN loaded master at the shared playhead ts.
+        // scheduleMirrorCatchUp / breaker park is fallback-only (paused / fix OFF).
+        // Kill-switch __TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE (default fix ON).
+        // Retires __TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE (aliased only).
+        if (args.isPlaying && isPlayEdgeParkAdvanceEnabled()) {
+            var _pcD015 = readParentChart();
+            var _hTfD015 = _pcD015 ? String(_pcD015.currentTimeframe || '').toLowerCase().trim() : '';
+            var _pTfD015 = String(ch.currentTimeframe || '').toLowerCase().trim();
+            if (!(ch._mcIntervalSyncOn && _hTfD015 && _pTfD015 && _hTfD015 !== _pTfD015
+                    && !ch._timeframeSwitching)) {
+                try {
+                    if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
+                        && ch._multichartFinerSamePairPanelSelfOwns()) {
+                        ch._mcFinerOwnerActiveReplayCatchUp = true;
+                    }
+                } catch (_) {}
+                scheduleCoalescedSeek(ch, ts, true);
+                return;
+            }
+        }
+
         if (typeof rs.applyMultichartMirrorFrame !== 'function') {
             scheduleCoalescedSeek(ch, ts);
             return;
@@ -805,18 +827,6 @@
                 ch._mcCatchUpCooldownUntil = 0;
                 return;
             }
-        }
-
-        // T8 / D-014 (TAL-01590): independent-SYMBOL play advance — mirrors BL-10
-        // coalesced seek on the panel's OWN master during PLAY. Same-symbol panels
-        // enter :701; this cell covers !isSameSymbolAsHost only. Async catch-up +
-        // breaker remain the fallback when data is genuinely missing.
-        // Kill-switch __TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE (default fix ON).
-        if (!isSameSymbolAsHost(ch) && args.isPlaying
-                && !(typeof window !== 'undefined'
-                    && window.__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE)) {
-            scheduleCoalescedSeek(ch, ts, true);
-            return;
         }
 
         var applied = rs.applyMultichartMirrorFrame(args);
@@ -1182,6 +1192,18 @@
             return global.parent && global.parent !== global ? global.parent.chart : null;
         } catch (_) {}
         return null;
+    }
+
+    // D-015 unified play edge-park advance (T8 step 5). Default ON; OFF reverts all
+    // playing panels to pre-D-015 paths (mirror + catch-up breaker). Step-3 switch
+    // __TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE is retired — alias only so
+    // no dual-gate window (I13).
+    function isPlayEdgeParkAdvanceEnabled() {
+        if (typeof window !== 'undefined') {
+            if (window.__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE) return false;
+            if (window.__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE) return false;
+        }
+        return true;
     }
 
     // BL-10 (D-037) SYNC-OFF PEER PLAY / HOST-TF ISOLATION:
@@ -1982,6 +2004,11 @@
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
+            }
+            // D-015: multichart shared playhead is wall-clock ts (host broadcast),
+            // even when the panel's display TF is coarser than the seek step.
+            if (Number.isFinite(ts)) {
+                rs.replayTimestamp = ts;
             }
             if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {

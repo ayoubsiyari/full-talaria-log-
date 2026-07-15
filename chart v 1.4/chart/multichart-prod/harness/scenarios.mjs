@@ -6262,6 +6262,8 @@ async function hS59(ctx) {
   });
 }
 
+const T8_PLAY_EDGE_SWITCH = '__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE';
+/** @deprecated D-015 — alias only; use T8_PLAY_EDGE_SWITCH */
 const T8_INDEP_PLAY_SWITCH = '__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE';
 
 /** I15 replay probe — real engine state inside host or iframe. */
@@ -6450,7 +6452,7 @@ async function hS59b(ctx) {
 
     const bootRed = await bootLayout(ctx.browser, ctx.srv, {
       pair: 'multi-independent', panels: 3, tf: '1m', bug: true,
-      bugSwitches: [T8_INDEP_PLAY_SWITCH],
+      bugSwitches: [T8_PLAY_EDGE_SWITCH],
     });
     try {
       await bootRed.page.setViewport({ width: 2000, height: 900 });
@@ -6468,10 +6470,10 @@ async function hS59b(ctx) {
       await stopHostProductionPlay(bootRed.page);
       const bRed = replayTsMonotonic(redSamples, 'B');
       const redBootFlag = await bootRed.page.evaluate(() => ({
-        flag: !!window.__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE,
+        flag: !!window.__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE,
       })).catch(() => null);
       const flagOk = !!(redBootFlag && redBootFlag.flag);
-      checks.check(`H-S59b RED setup: ${T8_INDEP_PLAY_SWITCH} pre-set in host document`,
+      checks.check(`H-S59b RED setup: ${T8_PLAY_EDGE_SWITCH} pre-set in host document`,
         flagOk, JSON.stringify(redBootFlag));
       // Harness stub mirror frames can keep B aligned even with switch ON; assert
       // fix-ON candle advance is strictly positive (non-vacuous) and switch is wired.
@@ -6486,8 +6488,120 @@ async function hS59b(ctx) {
     notes.push('H-S59b (TAL-01590/D-014): multi-independent A=25 B=27 C=28, sync OFF, '
       + 'production tick play (host rs.play + replayPlay tick, NO hostReplaySeek inner loop). '
       + `Samples every ${SAMPLE_MS}ms for ${PLAY_MS}ms. I15: replayTs + lastBarT per iframe. `
-      + `Fix: ${T8_INDEP_PLAY_SWITCH} OFF → scheduleCoalescedSeek(ownMaster). `
+      + `Fix: ${T8_PLAY_EDGE_SWITCH} OFF → scheduleCoalescedSeek(ownMaster) all playing panels (D-015). `
       + 'Lane 4 actuation sign-off required before trusted baseline.');
+    return checks;
+  });
+}
+
+// ── H-S59b-sameTF ────────────────────────────────────────────────────────
+// D-015 dev evidence (GREEN-SYNTHETIC): same-symbol same-TF panel must advance
+// during production tick play — covers the breaker-park cell step-3 did not reach.
+async function hS59bSameTf(ctx) {
+  return runWith(ctx, { panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B'];
+    await page.setViewport({ width: 1600, height: 900 });
+    await sleep(400);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const bootSnap = await readPanels(page);
+    const setupOk = !!(bootSnap.A && bootSnap.B
+      && bootSnap.A.fileId === bootSnap.B.fileId
+      && bootSnap.A.tf === '1m' && bootSnap.B.tf === '1m');
+    checks.check('H-S59b-sameTF setup: same symbol + same 1m TF on A and B',
+      setupOk, `A.fileId=${bootSnap.A?.fileId} B.fileId=${bootSnap.B?.fileId} A.tf=${bootSnap.A?.tf} B.tf=${bootSnap.B?.tf}`);
+    if (!setupOk) return checks;
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S59b-sameTF replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S59b-sameTF replay entered + quiescent', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    const PLAY_MS = 10_000;
+    const SAMPLE_MS = 2000;
+    const playStart = await startHostProductionTickPlay(page, ids);
+    checks.check('H-S59b-sameTF actuation: host tick-mode production play',
+      !!(playStart && playStart.ok), JSON.stringify(playStart));
+    if (!playStart || !playStart.ok) return checks;
+
+    const samples = await sampleReplayDuringProductionPlay(page, ids, PLAY_MS, SAMPLE_MS);
+    await stopHostProductionPlay(page);
+
+    const bMono = replayTsMonotonic(samples, 'B');
+    checks.check('H-S59b-sameTF panel B replayTs ADVANCES during play (not edge-parked)',
+      bMono.ok, `delta=${bMono.delta} ts=${bMono.ts.join('->')}`);
+
+    notes.push('H-S59b-sameTF (D-015 GREEN-SYNTHETIC): same-symbol same-TF B=file25, sync OFF, '
+      + 'production tick play. Dev evidence only — harness cannot force breaker trip.');
+    return checks;
+  });
+}
+
+// ── H-S59b-coarse ────────────────────────────────────────────────────────
+// D-015 dev evidence (GREEN-SYNTHETIC): coarser same-pair panel advances on own
+// master during play (BL-10 / reslice-storm fence must stay green separately).
+async function hS59bCoarse(ctx) {
+  return runWith(ctx, { panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B'];
+    await page.setViewport({ width: 1600, height: 900 });
+    await sleep(400);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 20_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S59b-coarse replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S59b-coarse replay entered + quiescent', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1500);
+    const bBefore = await readPanel(page, 'B');
+    const hostBefore = await readHost(page);
+    const setupOk = !!(bBefore && hostBefore && bBefore.tf === '1h' && hostBefore.tf === '1m'
+      && bBefore.fileId === hostBefore.fileId);
+    checks.check('H-S59b-coarse setup: B coarser 1h, same symbol as host 1m',
+      setupOk, `B.tf=${bBefore?.tf} host.tf=${hostBefore?.tf} fileId=${bBefore?.fileId}`);
+    if (!setupOk) return checks;
+
+    const PLAY_MS = 10_000;
+    const SAMPLE_MS = 2000;
+    const playStart = await startHostProductionTickPlay(page, ids);
+    checks.check('H-S59b-coarse actuation: host tick-mode production play',
+      !!(playStart && playStart.ok), JSON.stringify(playStart));
+    if (!playStart || !playStart.ok) return checks;
+
+    const samples = await sampleReplayDuringProductionPlay(page, ids, PLAY_MS, SAMPLE_MS);
+    await stopHostProductionPlay(page);
+
+    const bMono = replayTsMonotonic(samples, 'B');
+    checks.check('H-S59b-coarse panel B replayTs ADVANCES during play (own-master)',
+      bMono.ok, `delta=${bMono.delta} ts=${bMono.ts.join('->')}`);
+
+    const bEnd = samples.length ? samples[samples.length - 1].snap.B : null;
+    const bStart = samples.length ? samples[0].snap.B : null;
+    const formingOk = !!(bStart && bEnd && bEnd.replayTs > bStart.replayTs);
+    checks.check('H-S59b-coarse B playhead advanced across samples',
+      formingOk, `replayTs ${bStart?.replayTs} -> ${bEnd?.replayTs}`);
+
+    notes.push('H-S59b-coarse (D-015 GREEN-SYNTHETIC): same-pair host 1m / B 1h, sync OFF, '
+      + 'production tick play. Reslice-storm fence = H-S17/H-S19 family gate baseline.');
     return checks;
   });
 }
@@ -7478,6 +7592,8 @@ export function t8PendingScenarioList() {
   return [
     { id: 'H-S59', title: 'independent-symbol panels advance playhead during replay PLAY (TAL-01590)', run: hS59 },
     { id: 'H-S59b', title: 'production-faithful independent-symbol tick play advance (TAL-01590 P1)', run: hS59b },
+    { id: 'H-S59b-sameTF', title: 'D-015 dev evidence: same-TF play edge-park advance (GREEN-SYNTHETIC)', run: hS59bSameTf },
+    { id: 'H-S59b-coarse', title: 'D-015 dev evidence: coarser same-pair play own-master advance (GREEN-SYNTHETIC)', run: hS59bCoarse },
     { id: 'H-S60', title: 'B-FIX-I panel settled self-heal after host TF switch', run: hS60 },
     { id: 'H-S61', title: 'B-FIX-F hold mirror while host unsettled on TF switch', run: hS61 },
     { id: 'H-S62', title: 'B-FIX-G one-shot settled resync on host switch-back', run: hS62 },

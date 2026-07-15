@@ -2,6 +2,33 @@
 
 ---
 
+## D-015 — ESC-013: own-master play-advance extended to all PLAY cells; unified switch approved; D-014 ratification amended for the play column
+
+**Date:** 2026-07-15
+**Escalation:** ESC-013
+**Track:** T8 (Lane 2), per D-013/D-014
+**RC:** RC-8
+
+### Framing
+The escalation path worked exactly as designed: D-014 ratified the same-symbol play cells as "current = correct," PO evidence showed they are not, and the Manager escalated instead of silently migrating. **D-014 ruling 1 is formally amended:** the same-symbol×playing cells (same-TF, coarser, finer self-owner) move from "ratified" to "approved-changed" — the policy table is updated so the migration later implements the corrected cells, not the parked ones. The diagnostic's mechanism identification is convincing: "stuck until TF change, then resumes" is the catch-up state clearing on the TF-switch refetch — same edge-park, one mechanism, three entry points.
+
+### Rulings
+
+**1. Extension AUTHORIZED — one root fix across the PLAY cells, not per-cell patches.**
+- Same-TF×playing and coarser×playing: during PLAY, advance on the panel's own master (`scheduleCoalescedSeek(ch, ts, true)` semantics), skipping the mirror-first fetch that causes the park; async mirror/catch-up remains the fallback for genuinely missing data, breaker retained for that fallback only.
+- Finer self-owner×playing: same own-master principle through its existing self-own path; the fetch race is bounded by the same rule — never park at the edge while playing when the own master can advance.
+- Hard constraint: this must not reintroduce the BL-5 reslice storm or disturb BL-10/11/12/13 — those scenarios plus H-S17/H-S19 family stay green as the regression fence.
+
+**2. Unified switch APPROVED:** `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` covering independent + same-symbol cells (one mechanism → one switch, per I12's spirit and the Plan-1 lesson that BL-11/12/13 were one feature). Migration note: `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` from step 3 is **superseded and folded in** — the report must show the old switch either aliased to or retired into the new one, with the H-S59b A/B re-run against the unified switch. No period where two switches independently gate overlapping behavior.
+
+**3. Finest-TF-master idea — CONFIRMED SECONDARY.** The diagnostic is right that it addresses jump/group-advance *feel*, not the edge-park freeze. Parked as a separate cadence-policy cell proposal, to be evaluated **after** the freeze extension lands and the PO retests — same reasoning as D-014's TAL-01563 ruling: much of the felt chunkiness may be the park itself. If the PO still wants smoother cadence after the freeze is gone, it comes back as its own design escalation with a cost column.
+
+**4. Coarse-panel full re-render + viewport-move-back — CONFIRMED RC-2/T2 cross-cut**, routed out of T8 (rides the TAL-01573 routing). Registry row cites both symptoms; T2 picks it up with its invalidation-contract discipline. The policy table keeps a pointer.
+
+**5. Acceptance (per Manager's recommendation, ratified):** PO-staging-confirm-led — the local harness cannot force the breaker (H-S59b WEAK verdict honestly labeled, consistent with I15). The same-TF/coarser H-S59b variant lands as **GREEN-SYNTHETIC dev evidence**, explicitly labeled. The PO note from the diagnostic (record the stuck panel's TF vs host TF when a freeze hits) is the disambiguating live evidence — PO please capture that on the staging retest. Deploy freeze unaffected; staging only.
+
+---
+
 ## D-014 — ESC-012: T8 policy table APPROVED as acceptance spec; independent×playing cell fix authorized as the priority item
 
 **Date:** 2026-07-15

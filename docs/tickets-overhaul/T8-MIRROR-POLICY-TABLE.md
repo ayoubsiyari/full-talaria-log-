@@ -6,6 +6,8 @@
 
 **Key files traced:** `panel-cmd-bridge.js`, `multichart-manager.js`, `replay-system.js`, `sync-bridge.js`, `chart.js` (both trees byte-identical under `homepage/public/chart/`).
 
+> **D-015 AMENDMENT (2026-07-15) — PLAY column corrected.** PO evidence (ESC-013) showed the edge-park/catch-up-breaker freeze also hits **same-symbol** play cells (same-TF, coarser, finer self-owner), not just independent×playing. Those cells move from *ratified* to **approved-changed**: during PLAY the panel advances on its **own master** (mirror-first fetch skipped; async catch-up/breaker is fallback-only, never the primary advance path). One unified switch gates the whole mechanism: `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` (supersedes `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE`). The §2 play-row values marked P/park below describe the PRE-D-015 shipped behavior and are retained for the migration diff; the migration implements the corrected cells.
+
 ---
 
 ## 1. A5 / TAL-01590 FIRST — independent-symbol × playing (P1 freeze)
@@ -68,8 +70,8 @@ Axes: **TF relation** {same, coarser, finer, independent} × **replay** {playing
 | off | — | N | N | N | No replay bus |
 | paused | OFF | Y — clone host `data`/`rawData` on mirror frame | Y — mirror viewport on seek | P — price independent default (`BL-2b`) | `applyReplayFrame` same-pair mirror `:785–808`, `chart.js:3431` |
 | paused | ON (time/range) | Y | Y | P | Idle dedup bypassed when `_multichartVisibleRangeSyncOn` (`:793–797`) |
-| playing | OFF | Y — host batch mirror each frame | Y — BL-11 `maybePanelPlayViewportFollow` unless drag opt-out | P | `:701–808`, `:1665+` BL-11 |
-| playing | ON | Y | Y (follow engaged unless user panned) | P | `:793–797`, D-038 drag-disengage |
+| playing | OFF | **D-015 TARGET:** Y — own loaded master via `scheduleCoalescedSeek(ownMaster)` (`isPlayEdgeParkAdvanceEnabled`); catch-up/breaker fallback only | Y — BL-11 follow on coalesced seek settle | P | **PRE-D-015 shipped:** host batch mirror → breaker park; **migration:** `:694–715`, switch `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` |
+| playing | ON | **D-015 TARGET:** same own-master rule | Y unless drag-disengage | P | interval-sync defer until host TF converges |
 
 ### Same symbol + coarser panel TF
 
@@ -77,16 +79,16 @@ Axes: **TF relation** {same, coarser, finer, independent} × **replay** {playing
 |--------|----------|------------|---------|---------|------------------|
 | paused | OFF | P — own coarse master; skip host reslice on host TF switch | P — BL-5 skip noop seek (`shouldSkipCoarsePanelHostSwitchSeek` `:1547`) | P | `:730–783`, `:1547–1578` |
 | paused | OFF | P — BL-6 one-shot recenter if parked off-screen | Y if parked | N price reset on recenter | `maybeRecenterCoarsePanelAfterHostSwitch` `:1625–1662` |
-| playing | OFF | P — advance on **own** coarse master (`BL-10` `:756–780`) | Y — play follow coalesced (BL-11/12/13) | P | `:756–780`, H-S17/H-S19 family |
-| playing | ON | P — data still own master; timestamp shared | Y unless drag-disengage | P | `:779–780` sync-off peer isolation variant |
+| playing | OFF | **D-015 TARGET:** Y — own coarse master, mirror-first skipped (`ownMasterOnly=true`) | Y — BL-11/12/13 on coalesced seek | P | **PRE-D-015:** mirror-first BL-10; **migration:** unified D-015 block; fence H-S17/H-S19 |
+| playing | ON | **D-015 TARGET:** Y own master | Y unless drag-disengage | P | interval-sync exception unchanged |
 
 ### Same symbol + finer panel TF (self-owner)
 
 | Replay | Sync OFF | adopt-data | adopt-X | adopt-Y | Primary guard(s) |
 |--------|----------|------------|---------|---------|------------------|
 | paused | OFF | Y — finer self-own acquire (`BL-15`) or mirror-wait (`HOST_TF_MIRROR_WAIT`) | P — aligned seek guard BL-8 | P | `chart.js:21154+`, `panel-cmd-bridge.js:2401` |
-| playing | OFF | P — own finer master | Y — `forceReplaySeek` + `maybePanelPlayViewportFollow` (`:735–754`, H-S27) | P | `:732–754` |
-| playing | ON | P | Y | P | Finer owner play follow kill-switch `FINER_OWNER_PLAY_VIEWPORT_FOLLOW` |
+| playing | OFF | **D-015 TARGET:** Y — own finer master via unified coalesced seek | Y — `maybePanelPlayViewportFollow` on seek settle | P | **PRE-D-015:** direct `forceReplaySeek`; **migration:** D-015 `:694–715` |
+| playing | ON | **D-015 TARGET:** Y | Y | P | Finer owner follow kill-switch unchanged |
 
 ### Independent symbol (different fileId)
 
@@ -95,8 +97,8 @@ Axes: **TF relation** {same, coarser, finer, independent} × **replay** {playing
 | off | — | N | N | N | Independent pair load (`chart.js:4921–4932`) |
 | paused | OFF | P — `_panelFullRawData` + mirror frame at ts | P — local seek; BL-8 may skip aligned tick | Y — independent price | `:826–840`, `!isSameSymbolAsHost` at `:701` |
 | paused | ON | P | P | P | Symbol sync ON forces convergence (TAL-01586 / H-S53) — **not** independent |
-| **playing** | OFF | **P — async catch-up; freeze risk** | **P — no BL-10 cell** | Y | **TAL-01590 escalation cell** — see §1 |
-| playing | ON | P | P | P | Treat as synced same-symbol after convergence |
+| **playing** | OFF | **D-015 TARGET:** Y — own master (`scheduleCoalescedSeek` ownMaster) | Y — playhead on own bars | Y | **PRE-D-015:** async catch-up + breaker park; **migration:** D-015 unified switch |
+| playing | ON | **D-015 TARGET:** Y | Y | P | Treat as synced same-symbol after convergence |
 
 ### Host TF switch (orthogonal overlay — applies across relations)
 
@@ -150,7 +152,7 @@ Pending rows (`t8PendingScenarioList`, not in gate baseline): **H-S59–H-S78** 
 
 | Switch | Scenario |
 |--------|----------|
-| (independent play — proposed) | H-S59 / H-S59b spec |
+| `PLAY_EDGE_PARK_ADVANCE` (D-015 unified; supersedes independent play) | H-S59b / H-S59b-sameTF / H-S59b-coarse |
 | `PANEL_SETTLED_SELFHEAL` | H-S60 |
 | `PANEL_MIRROR_UNSETTLED_HOST` | H-S61 |
 | `PANEL_SETTLED_RESYNC` | H-S62 |
