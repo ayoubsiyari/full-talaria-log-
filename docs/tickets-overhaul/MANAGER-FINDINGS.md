@@ -591,6 +591,18 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### Staging 20260715a3 committed (4bb97a0b) — park cure ready for PO acceptance (2026-07-15)
+- **Commit `4bb97a0b`:** H-S20 coarse-path fix + build-id bump (embed/dist/sw/live/harness) + step-5b reconcile report; `panel-cmd-bridge.js` both trees. D-015 unified edge-park was already on main from earlier commits.
+- **a2 superseded → PO tests `20260715a3`** (confirm `window.__TALARIA_CHART_BUILD_ID === '20260715a3'` inside the panel iframe).
+- **Hygiene note:** uncommitted `chart.js` + MANAGER-FINDINGS edits deliberately left out — the edge-park fix lives entirely in `panel-cmd-bridge.js`, so a3 is complete; the `chart.js` WIP is Lane 1's separate T5 render work (verify it's not accidentally the park fix — confirmed it isn't). No cross-lane contamination in the commit.
+- **Only remaining gate for the park cure = PO staging confirm on a3.** Baseline drift reconcile (Lane 4 T0 step 15) runs in parallel, not a blocker.
+
+### T8 step 5b gate reconcile DONE — 1 true regression (H-S20) fixed; rest is baseline drift (2026-07-15)
+- **The reconcile earned its keep:** **H-S20 WAS a true step-5 regression** (not a flake) — D-015's blanket `scheduleCoalescedSeek(...,true)` broke coarser 1D panels that need BL-10 mirror-first (`ownMaster=false`) to keep `_serverCursors` aligned with loaded 1D edges. **Fixed** — branch restored in `panel-cmd-bridge.js` (both trees, I8 SHA 0B51D1EE…). Fence H-S17/H-S19/H-S19b PASS before + after.
+- **Step 5 is now I9-clean re: new regressions.** Remaining gate red = **H-S6/H-S25/H-S28/H-S32/H-S33** = **pre-existing baseline drift** (Lane 4: all 7 are in `expectedTests`, only H-S34–H-S50 in `knownFailing`; H-S32/H-S33 not tracked like other D-012 rows). NOT D-015 false-greens.
+- **Commit decision:** YES — the H-S20 fix must be in the build the PO tests, so a2 is superseded. **Bump to staging `20260715a3`** (step 5 + H-S20 fix). PO confirms on **a3, not a2**.
+- **Dispatched Lane 4 `T0-step15-lane4-gate-baseline-reconcile.md`:** disposition H-S6/H-S25/H-S28/H-S32/H-S33 — genuine known-broken → `knownFailing` with a registry row + reason (H-S32/H-S33 = D-012 retracted interaction rows); flakes → flake-watch; real pre-existing defects → registry row for a fix. Restore a truly-green gate so "green except 5 we ignore" doesn't erode the honest-gate discipline. Also fold in the pending H-S59–H-S78 promotion.
+
 ### T8 step 5 (unified edge-park fix) SHIPPED to staging 20260715a2 — freeze acceptance pending; gate honesty pending (2026-07-15)
 - **Fix landed:** all playing panels advance on own master via `scheduleCoalescedSeek(ch,ts,true)` during `isPlaying`; breaker/catch-up = fallback only. Same-TF uses fast `forceSamePairParentDataMirror` on success, own-master seek on miss (no breaker park). Unified switch `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` (default fix ON); step-3 switch **retired, aliased inside `isPlayEdgeParkAdvanceEnabled()`** — no double-gate. Policy table updated with D-015 TARGET rows on all ×playing cells.
 - **Fence GREEN:** H-S17/H-S19/H-S19b PASS before + after; coarse renders bounded (4/180 frames), playhead tracks host ±1h bucket. Reslice storm not reintroduced.

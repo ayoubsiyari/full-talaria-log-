@@ -7584,12 +7584,7 @@ export function scenarioList() {
     { id: 'H-S56', title: 'A3 TAL-01581: candle+4h interval steps consistent buckets on 1m master', run: hS56 },
     { id: 'H-S57', title: 'A3 TAL-01581: single interval owner (resolve === sync)', run: hS57 },
     { id: 'H-S58', title: 'T4 step 8: multi-entry close hit-target + remove sync (TAL-00752#10/#20/#22)', run: hS58 },
-  ];
-}
-
-/** T8 step-1 pending coverage — not in gate baseline (I9). */
-export function t8PendingScenarioList() {
-  return [
+    // T0 step 15: promoted from t8PendingScenarioList (T8 coverage H-S59–H-S78)
     { id: 'H-S59', title: 'independent-symbol panels advance playhead during replay PLAY (TAL-01590)', run: hS59 },
     { id: 'H-S59b', title: 'production-faithful independent-symbol tick play advance (TAL-01590 P1)', run: hS59b },
     { id: 'H-S59b-sameTF', title: 'D-015 dev evidence: same-TF play edge-park advance (GREEN-SYNTHETIC)', run: hS59bSameTf },
@@ -7614,5 +7609,10 @@ export function t8PendingScenarioList() {
     { id: 'H-S77', title: 'B-FIX-C panel master-growth offset on prepend', run: hS77 },
     { id: 'H-S78', title: 'BL-16 dedicated drag-during-play (A9)', run: hS78 },
   ];
+}
+
+/** T0 step 15: rows promoted into scenarioList(); kept for --pending backward compat. */
+export function t8PendingScenarioList() {
+  return [];
 }
 
