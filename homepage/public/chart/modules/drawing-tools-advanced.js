@@ -346,11 +346,19 @@ class DatePriceRangeTool extends BaseDrawing {
         if (info.showInfo === false) return [];
         const mode = this.getRangeMode();
 
+        let rp1 = p1;
+        let rp2 = p2;
+        if (typeof _isRc3LabelAnchorEnabled === 'function' && _isRc3LabelAnchorEnabled()) {
+            const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+            if (anchorPts[0]) rp1 = anchorPts[0];
+            if (anchorPts[1]) rp2 = anchorPts[1];
+        }
+
         const tickSize = this.getTickSize(scales);
         const decimals = this.getPriceDecimals(scales);
 
-        const priceDiff = p2.y - p1.y;
-        const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
+        const priceDiff = rp2.y - rp1.y;
+        const pct = (rp1.y !== 0) ? (priceDiff / rp1.y * 100) : 0;
         const rawPips = tickSize ? (priceDiff / tickSize) : 0;
 
         const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
@@ -362,11 +370,11 @@ class DatePriceRangeTool extends BaseDrawing {
             maximumFractionDigits: 1
         });
 
-        const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
-        const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
-        const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
+        const bars = Math.abs(Math.round(rp2.x) - Math.round(rp1.x));
+        const t1 = this.getTimestampAtIndex(rp1.x, scales);
+        const t2 = this.getTimestampAtIndex(rp2.x, scales);
         const duration = this.formatDurationCompact(t2 - t1);
-        const volume = this.getVolumeInRange(p1.x, p2.x, scales);
+        const volume = this.getVolumeInRange(rp1.x, rp2.x, scales);
 
         const neutral = this.style.textColor || '#d1d4dc';
         const priceParts = [];
@@ -667,8 +675,9 @@ class DatePriceRangeTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing date-price-range range-mode-time', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const p1 = this.points[0];
-        const p2 = this.points[1];
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+        const p1 = anchorPts[0] || this.points[0];
+        const p2 = anchorPts[1] || this.points[1];
         const x1 = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(p1.x)
             : scales.xScale(p1.x);
@@ -742,8 +751,8 @@ class DatePriceRangeTool extends BaseDrawing {
 
         if (this.style.showLabel) {
             const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
-            const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
-            const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
+            const t1 = this.getTimestampAtIndex(p1.x, scales);
+            const t2 = this.getTimestampAtIndex(p2.x, scales);
             const duration = this.formatDuration(t2 - t1);
 
             const label = `${bars} bars, ${duration}`;

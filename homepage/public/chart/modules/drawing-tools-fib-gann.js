@@ -4301,7 +4301,8 @@ class GannFanTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        const layout = GannFanTool._computeFanGeometry(this.points, this.style, scales);
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+        const layout = GannFanTool._computeFanGeometry(anchorPts, this.style, scales);
         if (!layout) return;
 
         const {
@@ -4395,7 +4396,7 @@ class GannFanTool extends BaseDrawing {
 
         const baseLineWidth = (this.style.strokeWidth != null && !isNaN(parseInt(this.style.strokeWidth))) ? parseInt(this.style.strokeWidth) : 1;
         const scaledStroke = Math.max(0.5, (globalWidth !== null ? globalWidth : baseLineWidth) * scaleFactor);
-        const labelDx = (xBound - x1) * 0.35;
+        const labelAlongRay = 0.35;
 
         rays.forEach(ray => {
             const perLevelWidth = (ray.lineWidth != null && !isNaN(parseInt(ray.lineWidth))) ? parseInt(ray.lineWidth) : null;
@@ -4425,8 +4426,16 @@ class GannFanTool extends BaseDrawing {
                 .attr('opacity', 0.9)
                 .style('pointer-events', 'none');
 
-            const labelX = Math.max(xMin, Math.min(xMax, x1 + labelDx));
-            const labelY = y1 + (ray.slope * (labelX - x1));
+            let labelX;
+            let labelY;
+            if (typeof _isRc3LabelAnchorEnabled === 'function' && _isRc3LabelAnchorEnabled()) {
+                labelX = x1 + (ray.end.x - x1) * labelAlongRay;
+                labelY = y1 + (ray.end.y - y1) * labelAlongRay;
+            } else {
+                const labelDx = (xBound - x1) * labelAlongRay;
+                labelX = x1 + labelDx;
+                labelY = y1 + (ray.slope * labelDx);
+            }
             if (showLevelValues && isFinite(labelX) && isFinite(labelY) && labelX >= xMin && labelX <= xMax && labelY >= yMin && labelY <= yMax) {
                 this.group.append('text')
                     .attr('x', Math.max(xMin, Math.min(xMax, labelX + 6)))
@@ -4455,7 +4464,8 @@ class GannFanTool extends BaseDrawing {
 
     /** True when pointer is inside the fan wedge (whole-tool move). */
     isPointInsideBody(mouseX, mouseY, scales) {
-        const layout = GannFanTool._computeFanGeometry(this.points, this.style, scales);
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+        const layout = GannFanTool._computeFanGeometry(anchorPts, this.style, scales);
         if (!layout || !layout.outerLow || !layout.outerHigh) return false;
         const { x1, y1, outerLow, outerHigh } = layout;
         return GannFanTool._pointInTriangle(

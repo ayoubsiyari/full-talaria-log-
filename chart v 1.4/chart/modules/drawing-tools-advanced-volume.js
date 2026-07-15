@@ -2308,7 +2308,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         }
 
         const latestDataIndex = chartData.length - 1;
-        const endIndex = latestDataIndex;
+        let endIndex = latestDataIndex;
         const chartRef = scales.chart || (typeof window !== 'undefined' ? window.chart : null);
         const indexState = _getVolumeRenderIndices(this, chartRef);
         let anchorIndex;
@@ -2320,6 +2320,9 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
                 ? indexState.points[0].x
                 : (this.points[0]?.x ?? 0);
             anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+            if (Number.isFinite(indexState.points[1]?.x)) {
+                endIndex = Math.max(anchorIndex, Math.min(latestDataIndex, indexState.points[1].x));
+            }
         } else {
             anchorIndex = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;
             anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));

@@ -707,6 +707,38 @@ const CANDLE_INDEX_CLAMPED_TYPES = new Set([
     'fixed-range-volume-profile',
 ]);
 
+/** RC-3 Phase 2: types that gain data-bounds clamp via resolve when clamp policy is ON. */
+const RC3_DATA_BOUNDS_CLAMP_TYPES = new Set([
+    'anchored-vwap',
+    'anchored-volume-profile',
+]);
+
+function _isRc3ClampPolicyEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_CLAMP_POLICY !== false;
+}
+
+function _getEffectiveCandleIndexClampTypes() {
+    const out = new Set(CANDLE_INDEX_CLAMPED_TYPES);
+    if (_isRc3ClampPolicyEnabled()) {
+        RC3_DATA_BOUNDS_CLAMP_TYPES.forEach((t) => out.add(t));
+    }
+    return out;
+}
+
+function _drawingUsesDataBoundsClamp(type) {
+    return !!type && _getEffectiveCandleIndexClampTypes().has(type);
+}
+
+/** RC-3 Phase 4: default fractional bar index on placement; magnet explicitly rounds X. */
+function _isRc3FractionalPlaceEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_FRACTIONAL_PLACE !== false;
+}
+
+/** RC-3 Phase 6: label/Gann level placement uses timestamp-resolved anchors, not viewport pan offset. */
+function _isRc3LabelAnchorEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_LABEL_ANCHOR !== false;
+}
+
 /** Box shapes — axis labels only when border, fill, or middle line is visible. */
 const SHAPE_BOX_GEOMETRY_TYPES = new Set([
     'rectangle',
@@ -1422,10 +1454,29 @@ class BaseDrawing {
         return { fibX1, fibX2, fibWidth };
     }
 
+    /**
+     * Resolve tool anchor points for label/level layout (Phase 6).
+     * When switch ON, prefers timestamp-resolved indices over raw points[].x.
+     */
+    static resolveLabelAnchorPoints(tool, scales) {
+        if (!tool) return [];
+        if (!_isRc3LabelAnchorEnabled()) {
+            return tool.points || [];
+        }
+        const chart = scales?.chart || tool.chart;
+        if (chart && typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.resolveDrawingPoints === 'function') {
+            const resolved = CoordinateUtils.resolveDrawingPoints(tool, chart);
+            if (Array.isArray(resolved) && resolved.length > 0) return resolved;
+        }
+        return tool.points || [];
+    }
+
     static computeTwoPointHorizontalFibLayout(tool, scales) {
         if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 2) return null;
-        const p1 = tool.points[0];
-        const p2 = tool.points[1];
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(tool, scales);
+        const p1 = anchorPts[0] || tool.points[0];
+        const p2 = anchorPts[1] || tool.points[1];
         if (!p1 || !p2) return null;
 
         const x1 = BaseDrawing.fibIndexToPixel(scales, p1.x);
@@ -1498,9 +1549,10 @@ class BaseDrawing {
     /** Fib channel geometry in data space (stable under non-uniform x/y zoom). */
     static computeFibChannelGeometry(tool, scales) {
         if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 3) return null;
-        const p1 = tool.points[0];
-        const p2 = tool.points[1];
-        const p3 = tool.points[2];
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(tool, scales);
+        const p1 = anchorPts[0] || tool.points[0];
+        const p2 = anchorPts[1] || tool.points[1];
+        const p3 = anchorPts[2] || tool.points[2];
         if (!p1 || !p2 || !p3) return null;
 
         const dx = p2.x - p1.x;
@@ -1630,8 +1682,16 @@ class BaseDrawing {
                 .attr('y1', y)
                 .attr('x2', fibX2)
                 .attr('y2', y);
-            group.selectAll(`text[data-fib-label-idx="${idx}"]`)
-                .attr('y', fibHorizontalLabelBaselineY(tool.style, y));
+            const labelSel = group.selectAll(`text[data-fib-label-idx="${idx}"]`);
+            if (_isRc3LabelAnchorEnabled()) {
+                const labelPlacement = fibHorizontalSpanLabelPlacement(tool.style, fibX1, fibX2);
+                labelSel
+                    .attr('x', labelPlacement.x)
+                    .attr('y', fibHorizontalLabelBaselineY(tool.style, y))
+                    .attr('text-anchor', labelPlacement.anchor);
+            } else {
+                labelSel.attr('y', fibHorizontalLabelBaselineY(tool.style, y));
+            }
         });
 
         const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
@@ -3024,9 +3084,12 @@ class CoordinateUtils {
         const rawX = chart && chart.pixelToDataIndex ? 
             chart.pixelToDataIndex(screenX) : 
             (hasXInvert ? scales.xScale.invert(screenX) : NaN);
-            
+
+        const keepFractional = continuous
+            || (_isRc3FractionalPlaceEnabled() && Number.isFinite(rawX));
+
         return {
-            x: continuous ? rawX : Math.round(rawX),  // Keep fractional for freehand, snap for others
+            x: keepFractional ? rawX : Math.round(rawX),
             y: scales.yScale.invert(screenY)  // This is the price
         };
     }
@@ -3296,13 +3359,19 @@ class CoordinateUtils {
         if (!points || !data || data.length === 0) {
             return points;
         }
-        
+
+        const clampBounds = !!(options && options.clampToDataBounds);
+        const maxIdx = data.length - 1;
+
         return points.map(p => {
             const index = this.timestampToIndex(p.timestamp || 0, data, timeframe, options);
-            
-            // Don't clamp - allow extrapolated indices for replay mode
+            let x = index;
+            if (clampBounds) {
+                x = Math.max(0, Math.min(maxIdx, x));
+            }
+
             return {
-                x: index,
+                x: x,
                 y: p.price || p.y
             };
         });
@@ -3310,21 +3379,58 @@ class CoordinateUtils {
 
     /** True when X may sit in future/past padding beyond loaded candles (text tools, markers). */
     static allowsExtrabarBarIndex(type) {
-        return !!type && !CANDLE_INDEX_CLAMPED_TYPES.has(type);
+        return !!type && !_getEffectiveCandleIndexClampTypes().has(type);
     }
 
     /**
      * Replay mode clamps future timestamps to the last visible bar unless the tool allows extrabar indices.
-     * Single source of truth for load + render timestamp resolution (avoids snap-back to last candle).
+     * RC-3 Phase 2: volume anchor types also clamp to loaded data bounds during resolve.
      */
     static buildTimestampResolveOptions(drawing, chart) {
-        if (!drawing || !drawing.type || !chart || !chart.replaySystem || !chart.replaySystem.isActive) {
-            return null;
+        const opts = {};
+        const type = drawing && drawing.type;
+
+        if (_drawingUsesDataBoundsClamp(type)) {
+            opts.clampToDataBounds = true;
         }
-        if (CoordinateUtils.allowsExtrabarBarIndex(drawing.type)) {
-            return null;
+
+        if (chart && chart.replaySystem && chart.replaySystem.isActive
+            && !CoordinateUtils.allowsExtrabarBarIndex(type)) {
+            opts.replayClampToLastBar = true;
         }
-        return { replayClampToLastBar: true };
+
+        return Object.keys(opts).length ? opts : null;
+    }
+
+    /**
+     * Anchored volume profile: anchor from timestampPoints + right edge at last loaded bar
+     * (timestamp-stable across TF switches; replaces render-time latestDataIndex proxy).
+     */
+    static resolveAnchoredVolumeProfileRange(drawing, chart, tsOptsOverride = undefined) {
+        if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
+            return drawing?.points || [];
+        }
+        const tsOpts = tsOptsOverride !== undefined
+            ? tsOptsOverride
+            : CoordinateUtils.buildTimestampResolveOptions(drawing, chart);
+        const anchorPts = CoordinateUtils.resolveDrawingPoints(drawing, chart, tsOpts);
+        const anchor = anchorPts[0] || (drawing.points && drawing.points[0]);
+        if (!anchor) return anchorPts;
+
+        const lastBar = chart.data[chart.data.length - 1];
+        const rightX = _isRc3ClampPolicyEnabled() && lastBar
+            ? CoordinateUtils.timestampToIndex(
+                Number(lastBar.t),
+                chart.data,
+                chart.currentTimeframe,
+                tsOpts
+            )
+            : chart.data.length - 1;
+        const y = Number.isFinite(anchor.y) ? anchor.y : (drawing.points[0] && drawing.points[0].y);
+        return [
+            { x: anchor.x, y: y },
+            { x: rightX, y: y },
+        ];
     }
 
     /**
@@ -3334,6 +3440,11 @@ class CoordinateUtils {
     static resolveDrawingPoints(drawing, chart, tsOptsOverride = undefined) {
         if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
             return drawing?.points || [];
+        }
+        if (_isRc3ClampPolicyEnabled()
+            && drawing.type === 'anchored-volume-profile'
+            && drawing.timestampPoints && drawing.timestampPoints.length > 0) {
+            return CoordinateUtils.resolveAnchoredVolumeProfileRange(drawing, chart, tsOptsOverride);
         }
         const tsOpts = tsOptsOverride !== undefined
             ? tsOptsOverride

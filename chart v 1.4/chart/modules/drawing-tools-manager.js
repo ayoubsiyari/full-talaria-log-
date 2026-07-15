@@ -86,6 +86,16 @@ function multichartQuickbarSettingsFixEnabled() {
     return true;
 }
 
+/** RC-3 Phase 3: preserve timestampPoints on copy/paste; offset in timestamp space. */
+function _isRc3PasteTimestampOffsetEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_PASTE_TIMESTAMP_OFFSET !== false;
+}
+
+/** RC-3 Phase 4: default fractional bar index on placement; magnet explicitly rounds X. */
+function _isRc3FractionalPlaceEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_RC3_FRACTIONAL_PLACE !== false;
+}
+
 /** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
 function notifyMultichartParentSelectionCleared(chartInstance) {
     if (typeof window === 'undefined' || !multichartQuickbarSettingsFixEnabled()) return;
@@ -6078,8 +6088,12 @@ class DrawingToolsManager {
         point = this.clampPointToCandleRange(point, activeToolType);
 
         // Anchor X to whole bar indices for geometric tools (not freehand / text / pixel-anchored tools).
+        // RC-3 Phase 4: keep fractional X by default; magnet mode explicitly rounds to bar index.
         // Defer during live handle edit + Shift so edit matches first-draw smoothness.
-        if (!this._shouldDeferBarIndexSnapForPointer(activeToolType, event)
+        const magnetActive = effectiveMagnetMode && effectiveMagnetMode !== 'off';
+        const forceBarSnap = !_isRc3FractionalPlaceEnabled() || magnetActive;
+        if (forceBarSnap
+            && !this._shouldDeferBarIndexSnapForPointer(activeToolType, event)
             && !isFreehandStroke
             && !this._isTextDrawingType(activeToolType)
             && !this._usesPointScreenAnchor(activeToolType)) {
@@ -6961,6 +6975,7 @@ class DrawingToolsManager {
         }
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
+        this._invalidateAfterLocalDrawingMutation('DrawingToolsManager.addDrawing');
 
         // Placement click can arrive as detail>=2; do not open settings on the same gesture.
         if (this.isVolumeProfileToolType(drawing.type)) {
@@ -10436,6 +10451,34 @@ class DrawingToolsManager {
     _normalizeClipboardPayload(clip) {
         if (!clip || typeof clip !== 'object') return null;
         const out = JSON.parse(JSON.stringify(clip));
+
+        if (_isRc3PasteTimestampOffsetEnabled() && !this._isFreehandDrawingType(out.type)) {
+            let tsPts = Array.isArray(out.timestampPoints) && out.timestampPoints.length
+                ? out.timestampPoints
+                : null;
+            if (!tsPts && out.coordinateSystem === 'timestamp' && Array.isArray(out.points) && out.points.length) {
+                tsPts = out.points.map((p) => ({
+                    timestamp: p.timestamp,
+                    price: p.price !== undefined ? p.price : p.y,
+                }));
+            }
+            if (Array.isArray(tsPts) && tsPts.length) {
+                out.timestampPoints = tsPts.map((p) => {
+                    const ts = Number(p && (p.timestamp ?? p.t));
+                    const price = Number(p && (p.price !== undefined ? p.price : p.y));
+                    if (!Number.isFinite(ts) || !Number.isFinite(price)) return null;
+                    return { timestamp: ts, price };
+                }).filter(Boolean);
+                if (out.timestampPoints.length === 0) return null;
+                out.coordinateSystem = 'timestamp';
+                out.points = out.timestampPoints.map((p) => ({
+                    timestamp: p.timestamp,
+                    price: p.price,
+                }));
+                return out;
+            }
+        }
+
         if (out.coordinateSystem === 'timestamp' && Array.isArray(out.points) &&
             this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
             typeof CoordinateUtils !== 'undefined' &&
@@ -11090,12 +11133,43 @@ class DrawingToolsManager {
         return { xOffset, yOffset };
     }
 
-    _applyClonePointOffset(drawing) {
-        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
-        const pts = drawing.points;
+    _getClonePriceOffset() {
         const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
         const domainSpan = priceRange[1] - priceRange[0];
         const domainOffsetBase = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan : 0;
+        return domainOffsetBase * 0.02;
+    }
+
+    _getCloneCandleTimestampOffsetMs() {
+        const candleOffset = 3;
+        let interval = 60000;
+        if (this.chart && typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.getIntervalFromTimeframe === 'function') {
+            const tfInterval = CoordinateUtils.getIntervalFromTimeframe(this.chart.currentTimeframe);
+            if (Number.isFinite(tfInterval) && tfInterval > 0) interval = tfInterval;
+        } else if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length >= 2) {
+            const derived = this.chart.data[1].t - this.chart.data[0].t;
+            if (Number.isFinite(derived) && derived > 0) interval = derived;
+        }
+        return candleOffset * interval;
+    }
+
+    _applyCloneTimestampOffset(drawing) {
+        if (!drawing || !Array.isArray(drawing.timestampPoints) || drawing.timestampPoints.length === 0) {
+            return;
+        }
+        const tsOffset = this._getCloneCandleTimestampOffsetMs();
+        const priceOffset = this._getClonePriceOffset();
+        drawing.timestampPoints = drawing.timestampPoints.map((p) => ({
+            timestamp: Number(p.timestamp) + tsOffset,
+            price: Number(p.price !== undefined ? p.price : p.y) - priceOffset,
+        }));
+        drawing.coordinateSystem = 'timestamp';
+    }
+
+    _applyClonePointOffset(drawing) {
+        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
+        const pts = drawing.points;
 
         if (this._isFreehandDrawingType(drawing.type)) {
             drawing.timestampPoints = null;
@@ -11111,7 +11185,7 @@ class DrawingToolsManager {
             return;
         }
 
-        const priceOffset = domainOffsetBase * 0.02;
+        const priceOffset = this._getClonePriceOffset();
         const candleOffset = 3;
         drawing.points = pts.map(p => ({
             x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
@@ -11172,6 +11246,41 @@ class DrawingToolsManager {
     }
 
     _buildDrawingClonePayload(drawing) {
+        if (_isRc3PasteTimestampOffsetEnabled() && !this._isFreehandDrawingType(drawing.type)) {
+            const tsPts = Array.isArray(drawing.timestampPoints) && drawing.timestampPoints.length
+                ? drawing.timestampPoints
+                : null;
+            if (Array.isArray(tsPts) && tsPts.length > 0) {
+                const payload = {
+                    type: drawing.type,
+                    coordinateSystem: 'timestamp',
+                    timestampPoints: JSON.parse(JSON.stringify(tsPts.map((p) => ({
+                        timestamp: Number(p.timestamp),
+                        price: Number(p.price !== undefined ? p.price : p.y),
+                    })))),
+                    points: tsPts.map((p) => ({
+                        timestamp: Number(p.timestamp),
+                        price: Number(p.price !== undefined ? p.price : p.y),
+                    })),
+                    style: JSON.parse(JSON.stringify(drawing.style || {})),
+                    visible: drawing.visible !== false,
+                    locked: !!drawing.locked,
+                    meta: {
+                        ...(drawing.meta && typeof drawing.meta === 'object' ? drawing.meta : {}),
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                    },
+                    text: typeof drawing.text === 'string' ? drawing.text : '',
+                };
+                if (drawing.visibility) {
+                    payload.visibility = JSON.parse(JSON.stringify(drawing.visibility));
+                }
+                if (drawing.baseScale != null) payload.baseScale = drawing.baseScale;
+                if (drawing.levels) payload.levels = JSON.parse(JSON.stringify(drawing.levels));
+                return payload;
+            }
+        }
+
         let points = this._resolveDrawingIndexPoints(drawing);
         if (this._isFreehandDrawingType(drawing.type)) {
             points = this._sanitizeFreehandClonePoints(points);
@@ -11220,14 +11329,25 @@ class DrawingToolsManager {
             );
             newDrawing.timestampPoints = null;
             newDrawing.coordinateSystem = 'index';
+        } else if (_isRc3PasteTimestampOffsetEnabled()
+            && Array.isArray(data.timestampPoints) && data.timestampPoints.length > 0) {
+            newDrawing.timestampPoints = data.timestampPoints.map((p) => ({
+                timestamp: Number(p.timestamp),
+                price: Number(p.price !== undefined ? p.price : p.y),
+            }));
+            newDrawing.coordinateSystem = 'timestamp';
+            this._applyCloneTimestampOffset(newDrawing);
+            if (typeof CoordinateUtils !== 'undefined'
+                && typeof CoordinateUtils.resolveDrawingPoints === 'function'
+                && this.chart) {
+                newDrawing.points = CoordinateUtils.resolveDrawingPoints(newDrawing, this.chart);
+            }
         } else {
             newDrawing.timestampPoints = null;
+            this._applyClonePointOffset(newDrawing);
         }
 
-        this._applyClonePointOffset(newDrawing);
-
         if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(newDrawing.points) && newDrawing.points.length > 0) {
-            newDrawing.points = this._sanitizeFreehandClonePoints(newDrawing.points);
             newDrawing._fromClonePayload = true;
         }
         return newDrawing;
@@ -11392,6 +11512,9 @@ class DrawingToolsManager {
         this.chart._isRendering = wasRendering;
         
         this.raiseDrawingLayersAboveOrderPreviews();
+        if (!options.panFast) {
+            this._invalidateAfterLocalDrawingMutation('DrawingToolsManager.redrawAll');
+        }
     }
 
     /** Ensure SVG exists before pan translate (finger-down). */
@@ -11759,6 +11882,33 @@ class DrawingToolsManager {
 
     _isDrawingSaveInvalidationV2Enabled() {
         return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_DRAWING_SAVE_INVALIDATION_V2);
+    }
+
+    _isDrawingLocalInvalidationV2Enabled() {
+        return !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_DRAWING_LOCAL_INVALIDATION_V2);
+    }
+
+    /**
+     * Schedule full chart repaint after a local drawing-layer mutation (SVG-only paths).
+     * Complements saveDrawings V2 for renderDrawing/redrawAll without persist signature change.
+     */
+    _invalidateAfterLocalDrawingMutation(setterName) {
+        if (!this._isDrawingLocalInvalidationV2Enabled()) return;
+        if (this.chart && this.chart._receivingDrawingSync) return;
+        const chart = this.chart;
+        if (!chart || typeof chart.scheduleRender !== 'function') return;
+        this._ensureInvalidationAssertionScheduleHook();
+        const beforeSeq = Number(chart._talariaInvalidationScheduleSeq) || 0;
+        const stack = (typeof window !== 'undefined' && window.__TALARIA_ASSERT_INVALIDATION)
+            ? (new Error(`${setterName} mutated local drawing visuals`)).stack
+            : null;
+        this._assertRenderInvalidationScheduled(setterName, beforeSeq, stack);
+        chart.scheduleRender();
+    }
+
+    /** Public hook for settings UI paths that renderDrawing without saveDrawings (M3 bypass). */
+    notifyDrawingVisualMutation(source = 'DrawingToolsManager.notifyDrawingVisualMutation') {
+        this._invalidateAfterLocalDrawingMutation(source);
     }
 
     _ensureInvalidationAssertionScheduleHook() {

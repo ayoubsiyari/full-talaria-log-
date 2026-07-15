@@ -57,8 +57,9 @@ class FibonacciRetracementTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing fibonacci-retracement', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const p1 = this.points[0];
-        const p2 = this.points[1];
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+        const p1 = anchorPts[0] || this.points[0];
+        const p2 = anchorPts[1] || this.points[1];
 
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -302,8 +303,9 @@ class FibonacciExtensionTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing fibonacci-extension', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const p1 = this.points[0];
-        const p2 = this.points[1];
+        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(this, scales);
+        const p1 = anchorPts[0] || this.points[0];
+        const p2 = anchorPts[1] || this.points[1];
 
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
