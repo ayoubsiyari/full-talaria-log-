@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714a4';
+const CHART_ENGINE_BUILD = '20260714a5';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -26612,7 +26612,7 @@ class Chart {
         const viewLeft = m.l;
         const viewRight = m.l + plotW;
         const coverRight = viewRight - minSpacingPx * 0.6;
-        const wantTicks = Math.max(4, Math.floor(plotW / minSpacingPx));
+        const maxTicks = Math.max(6, Math.ceil(plotW / (minSpacingPx * 0.65)) + 4);
         const minBars = Math.max(1, Math.ceil(minSpacingPx / Math.max(1e-6, vp.spacing || 1)));
         const step = Math.max(
             minBars,
@@ -26623,7 +26623,9 @@ class Chart {
 
         let lastX = merged.length ? merged[merged.length - 1].x : -Infinity;
         let rightMost = merged.length ? merged[merged.length - 1].x : viewLeft - 1;
-        if (rightMost >= coverRight && merged.length >= wantTicks) {
+        // Always cover the right edge — do not stop just because tick *count* looks full
+        // (left-heavy cull used to leave the newest candles with no time labels).
+        if (rightMost >= coverRight) {
             return merged;
         }
 
@@ -26631,7 +26633,7 @@ class Chart {
             ? merged[merged.length - 1].idx + step
             : this._fastTimeTickAlignStart(vp.first, step, timeframeMs);
 
-        while (idx <= vp.last + step * 2 && merged.length < wantTicks + 4) {
+        while (idx <= vp.last + step * 2 && merged.length < maxTicks) {
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
@@ -26645,7 +26647,7 @@ class Chart {
                 }
             }
             idx += step;
-            if (rightMost >= coverRight && merged.length >= wantTicks) break;
+            if (rightMost >= coverRight) break;
         }
         merged.sort((a, b) => a.idx - b.idx);
         return merged;
@@ -27051,15 +27053,15 @@ class Chart {
         // Sort and filter by minimum pixel spacing.
         // ALWAYS cull by pixels — uniform cadence alone is not enough during fast
         // zoom (frozen interval × shrinking candle width → solid overlapping labels).
+        // Do NOT early-break on max count: that kept left labels and left the right
+        // edge (newest candles) blank until the user panned.
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
         const panBufferPx = options.panCache ? Math.max(240, cw * 0.4) : 0;
         const viewLeft  = m.l + 20 - panBufferPx;
         const viewRight = this.w - m.r - 20 + panBufferPx;
-        const maxTicks = Math.max(4, Math.ceil(cw / (minSpacing * 0.65)) + 2);
         for (const c of candidates) {
-            if (ticks.length >= maxTicks) break;
             const x = this.dataIndexToPixel(c.idx);
             if (!Number.isFinite(x)) continue;
             const gap = (c.isBoundary && allowStandaloneBoundaries)
@@ -27069,6 +27071,7 @@ class Chart {
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 }
+                // Advance lastX for off-screen ticks too so spacing stays stable while panning.
                 lastX = x;
             }
         }
