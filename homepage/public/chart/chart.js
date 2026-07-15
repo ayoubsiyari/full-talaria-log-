@@ -2453,6 +2453,22 @@ class Chart {
         }
     }
 
+    /** D-017: when OFF (default), released viewport wins over grab/host anchors after pan. */
+    _panReleaseAnchorHoldFixDisabled() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__TALARIA_MC_DISABLE_PAN_RELEASE_ANCHOR_HOLD;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /** True when user panned and D-017 fix is ON — suppress index-pin / stale prepend baseline. */
+    _userOwnsReleasedViewport(replay = this.replaySystem) {
+        if (this._panReleaseAnchorHoldFixDisabled()) return false;
+        return !!(replay && replay.userHasPanned);
+    }
+
     _captureMultichartMirrorPrependSnapshot(replay = this.replaySystem) {
         try {
             if (this._mirrorPrependCompensationDisabled()) return null;
@@ -2506,12 +2522,17 @@ class Chart {
             const spacing = typeof this.getCandleSpacing === 'function'
                 ? this.getCandleSpacing()
                 : ((Number(this.candleWidth) || 0) + (Number(this.candleGap) || 0));
-            const previousOffsetX = Number(snapshot.offsetX);
+            const replay = (opts && opts.replay) || this.replaySystem;
+            const userOwned = this._userOwnsReleasedViewport(replay);
+            const previousOffsetX = userOwned
+                ? Number(this.offsetX)
+                : Number(snapshot.offsetX);
             if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(previousOffsetX)) return null;
             this.offsetX = previousOffsetX - addedDisplayBars * spacing;
 
-            const replay = (opts && opts.replay) || this.replaySystem;
-            const previousIndex = Number(snapshot.replayIndex);
+            const previousIndex = userOwned && replay && Number.isFinite(Number(replay.currentIndex))
+                ? Number(replay.currentIndex)
+                : Number(snapshot.replayIndex);
             const replaySeries = replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
                 ? replay.fullRawData
                 : this.rawData;
@@ -3451,7 +3472,7 @@ class Chart {
             ? parent.getCandleSpacing()
             : parent.candleWidth;
         if (spacing > 0 && plotW > 0) {
-            if (!mirrorPrependCompensation) {
+            if (!mirrorPrependCompensation && !this._userOwnsReleasedViewport(replay)) {
                 let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
                     ? parent.getVisibleEndIndex()
                     : parent.data.length - 1;
@@ -4080,6 +4101,7 @@ class Chart {
             return false;
         }
         if (!this._multichartVisibleRangeSyncOn) return false;
+        if (this._userOwnsReleasedViewport()) return false;
         if (typeof this._multichartSamePairAsHost !== 'function'
             || !this._multichartSamePairAsHost(this.currentFileId)) {
             return false;
@@ -17271,7 +17293,7 @@ class Chart {
             const realignedMc = typeof this._realignMultichartViewportAfterResize === 'function'
                 && this._realignMultichartViewportAfterResize(oldW, oldH);
             let pinnedMcHost = false;
-            if (!realignedMc && _mcHostRightIdx != null) {
+            if (!realignedMc && _mcHostRightIdx != null && !this._userOwnsReleasedViewport()) {
                 // Pin the pre-resize right-edge bar back to the right axis using
                 // the SAME index-based formula the duplicate panels use
                 // (offsetX = plotW - (rightIdx+1)*spacing). This keeps panel A
@@ -17311,7 +17333,7 @@ class Chart {
 	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
 	            }
-	            } else if (_mcBootHostRightIdx != null) {
+	            } else if (_mcBootHostRightIdx != null && !this._userOwnsReleasedViewport()) {
 	                // BOOT host-resize re-anchor (felt-shake fix): the frozen boot
 	                // cell-resize would otherwise skip ALL offset work above, so the
 	                // first post-resize paint keeps the OLD offsetX at the NEW width
@@ -17332,7 +17354,7 @@ class Chart {
 	                    this.offsetX = Math.round(plotW - (ri + 1) * spacing);
 	                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
 	                }
-	            } else if (_mcBootPanelRightIdx != null) {
+	            } else if (_mcBootPanelRightIdx != null && !this._userOwnsReleasedViewport()) {
 	                // BOOT panel-resize re-anchor (§6cr felt-shake fix, PEER analogue
 	                // of the b102 host branch above): the frozen boot peer cell-resize
 	                // would otherwise skip ALL offset work above, so the first post-
