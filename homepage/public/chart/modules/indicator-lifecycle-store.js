@@ -11,10 +11,13 @@
         return !!(g && g.__TALARIA_RC6_INDICATOR_LIFECYCLE_STORE !== false);
     }
 
-    function snapshotIndicator(indicator) {
+    function snapshotIndicator(indicator, chartSettings) {
         if (!indicator) return null;
         const id = indicator.id != null ? String(indicator.id) : null;
         if (!id) return null;
+        const shown = (typeof global.resolveIndicatorShown === 'function')
+            ? global.resolveIndicatorShown(indicator, chartSettings)
+            : (indicator.visible !== false && indicator.hidePlot !== true);
         return {
             id: id,
             type: String(indicator.type || '').toLowerCase(),
@@ -22,6 +25,7 @@
             visible: indicator.visible !== false,
             hidePlot: indicator.hidePlot === true,
             hideValues: indicator.hideValues === true,
+            shown: shown,
             overlay: indicator.overlay,
             separatePanel: indicator.separatePanel === true,
             isVolume: !!(indicator.isVolume || indicator.type === 'volume'),
@@ -100,7 +104,8 @@
         }
 
         _setEntry(indicator) {
-            const entry = snapshotIndicator(indicator);
+            const chartSettings = this.chart && this.chart.chartSettings;
+            const entry = snapshotIndicator(indicator, chartSettings);
             if (!entry) return;
             const id = entry.id;
             if (!this.state.activeById.has(id)) {
@@ -126,7 +131,7 @@
                 return;
             }
             indicators.forEach((indicator) => {
-                const entry = snapshotIndicator(indicator);
+                const entry = snapshotIndicator(indicator, this.chart && this.chart.chartSettings);
                 if (!entry) return;
                 this.state.activeById.set(entry.id, entry);
                 this.state.activeOrder.push(entry.id);

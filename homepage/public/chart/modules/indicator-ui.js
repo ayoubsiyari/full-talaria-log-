@@ -2377,6 +2377,14 @@ function talariaIndicatorShownInLegend(chart, indicator) {
     return true;
 }
 
+function talariaIndicatorLegendShown(chart, indicator) {
+    if (typeof rc6IndicatorVisibilityV2Enabled === 'function' && rc6IndicatorVisibilityV2Enabled()
+        && typeof resolveIndicatorShown === 'function') {
+        return resolveIndicatorShown(indicator, chart && chart.chartSettings);
+    }
+    return indicator.visible !== false;
+}
+
 function talariaPickFiniteSeriesValue(arr, barIdx) {
     if (!Array.isArray(arr) || barIdx < 0) return null;
     let i = Math.min(barIdx, arr.length - 1);
@@ -2667,14 +2675,15 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
 
     const nameSpan = document.createElement('span');
     const legendName = isVolume ? talariaVolumeLegendLabel(indicator) : indicator.name;
+    const shown = talariaIndicatorLegendShown(chart, indicator);
     nameSpan.textContent = '- ' + legendName;
-    nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
+    nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (shown ? '1' : '0.55') + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
     nameSpan.title = legendName;
     item.appendChild(nameSpan);
 
     const valuesSpan = document.createElement('span');
     valuesSpan.setAttribute('data-talaria-ind-val', '1');
-    valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';';
+    valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (shown ? '1' : '0.55') + ';';
     const loading = talariaIndicatorLegendIsLoading(chart, indicator);
     const valueTokens = loading ? [] : (isVolume
         ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
@@ -2691,13 +2700,13 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     const type = indicator.type;
 
     const visibilityBtn = document.createElement('span');
-    visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+    visibilityBtn.innerHTML = shown ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
     const applyEyeState = function() {
-        const on = indicator.visible !== false;
+        const on = talariaIndicatorLegendShown(self, indicator);
         visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
     };
     applyEyeState();
-    visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
+    visibilityBtn.title = shown ? 'Click to hide' : 'Click to show';
     visibilityBtn.onmouseenter = function() {
         visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
     };
@@ -2708,10 +2717,10 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     visibilityBtn.onclick = function(e) {
         e.stopPropagation();
         e.preventDefault();
-        const nextOn = isVolume
-            ? (indicator.visible === false || (self.chartSettings && self.chartSettings.showVolume === false))
-            : (indicator.visible === false);
-        if (typeof self._setIndicatorPlotLegendVisible === 'function') {
+        const nextOn = !talariaIndicatorLegendShown(self, indicator);
+        if (typeof self.setIndicatorVisible === 'function') {
+            self.setIndicatorVisible(indicator, nextOn, { isVolume: isVolume });
+        } else if (typeof self._setIndicatorPlotLegendVisible === 'function') {
             self._setIndicatorPlotLegendVisible(indicator, nextOn, { isVolume: isVolume });
         } else {
             indicator.visible = nextOn;
@@ -2724,26 +2733,12 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
                 self._invalidateIndicatorLayerCache();
             }
         }
-        const on = indicator.visible !== false;
+        const on = talariaIndicatorLegendShown(self, indicator);
         visibilityBtn.innerHTML = on ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
         applyEyeState();
         nameSpan.style.opacity = on ? '1' : '0.55';
         valuesSpan.style.opacity = on ? '1' : '0.55';
         visibilityBtn.title = on ? 'Click to hide' : 'Click to show';
-        if (on && self.indicators && self.indicators.data) {
-            const store = self.indicators.data[id];
-            const storeBroken = !store
-                || (Array.isArray(store) && store.length === 0)
-                || (type === 'obv' && (!store.obv || !Array.isArray(store.obv) || store.obv.length === 0));
-            if (storeBroken && typeof self.recalculateIndicators === 'function') {
-                self.recalculateIndicators();
-            }
-        }
-        if (typeof self.scheduleRender === 'function') {
-            self.scheduleRender();
-        } else if (typeof self.render === 'function') {
-            self.render();
-        }
     };
     actions.appendChild(visibilityBtn);
 

@@ -85,6 +85,23 @@
             : global.__TALARIA_RC6_INDICATOR_LIFECYCLE_STORE !== false;
     }
 
+    function isRc6IndicatorVisibilityV2Enabled() {
+        return typeof global.rc6IndicatorVisibilityV2Enabled === 'function'
+            ? global.rc6IndicatorVisibilityV2Enabled(global)
+            : global.__TALARIA_RC6_INDICATOR_VISIBILITY_V2 !== false;
+    }
+
+    function resolveIndicatorShownState(indicator, chartSettings) {
+        if (isRc6IndicatorVisibilityV2Enabled() && typeof global.resolveIndicatorShown === 'function') {
+            return global.resolveIndicatorShown(indicator, chartSettings);
+        }
+        if (!indicator) return false;
+        if (indicator.visible === false) return false;
+        if (indicator.hidePlot === true) return false;
+        if (indicator.style && indicator.style.showLine === false) return false;
+        return true;
+    }
+
     function mapIndicatorActionToStoreEvent(action) {
         switch (action) {
             case 'add': return 'indicatorAdded';
@@ -5506,6 +5523,53 @@
         });
     };
 
+    Chart.prototype.setIndicatorVisible = function(idOrIndicator, show, opts) {
+        opts = opts || {};
+        let indicator = idOrIndicator;
+        if (indicator != null && (typeof indicator === 'string' || typeof indicator === 'number')) {
+            const id = String(indicator);
+            indicator = this.indicators && Array.isArray(this.indicators.active)
+                ? this.indicators.active.find(function(ind) {
+                    return ind && String(ind.id) === id;
+                })
+                : null;
+        }
+        if (!indicator) return false;
+
+        const applyFn = (isRc6IndicatorVisibilityV2Enabled() && typeof global.applyIndicatorVisibility === 'function')
+            ? global.applyIndicatorVisibility
+            : (typeof global.applyIndicatorVisibilityLegacy === 'function'
+                ? global.applyIndicatorVisibilityLegacy
+                : null);
+        const result = applyFn
+            ? applyFn(indicator, show, opts, this.chartSettings)
+            : { shown: show !== false, applied: true };
+
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        } else if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
+
+        if (result.shown && typeof global.shouldRecalcIndicatorOnShow === 'function'
+            && global.shouldRecalcIndicatorOnShow(this, indicator, true)
+            && typeof this.recalculateIndicators === 'function') {
+            this.recalculateIndicators();
+        }
+
+        if (isRc6IndicatorLifecycleStoreEnabled()) {
+            if (typeof this._emitIndicatorLifecycle === 'function') {
+                this._emitIndicatorLifecycle('visibility', indicator, { visible: result.shown });
+            }
+        } else if (typeof this.scheduleRender === 'function') {
+            this.scheduleRender();
+        } else if (typeof this.render === 'function') {
+            this.render();
+        }
+
+        return result.shown;
+    };
+
     Chart.prototype._emitIndicatorLifecycle = function(action, indicator, opts) {
         opts = opts || {};
         const act = action || 'update';
@@ -8559,12 +8623,21 @@
             newVisBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                indicator.visible = indicator.visible === false ? true : false;
-                self.chartSettings.showVolume = indicator.visible !== false;
-                
-                // Update icon
+                const nextOn = indicator.visible === false
+                    || (self.chartSettings && self.chartSettings.showVolume === false);
+                if (typeof self.setIndicatorVisible === 'function') {
+                    self.setIndicatorVisible(indicator, nextOn, { isVolume: true });
+                } else if (typeof self._setIndicatorPlotLegendVisible === 'function') {
+                    self._setIndicatorPlotLegendVisible(indicator, nextOn, { isVolume: true });
+                } else {
+                    indicator.visible = nextOn;
+                    self.chartSettings.showVolume = nextOn;
+                }
+                const on = typeof global.resolveIndicatorShown === 'function'
+                    ? global.resolveIndicatorShown(indicator, self.chartSettings)
+                    : (indicator.visible !== false);
                 const currentLabel = volumeLine.querySelector('.volume-label');
-                if (indicator.visible === false) {
+                if (!on) {
                     newVisBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                     newVisBtn.style.opacity = '0.5';
                     if (currentLabel) currentLabel.style.opacity = '0.5';
@@ -8573,7 +8646,7 @@
                     newVisBtn.style.opacity = '1';
                     if (currentLabel) currentLabel.style.opacity = '1';
                 }
-                self.render();
+                if (typeof self.render === 'function') self.render();
             });
         }
         
@@ -8818,15 +8891,15 @@
     };
 
     Chart.prototype._isIndicatorPlotShown = function(indicator) {
-        if (!indicator) return false;
-        if (indicator.visible === false) return false;
-        if (indicator.hidePlot === true) return false;
-        if (indicator.style && indicator.style.showLine === false) return false;
-        return true;
+        return resolveIndicatorShownState(indicator, this.chartSettings);
     };
 
     Chart.prototype._setIndicatorPlotLegendVisible = function(indicator, show, opts) {
         if (!indicator) return;
+        if (typeof this.setIndicatorVisible === 'function') {
+            this.setIndicatorVisible(indicator, show, opts);
+            return;
+        }
         opts = opts || {};
         const on = show !== false;
         if (opts.isVolume) {
@@ -16182,9 +16255,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const eyeBtn = document.createElement('span');
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
             const applyPlotEyeState = () => {
-                const on = isVolume
-                    ? (self.chartSettings.showVolume !== false)
-                    : (indicator.hidePlot !== true);
+                const on = typeof global.resolveIndicatorShown === 'function'
+                    ? global.resolveIndicatorShown(indicator, self.chartSettings)
+                    : (isVolume
+                        ? (self.chartSettings.showVolume !== false)
+                        : (indicator.hidePlot !== true));
                 eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
             };
             applyPlotEyeState();
@@ -16195,10 +16270,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             eyeBtn.onmouseleave = function() { applyPlotEyeState(); };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
-                const nextOn = isVolume
-                    ? (self.chartSettings && self.chartSettings.showVolume === false)
-                    : (indicator.hidePlot === true);
-                if (typeof self._setIndicatorPlotLegendVisible === 'function') {
+                const nextOn = typeof global.resolveIndicatorShown === 'function'
+                    ? !global.resolveIndicatorShown(indicator, self.chartSettings)
+                    : (isVolume
+                        ? (self.chartSettings && self.chartSettings.showVolume === false)
+                        : (indicator.hidePlot === true));
+                if (typeof self.setIndicatorVisible === 'function') {
+                    self.setIndicatorVisible(indicator, nextOn, { isVolume: isVolume });
+                } else if (typeof self._setIndicatorPlotLegendVisible === 'function') {
                     self._setIndicatorPlotLegendVisible(indicator, nextOn, { isVolume: isVolume });
                 } else if (isVolume) {
                     const next = !(self.chartSettings.showVolume !== false);
@@ -16212,12 +16291,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         self.bumpIndicatorRenderVersion();
                     }
                 }
-                const on = isVolume
-                    ? (self.chartSettings.showVolume !== false)
-                    : (indicator.hidePlot !== true);
+                const on = typeof global.resolveIndicatorShown === 'function'
+                    ? global.resolveIndicatorShown(indicator, self.chartSettings)
+                    : (isVolume
+                        ? (self.chartSettings.showVolume !== false)
+                        : (indicator.hidePlot !== true));
                 eyeBtn.innerHTML = on ? eyeOpenSvg : eyeClosedSvg;
                 applyPlotEyeState();
-                if (typeof self.render === 'function') self.render();
             };
             actions.appendChild(eyeBtn);
 

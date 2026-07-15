@@ -74,6 +74,7 @@ const CHART_CLIENT_PART1 = [
 
 const CHART_CLIENT_PART2 = [
   'modules/custom-indicators-runtime.js',
+  'modules/indicator-visibility.js',
   'modules/indicator-lifecycle-store.js',
   'modules/chart-indicators-full.js',
   'modules/indicator-ui.js',
