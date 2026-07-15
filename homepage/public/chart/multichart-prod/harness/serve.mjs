@@ -458,6 +458,7 @@ const ENGINE_MODULE_PATHS = [
   '/chart/modules/order-service.js',
   '/chart/modules/order-manager.js',
   '/chart/modules/indicator-performance.js',
+  '/chart/modules/indicator-lifecycle-store.js',
   '/chart/modules/chart-indicators-full.js',
   '/chart/modules/indicator-ui.js',
 ];
@@ -489,7 +490,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260715a5';
+  const buildId = '20260715b1';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -807,8 +808,48 @@ function hostPageHtml(query) {
 
       // Faithful multichart replay fan-out: host replay-system gates broadcast on
       // __multichartGrid (see replay-system.js _multichartBroadcastReplayFrame).
+      function tfToMs(tf) {
+        if (!tf) return null;
+        var ch = window.chart;
+        if (ch && typeof ch.parseTimeframe === 'function') {
+          var p = Number(ch.parseTimeframe(tf));
+          if (isFinite(p) && p > 0) return p;
+        }
+        var map = { '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
+          '1h': 3600000, '4h': 14400000, '1d': 86400000 };
+        var k = String(tf).toLowerCase().trim();
+        return map[k] != null ? map[k] : null;
+      }
+      function finestReplayCadenceMs() {
+        if (window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) return null;
+        var minMs = null;
+        function consider(ch) {
+          if (!ch || !ch.currentTimeframe) return;
+          var ms = tfToMs(ch.currentTimeframe);
+          if (isFinite(ms) && ms > 0) minMs = minMs == null ? ms : Math.min(minMs, ms);
+        }
+        consider(window.chart);
+        if (mgr && mgr.charts && typeof mgr.charts.values === 'function') {
+          mgr.charts.forEach(function (c) {
+            if (!c || c.host) return;
+            try { consider(c.frame && c.frame.contentWindow && c.frame.contentWindow.chart); } catch (e) {}
+          });
+        }
+        return minMs;
+      }
+      function refreshFinestReplayCadence() {
+        if (window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) return;
+        try {
+          var rs = window.chart && window.chart.replaySystem;
+          if (rs && typeof rs._onFinestTfCadencePanelsChanged === 'function') {
+            rs._onFinestTfCadencePanelsChanged();
+          }
+        } catch (e) {}
+      }
       window.__multichartGrid = {
         getPanelIds: function () { return ['A'].concat(iframeIds); },
+        getFinestReplayCadenceMs: finestReplayCadenceMs,
+        refreshFinestReplayCadence: refreshFinestReplayCadence,
       };
 
       window.__harnessHostReady = true;

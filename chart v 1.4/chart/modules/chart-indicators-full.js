@@ -79,20 +79,60 @@
 
     const MAX_ACTIVE_INDICATORS = 10;
 
+    function isRc6IndicatorLifecycleStoreEnabled() {
+        return typeof global.rc6IndicatorLifecycleStoreEnabled === 'function'
+            ? global.rc6IndicatorLifecycleStoreEnabled(global)
+            : global.__TALARIA_RC6_INDICATOR_LIFECYCLE_STORE !== false;
+    }
+
+    function mapIndicatorActionToStoreEvent(action) {
+        switch (action) {
+            case 'add': return 'indicatorAdded';
+            case 'update': return 'indicatorUpdated';
+            case 'remove': return 'indicatorRemoved';
+            case 'clear': return 'indicatorCleared';
+            case 'rehydrate': return 'indicatorRehydrated';
+            case 'visibility': return 'indicatorVisibilityChanged';
+            default: return 'indicatorChanged';
+        }
+    }
+
+    function getIndicatorLifecycleStore(chart) {
+        if (!chart || typeof global.IndicatorLifecycleStore !== 'function') return null;
+        if (!chart._indicatorLifecycleStore) {
+            chart._indicatorLifecycleStore = new global.IndicatorLifecycleStore(chart);
+            if (typeof chart._installIndicatorLifecycleStoreSubscribers === 'function') {
+                chart._installIndicatorLifecycleStoreSubscribers();
+            }
+        }
+        return chart._indicatorLifecycleStore;
+    }
+
     function emitIndicatorsChanged(chart, action, indicator) {
-        if (typeof global === 'undefined' || typeof global.dispatchEvent !== 'function') return;
-        try {
-            global.dispatchEvent(new CustomEvent('indicatorsChanged', {
-                detail: {
-                    chart: chart,
-                    action: action,
-                    indicator: indicator || null,
-                    indicators: chart && chart.indicators && Array.isArray(chart.indicators.active)
-                        ? chart.indicators.active.slice()
-                        : []
-                }
-            }));
-        } catch (_) {}
+        const indicators = chart && chart.indicators && Array.isArray(chart.indicators.active)
+            ? chart.indicators.active.slice()
+            : [];
+        if (typeof global !== 'undefined' && typeof global.dispatchEvent === 'function') {
+            try {
+                global.dispatchEvent(new CustomEvent('indicatorsChanged', {
+                    detail: {
+                        chart: chart,
+                        action: action,
+                        indicator: indicator || null,
+                        indicators: indicators
+                    }
+                }));
+            } catch (_) {}
+        }
+        if (!isRc6IndicatorLifecycleStoreEnabled()) return;
+        const store = getIndicatorLifecycleStore(chart);
+        if (!store || !store.isEnabled()) return;
+        store.emit(mapIndicatorActionToStoreEvent(action), {
+            chart: chart,
+            action: action,
+            indicator: indicator || null,
+            indicators: indicators
+        });
     }
 
     /** Framed color tile — matches V9 sidebar buttons; prefers indicator-ui factory when loaded. */
@@ -5446,6 +5486,45 @@
             active: [],
             data: {}
         };
+        if (isRc6IndicatorLifecycleStoreEnabled()) {
+            getIndicatorLifecycleStore(this);
+        }
+    };
+
+    Chart.prototype._installIndicatorLifecycleStoreSubscribers = function() {
+        const store = this._indicatorLifecycleStore;
+        if (!store || this._indicatorLifecycleSubsInstalled) return;
+        this._indicatorLifecycleSubsInstalled = true;
+        const self = this;
+        store.on('indicatorVisibilityChanged', function() {
+            if (!store.isEnabled()) return;
+            if (typeof self.scheduleRender === 'function') {
+                self.scheduleRender();
+            } else if (typeof self.render === 'function') {
+                self.render();
+            }
+        });
+    };
+
+    Chart.prototype._emitIndicatorLifecycle = function(action, indicator, opts) {
+        opts = opts || {};
+        const act = action || 'update';
+        if (act === 'visibility') {
+            if (!isRc6IndicatorLifecycleStoreEnabled()) return;
+            const store = getIndicatorLifecycleStore(this);
+            if (!store || !store.isEnabled()) return;
+            store.emit('indicatorVisibilityChanged', {
+                chart: this,
+                action: 'visibility',
+                indicator: indicator || null,
+                visible: opts.visible,
+                indicators: this.indicators && Array.isArray(this.indicators.active)
+                    ? this.indicators.active.slice()
+                    : []
+            });
+            return;
+        }
+        emitIndicatorsChanged(this, act, indicator);
     };
     
     Chart.prototype.addIndicator = function(type, params) {
@@ -7380,6 +7459,7 @@
 
         this.updateOHLCIndicators();
         this.persistIndicators({ force: true });
+        emitIndicatorsChanged(this, 'update', indicator);
 
         return indicator;
     };
@@ -8764,6 +8844,9 @@
             this.bumpIndicatorRenderVersion();
         } else if (typeof this._invalidateIndicatorLayerCache === 'function') {
             this._invalidateIndicatorLayerCache();
+        }
+        if (typeof this._emitIndicatorLifecycle === 'function') {
+            this._emitIndicatorLifecycle('visibility', indicator, { visible: on });
         }
     };
 
