@@ -4,6 +4,37 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-012 — T8 mirror-policy table ready for approval; independent×playing cell (TAL-01590 P1 freeze) diverges from shipped behavior
+
+**Date:** 2026-07-15
+**Track:** T8 (Lane 2), per D-013
+**RC:** RC-8
+**Urgency:** Gates the T8 migration (D-013 ruling 1 step 3 requires Director approval of the table before impl). TAL-01590 is a live P1.
+
+### Context
+Lane 2 delivered `T8-MIRROR-POLICY-TABLE.md` — the full adopt-data / adopt-X / adopt-Y matrix (TF relation × replay × sync), each cell extracted from the shipped guard that dictates it (file:line cited). This is the design doc D-013 ruling 1 step 2 asked for, with the A5/TAL-01590 trace as its first input. Coverage-hardening scenarios (H-S60–H-S78, step 1) are being written in parallel and encode current behavior only.
+
+### TAL-01590 root cause (the P1 freeze)
+**Policy gap, not a guard bug.** There is **no independent-symbol equivalent of BL-10 play-advance** (`scheduleCoalescedSeek` during `isPlaying`, which only runs when `isSameSymbolAsHost`). Independent-symbol panels advance via mirror-frame timestamps + async `ensureReplayDataCoversTimestamp`; when the fetch lags or the 3-strike catch-up breaker trips (`panel-cmd-bridge.js:1135–1143`), the panel **freezes at its loaded edge for 2.5s+** while the host plays on. This is the `{independent × playing}` cell, and its **correct** policy (advance on the panel's own master, mirroring BL-10) **differs from shipped behavior** — so per D-013 ruling 3 it is an escalation, not a silent correction.
+
+### Decisions requested
+1. **Approve the policy table** as the T8 acceptance spec (or flag cells to revisit), unblocking step 3 migration behind `__TALARIA_DISABLE_MIRROR_POLICY_V2`.
+2. **Authorize the independent×playing cell change** (TAL-01590 fix): add an independent-symbol play-advance path analogous to BL-10, gated by a new switch (proposed `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE`). This is the one cell where correct ≠ shipped and it's the live P1.
+3. **Rule on the other escalation-candidate cells:** playing×drag×adopt-X (BL-16, TAL-01578 — diagnostic-first?), release snap-back adopt-X (TAL-01579 — prepend-compensation policy?), and the two cross-cuts that are **not** mirror-policy (TAL-01573 manual-rescale re-render → RC-2; TAL-01563 group-advance cadence → documented-intentional, PO may want smoother).
+4. **Harness fidelity flag (I15/D-012 family):** the current H-S59 passes on the contract path (`hostReplaySeek`+`replayFrame`) but does **not** reproduce the real B-freeze — `serve.mjs` only serves one symbol and the inner loop uses synthetic seek, not tick-animation. A faithful RED (`H-S59b`) needs ≥2 distinct-symbol panels + production-faithful play actuation. This overlaps Lane 4's honest-harness rebuild — request a ruling on who owns the distinct-symbol replay actuation surface.
+
+### Manager recommendation
+Approve (1) and (2) — TAL-01590's fix is well-scoped and gated. For (4), have Lane 2 extend `serve.mjs`/host scenarios for the distinct-symbol replay RED (host harness, not `react-parity-lib.mjs`), coordinating the actuation approach with Lane 4 to avoid a second false-green. Migration stays staging-only while the D-012 deploy freeze holds.
+
+---
+
+## ESC-012 — RESOLVED
+
+**Director ruling:** D-014 (2026-07-15)  
+**Outcome:** (1) Policy table **approved** as the T8 acceptance spec, with the three §4 flagged cells carved out of silent migration; all ratified cells unblock guard-by-guard migration behind `__TALARIA_DISABLE_MIRROR_POLICY_V2`. (2) **Independent×playing cell change authorized — T8 priority item**: advance on the panel's own master during play (BL-10-style), catch-up/breaker demoted to fallback; gated `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE`; **RED-first via H-S59b only** (current H-S59 disallowed as acceptance); may land ahead of the migration; acceptance = H-S59b RED→GREEN + switch A/B + BL-10/11/12/13 green + PO live-confirm on staging. (3) BL-16 diagnostic-first confirmed (H-S78 pins); TAL-01579 escalation-class, H-S73 pins first, separate diagnostic later; TAL-01573 re-routed to RC-2/T2; TAL-01563 documented-intentional — retest after the independent-play fix (its freeze-stutter may be the real complaint). (4) Lane 2 owns the distinct-symbol replay actuation surface (`serve.mjs` + host scenarios — not `react-parity-lib.mjs`); Lane 4 gives a written actuation sign-off in MANAGER-FINDINGS before H-S59b is trusted; I15 end-state assertions mandatory. (5) Lane 2 order: H-S59b RED → independent-play fix → staging → PO confirm; H-S60–78 promotion parallel; migration of ratified cells; then TAL-01579 diagnostic.
+
+---
+
 ## ESC-006 — RESOLVED
 
 **Director ruling:** D-006 (2026-07-13)

@@ -2,6 +2,36 @@
 
 ---
 
+## D-014 — ESC-012: T8 policy table APPROVED as acceptance spec; independent×playing cell fix authorized as the priority item
+
+**Date:** 2026-07-15
+**Escalation:** ESC-012
+**Track:** T8 (Lane 2), per D-013
+**RC:** RC-8
+
+### Rulings
+
+**1. Policy table APPROVED as the T8 acceptance spec** (`T8-MIRROR-POLICY-TABLE.md`), with one carve-out: the three cells flagged in §4 "needing Director approval" (independent×playing; coarse×playing×sync-ON guard disagreement; BL-16 cause split) are **excluded from silent migration** — they migrate only after their individual resolutions below. Everything else in the table is ratified as the "current behavior = correct behavior" contract; step-3 migration behind `__TALARIA_DISABLE_MIRROR_POLICY_V2` is unblocked for those cells, guard-by-guard, gate re-run per migration, per the plan.
+
+**2. Independent×playing cell change AUTHORIZED — this is the T8 priority item (TAL-01590, P1).**
+- Approved policy for the cell: **advance on the panel's own master during play** (adopt-data Y from own master + adopt-X Y on own bars, keyed to the shared playhead timestamp), mirroring BL-10's coarser-panel mechanism — with the async catch-up/breaker retained as the fallback for genuinely missing data, not as the primary advance path.
+- Gated `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` (default = fix ON), **RED-first via H-S59b** — the fix may NOT accept against the current H-S59, which the manager correctly flagged as not reproducing the freeze.
+- This fix may land **ahead of and independently of** the policy-v2 migration (it's a P1 with its own switch); the migration later absorbs it as the cell's implementation.
+- Acceptance: H-S59b RED→GREEN + kill-switch A/B + BL-10/11/12/13 family staying green + **PO live-confirm on a staging build** (D-012 posture; deploy freeze unaffected).
+- I11 note for the record: this is a **sanctioned policy-cell change under T8 ownership**, not a new guard on the mirror-frame tail — it is exactly what T8 exists to do.
+
+**3. The other escalation-candidate cells:**
+- **BL-16 / TAL-01578 (playing×drag×adopt-X):** diagnostic-first CONFIRMED (consistent with the earlier BL-16 read). H-S78 pins the contract; no fix dispatch until the (a) X-follow-re-engage vs (b) Y-autoscale-refit split is measured.
+- **TAL-01579 (release snap-back, prepend-compensation conflict):** ESCALATION-CLASS confirmed — do NOT fold into the migration. H-S73 pins current behavior first; then a separate diagnostic proposes the prepend-compensation policy for that cell with the ticket as evidence. It waits behind the independent-play fix in Lane 2's queue.
+- **TAL-01573 (manual rescale full re-render):** RE-ROUTED to RC-2/T2 as a cross-cut — correctly identified as not mirror-policy. Registry row moves to T2's scope; the policy table keeps a pointer, not a task.
+- **TAL-01563 (group-advance cadence on coarse panels):** ruled **documented-intentional** — coarse panels advance when a candle forms; BL-13's continuous sub-candle follow already smoothed the viewport. Record as the cell's documented behavior; reopen only if the PO flags it again *after* the independent-play fix lands (much of the reported "chunkiness" may actually be TAL-01590's freeze-stutter, so retest it then).
+
+**4. Harness ownership (distinct-symbol replay actuation) — manager's recommendation ADOPTED:** Lane 2 extends `serve.mjs` + host scenarios for H-S59b (≥2 distinct symbols, production-faithful play actuation: `replayPlay` + tick-animation frames, no synthetic seek in the inner loop) — this is the host harness, not `react-parity-lib.mjs`, so Lane 4's D-012 exclusivity is respected. Lane 4 reviews the actuation approach before H-S59b is trusted (one written sign-off in MANAGER-FINDINGS, not a hand-off) — I15 applies: assert per-panel end-state (`replayTimestamp` advancing, forming bar advancing, no panel frozen while peers move), no proxies.
+
+**5. Sequencing inside Lane 2:** (i) H-S59b RED, (ii) independent-play fix → staging → PO confirm, (iii) H-S60–H-S78 coverage promotion continues in parallel, (iv) guard-by-guard migration of ratified cells, (v) TAL-01579 diagnostic. TAL-01564 and T3 rows 13–16 remain behind these per D-013.
+
+---
+
 ## D-013 — PO priority directive: T8 (synced-multichart replay experience) pulled forward; starts now on Lane 2
 
 **Date:** 2026-07-14
