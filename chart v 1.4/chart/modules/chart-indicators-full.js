@@ -91,6 +91,12 @@
             : global.__TALARIA_RC6_INDICATOR_VISIBILITY_V2 !== false;
     }
 
+    function isRc6IndicatorSettingsApplyV2Enabled() {
+        return typeof global.rc6IndicatorSettingsApplyV2Enabled === 'function'
+            ? global.rc6IndicatorSettingsApplyV2Enabled(global)
+            : global.__TALARIA_RC6_INDICATOR_SETTINGS_APPLY_V2 !== false;
+    }
+
     function resolveIndicatorShownState(indicator, chartSettings) {
         if (isRc6IndicatorVisibilityV2Enabled() && typeof global.resolveIndicatorShown === 'function') {
             return global.resolveIndicatorShown(indicator, chartSettings);
@@ -110,6 +116,7 @@
             case 'clear': return 'indicatorCleared';
             case 'rehydrate': return 'indicatorRehydrated';
             case 'visibility': return 'indicatorVisibilityChanged';
+            case 'settings': return 'indicatorSettingsApplied';
             default: return 'indicatorChanged';
         }
     }
@@ -5521,6 +5528,127 @@
                 self.render();
             }
         });
+        store.on('indicatorSettingsApplied', function() {
+            if (!store.isEnabled()) return;
+            if (typeof self.updateOHLCIndicators === 'function') {
+                self.updateOHLCIndicators();
+            }
+            if (typeof self.scheduleRender === 'function') {
+                self.scheduleRender();
+            } else if (typeof self.render === 'function') {
+                self.render();
+            }
+        });
+    };
+
+    Chart.prototype._indicatorDataMatchesBars = function(indicator) {
+        if (typeof global.indicatorDataMatchesBarCount === 'function') {
+            return global.indicatorDataMatchesBarCount(this, indicator);
+        }
+        if (!indicator || !this.indicators || !this.indicators.data) return false;
+        const barCount = Array.isArray(this.data) ? this.data.length : 0;
+        const store = this.indicators.data[indicator.id];
+        if (!store || !barCount) return !barCount;
+        if (Array.isArray(store)) return store.length === barCount;
+        return true;
+    };
+
+    Chart.prototype._recalcIndicatorDataForSettings = function(indicator) {
+        if (!indicator || !this.data || !this.data.length) return;
+        const type = String(indicator.type || '').toLowerCase();
+        if (!this.indicators.data) this.indicators.data = {};
+        switch (type) {
+            case 'rsi':
+                indicator.name = 'RSI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
+                break;
+            case 'sma':
+                indicator.name = 'SMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
+                break;
+            case 'ema':
+                indicator.name = 'EMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateEMAIndicatorData(this.data, indicator.params);
+                break;
+            default:
+                if (typeof this.recalculateIndicators === 'function') {
+                    this.recalculateIndicators();
+                }
+                break;
+        }
+    };
+
+    Chart.prototype._finalizeIndicatorSettingsApply = function(indicator, ctx) {
+        ctx = ctx || {};
+        const needsDataRecalc = !!ctx.needsDataRecalc;
+        const newParams = ctx.newParams || {};
+
+        if (isRc6IndicatorSettingsApplyV2Enabled()) {
+            if (typeof global.applyIndicatorSettingsInvalidation === 'function') {
+                global.applyIndicatorSettingsInvalidation(this, indicator, {
+                    needsDataRecalc: needsDataRecalc,
+                    newParams: newParams,
+                }, {
+                    recalcFn: function(chart, ind) {
+                        if (typeof chart._recalcIndicatorDataForSettings === 'function') {
+                            chart._recalcIndicatorDataForSettings(ind);
+                        } else if (typeof chart.recalculateIndicators === 'function') {
+                            chart.recalculateIndicators();
+                        }
+                    },
+                });
+            } else if (needsDataRecalc && !this._indicatorDataMatchesBars(indicator)) {
+                this._recalcIndicatorDataForSettings(indicator);
+            }
+
+            clampIndicatorStyleLineWidths(indicator.style);
+            if (typeof this.bumpIndicatorRenderVersion === 'function') {
+                this.bumpIndicatorRenderVersion();
+            } else if (typeof this._invalidateIndicatorLayerCache === 'function') {
+                this._invalidateIndicatorLayerCache();
+            }
+            if (typeof this.updateOHLCIndicators === 'function') {
+                this.updateOHLCIndicators();
+            }
+            if (typeof this.persistIndicators === 'function') {
+                this.persistIndicators({ force: true });
+            }
+            if (isRc6IndicatorLifecycleStoreEnabled()) {
+                this._emitIndicatorLifecycle('settings', indicator, { needsDataRecalc: needsDataRecalc });
+            } else {
+                emitIndicatorsChanged(this, 'update', indicator);
+            }
+            if (typeof this.scheduleRender === 'function') {
+                this.scheduleRender();
+            } else if (typeof this.render === 'function') {
+                this.render();
+            }
+            return indicator;
+        }
+
+        clampIndicatorStyleLineWidths(indicator.style);
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
+        if (typeof this.scheduleRender === 'function') {
+            this.scheduleRender();
+        } else if (typeof this.render === 'function') {
+            this.render();
+        }
+        if (typeof this.updateOHLCIndicators === 'function') {
+            this.updateOHLCIndicators();
+        }
+        if (typeof this.persistIndicators === 'function') {
+            this.persistIndicators({ force: true });
+        }
+        emitIndicatorsChanged(this, 'update', indicator);
+        return indicator;
+    };
+
+    Chart.prototype.applyIndicatorSettings = function(id, newParams, opts) {
+        opts = opts || {};
+        if (typeof this.updateIndicator !== 'function') return null;
+        return this.updateIndicator(id, newParams, opts);
     };
 
     Chart.prototype.setIndicatorVisible = function(idOrIndicator, show, opts) {
@@ -5582,6 +5710,21 @@
                 action: 'visibility',
                 indicator: indicator || null,
                 visible: opts.visible,
+                indicators: this.indicators && Array.isArray(this.indicators.active)
+                    ? this.indicators.active.slice()
+                    : []
+            });
+            return;
+        }
+        if (act === 'settings') {
+            if (!isRc6IndicatorLifecycleStoreEnabled()) return;
+            const store = getIndicatorLifecycleStore(this);
+            if (!store || !store.isEnabled()) return;
+            store.emit('indicatorSettingsApplied', {
+                chart: this,
+                action: 'settings',
+                indicator: indicator || null,
+                needsDataRecalc: !!opts.needsDataRecalc,
                 indicators: this.indicators && Array.isArray(this.indicators.active)
                     ? this.indicators.active.slice()
                     : []
@@ -7511,21 +7654,10 @@
         }
 
         clampIndicatorStyleLineWidths(indicator.style);
-
-        if (typeof this.bumpIndicatorRenderVersion === 'function') {
-            this.bumpIndicatorRenderVersion();
-        }
-        if (typeof this.scheduleRender === 'function') {
-            this.scheduleRender();
-        } else if (typeof this.render === 'function') {
-            this.render();
-        }
-
-        this.updateOHLCIndicators();
-        this.persistIndicators({ force: true });
-        emitIndicatorsChanged(this, 'update', indicator);
-
-        return indicator;
+        return this._finalizeIndicatorSettingsApply(indicator, {
+            needsDataRecalc: needsDataRecalc,
+            newParams: newParams,
+        });
     };
 
     // ── Indicator Web Worker manager ──────────────────────────────────────

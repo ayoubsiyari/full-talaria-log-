@@ -458,6 +458,7 @@ const ENGINE_MODULE_PATHS = [
   '/chart/modules/order-service.js',
   '/chart/modules/order-manager.js',
   '/chart/modules/indicator-performance.js',
+  '/chart/modules/indicator-settings-apply.js',
   '/chart/modules/indicator-visibility.js',
   '/chart/modules/indicator-lifecycle-store.js',
   '/chart/modules/chart-indicators-full.js',

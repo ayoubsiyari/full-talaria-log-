@@ -143,7 +143,8 @@
             const indicator = detail && detail.indicator ? detail.indicator : null;
             if (eventName === 'indicatorAdded') {
                 this._setEntry(indicator);
-            } else if (eventName === 'indicatorUpdated' || eventName === 'indicatorVisibilityChanged') {
+            } else if (eventName === 'indicatorUpdated' || eventName === 'indicatorVisibilityChanged'
+                || eventName === 'indicatorSettingsApplied') {
                 this._setEntry(indicator);
             } else if (eventName === 'indicatorRemoved') {
                 this._removeEntry(indicator);

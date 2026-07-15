@@ -3975,11 +3975,16 @@ function indicatorUpdateNeedsDataRecalc(indicatorType, merged, previous) {
 }
 
 function applyIndicatorLiveUpdate(chart, indicator, draft) {
-    if (!chart || !indicator || !draft || typeof chart.updateIndicator !== 'function') return false;
+    if (!chart || !indicator || !draft) return false;
     const merged = mergeIndicatorDraftForUpdate(indicator.type, indicator, draft);
     if (!merged) return false;
     if (draft.visible !== undefined) merged.visible = draft.visible !== false;
     if (draft.visibility !== undefined) merged.visibility = draft.visibility;
+    if (typeof chart.applyIndicatorSettings === 'function') {
+        chart.applyIndicatorSettings(indicator.id, merged);
+        return true;
+    }
+    if (typeof chart.updateIndicator !== 'function') return false;
     chart.updateIndicator(indicator.id, merged);
     return true;
 }
@@ -4669,14 +4674,22 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         if (existingIndicator) {
             // Edit existing indicator
             const mergedParams = { ...baseExisting, ...newParams, ...newStyle };
-            if (indicatorType === 'custom' && typeof targetChart.updateIndicator === 'function') {
+            if (indicatorType === 'custom' && (typeof targetChart.applyIndicatorSettings === 'function'
+                || typeof targetChart.updateIndicator === 'function')) {
                 const p = { ...mergedParams };
                 p.customParams = { period: p.period };
                 delete p.period;
                 p.separatePanel = p.placement === 'panel';
                 p.overlay = p.placement !== 'panel';
                 delete p.placement;
-                targetChart.updateIndicator(existingIndicator.id, p);
+                if (typeof targetChart.applyIndicatorSettings === 'function') {
+                    targetChart.applyIndicatorSettings(existingIndicator.id, p);
+                } else {
+                    targetChart.updateIndicator(existingIndicator.id, p);
+                }
+                console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
+            } else if (typeof targetChart.applyIndicatorSettings === 'function') {
+                targetChart.applyIndicatorSettings(existingIndicator.id, mergedParams);
                 console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
             } else if (typeof targetChart.updateIndicator === 'function') {
                 targetChart.updateIndicator(existingIndicator.id, mergedParams);
@@ -5889,6 +5902,9 @@ window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.__v9IndicatorUpdateNeedsDataRecalc = indicatorUpdateNeedsDataRecalc;
 window.__v9IndicatorPanelReferenceLevelChanged = indicatorPanelReferenceLevelChanged;
 window.__v9ApplyIndicatorLiveUpdate = applyIndicatorLiveUpdate;
+window.__v9ApplyIndicatorSettings = function(chart, indicator, draft) {
+    return applyIndicatorLiveUpdate(chart, indicator, draft);
+};
 window.__v9IsIndicatorStyleOrThicknessParam = isIndicatorStyleOrThicknessParam;
 window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;
 window.__v9NormalizeIndicatorNumericString = normalizeIndicatorNumericString;
