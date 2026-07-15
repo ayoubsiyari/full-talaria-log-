@@ -591,6 +591,14 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### T8 step 5 (unified edge-park fix) SHIPPED to staging 20260715a2 — freeze acceptance pending; gate honesty pending (2026-07-15)
+- **Fix landed:** all playing panels advance on own master via `scheduleCoalescedSeek(ch,ts,true)` during `isPlaying`; breaker/catch-up = fallback only. Same-TF uses fast `forceSamePairParentDataMirror` on success, own-master seek on miss (no breaker park). Unified switch `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` (default fix ON); step-3 switch **retired, aliased inside `isPlayEdgeParkAdvanceEnabled()`** — no double-gate. Policy table updated with D-015 TARGET rows on all ×playing cells.
+- **Fence GREEN:** H-S17/H-S19/H-S19b PASS before + after; coarse renders bounded (4/180 frames), playhead tracks host ±1h bucket. Reslice storm not reintroduced.
+- **Dev evidence GREEN-SYNTHETIC:** H-S59b + -sameTF + -coarse PASS (harness can't force breaker → PO confirm is acceptance).
+- **⚠ NOT fully accepted — two open gates:**
+  1. **PO staging confirm of `20260715a2`** (freeze feel) — the acceptance authority per D-015. (confirm `window.__TALARIA_CHART_BUILD_ID` inside panel iframe.)
+  2. **Gate honesty:** report listed regressions on **H-S6/H-S20/H-S25/H-S28/H-S30/H-S32/H-S33** as "mostly pre-existing flakes" — **rejected as a disposition** (I9/I15). → dispatched **`T8-step5b-lane2-gate-regression-reconcile.md`**: isolated re-runs + pre/post-step-5 baseline diff, classify each row, coordinate baseline with Lane 4 (owns known-failing.json), fix any true step-5 regression. (H-S32/H-S33 likely the D-012-retracted interaction rows; confirm.)
+
 ### ESC-013 RESOLVED by D-015 → unified play edge-park fix dispatched (2026-07-15)
 - **D-015:** all four granted. One root fix — every playing panel advances on own loaded data; catch-up = fallback for genuinely-missing data only. Unified switch `__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE` (step-3's switch folded in, no double-gate). Finest-TF-master parked as secondary cadence. Coarse re-render → RC-2/T2. **Hard constraint:** don't reintroduce the Plan-1 coarse-panel reslice storm — that family stays GREEN as the regression fence.
 - **Dispatched Lane 2 `T8-step5-lane2-unified-play-edge-park-advance-FIX.md`.** Acceptance = **PO staging confirm** (harness can't force the breaker); dev H-S59b same-TF/coarse variants labeled GREEN-SYNTHETIC; reslice-storm fence + full gate + BL-family green.

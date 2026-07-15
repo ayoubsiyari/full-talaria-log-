@@ -708,6 +708,19 @@
                         ch._mcFinerOwnerActiveReplayCatchUp = true;
                     }
                 } catch (_) {}
+                // Same-symbol + same-TF: keep the fast host-batch mirror when it
+                // succeeds (H-S25 eased follow); on miss, own-master coalesced seek
+                // replaces the catch-up breaker primary path (D-015 edge-park fix).
+                if (isSameSymbolAsHost(ch) && _hTfD015 && _pTfD015 && _hTfD015 === _pTfD015) {
+                    if (typeof ch._syncReplayMasterFromParentIfCovers === 'function') {
+                        try { ch._syncReplayMasterFromParentIfCovers(ts); } catch (_) {}
+                    }
+                    if (forceSamePairParentDataMirror(ch, args)) {
+                        ch._mcCatchUpFails = 0;
+                        ch._mcCatchUpCooldownUntil = 0;
+                        return;
+                    }
+                }
                 scheduleCoalescedSeek(ch, ts, true);
                 return;
             }
