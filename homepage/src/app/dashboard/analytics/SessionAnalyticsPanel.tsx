@@ -38,14 +38,25 @@ const spaceMono = Space_Mono({
   variable: "--font-space-mono",
 });
 
-/** Use when the static site and chart API are on different origins (set at build time). */
+/**
+ * Resolve chart API URLs.
+ * Prefer same-origin relative paths (`/api/...`) — nginx already proxies them.
+ * `NEXT_PUBLIC_CHART_API_ORIGIN` is only used when it matches the page origin.
+ * A baked-in IP (e.g. http://31.97.192.82) while the user is on the public domain
+ * breaks CSP connect-src 'self' and cookies → "Failed to fetch" on sessions.
+ */
 function chartApiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
   const base = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_CHART_API_ORIGIN?.trim() : "";
-  if (base && /^https?:\/\//i.test(base)) {
-    const p = path.startsWith("/") ? path : `/${path}`;
-    return `${base.replace(/\/$/, "")}${p}`;
+  if (!base || !/^https?:\/\//i.test(base)) return p;
+  if (typeof window !== "undefined") {
+    try {
+      if (new URL(base).origin !== window.location.origin) return p;
+    } catch {
+      return p;
+    }
   }
-  return path;
+  return `${base.replace(/\/$/, "")}${p}`;
 }
 
 type Trade = {
