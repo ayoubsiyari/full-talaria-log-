@@ -721,7 +721,22 @@
                         return;
                     }
                 }
-                scheduleCoalescedSeek(ch, ts, true);
+                // BL-10 coarser same-pair: mirror-first coalesced seek (ownMaster=false)
+                // keeps _serverCursors aligned with loaded edges (H-S20). Finer self-
+                // owner + independent/same-TF-miss stay own-master (D-015 edge-park).
+                var _ownMasterD015 = true;
+                if (isSameSymbolAsHost(ch) && _hTfD015 && _pTfD015 && _hTfD015 !== _pTfD015) {
+                    try {
+                        if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
+                            && ch._multichartFinerSamePairPanelSelfOwns()) {
+                            _ownMasterD015 = true;
+                        } else if (!(typeof window !== 'undefined'
+                            && window.__TALARIA_MC_DISABLE_COARSE_PANEL_PLAY_ADVANCE)) {
+                            _ownMasterD015 = peerPlayMustStayOnOwnMaster(ch);
+                        }
+                    } catch (_) {}
+                }
+                scheduleCoalescedSeek(ch, ts, _ownMasterD015);
                 return;
             }
         }
