@@ -4,6 +4,13 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-012 — RESOLVED
+
+**Director ruling:** D-014 (2026-07-15)
+**Outcome:** Policy table APPROVED as the T8 acceptance spec (3 flagged cells carved out from silent migration). Independent×playing fix AUTHORIZED as the T8 priority (TAL-01590 P1): advance on the panel's own master during play (BL-10 analog), async catch-up demoted to fallback, gated `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE`, may land ahead of the policy-v2 migration. RED-first via **H-S59b** (current H-S59 rejected as non-reproducing). Other cells: BL-16/TAL-01578 diagnostic-first; TAL-01579 pinned by H-S73 then own diagnostic; TAL-01573 re-routed to RC-2/T2; TAL-01563 ruled documented-intentional (retest after freeze fix). Harness: Lane 2 extends `serve.mjs`+host scenarios (distinct symbols + production-faithful play), Lane 4 gives one written actuation sign-off. Acceptance = H-S59b RED→GREEN + kill-switch A/B + BL-10/11/12/13 stay green + Lane 4 sign-off + PO staging live-confirm.
+
+---
+
 ## ESC-012 — T8 mirror-policy table ready for approval; independent×playing cell (TAL-01590 P1 freeze) diverges from shipped behavior
 
 **Date:** 2026-07-15

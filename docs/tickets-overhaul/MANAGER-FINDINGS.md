@@ -577,6 +577,14 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
 
+### ESC-012 RESOLVED by D-014 → TAL-01590 fix dispatched (2026-07-15)
+- **D-014:** policy table = T8 acceptance spec (3 cells carved out); independent×playing fix authorized as the **T8 priority**, may land ahead of the policy-v2 migration.
+- **Dispatched Lane 2 `T8-step3-lane2-independent-symbol-play-advance-FIX.md`:** own-master play-advance (BL-10 analog) for independent-symbol panels, async catch-up demoted to data-missing fallback. Gated `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` (default fix ON). RED-first via **H-S59b** (extend `serve.mjs` to ≥2 distinct symbols + production-faithful tick-animation play; I15 asserts per-panel `replayTimestamp`/forming-bar advance, no panel frozen while peers move).
+- **Lane 4 gate:** one written actuation sign-off required (review, not hand-off) before H-S59b is trusted — Lane 2 flags me when H-S59b is ready. Host harness only; no `react-parity-lib.mjs` collision.
+- **Acceptance:** H-S59b RED→GREEN + kill-switch A/B + BL-10/11/12/13 family green + Lane 4 sign-off + **PO staging live-confirm** (deploy freeze unaffected).
+- **Other cells routed per D-014:** BL-16/TAL-01578 → diagnostic-first (H-S78 pins); TAL-01579 → H-S73 pin then own diagnostic (behind the freeze fix in Lane 2 queue); TAL-01573 → RC-2/T2 cross-cut (registry row moves, table keeps pointer); TAL-01563 → documented-intentional, retest after the freeze fix.
+- **Lane 2 sequence (D-014 ruling 5):** (i) H-S59b RED, (ii) fix→staging→PO confirm, (iii) H-S60–H-S78 coverage promotion in parallel, (iv) ratified-cell migration behind `__TALARIA_DISABLE_MIRROR_POLICY_V2`, (v) TAL-01579 diagnostic. TAL-01564 + T3 rows 13–16 stay behind these.
+
 ### T8 step 2 (Lane 2) policy-table + TAL-01590 root ACCEPTED → ESC-012 filed (2026-07-15)
 - **Deliverable accepted:** `T8-MIRROR-POLICY-TABLE.md` — full adopt-data/X/Y matrix (TF relation × replay × sync), every cell cited to its shipping guard. This is D-013 step-2's design doc, A5 trace first.
 - **TAL-01590 P1 root FOUND (policy gap):** no independent-symbol equivalent of BL-10 play-advance (`scheduleCoalescedSeek` gated on `isSameSymbolAsHost`). Independent panels rely on async mirror-frame catch-up; when fetch lags or the 3-strike breaker trips (`panel-cmd-bridge.js:1135–1143`) the panel **freezes at loaded edge 2.5s+** while host plays. Correct policy (own-master advance, BL-10 analog) **≠ shipped** → escalation, not silent fix.
