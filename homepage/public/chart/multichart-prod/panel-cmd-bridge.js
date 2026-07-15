@@ -562,6 +562,14 @@
         var ts = Number(args.timestamp);
         if (!Number.isFinite(ts)) return;
 
+        // D-016 / T8: pin shared virtual market timestamp on every play frame so
+        // coarse panels stay byte-aligned with the host finest-TF clock (parity).
+        if (args.isPlaying
+            && !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)) {
+            rs.replayTimestamp = ts;
+        }
+
         // Host mid timeframe-switch: it rebuilds its master data and its broadcast
         // playhead can momentarily regress. Applying those transient frames drags
         // panels (especially ones on a different TF) BACKWARD while the host loads
@@ -1966,19 +1974,31 @@
             // false) keeps the full coalesced mirror path so it still tracks the host.
             if (!ownMaster) {
                 // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
-                if (applyParentReplayMirror(ch, seekTs, false)) { maybePanelPlayViewportFollow(ch); return; }
-                // Prefer the SAME render path as the play-time frame stream so pause/scrub
-                // doesn't visibly re-fit the viewport and snap back. Fall back to a full
-                // seek (which can refetch) only when the mirror can't render this ts.
-                // BL-11: during PLAY, add the host's leading-edge viewport follow on top of
-                // the window-preserving render (maybePanelPlayViewportFollow is play-only).
-                if (applyStaticMirrorFrame(ch, seekTs)) { maybePanelPlayViewportFollow(ch); return; }
+                if (applyParentReplayMirror(ch, seekTs, false)) {
+                    if (!(typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)
+                        && ch.replaySystem && Number.isFinite(seekTs)) {
+                        ch.replaySystem.replayTimestamp = seekTs;
+                    }
+                    maybePanelPlayViewportFollow(ch); return;
+                }
+                if (applyStaticMirrorFrame(ch, seekTs)) {
+                    if (!(typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)
+                        && ch.replaySystem && Number.isFinite(seekTs)) {
+                        ch.replaySystem.replayTimestamp = seekTs;
+                    }
+                    maybePanelPlayViewportFollow(ch); return;
+                }
             }
-            // COARSER same-pair play path: the panel advances on its OWN master via a
-            // real seek. goToReplayTimestamp is itself blocked from re-anchoring by the
-            // accumulated-drift _replayUserOwnsViewport heuristic, so apply the leading-
-            // edge follow once the seek settles (play-only; see maybePanelPlayViewportFollow).
-            forceReplaySeek(ch, seekTs, false, function () { maybePanelPlayViewportFollow(ch); });
+            forceReplaySeek(ch, seekTs, false, function () {
+                if (!(typeof window !== 'undefined'
+                    && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)
+                    && ch.replaySystem && Number.isFinite(seekTs)) {
+                    ch.replaySystem.replayTimestamp = seekTs;
+                }
+                maybePanelPlayViewportFollow(ch);
+            });
         });
     }
 

@@ -2479,6 +2479,17 @@ export default function MultichartGrid({
         };
     }, [layout.tiles, managerReady]);
 
+    // D-016 finest-TF cadence: re-derive min(TF) when panels mount or TF/data settles.
+    useEffect(() => {
+        if (!managerReady) return;
+        try {
+            const grid = window.__multichartGrid;
+            if (grid && typeof grid.refreshFinestReplayCadence === "function") {
+                grid.refreshFinestReplayCadence();
+            }
+        } catch (_) {}
+    }, [managerReady, layout.tiles, dataReadyPanels]);
+
     // Freeze host viewport before any resize/re-anchor when multi-panel layout mounts.
     useLayoutEffect(() => {
         const hasIframes = layout.tiles.some((t) => t.id !== HOST_PANEL_ID);
@@ -5528,6 +5539,52 @@ export default function MultichartGrid({
             return out;
         }
 
+        /** D-016 / T8: min(display TF) across all open multichart panels. */
+        function timeframeToMsLocal(tf) {
+            if (!tf) return null;
+            const ch = window.chart;
+            if (ch && typeof ch.parseTimeframe === "function") {
+                const ms = Number(ch.parseTimeframe(tf));
+                if (Number.isFinite(ms) && ms > 0) return ms;
+            }
+            const t = String(tf).toLowerCase().trim();
+            const map = {
+                "1m": 60000, "5m": 300000, "15m": 900000, "30m": 1800000,
+                "1h": 3600000, "4h": 14400000, "1d": 86400000,
+            };
+            return map[t] != null ? map[t] : null;
+        }
+
+        function computeFinestReplayCadenceMs() {
+            if (typeof window !== "undefined"
+                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) {
+                return null;
+            }
+            let minMs = null;
+            for (const ch of enumerateMultichartCharts()) {
+                if (!ch || !ch.currentTimeframe) continue;
+                const ms = timeframeToMsLocal(ch.currentTimeframe);
+                if (Number.isFinite(ms) && ms > 0) {
+                    minMs = minMs == null ? ms : Math.min(minMs, ms);
+                }
+            }
+            return minMs;
+        }
+
+        /** Live re-derivation edge: panel add/close/TF — no viewport seek. */
+        function refreshFinestReplayCadence() {
+            if (typeof window !== "undefined"
+                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) {
+                return;
+            }
+            try {
+                const rs = window.chart && window.chart.replaySystem;
+                if (rs && typeof rs._onFinestTfCadencePanelsChanged === "function") {
+                    rs._onFinestTfCadencePanelsChanged();
+                }
+            } catch (_) {}
+        }
+
         /** Hit-test which chart tile contains a viewport click (rollback cut, etc.). */
         function resolveChartAtClientPoint(clientX, clientY) {
             if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
@@ -5789,6 +5846,8 @@ export default function MultichartGrid({
                 }
                 return ids;
             },
+            getFinestReplayCadenceMs: () => computeFinestReplayCadenceMs(),
+            refreshFinestReplayCadence,
             getChartForPanel: getChartForPanelId,
             resolveChartAtClientPoint,
             loadFileOnPanel,

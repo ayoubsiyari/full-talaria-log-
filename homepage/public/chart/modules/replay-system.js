@@ -702,9 +702,97 @@ class ReplaySystem {
         return !!(o && String(o).trim() && String(o).toLowerCase() !== 'sync');
     }
 
+    /** D-016 / T8: unified finest-TF multichart replay cadence (default ON). */
+    _isFinestTfReplayCadenceEnabled() {
+        if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) {
+            return false;
+        }
+        if (typeof window === 'undefined' || !window.__multichartGrid) return false;
+        try {
+            if (typeof window.__multichartGrid.getPanelIds === 'function') {
+                const ids = window.__multichartGrid.getPanelIds();
+                if (!Array.isArray(ids) || ids.length < 2) return false;
+            }
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /** Milliseconds of market time per finest-TF clock tick (min TF across panels). */
+    _getFinestReplayCadenceMs() {
+        if (!this._isFinestTfReplayCadenceEnabled()) return null;
+        try {
+            if (typeof window.__multichartGrid.getFinestReplayCadenceMs === 'function') {
+                const ms = Number(window.__multichartGrid.getFinestReplayCadenceMs());
+                if (Number.isFinite(ms) && ms > 0) return ms;
+            }
+        } catch (_e) { /* ignore */ }
+        // Harness / pre-React fallback: enumerate MultichartManager charts.
+        try {
+            const mgr = typeof window !== 'undefined' ? window.__multichartManagerRef : null;
+            if (mgr && mgr.charts && typeof mgr.charts.values === 'function') {
+                let minMs = null;
+                for (const entry of mgr.charts.values()) {
+                    let ch = null;
+                    if (entry && entry.host) {
+                        ch = this.chart;
+                    } else if (entry && entry.frame) {
+                        try {
+                            ch = entry.frame.contentWindow && entry.frame.contentWindow.chart;
+                        } catch (_e2) { /* cross-origin */ }
+                    }
+                    if (!ch || !ch.currentTimeframe) continue;
+                    const tfMs = this.timeframeToMs(ch.currentTimeframe);
+                    if (Number.isFinite(tfMs) && tfMs > 0) {
+                        minMs = minMs == null ? tfMs : Math.min(minMs, tfMs);
+                    }
+                }
+                if (minMs != null) return minMs;
+            }
+        } catch (_e3) { /* ignore */ }
+        return this._getRawBarPeriodMs();
+    }
+
+    /** Selected-panel speed anchor (explicit INTERVAL or host display TF). */
+    _getSelectedReplayCadenceMs() {
+        if (this._hasExplicitReplayStepInterval()) {
+            const stepMs = this._resolveReplayStepTimeframeMs();
+            if (Number.isFinite(stepMs) && stepMs > 0) return stepMs;
+        }
+        const chartTfMs = this.chart && this.chart.currentTimeframe
+            ? this.timeframeToMs(this.chart.currentTimeframe)
+            : null;
+        if (Number.isFinite(chartTfMs) && chartTfMs > 0) return chartTfMs;
+        return this._getRawBarPeriodMs();
+    }
+
+    /** How many finest-TF ticks subdivide one selected-panel candle (speed anchor). */
+    _finestTfCadenceSubdivisions() {
+        if (!this._isFinestTfReplayCadenceEnabled()) return 1;
+        const finest = this._getFinestReplayCadenceMs();
+        const selected = this._getSelectedReplayCadenceMs();
+        if (!Number.isFinite(finest) || !Number.isFinite(selected) || finest <= 0) return 1;
+        if (selected <= finest * 1.02) return 1;
+        return Math.max(1, Math.round(selected / finest));
+    }
+
+    /** During PLAY, selected TF is coarser than finest → step one finest bar per cycle. */
+    _isFinestTfCadenceSubStepPlay() {
+        return !!(this.isPlaying
+            && this._isFinestTfReplayCadenceEnabled()
+            && this._finestTfCadenceSubdivisions() > 1);
+    }
+
+    /** Edge-triggered panel add/close/TF recompute (no viewport seek). */
+    _onFinestTfCadencePanelsChanged() {
+        this._mcFinestTfCadenceMs = this._getFinestReplayCadenceMs();
+    }
+
     /** Play/step should advance by INTERVAL buckets (candle path), not raw tick bars. */
     _shouldStepByReplayInterval() {
         if (this.getPlaybackMode() === 'candle') return true;
+        if (this._isFinestTfCadenceSubStepPlay()) return false;
         return this._hasExplicitReplayStepInterval();
     }
 
@@ -4251,7 +4339,12 @@ class ReplaySystem {
         const rawCandlesPerSecond = this.getEffectivePlaybackSpeed() / rawCandleTimeframeSec;
         
         // Calculate how long each raw candle should take in REAL time
-        const realTimeCandleDuration = rawCandleTimeframeMs / this.getEffectivePlaybackSpeed();
+        let realTimeCandleDuration = rawCandleTimeframeMs / this.getEffectivePlaybackSpeed();
+        const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
+        if (cadenceSubdivisions > 1) {
+            // D-016: keep selected-panel wall-clock pace; subdivide within one finest bar.
+            realTimeCandleDuration = realTimeCandleDuration / cadenceSubdivisions;
+        }
         
         // If MORE than 1 raw candle per second (>60x), use FAST MODE
         // At 60x or less, use SMOOTH MODE with tick animation
@@ -4524,6 +4617,15 @@ class ReplaySystem {
         const rawCandleIntervalMs = this.fullRawData && this.fullRawData.length > 1 ? 
             (this.fullRawData[1].t - this.fullRawData[0].t) : 60000;
         this.tickElapsedMs = Math.floor(progress * rawCandleIntervalMs);
+
+        // D-016 finest-TF cadence: virtual replay time advances within the finest bar
+        // so coarse panels form progressively (parity timestamp across panels).
+        if (this._isFinestTfReplayCadenceEnabled() && this.isPlaying) {
+            const baseT = Number(this.fullRawData[this.currentIndex]?.t);
+            if (Number.isFinite(baseT)) {
+                this.replayTimestamp = baseT + this.tickElapsedMs;
+            }
+        }
         
         const target = this.animatingCandle;
         const tc = target.target; // target candle
@@ -6532,6 +6634,13 @@ class ReplaySystem {
 
         const ts = Number(detail.timestamp);
         if (!Number.isFinite(ts)) return false;
+
+        // D-016 parity: shared virtual market timestamp (finest-TF clock).
+        if (detail.isPlaying
+            && !(typeof window !== 'undefined'
+                && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)) {
+            this.replayTimestamp = ts;
+        }
 
         const sharesHostDataset = this._mirrorSharesHostDataset(chart, detail);
         const anim = detail.animatedCandle;
