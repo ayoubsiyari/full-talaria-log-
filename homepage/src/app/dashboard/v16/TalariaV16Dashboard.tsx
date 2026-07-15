@@ -89,6 +89,15 @@ function TalariaV16DashboardReady({
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    try {
+      window.__TALARIA_APP_IS_ARABIC__ = isArabic;
+      window.dispatchEvent(new CustomEvent("talaria-language-changed", { detail: { isArabic } }));
+    } catch {
+      /* ignore */
+    }
+  }, [isArabic]);
+
+  useEffect(() => {
     window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("sessionId", String(sessionId));

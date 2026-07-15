@@ -473,16 +473,23 @@ function hostPageHtml(query) {
   // coarse-viewport-vs-fine-master coverage gap.
   const hostFileId = parseInt(q.get('hostFile') || '25', 10) || 25;
   const independentFileId = 27;
+  const independentFileIdC = 28;
   const allIds = ['A', 'B', 'C', 'D'];
   const ids = allIds.slice(0, panels);
   const iframeIds = ids.slice(1); // B/C/D — the host (A) is in-process.
-  // Per-panel fileId map (independent-pair → B on its own instrument).
+  // Per-panel fileId map (independent-pair → B on its own instrument;
+  // multi-independent → B=file27, C=file28 for ≥2 distinct symbols in 2v+).
   const fileIds = {};
   for (const id of ids) fileIds[id] = hostFileId;
-  if (pair === 'independent' && fileIds.B != null) fileIds.B = independentFileId;
+  if ((pair === 'independent' || pair === 'multi-independent') && fileIds.B != null) {
+    fileIds.B = independentFileId;
+  }
+  if (pair === 'multi-independent' && fileIds.C != null) {
+    fileIds.C = independentFileIdC;
+  }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260714a5';
+  const buildId = '20260715a1';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -730,6 +737,12 @@ function hostPageHtml(query) {
         var fid = CFG.fileIds[id] != null ? CFG.fileIds[id] : CFG.hostFileId;
         mgr.addChart({ id: id, tf: TF, fileId: fid }, d);
       });
+
+      // Faithful multichart replay fan-out: host replay-system gates broadcast on
+      // __multichartGrid (see replay-system.js _multichartBroadcastReplayFrame).
+      window.__multichartGrid = {
+        getPanelIds: function () { return ['A'].concat(iframeIds); },
+      };
 
       window.__harnessHostReady = true;
     }

@@ -45,7 +45,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dir = "ltr";
     document.documentElement.dataset.talariaLang = language;
     try {
+      (window as Window & { __TALARIA_APP_IS_ARABIC__?: boolean }).__TALARIA_APP_IS_ARABIC__ = isArabic;
       window.localStorage.setItem("talaria_language", language);
+      window.dispatchEvent(new CustomEvent("talaria-language-changed", { detail: { language, isArabic } }));
     } catch {}
   }, [language, isArabic]);
 

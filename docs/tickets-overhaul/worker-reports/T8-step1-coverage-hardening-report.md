@@ -92,7 +92,7 @@ npm run test -- --pending --only=H-S59,H-S64,H-S75,H-S78 --runs=1
 
 **First full run (`gate-t8.log`):** `[gate] FAIL: regression(s): H-S25` — sub-check `per-step |Δoffset| ~1 device px` saw `maxStepDeviceDelta=2.801px` (threshold flake under saturated full-suite CPU). **Isolated H-S25:** `npm run test -- --only=H-S25 --runs=2` → **2/2 PASS** (`maxStepDeviceDelta=1.400px` both runs). Not caused by T8 pending additions (H-S59 removed from gated set; no H-S25 code touched).
 
-**Re-run:** `npm run gate` → see `gate-t8-rerun.log` (expected PASS).
+**Re-run:** `npm run gate` → **`[gate] PASS`** — 0 regressions; 12 known-failing tracked (`gate-t8-rerun.log`).
 
 ```
 Baseline IDs: H-S2..H-S58 only (57 scenarios); H-S59 NOT in gated set

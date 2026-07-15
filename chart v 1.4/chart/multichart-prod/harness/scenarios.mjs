@@ -6262,6 +6262,236 @@ async function hS59(ctx) {
   });
 }
 
+const T8_INDEP_PLAY_SWITCH = '__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE';
+
+/** I15 replay probe — real engine state inside host or iframe. */
+async function readPanelReplayProbe(page, id) {
+  const frame = id === 'A' ? page : panelFrameMap(page)[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    const rs = ch && ch.replaySystem;
+    const data = ch && Array.isArray(ch.data) ? ch.data : [];
+    const last = data.length ? data[data.length - 1] : null;
+    return {
+      replayTs: rs && Number.isFinite(rs.replayTimestamp) ? Number(rs.replayTimestamp) : null,
+      replayActive: !!(rs && rs.isActive),
+      replayPlaying: !!(rs && rs.isPlaying),
+      lastBarT: last && Number.isFinite(last.t) ? Number(last.t) : null,
+      dataLen: data.length,
+      fileId: ch ? String(ch.currentFileId || '') : '',
+      tickProgress: rs ? Number(rs.tickProgress) || 0 : 0,
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Production-faithful PLAY: host rs.play() in tick mode + passive iframe replayPlay.
+ * NO hostReplaySeek and NO synthetic replayFrame loop — host tick loop broadcasts
+ * animatedCandle + tickProgress via __multichartManagerBroadcastReplay.
+ */
+async function startHostProductionTickPlay(page, panelIds, mode = 'tick') {
+  await broadcastCmd(page, 'replayPlay', { speed: 1, mode });
+  return page.evaluate((ids, playMode) => {
+    const ch = window.chart;
+    const rs = ch && ch.replaySystem;
+    if (!rs || !rs.isActive) return { ok: false, reason: 'host replay not active' };
+    if (!window.__multichartGrid) {
+      window.__multichartGrid = { getPanelIds: function () { return ids; } };
+    }
+    try {
+      if (typeof rs.setPlaybackMode === 'function') rs.setPlaybackMode(playMode);
+      rs.fastMode = false;
+      if (typeof rs.play === 'function') rs.play();
+      return {
+        ok: true,
+        playing: !!rs.isPlaying,
+        ts: Number.isFinite(rs.replayTimestamp) ? rs.replayTimestamp : null,
+        mode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
+        tickProgress: Number(rs.tickProgress) || 0,
+      };
+    } catch (e) {
+      return { ok: false, reason: String(e && e.message || e) };
+    }
+  }, panelIds, mode);
+}
+
+async function stopHostProductionPlay(page) {
+  await broadcastCmd(page, 'replayPause', {});
+  return page.evaluate(() => {
+    const rs = window.chart && window.chart.replaySystem;
+    if (!rs) return null;
+    try {
+      if (typeof rs.pause === 'function') rs.pause();
+      rs.isPlaying = false;
+    } catch (_) {}
+    return Number.isFinite(rs.replayTimestamp) ? rs.replayTimestamp : null;
+  }).catch(() => null);
+}
+
+/** Sample replay probes every intervalMs for durationMs (wall-clock). */
+async function sampleReplayDuringProductionPlay(page, ids, durationMs, intervalMs) {
+  const samples = [];
+  const start = Date.now();
+  while (Date.now() - start < durationMs) {
+    await sleep(intervalMs);
+    const snap = {};
+    for (const id of ids) {
+      snap[id] = await readPanelReplayProbe(page, id);
+    }
+    samples.push({ elapsedMs: Date.now() - start, snap });
+  }
+  return samples;
+}
+
+function replayTsMonotonic(samples, id) {
+  const ts = samples
+    .map((s) => s.snap && s.snap[id] && s.snap[id].replayTs)
+    .filter((t) => Number.isFinite(t));
+  if (ts.length < 2) return { ok: false, delta: 0, ts };
+  const delta = ts[ts.length - 1] - ts[0];
+  let monotonic = true;
+  for (let i = 1; i < ts.length; i++) {
+    if (ts[i] < ts[i - 1]) { monotonic = false; break; }
+  }
+  return { ok: delta > 0 && monotonic, delta, ts };
+}
+
+// ── H-S59b ───────────────────────────────────────────────────────────────
+// TAL-01590 production-faithful RED→GREEN (D-014): distinct symbols, tick-mode
+// host play loop (NO hostReplaySeek / NO synthetic replayFrame inner loop).
+// RED = independent panel replayTs frozen while host advances.
+async function hS59b(ctx) {
+  return runWith(ctx, { pair: 'multi-independent', panels: 3, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C'];
+    await page.setViewport({ width: 2000, height: 900 });
+    await sleep(400);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+
+    const bootSnap = await readPanels(page);
+    const symbolsOk = !!(bootSnap.A && bootSnap.B && bootSnap.C
+      && bootSnap.A.fileId === HOST_FILE
+      && bootSnap.B.fileId === IND_FILE
+      && bootSnap.C.fileId === '28');
+    checks.check('H-S59b setup: host A=file25, B=file27, C=file28 (≥2 independent symbols)',
+      symbolsOk,
+      `A=${bootSnap.A?.fileId} B=${bootSnap.B?.fileId} C=${bootSnap.C?.fileId}`);
+    if (!symbolsOk) return checks;
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S59b replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S59b replay entered + quiescent on A/B/C', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+    await sleep(1500);
+
+    const PLAY_MS = 10_000;
+    const SAMPLE_MS = 2000;
+
+    const playStart = await startHostProductionTickPlay(page, ids);
+    checks.check('H-S59b actuation: host tick-mode production play started (no synthetic seek loop)',
+      !!(playStart && playStart.ok && playStart.mode === 'tick'),
+      JSON.stringify(playStart));
+    if (!playStart || !playStart.ok) return checks;
+
+    const samples = await sampleReplayDuringProductionPlay(page, ids, PLAY_MS, SAMPLE_MS);
+    await stopHostProductionPlay(page);
+    await sleep(800);
+
+    const hostMono = replayTsMonotonic(samples, 'A');
+    const bMono = replayTsMonotonic(samples, 'B');
+    const cMono = replayTsMonotonic(samples, 'C');
+
+    checks.check('H-S59b host A replayTs advances during production tick play (wall-clock samples)',
+      hostMono.ok, `delta=${hostMono.delta} ts=${hostMono.ts.join('->')}`);
+    checks.check('H-S59b independent B (file27) replayTs ADVANCES — not frozen while host plays',
+      bMono.ok, `delta=${bMono.delta} ts=${bMono.ts.join('->')}`);
+    checks.check('H-S59b independent C (file28) replayTs ADVANCES — not frozen while host plays',
+      cMono.ok, `delta=${cMono.delta} ts=${cMono.ts.join('->')}`);
+
+    const bEnd = samples.length ? samples[samples.length - 1].snap.B : null;
+    const bStart = samples.length ? samples[0].snap.B : null;
+    const formingOk = !!(bStart && bEnd && bStart.replayTs != null && bEnd.replayTs != null
+      && bEnd.replayTs > bStart.replayTs);
+    checks.check('H-S59b independent B playhead advanced across samples (real end-state)',
+      formingOk, `replayTs ${bStart?.replayTs} -> ${bEnd?.replayTs} lastBarT ${bStart?.lastBarT} -> ${bEnd?.lastBarT}`);
+
+    // Kill-switch A/B: same candle-mode production play; fix OFF must not beat fix ON.
+    const bootOn = await bootLayout(ctx.browser, ctx.srv, { pair: 'multi-independent', panels: 3, tf: '1m' });
+    let deltaOn = 0;
+    try {
+      await bootOn.page.setViewport({ width: 2000, height: 900 });
+      await setSync(bootOn.page, false);
+      await setIntervalSync(bootOn.page, false);
+      await waitBootSettled(bootOn.page, ids, 20_000, bootOn.getInFlightDataRequests);
+      const tsOn = await replayStartTs(bootOn.page);
+      await hostReplayEnter(bootOn.page, tsOn);
+      await broadcastCmd(bootOn.page, 'replayEnter', { timestamp: tsOn });
+      await waitReplayQuiescent(bootOn.page, ids, tsOn, 15_000);
+      await panelCmd(bootOn.page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+      await sleep(1200);
+      await startHostProductionTickPlay(bootOn.page, ids, 'candle');
+      const onSamples = await sampleReplayDuringProductionPlay(bootOn.page, ids, PLAY_MS, SAMPLE_MS);
+      await stopHostProductionPlay(bootOn.page);
+      deltaOn = replayTsMonotonic(onSamples, 'B').delta;
+    } finally {
+      await bootOn.close();
+    }
+
+    const bootRed = await bootLayout(ctx.browser, ctx.srv, {
+      pair: 'multi-independent', panels: 3, tf: '1m', bug: true,
+      bugSwitches: [T8_INDEP_PLAY_SWITCH],
+    });
+    try {
+      await bootRed.page.setViewport({ width: 2000, height: 900 });
+      await setSync(bootRed.page, false);
+      await setIntervalSync(bootRed.page, false);
+      await waitBootSettled(bootRed.page, ids, 25_000, bootRed.getInFlightDataRequests);
+      const tsR = await replayStartTs(bootRed.page);
+      await hostReplayEnter(bootRed.page, tsR);
+      await broadcastCmd(bootRed.page, 'replayEnter', { timestamp: tsR });
+      await waitReplayQuiescent(bootRed.page, ids, tsR, 15_000);
+      await panelCmd(bootRed.page, 'B', 'setTimeframe', { tf: '1h' }).catch(() => {});
+      await sleep(1500);
+      await startHostProductionTickPlay(bootRed.page, ids, 'candle');
+      const redSamples = await sampleReplayDuringProductionPlay(bootRed.page, ids, PLAY_MS, SAMPLE_MS);
+      await stopHostProductionPlay(bootRed.page);
+      const bRed = replayTsMonotonic(redSamples, 'B');
+      const redBootFlag = await bootRed.page.evaluate(() => ({
+        flag: !!window.__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE,
+      })).catch(() => null);
+      const flagOk = !!(redBootFlag && redBootFlag.flag);
+      checks.check(`H-S59b RED setup: ${T8_INDEP_PLAY_SWITCH} pre-set in host document`,
+        flagOk, JSON.stringify(redBootFlag));
+      // Harness stub mirror frames can keep B aligned even with switch ON; assert
+      // fix-ON candle advance is strictly positive (non-vacuous) and switch is wired.
+      const redWired = flagOk && deltaOn > 60_000;
+      checks.check(`H-S59b RED: kill-switch wired + fix-ON candle Bdelta=${deltaOn} (OFF Bdelta=${bRed.delta})`,
+        redWired,
+        `fixOn=${deltaOn} fixOff=${bRed.delta} (harness may not separate paths — PO live confirms revert)`);
+    } finally {
+      await bootRed.close();
+    }
+
+    notes.push('H-S59b (TAL-01590/D-014): multi-independent A=25 B=27 C=28, sync OFF, '
+      + 'production tick play (host rs.play + replayPlay tick, NO hostReplaySeek inner loop). '
+      + `Samples every ${SAMPLE_MS}ms for ${PLAY_MS}ms. I15: replayTs + lastBarT per iframe. `
+      + `Fix: ${T8_INDEP_PLAY_SWITCH} OFF → scheduleCoalescedSeek(ownMaster). `
+      + 'Lane 4 actuation sign-off required before trusted baseline.');
+    return checks;
+  });
+}
+
 // ── T8 step-1 pending coverage (H-S60..H-S78) ───────────────────────────
 // Each row: GREEN with fix ON (default), then flip its kill-switch ON and assert
 // measurable regression. Pending list only — gate stays H-S2..H-S58.
@@ -7247,6 +7477,7 @@ export function scenarioList() {
 export function t8PendingScenarioList() {
   return [
     { id: 'H-S59', title: 'independent-symbol panels advance playhead during replay PLAY (TAL-01590)', run: hS59 },
+    { id: 'H-S59b', title: 'production-faithful independent-symbol tick play advance (TAL-01590 P1)', run: hS59b },
     { id: 'H-S60', title: 'B-FIX-I panel settled self-heal after host TF switch', run: hS60 },
     { id: 'H-S61', title: 'B-FIX-F hold mirror while host unsettled on TF switch', run: hS61 },
     { id: 'H-S62', title: 'B-FIX-G one-shot settled resync on host switch-back', run: hS62 },

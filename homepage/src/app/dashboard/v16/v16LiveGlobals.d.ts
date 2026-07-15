@@ -23,6 +23,8 @@ export type V16LiveBoot = {
 
 declare global {
   interface Window {
+    /** App chrome language from LanguageProvider — Arabic copy without RTL layout flip. */
+    __TALARIA_APP_IS_ARABIC__?: boolean;
     __TALARIA_V16_LIVE__?: boolean;
     __TALARIA_V16_EMBEDDED__?: boolean;
     __TALARIA_V16_BOOT__?: V16LiveBoot;

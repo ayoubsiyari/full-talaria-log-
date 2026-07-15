@@ -20,6 +20,63 @@ import {
 } from "./v16AppliedSourceStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
+/** App language (LanguageProvider) — Arabic copy only; never flips layout to RTL. */
+const isV16AppArabic = () => {
+  try {
+    if (typeof window === "undefined") return false;
+    if (typeof window.__TALARIA_APP_IS_ARABIC__ === "boolean") return window.__TALARIA_APP_IS_ARABIC__;
+    const saved = window.localStorage?.getItem("talaria_language");
+    if (saved === "ar") return true;
+    if (saved === "en") return false;
+  } catch (_) { /* ignore */ }
+  return false;
+};
+const v16Txt = (en, ar) => (isV16AppArabic() ? ar : en);
+const useV16AppArabic = () => {
+  const [ar, setAr] = React.useState(() => isV16AppArabic());
+  React.useEffect(() => {
+    const sync = () => setAr(isV16AppArabic());
+    sync();
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("talaria-language-changed", sync);
+    return () => window.removeEventListener("talaria-language-changed", sync);
+  }, []);
+  return ar;
+};
+const coerceStringArray = (value) => {
+  if (Array.isArray(value)) return value.map((x) => (x == null ? "" : String(x))).filter(Boolean);
+  if (value == null || value === "") return [];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return [];
+};
+const sanitizeStrategyBankRow = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const groups = Array.isArray(row.groups)
+    ? row.groups.filter((g) => g && typeof g === "object").map((g) => ({
+        ...g,
+        conditions: Array.isArray(g.conditions) ? g.conditions.filter((c) => c && typeof c === "object") : [],
+        connectors: Array.isArray(g.connectors) ? g.connectors : undefined,
+        images: Array.isArray(g.images) ? g.images : [],
+      }))
+    : Array.isArray(row.tree?.groups)
+      ? row.tree.groups
+      : [];
+  return {
+    ...row,
+    name: row.name == null ? "" : String(row.name),
+    desc: row.desc == null && row.description == null ? "" : String(row.desc ?? row.description ?? ""),
+    tags: coerceStringArray(row.tags),
+    markets: coerceStringArray(row.markets),
+    timeframes: coerceStringArray(row.timeframes),
+    instruments: coerceStringArray(row.instruments),
+    supportInst: coerceStringArray(row.supportInst),
+    backtestSessions: Array.isArray(row.backtestSessions) ? row.backtestSessions : [],
+    groups,
+  };
+};
 /** Server-backed guard — do not trust window.__TALARIA_PLATFORM_SECTIONS__ alone for session actions. */
 const v16SessionsPlatformAllowed = () => {
   try {
@@ -3861,11 +3918,15 @@ function buildNodesFromTemplate(template) {
   const sections = [];
   const conds = [];
   const stamp = Date.now();
-  template.groups.forEach((group, gi) => {
+  const groups = Array.isArray(template?.groups) ? template.groups : [];
+  groups.forEach((group, gi) => {
+    if (!group || typeof group !== "object") return;
     const colorScheme = SECTION_COLOR_CYCLE[gi % SECTION_COLOR_CYCLE.length];
     const sectionId = `sec_${stamp}_${gi}`;
     const filledSlots = [];
-    (group.conditions || []).slice(0, COND_COLS).forEach((cond, ci) => {
+    const groupConds = Array.isArray(group.conditions) ? group.conditions : [];
+    groupConds.slice(0, COND_COLS).forEach((cond, ci) => {
+      if (!cond || typeof cond !== "object") return;
       filledSlots.push(ci);
       conds.push({
         id: `cond_${stamp}_${gi}_${ci}`,
@@ -3889,7 +3950,7 @@ function buildNodesFromTemplate(template) {
       style: { width: SEC_W, height: SEC_H },
       width: SEC_W, height: SEC_H,
       draggable: false, selectable: false, focusable: false,
-      data: { ...colorScheme, sectionId, label: group.name, description: group.description || '', images: Array.isArray(group.images) ? group.images : [], condCount: filledSlots.length, filledSlots, connectors: group.connectors || Array(COND_COLS - 1).fill('AND') },
+      data: { ...colorScheme, sectionId, label: group.name, description: group.description || '', images: Array.isArray(group.images) ? group.images : [], condCount: filledSlots.length, filledSlots, connectors: Array.isArray(group.connectors) ? group.connectors : Array(COND_COLS - 1).fill('AND') },
       zIndex: -1,
     });
   });
@@ -3903,6 +3964,8 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
   const [confirmReplace, setConfirmReplace] = React.useState(false);
   const [actionHov, setActionHov] = React.useState(null);
   const [actionPress, setActionPress] = React.useState(null);
+  const ar = useV16AppArabic();
+  const t = (en, arTxt) => (ar ? arTxt : en);
 
   React.useEffect(() => {
     if (!open) { setSelectedId(null); setConfirmReplace(false); }
@@ -3919,7 +3982,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
 
   const allOptions = [
     ...STRATEGY_TEMPLATES,
-    { id:'__blank', name:'Create your own', tagline:'', description:'', tags:[], icon:'➕', groups:[] },
+    { id:'__blank', name: t('Create your own', 'أنشئ استراتيجيتك'), tagline:'', description:'', tags:[], icon:'➕', groups:[] },
   ];
   const isCompact = compact || (typeof window !== "undefined" && window.innerWidth <= 720);
 
@@ -3986,12 +4049,13 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
             <line x1="12" y1="5" x2="12" y2="19" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
             <line x1="5" y1="12" x2="19" y2="12" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
           </svg>
-          <span style={{fontSize:13,fontWeight:800,color:'#fff',fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase'}}>Create Your Own</span>
+          <span style={{fontSize:13,fontWeight:800,color:'#fff',fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase'}}>{t('Create Your Own', 'أنشئ استراتيجيتك')}</span>
         </div>
       );
     }
-    const marketLabels = (tpl.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m));
-    const tfLabels = tpl.timeframes||[];
+    const marketLabels = coerceStringArray(tpl.markets).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m));
+    const tfLabels = coerceStringArray(tpl.timeframes);
+    const tagLabels = coerceStringArray(tpl.tags);
     return (
       <div
         onClick={()=>selectTemplate(tpl.id)}
@@ -4015,34 +4079,34 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
             </div>
             <div style={{fontSize:16,fontWeight:850,color:c.tx,fontFamily:F,letterSpacing:'0.02em',lineHeight:1.15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{tpl.name}</div>
             <div style={{height:20,padding:'0 8px',display:'flex',alignItems:'center',fontSize:9,fontWeight:900,color:selected?c.acL:c.tm,fontFamily:F,letterSpacing:'0.08em',textTransform:'uppercase',border:`1px solid ${selected?c.acB:c.br}`,background:selected?c.acD:'rgba(140,160,255,0.025)'}}>
-              {selected?'Selected':'Template'}
+              {selected?t('Selected','محدد'):t('Template','قالب')}
             </div>
           </div>
 
           <div style={{display:'flex',flexDirection:'column',gap:7}}>
-            <FieldLabel>Description</FieldLabel>
+            <FieldLabel>{t('Description', 'الوصف')}</FieldLabel>
             <div style={{minHeight:isCompact?50:64,fontSize:12,color:c.ts,fontFamily:F,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:isCompact?3:4,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{tpl.description}</div>
           </div>
 
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div style={{display:'flex',flexDirection:'column',gap:7,minWidth:0}}>
-              <FieldLabel>Markets</FieldLabel>
+              <FieldLabel>{t('Markets', 'الأسواق')}</FieldLabel>
               <div style={{display:'flex',gap:'5px 7px',flexWrap:'wrap',minHeight:21}}>
                 {marketLabels.map(m => <Pill key={m}>{m}</Pill>)}
               </div>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:7,minWidth:0}}>
-              <FieldLabel>Time Frames</FieldLabel>
+              <FieldLabel>{t('Time Frames', 'الأطر الزمنية')}</FieldLabel>
               <div style={{display:'flex',gap:'5px 7px',flexWrap:'wrap',minHeight:21}}>
-                {tfLabels.map(t => <Pill key={t}>{t}</Pill>)}
+                {tfLabels.map(tf => <Pill key={tf}>{tf}</Pill>)}
               </div>
             </div>
           </div>
 
           <div style={{display:'flex',flexDirection:'column',gap:7}}>
-            <FieldLabel>Strategy Tags</FieldLabel>
+            <FieldLabel>{t('Strategy Tags', 'وسوم الاستراتيجية')}</FieldLabel>
             <div style={{display:'flex',gap:'6px 8px',flexWrap:'wrap',minHeight:isCompact?44:76,alignContent:'flex-start',maxHeight:isCompact?48:undefined,overflow:isCompact?'hidden':undefined}}>
-              {tpl.tags.map(t => <Pill key={t} accent>{t}</Pill>)}
+              {tagLabels.map(tag => <Pill key={tag} accent>{tag}</Pill>)}
             </div>
           </div>
 
@@ -4066,8 +4130,8 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
         <div style={{flexShrink:0,padding:isCompact?'10px 12px':'12px 18px',borderBottom:`1px solid ${c.brH}`,display:'flex',alignItems:'center',gap:10}}>
           <img src="/LOGO-07.png" alt="" style={{width:isCompact?28:34,height:isCompact?28:34,objectFit:'contain',flexShrink:0,display:'block'}}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:isCompact?11:12,fontWeight:700,color:c.tx,fontFamily:F,letterSpacing:'0.02em'}}>Choose a Strategy Template</div>
-            <div style={{fontSize:9,color:c.tm,fontFamily:F,marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Start from a proven framework or build from scratch</div>
+            <div style={{fontSize:isCompact?11:12,fontWeight:700,color:c.tx,fontFamily:F,letterSpacing:'0.02em'}}>{t('Choose a Strategy Template', 'اختر قالب استراتيجية')}</div>
+            <div style={{fontSize:9,color:c.tm,fontFamily:F,marginTop:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('Start from a proven framework or build from scratch', 'ابدأ من إطار مجرّب أو ابنِ من الصفر')}</div>
           </div>
           <div onClick={onCancel}
             style={{width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
@@ -4081,14 +4145,14 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
         </div>
         {/* Body */}
         <div className="tlr-scroll" style={{flex:1,overflowY:'auto',padding:isCompact?'12px 12px 14px':'14px 18px 18px',minHeight:0}}>
-          <div style={{fontSize:9,fontWeight:850,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:10,fontFamily:F}}>Templates</div>
+          <div style={{fontSize:9,fontWeight:850,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:10,fontFamily:F}}>{t('Templates', 'القوالب')}</div>
           <div style={{display:'grid',gridTemplateColumns:isCompact?'minmax(0,1fr)':'repeat(auto-fit,minmax(300px,1fr))',gap:isCompact?10:12}}>
-            {STRATEGY_TEMPLATES.map(t => <Card key={t.id} tpl={t}/>)}
+            {STRATEGY_TEMPLATES.map(tpl => <Card key={tpl.id} tpl={tpl}/>)}
           </div>
 
           {confirmReplace && (
             <div style={{marginTop:12,padding:'10px 12px',background:'rgba(255,80,104,0.06)',border:`1px solid rgba(255,80,104,0.30)`,fontSize:10,color:c.ts,fontFamily:F,lineHeight:1.5}}>
-              Loading this choice will replace your current strategy flow. Click <strong style={{color:c.tx}}>Replace</strong> to confirm.
+              {t('Loading this choice will replace your current strategy flow. Click', 'اختيار هذا القالب سيستبدل مسار استراتيجيتك الحالي. اضغط')} <strong style={{color:c.tx}}>{t('Replace', 'استبدال')}</strong> {t('to confirm.', 'للتأكيد.')}
             </div>
           )}
         </div>
@@ -4101,7 +4165,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
               onMouseLeave={e=>{e.currentTarget.style.background=c.hv2;e.currentTarget.style.borderColor='rgba(140,160,255,0.22)';e.currentTarget.style.color=c.ts;e.currentTarget.style.transform='scale(1)';}}
               onMouseDown={e=>{e.currentTarget.style.transform='scale(0.97)';}}
               onMouseUp={e=>{e.currentTarget.style.transform='scale(1)';}}>
-              {confirmReplace ? 'Keep editing' : 'Cancel'}
+              {confirmReplace ? t('Keep editing', 'متابعة التحرير') : t('Cancel', 'إلغاء')}
             </button>
             <button onClick={()=>commit('__blank')}
               style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,padding:'0 14px',height:32,minWidth:isCompact?0:136,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
@@ -4119,7 +4183,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
                 <line x1="12" y1="5" x2="12" y2="19" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
                 <line x1="5" y1="12" x2="19" y2="12" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
               </svg>
-              Create Your Own
+              {t('Create Your Own', 'أنشئ استراتيجيتك')}
             </button>
             <button onClick={()=>commit()} disabled={!selectedId}
               style={{padding:'0 16px',height:32,minWidth:isCompact?0:120,flex:isCompact?'1 1 0':undefined,boxSizing:'border-box',
@@ -4133,7 +4197,7 @@ const TemplatePickerModal = ({ open, c, F, onPick, onCancel, hasExistingGroups, 
               onMouseLeave={e=>{if(selectedId){e.currentTarget.style.background=`linear-gradient(135deg,${c.ac},${c.acL})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(38,67,247,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
               onMouseDown={e=>{if(selectedId){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
               onMouseUp={e=>{if(selectedId){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
-              {hasExistingGroups && confirmReplace ? 'Replace' : selectedId === '__blank' ? 'Create Your Own' : 'Use Template'}
+              {hasExistingGroups && confirmReplace ? t('Replace', 'استبدال') : selectedId === '__blank' ? t('Create Your Own', 'أنشئ استراتيجيتك') : t('Use Template', 'استخدام القالب')}
             </button>
           </div>
         </div>
@@ -4177,6 +4241,8 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
 };
 
 function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, isSaving=false, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate, compact=false }) {
+  const canvasAr = useV16AppArabic();
+  const canvasT = (en, arTxt) => (canvasAr ? arTxt : en);
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -5760,13 +5826,13 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
       <div data-strategy-builder-footer="1" style={{flexShrink:0,height:56,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',borderTop:`1px solid var(--tlc-brh)`,background:'var(--tlc-el)'}}>
         <button type="button" onClick={goPrev} style={secondaryBtnStyle} onMouseEnter={onSecondaryEnter} onMouseLeave={onSecondaryLeave} onMouseDown={onSecondaryDown} onMouseUp={onSecondaryUp}>
           <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          Back
+          {canvasT('Back','رجوع')}
         </button>
         <div style={{display:'flex',gap:5}}>
           {[1,2,3,4].map(d=>(<div key={d} style={{width:6,height:6,borderRadius:'50%',background:d===2?'var(--tlc-ac)':'var(--tlc-brh)'}}/>))}
         </div>
         <button type="button" onClick={canNext ? goNext : undefined} disabled={!canNext} style={primaryBtnStyle(canNext)} onMouseEnter={e=>onPrimaryEnter(e,canNext)} onMouseLeave={e=>onPrimaryLeave(e,canNext)} onMouseDown={e=>onPrimaryDown(e,canNext)} onMouseUp={e=>onPrimaryUp(e,canNext)}>
-          Next
+          {canvasT('Next','التالي')}
           <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
       </div>
@@ -5896,20 +5962,20 @@ const strategyInstrumentLabel = (rawId) => {
 };
 const strategyBankScopeItems = (strat) => {
   const instIds = [
-    ...(Array.isArray(strat?.instruments) ? strat.instruments : []),
-    ...(Array.isArray(strat?.supportInst) ? strat.supportInst : []),
+    ...coerceStringArray(strat?.instruments),
+    ...coerceStringArray(strat?.supportInst),
   ];
   const normalized = [...new Set(instIds.map(x => String(x ?? "").trim().toLowerCase()).filter(Boolean))];
   if (normalized.length) {
     // Show the market (asset class) first, then the specific symbols, so it is
     // clearer to the user which market each strategy trades.
-    const marketIds = (strat?.markets || []).length
-      ? strat.markets
+    const marketIds = coerceStringArray(strat?.markets).length
+      ? coerceStringArray(strat?.markets)
       : deriveStrategyMarketsFromInstruments(instIds);
     const marketLabels = marketIds.map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
     return [...marketLabels, ...normalized.map(strategyInstrumentLabel)];
   }
-  return (strat?.markets || []).map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
+  return coerceStringArray(strat?.markets).map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
 };
 
 const INST_SYM_DATA = {
@@ -6435,7 +6501,9 @@ function GeneralInfoStepContent({ c, F,
   setStratBTfCustom,
   stratBMarketsManualRef,
 }) {
-  const tags = stratBTags || [];
+  const ar = useV16AppArabic();
+  const t = (en, arTxt) => (ar ? arTxt : en);
+  const tags = coerceStringArray(stratBTags);
   const MAX_TAGS = 10;
   const MAX_TAG_LENGTH = 28;
   const tagAtMax = tags.length >= MAX_TAGS;
@@ -6556,8 +6624,16 @@ function GeneralInfoStepContent({ c, F,
   const emojiPickerRef = React.useRef(null);
 
   const STYLES     = [{id:'Trend Following',label:'Trend'},{id:'Breakout',label:'Breakout'},{id:'Mean Reversion',label:'Mean Reversion'},{id:'Scalping',label:'Scalping'},{id:'Swing',label:'Swing'}];
-  const DIRECTIONS = [{id:'both',label:'Both'},{id:'long',label:'Long Only'},{id:'short',label:'Short Only'}];
-  const COMPLEXITIES = [{id:'Easy',label:'Easy'},{id:'Medium',label:'Medium'},{id:'Hard',label:'Hard'}];
+  const DIRECTIONS = [
+    {id:'both',label:t('Both','كلا الاتجاهين')},
+    {id:'long',label:t('Long Only','شراء فقط')},
+    {id:'short',label:t('Short Only','بيع فقط')},
+  ];
+  const COMPLEXITIES = [
+    {id:'Easy',label:t('Easy','سهل')},
+    {id:'Medium',label:t('Medium','متوسط')},
+    {id:'Hard',label:t('Hard','صعب')},
+  ];
   const EMOJI_CATS = [
     { id:'finance',    ic:'📈', label:'Finance',    list:['📈','📉','💹','💰','💵','💸','🏦','🏧','💳','💲','🪙','🏛','📊','📋','📌','🎯','🏆','🥇','💡','🔑','🗝','⚡','🛡','⚔️','🎰','♟','🧩','🔮','🧲','🧭','🗺','🌐','🔍','🔎','📡','⚙','💎','👑','🎖','🏅','⭐','🌟','💫','✨'] },
     { id:'smileys',    ic:'😊', label:'Smileys',    list:['😀','😃','😄','😁','😆','🤣','😂','🙂','😉','😊','😇','🥰','😍','🤩','😘','😋','😜','🤪','😝','🤑','🤗','🤔','😐','😑','😶','🙄','😬','😌','😔','😢','😭','😤','😡','😈','💀','☠️','👻','🤖','👽','👾','🤡','🥳','😎','🧐'] },
@@ -6987,12 +7063,12 @@ function GeneralInfoStepContent({ c, F,
         {/* Strategy Name + emoji button — input left, button right, same row height via grid */}
         <div style={{display:'grid',gridTemplateColumns:'1fr auto',columnGap:12,marginBottom:16}}>
           {/* Row 1: label | blank */}
-          <div style={lbl}>Strategy Name <span style={{color:c.rd}}>*</span></div>
+          <div style={lbl}>{t('Strategy Name','اسم الاستراتيجية')} <span style={{color:c.rd}}>*</span></div>
           <div/>
           {/* Row 2: input | button — same grid row = same height */}
           <input value={stratBName||''} onChange={e=>setStratBName(e.target.value)}
-            placeholder="e.g. BB Squeeze Fade" style={{...inp,border:'1px solid '+requiredBorder('name')}} maxLength={80}
-            aria-label="Strategy name"
+            placeholder={t('e.g. BB Squeeze Fade','مثال: ارتداد البولينجر')} style={{...inp,border:'1px solid '+requiredBorder('name')}} maxLength={80}
+            aria-label={t('Strategy name','اسم الاستراتيجية')}
             onFocus={e=>e.target.style.borderColor=nameIsDuplicate?'rgba(255,180,80,0.85)':c.acL}
             onBlur={e=>e.target.style.borderColor=requiredBorder('name')}/>
           <div ref={emojiRef} style={{display:'flex',position:'relative'}}>
@@ -7033,19 +7109,19 @@ function GeneralInfoStepContent({ c, F,
         </div>
         {nameIsDuplicate&&(
           <div style={{marginTop:-8,marginBottom:12,fontSize:10,fontWeight:650,color:c.gold,lineHeight:1.4,fontFamily:F}}>
-            A strategy with this name already exists. Choose a different name.
+            {t('A strategy with this name already exists. Choose a different name.','يوجد استراتيجية بهذا الاسم بالفعل. اختر اسماً مختلفاً.')}
           </div>
         )}
 
         {/* Description */}
         <div>
           <div style={{...lbl,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <span>Description</span>
+            <span>{t('Description','الوصف')}</span>
             <span style={{fontSize:9,fontWeight:600,color:(stratBDesc||'').length>=480?c.rd:c.tm,fontVariantNumeric:'tabular-nums'}}>{(stratBDesc||'').length}/500</span>
           </div>
           <textarea value={stratBDesc||''} onChange={e=>setStratBDesc(e.target.value)}
-            placeholder="Core thesis, when it works, what to watch for…"
-            rows={5} maxLength={500} aria-label="Strategy description"
+            placeholder={t('Core thesis, when it works, what to watch for…','الفكرة الأساسية، متى تعمل، وما الذي يجب مراقبته…')}
+            rows={5} maxLength={500} aria-label={t('Strategy description','وصف الاستراتيجية')}
             style={{...inp,resize:'none',lineHeight:1.55,minHeight:120}}
             onFocus={e=>e.target.style.borderColor=c.acL}
             onBlur={e=>e.target.style.borderColor=c.brH}/>
@@ -7053,7 +7129,7 @@ function GeneralInfoStepContent({ c, F,
         </div>
         {showRequiredHint && (generalInfoMissingLabels || []).length > 0 && (
           <div role="alert" style={{marginTop:-4,marginBottom:14,padding:'9px 11px',background:'rgba(255,80,104,0.08)',border:'1px solid rgba(255,80,104,0.34)',fontSize:11,fontWeight:650,color:'#FFB8C2',fontFamily:F,lineHeight:1.45}}>
-            Complete before continuing: {(generalInfoMissingLabels || []).join(', ')}.
+            {t('Complete before continuing:','أكمل قبل المتابعة:')} {(generalInfoMissingLabels || []).join(ar ? '، ' : ', ')}.
           </div>
         )}
 
@@ -7061,14 +7137,14 @@ function GeneralInfoStepContent({ c, F,
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
           {false && <ToggleRow label="Style" opts={styleOptions} value={stratBStyle || 'Trend Following'} onChange={setStratBStyle} />}
           <div style={{display:'flex',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
-            <SingleSelectRow label="Direction" opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} open={dirDropOpen} setOpen={setDirDropOpen} wrapRef={dirDropRef} width={150} />
-            <SingleSelectRow label="Complexity" opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} open={cmpDropOpen} setOpen={setCmpDropOpen} wrapRef={cmpDropRef} width={150} />
+            <SingleSelectRow label={t('Direction','الاتجاه')} opts={DIRECTIONS} value={stratBDirection || 'both'} onChange={setStratBDirection} open={dirDropOpen} setOpen={setDirDropOpen} wrapRef={dirDropRef} width={150} />
+            <SingleSelectRow label={t('Complexity','التعقيد')} opts={COMPLEXITIES} value={stratBComplexity || 'Medium'} onChange={setStratBComplexity} open={cmpDropOpen} setOpen={setCmpDropOpen} wrapRef={cmpDropRef} width={150} />
           </div>
         </div>
 
         {/* ── Section: Tags ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px',minHeight:mobileSymbolPicker?218:112,boxSizing:'border-box'}}>
-          <div style={lbl}>Tags</div>
+          <div style={lbl}>{t('Tags','الوسوم')}</div>
           <div style={{display:'grid',gridTemplateColumns:mobileSymbolPicker?'1fr':'140px minmax(0,1fr)',gap:mobileSymbolPicker?8:12,alignItems:'start'}}>
             <div ref={tagWrapRef} style={{position:'relative',display:'block',minWidth:0}}>
               <div onClick={e=>{
@@ -7091,7 +7167,7 @@ function GeneralInfoStepContent({ c, F,
               }}
                 style={{display:'flex',alignItems:'center',border:`1px solid ${tagDropOpen?c.acB:c.brH}`,background:c.el,padding:'0 26px 0 10px',height:30,width:'100%',cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s',boxSizing:'border-box'}}>
                 <span style={{fontSize:11,fontWeight:600,fontFamily:F,color:c.ts}}>
-                  {tags.length?`Tags · ${tags.length}/${MAX_TAGS}`:'Choose tags'}
+                  {tags.length?t(`Tags · ${tags.length}/${MAX_TAGS}`,`وسوم · ${tags.length}/${MAX_TAGS}`):t('Choose tags','اختر الوسوم')}
                 </span>
                 <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${tagDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
@@ -7161,7 +7237,7 @@ function GeneralInfoStepContent({ c, F,
         {/* ── Section: Markets ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${requiredBorder('markets')}`,padding:'14px 16px',boxShadow:requiredGlow('markets'),transition:'border-color 0.12s, box-shadow 0.12s'}}>
           <div style={{...lbl,display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8}}>
-            <span>Markets</span>
+            <span>{t('Markets','الأسواق')}</span>
             <span style={{fontSize:8,fontWeight:600,color:c.tm,letterSpacing:'0.04em',textTransform:'none'}}>Optional filter — auto-set from symbols</span>
           </div>
           <div ref={mktWrapRef} style={{position:'relative',display:'inline-block'}}>
@@ -7170,11 +7246,11 @@ function GeneralInfoStepContent({ c, F,
               {(()=>{
                 const sel=effectiveMarkets||[];
                 const label=sel.length===0
-                  ?'All symbols'
+                  ?t('All symbols','كل الرموز')
                   :marketsAutoDerived
                     ?sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ')
                     :sel.length===MKT_CAT_OPTS.length
-                      ?'All markets'
+                      ?t('All markets','كل الأسواق')
                       :sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
                 return <span style={{flex:1,fontSize:11,fontWeight:600,fontFamily:F,color:sel.length?c.tx:c.tm}}>{label}</span>;
               })()}
@@ -7215,7 +7291,7 @@ function GeneralInfoStepContent({ c, F,
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 <div style={{width:2,height:8,background:c.acL,flexShrink:0,boxShadow:`0 0 4px ${c.acG}`}}/>
-                <span style={{fontSize:10,fontWeight:800,color:c.ts,letterSpacing:'0.1em',fontFamily:F}}>TRADING</span>
+                <span style={{fontSize:10,fontWeight:800,color:c.ts,letterSpacing:'0.1em',fontFamily:F}}>{t('TRADING','التداول')}</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBInstruments||[]).length>0&&(
@@ -7354,7 +7430,7 @@ function GeneralInfoStepContent({ c, F,
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 <div style={{width:2,height:8,background:'rgba(232,194,82,0.8)',flexShrink:0,boxShadow:'0 0 4px rgba(232,194,82,0.3)'}}/>
-                <span style={{fontSize:10,fontWeight:800,color:c.ts,letterSpacing:'0.1em',fontFamily:F}}>SUPPORTING</span>
+                <span style={{fontSize:10,fontWeight:800,color:c.ts,letterSpacing:'0.1em',fontFamily:F}}>{t('SUPPORTING','مساعد')}</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBSupportInst||[]).length>0&&(
@@ -7488,7 +7564,7 @@ function GeneralInfoStepContent({ c, F,
 
         {/* ── Section: Timeframes ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${requiredBorder('timeframes')}`,padding:'14px 16px',boxShadow:requiredGlow('timeframes'),transition:'border-color 0.12s, box-shadow 0.12s'}}>
-          <div style={lbl}>Timeframes to use <span style={{color:c.rd}}>*</span> <span style={{color:c.tm,fontWeight:600,letterSpacing:'0.04em'}}>· {tfs.length}/{MAX_STRATEGY_TIMEFRAMES}</span></div>
+          <div style={lbl}>{t('Timeframes to use','الأطر الزمنية المستخدمة')} <span style={{color:c.rd}}>*</span> <span style={{color:c.tm,fontWeight:600,letterSpacing:'0.04em'}}>· {tfs.length}/{MAX_STRATEGY_TIMEFRAMES}</span></div>
           <div style={{display:'flex',alignItems:'flex-start',gap:5,flexWrap:'wrap'}}>
             <div ref={tfPickWrapRef} style={{position:'relative',flexShrink:0}}>
               <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPosViewport(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
@@ -7890,6 +7966,8 @@ function GeneralInfoStepContent({ c, F,
 }
 
 function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
+  const ar = useV16AppArabic();
+  const t = (en, arTxt) => (ar ? arTxt : en);
   const vars = stratBVariables && stratBVariables.length > 0 ? stratBVariables : [{type:'divider',id:'div0'}];
 
   const divIdx = vars.findIndex(v=>v.type==='divider');
@@ -8127,20 +8205,20 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
       <div style={{width:'min(100%,760px)',margin:'0 auto',display:'flex',flexDirection:'column',gap:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:14}}>
           <div>
-            <div style={{fontSize:22,fontWeight:900,color:c.tx,fontFamily:F}}>Trade Tags</div>
+            <div style={{fontSize:22,fontWeight:900,color:c.tx,fontFamily:F}}>{t('Trade Tags','وسوم الصفقات')}</div>
             <div style={{marginTop:5,fontSize:12,color:c.tm,fontFamily:F,lineHeight:1.45}}>
-              Define the tag fields you want to track on every trade.
+              {t('Define the tag fields you want to track on every trade.','حدد حقول الوسوم التي تريد تتبعها في كل صفقة.')}
             </div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10,fontFamily:F}}>
-            <span style={{fontSize:10,fontWeight:850,color:preAccent,letterSpacing:'0.06em',textTransform:'uppercase'}}>Pre {preVars.length}/{MAX_TRADE_TAGS}</span>
+            <span style={{fontSize:10,fontWeight:850,color:preAccent,letterSpacing:'0.06em',textTransform:'uppercase'}}>{t('Pre','قبل')} {preVars.length}/{MAX_TRADE_TAGS}</span>
             <span style={{width:1,height:18,background:c.brH}} />
-            <span style={{fontSize:10,fontWeight:850,color:postAccent,letterSpacing:'0.06em',textTransform:'uppercase'}}>Post {postVars.length}/{MAX_TRADE_TAGS}</span>
+            <span style={{fontSize:10,fontWeight:850,color:postAccent,letterSpacing:'0.06em',textTransform:'uppercase'}}>{t('Post','بعد')} {postVars.length}/{MAX_TRADE_TAGS}</span>
           </div>
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {renderSection('Pre-Trade Tags','pre',preAccent,preVars,preVars.map((v,i)=><React.Fragment key={v.id}>{renderTagRow(v,preAccent,i+1,i===preVars.length-1)}</React.Fragment>))}
-          {renderSection('Post-Trade Tags','post',postAccent,postVars,postVars.map((v,i)=><React.Fragment key={v.id}>{renderTagRow(v,postAccent,i+1,i===postVars.length-1)}</React.Fragment>))}
+          {renderSection(t('Pre-Trade Tags','وسوم ما قبل الصفقة'),'pre',preAccent,preVars,preVars.map((v,i)=><React.Fragment key={v.id}>{renderTagRow(v,preAccent,i+1,i===preVars.length-1)}</React.Fragment>))}
+          {renderSection(t('Post-Trade Tags','وسوم ما بعد الصفقة'),'post',postAccent,postVars,postVars.map((v,i)=><React.Fragment key={v.id}>{renderTagRow(v,postAccent,i+1,i===postVars.length-1)}</React.Fragment>))}
         </div>
       </div>
     </div>
@@ -8148,6 +8226,8 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
 }
 
 function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratBTimeframes, stratBTags, stratBVariables, stratBInstruments, stratBSupportInst, stratBImages, stratBLogoEmoji, canvasNodes, sessions, stratEditId, compact=false }) {
+  const ar = useV16AppArabic();
+  const t = (en, arTxt) => (ar ? arTxt : en);
   const vars = stratBVariables||[];
   const divIdx = vars.findIndex(v=>v.type==='divider');
   const preLimit = divIdx < 0 ? vars.length : divIdx;
@@ -8156,7 +8236,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   const preCount = preTradeTags.length;
   const postCount = postTradeTags.length;
   const groups = deriveStrategyBuilderGroupsFromCanvas(canvasNodes).map(group => ({ ...group, color: group.color || c.acL }));
-  const conditionCount = groups.reduce((sum,g)=>sum+g.conditions.length,0);
+  const conditionCount = groups.reduce((sum,g)=>sum+(Array.isArray(g.conditions)?g.conditions.length:0),0);
 
   const preAccent = c.gold || '#C9A84C';
   const postAccent = '#A78BFA';
@@ -8280,14 +8360,14 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
     </div>
   );
   const readyItems = [
-    {label:'General Info', ready:!!(stratBName||'').trim(), detail:(stratBName||'').trim()?'Name added':'Name required'},
-    {label:'Market Scope', ready:((stratBMarkets||[]).length>0||(stratBInstruments||[]).length>0||(stratBSupportInst||[]).length>0) && (stratBTimeframes||[]).length>0, detail:`${(stratBMarkets||[]).length? (stratBMarkets||[]).length : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst).length} markets · ${(stratBTimeframes||[]).length} timeframes`},
-    {label:'Strategy Flow', ready:groups.length>0 && conditionCount>0, detail:`${groups.length} groups · ${conditionCount} conditions`},
-    {label:'Trade Tags', ready:preCount+postCount>0, detail:`${preCount} pre · ${postCount} post`},
+    {label:t('General Info','المعلومات العامة'), ready:!!(stratBName||'').trim(), detail:(stratBName||'').trim()?t('Name added','تمت إضافة الاسم'):t('Name required','الاسم مطلوب')},
+    {label:t('Market Scope','نطاق السوق'), ready:(coerceStringArray(stratBMarkets).length>0||coerceStringArray(stratBInstruments).length>0||coerceStringArray(stratBSupportInst).length>0) && coerceStringArray(stratBTimeframes).length>0, detail:t(`${coerceStringArray(stratBMarkets).length? coerceStringArray(stratBMarkets).length : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst).length} markets · ${coerceStringArray(stratBTimeframes).length} timeframes`, `${coerceStringArray(stratBMarkets).length? coerceStringArray(stratBMarkets).length : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst).length} أسواق · ${coerceStringArray(stratBTimeframes).length} أطر زمنية`)},
+    {label:t('Strategy Flow','مسار الاستراتيجية'), ready:groups.length>0 && conditionCount>0, detail:t(`${groups.length} groups · ${conditionCount} conditions`, `${groups.length} مجموعات · ${conditionCount} شروط`)},
+    {label:t('Trade Tags','وسوم الصفقات'), ready:preCount+postCount>0, detail:t(`${preCount} pre · ${postCount} post`, `${preCount} قبل · ${postCount} بعد`)},
   ];
   const statusPill = ready => ready ? null : (
     <span style={{height:22,padding:'0 8px',display:'inline-flex',alignItems:'center',fontSize:9,fontWeight:850,fontFamily:F,letterSpacing:'0.06em',textTransform:'uppercase',color:c.gold,background:'rgba(201,168,76,0.10)',border:'1px solid rgba(201,168,76,0.25)'}}>
-      Review
+      {t('Review','مراجعة')}
     </span>
   );
   const reviewBlock = (step, title, ready, children, accent=c.acL) => (
@@ -8307,9 +8387,9 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
           <section style={{...panelStyle,padding:0,overflow:'hidden'}}>
             <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`}}/>
             <div style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',borderBottom:`1px solid ${c.brH}`}}>
-              <div style={{fontSize:12,fontWeight:850,color:c.tx,fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase',flex:1}}>Backtested Sessions</div>
+              <div style={{fontSize:12,fontWeight:850,color:c.tx,fontFamily:F,letterSpacing:'0.04em',textTransform:'uppercase',flex:1}}>{t('Backtested Sessions','جلسات الاختبار')}</div>
               <span style={{display:'inline-flex',alignItems:'center',height:22,fontSize:10,fontWeight:900,fontFamily:F,letterSpacing:'0.07em',textTransform:'uppercase',color:c.acL,whiteSpace:'nowrap'}}>
-                {linkedSessions.length} session{linkedSessions.length===1?'':'s'}
+                {linkedSessions.length} {linkedSessions.length===1?t('session','جلسة'):t('sessions','جلسات')}
               </span>
             </div>
             <div style={{padding:12}}>
@@ -8344,55 +8424,55 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
           </section>
         )}
 
-        {reviewBlock('01','General Info',readyItems[0].ready,
+        {reviewBlock('01',t('General Info','المعلومات العامة'),readyItems[0].ready,
           <div style={{display:'grid',gap:12}}>
             <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:12,alignItems:'start'}}>
               <div>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   {stratBLogoEmoji&&<div style={{width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,background:c.el,border:`1px solid ${c.brH}`}}>{stratBLogoEmoji}</div>}
                   <div style={{fontSize:18,fontWeight:900,color:stratBName?c.tx:c.tm,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {stratBName||'Untitled Strategy'}
+                    {stratBName||t('Untitled Strategy','استراتيجية بدون اسم')}
                   </div>
                 </div>
                 <div style={{marginTop:8,fontSize:12,color:stratBDesc?c.ts:c.tm,fontFamily:F,lineHeight:1.5}}>
-                  {stratBDesc||'No description added.'}
+                  {stratBDesc||t('No description added.','لا يوجد وصف.')}
                 </div>
               </div>
             </div>
             {imageStrip(stratBImages||[])}
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:12}}>
               <div>
-                <div style={{...sectionLbl,marginBottom:8}}>Strategy Tags</div>
-                {(stratBTags||[]).length ? chipList(stratBTags,c.acL,'rgba(38,67,247,0.10)') : <div style={emptyText}>No strategy tags selected.</div>}
+                <div style={{...sectionLbl,marginBottom:8}}>{t('Strategy Tags','وسوم الاستراتيجية')}</div>
+                {coerceStringArray(stratBTags).length ? chipList(coerceStringArray(stratBTags),c.acL,'rgba(38,67,247,0.10)') : <div style={emptyText}>{t('No strategy tags selected.','لم يتم اختيار وسوم.')}</div>}
               </div>
               <div>
-                <div style={{...sectionLbl,marginBottom:8}}>Images</div>
-                <div style={{fontSize:12,fontWeight:650,color:(stratBImages||[]).length?c.ts:c.tm,fontFamily:F}}>{(stratBImages||[]).length} image{(stratBImages||[]).length===1?'':'s'} added</div>
+                <div style={{...sectionLbl,marginBottom:8}}>{t('Images','الصور')}</div>
+                <div style={{fontSize:12,fontWeight:650,color:(stratBImages||[]).length?c.ts:c.tm,fontFamily:F}}>{(stratBImages||[]).length} {t((stratBImages||[]).length===1?'image added':'images added',(stratBImages||[]).length===1?'صورة مضافة':'صور مضافة')}</div>
               </div>
             </div>
           </div>
         )}
 
-        {reviewBlock('02','Market Scope',readyItems[1].ready,
+        {reviewBlock('02',t('Market Scope','نطاق السوق'),readyItems[1].ready,
           <div style={{display:'grid',gap:14}}>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',columnGap:20,rowGap:14}}>
-              {scopeGroup('Markets',((stratBMarkets||[]).length?stratBMarkets:deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst)).map(marketLabel),c.acL,'No markets selected.')}
-              {scopeGroup('Timeframes',stratBTimeframes||[],c.ts,'No timeframes selected.')}
+              {scopeGroup(t('Markets','الأسواق'),(coerceStringArray(stratBMarkets).length?coerceStringArray(stratBMarkets):deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst)).map(marketLabel),c.acL,t('No markets selected.','لم يتم اختيار أسواق.'))}
+              {scopeGroup(t('Timeframes','الأطر الزمنية'),coerceStringArray(stratBTimeframes),c.ts,t('No timeframes selected.','لم يتم اختيار أطر زمنية.'))}
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',columnGap:20,rowGap:14}}>
-              {scopeGroup('Trading Instruments',(stratBInstruments||[]).map(instrumentLabel),c.ts,'No trading instruments selected.')}
-              {scopeGroup('Supporting Instruments',(stratBSupportInst||[]).map(instrumentLabel),c.ts,'No supporting instruments selected.')}
+              {scopeGroup(t('Trading Instruments','أدوات التداول'),coerceStringArray(stratBInstruments).map(instrumentLabel),c.ts,t('No trading instruments selected.','لم يتم اختيار أدوات تداول.'))}
+              {scopeGroup(t('Supporting Instruments','أدوات مساعدة'),coerceStringArray(stratBSupportInst).map(instrumentLabel),c.ts,t('No supporting instruments selected.','لم يتم اختيار أدوات مساعدة.'))}
             </div>
           </div>
         )}
 
-        {reviewBlock('03','Strategy Flow',readyItems[2].ready,
+        {reviewBlock('03',t('Strategy Flow','مسار الاستراتيجية'),readyItems[2].ready,
           <div>
             <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:10}}>
-              {stat('Groups',groups.length,c.gold)}
-              {stat('Conditions',conditionCount,c.acL)}
+              {stat(t('Groups','المجموعات'),groups.length,c.gold)}
+              {stat(t('Conditions','الشروط'),conditionCount,c.acL)}
             </div>
-            {groups.length===0 ? <div style={emptyText}>No flow groups defined.</div> : (
+            {groups.length===0 ? <div style={emptyText}>{t('No flow groups defined.','لا توجد مجموعات في المسار.')}</div> : (
               <div style={{display:'grid',gap:12}}>
                 {groups.map((group,gi)=>(
                   <div key={group.id} style={{borderTop:gi===0?'none':`1px solid ${c.brH}`,paddingTop:gi===0?0:10}}>
@@ -8433,13 +8513,13 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
           </div>
         )}
 
-        {reviewBlock('04','Trade Tags',readyItems[3].ready,
+        {reviewBlock('04',t('Trade Tags','وسوم الصفقات'),readyItems[3].ready,
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(340px,1fr))',gap:12}}>
             <div>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:8}}>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <span style={{width:8,height:8,background:preAccent,boxShadow:`0 0 8px ${preAccent}88`}} />
-                  <div style={sectionLbl}>Pre-Trade Tags</div>
+                  <div style={sectionLbl}>{t('Pre-Trade Tags','وسوم ما قبل الصفقة')}</div>
                 </div>
                 <div style={{fontSize:10,fontWeight:850,color:preAccent,fontFamily:F,fontVariantNumeric:'tabular-nums'}}>{preCount}/10</div>
               </div>
@@ -8449,7 +8529,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:8}}>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <span style={{width:8,height:8,background:postAccent,boxShadow:`0 0 8px ${postAccent}88`}} />
-                  <div style={sectionLbl}>Post-Trade Tags</div>
+                  <div style={sectionLbl}>{t('Post-Trade Tags','وسوم ما بعد الصفقة')}</div>
                 </div>
                 <div style={{fontSize:10,fontWeight:850,color:postAccent,fontFamily:F,fontVariantNumeric:'tabular-nums'}}>{postCount}/10</div>
               </div>
@@ -8503,6 +8583,8 @@ function StrategyBuilderModal(props) {
   const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, openAppConfirm, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
+  const ar = useV16AppArabic();
+  const t = (en, arTxt) => (ar ? arTxt : en);
   const compact = !!props.compact
     || (typeof window !== "undefined" && (isStrategyBuilderMobileDevice() || window.innerWidth <= 900));
 
@@ -8551,20 +8633,20 @@ function StrategyBuilderModal(props) {
       return;
     }
     openAppConfirm({
-      title: "Discard changes?",
-      message: "Your unsaved changes to this strategy will be lost.",
-      confirmLabel: "Discard",
-      cancelLabel: "Keep editing",
+      title: t("Discard changes?", "تجاهل التغييرات؟"),
+      message: t("Your unsaved changes to this strategy will be lost.", "ستُفقد التغييرات غير المحفوظة لهذه الاستراتيجية."),
+      confirmLabel: t("Discard", "تجاهل"),
+      cancelLabel: t("Keep editing", "متابعة التحرير"),
       danger: true,
       onConfirm: onClose,
     });
   };
 
   const STEPS = [
-    { id:1, label:'General Info', hint:'Name your strategy, choose markets and timeframes.' },
-    { id:2, label:'Strategy Flow', hint:'Build your entry and exit logic on the visual canvas.' },
-    { id:3, label:'Trade Tags', hint:'Add pre and post-trade tags for analytics.' },
-    { id:4, label:'Review', hint:'Confirm your strategy before saving.' },
+    { id:1, label:t('General Info','المعلومات العامة'), hint:t('Name your strategy, choose markets and timeframes.','سمِّ استراتيجيتك واختر الأسواق والأطر الزمنية.') },
+    { id:2, label:t('Strategy Flow','مسار الاستراتيجية'), hint:t('Build your entry and exit logic on the visual canvas.','ابنِ منطق الدخول والخروج على اللوحة البصرية.') },
+    { id:3, label:t('Trade Tags','وسوم الصفقات'), hint:t('Add pre and post-trade tags for analytics.','أضف وسوم ما قبل وبعد الصفقة للتحليل.') },
+    { id:4, label:t('Review','المراجعة'), hint:t('Confirm your strategy before saving.','أكد استراتيجيتك قبل الحفظ.') },
   ];
 
   const normalizedBuilderTimeframes = React.useMemo(() => {
@@ -8585,20 +8667,20 @@ function StrategyBuilderModal(props) {
   }, [props.stratBTimeframes]);
   const generalInfoIssues = React.useMemo(() => {
     const issues = [];
-    if (!(stratBName || '').trim()) issues.push({key:'name', label:'strategy name'});
+    if (!(stratBName || '').trim()) issues.push({key:'name', label:t('strategy name','اسم الاستراتيجية')});
     else if (findStrategyBankNameDuplicate(stratBName, strategyBankRows, stratEditId)) {
-      issues.push({key:'name', label:'unique strategy name'});
+      issues.push({key:'name', label:t('unique strategy name','اسم استراتيجية فريد')});
     }
-    const resolvedMarkets = (props.stratBMarkets || []).length > 0
-      ? props.stratBMarkets
+    const resolvedMarkets = coerceStringArray(props.stratBMarkets).length > 0
+      ? coerceStringArray(props.stratBMarkets)
       : deriveStrategyMarketsFromInstruments(props.stratBInstruments, props.stratBSupportInst);
-    if (!resolvedMarkets.length) issues.push({key:'markets', label:'markets or trading symbols'});
-    if (!normalizedBuilderTimeframes.length) issues.push({key:'timeframes', label:'time frames'});
+    if (!resolvedMarkets.length) issues.push({key:'markets', label:t('markets or trading symbols','الأسواق أو رموز التداول')});
+    if (!normalizedBuilderTimeframes.length) issues.push({key:'timeframes', label:t('time frames','الأطر الزمنية')});
     else if (normalizedBuilderTimeframes.length > MAX_STRATEGY_TIMEFRAMES) {
-      issues.push({key:'timeframes', label:`${MAX_STRATEGY_TIMEFRAMES} or fewer timeframes`});
+      issues.push({key:'timeframes', label:t(`${MAX_STRATEGY_TIMEFRAMES} or fewer timeframes`, `${MAX_STRATEGY_TIMEFRAMES} أطر زمنية أو أقل`)});
     }
     return issues;
-  }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, normalizedBuilderTimeframes]);
+  }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, normalizedBuilderTimeframes, ar]);
   const generalInfoReady = generalInfoIssues.length === 0;
   const flowGroupCount = React.useMemo(
     () => countStrategyFlowGroups(props.canvasNodes),
@@ -8699,13 +8781,13 @@ function StrategyBuilderModal(props) {
             <div style={{minHeight:compact?48:44,display:'flex',alignItems:'center',gap:compact?8:12,padding:compact?'6px 10px':'0 18px',boxSizing:'border-box'}}>
               <img src="/LOGO-07.png" alt="Talaria" style={{width:compact?22:26,height:compact?22:26,objectFit:'contain',flexShrink:0}}/>
               <div style={{fontSize:compact?12:13,fontWeight:800,color:c.tx,fontFamily:F,flex:'1 1 auto',minWidth:0,whiteSpace:compact?'normal':'nowrap',lineHeight:1.15}}>
-                {stratEditId?'Edit Strategy':'Strategy Builder'}
-                <span style={{color:c.acL,fontWeight:600,marginLeft:compact?0:8,display:compact?'block':'inline'}}>— Step {stratWizardStep} of 4</span>
+                {stratEditId?t('Edit Strategy','تعديل الاستراتيجية'):t('Strategy Builder','منشئ الاستراتيجية')}
+                <span style={{color:c.acL,fontWeight:600,marginLeft:compact?0:8,display:compact?'block':'inline'}}>— {t(`Step ${stratWizardStep} of 4`, `الخطوة ${stratWizardStep} من 4`)}</span>
               </div>
               {!compact && <div style={{flex:1}}/>}
               {/* Templates button — opens the strategy template picker */}
               {onOpenTemplates && (
-                <button onClick={isSaving?undefined:onOpenTemplates} disabled={isSaving} aria-label="Open strategy templates" title="Browse strategy templates"
+                <button onClick={isSaving?undefined:onOpenTemplates} disabled={isSaving} aria-label={t("Open strategy templates","فتح قوالب الاستراتيجية")} title={t("Browse strategy templates","تصفح قوالب الاستراتيجية")}
                   onMouseEnter={()=>setTplBtnHov(true)} onMouseLeave={e=>{setTplBtnHov(false);e.currentTarget.style.transform='scale(1)';}}
                   style={{height:28,padding:compact?'0 9px':'0 12px',marginRight:compact?0:6,display:'inline-flex',alignItems:'center',gap:6,flexShrink:0,
                     fontSize:11,fontWeight:700,letterSpacing:'0.04em',fontFamily:F,
@@ -8721,7 +8803,7 @@ function StrategyBuilderModal(props) {
                     <rect x="3" y="13" width="8" height="8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
                     <rect x="13" y="13" width="8" height="8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
                   </svg>
-                  {compact?'TPL':'TEMPLATES'}
+                  {compact?t('TPL','قوالب'):t('TEMPLATES','القوالب')}
                 </button>
               )}
               {/* Close button */}
@@ -8795,7 +8877,7 @@ function StrategyBuilderModal(props) {
                 onMouseDown={e=>{if(!isSaving)onSecondaryDown(e);}}
                 onMouseUp={onSecondaryUp}>
                 {stratWizardStep>1&&<svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>}
-                {stratWizardStep===1?'Cancel':'Back'}
+                {stratWizardStep===1?t('Cancel','إلغاء'):t('Back','رجوع')}
               </button>
               {/* Step dots */}
               <div style={{display:'flex',gap:5,alignItems:'center'}}>
@@ -8811,7 +8893,7 @@ function StrategyBuilderModal(props) {
                   onMouseLeave={e=>onPrimaryLeave(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
                   onMouseDown={e=>onPrimaryDown(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
                   onMouseUp={e=>onPrimaryUp(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}>
-                  Next
+                  {t('Next','التالي')}
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                 </button>
               ):(
@@ -8832,7 +8914,7 @@ function StrategyBuilderModal(props) {
                     ? <span style={{width:12,height:12,border:'2px solid rgba(255,255,255,0.22)',borderTopColor:'rgba(255,255,255,0.95)',borderRadius:'50%',animation:'tlrLoadRotate 0.7s linear infinite'}}/>
                     : <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
                   }
-                  {isSaving?(stratEditId?'Saving...':'Creating...'):(stratEditId?'Save Changes':'Create Strategy')}
+                  {isSaving?(stratEditId?t('Saving...','جارٍ الحفظ...'):t('Creating...','جارٍ الإنشاء...')):(stratEditId?t('Save Changes','حفظ التغييرات'):t('Create Strategy','إنشاء الاستراتيجية'))}
                 </button>
               )}
             </div>
@@ -8847,7 +8929,7 @@ function StrategyBuilderModal(props) {
               <div style={{width:360,display:'flex',flexDirection:'column',alignItems:'center',gap:18,fontFamily:F,textAlign:'center'}}>
                 <div style={{width:48,height:48,borderRadius:'50%',border:'2px solid rgba(140,160,255,0.20)',borderTopColor:c.acL,borderRightColor:'rgba(0,212,161,0.75)',boxShadow:`0 0 18px ${c.acL}22`,animation:'tlrLoadRotate 0.82s linear infinite'}}/>
                 <div style={{fontSize:18,fontWeight:850,color:c.tx,letterSpacing:'0.01em',lineHeight:1.2}}>
-                  {stratEditId?'Saving strategy...':'Creating strategy...'}
+                  {stratEditId?t('Saving strategy...','جارٍ حفظ الاستراتيجية...'):t('Creating strategy...','جارٍ إنشاء الاستراتيجية...')}
                 </div>
                 <div style={{fontSize:12,fontWeight:750,color:c.ts,lineHeight:1.35,fontVariantNumeric:'tabular-nums'}}>
                   {savingStats}
@@ -8856,7 +8938,7 @@ function StrategyBuilderModal(props) {
                   <div style={{height:'100%',width:'24%',background:`linear-gradient(90deg,${c.acL},${c.gn})`,boxShadow:`0 0 10px ${c.acL}66`,animation:'tlrLoadBar 1.35s ease-in-out infinite alternate'}}/>
                 </div>
                 <div style={{fontSize:11,fontWeight:650,color:c.tm,lineHeight:1.4}}>
-                  Validating and uploading — large strategies take longer.
+                  {t('Validating and uploading — large strategies take longer.', 'جارٍ التحقق والرفع — الاستراتيجيات الكبيرة تستغرق وقتاً أطول.')}
                 </div>
               </div>
             </div>
@@ -13020,6 +13102,9 @@ const TalariaV8b = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState("account");
   const [profileLang, setProfileLang] = useState("english");
+  /** App chrome language — Arabic text only; does not flip layout (unlike profileLang / isDashRTL). */
+  const appAr = useV16AppArabic();
+  const st = useCallback((en, ar) => (appAr ? ar : en), [appAr]);
   const [appConfirm, setAppConfirm] = useState(null);
   const appConfirmRef = useRef(null);
   const closeAppConfirm = useCallback(() => {
@@ -15691,7 +15776,7 @@ const TalariaV8b = () => {
               {id:"dashboard", label:"Dashboard",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>},
               {id:"trades",    label:"Trades",     icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M6.2 4v16M11.8 4v16M17.4 4v16" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" opacity=".72"/><rect x="4.4" y="7.1" width="3.6" height="5.4" stroke="currentColor" strokeWidth="1.45"/><rect x="10" y="11.2" width="3.6" height="5.6" stroke="currentColor" strokeWidth="1.45"/><rect x="15.6" y="6.4" width="3.6" height="4.8" stroke="currentColor" strokeWidth="1.45"/><path d="M5 18.5h7.4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square"/><path d="M13.5 18.5h5.2M16.7 15.7l2.8 2.8-2.8 2.8" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square" strokeLinejoin="miter"/></svg>},
               {id:"sessions",  label:"Sessions",   icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><polygon points="20,10 23,13 20,16" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>},
-              {id:"stratbank", label:"Strategies", icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M7 3.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.45"/><path d="M5 5.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.7"/><rect x="3" y="7.5" width="13.5" height="13" rx="1.2" stroke="currentColor" strokeWidth="1.45"/><circle cx="7" cy="11.2" r="1.25" fill="currentColor"/><circle cx="12.5" cy="11.2" r="1.25" fill="currentColor"/><circle cx="9.8" cy="16.6" r="1.25" fill="currentColor"/><path d="M7 11.2c0 2.8 2.8 2.7 2.8 5.4M12.5 11.2c-.7 2.2-.8 3.2-2.7 5.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+              {id:"stratbank", label:st("Strategies","الاستراتيجيات"), icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M7 3.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.45"/><path d="M5 5.5h11.5c.8 0 1.5.7 1.5 1.5v11.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" opacity="0.7"/><rect x="3" y="7.5" width="13.5" height="13" rx="1.2" stroke="currentColor" strokeWidth="1.45"/><circle cx="7" cy="11.2" r="1.25" fill="currentColor"/><circle cx="12.5" cy="11.2" r="1.25" fill="currentColor"/><circle cx="9.8" cy="16.6" r="1.25" fill="currentColor"/><path d="M7 11.2c0 2.8 2.8 2.7 2.8 5.4M12.5 11.2c-.7 2.2-.8 3.2-2.7 5.4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/></svg>},
               {id:"resources", label:"Resources",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>},
             ].map(({id,label,icon})=>{
               const isA=sessView===id;
@@ -45963,11 +46048,13 @@ const TalariaV8b = () => {
           const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
           const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
 
-          const communityPool = COMMUNITY_ENABLED ? communityStrategies : [];
+          const communityPool = (COMMUNITY_ENABLED ? communityStrategies : [])
+            .map(sanitizeStrategyBankRow)
+            .filter(Boolean);
           const communitySortValue = (strat, key) => {
             if (key === "name" || key === "author") return String(strat?.[key] || "").toLowerCase();
             if (key === "saves") return Number(strat?.saves ?? strat?.copyCount) || 0;
-            const sess = (strat?.backtestSessions || [])[0];
+            const sess = (Array.isArray(strat?.backtestSessions) ? strat.backtestSessions : [])[0];
             const snap = strat?.backtestSnapshot;
             if (key === "winRate") return Number(sess?.winRate ?? snap?.win_rate) || 0;
             if (key === "pnl") return Number(sess?.pnl ?? snap?.pnl) || 0;
@@ -45978,15 +46065,16 @@ const TalariaV8b = () => {
             if (!tpl || typeof tpl !== "object") return tpl;
             const def = tpl.definition && typeof tpl.definition === "object" ? tpl.definition : {};
             const v9 = def.talaria_v9 && typeof def.talaria_v9 === "object" ? def.talaria_v9 : {};
+            const groupsRaw = (v9.tree && Array.isArray(v9.tree.groups) ? v9.tree.groups : tpl.groups) || [];
             return {
               ...tpl,
               name: tpl.title || tpl.name || "Community Strategy",
               description: (typeof v9.desc === "string" && v9.desc) || String(def.description || tpl.desc || ""),
               icon: (typeof v9.icon === "string" && v9.icon) || tpl.icon || "◎",
-              tags: Array.isArray(v9.tags) ? v9.tags : (Array.isArray(tpl.tags) ? tpl.tags : []),
-              timeframes: Array.isArray(v9.timeframes) ? v9.timeframes : (Array.isArray(tpl.timeframes) ? tpl.timeframes : []),
-              markets: Array.isArray(v9.markets) ? v9.markets : (Array.isArray(tpl.markets) ? tpl.markets : []),
-              groups: (v9.tree && Array.isArray(v9.tree.groups) ? v9.tree.groups : tpl.groups) || [],
+              tags: coerceStringArray(v9.tags?.length ? v9.tags : tpl.tags),
+              timeframes: coerceStringArray(v9.timeframes?.length ? v9.timeframes : tpl.timeframes),
+              markets: coerceStringArray(v9.markets?.length ? v9.markets : tpl.markets),
+              groups: Array.isArray(groupsRaw) ? groupsRaw.filter((g) => g && typeof g === "object") : [],
             };
           };
 
@@ -45994,21 +46082,23 @@ const TalariaV8b = () => {
           const sessionsForStrategyRow = sessionsForStrategyBankRow;
 
           const templatePreviewStrategies = STRATEGY_TEMPLATES.filter(tpl=>!hiddenTemplateIds.has(tpl.id)).map((tpl, idx) => {
-            const conditions = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).length,0);
-            const invalidators = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).filter(x=>x.status==="invalidate").length,0);
-            const optional = (tpl.groups||[]).reduce((sum,g)=>sum+(g.conditions||[]).filter(x=>x.status==="optional").length,0);
-            const firstStyle = (tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Price Action";
+            const groups = Array.isArray(tpl.groups) ? tpl.groups.filter((g) => g && typeof g === "object") : [];
+            const conditions = groups.reduce((sum,g)=>sum+(Array.isArray(g.conditions)?g.conditions.length:0),0);
+            const invalidators = groups.reduce((sum,g)=>sum+(Array.isArray(g.conditions)?g.conditions.filter(x=>x?.status==="invalidate").length:0),0);
+            const optional = groups.reduce((sum,g)=>sum+(Array.isArray(g.conditions)?g.conditions.filter(x=>x?.status==="optional").length:0),0);
+            const tags = coerceStringArray(tpl.tags);
+            const firstStyle = tags.find(tg=>STYLES.includes(tg)) || tags[0] || "Price Action";
             return {
               id:`tpl-preview-${tpl.id}`,
               name:tpl.name,
               icon:tpl.icon,
               style:firstStyle,
-              instruments:(tpl.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m)).slice(0,4),
-              timeframes:tpl.timeframes||[],
-              complexity:(tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium",
-              tags:tpl.tags||[],
+              instruments:coerceStringArray(tpl.markets).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m)).slice(0,4),
+              timeframes:coerceStringArray(tpl.timeframes),
+              complexity:tags.some(tg=>/advanced/i.test(tg))?"Hard":tags.some(tg=>/beginner/i.test(tg))?"Easy":"Medium",
+              tags,
               desc:tpl.description,
-              groups:(tpl.groups||[]).length,
+              groups:groups.length,
               conditions,
               invalidators,
               optional,
@@ -46023,7 +46113,7 @@ const TalariaV8b = () => {
           const filteredCommunity = communityPool
             .filter(s => {
               const q = normalizeSearchQuery(stratSearch);
-              return !q || String(s.name||"").toLowerCase().includes(q) || String(s.author||"").toLowerCase().includes(q) || (s.tags||[]).some(t=>String(t).toLowerCase().includes(q));
+              return !q || String(s.name||"").toLowerCase().includes(q) || String(s.author||"").toLowerCase().includes(q) || coerceStringArray(s.tags).some(tg=>String(tg).toLowerCase().includes(q));
             })
             .sort((a,b)=>{
               let av=communitySortValue(a, stratSort), bv=communitySortValue(b, stratSort);
@@ -46046,16 +46136,18 @@ const TalariaV8b = () => {
           const stratBuilderCompact = stratCompactLayout || (dashCoarsePointer && dashViewportW <= 1366);
           const effectiveStratLayoutMode = stratCompactLayout ? "cards" : stratLayoutMode;
           const stratGridColumns = dashIsPhone ? "minmax(0,1fr)" : dashIsNarrow ? "repeat(2,minmax(0,1fr))" : "repeat(4,1fr)";
-          const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
+          const stratBankRows = (stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies)
+            .map(sanitizeStrategyBankRow)
+            .filter(Boolean);
           const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
-          const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyRow(s))}));
+          const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(Array.isArray(s.backtestSessions)&&s.backtestSessions.length?s.backtestSessions:sessionsForStrategyRow(s))}));
           const mineSource = stratLiveMode
             ? userStrategySource
             : [...userStrategySource, ...templatePreviewStrategies];
           const filteredMine = mineSource
             .filter(s=>{
               const q=normalizeSearchQuery(stratSearch);
-              return !q||String(s.name||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>String(t||"").toLowerCase().includes(q));
+              return !q||String(s.name||"").toLowerCase().includes(q)||coerceStringArray(s.tags).some(tg=>String(tg||"").toLowerCase().includes(q));
             })
             .sort((a,b)=>{
               let av=communitySortValue(a, stratSort), bv=communitySortValue(b, stratSort);
@@ -46064,16 +46156,16 @@ const TalariaV8b = () => {
               if(av>bv) return stratSortDir==="asc"?1:-1;
               return 0;
             });
-          const filteredSavedCommunity = COMMUNITY_ENABLED ? savedCommunityStrats.filter(s=>{
+          const filteredSavedCommunity = COMMUNITY_ENABLED ? savedCommunityStrats.map(sanitizeStrategyBankRow).filter(Boolean).filter(s=>{
             const q=normalizeSearchQuery(stratSearch);
-            return !q||String(s.name||"").toLowerCase().includes(q)||String(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>String(t||"").toLowerCase().includes(q));
+            return !q||String(s.name||"").toLowerCase().includes(q)||String(s.author||"").toLowerCase().includes(q)||coerceStringArray(s.tags).some(tg=>String(tg||"").toLowerCase().includes(q));
           }) : [];
 
           /* ─── Strategy card (shared) ─── */
           const STRAT_ROW_COLS = "44px minmax(190px,1.05fr) minmax(280px,1.75fr) minmax(230px,1.45fr) minmax(120px,0.7fr) minmax(104px,0.62fr) minmax(180px,1fr)";
           const StratRowsHeader = () => (
             <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,flexShrink:0,borderBottom:`1px solid ${c.brH}`,background:c.bg}}>
-              {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results"].map((label,colIdx)=>(
+              {["",st("Strategy","الاستراتيجية"),st("Description","الوصف"),st("Strategy Tags","وسوم الاستراتيجية"),st("Markets","الأسواق"),st("Time Frames","الأطر الزمنية"),st("Backtesting Results","نتائج الاختبار")].map((label,colIdx)=>(
                 <div key={`${label || "icon"}-${colIdx}`} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:"0 10px"}}>
                   {label}
                 </div>
@@ -46147,9 +46239,10 @@ const TalariaV8b = () => {
           );
 
           const renderStratCard = ({strat,isMine,inSavedTab=false,onEdit,onUseTemplate,metricsLoading=false}) => {
+            if (!strat || typeof strat !== "object") return null;
             const cardIcon = strat.icon || strat.template?.icon || "◎";
             const marketItems = strategyBankScopeItems(strat);
-            const backtestSessions = strat.backtestSessions || [];
+            const backtestSessions = Array.isArray(strat.backtestSessions) ? strat.backtestSessions : [];
             const backtestCompleted = backtestSessions.filter(s=>(s.progress||0)===100).length;
             const backtestTrades = backtestSessions.reduce((sum,s)=>sum+(s.trades||0),0);
             const backtestPnlKnown = backtestSessions.filter(s=>s.pnl!=null);
@@ -46209,39 +46302,39 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:5,height:74,flexShrink:0,overflow:"hidden"}}>
-                    <FieldLabel>Description</FieldLabel>
+                    <FieldLabel>{st("Description","الوصف")}</FieldLabel>
                     <div style={{fontSize:10.4,fontWeight:560,color:c.ts,fontFamily:F,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden",height:57}}>
-                      {strat.desc||"No description added."}
+                      {strat.desc||st("No description added.","لا يوجد وصف.")}
                     </div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,height:47,flexShrink:0,overflow:"hidden"}}>
                     <div style={{display:"flex",flexDirection:"column",gap:5,minWidth:0,overflow:"hidden"}}>
-                      <FieldLabel>Markets</FieldLabel>
+                      <FieldLabel>{st("Markets","الأسواق")}</FieldLabel>
                       <div style={{display:"flex",flexWrap:"wrap",columnGap:7,rowGap:2,maxHeight:34,overflow:"hidden"}}>
-                        {marketItems.length?marketItems.map(ins=><Pill key={`i-${ins}`}>{ins}</Pill>):<Pill keyName="markets-empty">None</Pill>}
+                        {marketItems.length?marketItems.map(ins=><Pill key={`i-${ins}`}>{ins}</Pill>):<Pill keyName="markets-empty">{st("None","لا يوجد")}</Pill>}
                       </div>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:5,minWidth:0,overflow:"hidden"}}>
-                      <FieldLabel>Time Frames</FieldLabel>
+                      <FieldLabel>{st("Time Frames","الأطر الزمنية")}</FieldLabel>
                       <div style={{display:"flex",flexWrap:"wrap",columnGap:7,rowGap:2,maxHeight:34,overflow:"hidden"}}>
-                        {(strat.timeframes||[]).length?(strat.timeframes||[]).map(tf=><Pill key={`tf-${tf}`}>{tf}</Pill>):<Pill keyName="timeframes-empty">None</Pill>}
+                        {coerceStringArray(strat.timeframes).length?coerceStringArray(strat.timeframes).map(tf=><Pill key={`tf-${tf}`}>{tf}</Pill>):<Pill keyName="timeframes-empty">{st("None","لا يوجد")}</Pill>}
                       </div>
                     </div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:5,height:58,flexShrink:0,overflow:"hidden"}}>
-                    <FieldLabel>Strategy Tags</FieldLabel>
+                    <FieldLabel>{st("Strategy Tags","وسوم الاستراتيجية")}</FieldLabel>
                     <div style={{display:"flex",flexWrap:"wrap",columnGap:7,rowGap:2,maxHeight:42,overflow:"hidden"}}>
-                      {(strat.tags||[]).length?(strat.tags||[]).slice(0,10).map(tag=><Pill key={tag}>{tag}</Pill>):<Pill keyName="tags-empty">None</Pill>}
+                      {coerceStringArray(strat.tags).length?coerceStringArray(strat.tags).slice(0,10).map(tag=><Pill key={tag}>{tag}</Pill>):<Pill keyName="tags-empty">{st("None","لا يوجد")}</Pill>}
                     </div>
                   </div>
                   <div style={{marginTop:"auto",height:60,flexShrink:0,paddingTop:7,borderTop:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",gap:6,overflow:"hidden"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                      <FieldLabel>Backtested</FieldLabel>
+                      <FieldLabel>{st("Backtested","تم الاختبار")}</FieldLabel>
                       {metricsLoading ? (
                         <div style={{width:72,height:9,background:"rgba(255,255,255,0.08)",borderRadius:1}}/>
                       ) : (
                         <span style={{fontSize:9,fontWeight:850,color:backtestSessions.length?c.acL:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,lineHeight:1,whiteSpace:"nowrap"}}>
-                          {backtestSessions.length>0?`Sessions: ${backtestSessions.length}`:"Not tested"}
+                          {backtestSessions.length>0?st(`Sessions: ${backtestSessions.length}`,`جلسات: ${backtestSessions.length}`):st("Not tested","لم يُختبر")}
                         </span>
                       )}
                     </div>
@@ -46249,10 +46342,10 @@ const TalariaV8b = () => {
                       <StratMetricsSkeleton/>
                     ) : (
                       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}>
-                        <BacktestMetric label="Completed" value={backtestSessions.length?`${backtestCompleted}/${backtestSessions.length}`:"—"} color={backtestSessions.length?c.gn:c.tm}/>
-                        <BacktestMetric label="Total Trades" value={backtestSessions.length?backtestTrades.toLocaleString():"—"} color={backtestSessions.length?c.acL:c.tm}/>
-                        <BacktestMetric label="Net P&L" value={backtestSessions.length?backtestMoney(backtestPnl):"—"} color={!backtestSessions.length||backtestPnl==null?c.tm:(backtestPnl>=0?c.gn:c.rd)}/>
-                        <BacktestMetric label="Avg Win Rate" value={backtestSessions.length?(backtestWin==null?"—":`${backtestWin}%`):"—"} color={!backtestSessions.length||backtestWin==null?c.tm:(backtestWin>=50?c.gn:c.rd)}/>
+                        <BacktestMetric label={st("Completed","مكتمل")} value={backtestSessions.length?`${backtestCompleted}/${backtestSessions.length}`:"—"} color={backtestSessions.length?c.gn:c.tm}/>
+                        <BacktestMetric label={st("Total Trades","إجمالي الصفقات")} value={backtestSessions.length?backtestTrades.toLocaleString():"—"} color={backtestSessions.length?c.acL:c.tm}/>
+                        <BacktestMetric label={st("Net P&L","صافي الربح/الخسارة")} value={backtestSessions.length?backtestMoney(backtestPnl):"—"} color={!backtestSessions.length||backtestPnl==null?c.tm:(backtestPnl>=0?c.gn:c.rd)}/>
+                        <BacktestMetric label={st("Avg Win Rate","متوسط نسبة الفوز")} value={backtestSessions.length?(backtestWin==null?"—":`${backtestWin}%`):"—"} color={!backtestSessions.length||backtestWin==null?c.tm:(backtestWin>=50?c.gn:c.rd)}/>
                       </div>
                     )}
                   </div>
@@ -46432,15 +46525,18 @@ const TalariaV8b = () => {
               }
               setStratEditId(null);
               setStratBuilderSaveError("");
-              setStratBName(`${tpl.name} (my version)`);
-              setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
+              const tplTags = coerceStringArray(tpl.tags);
+              const tplMarkets = coerceStringArray(tpl.markets);
+              const tplTimeframes = coerceStringArray(tpl.timeframes);
+              setStratBName(`${tpl.name || "Strategy"} (my version)`);
+              setStratBStyle(tplTags.find(tg=>STYLES.includes(tg)) || tplTags[0] || "Trend Following");
               setStratBDesc(tpl.description || "");
               setStratBInstruments([]);
-              setStratBTimeframes(normalizeStrategyTimeframes(tpl.timeframes || []).slice(0, MAX_STRATEGY_TIMEFRAMES));
-              setStratBTags([...(tpl.tags || [])]);
-              setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
+              setStratBTimeframes(normalizeStrategyTimeframes(tplTimeframes).slice(0, MAX_STRATEGY_TIMEFRAMES));
+              setStratBTags([...tplTags]);
+              setStratBComplexity(tplTags.some(tg=>/advanced/i.test(tg))?"Hard":tplTags.some(tg=>/beginner/i.test(tg))?"Easy":"Medium");
               setStratBDirection("both");
-              setStratBMarkets([...(tpl.markets || [])]);
+              setStratBMarkets([...tplMarkets]);
               setStratBConditions([]);
               setStratBTree([]);
               setStratBVariables([{type:"divider",id:"div0"}]);
@@ -46452,14 +46548,19 @@ const TalariaV8b = () => {
               setStratBInstDropOpen(false);
               setStratBInstSearch("");
               setStratBTfDropOpen(false);
-              setStratBTfCustom(deriveCustomStrategyTimeframes(tpl.timeframes || []));
+              setStratBTfCustom(deriveCustomStrategyTimeframes(tplTimeframes));
               setStratBCustomTfs([]);
               setStratBCustomTfVal("");
               setStratBCustomTfUnit("m");
               setStratBTfUnitOpen(false);
               setStratBMktDropOpen(false);
               setStratWizardStep(1);
-              setCanvasNodes(buildNodesFromTemplate(tpl));
+              try {
+                setCanvasNodes(buildNodesFromTemplate(tpl));
+              } catch (err) {
+                console.error("[V16] buildNodesFromTemplate failed", err);
+                setCanvasNodes([]);
+              }
               setCanvasEdges([]);
               if (typeof afterApply === "function") afterApply();
             };
@@ -46469,12 +46570,13 @@ const TalariaV8b = () => {
             }
             if (!skipConfirm && strategyBuilderHasUnsavedChanges()) {
               openAppConfirm({
-                title: profileLang === "arabic" ? "استبدال الاستراتيجية" : "Replace strategy",
-                message: profileLang === "arabic"
-                  ? "سيؤدي تطبيق هذا القالب إلى تجاهل تغييراتك غير المحفوظة على هذه الاستراتيجية."
-                  : "Applying this template will discard your unsaved changes to this strategy.",
-                cancelLabel: profileLang === "arabic" ? "متابعة التحرير" : "Keep editing",
-                confirmLabel: profileLang === "arabic" ? "استبدال" : "Replace",
+                title: st("Replace strategy", "استبدال الاستراتيجية"),
+                message: st(
+                  "Applying this template will discard your unsaved changes to this strategy.",
+                  "سيؤدي تطبيق هذا القالب إلى تجاهل تغييراتك غير المحفوظة على هذه الاستراتيجية."
+                ),
+                cancelLabel: st("Keep editing", "متابعة التحرير"),
+                confirmLabel: st("Replace", "استبدال"),
                 danger: true,
                 onConfirm: applyTemplate,
               });
@@ -46850,14 +46952,14 @@ const TalariaV8b = () => {
           };
           const StrategyEditedBadge = () => (
             <span style={{display:"inline-flex",alignItems:"center",height:16,padding:"0 6px",fontSize:7,fontWeight:850,color:c.gold,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F,border:`1px solid rgba(201,168,76,0.35)`,background:"rgba(201,168,76,0.08)",flexShrink:0,whiteSpace:"nowrap"}}>
-              Edited
+              {st("Edited","معدّلة")}
             </span>
           );
 
-          const SORT_OPTIONS=[{k:"name",l:"Name"},{k:"pnl",l:"Net P&L"}];
+          const SORT_OPTIONS=[{k:"name",l:st("Name","الاسم")},{k:"pnl",l:st("Net P&L","صافي الربح/الخسارة")}];
 
           return (
-            <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}}>
+            <div style={{...(v16EmbeddedRoot?{flex:1,minHeight:0}:{position:"fixed",inset:0,zIndex:99998}),background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}} onClick={()=>{}} lang={appAr?"ar":"en"} dir="ltr">
               {/* ─ Header ─ */}
               <div style={{height:dashIsPhone?58:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2,minWidth:0}}>
                 <div style={{width:dashIsPhone?48:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -46866,15 +46968,15 @@ const TalariaV8b = () => {
                 <div style={{display:"flex",alignItems:"center",flexShrink:1,minWidth:0,padding:"0 8px 0 0"}}>
                   <div style={{fontSize:dashIsPhone?13:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:dashIsPhone?8:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dashIsPhone?112:undefined}}>Talaria-Log</div>
                   <div style={{width:1.5,height:dashIsPhone?28:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:dashIsPhone?8:14,flexShrink:0}}/>
-                  <div style={{fontSize:dashIsPhone?11:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Strategy Bank</div>
+                  <div style={{fontSize:dashIsPhone?11:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{st("Strategy Bank","بنك الاستراتيجيات")}</div>
                 </div>
                 <div style={{flex:1}}/>
                 {/* Build Strategy button */}
-                <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()} style={{...sessionHeaderActionBtnStyle,marginRight:dashIsPhone?8:sessionHeaderActionBtnStyle.marginRight,padding:dashIsPhone?"0 12px":sessionHeaderActionBtnStyle.padding,minWidth:dashIsPhone?44:sessionHeaderActionBtnStyle.minWidth}}
+                <div role="button" tabIndex={0} aria-label={st("Build strategy","بناء استراتيجية")} onClick={()=>openBuilder()} style={{...sessionHeaderActionBtnStyle,marginRight:dashIsPhone?8:sessionHeaderActionBtnStyle.marginRight,padding:dashIsPhone?"0 12px":sessionHeaderActionBtnStyle.padding,minWidth:dashIsPhone?44:sessionHeaderActionBtnStyle.minWidth}}
                   onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                   onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                  {!dashIsPhone && "Build Strategy"}
+                  {!dashIsPhone && st("Build Strategy","بناء استراتيجية")}
                 </div>
               </div>
 
@@ -46886,9 +46988,9 @@ const TalariaV8b = () => {
                 <div style={{flexShrink:0,background:c.bg,padding:`0 ${stratPageGutterX}px`,zIndex:3}}>
                   <div style={{width:"100%",display:"flex",alignItems:"center",height:dashIsPhone?78:44,gap:dashIsPhone?8:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box",flexWrap:dashIsPhone?"wrap":"nowrap",alignContent:dashIsPhone?"center":undefined,padding:dashIsPhone?"8px 0":0}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-                      {[{k:"mine",l:"My Strategies",ct:stratBankRows.length}, ...(COMMUNITY_ENABLED ? [
-                        {k:"saved",l:"Saved",ct:savedCommunityStrats.length},
-                        {k:"community",l:"Community",ct:filteredCommunity.length},
+                      {[{k:"mine",l:st("My Strategies","استراتيجياتي"),ct:stratBankRows.length}, ...(COMMUNITY_ENABLED ? [
+                        {k:"saved",l:st("Saved","المحفوظة"),ct:savedCommunityStrats.length},
+                        {k:"community",l:st("Community","المجتمع"),ct:filteredCommunity.length},
                       ] : []) /* Community tab hidden for now */].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
                         const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
@@ -46957,7 +47059,7 @@ const TalariaV8b = () => {
                     })()}
                     <div style={{display:stratCompactLayout?"none":"flex",gap:4,flexShrink:0}}>
                       {[
-                        {mode:"cards",label:"Cards",icon:(
+                        {mode:"cards",label:st("Cards","بطاقات"),icon:(
                           <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
                             <rect x="0" y="0" width="6" height="6" rx="0.5" fill="currentColor"/>
                             <rect x="8" y="0" width="6" height="6" rx="0.5" fill="currentColor"/>
@@ -46965,7 +47067,7 @@ const TalariaV8b = () => {
                             <rect x="8" y="8" width="6" height="6" rx="0.5" fill="currentColor"/>
                           </svg>
                         )},
-                        {mode:"rows",label:"Rows",icon:(
+                        {mode:"rows",label:st("Rows","صفوف"),icon:(
                           <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
                             <rect x="0" y="0" width="14" height="3" rx="0.5" fill="currentColor"/>
                             <rect x="0" y="5" width="14" height="3" rx="0.5" fill="currentColor"/>
@@ -46975,7 +47077,7 @@ const TalariaV8b = () => {
                       ].map(({mode,label,icon})=>{
                         const isA=effectiveStratLayoutMode===mode;
                         return(
-                          <div key={mode} role="button" tabIndex={0} aria-label={`Show strategies as ${label.toLowerCase()}`} title={label} onClick={()=>setStratLayoutMode(mode)}
+                          <div key={mode} role="button" tabIndex={0} aria-label={st(`Show strategies as ${label.toLowerCase()}`,`عرض الاستراتيجيات كـ ${label}`)} title={label} onClick={()=>setStratLayoutMode(mode)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",cursor:"default",background:isA?"rgba(74,106,255,0.08)":"transparent",color:isA?c.acL:c.ts,transition:"background 0.12s,color 0.12s,transform 0.08s"}}
                             onMouseEnter={e=>{if(!isA){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color=c.tx;}}}
                             onMouseLeave={e=>{if(!isA){e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ts;}e.currentTarget.style.transform="scale(1)";}}
@@ -46991,10 +47093,10 @@ const TalariaV8b = () => {
                     {/* search */}
                     <div style={{display:"flex",alignItems:"center",gap:6,background:c.el,border:`1px solid ${stratSearchFocus?c.acB:c.brH}`,padding:"0 10px",width:dashIsPhone?"100%":210,height:28,boxSizing:"border-box",flexShrink:dashIsPhone?1:0,transition:"border-color 0.12s, background 0.12s",order:dashIsPhone?3:undefined}}>
                       <svg width={11} height={11} viewBox="0 0 24 24" fill="none" style={{color:c.tm,flexShrink:0}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      <input value={stratSearch} onChange={e=>setStratSearch(e.target.value)} placeholder={stratTab==="mine"?"Search my strategies…":stratTab==="saved"?"Search saved…":"Search community…"}
+                      <input value={stratSearch} onChange={e=>setStratSearch(e.target.value)} placeholder={stratTab==="mine"?st("Search my strategies…","ابحث في استراتيجياتي…"):stratTab==="saved"?st("Search saved…","ابحث في المحفوظة…"):st("Search community…","ابحث في المجتمع…")}
                         onFocus={()=>setStratSearchFocus(true)} onBlur={()=>setStratSearchFocus(false)}
                         style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:9,fontWeight:600,fontFamily:F,padding:0}}/>
-                      {stratSearch&&<div role="button" tabIndex={0} aria-label="Clear strategy search" onClick={()=>setStratSearch("")}
+                      {stratSearch&&<div role="button" tabIndex={0} aria-label={st("Clear strategy search","مسح البحث")} onClick={()=>setStratSearch("")}
                         style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",color:c.tm,cursor:"default",fontSize:12,lineHeight:1,transition:"color 0.12s, background 0.12s"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=c.tx;e.currentTarget.style.background="rgba(255,255,255,0.06)";}}
                         onMouseLeave={e=>{e.currentTarget.style.color=c.tm;e.currentTarget.style.background="transparent";}}>×</div>}
@@ -47050,17 +47152,17 @@ const TalariaV8b = () => {
                     ) : filteredMine.length===0?(
                       <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No strategies yet"}</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?st("No strategies match","لا توجد استراتيجيات مطابقة"):st("No strategies yet","لا توجد استراتيجيات بعد")}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?st("Try adjusting your search.","جرّب تعديل البحث."):st("Build your first strategy to keep track of your trading rules, instruments, and tags.","أنشئ استراتيجيتك الأولى لتتبع قواعد التداول والأدوات والوسوم.")}</div>
                         {!normalizeSearchQuery(stratSearch)&&(
-                          <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
-                            style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
+                          <div role="button" tabIndex={0} aria-label={st("Build strategy","بناء استراتيجية")} onClick={()=>openBuilder()}
+                            style={{width:appAr?180:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
                             onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                             onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                             onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                             onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
                             <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                            <span style={{fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Build Strategy</span>
+                            <span style={{fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>{st("Build Strategy","بناء استراتيجية")}</span>
                           </div>
                         )}
                       </div>
@@ -47094,22 +47196,22 @@ const TalariaV8b = () => {
                     savedCommunityStrats.length===0?(
                       <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.2"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No saved strategies yet</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>Browse the Community tab and save strategies you want to reference later.</div>
-                        <div role="button" tabIndex={0} aria-label="Browse community strategies" onClick={()=>setStratTab("community")}
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{st("No saved strategies yet","لا توجد استراتيجيات محفوظة بعد")}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{st("Browse the Community tab and save strategies you want to reference later.","تصفح تبويب المجتمع واحفظ الاستراتيجيات التي تريد الرجوع إليها لاحقاً.")}</div>
+                        <div role="button" tabIndex={0} aria-label={st("Browse community strategies","تصفح استراتيجيات المجتمع")} onClick={()=>setStratTab("community")}
                           style={{display:"flex",alignItems:"center",gap:6,height:32,padding:"0 18px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s"}}
                           onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                           onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
                           onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
-                          <span style={{fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.06em"}}>Browse Community</span>
+                          <span style={{fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",letterSpacing:"0.06em"}}>{st("Browse Community","تصفح المجتمع")}</span>
                         </div>
                       </div>
                     ):filteredSavedCommunity.length===0?(
                       <div style={{...stratEmptyStateStyle,gap:12}}>
                         <svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No results</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Try adjusting your search.</div>
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{st("No results","لا نتائج")}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F}}>{st("Try adjusting your search.","جرّب تعديل البحث.")}</div>
                       </div>
                     ):(
                       effectiveStratLayoutMode==="rows"?(
@@ -47141,8 +47243,8 @@ const TalariaV8b = () => {
                     ) : filteredCommunity.length===0?(
                       <div style={stratEmptyStateStyle}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No community strategies yet"}</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:360}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Published strategies from other traders will appear here once shared to the community."}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?st("No strategies match","لا توجد استراتيجيات مطابقة"):st("No community strategies yet","لا توجد استراتيجيات من المجتمع بعد")}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:360}}>{normalizeSearchQuery(stratSearch)?st("Try adjusting your search.","جرّب تعديل البحث."):st("Published strategies from other traders will appear here once shared to the community.","ستظهر هنا الاستراتيجيات المنشورة من متداولين آخرين عند مشاركتها مع المجتمع.")}</div>
                       </div>
                     ):(
                       effectiveStratLayoutMode==="rows"?(
@@ -47200,21 +47302,21 @@ const TalariaV8b = () => {
                 const deleteStrategy=()=>deleteStrategyFromBank(ms);
                 const actions=[
                   ...(v16SessionsPlatformAllowed()?[
-                    {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
+                    {label:st("New Session","جلسة جديدة"),handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
                     {label:"divider"},
                   ]:[]),
                   ...(isTemplate?[
-                    {label:"Edit",handler:()=>applyTemplateToBuilder(normalizeCommunityTemplateForBuilder(ms.template)),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-                    {label:"Hide",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+                    {label:st("Edit","تعديل"),handler:()=>applyTemplateToBuilder(normalizeCommunityTemplateForBuilder(ms.template)),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+                    {label:st("Duplicate","نسخ"),handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+                    {label:st("Hide","إخفاء"),handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isMineMenu?[
-                    {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-                    {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+                    {label:st("Edit","تعديل"),handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+                    {label:st("Duplicate","نسخ"),handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+                    {label:st("Delete","حذف"),handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isSavedMenu?[
-                    {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+                    {label:st("Remove","إزالة"),handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:COMMUNITY_ENABLED?[
-                    {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
+                    {label:isSavedNow?st("Saved","محفوظة"):st("Save","حفظ"),handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
                   ]:[]),
                 ];
                 const menuW=160;
@@ -47267,7 +47369,7 @@ const TalariaV8b = () => {
                 return(
                   <div style={{position:"fixed",top,left,zIndex:100001,width:panelW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F,pointerEvents:"none"}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                    <div style={{padding:"7px 11px 4px",fontSize:8.5,fontWeight:800,letterSpacing:"0.08em",color:c.tm,textTransform:"uppercase"}}>Description</div>
+                    <div style={{padding:"7px 11px 4px",fontSize:8.5,fontWeight:800,letterSpacing:"0.08em",color:c.tm,textTransform:"uppercase"}}>{st("Description","الوصف")}</div>
                     <div className="tlr-scroll" style={{padding:"0 11px 11px",maxHeight:250,overflowY:"auto",fontSize:11,fontWeight:520,lineHeight:1.55,color:c.ts,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                       {stratDescHov.text}
                     </div>

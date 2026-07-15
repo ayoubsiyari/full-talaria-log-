@@ -4,6 +4,20 @@ Running log. Routine progress here; escalations go to `MANAGER-ESCALATIONS.md`.
 
 ---
 
+## **ACTION — Lane 4: H-S59b actuation sign-off required (D-014 ruling 4)** — 2026-07-15
+
+**T8 step 3 (Lane 2)** landed **H-S59b** — production-faithful independent-symbol replay advance (TAL-01590 P1). Lane 4 must review actuation + write **one sign-off line here** before H-S59b is trusted in baseline.
+
+**Actuation (I15):** `pair=multi-independent` (A=file25, B=file27, C=file28); sync OFF; paused replay enter; host `rs.play()` **tick mode** + passive iframe `replayPlay {mode:'tick'}`; **NO** `hostReplaySeek` / NO synthetic `replayFrame` inner loop; wall-clock samples every 2s × 10s; measure `replaySystem.replayTimestamp` per host + iframe.
+
+**Scenario id:** `H-S59b` in `t8PendingScenarioList()` — run: `npm run test -- --pending --only=H-S59b`
+
+**Fix shipped (staging build id `20260715a1`):** `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` (default fix ON) → `scheduleCoalescedSeek(ch, ts, true)` for `!isSameSymbolAsHost` during PLAY (`panel-cmd-bridge.js`).
+
+**Lane 4 sign-off line (fill in):** **WEAK / DEV-ONLY (GREEN-SYNTHETIC for fix isolation)** — Lane 4 ran `--pending --only=H-S59b` on 2026-07-15 (`step3b-H-S59b-signoff.txt`): actuation is production-faithful (multi-independent A=25/B=27/C=28, sync OFF, host `rs.play()` tick + passive `replayPlay`, no `hostReplaySeek` loop) and measurement is real end-state (`replayTimestamp` wall-clock per iframe, I15 ✓). **Kill-switch A/B is NOT honest:** with `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` ON (fix OFF), panel B still advances (`Bdelta=23_820_000` candle) and exceeds fix-ON (`11_940_000`) — harness stub mirror frames dominate; local harness cannot reproduce fetch-lag/breaker freeze. H-S59b GREEN proves panels *can* advance under tick play in dev; it does **not** isolate the `panel-cmd-bridge.js` fix. **Do not promote to baseline as proven fix acceptance** — label dev evidence; **PO staging live-confirm on `20260715a1`** is the acceptance surface (D-014/D-012). Stronger local RED (fetch-lag/breaker injection) is feasible but low ROI vs PO confirm; defer unless staging fails.
+
+---
+
 ## §1 — Kickoff, lane assignment, and first-wave dispatch
 
 **Date:** 2026-07-12
@@ -576,6 +590,20 @@ Queued prompt authored ahead of need: `worker-prompts/T3-step1-parity-contract.m
 - **Two fidelity gaps identified:** (1) probe — now fixed by Lane 4; (2) actuation — harness uses synthetic in-iframe events, not real mouse/keyboard → may still over-pass. ESC-011 requests real-event actuation.
 - **Escalated as ESC-011** (P0 crossroads): re-verification mandate, shipping posture (fallback-B), consolidated settings-open-transport fix vs per-row, and real-event harness actuation. T1/T3 interaction status marked DOWN — only H-R01/H-R07 genuinely green.
 - **Lane 1 P0 (T1 step 18)** re-dispatched to fix against the HONEST harness + real product (gear + dbl-click + re-verify Esc/Delete/marquee). Freeze holds.
+
+### T8 step 3 (TAL-01590 fix + H-S59b) landed → Lane 4 sign-off + PO staging confirm gate (2026-07-15)
+- **Fix (D-014 ruling 2):** `panel-cmd-bridge.js` — independent-symbol panels get BL-10-style `scheduleCoalescedSeek(ch, ts, true)` during PLAY, gated `__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE` (default fix ON). Staging build **`20260715a1`** (mirrored to dist-v9 for PO). I8 mirrored on all touched files.
+- **H-S59b (production-faithful):** A=file25/B=file27/C=file28 (serve.mjs extended), host `rs.play()` tick + passive `replayPlay{mode:tick}`, no synthetic seek loop; per-iframe `replayTs` wall-clock sampled (I15). `--pending --only=H-S59b` → PASS. BL-10/11/12/13 family + full gate running in background (await).
+- **⚠ HONESTY FLAG (Worker 2 self-reported):** kill-switch RED is **weak on tick/candle play** — mirror frames still advance B with the switch ON, so H-S59b GREEN does **not** cleanly isolate the fix. Same I15 risk as the D-012 family. → **dispatched `T8-step3b-lane4-hs59b-actuation-signoff.md`**: Lane 4 rules HONEST-RED vs WEAK/DEV-ONLY and fills the sign-off line. If WEAK, acceptance rests on **PO staging live-confirm of `20260715a1`** (D-014/D-012 interim authority), labeled GREEN-SYNTHETIC, not "proven."
+- **Acceptance gate = Lane 4 verdict + BL-family/gate green + PO staging confirm.** Deploy freeze unaffected (staging only).
+- **LANE 4 SIGN-OFF (2026-07-15): WEAK / DEV-ONLY** (evidence: `chart v 1.4/chart/multichart-prod/harness/step3b-H-S59b-signoff.txt`). Actuation + measurement **honest** (real tick play, real per-iframe `replayTs`, no proxy). But kill-switch A/B is **weak** — with the switch ON (fix OFF) panel B still advances (and more than fix-ON: 23.8M vs 11.9M), because harness stub mirror frames dominate; the local harness cannot reproduce the fetch-lag/breaker freeze the PO sees.
+- **Disposition (I15-honest):** H-S59b = **GREEN-SYNTHETIC / dev evidence only** — NOT promoted to baseline as proven-fix acceptance. It proves panels *can* advance under production tick play, not that the fix cures the freeze. **Acceptance = PO staging live-confirm of `20260715a1`** (D-014/D-012 interim authority). Contingency: if staging fails, harden the RED via fetch-lag/breaker injection to debug; otherwise PO confirm is the accepted path. No new escalation — this is within D-014's ruled acceptance.
+
+### T8 step 1 (coverage hardening) ACCEPTED — dev-only, NEEDS-LIVE (2026-07-15)
+- **20 pending scenarios H-S59–H-S78** in `t8PendingScenarioList()`, isolated behind a `--pending` flag in `run.mjs`; **gate baseline unchanged (H-S2..H-S58)** so no gate disturbance. H-S59 pulled out of `scenarioList()` into pending. Coverage: 18 ungated `__TALARIA_MC_DISABLE_*` → H-S60–H-S77, BL-16 drag (A9) → H-S78, TAL-01590 contract → H-S59.
+- **`npm run gate` PASS, 0 regressions, 12 known-failing.** I8 SHA256 match both trees (`scenarios.mjs` 9FC3A8C5…, `run.mjs` 97768768…).
+- **Two caveats logged:** (1) H-S25 flake (`maxStepDeviceDelta=2.801px`) on first full run, isolated 2/2 PASS — **not T8-caused; watch as pre-existing flaky**. (2) H-S78 A9 checks pass but the RED micro-pan sub-check fails — **known limit, no dedicated BL-16 kill-switch** (consistent with D-014: BL-16 stays diagnostic-first, not blocking).
+- **Lane 4 handoff:** promote H-S59–H-S78 into `known-failing.json` `expectedTests` (Lane 4 owns that file). Worker 2 did NOT touch `known-failing.json`, `react-parity-lib.mjs`, or product engine. → tracked as a Lane 4 action.
 
 ### ESC-012 RESOLVED by D-014 → TAL-01590 fix dispatched (2026-07-15)
 - **D-014:** policy table = T8 acceptance spec (3 cells carved out); independent×playing fix authorized as the **T8 priority**, may land ahead of the policy-v2 migration.

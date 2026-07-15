@@ -62,7 +62,7 @@ export async function launchBrowser({ headful = false } = {}) {
  * @param {import('puppeteer').Browser} browser
  * @param {{url:string}} srv           server handle from serve.mjs
  * @param {object} opts
- *   pair    'same' | 'independent'
+ *   pair    'same' | 'independent' | 'multi-independent'
  *   panels  1..4
  *   tf      initial timeframe
  *   bug     when true, inject the __TALARIA_DISABLE_SHARED_BAR_STORE

@@ -807,6 +807,18 @@
             }
         }
 
+        // T8 / D-014 (TAL-01590): independent-SYMBOL play advance — mirrors BL-10
+        // coalesced seek on the panel's OWN master during PLAY. Same-symbol panels
+        // enter :701; this cell covers !isSameSymbolAsHost only. Async catch-up +
+        // breaker remain the fallback when data is genuinely missing.
+        // Kill-switch __TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE (default fix ON).
+        if (!isSameSymbolAsHost(ch) && args.isPlaying
+                && !(typeof window !== 'undefined'
+                    && window.__TALARIA_MC_DISABLE_INDEPENDENT_PAIR_PLAY_ADVANCE)) {
+            scheduleCoalescedSeek(ch, ts, true);
+            return;
+        }
+
         var applied = rs.applyMultichartMirrorFrame(args);
         if (applied) {
             ch._mcCatchUpFails = 0;
