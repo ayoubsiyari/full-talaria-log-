@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260714b1';
+const CHART_ENGINE_BUILD = '20260714b2';
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -25279,52 +25279,41 @@ class Chart {
         }
     }
 
-    /** Seed pan tick cache from the solid bar-index grid (TradingView-stable). */
+    /** Seed pan tick cache from current majors (+ optional max-zoom per-candle grid). */
     _seedPanTimeTickCache() {
         const source = (Array.isArray(this._timeTicks) && this._timeTicks.length)
             ? this._timeTicks
             : this._buildTimeTicks({ full: true });
         const ticks = source.map((t) => ({ ...t }));
-        let step = 1;
-        for (let i = 1; i < ticks.length; i++) {
-            if (ticks[i].idx != null && ticks[i - 1].idx != null) {
-                const d = Math.abs(ticks[i].idx - ticks[i - 1].idx);
-                if (d > 0) { step = d; break; }
-            }
+        let labelStep = 30;
+        const labeled = ticks.filter((t) => t && t.label && t.idx != null);
+        for (let i = 1; i < labeled.length; i++) {
+            const d = Math.abs(labeled[i].idx - labeled[i - 1].idx);
+            if (d > 0) { labelStep = d; break; }
         }
-        if (Number.isFinite(this._lastBarGridStep) && this._lastBarGridStep > 0) {
-            step = this._lastBarGridStep;
-        }
-        let labelStep = step;
         if (Number.isFinite(this._lastBarLabelStep) && this._lastBarLabelStep > 0) {
             labelStep = this._lastBarLabelStep;
-        } else {
-            for (let i = 0; i < ticks.length; i++) {
-                if (ticks[i].label && ticks[i].idx != null) {
-                    for (let j = i + 1; j < ticks.length; j++) {
-                        if (ticks[j].label && ticks[j].idx != null) {
-                            const d = Math.abs(ticks[j].idx - ticks[i].idx);
-                            if (d > 0) { labelStep = d; break; }
-                        }
-                    }
-                    break;
-                }
-            }
         }
+        // Normal zoom: grid step = label step (TV major grid).
+        // Max zoom: grid step = 1 (one line per candle).
+        const step = this._isMaxZoomPerCandleGrid()
+            ? 1
+            : Math.max(1, labelStep);
         const anchor = this.data && this.data.length ? (this.data.length - 1) : 0;
         this._panTimeTickCache = {
             baseOffsetX: this.offsetX,
             ticks,
             step,
-            labelStep,
+            labelStep: Math.max(1, labelStep),
             anchor,
+            maxZoomGrid: !!this._isMaxZoomPerCandleGrid(),
         };
         return ticks;
     }
 
     /**
-     * Pan time-axis: reproject bar-index ticks + extend/trim edges only.
-     * Never full-rebuild mid-drag (that was the drift / 9:00→8:45 class of bugs).
+     * Pan time-axis: reproject + edge-extend only (no mid-drag rebuild / drift).
+     * Normal zoom keeps major (labeled) cadence; max zoom keeps per-candle mesh.
      */
     _buildPanTimeTicks() {
         const m = this.margin || { l: 60, r: 60 };
@@ -25337,7 +25326,8 @@ class Chart {
             this._seedPanTimeTickCache();
         }
         const cache = this._panTimeTickCache;
-        const step = Math.max(1, Math.floor(cache.step || this._lastBarGridStep || 1));
+        const maxZoomGrid = !!cache.maxZoomGrid;
+        const step = Math.max(1, Math.floor(maxZoomGrid ? 1 : (cache.step || cache.labelStep || 1)));
         const labelStep = Math.max(step, Math.floor(cache.labelStep || step));
         const anchor = Number.isFinite(cache.anchor) ? cache.anchor
             : (this.data && this.data.length ? this.data.length - 1 : 0);
@@ -25356,13 +25346,12 @@ class Chart {
             : (plotLeft + this.offsetX + idx * spacing));
         const labelFor = (idx) => {
             const rem = ((anchor - idx) % labelStep + labelStep) % labelStep;
-            if (rem !== 0) return '';
+            if (maxZoomGrid && rem !== 0) return '';
             return (typeof this._formatTimeLabelForBarIndex === 'function')
                 ? (this._formatTimeLabelForBarIndex(idx) || '')
                 : '';
         };
 
-        // Extend left into empty / newly visible bars
         while (mapped.length && mapped[0].x > plotLeft - spacing) {
             const idx = mapped[0].idx - step;
             const x = toPixel(idx);
@@ -25370,7 +25359,6 @@ class Chart {
             mapped.unshift({ idx, x, label: labelFor(idx), isBoundary: false });
             if (mapped.length > 4000) break;
         }
-        // Extend right
         while (mapped.length && mapped[mapped.length - 1].x < plotRight + spacing) {
             const idx = mapped[mapped.length - 1].idx + step;
             const x = toPixel(idx);
@@ -25379,12 +25367,10 @@ class Chart {
             if (mapped.length > 4000) break;
         }
 
-        // Trim far off-screen (keep one step of margin)
         const lo = plotLeft - spacing * (step + 2);
         const hi = plotRight + spacing * (step + 2);
         mapped = mapped.filter((t) => t.x >= lo && t.x <= hi);
 
-        // Re-thin labels by pixel gap (grid lines keep every step)
         let lastLabelX = -Infinity;
         for (let i = 0; i < mapped.length; i++) {
             const t = mapped[i];
@@ -26062,8 +26048,9 @@ class Chart {
             this._paintSeparatePanelStackBackground();
         }
 
-        // Build time-axis ticks (TradingView-solid bar grid by default).
-        // Pan: reproject + edge-extend only. Wheel/idle: bar-index builder (step=1 at max zoom).
+        // Build time-axis ticks (TradingView):
+        // clock-aligned majors normally; per-candle grid only at max zoom.
+        // Pan: reproject + edge-extend only (no drift rebuild).
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
@@ -26077,7 +26064,6 @@ class Chart {
         } else if (interactionLightPaint && priceAxisZoomDragging) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
-            // Idle: reuse when viewport key unchanged; otherwise rebuild bar grid.
             const idleKey = this._idleTimeAxisKey();
             if (idleKey
                 && idleKey === this._idleTimeAxisKeyCached
@@ -26784,118 +26770,78 @@ class Chart {
     }
 
     /**
-     * True when zoomed-out calendar/month axis should use the legacy boundary builder
-     * instead of 1-line-per-bar (avoids noise on week/month and ultra-wide daily).
+     * TradingView: normal zoom → vertical grid = time-label positions only.
+     * Max zoom (wide candles) → also draw one grid line per candle slot (incl. empty).
+     * Threshold matches TV reference: dense per-bar grid only when bars are clearly wide.
      */
-    _shouldUseClockAlignedTimeTicks() {
-        if (!this.data || this.data.length === 0) return false;
-        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
-        if (/w$/i.test(timeframe) || /mo$/i.test(timeframe)) return true;
-        let timeframeMs = this.parseTimeframe(timeframe);
-        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
-            if (this.data.length >= 2) {
-                const detectedMs = this.data[1].t - this.data[0].t;
-                timeframeMs = Number.isFinite(detectedMs) && detectedMs > 0 ? detectedMs : 60000;
-            } else {
-                timeframeMs = 60000;
-            }
-        }
-        const spacing = Math.max(1e-6, this.getCandleSpacing());
-        const m = this.margin || { l: 60, r: 60 };
-        const cw = Math.max(1, this.w - m.l - m.r);
-        const firstVisibleIdx = -this.offsetX / spacing;
-        const lastVisibleIdx = firstVisibleIdx + cw / spacing;
-        const visibleBarsCount = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
-        const visibleDays = (visibleBarsCount * timeframeMs) / 86400000;
-        const isDailyOrHigher = timeframeMs >= 86400000;
-        const intradayCalendarMode = !isDailyOrHigher && visibleDays > 14;
-        return (isDailyOrHigher && visibleBarsCount > 90)
-            || (intradayCalendarMode && visibleDays > 120);
+    _isMaxZoomPerCandleGrid() {
+        const spacing = Math.max(1e-6, typeof this.getCandleSpacing === 'function'
+            ? this.getCandleSpacing() : 1);
+        return spacing >= 36;
     }
 
     /**
-     * TradingView-solid vertical grid: locked to bar indices.
-     * At max zoom gridStep=1 (one line per candle, any TF). Labels thinned for readability.
-     * Extends through empty past/future slots via projected indices.
+     * Merge per-candle (unlabeled) grid ticks into clock-aligned major ticks.
+     * No-op unless max-zoom — avoids the wall-of-lines at normal zoom.
      */
-    _buildBarIndexTimeTicks(_options = {}) {
-        if (!this.data || this.data.length === 0) return [];
-        const m = this.margin || { l: 60, r: 60 };
-        const spacing = Math.max(1e-6, this.getCandleSpacing());
-        const plotLeft = m.l;
-        const plotRight = this.w - m.r;
-        const plotW = Math.max(1, plotRight - plotLeft);
-        const first = -this.offsetX / spacing;
-        const last = first + plotW / spacing;
-
-        const minGridPx = 7;
-        const minLabelPx = 56;
-        // Grid densifies live with zoom (step=1 at max zoom). Do not freeze gridStep
-        // mid-wheel — that left multi-bar gaps until settle. Labels still stabilize.
-        let gridStep = this._niceBarGridStep(Math.max(1, Math.ceil(minGridPx / spacing)));
-
-        let labelStep = Math.max(gridStep, Math.ceil(minLabelPx / spacing));
-        labelStep = Math.ceil(labelStep / gridStep) * gridStep;
-        labelStep = this._stabilizeTimeLabelInterval(labelStep);
-        if (labelStep < gridStep) labelStep = gridStep;
-        if (labelStep % gridStep !== 0) {
-            labelStep = Math.ceil(labelStep / gridStep) * gridStep;
+    _augmentMaxZoomPerCandleGrid(majorTicks) {
+        const majors = Array.isArray(majorTicks) ? majorTicks.slice() : [];
+        let labelStep = 1;
+        for (let i = 1; i < majors.length; i++) {
+            if (majors[i].idx != null && majors[i - 1].idx != null) {
+                const d = Math.abs(majors[i].idx - majors[i - 1].idx);
+                if (d > 0) { labelStep = d; break; }
+            }
         }
-
-        this._lastBarGridStep = gridStep;
         this._lastBarLabelStep = labelStep;
         this._lastComputedTimeLabelInterval = labelStep;
         this._lastComputedTimeLabelIntervalTf = String(this._getRenderTimeframe() || '').toLowerCase().trim();
 
-        // Anchor to last loaded bar so history prepends don't realign the grid under candles.
+        if (!this._isMaxZoomPerCandleGrid() || !this.data || !this.data.length) {
+            this._lastBarGridStep = labelStep;
+            return majors;
+        }
+
+        const m = this.margin || { l: 60, r: 60 };
+        const spacing = Math.max(1e-6, this.getCandleSpacing());
+        const plotLeft = m.l;
+        const plotRight = this.w - m.r;
+        const first = Math.floor(-this.offsetX / spacing) - 1;
+        const last = Math.ceil((-this.offsetX + (plotRight - plotLeft)) / spacing) + 1;
+        const byIdx = new Map();
+        for (const t of majors) {
+            if (t && t.idx != null) byIdx.set(t.idx, { ...t });
+        }
         const anchor = this.data.length - 1;
-        const startIdx = anchor - Math.ceil((anchor - first) / gridStep) * gridStep;
-
-        const ticks = [];
-        const viewLeft = plotLeft - spacing;
-        const viewRight = plotRight + spacing;
-        let lastLabelX = -Infinity;
-        const maxTicks = Math.max(8, Math.ceil(plotW / minGridPx) + 8);
-
-        for (let idx = startIdx; idx <= last + gridStep && ticks.length < maxTicks; idx += gridStep) {
+        // Align per-candle lines to last-bar anchor so prepends don't shift the mesh.
+        let idx = anchor - Math.ceil((anchor - first));
+        const maxTicks = Math.max(16, Math.ceil((plotRight - plotLeft) / 4) + 8);
+        for (; idx <= last && byIdx.size < maxTicks; idx += 1) {
+            if (byIdx.has(idx)) continue;
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (plotLeft + this.offsetX + idx * spacing);
-            if (!Number.isFinite(x)) continue;
-            if (x < viewLeft) continue;
-            if (x > viewRight) break;
-
-            const rem = ((anchor - idx) % labelStep + labelStep) % labelStep;
-            let label = '';
-            if (rem === 0) {
-                const candidate = typeof this._formatTimeLabelForBarIndex === 'function'
-                    ? (this._formatTimeLabelForBarIndex(idx) || '')
-                    : '';
-                if (candidate && (lastLabelX === -Infinity || x - lastLabelX >= minLabelPx * 0.65)) {
-                    label = candidate;
-                    lastLabelX = x;
-                }
-            }
-            ticks.push({ idx, x, label, isBoundary: false });
+            if (!Number.isFinite(x) || x < plotLeft - spacing) continue;
+            if (x > plotRight + spacing) break;
+            byIdx.set(idx, { idx, x, label: '', isBoundary: false });
         }
-        return ticks;
+        this._lastBarGridStep = 1;
+        return Array.from(byIdx.values()).sort((a, b) => a.idx - b.idx);
     }
 
     /**
      * Build time-axis tick list once per render frame.
      * Returns [{idx, x, label, isBoundary}] – used by both drawGrid() and drawAxes().
-     * Default path: solid bar-index grid. Clock/boundary path for zoomed-out calendar TFs.
+     * TradingView: clock-aligned majors by default; per-candle grid only at max zoom.
      */
     _buildTimeTicks(options = {}) {
         if (!this.data || this.data.length === 0) return [];
-        if (!this._shouldUseClockAlignedTimeTicks()) {
-            return this._buildBarIndexTimeTicks(options);
-        }
-        return this._buildTimeTicksClockAligned(options);
+        const majors = this._buildTimeTicksClockAligned(options);
+        return this._augmentMaxZoomPerCandleGrid(majors);
     }
 
     /**
-     * Legacy clock/boundary time ticks (week/month and ultra-wide daily calendar axis).
+     * Clock/boundary time ticks (TradingView major grid + labels).
      */
     _buildTimeTicksClockAligned(options = {}) {
         if (!this.data || this.data.length === 0) return [];
