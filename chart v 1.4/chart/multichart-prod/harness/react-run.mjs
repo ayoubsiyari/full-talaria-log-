@@ -15,7 +15,7 @@ function parseArgs(argv) {
     panelKeyboardOff: false, peerDeselectOff: false,
     iframeCtrlDedupeOff: false, lifecycleOff: false, legacySelectionOff: false,
     drawingLocalInvalidationOff: false, chromeRoutingOff: false, hr02ActuationMiss: false,
-    isolateSession: false,
+    isolateSession: false, chromeDomReadyOff: false,
   };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
@@ -29,6 +29,7 @@ function parseArgs(argv) {
     else if (a === '--legacy-selection-off') args.legacySelectionOff = true;
     else if (a === '--drawing-local-invalidation-off') args.drawingLocalInvalidationOff = true;
     else if (a === '--chrome-routing-off') args.chromeRoutingOff = true;
+    else if (a === '--chrome-dom-ready-off') args.chromeDomReadyOff = true;
     else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
     else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
@@ -59,6 +60,7 @@ function buildScenarioCtx(args, browser, stack) {
     drawingLocalInvalidationOff: args.drawingLocalInvalidationOff,
     chromeRoutingOff: args.chromeRoutingOff,
     hr02ActuationMiss: args.hr02ActuationMiss,
+    chromeDomReadyOff: args.chromeDomReadyOff,
   };
 }
 
@@ -94,7 +96,7 @@ async function main() {
     || (!args.only && scenarios.length > 1);
   console.log(`[react-run] built-product url: ${stack.url}`);
   console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
-  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} isolateSession=${isolateSession} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff} iframeCtrlDedupeOff=${args.iframeCtrlDedupeOff} lifecycleOff=${args.lifecycleOff} legacySelectionOff=${args.legacySelectionOff} hr02ActuationMiss=${args.hr02ActuationMiss}`);
+  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} isolateSession=${isolateSession} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff} iframeCtrlDedupeOff=${args.iframeCtrlDedupeOff} lifecycleOff=${args.lifecycleOff} legacySelectionOff=${args.legacySelectionOff} hr02ActuationMiss=${args.hr02ActuationMiss} chromeDomReadyOff=${args.chromeDomReadyOff}`);
 
   const verdicts = {};
   const notesById = {};

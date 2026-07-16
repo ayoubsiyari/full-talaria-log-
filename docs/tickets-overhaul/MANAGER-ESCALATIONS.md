@@ -879,3 +879,10 @@ Trade-offs the Director owns:
 - **Defer Option A** to post-unfreeze, and only as an **opt-in** ("keep orders in view" toggle, default OFF) behind its own switch, so default autoscale is unchanged. If the Director agrees, no chart.js edit happens during the freeze and B is the interim answer.
 - If the Director wants full lines immediately, rule on accepting the chart.js freeze-risk + whether axis-pull is default-on or opt-in.
 
+---
+
+## ESC-022 — RESOLVED
+
+**Director ruling:** D-025 (2026-07-16)  
+**Outcome:** Manager recommendation adopted in full + scope precision. (1) **Option B endorsed as dispatched** — freeze-safe edge marker is the interim answer and the actual bug fix (registry row cites B). (2) **Option A approved, post-unfreeze only, opt-in "keep orders in view" default OFF**, own kill-switch (independent revert from B); queues with the other post-unfreeze chart.js work (A6-4, Phase 7) so the frozen core reopens once, deliberately. (3) **Implementation bounds:** domain inclusion = active order/pending **entry levels only** (SL/TP legs excluded by default, later toggle refinement if PO wants); inclusion is **bounded** — a level beyond a sane multiple of the visible range falls back to B's edge marker instead of stretching the axis (fat-finger protection). (4) **Option C UX contract:** toggle OFF = default autoscale + edge markers; toggle ON = bounded inclusion + marker beyond the bound. PO staging A/B of both postures = Option A acceptance.
+

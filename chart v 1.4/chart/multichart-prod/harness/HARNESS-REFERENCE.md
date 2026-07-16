@@ -13,6 +13,23 @@ Every **trusted** react-parity row must have a **named discriminator** that prov
 | **H-R03** | `--only=H-R03 --runs=10` → 10/10 PASS | `--iframe-ctrl-dedupe-off` → 10/10 FAIL | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (`ecaa8a9c`) |
 | **H-R06** | `--only=H-R06 --runs=10` → 10/10 PASS | `--panel-keyboard-off` → 10/10 FAIL | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` |
 | **H-R07** | `--only=H-R07 --runs=10` → 10/10 PASS | `--phase5-off` → FAIL (≥9/10) | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` |
+| **H-R04** | `--only=H-R04 --runs=10` → 10/10 PASS | `--chrome-dom-ready-off` → FAIL (non-vacuous) | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` (D-024) |
+| **H-R05** | `--only=H-R05 --runs=10` → 10/10 PASS | `--chrome-dom-ready-off` → FAIL (non-vacuous) | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` (D-024) |
+
+### D-024 chrome DOM-ready wait primitive
+
+After iframe selection on panel B (and host), scenarios **wait on the product's real ready-signal** before settings/gear actuation or chrome assertions:
+
+- `waitForParentV9ChromeDomReady(page, panelId, drawingId)` — event `talaria:v9-quickbar-dom-ready`, `window.__talariaV9QuickBarDomReady`, or `#tl-sett[data-v9-chrome-dom-ready="1"]`
+- Wired in **H-R01** (select→chrome) and **H-R05** (before dbl-click→Esc)
+- **H-R04** uses `waitForV9QuickBarReady` (gear-ready); switch-OFF discriminator still flips via premature emit restore
+
+```bash
+node react-run.mjs --only=H-R04 --runs=10 --chrome-dom-ready-off
+node react-run.mjs --only=H-R05 --runs=10 --chrome-dom-ready-off
+```
+
+Env alias: `REACT_PARITY_CHROME_DOM_READY_OFF=1`.
 
 ### H-R02 A/B commands
 
@@ -44,6 +61,7 @@ node react-run.mjs --only=H-R03 --runs=10 --iframe-ctrl-dedupe-off
 | H-R03 dedupe | `--iframe-ctrl-dedupe-off` | `REACT_PARITY_IFRAME_CTRL_DEDUPE_OFF=1` | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` |
 | H-R06 Delete (P4) | `--panel-keyboard-off` | `REACT_PARITY_PANEL_KEYBOARD_OFF=1` | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` |
 | H-R07 peer iso (P5) | `--phase5-off` | `REACT_PARITY_PHASE5_OFF=1` | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` |
+| H-R04/H-R05 chrome DOM (D-024) | `--chrome-dom-ready-off` | `REACT_PARITY_CHROME_DOM_READY_OFF=1` | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` |
 | H-R07 peer iso (child) | `--peer-deselect-off` | `REACT_PARITY_PEER_DESELECT_OFF=1` | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` |
 | P1 master (legacy) | `--phase1-off` | `REACT_PARITY_PHASE1_OFF=1` | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` |
 | P1 child lifecycle | `--lifecycle-off` | `REACT_PARITY_LIFECYCLE_OFF=1` | `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` |
@@ -61,4 +79,4 @@ Full-suite `gate:react` sets `REACT_PARITY_ISOLATE_SESSION=1` → `react-run.mjs
 
 Manual full suite: `node react-run.mjs` (auto-enables when `--only` is unset and scenario count > 1) or `node react-run.mjs --isolate-session`.
 
-Panel-B parent chrome: scenarios that open settings/gear after iframe selection call `awaitParentChromeAfterPanelSelect()` (focus + settle + `waitForV9QuickBarReady`, 8s budget on panel B).
+Panel-B parent chrome: scenarios that open settings/gear after iframe selection call `waitForParentV9ChromeDomReady` (D-024) or `awaitParentChromeAfterPanelSelect()` (focus + settle + gear-ready).

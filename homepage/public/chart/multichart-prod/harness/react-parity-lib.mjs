@@ -435,6 +435,7 @@ export async function installBuiltProductBoot(page, {
   legacySelectionOff = false,
   drawingLocalInvalidationOff = false,
   chromeRoutingOff = false,
+  chromeDomReadyOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -447,7 +448,8 @@ export async function installBuiltProductBoot(page, {
   const legOff = legacySelectionOff || process.env.REACT_PARITY_LEGACY_SELECTION_OFF === '1';
   const dliOff = drawingLocalInvalidationOff || process.env.REACT_PARITY_DRAWING_LOCAL_INVALIDATION_OFF === '1';
   const croff = chromeRoutingOff || process.env.REACT_PARITY_CHROME_ROUTING_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn) => {
+  const cdroff = chromeDomReadyOff || process.env.REACT_PARITY_CHROME_DOM_READY_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -457,6 +459,7 @@ export async function installBuiltProductBoot(page, {
     if (legacySelOffOn) window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 = true;
     if (dliOffOn) window.__TALARIA_DISABLE_DRAWING_LOCAL_INVALIDATION_V2 = true;
     if (chromeRoutingOffOn) window.__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3 = true;
+    if (chromeDomReadyOffOn) window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -469,7 +472,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -755,6 +758,85 @@ export async function readCtrlMarqueeState(page, panelId) {
     const h = Math.abs(Number(m.endY || 0) - Number(m.startY || 0));
     return { active: !!m.active, w, h };
   });
+}
+
+/**
+ * Wait for D-024 parent V9 chrome DOM-ready (post-#tl-sett commit + handler bind).
+ * Resolves when event fires, DOM flag is set, or cached window state matches — FAILS on timeout.
+ */
+export async function waitForParentV9ChromeDomReady(page, panelId, drawingId, timeoutMs = 8000) {
+  return page.evaluate((pid, drawId, timeout) => new Promise((resolve) => {
+    const finish = (ok, detail) => resolve({ ok, detail });
+    const domFlagPresent = () => !!(
+      document.querySelector('#tl-sett[data-v9-chrome-dom-ready="1"]')
+      || document.querySelector('[data-tlbar="1"][data-v9-chrome-dom-ready="1"]')
+    );
+    const stateReady = (d) => {
+      if (!d || d.domReady !== true) return false;
+      if (drawId != null && String(d.drawingId) !== String(drawId)) return false;
+      if (pid != null && d.panelId != null && String(d.panelId) !== String(pid)) return false;
+      return true;
+    };
+    const focusedPanelMatches = () => {
+      try {
+        const grid = window.__multichartGrid;
+        const focused = grid && typeof grid.getFocusedPanelId === 'function'
+          ? String(grid.getFocusedPanelId() || '')
+          : '';
+        return !pid || focused === String(pid);
+      } catch (_) {
+        return false;
+      }
+    };
+    const domReadyFlag = () => domFlagPresent() && focusedPanelMatches();
+    const matches = (d) => stateReady(d) || domReadyFlag();
+    const cleanup = (timer, pollId, onReady) => {
+      clearTimeout(timer);
+      clearInterval(pollId);
+      window.removeEventListener('talaria:v9-quickbar-dom-ready', onReady);
+    };
+    try {
+      const cur = window.__talariaV9QuickBarDomReady;
+      if (matches(cur)) {
+        return finish(true, {
+          signal: stateReady(cur) ? 'cached-state' : 'cached-dom',
+          ...(stateReady(cur) ? cur : {}),
+          domFlag: domFlagPresent(),
+        });
+      }
+    } catch (_) { /* ignore */ }
+    let pollId;
+    const timer = setTimeout(() => finish(false, {
+      reason: 'timeout',
+      signal: 'talaria:v9-quickbar-dom-ready',
+      domFlag: domFlagPresent(),
+      cached: window.__talariaV9QuickBarDomReady || null,
+    }), timeout);
+    const onReady = (ev) => {
+      const d = ev && ev.detail;
+      if (!matches(d)) return;
+      cleanup(timer, pollId, onReady);
+      finish(true, {
+        signal: 'talaria:v9-quickbar-dom-ready',
+        ...(d || {}),
+        domFlag: domFlagPresent(),
+      });
+    };
+    window.addEventListener('talaria:v9-quickbar-dom-ready', onReady);
+    pollId = setInterval(() => {
+      try {
+        const cur = window.__talariaV9QuickBarDomReady;
+        if (matches(cur)) {
+          cleanup(timer, pollId, onReady);
+          finish(true, {
+            signal: stateReady(cur) ? 'dom-poll-state' : 'dom-poll-flag',
+            ...(stateReady(cur) ? cur : {}),
+            domFlag: domFlagPresent(),
+          });
+        }
+      } catch (_) { /* ignore */ }
+    }, 16);
+  }), panelId, drawingId, timeoutMs);
 }
 
 export async function waitForV9QuickBarReady(page, drawingId, timeoutMs = 5000) {
@@ -1159,6 +1241,7 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     legacySelectionOff: !!opts.legacySelectionOff,
     drawingLocalInvalidationOff: !!opts.drawingLocalInvalidationOff,
     chromeRoutingOff: !!opts.chromeRoutingOff,
+    chromeDomReadyOff: !!opts.chromeDomReadyOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

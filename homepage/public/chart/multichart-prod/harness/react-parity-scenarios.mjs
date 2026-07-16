@@ -23,6 +23,7 @@ import {
   pressEscapeReact,
   awaitParentChromeAfterPanelSelect,
   waitForV9QuickBarReady,
+  waitForParentV9ChromeDomReady,
   clickV9QuickBarGear,
   waitForPanelSettle,
   panelFrameMap,
@@ -66,6 +67,14 @@ async function runPanelClickRow(page, checks, prefix, panelId, toolType = 'trend
   const click = await singleClickDrawing(page, panelId, tool.id);
   checks.check(`${prefix} probe (${label}): single click dispatched`, click && click.ok, click?.reason || '');
   const after = await waitForReactSelection(page, panelId, [tool.id]);
+  if (panelId === 'B') {
+    await focusReactPanelSoft(page, panelId);
+    await waitForPanelSettle(page, panelId);
+  }
+  const domBudget = panelId === 'B' ? 12_000 : 4000;
+  const domReady = await waitForParentV9ChromeDomReady(page, panelId, tool.id, domBudget);
+  checks.check(`${prefix} probe (${label}): parent V9 chrome DOM ready`,
+    domReady.ok, JSON.stringify(domReady.detail));
   await assertReactMenuState(checks, `${prefix} CORE (${label}): first click selects + V9 quick menu`, {
     selectedIds: [tool.id],
     toolbarVisible: true,
@@ -85,8 +94,8 @@ async function hR01(ctx) {
     checks.check('H-R01 L1: real bar data in panel B iframe', boot.iframeBars > 50,
       `dataLen=${boot.iframeBars}`);
 
-    await runPanelClickRow(page, checks, 'H-R01', 'A');
     await runPanelClickRow(page, checks, 'H-R01', 'B');
+    await runPanelClickRow(page, checks, 'H-R01', 'A');
     return checks;
   });
 }
@@ -165,12 +174,18 @@ async function hR04(ctx) {
       await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, tool.id);
       await waitForReactSelection(page, pid, [tool.id]);
-      await waitForV9QuickBarReady(page, tool.id, pid === 'B' ? 8000 : 4000);
+      if (pid === 'B') {
+        await focusReactPanelSoft(page, pid);
+        await waitForPanelSettle(page, pid);
+      }
+      const domBudget = pid === 'B' ? 12_000 : 4000;
+      const domReady = await waitForParentV9ChromeDomReady(page, pid, tool.id, domBudget);
+      checks.check(`H-R04 probe (${label}): parent V9 chrome DOM ready before dbl-click`,
+        domReady.ok, JSON.stringify(domReady.detail));
       let dbl = await doubleClickDrawing(page, pid, tool.id);
       checks.check(`H-R04 probe (${label}): double-click dispatched`, dbl && dbl.ok, dbl?.reason || '');
       let settingsWait = await waitForParentDrawingSettingsOpen(page, pid === 'B' ? 8000 : 5000);
       if (!settingsWait.ok && pid === 'B') {
-        await sleep(500);
         await waitForPanelSettle(page, pid);
         dbl = await doubleClickDrawing(page, pid, tool.id);
         settingsWait = await waitForParentDrawingSettingsOpen(page, 8000);
@@ -193,10 +208,24 @@ async function hR05(ctx) {
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
+      await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, tool.id);
       await waitForReactSelection(page, pid, [tool.id]);
+      if (pid === 'B') {
+        await focusReactPanelSoft(page, pid);
+        await waitForPanelSettle(page, pid);
+      }
+      const domBudget = pid === 'B' ? 12_000 : 4000;
+      const domReady = await waitForParentV9ChromeDomReady(page, pid, tool.id, domBudget);
+      checks.check(`H-R05 probe (${label}): parent V9 chrome DOM ready before dbl-click`,
+        domReady.ok, JSON.stringify(domReady.detail));
       await doubleClickDrawing(page, pid, tool.id);
-      const settingsBefore = await waitForParentDrawingSettingsOpen(page, 5000);
+      let settingsBefore = await waitForParentDrawingSettingsOpen(page, pid === 'B' ? 8000 : 5000);
+      if (!settingsBefore.ok && pid === 'B') {
+        await waitForPanelSettle(page, pid);
+        await doubleClickDrawing(page, pid, tool.id);
+        settingsBefore = await waitForParentDrawingSettingsOpen(page, 8000);
+      }
       checks.check(`H-R05 setup (${label}): settings open before Esc`,
         settingsBefore.ok, JSON.stringify(settingsBefore.settings));
       await pressEscapeReact(page, pid);

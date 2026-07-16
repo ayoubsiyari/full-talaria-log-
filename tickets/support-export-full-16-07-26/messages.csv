@@ -1,4 +1,91 @@
 ticket_ref,ticket_id,subject,category,status,priority,requester_email,message_id,sender_name,sender_email,is_internal,created_at,body,image_file
+TAL-01669,1669,Place order,bug,open,high,abod@talaria-log.com,2992,Ninja,abod@talaria-log.com,no,2026-07-16T19:57:16.617699,"When I click on ""Place Order"" and set a stop loss and target, then move the entry position using the arrow, then exit ""Place Order"" and click on it again, it will bring up the previous order with the same stop loss and target.",images/TAL-01669/1955_2026-07-16_22_51_37-______________-_______________.png
+TAL-01668,1668,Wntry box place order,bug,open,high,abod@talaria-log.com,2991,Ninja,abod@talaria-log.com,no,2026-07-16T19:48:59.931484,"Enlarge the square
+
+So the number doesn't show up completely",images/TAL-01668/1954_2026-07-16_22_47_34-______________-_______________.png
+TAL-01667,1667,Tool/Anchored Volume Profile.,bug,open,high,ialkataleen@gmail.com,2990,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:30:45.481005,"It completely disappears from the chart and other layouts, and control over the other charts becomes almost impossible. The chart returns to normal only after completely removing it",images/TAL-01667/1953_23.png
+TAL-01666,1666,Tool/Anchored Volume Profile,bug,open,high,ialkataleen@gmail.com,2989,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:27:49.495496,"When adding it, chart issues occur, including the inability to control the chart and problems with other layouts",images/TAL-01666/1952_22.png
+TAL-01665,1665,Tool/Anchored Volume Profile,bug,open,high,ialkataleen@gmail.com,2988,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:25:06.816146,"When adding it to the chart, the price scale, time and date scale disappear",images/TAL-01665/1951_21.png
+TAL-01664,1664,Tool/Price and Time labels do not work,bug,open,high,ialkataleen@gmail.com,2987,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:21:32.498188,I cannot adjust the position of the tool on the chart,images/TAL-01664/1950_20.png
+TAL-01663,1663,inactive order freeze chart,bug,open,high,abod@talaria-log.com,2986,Ninja,abod@talaria-log.com,no,2026-07-16T19:20:57.841240,"When I place an order but it's not activated, and I move the chart, the chart freezes and doesn't move much.",images/TAL-01663/1949_2026-07-16_22_19_17-__H___a___d___e___s____-_Discord_.png
+TAL-01662,1662,Tool/Fixed Range Volume Profile,bug,open,high,ialkataleen@gmail.com,2985,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:19:39.631163,Price and Time labels do not work,images/TAL-01662/1948_19.png
+TAL-01661,1661,Tools/Fixed Range Volume Profile,bug,open,high,ialkataleen@gmail.com,2984,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:17:40.028619,"While drawing the tool on the chart, it appears on the other charts",images/TAL-01661/1947_18.png
+TAL-01660,1660,add TP,bug,open,high,abod@talaria-log.com,2982,Ninja,abod@talaria-log.com,no,2026-07-16T19:09:50.909471,"Adding more than one TP should happen when we set the target anywhere, not when I place an order.",images/TAL-01660/1946_2026-07-16_22_08_11-OBS_32.1.2_-__________________________-____________________.png
+TAL-01659,1659,Tools,bug,open,high,ialkataleen@gmail.com,2981,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:05:24.969158,"When adding the VWAP anchor to the chart, the chart becomes heavy and laggy",images/TAL-01659/1945_17.png
+TAL-01658,1658,add entry to order,bug,open,high,abod@talaria-log.com,2980,Ninja,abod@talaria-log.com,no,2026-07-16T19:04:19.881913,"When I place an order and click ""Add Entry"" again, the order and stop loss disappear.
+
+And when I delete the order, it gets deleted and reverts to a market order, and I can't delete it again.",images/TAL-01658/1944_2026-07-16_21_58_50-playerShadow.png
+TAL-01658,1658,add entry to order,bug,open,high,abod@talaria-log.com,2983,Ninja,abod@talaria-log.com,no,2026-07-16T19:15:33.298879,للعلم انا مقفل خيار اضافة انتري وهدف من برا,
+TAL-01657,1657,Tools,bug,open,high,ialkataleen@gmail.com,2979,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T19:03:02.786337,"The anchor in the VWAP has two control points at the beginning of the indicator, making it difficult to control and move from its position",images/TAL-01657/1943_16.png
+TAL-01656,1656,Tools,bug,open,high,ialkataleen@gmail.com,2978,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T18:58:30.951089,The anchor has too many control points,images/TAL-01656/1942_15.png
+TAL-01655,1655,all Tools,bug,open,high,ialkataleen@gmail.com,2977,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T18:54:29.032755,"When selecting a tool and pressing the Shift key while dragging it, a bug occurs where the tool appears in one location and then is duplicated back in its original position",
+TAL-01654,1654,tool,bug,open,high,ialkataleen@gmail.com,2976,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T18:51:12.169099,"These are approximately the tools that interact with the Shift key:
+
+Trend Line
+Ray
+Extended Line
+Arrow
+Line
+Parallel Channel
+Regression Trend",
+TAL-01653,1653,order postion,bug,open,high,abod@talaria-log.com,2975,Ninja,abod@talaria-log.com,no,2026-07-16T18:50:02.872961,"When I place an order and move it, the stop and target positions don't change until I release the order.
+
+They're supposed to update automatically as I move the order.",images/TAL-01653/1941_2026-07-16_21_48_36-Greenshot.png
+TAL-01652,1652,Layouts,bug,open,high,ialkataleen@gmail.com,2974,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T17:52:28.707232,"If I grab a locked tool and move it, the chart does not move",images/TAL-01652/1940_14.png
+TAL-01651,1651,Layouts,bug,open,high,ialkataleen@gmail.com,2972,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T17:44:40.299719,"Sometimes, when using Shift with tools, they are not aligned at the same level across other layouts",images/TAL-01651/1939_13.png
+TAL-01651,1651,Layouts,bug,open,high,ialkataleen@gmail.com,2973,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T17:49:16.339862,The start point is not from the same starting point,
+TAL-01650,1650,Layouts,bug,open,high,ialkataleen@gmail.com,2971,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T17:41:13.942529,"Time & Date Range
+
+When clicking on Manual Rescale, the chart changes its position every time.
+Every time we click on a layout with the mouse, the chart performs a repositioning for all charts.
+When enabling Replay, the chart performs a re-render for some layouts, while the remaining charts change their positions.
+When enabling Replay, the chart suddenly jumps to far-away dates.
+When changing the timeframe while Replay is active, most of the previous issues occur",images/TAL-01650/1938_12.png
+TAL-01649,1649,Layouts,bug,open,high,ialkataleen@gmail.com,2970,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T16:13:12.634572,"I can control and drag from above the indicator main menu.
+
+Sometimes I was unable to navigate between the indicator lists",images/TAL-01649/1937_10.png
+TAL-01648,1648,Layouts,bug,open,high,ialkataleen@gmail.com,2969,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T16:09:19.070706,Manual Replay does not display the highlighted area to be cut on all layouts,images/TAL-01648/1936_9.png
+TAL-01647,1647,Chart,bug,open,high,ialkataleen@gmail.com,2968,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T16:05:57.836045,"If Replay is enabled in By Candle mode and a specific time is selected, then switching back to Tick mode does not work. It remains in Candle Replay mode.
+
+ if the mode is set to Auto first and then changed to Tick, it switches successfully without issues",images/TAL-01647/1935_8.png
+TAL-01646,1646,Layouts,bug,open,high,ialkataleen@gmail.com,2967,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:59:53.879218,The indicators do not work in some layouts,images/TAL-01646/1934_7.png
+TAL-01645,1645,Layouts,bug,open,high,ialkataleen@gmail.com,2966,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:54:17.941337,"When resizing the indicator, there is lag",images/TAL-01645/1933_6.png
+TAL-01644,1644,Layouts,bug,open,high,ialkataleen@gmail.com,2965,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:49:49.060579,"When resizing the layout, the labels move out of their positions,  the indicator labels and crosshair labels",images/TAL-01644/1932_5.png
+TAL-01643,1643,Chart,bug,open,high,ialkataleen@gmail.com,2964,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:46:00.140213,Re-rendering issues,images/TAL-01643/1931_4.png
+TAL-01642,1642,Chart,bug,open,high,ialkataleen@gmail.com,2962,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:42:31.163941,"When changing the timeframe, there is a delay",
+TAL-01641,1641,chart,bug,open,high,ialkataleen@gmail.com,2961,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:39:35.208112,"When changing the timeframe, the time and date axes display incorrect times",images/TAL-01641/1930_3.png
+TAL-01640,1640,Chart,bug,open,high,ialkataleen@gmail.com,2960,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:37:59.800782,"When enabling Replay, the chart becomes heavy and laggy when adding the VWAP indicator",images/TAL-01640/1929_2.png
+TAL-01640,1640,Chart,bug,open,high,ialkataleen@gmail.com,2963,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:44:01.789286,"In the multi-layout view, it also becomes heavy and laggy",
+TAL-01639,1639,Chart,bug,open,high,ialkataleen@gmail.com,2959,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T15:29:54.356351,"When running Replay, the grid lines, time axis, and date axis move with the chart toward the right",images/TAL-01639/1928_2.png
+TAL-01638,1638,order types change,bug,open,high,abod@talaria-log.com,2957,Ninja,abod@talaria-log.com,no,2026-07-16T11:36:02.843670,"When I set a limit order and keep pressing the stop order button, the limit order changes to a stop order even though it's still in the limit order field.
+
+Similarly, with a stop order, if I press the limit button repeatedly, it changes to a limit, but its location remains in the stop order field.",images/TAL-01638/1926_2026-07-16_14_27_46-.png
+TAL-01638,1638,order types change,bug,open,high,abod@talaria-log.com,2958,Ninja,abod@talaria-log.com,no,2026-07-16T11:36:48.901011,this pic im sorry,images/TAL-01638/1927_2026-07-16_14_32_45-______________-_______________.png
+TAL-01637,1637,Card after closed trade,bug,open,high,abod@talaria-log.com,2956,Ninja,abod@talaria-log.com,no,2026-07-16T11:29:57.592533,"When I'm writing a lot of tags and stuff and have added a lot of images, the OK and Cancel buttons go under the bottom bar and only appear when the page width is reduced in the browser settings.",images/TAL-01637/1925_2026-07-16_14_27_46-.png
+TAL-01636,1636,opening range indicator ends,bug,open,high,abod@talaria-log.com,2954,Ninja,abod@talaria-log.com,no,2026-07-16T11:23:06.183208,"The indicator must close at the end of the day, not at midnight (00:00).
+
+It must close before 18:00 New York time.",images/TAL-01636/1924_2026-07-16_14_20_22-__H___a___d___e___s____-_Discord_.png
+TAL-01636,1636,opening range indicator ends,bug,open,high,abod@talaria-log.com,2955,Ninja,abod@talaria-log.com,no,2026-07-16T11:24:50.828430,"عندي اقتراح ممكن تخلي خيار لتعمل امتداد للمؤشر حتى لا يصير يرندر اكثر ويعلق
+
+بتخلي الامتداد من بداية OR
+الى نهاية اليوم 
+ضيفها هي لو تكرم",
+TAL-01635,1635,opening range indicator,bug,open,high,abod@talaria-log.com,2953,Ninja,abod@talaria-log.com,no,2026-07-16T11:20:36.746306,"When I set the opening range indicator and run the reply, the reply freezes and becomes slow.",images/TAL-01635/1923_2026-07-16_14_20_22-__H___a___d___e___s____-_Discord_.png
+TAL-01634,1634,short- long postion tool,bug,open,high,abod@talaria-log.com,2951,Ninja,abod@talaria-log.com,no,2026-07-16T11:16:22.713663,"In the Long and Short Position tool, when I move the stop loss, the amount, points (pts), and risk-reward ratio don't change. They only change if I move the tool from the entry line or target.",images/TAL-01634/1921_2026-07-16_14_09_36-__ticket-0330___Talaria_mentorship_2026_-_Discord_.png
+TAL-01634,1634,short- long postion tool,bug,open,high,abod@talaria-log.com,2952,Ninja,abod@talaria-log.com,no,2026-07-16T11:16:37.551391,this one sorry,images/TAL-01634/1922_2026-07-16_14_10_31-__ticket-0330___Talaria_mentorship_2026_-_Discord_.png
+TAL-01633,1633,Chart,bug,open,high,ialkataleen@gmail.com,2950,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T10:55:55.796446,"When selecting a layout and then interacting with the chart, the chart becomes unresponsive and there is significant lag during operation",images/TAL-01633/1920_25.png
+TAL-01632,1632,chart,bug,open,high,ialkataleen@gmail.com,2949,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T10:53:27.442309,"When adding indicators to the chart, some indicators cause the website to freeze for about a minute before returning to normal operation. For example, the VWAP indicator causes this issue.",images/TAL-01632/1919_24.png
+TAL-01631,1631,Chart,bug,open,high,ialkataleen@gmail.com,2948,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T10:34:32.160388,"There is an issue where the chart layout unexpectedly jumps between positions. In addition, the other layout causes the chart to re-render",images/TAL-01631/1918_23.png
+TAL-01630,1630,Chart,bug,open,high,ialkataleen@gmail.com,2947,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T10:06:46.543401,"The chart drag operation stops when the mouse cursor leaves the layout boundaries. It should continue dragging until the mouse button is released, even if the cursor is outside the layout.",images/TAL-01630/1917_22.png
+TAL-01629,1629,Chart,bug,open,high,ialkataleen@gmail.com,2946,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T09:18:50.028817,"While replaying, the chart re-renders and appears as shown in the image",images/TAL-01629/1916_21.png
+TAL-01628,1628,Chart,bug,open,high,ialkataleen@gmail.com,2945,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T09:13:51.948169,There is a difference in the candle endpoints,images/TAL-01628/1915_20.png
+TAL-01627,1627,chart,bug,open,high,ialkataleen@gmail.com,2944,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T09:08:23.847955,The news flags overlap with the price scale,images/TAL-01627/1914_19.png
+TAL-01626,1626,Chart,bug,open,high,ialkataleen@gmail.com,2943,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T09:03:59.382883,"When I manually replay to an earlier date and refresh the page, the chart resets to its original state.",images/TAL-01626/1913_18.png
+TAL-01625,1625,Grid Line,bug,open,high,ialkataleen@gmail.com,2942,IBRAHIM KHATTALIN,ialkataleen@gmail.com,no,2026-07-16T08:57:45.890344,There's a problem with the gridline,images/TAL-01625/1912_17.png
+TAL-01624,1624,shourtcuts / zoom in with keybord,bug,open,high,abod@talaria-log.com,2941,Ninja,abod@talaria-log.com,no,2026-07-15T22:52:20.662442,"When I zoom in using the keyboard, it doesn't work correctly.
+
+It zooms in on a different area.
+It should zoom in on the first candle on the right.",images/TAL-01624/1911_2026-07-16_01_50_54-OBS_32.1.2_-__________________________-____________________.png
 TAL-01623,1623,shortcuts/ shift + ->,bug,open,high,abod@talaria-log.com,2940,Ninja,abod@talaria-log.com,no,2026-07-15T20:12:12.075393,"When I press Shift and the right button, it moves forward. But when I hold both buttons down, the notifications are very annoying. Try to keep only one notification.",images/TAL-01623/1910_2026-07-15_23_08_46-__H___a___d___e___s____-_Discord_.png
 TAL-01622,1622,options next to indicator name,bug,open,high,abod@talaria-log.com,2939,Ninja,abod@talaria-log.com,no,2026-07-15T20:07:44.466316,"When I enable Reply and hover the mouse over the indicator name, the options keep disappearing and reappearing. I have to stop Reply for the options to appear.",images/TAL-01622/1909_2026-07-15_23_05_00-__m.l7n_-_Discord_.png
 TAL-01621,1621,opening range indicator,bug,open,high,abod@talaria-log.com,2938,Ninja,abod@talaria-log.com,no,2026-07-15T19:57:11.276607,"When the value in input is changed, the value next to the indicator name on the chart does not change.",images/TAL-01621/1908_2026-07-15_22_55_15-________Talaria_mentorship_2026_-_Discord_.png

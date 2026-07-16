@@ -2,6 +2,28 @@
 
 ---
 
+## D-025 — ESC-022: Option B ships now (endorsed); Option A approved as post-unfreeze OPT-IN ("keep orders in view", default OFF) — Option C is the end state
+
+**Date:** 2026-07-16
+**Escalation:** ESC-022
+**Track:** T4 / RC-5 (order-level visibility) + chart.js core
+**RC:** RC-5
+
+### Rulings
+
+**1. Option B — endorsed as dispatched.** Freeze-safe edge marker (`order-manager.js` only, own switch, honest REDs) restores the essential guarantee — the user can always see where their order sits and in which direction — without touching the frozen core. This is the interim answer and it ships on its own merits regardless of A.
+
+**2. Option A — APPROVED, with all three of the Manager's conditions ratified as binding:**
+- **Post-unfreeze only.** No `chart.js` autoscale edit lands while the interaction family is on the bless path. It queues behind the combined build, sequenced by the Manager alongside the other post-unfreeze chart.js work (A6-4, Phase 7) so the frozen core reopens once, deliberately, not piecemeal.
+- **Opt-in, default OFF.** Axis-pull is a genuine preference split — a far pending order compressing the candles is a feature to some traders and a nuisance to others. Default autoscale behavior is unchanged; the "keep orders in view" toggle enables domain-inclusion per user. Behind its own kill-switch (separate from B's switch — the marker and the domain-inclusion must revert independently).
+- **Scope precision for the implementer:** domain inclusion applies to **active order/pending entry levels only** (not SL/TP legs by default — including those would triple the pull effect; if the PO wants SL/TP included, that's a toggle refinement later). The inclusion must be **bounded**: a level beyond a sane multiple of the visible price range does not stretch the axis to absurdity — it falls back to B's edge marker. (Unbounded inclusion + a fat-finger pending order at 10× price = unreadable chart; the bound keeps C honest.)
+
+**3. UX contract when both land (Option C):** toggle OFF → default autoscale + B's edge markers (always-visible direction cue); toggle ON → bounded domain inclusion keeps order levels on-plot, edge marker covers anything beyond the bound. PO staging A/B of both postures is the acceptance for A.
+
+**4. Ledger:** the diagnostic's finding that no edge indication existed at all closes the actual PO complaint via B; A is a UX enhancement, not the bug fix — registry row cites B as the fixing change.
+
+---
+
 ## D-024 — ESC-021: chrome-readiness race fix AUTHORIZED (P3 verify-only → fix-scope per the D-021 contingency); ready-signal becomes the harness wait primitive
 
 **Date:** 2026-07-16

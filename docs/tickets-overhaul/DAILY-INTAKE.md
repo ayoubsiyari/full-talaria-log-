@@ -191,6 +191,7 @@ Small batch, but **TAL-01590 is the standout** — a full replay freeze on indep
 | TAL-01620 | VWAP + replay = large lag (+note: replay runs candle-by-candle at speed 60) | **Split:** VWAP lag → **T6/RC-6** indicator per-frame recompute (anchored VWAP recomputes full series per frame — known RC-3-adjacent hotspot); cadence note → rides D-009/D-016 retest |
 | TAL-01621 | Opening-range indicator: input change doesn't update the value shown next to indicator name | **T6/RC-6** settings→label invalidation (same family as T4's label-refresh fix, indicator flavor) |
 | TAL-01596 | CSV suffix on pair names — **already closed** by tester |
+| TAL-01617 | SL price label lingers a fraction of a second on the price axis while dragging the order — **T4/A6** order-drag visual family (rides A6-1 apply-on-release rework; late-add, missed in first pass) |
 
 ### Summary counts
 
@@ -209,3 +210,82 @@ Small batch, but **TAL-01590 is the standout** — a full replay freeze on indep
 ### Priority note for the manager
 
 **Six tickets close with zero work the moment the D-018 combined build ships — the re-migration is now blocking visible tester pain, not just process.** Sequencing unchanged (phases are the critical path), but this is the strongest argument yet for no scope creep inside the phases. New dispatchable work this intake: A6 contract drafting (Lane 3, after its current queue), the TAL-01597/01603a TF-response diagnostic (T8, after current queue). Everything else rides.
+
+---
+
+## Intake 2026-07-16 evening (export `tickets/support-export-full-16-07-26` appended rows, 46 new tickets: TAL-01624–TAL-01669)
+
+**Context:** testers still on the frozen production deploy (fallback-B); the combined build is on the bless path (D-021–D-024). As with yesterday, a meaningful share photographs staged-but-undeployed fixes. Three strong new signals in this batch: **(1) indicator performance is now the loudest pain** (six tickets, including a ~1-minute site freeze adding VWAP), **(2) the anchored/fixed-range volume-profile tools are severely broken** (five tickets — scales vanish, chart control lost, cross-layout leak), **(3) a Shift-modifier drawing family** has formed. Amendments A7 and A8 issued below.
+
+### IN-PLAN — PENDING-DEPLOY (staged fix; retest on combined build) — 7 tickets
+
+| Ticket | Symptom | Staged fix |
+|---|---|---|
+| TAL-01626 | Manual replay to earlier date + refresh resets chart | Refresh-persistence (T8 step 7, staging a4) |
+| TAL-01647 | Candle→Tick mode switch ignored after picking a time (Auto→Tick works) | D-009 mode routing; if it persists on the combined build, the "specific time selected" detail goes back to the A3 owner as a new cell |
+| TAL-01650 (parts c,d,e) | Replay re-renders some layouts / jumps to far dates / TF-change chaos | D-015/D-016 + refresh-persistence family |
+| TAL-01629 | Replay re-render artifact | Same family (retest first) |
+| TAL-01631 | Layout jumps position; peer re-render | TAL-01605 sibling (T8 adopt-X cells) |
+| TAL-01638 | Repeated limit/stop button presses mutate order type in place | T4 step-5 order-type reclassify family — **FIX-REGRESSION retest first** on staging; if it persists → reopen T4 row |
+| TAL-01653 | SL/TP don't follow while dragging the entry, only on release | A6-1 territory — the D-020 invariant is about *hit-tests*, not visuals; contract clarification recorded: **legs follow the entry visually during drag; commit + hit-test on release**. Rides the A6-1 fix. |
+
+### IN-PLAN (rides an open track) — 14 tickets
+
+| Ticket | Symptom | Rides with |
+|---|---|---|
+| TAL-01630 | Drag dies when cursor leaves layout bounds | **T3 Row 11** (TAL-01587/01491) — third confirmation; row is already mandatory |
+| TAL-01644 | Layout resize displaces indicator/crosshair labels | **T3 row 14** (TAL-01592/01574 resize re-layout) |
+| TAL-01641 | TF change → wrong times on axis | **A1 GAP-AXIS** |
+| TAL-01639 | Gridlines/time axis move with chart during replay | **A1** (TAL-01613 sibling) |
+| TAL-01625 | Gridline problem | **A1** (TAL-01618 sibling) |
+| TAL-01642 | TF-change delay | **T8 TF-response diagnostic** (TAL-01597/01603a) |
+| TAL-01643 | "Re-rendering issues" (vague) | **T2/RC-2**; tester asked for repro steps (P5) |
+| TAL-01633 | Select layout → chart unresponsive/laggy | **T8/perf** — cite with TAL-01578 + perf backlog |
+| TAL-01646 | Indicators don't work in some layouts | **T6 Phase-6 (multichart isolation, parked with re-migration)** — verify row on combined build first |
+| TAL-01669 | Re-opening Place Order restores previous SL/TP state | **T4/A6** state-cleanup row |
+| TAL-01658 | Add-Entry makes order+SL disappear; delete reverts to market, undeletable | **T4 multi-entry family** (TAL-00752 #14/#20 kin) — retest on staging (18 fixes staged); if persists → reopened T4 row, priority |
+| TAL-01663 | Inactive order + chart drag = freeze | **T4/T8 diagnostic row** — possibly order hit-test on pan path; needs mechanism before owner |
+| TAL-01634 | Long/Short position TOOL: SL move doesn't update amount/pts/RR | **T1 per-tool family** (position-tool internal aggregates; RC-5-like math in a drawing tool) |
+| TAL-01636 | Opening-range indicator must close before 18:00 NY, not 00:00 | **T6 correctness row** — tester stated the spec; includes their extension suggestion (OR-start→day-end) as the bounded-render option |
+
+### GAP — plan amended (A7 + A8) — 11 tickets
+
+| Ticket | Symptom | Amendment |
+|---|---|---|
+| TAL-01632, TAL-01659, TAL-01640, TAL-01635, TAL-01645, TAL-01620* | VWAP add freezes site ~1 min; anchored VWAP heavy; VWAP+replay lag (single + multichart); opening-range+replay freeze; indicator resize lag | **A7 — T6 indicator-performance diagnostic, elevated to dispatchable now.** Six tickets in 2 days; a 1-minute freeze is P1-severity. Known lead: anchored VWAP full-series recompute per frame (RC-3-adjacent hotspot named in the T5 diagnostic). Timeboxed diagnostic first (measure per-frame cost, name the recompute sites), then gated fixes. Freeze-safe (indicator modules). (*TAL-01620 re-cited from yesterday.) |
+| TAL-01665, TAL-01666, TAL-01667, TAL-01661, TAL-01662, TAL-01664 | Anchored/fixed-range Volume Profile: price+time scales disappear, chart control lost, only removal recovers; tool leaks onto other layouts while drawing; price/time labels don't work | **A7b — volume-profile tool defect cluster (T5 evidence + diagnostic).** T5's phases fixed anchor mutation, but these are new severity: scale destruction + cross-layout leak (the leak is Phase-5/RC-4 territory, parked with re-migration — cite there). One Lane 1 diagnostic when free: reproduce scale-vanish (TAL-01665 screenshot confirms axes gone), separate engine defect vs multichart leak. |
+| TAL-01654, TAL-01655, TAL-01651, TAL-01593* | Shift-modifier drags: tool duplicates at origin, snaps to chart edge, cross-layout misalignment (tester enumerated the 7 affected tools) | **A8 — T1 modifier-drag sub-task** consolidating the family (*TAL-01593 re-cited). One RED per behavior (constrain, duplicate-ghost, cross-panel alignment), gated fix in the resize/drag handler. |
+| TAL-01624 | Keyboard zoom anchors on wrong point (should anchor right-edge candle) | **T2 interaction row** — small, spec stated by tester |
+| TAL-01652 | Grabbing a locked tool doesn't pan the chart (locked should pass through) | **T1 row** — locked-tool gesture pass-through |
+| TAL-01660 | Want multi-TP placement anywhere, not only at order placement | **NEEDS-PO-DECISION** — feature scope (A6 contract extension vs journal/feature backlog). PO to rule. |
+
+### UI-polish / out-of-scope — 5 tickets
+
+| Ticket | Disposition |
+|---|---|
+| TAL-01668 | Entry box too small, number clipped — UI-polish batch |
+| TAL-01627 | News flags overlap price scale — UI-polish batch (news overlay layering) |
+| TAL-01637 | Journal card OK/Cancel hidden under bottom bar with long content — **journal shell, out of plan-2 scope**; forwarded (small CSS fix, PO may self-serve) |
+| TAL-01656, TAL-01657 | Anchor tools show too many control points / double points at start — UI-polish/T5 chrome row, batched with A7b diagnostic |
+| TAL-01628 | Candle endpoint mismatch — registry row, needs repro detail (P5) |
+
+### Summary counts
+
+| Disposition | Count |
+|---|---|
+| PENDING-DEPLOY (retest on combined build) | 7 |
+| IN-PLAN rides | 14 |
+| GAP → A7 (indicator perf, 6) / A7b (volume-profile, 6) / A8 (Shift family, 4) / small rows (3) | 11 families/rows (19 tickets incl. re-cites) |
+| NEEDS-PO-DECISION | 1 (TAL-01660 multi-TP) |
+| UI-polish / out-of-scope / needs-repro | 5 |
+
+### Plan-2 amendments issued today (evening)
+
+- **A7 (T6 indicator-performance diagnostic — DISPATCHABLE NOW):** the perf backlog deferral (TAL-01561/01598/01608) explicitly does NOT cover indicator-induced freezes — a 1-minute UI freeze is a defect, not a perf-polish item. Lane 3 (T6 owner) runs the timeboxed diagnostic after its current queue item; fixes authorized per mechanism, freeze-safe.
+- **A7b (volume-profile defect cluster):** Lane 1 diagnostic when free; cross-layout leak evidence attached to the parked Phase-5/RC-4 re-migration tranche.
+- **A8 (T1 modifier-drag sub-task):** consolidates the Shift family into one contract + one gated fix.
+- **A6 clarification (TAL-01653):** apply-on-release governs *commits and hit-tests*; SL/TP legs follow the entry **visually** during drag. Recorded so the A6-1 worker builds it in.
+
+### Priority note for the manager
+
+Bless path unchanged and untouched by this intake — nothing here preempts D-021→D-024 items. After the bless: **A7 (indicator perf) is the top new dispatch** — it's the most severe live pain not already staged, and it's freeze-safe so it can start on Lane 3 immediately after A6-1. The volume-profile cluster (A7b) is Lane 1's next diagnostic after its bless-path work. Seven more tickets close by retest on the combined build — the running total of pending-deploy closures is now 13+, which should be called out to the testers when the build ships so they re-verify instead of re-filing.

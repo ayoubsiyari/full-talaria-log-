@@ -32,6 +32,7 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 3. Implement behind `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2`. RED-first per symptom family: first-click (30 tickets), ghost-after-delete (19), selection-desync (43), stale quick-menu (24).
 **Exit:** the four family suites GREEN; spot-check 10 named tickets from the registry manually; no per-tool patches were needed (I4 holds).
 **Intake additions (2026-07-13, `DAILY-INTAKE.md`):** step-8/recovery acceptance also covers TAL-01569 (Ctrl-select stuck during drag — R1/R2 residual family), TAL-01584 (crosshair snaps to tool's previous position — TAL-00157#11 resurfaced), TAL-01570 (crosshair jumps to chart center on tool arm), TAL-01568 (brush first-move fails — first-click family, per-tool subscriber slice). All four retest first on the fallback-B/step-8 build before new work.
+**Intake amendment A8 (2026-07-16 evening, `DAILY-INTAKE.md`):** new **modifier-drag sub-task** consolidating the Shift-key family — TAL-01593 (snap-to-edge), TAL-01655 (duplicate ghost at origin), TAL-01651 (cross-layout misalignment), TAL-01654 (tester's list of the 7 affected tools). One contract, one RED per behavior, one gated fix in the shared drag handler. Also new small row: locked-tool gesture pass-through (TAL-01652 — grabbing a locked tool should pan the chart).
 
 ## T2 — Invalidation contract sweep (RC-2) (Lane 1, after T1)
 
@@ -60,6 +61,7 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 2. Separate display-threshold bugs (SL/TP <10 not rendered; trailing-zero parsing) as individually gated fixes.
 3. Replay-interaction rows (entry fills on wrong candle, TP line flicker per candle) are RED-first harness scenarios — they touch the replay bus, so state-matrix discipline applies.
 4. **Replay mode + interval cadence diagnostic (intake amendment A3, 2026-07-13; scope finalized after PO clarification):** two sibling defects in replay mode/cadence selection — (a) tick-by-tick mode silently reverts to candle-by-candle when replay starts (TAL-01582); (b) candle-by-candle with an interval selected (e.g. 4h interval on 4h TF) plays and steps-forward erratically (TAL-01581). Timeboxed diagnostic: find the mode/interval-selection owner, the override site for (a), and the cadence computation for (b); report mechanisms before any fix. Lane 3 picks this up when its T4 queue clears.
+5. **Intake additions (2026-07-16 evening):** A6 contract clarification — apply-on-release governs *commits and hit-tests*; SL/TP legs must follow the entry **visually** during drag (TAL-01653; build into A6-1). Retest-first on the staged T4 fixes: order-type mutation via repeated limit/stop button presses (TAL-01638 — step-5 reclassify family), add-entry makes order+SL disappear / undeletable market-order revert (TAL-01658 — multi-entry family; reopen with priority if it survives the staged build). New rows: place-order dialog restores stale SL/TP state on reopen (TAL-01669), inactive-order + chart-drag freeze (TAL-01663 — mechanism diagnostic before owner). NEEDS-PO-DECISION: multi-TP placement anywhere (TAL-01660 — feature scope).
 **Exit:** property suite green in CI; TAL-00752 registry rows individually dispositioned; A3 mechanism reported (fix scoped separately once known).
 
 ## T5 — Anchoring unification (RC-3) (Lane 1, after T2)
@@ -67,14 +69,16 @@ Lanes: Lane 1 = T1→T2→T5→T6 (sequential, same code area). Lane 2 = T3→T8
 1. Inventory all anchor representations (timestamp+price vs bar-index vs pixel) across drawing modules; the known offender is anchored VWAP / volume tools (`drawing-tools-advanced-volume.js:834-866`).
 2. Migrate index-anchored tools to timestamp+price through the shared resolve path (`drawing-tools-base.js` binary-search resolver), gated per tool family.
 3. RED scenarios: draw → prepend history (drag-to-load) → assert tool unmoved; draw → TF switch → assert; draw → replay advance → assert. Copy/paste offset bug (TAL-00253) rides this track.
-**Exit:** no index anchors remain (I6 enforceable); prepend/TF/replay suites GREEN.
+4. **Intake amendment A7b (2026-07-16 evening):** volume-profile defect cluster — anchored/fixed-range Volume Profile makes price+time scales disappear and chart control lost until removal (TAL-01665/01666/01667), tool leaks onto other layouts while drawing (TAL-01661 — cross-layout leak evidence goes to the parked Phase-5/RC-4 tranche), price/time labels non-functional on these tools (TAL-01662/01664), excess control points (TAL-01656/01657 chrome polish). Lane 1 timeboxed diagnostic when free: reproduce the scale-vanish, split engine defect vs multichart leak, then gated fixes.
+**Exit:** no index anchors remain (I6 enforceable); prepend/TF/replay suites GREEN; A7b cluster dispositioned.
 
 ## T6 — Indicator lifecycle adoption (RC-6) (Lane 1, after T1 lands; can overlap T5)
 
 1. Route indicator settings/visibility UI through the T1 lifecycle store (kills the duplicated stale-dialog class).
 2. Apply T2's invalidation assertion to indicator setters.
 3. Perf follow-up (separate, Director-gated): incremental tail recompute during replay instead of full recompute per frame (`chart-indicators-full.js:7814`); only after correctness suites are green.
-**Exit:** indicator symptom rows in registry dispositioned; replay indicator staleness scenarios GREEN.
+4. **Intake amendment A7 (2026-07-16 evening — ELEVATED, dispatchable now):** indicator-performance is no longer a deferred perf-polish item — six tickets in two days, including a ~1-minute site freeze on adding VWAP (TAL-01632), anchored-VWAP heaviness (TAL-01659), VWAP+replay lag single and multichart (TAL-01640), opening-range+replay freeze (TAL-01635), indicator resize lag (TAL-01645), plus TAL-01620 from 07-15. A freeze is a defect, not polish. Lane 3 runs a timeboxed diagnostic after its current queue item (measure per-frame indicator cost, name the recompute sites — known lead: anchored VWAP full-series recompute per frame); gated fixes authorized per confirmed mechanism; indicator modules are freeze-safe. Correctness rows also gain: opening-range must close before 18:00 NY, not 00:00 (TAL-01636, spec stated by tester, with their bounded-extension suggestion), indicators non-functional in some layouts (TAL-01646 — verify on combined build first, Phase-6 tranche).
+**Exit:** indicator symptom rows in registry dispositioned; replay indicator staleness scenarios GREEN; A7 diagnostic delivered with per-mechanism fix scope.
 
 ## T8 — Phase-5 mirror-policy consolidation + plan-1 deferred debt (RC-8) (Lane 2, after T3)
 

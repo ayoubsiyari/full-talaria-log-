@@ -148,4 +148,7 @@ Switch A/B: `window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4 = true` + r
 
 ## 11. Commit
 
-(Pending — file-scoped: `TalariaV8bLive.jsx`, `multichart-manager.js` I8, `drawing-tools-manager.js` I8 companion)
+- **Product:** `2537d3d0b4ec5c4cffa423f684bce55b15333f42` (`2537d3d0b`) — `TalariaV8bLive.jsx`, `multichart-manager.js` (I8), `drawing-tools-manager.js` (I8), build `20260716b10` dist bump
+- **Report:** `5620c251f` — this worker report
+
+**Build for Lane 4 bless:** `20260716b10`
