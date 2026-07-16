@@ -125,7 +125,7 @@ function _orderOffscreenMarkerV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OFFSCREEN_MARKER_V1;
 }
 
-/** ORD-EXEC-SLTP-DRAG: skip updateSLTPLines reposition during open SL/TP drag (default ON). */
+/** ORD-EXEC-SLTP-DRAG: updateSLTPLines follows provisional price during open SL/TP drag (default ON). */
 function _execSltpDragFollowFixV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_EXEC_SLTP_DRAG_FOLLOW_FIX_V1;
 }
@@ -747,13 +747,27 @@ class OrderManager {
         return this._oiIsChartAxisGestureActive(chart);
     }
 
-    /** Skip updateSLTPLines reposition for the open SL/TP row under active drag (A6-1 provisional path). */
-    _shouldSkipOpenSltpLineReposition(orderId, lineKind) {
-        if (!_execSltpDragFollowFixV1Enabled()) return false;
-        if (!this._isDraggingOrderLine || this._draggingManagedOpenLineKind !== lineKind) return false;
+    /** During open SL/TP drag (A6-1), use provisional price for updateSLTPLines geometry. */
+    _oiResolveOpenSltpDragDisplayPrice(orderId, lineKind, committedPrice) {
+        if (!_execSltpDragFollowFixV1Enabled() || !_orderSltpApplyOnReleaseFixEnabled()) {
+            return committedPrice;
+        }
+        if (!this._isDraggingOrderLine || this._draggingManagedOpenLineKind !== lineKind) {
+            return committedPrice;
+        }
         const dragOid = this._draggingManagedOpenOrderId;
-        if (dragOid == null) return false;
-        return String(dragOid) === String(orderId);
+        if (dragOid == null || String(dragOid) !== String(orderId)) {
+            return committedPrice;
+        }
+        const st = this._orderProvisionalEdit;
+        if (!st || st.phase !== 'open' || st.lineKind !== lineKind) {
+            return committedPrice;
+        }
+        if (st.orderId != null && String(st.orderId) !== String(orderId)) {
+            return committedPrice;
+        }
+        const prov = Number(st.provisionalPrice);
+        return Number.isFinite(prov) ? prov : committedPrice;
     }
 
     _oiResolveProvisionalPreviewPrice(lineKind) {
@@ -30208,8 +30222,8 @@ class OrderManager {
                     }
                 }
                 
-                // Update line position
-                line.attr('y1', newY).attr('y2', newY);
+                // Update line position — keep full chart width so drag matches updateSLTPLines row
+                line.attr('x1', 0).attr('x2', ctx.w).attr('y1', newY).attr('y2', newY);
                 if (extraElements.hitLine) {
                     extraElements.hitLine.attr('y1', newY).attr('y2', newY);
                 }
@@ -38542,12 +38556,9 @@ class OrderManager {
                     return;
                 }
                 
-                if (this._shouldSkipOpenSltpLineReposition(orderId, 'sl')) {
-                    return;
-                }
-                
-                const priceKey = position.stopLoss.toFixed(5);
-                const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, position.stopLoss);
+                const displaySlPrice = this._oiResolveOpenSltpDragDisplayPrice(orderId, 'sl', position.stopLoss);
+                const priceKey = displaySlPrice.toFixed(5);
+                const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, displaySlPrice);
                 const labelQty = this._slChartLabelQtyForOpenOrder(position);
                 
                 if (updatedSLPrices.has(priceKey)) {
@@ -38572,7 +38583,7 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(position.stopLoss);
+                const y = ch.scales.yScale(displaySlPrice);
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -38624,7 +38635,7 @@ class OrderManager {
                 this._syncOffscreenLevelMarker(ch, {
                     markerId: `open-sl-${orderId}`,
                     y: y,
-                    price: position.stopLoss,
+                    price: displaySlPrice,
                     color: '#f23645',
                     tagText: 'SL',
                 });
@@ -38639,7 +38650,7 @@ class OrderManager {
                     labelAccent
                 });
                 
-                yAxisHighlightPrices.sl.add(position.stopLoss);
+                yAxisHighlightPrices.sl.add(displaySlPrice);
             });
             
             // Create Y-axis highlights for unique SL prices
@@ -38753,10 +38764,6 @@ class OrderManager {
                     return;
                 }
                 
-                if (this._shouldSkipOpenSltpLineReposition(orderId, 'tp')) {
-                    return;
-                }
-                
                 let tpPrice;
                 let targetIndex = -1;
                 let percentage = 100;
@@ -38791,8 +38798,9 @@ class OrderManager {
                 } else {
                     return;
                 }
-                
-                const priceKey = tpPrice.toFixed(5);
+
+                const displayTpPrice = this._oiResolveOpenSltpDragDisplayPrice(orderId, 'tp', tpPrice);
+                const priceKey = displayTpPrice.toFixed(5);
                 const groupData = tpPriceGroups[priceKey];
                 const lineDedupeKey = `${orderId}|${(targetId !== undefined && targetId !== null) ? String(targetId) : 'st'}`;
                 
@@ -38882,7 +38890,7 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                 }
                 
-                const y = ch.scales.yScale(tpPrice);
+                const y = ch.scales.yScale(displayTpPrice);
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -39007,12 +39015,12 @@ class OrderManager {
                 this._syncOffscreenLevelMarker(ch, {
                     markerId: `open-tp-${orderId}-${targetId != null ? String(targetId) : '0'}`,
                     y: y,
-                    price: tpPrice,
+                    price: displayTpPrice,
                     color: '#089981',
                     tagText: 'TP',
                 });
 
-                yAxisHighlightPrices.tp.add(tpPrice);
+                yAxisHighlightPrices.tp.add(displayTpPrice);
             });
             
             // Create Y-axis highlights for unique TP prices
