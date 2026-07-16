@@ -119,6 +119,16 @@ function _isMcRemigrationPhase1EngineSliceActive() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE;
 }
 
+/** H-R03: iframe ctrl+click dedupe (canvas mousedown + shape click double-actuation). Default ON; I13 kill-switch. */
+function _isIframeCtrlSelectDedupeV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1;
+}
+
+/** Suppress window for iframe ctrl-select toggle dedupe (ms). Matches __v9DrawingSelectionGuardUntil span when fix ON. */
+function _iframeCtrlSelectSuppressMs() {
+    return _isIframeCtrlSelectDedupeV1Enabled() ? 250 : 80;
+}
+
 /** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
 function notifyMultichartParentSelectionCleared(chartInstance) {
     if (typeof window === 'undefined' || !multichartQuickbarSettingsFixEnabled()) return;
@@ -2413,31 +2423,33 @@ class DrawingToolsManager {
                 if (event.button === 0 && this._isCtrlPointerModifier(event) && !this.currentTool && !this.isRectSelecting) {
                     const [ctrlMx, ctrlMy] = this._eventCanvasLocalXY(event);
                     const ctrlHits = this.findDrawingsAtPoint(ctrlMx, ctrlMy, { includeVolumeProfileBodyHit: true });
-                    if (!ctrlHits || ctrlHits.length === 0) {
-                        // Empty space with Ctrl → let chart.js Ctrl+marquee handle the drag-select.
+                    const domCtrlDrawing = this._resolveDrawingFromPointerEvent(event);
+                    let ctrlBest = null;
+                    if (_isIframeCtrlSelectDedupeV1Enabled() && isMultichartIframeEmbed()
+                        && domCtrlDrawing && !domCtrlDrawing.locked) {
+                        ctrlBest = domCtrlDrawing;
+                    } else {
+                        if (!ctrlHits || ctrlHits.length === 0) {
+                            return;
+                        }
+                        ctrlBest = ctrlHits.find((d) => d && !d.locked) || null;
+                    }
+                    if (!ctrlBest) {
                         return;
                     }
-                    // Ctrl+click on a shape → toggle it in/out of the multi-selection
-                    // (add shapes one-by-one). The canvas is the top hit-test surface, so
-                    // without this the additive select never fires and the shape stays
-                    // unselected. _tryStartCtrlSelectionMove above already handles Ctrl+drag
-                    // to move an existing multi-selection.
-                    const ctrlBest = ctrlHits.find((d) => d && !d.locked) || null;
-                    if (ctrlBest) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (typeof event.stopImmediatePropagation === 'function') {
-                            event.stopImmediatePropagation();
-                        }
-                        this.selectDrawing(ctrlBest, true);
-                        if (isMultichartIframeEmbed()) {
-                            this._suppressNextIframeCtrlSelectToggle = {
-                                id: ctrlBest && ctrlBest.id != null ? String(ctrlBest.id) : null,
-                                until: performance.now() + 80,
-                            };
-                        }
-                        suppressNextCanvasClick = true;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
                     }
+                    this.selectDrawing(ctrlBest, true);
+                    if (isMultichartIframeEmbed()) {
+                        this._suppressNextIframeCtrlSelectToggle = {
+                            id: ctrlBest && ctrlBest.id != null ? String(ctrlBest.id) : null,
+                            until: performance.now() + _iframeCtrlSelectSuppressMs(),
+                        };
+                    }
+                    suppressNextCanvasClick = true;
                     return;
                 }
 
@@ -4194,7 +4206,6 @@ class DrawingToolsManager {
                         drawing = drawingsAtPoint[0];
                     }
                 } else {
-                    // Normal click - select the topmost drawing (first in list)
                     drawing = drawingsAtPoint[0];
                 }
                 
@@ -4270,6 +4281,26 @@ class DrawingToolsManager {
                     if (clickTargetNode && clickTargetNode.closest) {
                         const g = clickTargetNode.closest('.drawing');
                         if (g) drawingGroup = g;
+                    }
+                }
+            }
+
+            if (_isIframeCtrlSelectDedupeV1Enabled()
+                && isMultichartIframeEmbed()
+                && this._isMultiSelectModifier(event)) {
+                const domPick = this._resolveDrawingFromDomTarget(clickTargetNode)
+                    || this._resolveDrawingFromDomPoint(event.clientX, event.clientY);
+                if (domPick && !domPick.locked) {
+                    drawing = domPick;
+                    if (clickTargetNode && clickTargetNode.closest) {
+                        const g = clickTargetNode.closest('.drawing');
+                        if (g) {
+                            drawingGroup = g;
+                        } else if (Array.isArray(allDrawingGroups)) {
+                            const match = allDrawingGroups.find((grp) =>
+                                d3.select(grp).attr('data-id') === domPick.id);
+                            if (match) drawingGroup = match;
+                        }
                     }
                 }
             }
@@ -5972,6 +6003,42 @@ class DrawingToolsManager {
     }
 
     /**
+     * Resolve topmost drawing under viewport coordinates (iframe ctrl+click when geometry overlaps synced copies).
+     * @param {number} clientX
+     * @param {number} clientY
+     * @returns {Object|null}
+     */
+    _resolveDrawingFromDomPoint(clientX, clientY) {
+        if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') {
+            return null;
+        }
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+            return null;
+        }
+        try {
+            const nodes = document.elementsFromPoint(clientX, clientY);
+            if (!Array.isArray(nodes)) return null;
+            for (let i = 0; i < nodes.length; i++) {
+                const resolved = this._resolveDrawingFromDomTarget(nodes[i]);
+                if (resolved && !resolved.locked) return resolved;
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    /**
+     * Prefer explicit DOM target, then topmost element at pointer (canvas capture often targets canvas).
+     * @param {MouseEvent|PointerEvent|null} event
+     * @returns {Object|null}
+     */
+    _resolveDrawingFromPointerEvent(event) {
+        if (!event) return null;
+        const fromTarget = this._resolveDrawingFromDomTarget(event.target);
+        if (fromTarget && !fromTarget.locked) return fromTarget;
+        return this._resolveDrawingFromDomPoint(event.clientX, event.clientY);
+    }
+
+    /**
      * Point-based stroke distance for simple line tools (works without live SVG nodes).
      * @returns {{ distance: number, tolerance: number }|null}
      */
@@ -7637,6 +7704,17 @@ class DrawingToolsManager {
             
             // Single click - select (Shift/Ctrl for multi-select); locked = select only, no drag/resize
             if (!self.currentTool) {
+                if (_isIframeCtrlSelectDedupeV1Enabled()
+                    && isMultichartIframeEmbed()
+                    && self._isMultiSelectModifier(event)
+                    && self._suppressNextIframeCtrlSelectToggle) {
+                    const suppress = self._suppressNextIframeCtrlSelectToggle;
+                    const sameDrawing = drawing && drawing.id != null && suppress.id === String(drawing.id);
+                    const stillFresh = typeof performance !== 'undefined' && performance.now() <= suppress.until;
+                    if (sameDrawing && stillFresh) {
+                        return;
+                    }
+                }
                 self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
         };
@@ -9899,7 +9977,7 @@ class DrawingToolsManager {
             const sameDrawing = drawing && drawing.id != null && suppress.id === String(drawing.id);
             const stillFresh = typeof performance !== 'undefined' && performance.now() <= suppress.until;
             const alreadySelected = sameDrawing && Array.isArray(this.selectedDrawings)
-                && this.selectedDrawings.includes(drawing);
+                && this.selectedDrawings.some((d) => d && d.id != null && String(d.id) === String(drawing.id));
             if (sameDrawing && stillFresh && alreadySelected) {
                 this._suppressNextIframeCtrlSelectToggle = null;
                 return;
@@ -9908,7 +9986,6 @@ class DrawingToolsManager {
                 this._suppressNextIframeCtrlSelectToggle = null;
             }
         }
-        // If eraser mode is active, delete the drawing instead of selecting
         if (this.eraserMode) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
             this._finishEraserOneShotDelete();
@@ -9927,9 +10004,26 @@ class DrawingToolsManager {
         
         // Multi-selection with Shift or Ctrl
         if (addToSelection) {
-            // Check if already selected
-            const index = this.selectedDrawings.indexOf(drawing);
+            // Check if already selected (id match — iframe ctrl path may pass a different object ref)
+            let index = this.selectedDrawings.indexOf(drawing);
+            if (index === -1 && drawing && drawing.id != null && Array.isArray(this.selectedDrawings)) {
+                index = this.selectedDrawings.findIndex((d) => d && d.id != null && String(d.id) === String(drawing.id));
+            }
             if (index > -1) {
+                if (_isIframeCtrlSelectDedupeV1Enabled()
+                    && isMultichartIframeEmbed()
+                    && this._suppressNextIframeCtrlSelectToggle) {
+                    const suppress = this._suppressNextIframeCtrlSelectToggle;
+                    const sameDrawing = drawing && drawing.id != null && suppress.id === String(drawing.id);
+                    const stillFresh = typeof performance !== 'undefined' && performance.now() <= suppress.until;
+                    if (sameDrawing && stillFresh) {
+                        this._suppressNextIframeCtrlSelectToggle = null;
+                        return;
+                    }
+                    if (!stillFresh) {
+                        this._suppressNextIframeCtrlSelectToggle = null;
+                    }
+                }
                 // Already selected - deselect it
                 this.selectedDrawings.splice(index, 1);
                 drawing.deselect();
