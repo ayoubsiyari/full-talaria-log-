@@ -6,6 +6,12 @@
 (function (global) {
     'use strict';
 
+    /** D-018 Phase 1 master slice: unset = iframe engine substrate ON; true = fallback-B revert. */
+    function _isMcRemigrationPhase1EngineSliceActive() {
+        if (!global || typeof global === 'undefined') return true;
+        return !global.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE;
+    }
+
     class ToolLifecycleStore {
         constructor(drawingManager) {
             this.drawingManager = drawingManager;
@@ -21,7 +27,10 @@
         isEnabled() {
             if (global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2) return false;
             if (this._isMultichartIframeEmbed()) {
-                return !!(global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false);
+                if (!_isMcRemigrationPhase1EngineSliceActive()) {
+                    return !!(global && global.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false);
+                }
+                return true;
             }
             return true;
         }

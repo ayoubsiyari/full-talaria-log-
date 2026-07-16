@@ -15560,6 +15560,12 @@ body.light-mode .template-save-dialog .dialog-title {
 
             window.drawingManager.renderDrawing(drawing);
 
+            if (typeof window.drawingManager.notifyDrawingVisualMutation === 'function') {
+                window.drawingManager.notifyDrawingVisualMutation('DrawingSettingsPanel.applyTextAlignDefaults');
+            } else if (typeof window.drawingManager.saveDrawings === 'function') {
+                window.drawingManager.saveDrawings();
+            }
+
         }
 
         

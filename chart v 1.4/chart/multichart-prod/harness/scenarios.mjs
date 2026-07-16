@@ -5231,16 +5231,25 @@ async function readAnchorSnapshot(page, ref) {
     const dm = ch && ch.drawingManager;
     const drawing = dm && dm.drawings.find((d) => d && String(d.id) === String(drawId));
     if (!drawing) return { ok: false, reason: 'drawing not found' };
-    const points = (drawing.points || []).map((p) => {
+    const tsPts = Array.isArray(drawing.timestampPoints) ? drawing.timestampPoints : [];
+    const points = (drawing.points || []).map((p, i) => {
       const idx = Math.round(Number(p.x));
       const bar = Array.isArray(ch.data) ? ch.data[idx] : null;
+      const tsPt = tsPts[i];
+      const timestamp = tsPt && Number.isFinite(Number(tsPt.timestamp))
+        ? Number(tsPt.timestamp)
+        : (bar ? Number(bar.t) : null);
+      const price = tsPt && Number.isFinite(Number(tsPt.price))
+        ? Number(tsPt.price)
+        : Number(p.y);
       const pixelX = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(idx) : null;
       return {
         x: Number(p.x),
-        y: Number(p.y),
+        y: price,
         idx,
-        timestamp: bar ? Number(bar.t) : null,
-        barOpen: bar ? Number(bar.o) : null,
+        timestamp,
+        timestampSource: tsPt && Number.isFinite(Number(tsPt.timestamp)) ? 'timestampPoints' : 'barOpenFallback',
+        barOpen: bar ? Number(bar.t) : null,
         barHigh: bar ? Number(bar.h) : null,
         barLow: bar ? Number(bar.l) : null,
         barClose: bar ? Number(bar.c) : null,
@@ -5254,6 +5263,7 @@ async function readAnchorSnapshot(page, ref) {
       dataLen: Array.isArray(ch.data) ? ch.data.length : 0,
       firstT: Array.isArray(ch.data) && ch.data[0] ? Number(ch.data[0].t) : null,
       lastT: Array.isArray(ch.data) && ch.data.length ? Number(ch.data[ch.data.length - 1].t) : null,
+      hasTimestampPoints: tsPts.length > 0,
       points,
     };
   }, id);
@@ -5276,9 +5286,11 @@ function assertAnchorTimestampsStable(checks, label, before, after) {
   const afterPoints = after?.points || [];
   const details = beforePoints.map((p, i) => {
     const q = afterPoints[i] || {};
-    return `p${i}: beforeT=${p.timestamp} afterT=${q.timestamp} beforeY=${p.y} afterY=${q.y}`;
+    return `p${i}: beforeT=${p.timestamp}(${p.timestampSource}) afterT=${q.timestamp}(${q.timestampSource}) beforeY=${p.y} afterY=${q.y}`;
   }).join('; ');
-  const ok = beforePoints.length > 0
+  const ok = before?.hasTimestampPoints
+    && after?.hasTimestampPoints
+    && beforePoints.length > 0
     && beforePoints.length === afterPoints.length
     && beforePoints.every((p, i) => afterPoints[i]
       && Number(afterPoints[i].timestamp) === Number(p.timestamp)
@@ -6925,11 +6937,24 @@ const T8_S69 = '__TALARIA_MC_DISABLE_DISPLAY_TF_MASTER';
 const T8_S70 = '__TALARIA_MC_DISABLE_HIGH_LIMIT_BULK';
 const T8_S71 = '__TALARIA_MC_DISABLE_TF_SWITCH_FILL_STORM_GUARD';
 const T8_S72 = '__TALARIA_MC_DISABLE_PANEL_HOSTSWITCH_QUIET';
+// ── H-S73 ────────────────────────────────────────────────────────────────
+// B-FIX-C: mirror prepend offsetX compensation when host backward-pan extends
+// the shared master (T8 step-1 pending).
+//
+// POLICY-TABLE NOTE (T8 step 11): H-S73 pins the **prepend-compensation cell**
+// (`MIRROR_PREPEND_COMPENSATION`), NOT TAL-01579 release snap-back directly.
+// TAL-01579 (grab-point snap on drag-release) needs a separate pin — see proposed
+// **H-S82** spec in `T8-step11-snapback-hs73-pin-diagnostic-report.md` (H-S79 = refresh playhead).
+//
+// Faithful TAL-01579 pin MUST assert: after real pan on panel B during paused
+// replay, post-release settled offsetX ≠ grab-time offsetX when drag moved
+// materially (not snap-back to mousedown anchor).
 const T8_S73 = '__TALARIA_MC_DISABLE_MIRROR_PREPEND_COMPENSATION';
 const T8_S74 = '__TALARIA_MC_DISABLE_FINER_PANEL_SELFOWN';
 const T8_S75 = '__TALARIA_MC_DISABLE_SAME_PAIR_PAN_HOST_OWNER';
 const T8_S76 = '__TALARIA_MC_DISABLE_REPLAY_FOLLOW_FALLBACK';
 const T8_S77 = '__TALARIA_MC_DISABLE_PANEL_MASTER_GROWTH_OFFSET';
+const T8_S82 = '__TALARIA_MC_DISABLE_PAN_RELEASE_ANCHOR_HOLD';
 
 /** Fresh boot with a single kill-switch pre-set (causal RED proof). */
 async function t8RedBoot(ctx, bootOpts, flag) {
@@ -7513,6 +7538,126 @@ async function hS73(ctx) {
   });
 }
 
+/** After real pan, prove prepend compensation re-bases to release offset (D-017). */
+async function provePanReleasePrependRebase(page, panelId, expectRebased) {
+  const frame = panelId === 'A' ? page : panelFrameMap(page)[panelId];
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((expectRebased) => {
+    const ch = window.chart;
+    const rs = ch.replaySystem;
+    if (!rs?.userHasPanned) return { ok: false, reason: 'not panned' };
+    const spacing = typeof ch.getCandleSpacing === 'function' ? ch.getCandleSpacing() : 8;
+    if (!(spacing > 0)) return { ok: false, reason: 'no spacing' };
+    const raw = Array.isArray(ch.rawData) ? ch.rawData : null;
+    const data = Array.isArray(ch.data) ? ch.data : null;
+    if (!raw || !data || raw.length < 8 || data.length < 8) return { ok: false, reason: 'short data' };
+    const releaseOx = Number(ch.offsetX);
+    const added = 4;
+    const staleGrabDelta = spacing * 12;
+    const snap = {
+      rawFirstTs: Number(raw[added]?.t),
+      dataFirstTs: Number(data[added]?.t),
+      rawLength: raw.length,
+      dataLength: data.length,
+      offsetX: releaseOx - staleGrabDelta,
+      replayIndex: Number(rs.currentIndex),
+    };
+    const beforeOx = releaseOx;
+    const res = ch._applyMultichartMirrorPrependCompensation(snap, { replay: rs });
+    if (!res || res.addedDisplayBars <= 0) return { ok: false, reason: 'no prepend applied', res };
+    const afterOx = Number(ch.offsetX);
+    const shift = res.addedDisplayBars * spacing;
+    const rebasedTarget = beforeOx - shift;
+    const staleTarget = (releaseOx - staleGrabDelta) - shift;
+    const usedRebase = Math.abs(afterOx - rebasedTarget) < spacing * 0.6;
+    const usedStale = Math.abs(afterOx - staleTarget) < spacing * 0.6;
+    ch.offsetX = beforeOx;
+    if (rs && Number.isFinite(snap.replayIndex)) rs.currentIndex = snap.replayIndex;
+    return {
+      ok: expectRebased ? usedRebase : usedStale,
+      usedRebase,
+      usedStale,
+      beforeOx,
+      afterOx,
+      rebasedTarget,
+      staleTarget,
+      fixDisabled: !!ch._panReleaseAnchorHoldFixDisabled?.(),
+      ownsViewport: !!ch._userOwnsReleasedViewport?.(rs),
+    };
+  }, expectRebased).catch((e) => ({ ok: false, reason: String(e) }));
+}
+
+/** TAL-01579 / D-017: pan-release viewport holds at release offset, not grab-time anchor. */
+async function hS82(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    const ts0 = await enterReplayPausedAll(page);
+    checks.check('H-S82 replay paused', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+
+    const grabB = await readPanelFollow(page, 'B');
+    await dragCellRight(page, 'B', { screens: 3 });
+    const atReleaseB = await readPanelFollow(page, 'B');
+    await sleep(2500);
+    const settledB = await readPanelFollow(page, 'B');
+
+    const dragMovedB = !!(grabB && atReleaseB
+      && Number.isFinite(grabB.offsetX) && Number.isFinite(atReleaseB.offsetX)
+      && Math.abs(atReleaseB.offsetX - grabB.offsetX) > 40);
+    const noGrabSnapB = dragMovedB && settledB && Number.isFinite(settledB.offsetX)
+      && Math.abs(settledB.offsetX - atReleaseB.offsetX) < 15;
+    checks.check('H-S82 setup: panel B drag moved viewport materially', dragMovedB,
+      `grab=${grabB?.offsetX} release=${atReleaseB?.offsetX}`);
+    checks.check('H-S82 GREEN: panel B settled offsetX holds release (no grab-point snap-back)',
+      noGrabSnapB,
+      `grab=${grabB?.offsetX} release=${atReleaseB?.offsetX} settled=${settledB?.offsetX} userHasPanned=${settledB?.userHasPanned}`);
+    checks.check('H-S82 GREEN: panel B userHasPanned preserved',
+      !!(settledB && settledB.userHasPanned),
+      `userHasPanned=${settledB?.userHasPanned}`);
+    const rebaseB = await provePanReleasePrependRebase(page, 'B', true);
+    checks.check('H-S82 GREEN: prepend compensation re-bases to release offset when userHasPanned',
+      !!rebaseB.ok, JSON.stringify(rebaseB));
+
+    await enterReplayPausedAll(page);
+    const grabA = await readPanelFollow(page, 'A');
+    await dragCellRight(page, 'A', { screens: 3 });
+    const atReleaseA = await readPanelFollow(page, 'A');
+    await sleep(2500);
+    const settledA = await readPanelFollow(page, 'A');
+
+    const dragMovedA = !!(grabA && atReleaseA
+      && Number.isFinite(grabA.offsetX) && Number.isFinite(atReleaseA.offsetX)
+      && Math.abs(atReleaseA.offsetX - grabA.offsetX) > 40);
+    const noGrabSnapA = dragMovedA && settledA && Number.isFinite(settledA.offsetX)
+      && Math.abs(settledA.offsetX - atReleaseA.offsetX) < 15;
+    checks.check('H-S82 setup: host A drag moved viewport materially', dragMovedA,
+      `grab=${grabA?.offsetX} release=${atReleaseA?.offsetX}`);
+    checks.check('H-S82 GREEN: host A settled offsetX holds release (no grab-point snap-back)',
+      noGrabSnapA,
+      `grab=${grabA?.offsetX} release=${atReleaseA?.offsetX} settled=${settledA?.offsetX}`);
+
+    const bootRed = await t8RedBoot(ctx, { pair: 'same', panels: 4, tf: '1m' }, T8_S82);
+    try {
+      await setSync(bootRed.page, false);
+      await setIntervalSync(bootRed.page, false);
+      await enterReplayPausedAll(bootRed.page);
+      await dragCellRight(bootRed.page, 'B', { screens: 3 });
+      await sleep(400);
+      const staleB = await provePanReleasePrependRebase(bootRed.page, 'B', false);
+      checks.check(`H-S82 RED: ${T8_S82}=true prepend uses stale grab baseline (not re-based)`,
+        !!staleB.ok && staleB.fixDisabled === true && staleB.ownsViewport === false,
+        JSON.stringify(staleB));
+    } finally {
+      await bootRed.close();
+    }
+    notes.push('H-S82 (TAL-01579 / D-017): pan-release viewport ownership.');
+    return checks;
+  });
+}
+
 async function hS74(ctx) {
   return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
     const { page } = boot;
@@ -7754,6 +7899,175 @@ async function hS78(ctx) {
   });
 }
 
+// ── H-S83 ───────────────────────────────────────────────────────────────
+// T8 step 13 / D-016: finest-TF unified replay clock — 4h-focused play must
+// sub-advance 1m panels (no 4h jumps), parity timestamp, coarse coalesce bound.
+const T8_FINEST_TF_CADENCE_SWITCH = '__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE';
+const ONE_M_MS = 60_000;
+const FOUR_H_MS = 14_400_000;
+
+function replayTsStepDeltas(samples, id) {
+  const ts = samples
+    .map((s) => s.snap && s.snap[id] && s.snap[id].replayTs)
+    .filter((t) => Number.isFinite(t));
+  const deltas = [];
+  for (let i = 1; i < ts.length; i++) {
+    const d = ts[i] - ts[i - 1];
+    if (d > 0) deltas.push(d);
+  }
+  return { ts, deltas, total: ts.length ? ts[ts.length - 1] - ts[0] : 0 };
+}
+
+async function hS83(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 4, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B', 'C', 'D'];
+    const SMALL = 12;
+    const PLAY_MS = 6000;
+    const SAMPLE_MS = 150;
+    const PLAY_SPEED = 15;
+
+    await page.setViewport({ width: 2600, height: 1400 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S83 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+    checks.check('H-S83 replay entered + quiescent', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    await panelCmd(page, 'C', 'setTimeframe', { tf: '4h' }).catch(() => {});
+    await panelCmd(page, 'D', 'setTimeframe', { tf: '4h' }).catch(() => {});
+    await sleep(1500);
+
+    const focusRes = await focusPanelByClick(page, 'C');
+    checks.check('H-S83 actuation: focus 4h panel C (real click)', !!(focusRes && focusRes.ok),
+      JSON.stringify(focusRes));
+    await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs) return;
+      if (typeof rs.setPlaybackMode === 'function') rs.setPlaybackMode('tick', { restartPlayback: false });
+      if (typeof rs.setStepTimeframe === 'function') rs.setStepTimeframe('4h', { restartPlayback: false });
+      if (window.__multichartGrid && typeof window.__multichartGrid.refreshFinestReplayCadence === 'function') {
+        window.__multichartGrid.refreshFinestReplayCadence();
+      }
+    });
+    await sleep(300);
+
+    const cadenceProbe = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      const grid = window.__multichartGrid;
+      const finestMs = rs && typeof rs._getFinestReplayCadenceMs === 'function'
+        ? rs._getFinestReplayCadenceMs()
+        : (grid && typeof grid.getFinestReplayCadenceMs === 'function'
+          ? grid.getFinestReplayCadenceMs() : null);
+      return {
+        stepTf: rs && rs.stepTimeframeOverride,
+        finestMs,
+        subdivisions: rs && typeof rs._finestTfCadenceSubdivisions === 'function'
+          ? rs._finestTfCadenceSubdivisions() : null,
+        cadenceOn: rs && typeof rs._isFinestTfReplayCadenceEnabled === 'function'
+          ? rs._isFinestTfReplayCadenceEnabled() : null,
+      };
+    });
+    checks.check('H-S83 setup: 4h interval + finest cadence armed (subdivisions > 1)',
+      !!(cadenceProbe && cadenceProbe.subdivisions > 1 && cadenceProbe.finestMs === ONE_M_MS),
+      JSON.stringify(cadenceProbe));
+
+    const cFollow0 = await readPanelFollow(page, 'C');
+    const playStart = await startHostProductionTickPlay(page, ids, 'tick');
+    await page.evaluate((spd) => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (rs && typeof rs.setSpeed === 'function') rs.setSpeed(spd);
+    }, PLAY_SPEED);
+    await sleep(300);
+    checks.check('H-S83 actuation: production tick play (host rs.play, no synthetic seek loop)',
+      !!(playStart && playStart.ok && playStart.mode === 'tick'),
+      JSON.stringify(playStart));
+
+    const samples = await sampleReplayDuringProductionPlay(page, ids, PLAY_MS, SAMPLE_MS);
+    await stopHostProductionPlay(page);
+    await sleep(500);
+
+    const lastSnap = samples.length ? samples[samples.length - 1].snap : null;
+    const hostTs = lastSnap && lastSnap.A && lastSnap.A.replayTs;
+    const drifts = ids.map((id) => {
+      const t = lastSnap && lastSnap[id] && lastSnap[id].replayTs;
+      return (Number.isFinite(hostTs) && Number.isFinite(t)) ? Math.abs(t - hostTs) : Infinity;
+    });
+    const maxDrift = drifts.length ? Math.max(...drifts) : Infinity;
+    checks.check('H-S83 parity: panel replayTs within 1s of host at play end (sub-minute finest clock)',
+      maxDrift <= 1000,
+      `maxDrift=${maxDrift} ` + ids.map((id) => `${id}=${lastSnap?.[id]?.replayTs}`).join(' '));
+
+    const bSteps = replayTsStepDeltas(samples, 'B');
+    const maxStep = bSteps.deltas.length ? Math.max(...bSteps.deltas) : 0;
+    const hasAdvance = bSteps.total > ONE_M_MS * 0.5;
+    checks.check('H-S83 finer panel B advances during 4h-focused play (non-vacuous)',
+      hasAdvance, `totalDelta=${bSteps.total} maxStep=${maxStep}`);
+    checks.check('H-S83 cadence: no 4h jump on 1m panel B (max step < 4h)',
+      maxStep < FOUR_H_MS * 0.5,
+      `maxStep=${maxStep} deltas=${bSteps.deltas.slice(0, 8).join(',')}`);
+    checks.check('H-S83 cadence: finest sub-steps (max step <= 1m bucket + slack)',
+      maxStep <= ONE_M_MS * 1.25 || maxStep === 0,
+      `maxStep=${maxStep}`);
+
+    const cFollow1 = await readPanelFollow(page, 'C');
+    const followDelta = (Number(cFollow1?.followRenders) || 0) - (Number(cFollow0?.followRenders) || 0);
+    const off0 = Number(cFollow0?.offsetX);
+    const off1 = Number(cFollow1?.offsetX);
+    const dpr = Number(cFollow1?.dpr) || 1;
+    const pixelCols = (Number.isFinite(off0) && Number.isFinite(off1))
+      ? Math.round(Math.abs(off1 - off0) * dpr) : 0;
+    checks.check('H-S83 coalesce: 4h follow renders bounded (<= pixel-columns + SMALL)',
+      followDelta <= pixelCols + SMALL,
+      `followDelta=${followDelta} pixelCols=${pixelCols}`);
+
+    // Kill-switch OFF: revert to selected-panel 4h jump cadence on 1m panel.
+    await page.evaluate((sw) => { window[sw] = true; }, T8_FINEST_TF_CADENCE_SWITCH);
+    await page.evaluate(() => {
+      if (window.__multichartGrid && typeof window.__multichartGrid.refreshFinestReplayCadence === 'function') {
+        window.__multichartGrid.refreshFinestReplayCadence();
+      }
+    });
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    await focusPanelByClick(page, 'C');
+    await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (rs) {
+        rs.setPlaybackMode('tick', { restartPlayback: false });
+        rs.setStepTimeframe('4h', { restartPlayback: false });
+      }
+    });
+    await startHostProductionTickPlay(page, ids, 'tick');
+    await page.evaluate((spd) => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (rs) rs.setSpeed(spd);
+    }, PLAY_SPEED);
+    const samplesOff = await sampleReplayDuringProductionPlay(page, ids, PLAY_MS, SAMPLE_MS);
+    await stopHostProductionPlay(page);
+    const bOff = replayTsStepDeltas(samplesOff, 'B');
+    const maxOff = bOff.deltas.length ? Math.max(...bOff.deltas) : 0;
+    checks.check('H-S83 switch-OFF: 1m panel sees coarse jump (max step >= 1h, legacy cadence)',
+      maxOff >= 3600000 * 0.9,
+      `maxStep=${maxOff} total=${bOff.total}`);
+    await page.evaluate((sw) => { try { delete window[sw]; } catch (_) { window[sw] = undefined; } },
+      T8_FINEST_TF_CADENCE_SWITCH);
+
+    notes.push('H-S83 (D-016/T8 step 13): finest-TF cadence — 4h-focused tick play, 1m sub-advance, coalesce bound.');
+    return checks;
+  });
+}
+
 // ── H-S58 ────────────────────────────────────────────────────────────────
 // TAL-00752#10/#20/#22: multi-entry close — stacked legs get pixel offsets;
 // removeMultiEntryLevel keeps splitEntries synced to levels[].
@@ -7912,6 +8226,10 @@ export function scenarioList() {
     { id: 'H-S78', title: 'BL-16 dedicated drag-during-play (A9)', run: hS78 },
     { id: 'H-S79', title: 'PLAN2-FOUND#5: backtest replay playhead survives refresh (paused restore)', run: hS79 },
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label syncs to engine TF after refresh (T8 step 9)', run: hS80 },
+    { id: 'H-S83', title: 'T8 step 13 / D-016: finest-TF cadence — 4h-focused 1m sub-advance + coalesce', run: hS83 },
+    { id: 'H-S82', title: 'TAL-01579 / D-017: pan-release snap-back — settled offsetX holds release', run: hS82 },
+    // Reserved (T0 step 16 — not yet implemented):
+    // H-S81: mixed-coarse tick-play fetch+render budget fence (T8 step 10; deferred Lane-4/T2)
   ];
 }
 

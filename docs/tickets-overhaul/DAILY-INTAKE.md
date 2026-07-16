@@ -135,3 +135,77 @@ All 5 tickets dispositioned; registry append pending with the next registry buil
 ### Priority note for the manager
 
 Small batch, but **TAL-01590 is the standout** — a full replay freeze on independent-symbol layouts is the most severe symptom on the board this week and it runs on the data/replay path, which is *not* under the D-012 interaction freeze. Sequence: A5 diagnostic dispatches as soon as a plan-1-experienced lane is free (don't preempt Lane 4's harness rebuild or Lane 1's transport diagnostic — both are D-012 critical path). Rows 13–16 go to the Director as one T3 "layout state" contract block rather than four separate escalations. TAL-01588 is closed (PO fixed it directly).
+
+---
+
+## Intake 2026-07-15 (export `tickets/support-export-full-16-07-26`, 31 new tickets: TAL-01593–TAL-01623)
+
+**Context for this batch — read this first:** testers ran on the **frozen production deploy (fallback-B)**, which contains **none** of this week's fixes: the D-015 edge-park freeze fix (PO-confirmed on staging a4), the D-009 replay mode/cadence fixes, the D-016 cadence design, and the order-entry family are all staged behind the deploy freeze. A large share of this batch photographs already-fixed defects. Per D-018, the freeze lifts on the combined build after the interaction re-migration — every "PENDING-DEPLOY" row below closes by retest on that build, no new work.
+
+### IN-PLAN — PENDING-DEPLOY (fix already on staging; retest on the combined build) — 6 tickets
+
+| Ticket | Symptom | Staged fix |
+|---|---|---|
+| TAL-01609 | One chart in layout freezes during replay play | **D-015 edge-park fix** (unified own-master play advance) — exactly the TAL-01590/ESC-013 mechanism |
+| TAL-01610 | Only one chart updates in replay, others frozen (also after refresh) | **D-015** — same; the "after refresh" note gets one verification pass on the combined build (fresh-boot cell of the state matrix) |
+| TAL-01611 | Replay tick animation while in candle-by-candle mode | **D-009 fix (a)** mode/play routing (TAL-01582 sibling) |
+| TAL-01612 | Replay date jumps forward in weeks | **D-009 fix (b)** interval cadence (stale interval-layer family) — verify on combined build; if weekly stepping persists, re-triage to A3 owner |
+| TAL-01600 | 2-layout play: layout 1 fast, layout 2 lags | **D-015 + D-016** (cadence parity across panels) |
+| TAL-01603 (parts b+c) | Replay follows selected panel's TF instead of smallest; finer-than-host panels don't respond | **D-016 finest-TF cadence** (part b is literally its spec) + **D-015** (part c freeze) |
+
+### IN-PLAN (rides an open track) — 12 tickets
+
+| Ticket | Symptom | Rides with |
+|---|---|---|
+| TAL-01595 | Single chart: pressing replay jumps viewport A→B in one step | **T8** replay-start/viewport commit family (TAL-01575 sibling, single-chart variant) |
+| TAL-01597 | TF switch slow; only a few candles shown until chart is moved | **T8** acquisition seam (BL-14/17 family) + **RC-2** stuck-until-interaction render half — dual-cite T2 |
+| TAL-01605 | Re-render resets the other chart's viewport to layout left edge | **T8/T3** — viewport reset on peer re-render; cite with T3 row 14 geometry + T8 policy `adopt-X` cells |
+| TAL-01603 (part a) | Main-chart TF stuck — only 1D/4h respond | **T8** TF-switch response family with TAL-01597; single diagnostic covers both |
+| TAL-01614 | Open-order PNL only updates on tap/click | **T4 (RC-5)** stale aggregate + **RC-2** invalidation — the canonical T4 symptom |
+| TAL-01594 | Apply-default leaves "show info" stuck ON with button gone until OK | **T1/T2** apply-default family — same mechanism cluster as TAL-01589 (settings rewrite desyncs state); cite together |
+| TAL-01606 | Chart type doesn't respond first time; needs multiple switches | **T1/T2** first-click-fails family (H-S32 contract) — chart-type control variant |
+| TAL-01613 | Time label moves with chart on zoom during replay | **A1 GAP-AXIS** (T2 axis sub-task) |
+| TAL-01619 | Indicator price label moves with crosshair | **A1 GAP-AXIS** (TAL-01572 sibling) |
+| TAL-01604 | Label keeps moving from its position | **A1 GAP-AXIS** |
+| TAL-01618 | Gridline mismatch | **A1 GAP-AXIS** (TAL-01565 gridline row) |
+| TAL-01622 | Indicator name options flicker on hover during replay | **T2/T6** — per-frame replay re-render tears down hover chrome; RC-2 invalidation + RC-6 indicator lifecycle |
+
+### GAP (not covered — plan amended, A6) — 6 tickets
+
+| Ticket | Symptom | Gap + amendment |
+|---|---|---|
+| TAL-01602 | Dragging SL during replay: trade closes when the held line touches price — should apply only on release | **A6 (T4 order-interaction contract):** new row — SL/TP edits are **apply-on-release**; while held, the line is provisional and must not trigger fills/closes. RED-first (replay + drag-hold across price). |
+| TAL-01616 | Order disappears on refresh (F5) | **A6:** new row — open-order persistence across reload (state save/restore). Needs a spec decision from PO: persist pending *and* open orders? (Default: both, per-session file.) |
+| TAL-01615 | Dragging the price-scale label drags the order with it; only double-tap restores | **A6:** new row — price-axis gesture must not mutate order lines (sibling of A1's TAL-01566 gesture-isolation, but the order half lives in T4). |
+| TAL-01601 | 2 layouts: SL move on layout 2 doesn't mirror to layout 1; limit move lands below SL | **A6:** new row — **cross-panel order-state convergence**: one order store, panels render projections; per-panel divergence is an RC-5 ownership defect. Diagnostic-first (where does panel 2 hold its copy?). |
+| TAL-01593 | Holding Shift on a rectangle corner snaps the shape to chart top/bottom | **T1 GAP row:** modifier-drag (Shift=aspect/constrain) path in resize handler broken — registry row, rides T1 per-tool migration; not urgent. |
+| TAL-01599 | Chart type Bar/Line/Area render defect (screenshot) | **Needs repro detail** — image shows the defect but not the trigger; registry row logged; tester asked for steps (P5) before scoping. |
+
+### UI-polish batch / perf backlog / closed — 7 tickets
+
+| Ticket | Disposition |
+|---|---|
+| TAL-01623 | Holding Shift+→ spams a notification per step — **UI-polish batch** (debounce/coalesce the toast; keyboard repeat) |
+| TAL-01607 | Compare-Symbol blue button visibility — **UI-polish batch** |
+| TAL-01608, TAL-01598 | Compare Symbol makes chart heavy/laggy; renders slowly — **GAP-PERF (perf backlog)** with TAL-01561; Compare Symbol adds a per-frame overlay series; scoped in the post-plan-2 render-budget phase. If PO deems it P1, it needs its own escalation. |
+| TAL-01620 | VWAP + replay = large lag (+note: replay runs candle-by-candle at speed 60) | **Split:** VWAP lag → **T6/RC-6** indicator per-frame recompute (anchored VWAP recomputes full series per frame — known RC-3-adjacent hotspot); cadence note → rides D-009/D-016 retest |
+| TAL-01621 | Opening-range indicator: input change doesn't update the value shown next to indicator name | **T6/RC-6** settings→label invalidation (same family as T4's label-refresh fix, indicator flavor) |
+| TAL-01596 | CSV suffix on pair names — **already closed** by tester |
+
+### Summary counts
+
+| Disposition | Count |
+|---|---|
+| IN-PLAN — PENDING-DEPLOY (closes with the D-018 combined build) | 6 |
+| IN-PLAN (T8: 4, T4: 1, T1/T2: 2, A1-axis: 4, T2/T6: 1) | 12 |
+| GAP → A6 (T4 order-interaction contract: 4) + T1 row + needs-repro | 6 |
+| UI-polish / perf backlog / T6 / closed | 7 |
+
+### Plan-2 amendments issued today
+
+- **A6 (T4 order-interaction contract):** four new rows — SL/TP apply-on-release (TAL-01602), order persistence across refresh (TAL-01616, PO spec needed on scope), price-axis gesture isolation from orders (TAL-01615), cross-panel order-state convergence (TAL-01601, diagnostic-first). Lane 3 owns; contract rows before fixes, same discipline as T3's table.
+- **T6 evidence:** TAL-01620 (VWAP replay lag) + TAL-01621 (settings→label staleness) + TAL-01622 (hover chrome flicker) form T6's opening evidence set — T6 was thin on live evidence until today.
+
+### Priority note for the manager
+
+**Six tickets close with zero work the moment the D-018 combined build ships — the re-migration is now blocking visible tester pain, not just process.** Sequencing unchanged (phases are the critical path), but this is the strongest argument yet for no scope creep inside the phases. New dispatchable work this intake: A6 contract drafting (Lane 3, after its current queue), the TAL-01597/01603a TF-response diagnostic (T8, after current queue). Everything else rides.

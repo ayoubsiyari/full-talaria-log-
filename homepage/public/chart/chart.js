@@ -2346,12 +2346,21 @@ class Chart {
         } catch (_e) { return false; }
     }
 
+    _isMcRemigrationPhase1EngineSliceActive() {
+        try {
+            return typeof window === 'undefined' || !window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE;
+        } catch (_e) { return true; }
+    }
+
     _isLegacySelectionRetireV2Enabled() {
         if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2) {
             return false;
         }
         if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
-            return typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 === false;
+            if (!this._isMcRemigrationPhase1EngineSliceActive()) {
+                return typeof window !== 'undefined' && window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 === false;
+            }
+            return true;
         }
         return true;
     }

@@ -4,6 +4,118 @@ Escalations to the Director only. Routine progress → `MANAGER-FINDINGS.md`.
 
 ---
 
+## ESC-017 — A6 order-interaction contract: checkpoint approval (apply-on-release invariant + A6-4 host-canonical architecture)
+
+**Date:** 2026-07-16
+**Track:** T4 / RC-5 (Director intake amendment A6)
+**Status:** OPEN — awaiting Director ruling. Not on the re-migration critical path; fixes gated on this ruling + lane slots.
+
+**Context:** Lane 3 delivered `T4-A6-ORDER-INTERACTION-CONTRACT.md` (4 rows, contract-before-fix per intake discipline). Three items need a Director checkpoint before any A6 fix dispatches:
+
+1. **A6-1 — approve apply-on-release as the canonical SL/TP interaction invariant.** Today open-SL drag mutates `position.stopLoss` on every `mousemove` and `updatePositions()` evaluates hits against the live (provisional) price every replay tick → trade closes while the line is merely held across price (TAL-01602). Proposed: SL/TP provisional while pointer down; commit to store only on release; replay skips hit-tests for legs under drag. Freeze-safe (`order-manager.js` only), kill-switch `__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX`.
+2. **A6-4 — approve the host-canonical order-store architecture** (ARCHITECTURE DECISION). Multichart currently holds **per-panel mutable order clones** with only `order:pending-updated` sync — there is **no `order:opened-updated` fan-out**, so an open SL/TP drag on panel B never mirrors to the host or peers (TAL-01601). Proposed target: one host-canonical `orderManager`; panels render projections; any edit routes to host then fans out. Touches `MultichartGrid.jsx` + `panel-cmd-bridge.js` → overlaps the multichart re-migration surface; live RED needs the re-migration multichart lane, so **A6-4 lands after the re-migration**.
+3. **Sequencing:** A6-1 first (freeze-safe), A6-2 (persistence — D-019 already settled the spec) parallel/next; **A6-3 (price-axis order isolation) + A6-4 gated to post-combined-build unfreeze**. Also asks whether A6-1 should land coherently with the held **TAL-00752 #4/#5** replay×drag/keyboard-pan pair (same `order-manager.js` region).
+
+**Manager recommendation:** approve A6-1 invariant + sequencing now (unblocks freeze-safe Lane-3 work); ratify A6-4 host-canonical target in principle but keep its dispatch gated behind the re-migration multichart lane. Lane 3 is meanwhile on a read-only order-manager landing-sequence consolidation so it can execute immediately on approval.
+
+---
+
+## ESC-016 — RESOLVED
+
+**Director ruling:** D-018 (2026-07-15) — **APPROVED as written + 4 additions.** (1) **Phase 0 must reconcile the 12-vs-10 baseline first** — Lane 4 re-runs full matrix, freezes authoritative RED set before Phase 1 dispatches; if the 2 promoted rows are genuinely green on fallback, affected phases shrink (don't re-fix working rows). (2) **One-knob revert per phase mandatory** — incl. Phase 1 master slice switch; **Phase 4 gets its own NEW keyboard switch**, not an extension. (3) **T8 keeps running in parallel** — only pauses `panel-cmd-bridge` edits during the Phase-4 keyboard window. (4) **Unfreeze ships as ONE combined build** (re-migration + all accumulated staging: cadence b1, order-entry, settings/Esc/Delete, TF-label); PO parity-checklist sign-off on that exact build = final gate. PO role: nothing until phases complete, then parity checklist (host + panel B, build id in each frame).
+
+---
+
+## ESC-016 — Multichart interaction RE-MIGRATION off fallback-B: authorization to execute Phases 1–6
+
+**Date:** 2026-07-15
+**Track:** T3 / RC-1 + RC-4 (also folds parked RC-3 Phase 5)
+**Trigger:** Honest cross-frame harness now stable (Lane 4 T0 step 16/17): `reactParity` = 13 expected / **12 honest RED** on build b1 (real mouse/keyboard, store/modal end-states). This is the prerequisite D-011/D-012 required before re-touching the code that broke on b44/b88.
+
+### Ask
+Authorize execution of the **6-phase gated re-migration** in `docs/tickets-overhaul/T3-REMIGRATION-PLAN.md` (plus the 7th post-unfreeze RC-3-parity tranche). This is **not** a wholesale one-shot fallback reversal — each phase discharges one root group, behind its own kill-switch, proven **10/10 GREEN** on the honest harness (I15) with a D-011 A/B before the next phase starts.
+
+### Phases (one root group each)
+1. **Engine selection substrate** (Lane 1) — re-enable tool-lifecycle V2 + legacy-selection-retire V2 in iframe context. Discharges H-R02/03, unblocks H-R01.
+2. **Parent chrome routing** (T3 + L1 emit) — ownership V2 + routing V3. H-R01, H-R12.
+3. **Settings transport + flash** (T3) — H-R04, H-R13, H-R09 settings leg.
+4. **Esc/Delete keyboard bridge (I14)** (T1/T3) — H-R05, H-R06. *Serialized off T8 replay edits on `panel-cmd-bridge.js`.*
+5. **Peer isolation / single owner** (T3) — H-R07 + H-S34/35/44.
+6. **Iframe Ctrl+drag marquee** (T1) — H-R08, H-R14.
+7. **(post-unfreeze) RC-3 Phase 5 anchoring parity** — H-S45–50 on `sync-bridge.js`, never interleaved with 1–6.
+
+### Fence / safety (built into the plan)
+- `MultichartGrid.jsx` = **one phase per PR**, single owner; `panel-cmd-bridge.js` Phase-4 window has **no** concurrent T8 replay edits; `sync-bridge.js`/anchoring only post-unfreeze.
+- Per-phase kill-switch covers every file incl. React (I13); switch-OFF must restore that phase's RED.
+
+### Unfreeze criteria (Manager will hold the freeze until ALL met)
+1. `reactParity.knownFailing` empty (12/12 GREEN), `gate:react` PASS, each H-R 10/10 on built dist with build-id asserted inside panel-B iframe.
+2. PO parity-checklist sign-off on the **same deployed build** (host + panel B).
+3. H-S34/35/44 promoted out of rollback known-failing.
+4. No open HR-PARITY#1–#8 registry rows left `user_replied`.
+
+### Recommendation
+Approve execution under this fence. It is the critical path to lifting the deploy freeze and shipping the accumulated staging work (cadence b1, order-entry a5, settings/Esc/Delete b105, TF-label a5) that currently cannot deploy while multichart interaction is unverified.
+
+---
+
+## ESC-016 — RESOLVED
+
+**Director ruling:** D-018 (2026-07-15)  
+**Outcome:** **AUTHORIZED — Phases 1–6 under the plan's fence.** Rulings: (1) phased execution as written; no phase starts until the prior phase's switch-OFF RED restoration is proven. (2) **Phase 0 hard gate incl. baseline reconcile** — Lane 4 re-runs the full 12-row step-17 matrix and freezes the authoritative row set before Phase 1 dispatches; if H-R07/H-R12 are genuinely green on fallback-B, the row→phase map updates and Phases 2/5 shrink (no re-fixing green rows). (3) Kill-switches: Phase 4 uses the **new** `PANEL_KEYBOARD_V1` switch (do not extend quickbar-settings); the Phase-1 master slice switch is **required, not optional** — every multi-predicate phase needs a one-knob revert. (4) T8 collision: Manager owns the Phase-4 window; T8 pauses `panel-cmd-bridge.js` edits for that window only, otherwise continues in parallel (D-013/D-016 unaffected); `sync-bridge.js` untouched until post-unfreeze. (5) **Unfreeze criteria ratified** + one addition: the unfreeze deploy is a **single combined build** carrying the accumulated staging work; PO parity sign-off happens on that combined build, with smoke rows for previously staging-confirmed items. (6) Labeling: DONE (dev only) — NEEDS-LIVE until the PO checklist pass; GREEN-SYNTHETIC has no role in reactParity. (7) Phase 7 approved in principle; dispatch gated on a post-unfreeze Director go-signal.
+
+---
+
+## ESC-015 — RESOLVED
+
+**Director ruling:** D-017 (2026-07-15)  
+**Outcome:** (1) Policy **approved with a precision**: when `userHasPanned`, no post-release index-pin or prepend compensation may move the panel toward grab/host anchors — but prepend compensation is **re-based to the released (post-drag) viewport, not removed** (deleting it would trade snap-back for prepend-jump). (2) **Scope: host + all panels**; state matrix must cover paused/playing (incl. BL-12 drag-disengage non-conflict), sync on/off, and prove no D-015 edge-park interaction. (3) **Standalone gated fix confirmed** — switch `__TALARIA_MC_DISABLE_PAN_RELEASE_ANCHOR_HOLD`, RED-first via **H-S82** (Lane 4 confirms id), acceptance = H-S82 RED→GREEN + switch A/B + H-S73/BL-12/D-015 families green + PO staging confirm; not folded into T5 or policy-v2. (4) **H-S73 FAIL-REAL-BUG registered as a separate defect** (B-FIX-C prepend compensation, host-backward-load peer shift); diagnostic queues behind the TAL-01579 fix; mapping correction accepted.
+
+---
+
+## ESC-015 — RESOLVED
+
+**Director ruling:** D-017 (2026-07-15) — **APPROVED.** Policy: once the user has panned, the **released viewport wins** — nothing may yank the chart toward the grab point or a host anchor. Technical precision: prepend compensation is **NOT deleted — it's re-based to the post-drag viewport** (keeps bars steady when left-history loads; only the stale pre-drag baseline is dropped). Applies to **host and panels**. **Standalone gated fix**, PO staging confirm. The manager side-discovery (**H-S73** genuinely-failing prepend-compensation scenario) is registered as **its own defect**, not folded in.
+
+---
+
+## ESC-015 — TAL-01579 drag-release snap-back: fix policy needs sign-off (escalation-class per D-014)
+
+**Date:** 2026-07-15
+**Track:** T8 (Lane 2)
+**RC:** RC-8 / RC-3 (anchor)
+**Trigger:** Step-11 diagnostic complete; D-014 ruling 3 pre-designated this cell escalation-class (do not fold into migration).
+
+### Mechanism (step-11 diagnostic)
+On pan release near/during replay (`chart.js:32387+`): `onUserPan()` sets `userHasPanned` (`replay-system.js:5748`) → `_scheduleReplayPanLoadLeft()` async prepend (`chart.js:25750+`). The snap-back to the grab point comes from one/both of:
+- **(a) Index-pin** — boot/host mirror pins `offsetX` to a stale right-edge bar index (`chart.js:3454-3459`, `17187-17344`).
+- **(b) Prepend compensation** — `_applyMultichartMirrorPrependCompensation` / `_tryExtendReplayMasterFromParent` shifts offset from a pre-drag snapshot, undoing the drag delta (`chart.js:2490-2527`, `5862-5880`).
+`drag.startOffsetX` is stored but never restored on release; "grab point" = the viewport at mousedown.
+
+### Proposed policy (needs sign-off)
+**When `userHasPanned`, no post-release index-pin or prepend compensation may recenter the panel toward grab/host anchors** — the user's released viewport wins until they re-engage sync. Gated fix, RED-first.
+
+### Decision requested
+1. Approve the policy above (user-pan viewport is authoritative post-release).
+2. Confirm scope: does this apply to host + all panels, or panels only? Any interaction with the D-015 edge-park advance (should not conflict — different path).
+3. Kill-switch name + whether it's a standalone fix (recommended) vs folded into a future anchor-unification (T5/RC-3) pass.
+
+### Notes for the ledger (not part of the ask)
+- **H-S73 mis-mapped:** it pins **B-FIX-C prepend compensation** (host backward-load shifts peer `offsetX`), NOT TAL-01579 — and H-S73 currently **FAIL-REAL-BUG** (a separate prepend-compensation defect to track, `H-S73`). Coverage/policy-table mapping corrected.
+- **New RED for TAL-01579 = `H-S82`** (NOT "H-S79" — that id is already the refresh-persistence scenario). Spec: paused replay → real pan on panel B → assert settled `offsetX` ≈ release offsetX, not grab-time offsetX (after 2.5s pan-load settle). Lane 4 to assign/confirm the id.
+
+### Manager recommendation
+Approve (1); standalone gated fix (`__TALARIA_MC_PAN_RELEASE_ANCHOR_HOLD` or similar), RED-first via H-S82, staging PO confirm. Keep separate from the mirror-policy-v2 migration.
+
+---
+
+## ESC-014 — RESOLVED
+
+**Director ruling:** D-016 (2026-07-15)
+**Outcome:** APPROVED the **unified finest-TF shared clock** (PO spec); **overruled the Manager's decoupled recommendation** — decoupled can't deliver progressive coarse-candle forming, and the perf fear conflated clock ticks with renders (Plan-1 rule: renders track pixel-column crossings, so sub-pixel 1m ticks on a 4h panel coalesce to ~zero repaints; coarse forming-candle updates MUST route through that coalesce path — mandatory design requirement). Fixed decisions: (1) **speed unchanged** — anchored to the selected panel (host 4h @ 1 candle/sec still forms one 4h candle/sec; the 1m panel plays 240 smoothly inside it); **all panels always show the same market timestamp (parity invariant)**. (2) **Every panel counts toward finest TF, including different-symbol**; clock **re-derives live** on add/close/re-TF **without jolting any viewport**. Process: **design doc first with a measured cost column** (frame times, 4-panel 1m/4h at max speed, before/after) — if it breaks the frame budget it returns with data, no silent degrade; own kill-switch; staging-only. Acceptance: **PO staging A/B** (flip new vs today in one session). → dispatched `T8-step12-lane2-finest-tf-cadence-design.md`.
+
+---
+
 ## ESC-014 — Replay cadence master: PO wants finest-TF, not selected-panel (the parked D-015 secondary, now reopened)
 
 **Date:** 2026-07-15
@@ -27,6 +139,13 @@ In a multi-panel mixed-TF layout, on Play **all panels advance at the selected/P
 
 ### Manager recommendation
 Authorize a **design doc first** (Lane 2), then implement behind a new switch (e.g. `__TALARIA_MC_FINEST_TF_REPLAY_CADENCE`), RED-first, staging PO confirm. Recommend the **decoupled** option (finer panels sub-advance; host keeps its cadence) to avoid a 240×-render blowup — but defer to the Director. Freeze-exempt; staging-only.
+
+---
+
+## ESC-014 — RESOLVED
+
+**Director ruling:** D-016 (2026-07-15)  
+**Outcome:** Design-doc-first approved, but **decoupled recommendation OVERRULED — unified finest-TF clock per the PO's spec.** Decoupled cannot deliver "coarser candles form over the finer ticks," and the 240× concern conflates ticks with renders: coarse-panel forming-candle updates MUST route through the BL-13 pixel-column coalesce path (hard design requirement), so sub-pixel ticks coalesce to near-zero renders. **Speed semantics ruled:** the speed control keeps today's perceived pace anchored to the selected panel's TF; finer ticks subdivide within it (host 4h at 1 candle/sec still forms one 4h candle/sec; the 1m panel covers its 240 candles inside that second). Wall-clock market-timestamp parity across panels is the invariant. **Re-derivation:** live, edge-triggered on panel add/close/TF-switch, no per-frame polling, no seek/viewport shift on recompute. **Independent symbols: included** in `min(TF)`. **Edge-park (D-015) untouched** — clock carries no data; new missing-data edges are handled by the D-015 fallback. Switch: `__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE` (off = today's cadence exactly); staging default fix ON, PO A/Bs both postures. Design doc must include a **measured cost column** (4-panel 1m/4h mix, max speed, before/after); if the frame budget breaks, escalate with numbers — no silent degrade to decoupled. Acceptance: honest harness evidence (I15) + **PO staging A/B is the deciding authority**. D-014's TAL-01563 documented-intentional ruling is superseded once this is accepted.
 
 ---
 

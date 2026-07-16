@@ -96,6 +96,11 @@ function _isRc3FractionalPlaceEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_RC3_FRACTIONAL_PLACE !== false;
 }
 
+/** D-018 Phase 1 master slice: unset = iframe engine substrate ON; true = fallback-B revert. */
+function _isMcRemigrationPhase1EngineSliceActive() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE;
+}
+
 /** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
 function notifyMultichartParentSelectionCleared(chartInstance) {
     if (typeof window === 'undefined' || !multichartQuickbarSettingsFixEnabled()) return;
@@ -3575,7 +3580,10 @@ class DrawingToolsManager {
     _isToolLifecycleV2Enabled() {
         if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2) return false;
         if (isMultichartIframeEmbed()) {
-            return typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false;
+            if (!_isMcRemigrationPhase1EngineSliceActive()) {
+                return typeof window !== 'undefined' && window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 === false;
+            }
+            return true;
         }
         return true;
     }
@@ -11509,12 +11517,12 @@ class DrawingToolsManager {
             this._applyPlacementModePointerEvents();
         }
         
-        this.chart._isRendering = wasRendering;
-        
         this.raiseDrawingLayersAboveOrderPreviews();
         if (!options.panFast) {
             this._invalidateAfterLocalDrawingMutation('DrawingToolsManager.redrawAll');
         }
+
+        this.chart._isRendering = wasRendering;
     }
 
     /** Ensure SVG exists before pan translate (finger-down). */
@@ -11897,6 +11905,11 @@ class DrawingToolsManager {
         if (this.chart && this.chart._receivingDrawingSync) return;
         const chart = this.chart;
         if (!chart || typeof chart.scheduleRender !== 'function') return;
+        // scheduleRender is synchronous during replay PLAY / inertial pan; redrawAll at
+        // the end of chart.render() would recurse render→redrawAll→scheduleRender (H-S18).
+        const replayPlaying = chart.replaySystem && chart.replaySystem.isPlaying;
+        const inertialPan = chart.inertia && chart.inertia.active;
+        if (replayPlaying || inertialPan) return;
         this._ensureInvalidationAssertionScheduleHook();
         const beforeSeq = Number(chart._talariaInvalidationScheduleSeq) || 0;
         const stack = (typeof window !== 'undefined' && window.__TALARIA_ASSERT_INVALIDATION)

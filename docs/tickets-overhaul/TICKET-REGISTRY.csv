@@ -833,7 +833,7 @@ TAL-01578,multichart_layouts,Drag freeze - chart cannot be moved,open,1,2026-07-
 TAL-01579,multichart_layouts,Chart snaps back to grab point on release,open,1,2026-07-13,2026-07-13,,yes
 TAL-01580,journal_app,EU news flag icon missing,open,1,2026-07-13,2026-07-13,,yes
 TAL-01581,replay,Interval replay not work,open,1,2026-07-13,2026-07-13,,yes
-TAL-01582,replay,Tick-by-tick auto-changes to candle-by-candle,open,1,2026-07-13,2026-07-13,,yes
+TAL-01582,replay,Tick-by-tick auto-changes to candle-by-candle,fixed_pending_live,1,2026-07-13,2026-07-13,,yes
 TAL-01583,chart_core_ui,Clicking chart changes time and day label,open,1,2026-07-13,2026-07-13,,yes
 TAL-01584,drawing_tools,Crosshair returns to tool prev position on Ctrl-hold,open,1,2026-07-13,2026-07-13,,yes
 TAL-01585,drawing_tools,Drawing layer moves with chart during TF-switch wait,open,1,2026-07-13,2026-07-13,,yes

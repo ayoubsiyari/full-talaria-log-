@@ -277,14 +277,18 @@ export async function installBuiltProductBoot(page, {
   switchOffGearFix = false,
   switchOffPeerDeselect = false,
   migrationOn = false,
+  phase1Off = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
   const mig = migrationOn || process.env.REACT_PARITY_MIGRATION_ON === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, migOn) => {
+  const p1Off = phase1Off || process.env.REACT_PARITY_PHASE1_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, migOn, phase1OffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
+    if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
+      window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
       window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2 = false;
       window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 = false;
       window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 = false;
@@ -294,7 +298,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, mig);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, mig, p1Off);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -888,6 +892,7 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     switchOffGearFix: !!opts.switchOffGearFix,
     switchOffPeerDeselect: !!opts.switchOffPeerDeselect,
     migrationOn: !!opts.migrationOn,
+    phase1Off: !!opts.phase1Off,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
