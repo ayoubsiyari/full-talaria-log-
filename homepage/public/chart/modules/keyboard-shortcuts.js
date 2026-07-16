@@ -22,6 +22,26 @@ function isChartShortcutsBlockedBySettingsUi() {
     return false;
 }
 
+/** T3 P4: panel keyboard bridge (Delete on multichart host). Default ON; I13 kill-switch. */
+function multichartPanelKeyboardV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    try {
+        return !window.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1;
+    } catch (_) {
+        return true;
+    }
+}
+
+function isMultichartHostShell() {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (window.__multichartGrid) return true;
+        return new URLSearchParams(window.location.search).get('multichart') === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
 if (typeof window !== 'undefined') {
     window.isChartShortcutsBlockedBySettingsUi = isChartShortcutsBlockedBySettingsUi;
 }
@@ -969,6 +989,7 @@ class KeyboardShortcutsManager {
     }
     
     deleteSelected() {
+        if (isMultichartHostShell() && !multichartPanelKeyboardV1Enabled()) return;
         const dm = this.chart.drawingManager;
         if (!dm) return;
         let selected = Array.isArray(dm.selectedDrawings) ? dm.selectedDrawings.slice() : [];

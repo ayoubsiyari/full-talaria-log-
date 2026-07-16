@@ -2640,6 +2640,7 @@
                     return;
                 }
                 case 'deleteSelectedDrawings': {
+                    if (!multichartPanelKeyboardV1EnabledInEmbed()) return;
                     var dmd = ch.drawingManager;
                     if (!dmd) return;
                     var toDelete = Array.isArray(dmd.selectedDrawings)
@@ -4007,6 +4008,20 @@
         }
     }
 
+    /** T3 P4: panel keyboard bridge (Delete/Esc transport). Default ON; reads parent flag in embed. */
+    function multichartPanelKeyboardV1EnabledInEmbed() {
+        try {
+            if (global.parent && global.parent !== global) {
+                return !global.parent.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1;
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            return !global.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
     function isDrawingToolDismissKeyTarget(dm) {
         if (!dm) return false;
         if (dm.currentTool
@@ -4048,7 +4063,7 @@
 
     function onDeleteDrawingKey(e) {
         if (!e || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
-        if (!multichartKeyboardTransportFixEnabled()) return;
+        if (!multichartPanelKeyboardV1EnabledInEmbed()) return;
         var t = e.target;
         if (t && t.tagName) {
             var tag = String(t.tagName).toLowerCase();

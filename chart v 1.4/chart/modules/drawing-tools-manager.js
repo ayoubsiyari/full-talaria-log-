@@ -86,6 +86,24 @@ function multichartQuickbarSettingsFixEnabled() {
     return true;
 }
 
+/** T3 P4: panel keyboard bridge (Delete transport in iframe). Default ON; I13 kill-switch. */
+function multichartPanelKeyboardV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
 /** RC-3 Phase 3: preserve timestampPoints on copy/paste; offset in timestamp space. */
 function _isRc3PasteTimestampOffsetEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_RC3_PASTE_TIMESTAMP_OFFSET !== false;
@@ -5604,7 +5622,7 @@ class DrawingToolsManager {
         
         // Delete key - delete selected drawing(s)
         if (event.key === 'Delete' || event.key === 'Backspace') {
-            if (!multichartQuickbarSettingsFixEnabled() && isMultichartIframeEmbed()) {
+            if (isMultichartIframeEmbed() && !multichartPanelKeyboardV1Enabled()) {
                 return;
             }
             let drawingsToDelete = this.selectedDrawings.length > 0

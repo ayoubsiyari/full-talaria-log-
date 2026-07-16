@@ -67,6 +67,15 @@ function multichartSettingsFlashFixEnabled() {
     }
 }
 
+/** T3 P4: panel keyboard bridge (Esc/Delete transport). Default ON; I13 kill-switch. */
+function multichartPanelKeyboardV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
 /** T3/Lane 2: panel iframe selection drives parent focus + V9 chrome (I14). Default ON; I13 kill-switch. */
 function multichartPanelSelectionChromeRoutingV3Enabled() {
     try {
@@ -76,9 +85,20 @@ function multichartPanelSelectionChromeRoutingV3Enabled() {
     }
 }
 
+/** T3 Phase 5: peer isolation master (D-018 #2). Unset = ON; one-knob revert for P5 slice. */
+function _isMcRemigrationPhase5PeerIsolationSliceActive() {
+    try {
+        return !(typeof window !== "undefined"
+            && window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION);
+    } catch (_) {
+        return true;
+    }
+}
+
 /** T3 step 5: cross-panel peer deselect when another tile takes selection (I14). Default ON; I13 kill-switch. */
 function multichartPeerDeselectV1Enabled() {
     try {
+        if (!_isMcRemigrationPhase5PeerIsolationSliceActive()) return false;
         return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1);
     } catch (_) {
         return true;
@@ -1836,6 +1856,8 @@ export default function MultichartGrid({
     // focused panel reports a new tf / fileId / symbol.
     const focusedPanelIdRef = useRef(focusedPanelId);
     useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+    /** Debounce peer deselect postMessage so stale commands cannot wipe a fresh selection. */
+    const peerDeselectTimersRef = useRef(Object.create(null));
 
     // Phase 6 (single-process multichart): panelId → in-window Chart instance
     // for tiles mounted WITHOUT an iframe. Populated by the in-proc mount path
@@ -4325,6 +4347,9 @@ export default function MultichartGrid({
                         return Promise.resolve(null);
                     }
                     case "deleteSelectedDrawings": {
+                        if (!multichartPanelKeyboardV1Enabled()) {
+                            return Promise.resolve(null);
+                        }
                         const dmd = ch.drawingManager;
                         if (!dmd) return Promise.resolve(null);
                         const toDelete = Array.isArray(dmd.selectedDrawings)
@@ -5127,6 +5152,54 @@ export default function MultichartGrid({
             return Promise.resolve(null);
         }
 
+        function cancelScheduledPeerDeselect(panelId) {
+            const key = panelId || HOST_PANEL_ID;
+            const timers = peerDeselectTimersRef.current;
+            if (timers[key]) {
+                clearTimeout(timers[key]);
+                delete timers[key];
+            }
+        }
+
+        function shouldSkipPeerDeselectForPanel(panelId) {
+            try {
+                if (panelId === focusedPanelIdRef.current
+                    && typeof window !== "undefined"
+                    && window.__v9DrawingSelectionGuardUntil
+                    && performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                    return true;
+                }
+            } catch (_) {}
+            return false;
+        }
+
+        /** Schedule peer deselect so in-flight iframe commands cannot race a fresh select. */
+        function schedulePeerDeselectPanel(panelId) {
+            if (!multichartPeerDeselectV1Enabled()) return;
+            const key = panelId || HOST_PANEL_ID;
+            const timers = peerDeselectTimersRef.current;
+            if (timers[key]) clearTimeout(timers[key]);
+            timers[key] = setTimeout(() => {
+                delete timers[key];
+                if (!multichartPeerDeselectV1Enabled()) return;
+                if (shouldSkipPeerDeselectForPanel(panelId)) return;
+                const mgr = managerRef.current;
+                if (panelId === HOST_PANEL_ID) {
+                    applyHostCommand("deselectDrawings", null).catch((e) => {
+                        console.warn("[MultichartGrid] deselect host failed", e && e.message || e);
+                    });
+                    return;
+                }
+                if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(panelId, "deselectDrawings", null);
+                } else if (mgr) {
+                    mgr.sendCommand(panelId, "deselectDrawings", null).catch((e) => {
+                        console.warn("[MultichartGrid] deselect", panelId, "failed", e && e.message || e);
+                    });
+                }
+            }, 32);
+        }
+
         /**
          * Deselect shapes + hide floating toolbars on every tile EXCEPT the
          * focused one. TradingView-style: clicking another panel clears the
@@ -5141,27 +5214,14 @@ export default function MultichartGrid({
                 }
             } catch (_) {}
             const focus = focusedId || focusedPanelIdRef.current || HOST_PANEL_ID;
-            const mgr = managerRef.current;
-            const proms = [];
+            cancelScheduledPeerDeselect(focus);
             if (focus !== HOST_PANEL_ID) {
-                proms.push(
-                    applyHostCommand("deselectDrawings", null).catch((e) => {
-                        console.warn("[MultichartGrid] deselect host failed", e && e.message || e);
-                    })
-                );
+                schedulePeerDeselectPanel(HOST_PANEL_ID);
             }
             forEachIframePanelExcept(focus, (id) => {
-                if (mgr && typeof mgr.sendCommandNoReply === "function") {
-                    mgr.sendCommandNoReply(id, "deselectDrawings", null);
-                } else if (mgr) {
-                    proms.push(
-                        mgr.sendCommand(id, "deselectDrawings", null).catch((e) => {
-                            console.warn("[MultichartGrid] deselect", id, "failed", e && e.message || e);
-                        })
-                    );
-                }
+                schedulePeerDeselectPanel(id);
             });
-            return Promise.all(proms);
+            return Promise.resolve();
         }
 
         /**
@@ -5900,7 +5960,7 @@ export default function MultichartGrid({
 
         function onParentDeleteDrawingKey(e) {
             if (!e || (e.key !== "Delete" && e.key !== "Backspace")) return;
-            if (!multichartSettingsFlashFixEnabled()) return;
+            if (!multichartPanelKeyboardV1Enabled()) return;
             const t = e.target;
             if (t && t.tagName) {
                 const tag = String(t.tagName).toLowerCase();
@@ -6404,6 +6464,7 @@ export default function MultichartGrid({
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
                 if (multichartPeerDeselectV1Enabled() && sourceId) {
+                    cancelScheduledPeerDeselect(sourceId);
                     focusPanelById(sourceId);
                     if (sourceId !== HOST_PANEL_ID) {
                         try {
@@ -6455,6 +6516,7 @@ export default function MultichartGrid({
                     if ((multichartOwnershipV2Enabled() || multichartPanelSelectionChromeRoutingV3Enabled())
                         && msg.source != null) {
                         const sourceId = String(msg.source);
+                        cancelScheduledPeerDeselect(sourceId);
                         focusPanelById(sourceId);
                         if (multichartPeerDeselectV1Enabled() && sourceId !== HOST_PANEL_ID) {
                             const grid = window.__multichartGrid;
