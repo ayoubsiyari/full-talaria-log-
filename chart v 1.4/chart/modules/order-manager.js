@@ -120,6 +120,25 @@ function _orderPriceAxisIsolationFixEnabled() {
         && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PRICE_AXIS_ISOLATION_FIX);
 }
 
+/** ORD-LEVEL-VIS Option B: off-screen order-level edge marker (default ON). */
+function _orderOffscreenMarkerV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OFFSCREEN_MARKER_V1;
+}
+
+/** @returns {'above'|'below'|null} */
+function _resolveOffscreenMarkerEdge(y, plotTop, plotBottom) {
+    if (!Number.isFinite(y) || !Number.isFinite(plotTop) || !Number.isFinite(plotBottom)) return null;
+    if (y >= plotTop && y <= plotBottom) return null;
+    return y < plotTop ? 'above' : 'below';
+}
+
+function _clampOffscreenMarkerY(edge, plotTop, plotBottom, inset) {
+    const pad = Number.isFinite(inset) ? inset : 12;
+    if (edge === 'above') return plotTop + pad;
+    if (edge === 'below') return plotBottom - pad;
+    return null;
+}
+
 function _oiCreateProvisionalEditState() {
     return {
         phase: 'idle',
@@ -33870,6 +33889,10 @@ class OrderManager {
         const ch = sourceChart || this.chart;
         if (!ch?.scales?.yScale) return;
 
+        if (!ch._omOffscreenMarkerNested) {
+            this._beginOffscreenMarkerPass(ch);
+        }
+
         // Always sweep orphaned pending badges/highlights even when no targets remain
         ch.svg.selectAll('.y-axis-pending-sl-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
@@ -33893,7 +33916,12 @@ class OrderManager {
             });
         }
 
-        if (!this.pendingTargetLines?.length) return;
+        if (!this.pendingTargetLines?.length) {
+            if (!ch._omOffscreenMarkerNested) {
+                this._finalizeOffscreenMarkersForChart(ch);
+            }
+            return;
+        }
 
         const marginRight = 120;
 
@@ -34085,6 +34113,25 @@ class OrderManager {
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
+                const inPlot = this._isOrderYInMainPlot(ch, y);
+                if (!inPlot && _orderOffscreenMarkerV1Enabled()) {
+                    target.line.style('display', 'none');
+                    labelGroup.style('display', 'none');
+                    if (target.hitLine) target.hitLine.style('display', 'none');
+                } else {
+                    target.line.style('display', null);
+                    labelGroup.style('display', null);
+                    if (target.hitLine) target.hitLine.style('display', null);
+                }
+                const pendingMarkerId = `pending-${String(target.type || '').toLowerCase()}-${entry.pendingOrder.id}-${target.tpTargetIndex != null ? target.tpTargetIndex : target.type}`;
+                this._syncOffscreenLevelMarker(ch, {
+                    markerId: pendingMarkerId,
+                    y: y,
+                    price: target.price,
+                    color: bgColor,
+                    tagText: String(target.type || ''),
+                });
+
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
                     this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
                     target.dragApplied = true;
@@ -34103,6 +34150,10 @@ class OrderManager {
                 );
             });
         });
+
+        if (!ch._omOffscreenMarkerNested) {
+            this._finalizeOffscreenMarkersForChart(ch);
+        }
     }
 
     /**
@@ -38547,6 +38598,14 @@ class OrderManager {
                     priceText: priceText
                 }, plotClipUrl);
 
+                this._syncOffscreenLevelMarker(ch, {
+                    markerId: `open-sl-${orderId}`,
+                    y: y,
+                    price: position.stopLoss,
+                    color: '#f23645',
+                    tagText: 'SL',
+                });
+
                 this._styleOpenSlProfitProtectionVisuals(position, line, {
                     labelBox,
                     labelText,
@@ -38918,6 +38977,14 @@ class OrderManager {
                     pctStepperBtn: pctStepperBtn
                 }, plotClipUrl);
                 
+                this._syncOffscreenLevelMarker(ch, {
+                    markerId: `open-tp-${orderId}-${targetId != null ? String(targetId) : '0'}`,
+                    y: y,
+                    price: tpPrice,
+                    color: '#089981',
+                    tagText: 'TP',
+                });
+
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
             
@@ -39010,6 +39077,14 @@ class OrderManager {
                 labelBox: labelBox,
                 labelText: labelText
             }, plotClipUrl);
+
+            this._syncOffscreenLevelMarker(ch, {
+                markerId: `open-be-${orderId}`,
+                y: y,
+                price: triggerPrice,
+                color: '#f59e0b',
+                tagText: 'BE',
+            });
 
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
@@ -39284,6 +39359,117 @@ class OrderManager {
         return y >= m.t && y <= plotBottom;
     }
 
+    _getMainPlotLayoutForMarker(ch) {
+        const m = ch?.margin || { t: 0, b: 0, l: 60, r: 70 };
+        const plotBottom = ch.h - m.b - (ch.separateIndicatorPanelHeight || 0);
+        return {
+            top: m.t,
+            bottom: plotBottom,
+            left: m.l || 60,
+            right: (ch.w || 0) - (m.r || 70),
+        };
+    }
+
+    _beginOffscreenMarkerPass(ch) {
+        if (!ch) return;
+        if (!ch._omOffscreenMarkerActive) ch._omOffscreenMarkerActive = new Set();
+        else ch._omOffscreenMarkerActive.clear();
+    }
+
+    _trackOffscreenMarker(ch, markerId) {
+        if (ch && ch._omOffscreenMarkerActive && markerId) ch._omOffscreenMarkerActive.add(String(markerId));
+    }
+
+    _finalizeOffscreenMarkersForChart(ch) {
+        if (!ch?.svg?.selectAll) return;
+        if (!_orderOffscreenMarkerV1Enabled()) {
+            ch.svg.selectAll('.om-offscreen-marker').remove();
+            if (ch._omOffscreenMarkerActive) ch._omOffscreenMarkerActive.clear();
+            return;
+        }
+        const active = ch._omOffscreenMarkerActive || new Set();
+        ch.svg.selectAll('.om-offscreen-marker').each(function() {
+            const id = this.getAttribute('data-om-marker-id');
+            if (!id || !active.has(id)) {
+                try { d3.select(this).remove(); } catch (_) { /* ignore */ }
+            }
+        });
+        if (ch._omOffscreenMarkerActive) ch._omOffscreenMarkerActive.clear();
+    }
+
+    /**
+     * Compact edge marker when a level's scaled Y is outside the main price pane.
+     * pointer-events:none — no drag/scroll side effects.
+     */
+    _syncOffscreenLevelMarker(ch, cfg) {
+        const markerId = cfg && cfg.markerId != null ? String(cfg.markerId) : '';
+        if (!ch?.svg || !markerId) return;
+        if (!_orderOffscreenMarkerV1Enabled()) {
+            ch.svg.selectAll(`.om-offscreen-marker[data-om-marker-id="${markerId}"]`).remove();
+            return;
+        }
+        const y = cfg.y;
+        const plot = this._getMainPlotLayoutForMarker(ch);
+        const edge = _resolveOffscreenMarkerEdge(y, plot.top, plot.bottom);
+        if (!edge) {
+            ch.svg.selectAll(`.om-offscreen-marker[data-om-marker-id="${markerId}"]`).remove();
+            return;
+        }
+        const markerY = _clampOffscreenMarkerY(edge, plot.top, plot.bottom, 14);
+        if (!Number.isFinite(markerY)) return;
+
+        const color = cfg.color || '#2962ff';
+        const arrow = edge === 'above' ? '▲' : '▼';
+        const tagText = String(cfg.tagText || '').trim();
+        const priceText = Number.isFinite(cfg.price) ? this.formatPrice(cfg.price) : '';
+        const label = [arrow, tagText, priceText].filter(Boolean).join(' ');
+
+        let group = ch.svg.select(`.om-offscreen-marker[data-om-marker-id="${markerId}"]`);
+        if (group.empty()) {
+            group = ch.svg.append('g')
+                .attr('class', 'om-offscreen-marker')
+                .attr('data-om-marker-id', markerId)
+                .style('pointer-events', 'none');
+            group.append('rect')
+                .attr('class', 'om-offscreen-marker-bg')
+                .attr('rx', 3)
+                .attr('ry', 3);
+            group.append('text')
+                .attr('class', 'om-offscreen-marker-text')
+                .attr('font-size', '11px')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+                .attr('dy', '0.35em');
+        }
+
+        const textSel = group.select('.om-offscreen-marker-text');
+        textSel
+            .attr('fill', '#ffffff')
+            .text(label);
+        const bbox = textSel.node()?.getBBox?.();
+        const tw = bbox && Number.isFinite(bbox.width) ? bbox.width : label.length * 6.5;
+        const th = bbox && Number.isFinite(bbox.height) ? bbox.height : 12;
+        const padX = 6;
+        const padY = 4;
+        const boxW = tw + padX * 2;
+        const boxH = th + padY * 2;
+        const x = plot.left + 4;
+        const boxY = markerY - boxH / 2;
+
+        group.select('.om-offscreen-marker-bg')
+            .attr('x', x)
+            .attr('y', boxY)
+            .attr('width', boxW)
+            .attr('height', boxH)
+            .attr('fill', color)
+            .attr('fill-opacity', 0.92)
+            .attr('stroke', color)
+            .attr('stroke-width', 1);
+        textSel.attr('x', x + padX).attr('y', markerY);
+
+        this._trackOffscreenMarker(ch, markerId);
+    }
+
     /** Hide order row when its Y maps into the indicator stack; clip when inside main plot. */
     _applyOrderRowMainPlotVisibility(ch, y, parts, clipUrl) {
         if (!parts) return;
@@ -39367,6 +39553,9 @@ class OrderManager {
         if (!ch?.scales) {
             return;
         }
+
+        this._beginOffscreenMarkerPass(ch);
+        ch._omOffscreenMarkerNested = true;
 
         let plotClipUrl = this._syncMainPlotSvgClip(ch);
 
@@ -39664,6 +39853,20 @@ class OrderManager {
                         arrow: arrow
                     }, plotClipUrl);
                 }
+
+                const entryTag = isPending
+                    ? `${String(orderData.orderType || 'limit').toUpperCase()} ${orderData.direction || ''}`.trim()
+                    : `${String(orderData.type || 'BUY').toLowerCase()} ${Number(orderData.quantity || 0).toFixed(2)}`;
+                const entryColor = isPending
+                    ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
+                    : (orderData.type === 'BUY' ? '#2962ff' : '#f23645');
+                this._syncOffscreenLevelMarker(ch, {
+                    markerId: `${isPending ? 'pending' : 'open'}-entry-${orderId}`,
+                    y: y,
+                    price: price,
+                    color: entryColor,
+                    tagText: entryTag,
+                });
             });
         }
 
@@ -39687,6 +39890,8 @@ class OrderManager {
             this._purgeOrderOverlayArtifacts(ch);
             plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
             this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
+            ch._omOffscreenMarkerNested = false;
+            this._finalizeOffscreenMarkersForChart(ch);
         }
     }
 
