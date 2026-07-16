@@ -45,6 +45,15 @@
         }
     }
 
+    /** D-024: parent chrome ready after DOM commit; Grid handler owns selection routing. Default ON. */
+    function multichartChromeDomReadyV4Enabled() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -1088,6 +1097,9 @@
                         global.__v9DrawingSelectionGuardUntil = performance.now() + 300;
                     }
                 } catch (_) {}
+                if (multichartChromeDomReadyV4Enabled()) {
+                    return;
+                }
                 if (multichartPeerDeselectV1Enabled()
                     && sourceId
                     && typeof this.clearDrawingUiOnOtherPanels === 'function') {

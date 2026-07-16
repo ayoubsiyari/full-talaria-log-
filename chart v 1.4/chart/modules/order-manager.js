@@ -416,6 +416,8 @@ class OrderManager {
         this.splitGroupAvgLines = [];
         this.multiTPAvgLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
+        /** Chart arrow/label markers only — tracking + journal MFE/MAE still run when tracking is enabled. */
+        this.mfeMaeMarkersVisible = false;
         this.previewLines = null; // Store preview TP/SL lines before order placement
         /** When true, RR tool push/pull must not overwrite draft preview entry price. */
         this._previewEntryDecoupledFromRR = false;
@@ -38248,6 +38250,10 @@ class OrderManager {
      * Journal can list MFE/MAE while DOM markers were removed — this keeps chart and journal in sync.
      */
     _redrawMfeMaeMarkersFromState() {
+        if (this.mfeMaeMarkersVisible === false) {
+            this._clearAllMfeMaeMarkersFromCharts();
+            return;
+        }
         const rows = [];
         const seen = new Set();
         const push = (row) => {
@@ -38263,6 +38269,27 @@ class OrderManager {
         rows.forEach((row) => {
             try {
                 this.drawMfeMaeMarkers(row);
+            } catch (_) {}
+        });
+    }
+
+    /** Remove all MFE/MAE marker DOM + state (does not affect tracking/journal values). */
+    _clearAllMfeMaeMarkersFromCharts() {
+        try {
+            (this.mfeMaeMarkers || []).forEach((m) => {
+                const grp = m?.markerGroup || m?.group;
+                if (grp && typeof grp.remove === 'function') {
+                    try { grp.remove(); } catch (_) {}
+                }
+            });
+        } catch (_) {}
+        this.mfeMaeMarkers = [];
+        const charts = typeof this._collectLayoutCharts === 'function'
+            ? (this._collectLayoutCharts() || [])
+            : (this.chart ? [this.chart] : []);
+        charts.forEach((ch) => {
+            try {
+                ch?.svg?.selectAll?.('.mfe-mae-marker-root')?.remove?.();
             } catch (_) {}
         });
     }
@@ -38354,6 +38381,11 @@ class OrderManager {
      */
     drawMfeMaeMarkers(position) {
         if (!position || position.id == null) return;
+        // Markers hidden: still clear any leftover DOM for this order.
+        if (this.mfeMaeMarkersVisible === false) {
+            this.removeMfeMaeMarkers(position.id);
+            return;
+        }
         this.removeMfeMaeMarkers(position.id);
 
         const self = this;

@@ -5060,6 +5060,76 @@ function v9QuickBarPanelSettingsFixEnabled() {
   }
 }
 
+/** D-024: chrome ready only after #tl-sett DOM + handlers bound. Default ON; I13 kill-switch. */
+function multichartChromeDomReadyV4Enabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4);
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * Durable parent ready-signal for harness (Lane 4): state + event + DOM attribute.
+ * Returns true when gear/bar visible and signal was emitted (or already matched).
+ */
+function v9EmitQuickBarChromeDomReady(liveDrawing, panelIdHint) {
+  if (!multichartChromeDomReadyV4Enabled()) return false;
+  if (!liveDrawing || liveDrawing.id == null) return false;
+  const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
+  const bar = document.querySelector('[data-tlbar="1"], #v9-tl-bar');
+  const gr = gear && gear.getBoundingClientRect();
+  const br = bar && bar.getBoundingClientRect();
+  const gearVisible = !!(gr && gr.width > 0 && gr.height > 0);
+  const barVisible = !!(br && br.width > 0 && br.height > 0);
+  if (!gearVisible && !barVisible) return false;
+  let panelId = panelIdHint != null ? String(panelIdHint) : null;
+  if (!panelId) {
+    try {
+      const grid = v9MultichartGridApi();
+      if (grid && typeof grid.getFocusedPanelId === "function") {
+        panelId = grid.getFocusedPanelId();
+      }
+    } catch (_) {}
+  }
+  try {
+    const grid = v9MultichartGridApi();
+    const focused = grid && typeof grid.getFocusedPanelId === "function"
+      ? String(grid.getFocusedPanelId() || "") : "";
+    if (panelId && focused && panelId !== focused) return false;
+  } catch (_) {}
+  const detail = {
+    drawingId: liveDrawing.id,
+    panelId,
+    surface: "v9-quickbar",
+    domReady: true,
+  };
+  const perf = window.performance;
+  const settledAt = perf && typeof perf.now === "function" ? perf.now() : Date.now();
+  const payload = { ...detail, settledAt };
+  const prev = window.__talariaV9QuickBarDomReady;
+  if (prev && prev.domReady && String(prev.drawingId) === String(payload.drawingId)
+      && String(prev.panelId || "") === String(payload.panelId || "")) {
+    return true;
+  }
+  window.__talariaV9QuickBarDomReady = payload;
+  window.__talariaV9QuickBarGearReady = payload;
+  if (gear) gear.setAttribute("data-v9-chrome-dom-ready", "1");
+  if (bar) bar.setAttribute("data-v9-chrome-dom-ready", "1");
+  window.dispatchEvent(new CustomEvent("talaria:v9-quickbar-dom-ready", { detail: payload }));
+  window.dispatchEvent(new CustomEvent("talaria:v9-quickbar-gear-ready", { detail: payload }));
+  return true;
+}
+
+function v9ClearQuickBarDomReady() {
+  try { delete window.__talariaV9QuickBarDomReady; } catch (_) {}
+  try {
+    document.querySelectorAll("[data-v9-chrome-dom-ready]").forEach((el) => {
+      el.removeAttribute("data-v9-chrome-dom-ready");
+    });
+  } catch (_) {}
+}
+
 function v9ArmParentSettingsOpenGuard(panelId) {
   if (!v9QuickBarPanelSettingsFixEnabled()) return;
   try {
@@ -21226,6 +21296,29 @@ const TalariaV8bLive = () => {
     } catch (_) {}
   }, [tlBarSelected, tlBarSelectedType, chartPrimarySelectedDrawingType]);
 
+  // D-024: emit chrome-ready only after #tl-sett is in DOM with handlers bound.
+  useLayoutEffect(() => {
+    if (!multichartChromeDomReadyV4Enabled()) return;
+    if (!tlBarSelected) {
+      v9ClearQuickBarDomReady();
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 12;
+    const tryEmit = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const live = v9GetLiveSelectedDrawingForQuickBar();
+      const ok = v9EmitQuickBarChromeDomReady(live, null);
+      if (!ok && attempts < maxAttempts && tlBarSelected) {
+        requestAnimationFrame(tryEmit);
+      }
+    };
+    tryEmit();
+    return () => { cancelled = true; };
+  }, [tlBarSelected, tlBarSelectedType, chartPrimarySelectedDrawingType]);
+
   // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
   // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
   useEffect(() => {
@@ -21492,6 +21585,14 @@ const TalariaV8bLive = () => {
               }
             } catch (_) {}
           }
+        }
+        if (multichartChromeDomReadyV4Enabled() && live) {
+          const pid = detail.panelId != null ? String(detail.panelId) : null;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              try { v9EmitQuickBarChromeDomReady(live, pid); } catch (_) {}
+            });
+          });
         }
       } catch (_) {}
     };

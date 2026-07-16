@@ -848,3 +848,34 @@ Lane 4's full harness honesty audit (`T0-step12-harness-honesty-audit-report.md`
 
 **Director ruling:** D-012 (2026-07-14)  
 **Outcome:** All five requests granted, one modification. (1) Two-tier re-verification bar: permanent bar = honest probe + **real actuation**; until the harness meets it, synthetic green is development evidence only and **PO live-confirm on the real built product is the sole acceptance authority** for multichart interaction. All previously "proven" rows retracted to UNPROVEN — including H-R01/H-R07 (ratchet floor withdrawn per the step-12 addendum); T1 steps 15/16/17 + T3 step-4 settings chain marked **RETRACTED-FALSE-GREEN**, their registry rows reopened. (2) Live stays on **fallback-B**; deploy freeze continues; no partial-green shipping. (3) **Consolidated settings-open-transport fix authorized** as one root (gear + dbl-click + H-R04), owner Lane 1, one switch, I14 transport; Esc/Delete/marquee re-verified separately. (4) Lane 4 real-event actuation rebuild **approved** (CDP input into the panel iframe at true coords, real-state assertions, all synthetic fallbacks removed; host H-S32/H-S33 get the same honesty pass). (5) Sequencing = **harness-first with a bounded parallel diagnostic**: Lane 4 owns `react-parity-lib.mjs` exclusively until the rebuild lands (Lane 1 forbidden from that file); Lane 1's step 18 re-scoped diagnostic-first (trace the transport root on the real product, no harness-lib edits), may implement the gated fix but no acceptance claim until the rebuilt harness goes RED→GREEN AND PO live-confirms; interim path = PO-live-confirm-only acceptance to a **staging build** if the rebuild is slow. New **INVARIANTS I15**: no proxy assertions, real actuation only; every GREEN claim names probe + actuation method; synthetic green = GREEN-SYNTHETIC, never "proven."
+
+---
+
+## ESC-022 — Order levels invisible off-plot: authorize chart.js Y-domain inclusion (Option A / C)?
+
+**Filed:** 2026-07-16 (Manager)  
+**Status:** OPEN — awaiting Director ruling  
+**Class:** scope + freeze-risk decision (chart.js autoscale behavior change)
+
+### Context
+PO live report: placing an order/pending order shows it in the trades panel but **no level line appears on the chart until price reaches the level**. Lane 3 read-only diagnostic (`ORD-LEVEL-VIS-diagnostic-report.md`) confirmed root cause:
+- `chart.js calculateScales()` (~24020–24145) computes the Y-domain from **visible OHLC + last price only** — order/pending entry prices are excluded.
+- Lines ARE created (`drawPendingOrderLine`), but `_applyOrderRowMainPlotVisibility` (~39255) sets `display:none` when `yScale(price)` is off-plot; `drawYAxisPriceHighlight` (~24272) also bails. No edge marker exists today.
+- Open positions behave identically; panel B (per-iframe chart) identical.
+
+### Manager action already taken (no ruling needed)
+- **Option B (off-screen edge marker)** dispatched to Lane 3 as a **freeze-safe** fix: `order-manager.js` only, kill-switch `__TALARIA_DISABLE_ORDER_OFFSCREEN_MARKER_V1`, honest REDs `RC5-ORD-LEVEL-VIS-1/2/3`. This restores "you can always see where the order sits" without touching chart.js. This proceeds regardless of the ruling below.
+
+### Decision requested
+Do you authorize **Option A** — expanding the `chart.js calculateScales()` Y-domain to optionally include active order/pending levels (so the full line is visible, not just an edge marker) — which combined with B is **Option C (best UX)**?
+
+Trade-offs the Director owns:
+1. **Freeze-risk:** `chart.js` is the frozen core; autoscale is on the hot render/replay path. An edit here risks the interaction family we're about to bless.
+2. **Behavior change for everyone:** including levels means a far order **pulls the axis** and compresses candles — some traders dislike this. Would need its own kill-switch and likely a user preference (opt-in "keep orders in view").
+3. **Timing:** even if approved, it should land **after** the combined-build bless (post-unfreeze), not now.
+
+### Manager recommendation
+- **Ship Option B now** (freeze-safe, solves the complaint).
+- **Defer Option A** to post-unfreeze, and only as an **opt-in** ("keep orders in view" toggle, default OFF) behind its own switch, so default autoscale is unchanged. If the Director agrees, no chart.js edit happens during the freeze and B is the interim answer.
+- If the Director wants full lines immediately, rule on accepting the chart.js freeze-risk + whether axis-pull is default-on or opt-in.
+

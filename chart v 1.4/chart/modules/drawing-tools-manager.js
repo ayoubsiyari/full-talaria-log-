@@ -86,6 +86,24 @@ function multichartQuickbarSettingsFixEnabled() {
     return true;
 }
 
+/** D-024: parent chrome ready only after DOM commit (TalariaV8bLive). Default ON; I13 kill-switch. */
+function multichartChromeDomReadyV4Enabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
 /** T3 P4: panel keyboard bridge (Delete transport in iframe). Default ON; I13 kill-switch. */
 function multichartPanelKeyboardV1Enabled() {
     if (typeof window === 'undefined') return true;
@@ -9216,6 +9234,10 @@ class DrawingToolsManager {
     _emitV9QuickBarGearReady(drawing) {
         if (!drawing || !multichartQuickbarSettingsFixEnabled()) return;
         if (typeof window === 'undefined') return;
+        // D-024: parent shell emits after React DOM commit; skip premature parent ping.
+        if (multichartChromeDomReadyV4Enabled() && isMultichartIframeEmbed()) {
+            return;
+        }
         let panelId = null;
         try {
             panelId = new URLSearchParams(window.location.search || '').get('panelId');
