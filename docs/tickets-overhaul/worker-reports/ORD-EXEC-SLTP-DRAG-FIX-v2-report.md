@@ -83,4 +83,4 @@ No live place→fill→drag this session. **NEEDS-LIVE** for PO screenshot parit
 
 **DONE (dev only) — NEEDS-LIVE**
 
-**Commit:** _(pending)_
+**Commit:** `7722a71f` — Follow provisional SL/TP price in updateSLTPLines during open drag instead of skipping reposition.
