@@ -125,6 +125,11 @@ function _orderOffscreenMarkerV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OFFSCREEN_MARKER_V1;
 }
 
+/** ORD-EXEC-SLTP-DRAG: skip updateSLTPLines reposition during open SL/TP drag (default ON). */
+function _execSltpDragFollowFixV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_EXEC_SLTP_DRAG_FOLLOW_FIX_V1;
+}
+
 /** @returns {'above'|'below'|null} */
 function _resolveOffscreenMarkerEdge(y, plotTop, plotBottom) {
     if (!Number.isFinite(y) || !Number.isFinite(plotTop) || !Number.isFinite(plotBottom)) return null;
@@ -455,6 +460,8 @@ class OrderManager {
         this._isDraggingPendingTarget = false;
         /** makeLineDraggable only: which open-position line is dragging — used so updateBELines does not snap BE back each frame. */
         this._draggingManagedOpenLineKind = null;
+        /** makeLineDraggable only: order id for the line currently dragging (SL/TP skip in updateSLTPLines). */
+        this._draggingManagedOpenOrderId = null;
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
@@ -636,6 +643,7 @@ class OrderManager {
         this.isDraggingPreviewLine = false;
         this._isDraggingOrderLine = false;
         this._draggingManagedOpenLineKind = null;
+        this._draggingManagedOpenOrderId = null;
         this._multichartPostDraftDragBusy(false);
 
         if (st.phase === 'open' && ctx?.line && ctx.chartCtx?.scales?.yScale && Number.isFinite(revert)) {
@@ -737,6 +745,15 @@ class OrderManager {
 
     _oiShouldBlockStoreWriteDuringAxisGesture(chart) {
         return this._oiIsChartAxisGestureActive(chart);
+    }
+
+    /** Skip updateSLTPLines reposition for the open SL/TP row under active drag (A6-1 provisional path). */
+    _shouldSkipOpenSltpLineReposition(orderId, lineKind) {
+        if (!_execSltpDragFollowFixV1Enabled()) return false;
+        if (!this._isDraggingOrderLine || this._draggingManagedOpenLineKind !== lineKind) return false;
+        const dragOid = this._draggingManagedOpenOrderId;
+        if (dragOid == null) return false;
+        return String(dragOid) === String(orderId);
     }
 
     _oiResolveProvisionalPreviewPrice(lineKind) {
@@ -29996,6 +30013,7 @@ class OrderManager {
             isDragging = true;
             self._isDraggingOrderLine = true;
             self._draggingManagedOpenLineKind = lineType;
+            self._draggingManagedOpenOrderId = order.id;
             startY = e.clientY;
             
             // Store starting price and drag start price
@@ -30318,6 +30336,7 @@ class OrderManager {
             isDragging = false;
             self._isDraggingOrderLine = false;
             self._draggingManagedOpenLineKind = null;
+            self._draggingManagedOpenOrderId = null;
 
             if (_orderSltpApplyOnReleaseFixEnabled() && (lineType === 'sl' || lineType === 'tp')) {
                 const committed = self._oiCommitProvisionalEdit();
@@ -38523,6 +38542,10 @@ class OrderManager {
                     return;
                 }
                 
+                if (this._shouldSkipOpenSltpLineReposition(orderId, 'sl')) {
+                    return;
+                }
+                
                 const priceKey = position.stopLoss.toFixed(5);
                 const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, position.stopLoss);
                 const labelQty = this._slChartLabelQtyForOpenOrder(position);
@@ -38727,6 +38750,10 @@ class OrderManager {
                             && ((targetId === undefined && tp.targetId === undefined)
                                 || String(tp.targetId) === String(targetId)))
                     );
+                    return;
+                }
+                
+                if (this._shouldSkipOpenSltpLineReposition(orderId, 'tp')) {
                     return;
                 }
                 
