@@ -3,7 +3,9 @@
 **Status:** Living document — update as re-migration phases land and staging commits accumulate.  
 **Authority:** D-018 ruling #4 — deploy unfreeze ships as **ONE** combined build (re-migration + all accumulated staging work). PO `MULTICHART-PARITY-CHECKLIST.md` sign-off happens on that exact build id; nothing appends after cut.  
 **Last shipped baseline (plan-1):** `20260707b105` (`ba85d960` — 29-scenario gate GREEN, I9).  
-**Current HEAD tip (pre-combined-cut):** `d6d9822f` — harness `serve.mjs` stamps **`20260715b2`**; `chart.js` still carries stale `CHART_ENGINE_BUILD = '20260715a4'` (Manager must coordinate single canonical bump at cut).
+**Current HEAD tip (pre-combined-cut):** `817a81a1`+ — re-migration P1/P4/P5 + I13 hygiene landed; **H-R03 iframe dedupe pending Lane 1**.  
+**Last assembly attempt:** `20260716b6` — **SUPERSEDED / NOT BLESSED** (H-R03 panel-B regression; ESC-019). **Do not PO-sign or deploy b6.**  
+**Next combined build id:** **`TBD`** — Lane 4 cuts after Lane 1 H-R03 fix commit lands + canonical bump (must include `817a81a1` hygiene + H-R03 fix; not b6).
 
 ---
 
@@ -31,6 +33,21 @@ Commits are listed **oldest → newest** within the unfreeze slice. Several T8/T
 | `9462cef3` | **T8 / Lane 2 D-017** | **b2** | Pan-release snap-back — `__TALARIA_MC_DISABLE_PAN_RELEASE_ANCHOR_HOLD` (`chart.js` both trees, SW bump) | **needs-live** — H-S82 PASS (harness); PO b2 confirm pending |
 | `d6d9822f` | **T8 step 13** | **b1** (impl) / **b2** (serve stamp) | Finest-TF unified replay cadence — `__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE` (`replay-system.js`, `panel-cmd-bridge.js`, `MultichartGrid.jsx`, H-S83) | **needs-live** — PO A/B on 4h-focused play |
 
+### 1.1b Landed — re-migration engine rows (D-021 slice, 2026-07-16)
+
+Commits listed **oldest → newest**. Assembly gate authority: `T0-lane4-combined-build-assembly-gate-report.md`.
+
+| Commit | Phase / row | Build ref | What it carries | Gate / PO status |
+|--------|-------------|-----------|-----------------|------------------|
+| `6dc552a8` | **P1** | `20260716b1` | Engine selection substrate — `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` (+ child lifecycle/legacy-retire) | **GREEN** — H-R02/H-R03 10/10 with P1 ON (pre-b6 baseline) |
+| `f46e6d9d` | **P4** + **H-R06** | `20260716b2` artifacts | Delete keyboard bridge — `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1`; **known mixed commit** — P5 `MultichartGrid.jsx` peer hunks bundled (D-022; do not rewrite history) | **GREEN** — H-R06 10/10 on b6 |
+| `52894a8d` | **P5** (manager) | — | `multichart-manager.js` P5 master gate on `multichartPeerDeselectV1Enabled()` (both trees, I8) | **GREEN** — H-R07 10/10 on b6 |
+| `ba07584c` | Lane 4 harness | — | `focusReactPanelSoft`, D-021 CLI hooks (`--phase1-off`, `--panel-keyboard-off`, `--peer-deselect-off`, `--phase5-off`), H-R06 baseline removal | Harness reconcile — not engine |
+| `817a81a1` | **I13 hygiene** (Lane 2) | `20260716b9` (local dist only) | Focus `useEffect` peer churn gated behind P5 master; manager `clearDrawingUiOnOtherPanels` / `deselectDrawingsOnNonFocusedPanels` entry guards | **DONE (dev)** — hygiene only; **include in next combined cut** |
+| **`TBD`** | **H-R03 fix** (Lane 1) | **`TBD`** | Iframe ctrl-select dedupe — `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (`drawing-tools-manager.js` both trees, I8) | **PENDING** — blocks next bless; target H-R03 10/10 panel-B + switch-OFF A/B |
+
+**Assembly attempt `20260716b6`:** bundled P1 + H-R06 + H-R07 + harness reconcile. **STOP — NOT PARITY-CHECKLIST READY** (H-R03 panel-B 10/10 FAIL-REAL-BUG; host 10/10). Superseded — await Lane 1 fix + fresh cut.
+
 ### 1.2 Landed in tree — fragmented / no single tidy commit hash
 
 | Slice | Build ref | Evidence | Notes |
@@ -45,11 +62,12 @@ Commits are listed **oldest → newest** within the unfreeze slice. Several T8/T
 | Item | Track | Deliverable | Gate |
 |------|-------|-------------|------|
 | **Phase 0** | Lane 4 | Frozen 12-row honest RED matrix; `known-failing.json` reconcile; `gate:react` baseline | Blocks Phase 1 dispatch |
-| **Re-migration P1** | Lane 1 | Engine selection substrate — lifecycle V2 + legacy retire ON in iframe | H-R02/H-R03 10/10; master switch `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` |
+| **Re-migration P1** | Lane 1 | Engine selection substrate — lifecycle V2 + legacy retire ON in iframe | **LANDED** `6dc552a8` — H-R02/H-R03 10/10 with P1 ON (pre-b6); master `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` |
+| **H-R03 iframe dedupe** | Lane 1 | Ctrl+click double-actuation fix in iframe embed | **PENDING** — commit `TBD`; switch `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1`; blocks combined bless |
 | **Re-migration P2** | T3 + L1 | Parent chrome routing — ownership V2 + routing V3 | H-R01, H-R12 10/10 |
 | **Re-migration P3** | T3 | Settings transport + flash persistence | H-R04, H-R13 10/10 |
-| **Re-migration P4** | T1/T3 | Keyboard bridge Esc/Delete — **new** `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` | H-R05, H-R06 10/10; serialize vs T8 `panel-cmd-bridge` |
-| **Re-migration P5** | T3 | Peer isolation | H-R07 + H-S34/35/44 |
+| **Re-migration P4** | T1/T3 | Keyboard bridge Esc/Delete — **new** `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` | **LANDED** `f46e6d9d` — H-R06 10/10; H-R05 panel-B flake secondary |
+| **Re-migration P5** | T3 | Peer isolation | **LANDED** `f46e6d9d` (Grid) + `52894a8d` (manager) + `817a81a1` (I13 hygiene) — H-R07 10/10 |
 | **Re-migration P6** | T1 | Iframe Ctrl+drag marquee | H-R08 panel-B, H-R14 10/10 |
 | **RC-3 Phase 5** (optional seventh tranche) | T5 | `__TALARIA_RC3_MC_PARITY_PHASE5` — H-S45–50 | **After** P1–P6 + unfreeze (high collision) |
 | **RC-6 M4 implement** | T6 | `__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2` | Optional for first combined cut |
@@ -81,7 +99,8 @@ Commits are listed **oldest → newest** within the unfreeze slice. Several T8/T
 | **P2** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE2_ROUTING` (designed PREP) | `__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2`, `__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3` | `MultichartGrid.jsx`, `TalariaV8bLive.jsx`, `drawing-tools-manager.js` (emit) | No parent V9 bar on panel select → H-R01 RED |
 | **P3** | `__TALARIA_DISABLE_MULTICHART_SETTINGS_FLASH_FIX_V2` | `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2` (settings-open subset) | `MultichartGrid.jsx`, `drawing-tools-ui.js`, `drawing-tools-manager.js` | Settings flash-close / no modal → H-R04/13 RED |
 | **P4** | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` (**new**, mandatory) | May extend quickbar switch after I13 audit | `MultichartGrid.jsx`, `panel-cmd-bridge.js`, `keyboard-shortcuts.js`, `drawing-tools-manager.js` | Esc/Delete no cross-frame → H-R05/06 RED |
-| **P5** | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` | ownership V2 peer slice | `MultichartGrid.jsx`, `multichart-manager.js` | Dual selection → H-R07 RED |
+| **P5** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` (master) | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` (child) | `MultichartGrid.jsx`, `multichart-manager.js` | Dual selection / peer UI churn → H-R07 RED |
+| **H-R03 hotfix** | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (own switch — **not** P1/P4/P5 child) | — | `drawing-tools-manager.js` (both trees, I8) | Iframe panel-B ctrl multi-select toggles off → H-R03 panel-B RED |
 | **P6** | `__TALARIA_DISABLE_MULTICHART_PANEL_MARQUEE_V1` | — | `chart.js`, `drawing-tools-manager.js` | No iframe marquee → H-R14 RED |
 | **P7** (post-unfreeze) | `__TALARIA_RC3_MC_PARITY_PHASE5` | reuse migration switches | `sync-bridge.js`, `embed-bridge.js`, drawing modules | H-S45–50 RED |
 
@@ -158,10 +177,11 @@ Each staging id is **superseded** by the next; the combined cut must stamp **one
 | **20260715a5** | `d457dbe1` (T8 step 9) | a4 + TF label sync (PLAN2-FOUND#6, H-S80) | a4 |
 | **20260715b1** | `d6d9822f` (T8 step 13) | a5 + finest-TF unified cadence (D-016, H-S83) | a5 |
 | **20260715b2** | `9462cef3` + serve stamp | b1 + D-017 snap-back (H-S82) | b1 |
+| **20260716b6** | P1 `6dc552a8` + H-R06 `f46e6d9d` + H-R07 `52894a8d` + harness `ba07584c` | Re-migration assembly attempt — P1/P4/P5 in one dist | b2 — **SUPERSEDED / NOT BLESSED** (H-R03 panel-B regression) |
 
-**Combined build (not yet cut):** must equal **b2 content** + **re-migration P1–P6** + **registry-committed** RC-5/RC-6/RC-3 slices + **T1 step 19** prototypes (if Manager includes) + **single canonical** `BUILD_ID` on host and every panel iframe.
+**Combined build (next cut — not yet cut):** must equal **b2 staging content** + **re-migration P1–P6** + **`817a81a1` I13 hygiene** + **Lane 1 H-R03 fix (`TBD`)** + **registry-committed** RC-5/RC-6/RC-3 slices + **T1 step 19** prototypes (if Manager includes) + **single canonical** `BUILD_ID` on host and every panel iframe. **Build id: `TBD`** (Lane 4; do **not** reuse `20260716b6`).
 
-**Known stamp drift (pre-cut):** `serve.mjs` → `b2`; `chart.js` `CHART_ENGINE_BUILD` → `a4`. Manager coordinates one bump at cut.
+**Known stamp drift (pre-cut):** local I13 hygiene built `20260716b9` (Grid-only); assembly `b6` stamped before hygiene. Manager coordinates one bump at cut.
 
 ---
 
@@ -181,10 +201,25 @@ Status key: **confirmed** = PO signed off on stated build; **pending** = needs-l
 | Esc / Delete / Objects-Tree (step 19) | b105 | **pending** | Parity rows 5, 6, 8 — honest harness + real mouse |
 | RC-6 M1–M3, M5 | any post-land | **pending** | Built-product indicator add/hide/settings/reload |
 | RC-3 anchoring phases | any post-land | **pending** | Volume profile, paste, fractional place, label anchor |
-| Re-migration parity rows 1–9, 9b, 11 | **combined build only** | **blocked** | `MULTICHART-PARITY-CHECKLIST.md` full pass host + panel B |
+| Re-migration parity rows 1–9, 9b, 11 | **combined build only** | **blocked** (H-R03 panel-B) | `MULTICHART-PARITY-CHECKLIST.md` full pass host + panel B — **after** Lane 1 H-R03 fix + fresh cut |
 | Independent-symbol advance (a1) | a1 | **pending** (weak harness) | PO staging feel — D-014 interim authority |
 
-**Authoritative combined PO session:** one deploy, one build id recorded on host + all panels, full parity checklist + RC-5 appendix + staging rows above — **after** P1–P6 GREEN and Phase 0 frozen.
+### 4.1 PENDING-DEPLOY retest on combined build (zero new work — D-018)
+
+Per `DAILY-INTAKE.md` 2026-07-15: fixes already staged; **close by retest only** on the blessed combined build id (not b6). PO records pass/fail per ticket on the same build id as the parity checklist.
+
+| Ticket | Symptom | Staged fix (already in tree) | Retest surface on combined build |
+|--------|---------|------------------------------|--------------------------------|
+| **TAL-01609** | One chart in layout freezes during replay play | **D-015** edge-park / own-master play advance (`__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE`) | Multi-panel replay PLAY — all panels advance; no stuck-until-TF-change |
+| **TAL-01610** | Only one chart updates in replay; others frozen (incl. after refresh) | **D-015** (same) + refresh persistence (**a4**, `__TALARIA_REPLAY_SESSION_PLAYHEAD_RESTORE`) | Fresh-boot cell: mid-replay refresh → all panels resume; no permanent freeze |
+| **TAL-01611** | Replay tick animation while in candle-by-candle mode | **D-009 fix (a)** mode/play routing | Candle-by-candle mode — no spurious tick animation |
+| **TAL-01612** | Replay date jumps forward in weeks | **D-009 fix (b)** interval cadence | Step replay — no weekly jumps; if persists → re-triage A3 |
+| **TAL-01600** | 2-layout play: layout 1 fast, layout 2 lags | **D-015 + D-016** cadence parity | Dual-layout PLAY — panels stay in sync |
+| **TAL-01603 (b+c)** | Replay follows selected panel TF not smallest; finer panels don't respond | **D-016** finest-TF cadence (`__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE`) + **D-015** freeze | 4h-focused play — 1m panel smooth; finest TF drives cadence |
+
+**Note:** TAL-01603 **part a** (main-chart TF stuck) is **not** in this six — rides T8 TF-response track post-unfreeze (`T8-tf-response-diagnostic-report.md`).
+
+**Authoritative combined PO session:** one deploy, one build id recorded on host + all panels, full parity checklist + RC-5 appendix + staging rows above + §4.1 PENDING-DEPLOY retest — **after** P1–P6 GREEN, H-R03 fix, and Phase 0 frozen.
 
 ---
 
@@ -195,10 +230,12 @@ Status key: **confirmed** = PO signed off on stated build; **pending** = needs-l
 | # | Blocker | Owner | Unblocks |
 |---|---------|-------|----------|
 | 1 | **Lane 4 Phase 0** — 12-row honest RED matrix frozen; `known-failing.json` reconciled | Lane 4 | Phase 1 dispatch |
-| 2 | **Re-migration P1→P6** — each phase 10/10 `gate:react` GREEN; `reactParity.knownFailing` empty | Lane 1 + T3 + T1 | Interaction parity |
+| 2 | **Re-migration P1→P6** — each phase 10/10 `gate:react` GREEN; `reactParity.knownFailing` empty | Lane 1 + T3 + T1 | Interaction parity — **H-R03 panel-B blocks** until Lane 1 dedupe fix |
+| 2b | **H-R03 iframe dedupe** — `drawing-tools-manager.js` fix + `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` | Lane 1 | Unblocks combined bless (ESC-019) |
+| 2c | **I13 hygiene** — focus `useEffect` P5 gate (`817a81a1`) in next cut | Lane 2 | **LANDED** — include in fresh combined build |
 | 3 | **PO b1 cadence A/B** — finest-TF feel on staging | PO | D-016 closure |
 | 4 | **PO b2 snap-back** — TAL-01579 live confirm | PO | D-017 closure |
-| 5 | **Combined build cut** — single `BUILD_ID`, `build:live`, I8 mirrors verified | Manager | Deploy |
+| 5 | **Combined build cut** — single `BUILD_ID`, `build:live`, I8 mirrors verified | Manager + Lane 4 | Deploy — **id `TBD`**; b6 superseded |
 | 6 | **`MULTICHART-PARITY-CHECKLIST.md` PASS** on combined build id | PO | D-018 #4 lift |
 | 7 | **Registry commit** — `fixed_pending_live` for RC-5 + HR-PARITY rows | Manager | Ticket closure |
 | 8 | **H-S34, H-S35, H-S44** removed from rollback `knownFailing` after P5 | Lane 4 | Gate honesty |
@@ -235,4 +272,4 @@ Phase 0 frozen
 - `docs/tickets-overhaul/worker-reports/T6-step7-rc5-rc6-closure-sweep-report.md` (RC-5/RC-6 PO appendix)
 - `docs/tickets-overhaul/worker-reports/T7-step2-multichart-replay-closure-sweep-READONLY-report.md` (RC-4 → re-migration map)
 
-**Manifest maintenance:** When each re-migration phase lands, add its commit hash to §1.3→§1.1, confirm the phase switch in §2.1, and re-run §5 before requesting combined build cut.
+**Manifest maintenance:** When each re-migration phase lands, add its commit hash to §1.1b, confirm the phase switch in §2.1, and re-run §5 before requesting combined build cut. **Do not bless superseded build ids** (currently `20260716b6`).

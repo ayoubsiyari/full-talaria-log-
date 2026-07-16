@@ -19,7 +19,7 @@
 |---|---|---|
 | 1 | **Single-click select** a tool in a panel → it selects on the **first** click (no dead first click). | ☐ |
 | 2 | **Blue selection/preview border** is visible on the selected tool while selected. | ☐ |
-| 3 | **Ctrl-click** a second tool → both stay selected, each toggles exactly once (no double-toggle deselect). | ☐ |
+| 3 | **Ctrl-click** a second tool → both stay selected, each toggles exactly once (no double-toggle deselect). **H-R03 PO step (panel B, ×5):** open **2v layout** → focus **panel B** → place **2 trendlines** → single-click select **#1** → **Ctrl+click #2** → **both** show resize handles (blue selection border on each). Repeat ×5. Host arm must also pass. | ☐ |
 | 4 | **Settings open:** open settings for a selected tool → menu opens and **stays open** for ≥1 event turn (no flash open/close). | ☐ |
 | 5 | **Settings close on Esc:** press Esc → tool deselects **and** the settings menu/bar closes together (no orphaned menu). | ☐ |
 | 6 | **Delete:** delete a selected tool → no ghost artifact remains; canvas repaints without an extra click. | ☐ |
@@ -37,6 +37,19 @@
 | # | Check | Pass? |
 |---|---|---|
 | 11 | Set the fix's named switch OFF → the fixed behaviors revert (proves the switch covers **every** file, React included). | ☐ |
+
+### Kill-switch map (re-migration + H-R03 hotfix — unset = fix ON)
+
+Record A/B evidence per build. Harness hooks: `--phase1-off`, `--panel-keyboard-off`, `--peer-deselect-off`, `--phase5-off`, `--iframe-ctrl-dedupe-off` (Lane 4; coordinate on H-R03 fix land).
+
+| Row / phase | One-knob master (preferred) | Child / notes | Revert effect |
+|---|---|---|---|
+| **P1** (H-R02) | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` | lifecycle + legacy-retire children | iframe selection substrate OFF |
+| **P4** (H-R05/06) | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` | quickbar subset may overlap | Esc/Delete cross-frame bridge OFF |
+| **P5** (H-R07) | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` | peer deselect + focus peer UI churn OFF |
+| **H-R03** (panel B) | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` | own switch — **not** P1/P4/P5 child | iframe ctrl multi-select reverts to double-toggle-off |
+
+**PO note:** H-R03 switch-OFF A/B is harness-only on combined build; live PO runs row 3 with switches ON (default). Switch row 11 proves one-knob revert on a dev/staging session if directed.
 
 ## Observation rows (not pass/fail gates — capture evidence for triage)
 | # | Observe | Notes / capture |
