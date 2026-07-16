@@ -77,6 +77,7 @@ const CHART_CLIENT_PART2 = [
   'modules/indicator-persist-rehydrate.js',
   'modules/indicator-settings-apply.js',
   'modules/indicator-visibility.js',
+  'modules/indicator-replay-ui-sync.js',
   'modules/indicator-lifecycle-store.js',
   'modules/chart-indicators-full.js',
   'modules/indicator-ui.js',

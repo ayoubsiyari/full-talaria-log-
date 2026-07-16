@@ -103,6 +103,29 @@
             : global.__TALARIA_RC6_INDICATOR_PERSIST_REHYDRATE_V2 !== false;
     }
 
+    function isRc6IndicatorReplayUiSyncV2Enabled() {
+        return typeof global.rc6IndicatorReplayUiSyncV2Enabled === 'function'
+            ? global.rc6IndicatorReplayUiSyncV2Enabled(global)
+            : global.__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2 !== false;
+    }
+
+    function pinReplayLegendHoverBeforeRecalc(chart) {
+        if (!isRc6IndicatorReplayUiSyncV2Enabled()) return;
+        if (typeof global.pinReplayLegendHoverToPlayhead === 'function') {
+            global.pinReplayLegendHoverToPlayhead(chart);
+        } else if (typeof global.resolveReplayPlayheadBarIndex === 'function') {
+            const barIdx = global.resolveReplayPlayheadBarIndex(chart);
+            if (barIdx >= 0) chart.hoverIndex = barIdx;
+        }
+    }
+
+    function syncReplayLegendAfterIndicatorRecalc(chart) {
+        if (!isRc6IndicatorReplayUiSyncV2Enabled()) return;
+        if (typeof global.applyReplayLegendSyncAfterRecalc === 'function') {
+            global.applyReplayLegendSyncAfterRecalc(chart);
+        }
+    }
+
     function resolveIndicatorShownState(indicator, chartSettings) {
         if (isRc6IndicatorVisibilityV2Enabled() && typeof global.resolveIndicatorShown === 'function') {
             return global.resolveIndicatorShown(indicator, chartSettings);
@@ -8157,8 +8180,10 @@
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_) {}
             }
+            pinReplayLegendHoverBeforeRecalc(this);
             if (typeof this.updateOHLCIndicators === 'function') this.updateOHLCIndicators();
             if (typeof this.bumpIndicatorRenderVersion === 'function') this.bumpIndicatorRenderVersion();
+            syncReplayLegendAfterIndicatorRecalc(this);
             return;
         }
 
@@ -8179,8 +8204,10 @@
                     chart.recalculateIndicators();
                 }
             } catch (_) {}
+            pinReplayLegendHoverBeforeRecalc(chart);
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
             if (typeof chart.bumpIndicatorRenderVersion === 'function') chart.bumpIndicatorRenderVersion();
+            syncReplayLegendAfterIndicatorRecalc(chart);
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
         });
     };
@@ -11011,9 +11038,14 @@ Chart.prototype._syncReplayPlayheadCrosshairValues = function() {
     }
     const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
     const ohlcDiv = typeof document !== 'undefined' ? document.getElementById('ohlcIndicators' + idSuffix) : null;
-    if (ohlcDiv && ohlcDiv.childElementCount === 0
-        && typeof this.updateOHLCIndicators === 'function') {
-        this.updateOHLCIndicators();
+    if (ohlcDiv) {
+        if (isRc6IndicatorReplayUiSyncV2Enabled()
+            && typeof global.applyReplayLegendLightweightSync === 'function') {
+            global.applyReplayLegendLightweightSync(this);
+        } else if (ohlcDiv.childElementCount === 0
+            && typeof this.updateOHLCIndicators === 'function') {
+            this.updateOHLCIndicators();
+        }
     }
 
     let candle = null;

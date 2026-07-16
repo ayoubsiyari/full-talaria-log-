@@ -2355,6 +2355,12 @@ function ensureTalariaIndLegendHoverCss() {
 
 function talariaCrosshairBarIndex(chart) {
     if (!chart || !chart.data || !chart.data.length) return -1;
+    if (typeof rc6IndicatorReplayUiSyncV2Enabled === 'function'
+        && rc6IndicatorReplayUiSyncV2Enabled()
+        && typeof resolveReplayPlayheadBarIndex === 'function') {
+        const playheadIdx = resolveReplayPlayheadBarIndex(chart);
+        if (playheadIdx >= 0) return playheadIdx;
+    }
     if (typeof chart._getCrosshairBarIndex === 'function') {
         const idx = chart._getCrosshairBarIndex();
         if (idx >= 0) return idx;

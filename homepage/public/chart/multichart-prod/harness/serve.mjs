@@ -461,6 +461,7 @@ const ENGINE_MODULE_PATHS = [
   '/chart/modules/indicator-persist-rehydrate.js',
   '/chart/modules/indicator-settings-apply.js',
   '/chart/modules/indicator-visibility.js',
+  '/chart/modules/indicator-replay-ui-sync.js',
   '/chart/modules/indicator-lifecycle-store.js',
   '/chart/modules/chart-indicators-full.js',
   '/chart/modules/indicator-ui.js',
