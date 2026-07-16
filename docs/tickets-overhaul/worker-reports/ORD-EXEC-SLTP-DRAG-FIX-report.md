@@ -92,4 +92,4 @@ RED-again (fix OFF): frozen=true
 
 Fix + dist bump in source; PO must confirm drag-follow and release-commit on real product.
 
-**Commit:** _(pending — fill after file-scoped commit)_
+**Commit:** `0bfd2e4a` — Skip updateSLTPLines reposition during open SL/TP drag so A6-1 provisional edits follow the cursor.
