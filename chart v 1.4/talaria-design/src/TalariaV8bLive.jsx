@@ -5069,6 +5069,25 @@ function multichartChromeDomReadyV4Enabled() {
   }
 }
 
+/** D-026: panel-B iframe dbl-click → parent settings transport. Default ON; I13 kill-switch. */
+function multichartPanelBSettingsTransportV1Enabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1);
+  } catch (_) {
+    return true;
+  }
+}
+
+/** D-026 Hunk A defense-in-depth only (guard preserve / +200ms). Neutralize via __TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1. */
+function multichartPanelBSettingsTransportADepthEnabled() {
+  try {
+    return multichartPanelBSettingsTransportV1Enabled()
+      && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1);
+  } catch (_) {
+    return multichartPanelBSettingsTransportV1Enabled();
+  }
+}
+
 /**
  * Durable parent ready-signal for harness (Lane 4): state + event + DOM attribute.
  * Returns true when gear/bar visible and signal was emitted (or already matched).
@@ -15458,8 +15477,12 @@ const TalariaV8bLive = () => {
   const v9DismissAllDrawingSettingsImmediate = () => {
     clearSettingsPanelHover();
     try {
-      window.__v9DrawingSettingsOpenGuardUntil = 0;
-      window.__v9DrawingSettingsOpenSource = null;
+      // D-026 Hunk A: preserve open-guard during in-flight panel-B transport open.
+      if (!multichartPanelBSettingsTransportADepthEnabled()
+          || !window.__v9MultichartSettingsPanelId) {
+        window.__v9DrawingSettingsOpenGuardUntil = 0;
+        window.__v9DrawingSettingsOpenSource = null;
+      }
     } catch (_) {}
     v9DismissQuickBarPopoversSync();
     setTlSettTplDrop(false);
@@ -19889,6 +19912,14 @@ const TalariaV8bLive = () => {
           && window.__v9DrawingSettingsOpenGuardUntil
           && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
           && !window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) {
+          return;
+        }
+      } catch (_) {}
+      // D-026 Hunk B: skip flash-close while panel-B settings open is in flight.
+      try {
+        if (multichartPanelBSettingsTransportV1Enabled()
+          && editingDrawingRef.current
+          && window.__v9DrawingSettingsOpenSource) {
           return;
         }
       } catch (_) {}

@@ -32,6 +32,21 @@ The reconciliation did exactly what the process exists to do: two contradictory 
 
 **7. Ledger note:** when green, this fix — together with D-024's readiness fix — closes the mechanism behind the "settings opens only on 2nd/double-click" tester family. The Manager cites those registry rows (incl. TAL-01589-adjacent settings rows and the D-024 ruling-4 list) for retest on the combined build rather than as separate defects.
 
+### ADDENDUM RULING (2026-07-17) — pinpoint accepted; 3-hunk implementation AUTHORIZED
+
+The Lane 1 pinpoint (`T3-panelB-settings-transport-pinpoint-report.md`) **satisfies ruling 2's mechanism-first fence**: the dismisser is named end-to-end (duplicate dbl-click double-open zeroes/re-arms the guard → late `multichart-drawing-selected` coincides with an iframe background `deselectAll` → `multichart-drawing-deselected` → `MultichartGrid.jsx:6501` dispatches dismiss **without checking the guard** → fresh Style panel torn down). The guard is not expired — it is cleared mid-open and then not honored. That is an ordering/ownership defect, exactly the class D-026 required be cured causally.
+
+**Authorization — implement the 3 hunks as scoped, under `__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1`, with this classification binding:**
+- **Hunk B is the causal cure** (honor the guard + `editingDrawingRef` on the `multichart-drawing-deselected` handler and `onDismissMcSettings`). If any hunk has to be dropped under pressure, B is the one that cannot be.
+- **Hunk C (coalesce duplicate opens, ~120ms same source+drawingId)** is legitimate dedupe — same defect shape as H-R03's iframe ctrl-select double-actuation, worth noting in the report as the second instance of the duplicate-actuation family on this surface.
+- **Hunk A's ~200ms guard extension is defense-in-depth only** (permitted per ruling 2, but the fix must not depend on it — see stress leg).
+
+**Proof bar unchanged from ruling 3 and restated as binding** (the addendum's ask omitted one leg): H-R04 **and** H-R05 panel-B honest 10/10 ON, switch-OFF honest RED, **plus 10/10 with the `focusReactPanelSoft` amplifier in place** — the amplifier is precisely the tool that distinguishes "B cured the ordering" from "A widened the window enough to pass today." Then the standard bless legs on the re-cut build.
+
+**One non-blocking question for the fix report:** why does the iframe fire `deselectAll({fromCanvasBackground:true})` at all in a dbl-click-on-drawing sequence? If the second click is being misread as background, that is a latent hit-test defect on its own — log it as a registry row (candidate for the duplicate-actuation family) rather than widening this fix's scope.
+
+**Riders unchanged:** ruling 4 (I13 switch-OFF diff on both touched re-migration files; own PR/commit, hunk-staged against manifest) applies as written — `TalariaV8bLive.jsx` + `MultichartGrid.jsx` are shared surfaces.
+
 ---
 
 ## D-025 — ESC-022: Option B ships now (endorsed); Option A approved as post-unfreeze OPT-IN ("keep orders in view", default OFF) — Option C is the end state

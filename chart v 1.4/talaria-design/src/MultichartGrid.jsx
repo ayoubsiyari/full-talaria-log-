@@ -95,6 +95,25 @@ function _isMcRemigrationPhase5PeerIsolationSliceActive() {
     }
 }
 
+/** D-026: panel-B iframe dbl-click → parent settings transport. Default ON; I13 kill-switch. */
+function multichartPanelBSettingsTransportV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
+/** D-026 Hunk A defense-in-depth only (guard preserve / +200ms). Neutralize via __TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1. */
+function multichartPanelBSettingsTransportADepthEnabled() {
+    try {
+        return multichartPanelBSettingsTransportV1Enabled()
+            && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1);
+    } catch (_) {
+        return multichartPanelBSettingsTransportV1Enabled();
+    }
+}
+
 /** T3 step 5: cross-panel peer deselect when another tile takes selection (I14). Default ON; I13 kill-switch. */
 function multichartPeerDeselectV1Enabled() {
     try {
@@ -5343,6 +5362,25 @@ export default function MultichartGrid({
 
             if (!drawing || !dm) return Promise.resolve(false);
 
+            // D-026 Hunk C: coalesce duplicate iframe dbl-click opens (~120ms, 2nd actuation).
+            if (multichartPanelBSettingsTransportV1Enabled() && wantId) {
+                try {
+                    const now = performance.now();
+                    const prev = window.__v9PanelBSettingsOpenCoalesce;
+                    if (prev
+                        && String(prev.source) === String(source)
+                        && String(prev.drawingId) === String(wantId)
+                        && (now - Number(prev.at)) < 120) {
+                        return Promise.resolve(true);
+                    }
+                    window.__v9PanelBSettingsOpenCoalesce = {
+                        source: String(source),
+                        drawingId: String(wantId),
+                        at: now,
+                    };
+                } catch (_) {}
+            }
+
             ensureMultichartGlobalSettingsRoot();
 
             // Close stale legacy modals only — do NOT fire multichart-dismiss here;
@@ -5365,12 +5403,15 @@ export default function MultichartGrid({
             } catch (_) {}
             // Arm BEFORE v9Open so synchronous peer-clear / dismiss handlers cannot
             // flash-close the panel we are about to paint (gear + dblclick routes).
-            if (multichartSettingsFlashFixEnabled()) {
+            const armV9SettingsOpenGuard = () => {
+                if (!multichartSettingsFlashFixEnabled()) return;
                 try {
+                    const guardMs = multichartPanelBSettingsTransportADepthEnabled() ? 1700 : 1500;
                     window.__v9DrawingSettingsOpenSource = String(source);
-                    window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
+                    window.__v9DrawingSettingsOpenGuardUntil = performance.now() + guardMs;
                 } catch (_) {}
-            }
+            };
+            armV9SettingsOpenGuard();
             const v9Open = typeof window.__v9OpenDrawingSettings === "function"
                 ? window.__v9OpenDrawingSettings
                 : null;
@@ -5383,10 +5424,7 @@ export default function MultichartGrid({
                         if (multichartSettingsFlashFixEnabled()) {
                             // Re-arm after open in case the guard was consumed by a
                             // same-tick dismiss race during v9Open's React flush.
-                            try {
-                                window.__v9DrawingSettingsOpenSource = String(source);
-                                window.__v9DrawingSettingsOpenGuardUntil = performance.now() + 1500;
-                            } catch (_) {}
+                            armV9SettingsOpenGuard();
                             // v9Open just rendered the settings for `source` (for an
                             // iframe panel this happens inside that panel). Close only
                             // the OTHER panels — never `source` — otherwise, with
@@ -6499,6 +6537,15 @@ export default function MultichartGrid({
                 return;
             }
             if (msg.type === "multichart-drawing-deselected") {
+                // D-026 Hunk B: do not flash-dismiss while settings-open guard is active.
+                if (multichartPanelBSettingsTransportV1Enabled()) {
+                    try {
+                        if (window.__v9DrawingSettingsOpenGuardUntil
+                            && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
+                            return;
+                        }
+                    } catch (_) {}
+                }
                 try {
                     window.dispatchEvent(new CustomEvent("talaria:v9-cleared-selection"));
                     window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));

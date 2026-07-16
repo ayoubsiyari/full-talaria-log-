@@ -114,7 +114,9 @@
     "H-S73": "T0 step 17 route T8/RC-3: FAIL-REAL-BUG B-FIX-C mirror prepend offsetX compensation (NOT TAL-01579 snap-back — reserved H-S82)",
     "H-S76": "T8 step 15 promotion: replay follow fallback — coarse B playhead off-screen after pan (B-FIX-1)",
     "H-S77": "T8 step 15 promotion: panel master-growth offset flat on prepend (B-FIX-C)",
-    "H-S78": "T8 step 15 promotion: BL-16 micro-pan during play recenters viewport (RED sub-check; A9 GREEN passes)"
+    "H-S78": "T8 step 15 promotion: BL-16 micro-pan during play recenters viewport (RED sub-check; A9 GREEN passes)",
+    "H-S27": "tracked flake (T8-hs27-hs83-triage): synthetic replayFrame seek-loop timing race in panel-cmd-bridge finer-self-owner path; isolated 5/10 PASS on 20260716b10 while replayTs flat but followRenders grow; NOT attributable to ecaa8a9c (H-R03 dedupe) or 817a81a1 (I13 hygiene); synthetic harness actuation — not trusted row until production-faithful re-actuation (post-bless T8 follow-up); NOT fix-counted",
+    "H-S83": "tracked flake (T8-hs27-hs83-triage): finest-TF cadence (D-016) fails under full-suite session-order pollution (~80 scenarios in; shares ts0 with H-S82); isolated 10/10 PASS on 20260716b10; switch-OFF A/B non-vacuous this cycle; NOT attributable to ecaa8a9c or 817a81a1; NOT a b10 regression; NOT fix-counted"
   },
   "reactParity": {
     "expectedTests": [

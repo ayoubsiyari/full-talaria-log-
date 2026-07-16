@@ -436,6 +436,8 @@ export async function installBuiltProductBoot(page, {
   drawingLocalInvalidationOff = false,
   chromeRoutingOff = false,
   chromeDomReadyOff = false,
+  panelBSettingsTransportOff = false,
+  panelBSettingsTransportAOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -449,7 +451,9 @@ export async function installBuiltProductBoot(page, {
   const dliOff = drawingLocalInvalidationOff || process.env.REACT_PARITY_DRAWING_LOCAL_INVALIDATION_OFF === '1';
   const croff = chromeRoutingOff || process.env.REACT_PARITY_CHROME_ROUTING_OFF === '1';
   const cdroff = chromeDomReadyOff || process.env.REACT_PARITY_CHROME_DOM_READY_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn) => {
+  const pbstOff = panelBSettingsTransportOff || process.env.REACT_PARITY_PANELB_SETTINGS_TRANSPORT_OFF === '1';
+  const pbstAOff = panelBSettingsTransportAOff || process.env.REACT_PARITY_PANELB_SETTINGS_TRANSPORT_A_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -460,6 +464,8 @@ export async function installBuiltProductBoot(page, {
     if (dliOffOn) window.__TALARIA_DISABLE_DRAWING_LOCAL_INVALIDATION_V2 = true;
     if (chromeRoutingOffOn) window.__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3 = true;
     if (chromeDomReadyOffOn) window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4 = true;
+    if (panelBTransportOffOn) window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1 = true;
+    if (panelBTransportAOffOn) window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -472,7 +478,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -1242,6 +1248,8 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     drawingLocalInvalidationOff: !!opts.drawingLocalInvalidationOff,
     chromeRoutingOff: !!opts.chromeRoutingOff,
     chromeDomReadyOff: !!opts.chromeDomReadyOff,
+    panelBSettingsTransportOff: !!opts.panelBSettingsTransportOff,
+    panelBSettingsTransportAOff: !!opts.panelBSettingsTransportAOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
