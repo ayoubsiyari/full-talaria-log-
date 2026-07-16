@@ -4,6 +4,188 @@ Running log. Routine progress here; escalations go to `MANAGER-ESCALATIONS.md`.
 
 ---
 
+## H-R03 regression diagnostic ACCEPTED — root = iframe engine race (NOT re-migration); Lane 1 fix dispatched — 2026-07-16
+
+**ACCEPTED (`T3-hr03-regression-diagnostic-report.md`, read-only).** Reassuring result: the combined-build H-R03 panel-B failure is **not** an ungated re-migration path.
+
+- **Root cause = pre-existing iframe ctrl-select double-actuation race** (`drawing-tools-manager.js`): ctrl+click fires `selectDrawing(d2, true)` twice on one physical click — canvas-capture `mousedown` (~2413–2439) adds d2, then shape `click` (~7638–7641) fires again; the iframe-only 80ms `_suppressNextIframeCtrlSelectToggle` window misses → second call hits the toggle-off branch (~9931) → d2 removed → `first=true second=false`. Host is not an iframe embed → 10/10 PASS.
+- **P5 peer-deselect DISPROVED as wiper:** `schedulePeerDeselectPanel` early-returns when switch off; switch-OFF (`--phase5-off`/`--peer-deselect-off`/`--panel-keyboard-off`) all still 10/10 FAIL → not a P4/P5 defect, not an ungated re-migration path. Likely surfaced by the more-faithful `focusReactPanelSoft` actuation timing.
+- **Minor I13 hygiene debt found (not the cause):** `MultichartGrid.jsx:4055–4058` `useEffect([focusedPanelId])` runs `clearDrawingUiOnOtherPanels` settings-close leg without P5 master check.
+
+**→ ESC-019 ADDENDUM filed** correcting root cause for Director (latent engine race, not a discipline breach; no ruling needed).
+
+**Dispatch:**
+- **Lane 1** → `T3-hr03-iframe-ctrlselect-dedupe-FIX-lane1.md`: engine gesture-dedupe fix in `drawing-tools-manager.js` (option 1 — apply suppress on toggle branch + extend window to ~200–250ms), own switch `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1`, H-R03 10/10 RED→GREEN + switch-OFF A/B, fresh build id (not b6).
+- **Lane 2** (small, anti-idle) → `T3-i13-hygiene-focus-useeffect-gate-lane2.md`: gate the `useEffect` focus side-effect behind P5 master (I13 hygiene ESC-019 flagged); disjoint file region from Lane 1.
+- **Lane 4** → after Lane 1 lands: re-run combined-build assembly gate on fresh id, then remove H-R07 + promote H-S34.
+
+### Lane 2 I13 hygiene DONE — committed `817a81a1` (build b9) — 2026-07-16
+**ACCEPTED (`T3-i13-hygiene-focus-gate-report.md`).** Focus `useEffect` (~4055–4058) peer side-effects now gated behind `multichartPeerDeselectV1Enabled()` (P5 master); `dispatchFocusChanged` stays unconditional. Matching entry guards added to `deselectDrawingsOnNonFocusedPanels` + `clearDrawingUiOnOtherPanels` in both `multichart-manager.js` trees (I8). H-R06/H-R07 3/3 PASS (switch ON); `--phase5-off` no longer triggers settings-close/peer churn from this path. SHA256: MultichartGrid `b7363dab…`; multichart-manager (both) `e286f098…`. Did NOT touch `drawing-tools-manager.js` (Lane 1). ESC-019 I13 hygiene debt CLOSED.
+**→ Lane 2 re-dispatched (doc-only, no code conflict):** refresh combined-build manifest + PO parity-checklist to add the H-R03 fix switch + new build id, ready for Lane 4's fresh cut.
+
+### Combined build `20260716b10` gate — BLOCKED on 2 items; ESC-020 filed + Lane 2 triage — 2026-07-16
+**Lane 4 assembly gate v2 (`T0-lane4-combined-build-assembly-gate-v2-report.md`): BLOCKED, not parity-ready.** Most criteria green; 2 blockers.
+- **GREEN:** Crit 1 H-R03 dedupe A/B (10/10 PASS r2; `--iframe-ctrl-dedupe-off` 10/10 FAIL; phase5/peer-off still PASS). Crit 2 H-R06 (10/10 + kb-off FAIL). Crit 3 H-R07 (10/10 + phase5-off 9/10 FAIL leak). Crit 6 `gate:react` full matrix PASS (H-R01–09/12/12A/13/14/H-S80), H-R07 ready for baseline removal.
+- **BLOCKER 1 — Crit 4 (Phase-1 A/B obsolete):** post `ecaa8a9c`, `--phase1-off` no longer flips H-R02/H-R03 (both 10/10 PASS). The dedupe fix's DOM-pointer resolution subsumes P1's selection role for these rows → D-021 condition #1 discriminator is stale. **→ ESC-020 filed** (ruling required — can't self-swap a Director honesty gate). Recommend dedupe A/B as replacement discriminator; keep P1 gated as defense-in-depth; H-R02 may need re-derived discriminator.
+- **BLOCKER 2 — Crit 5 (manager gate):** H-S27 + H-S83 flagged regressions (both removed from baseline in hit-coord revalidate; H-S83 has known vacuous-A/B full-suite flake history). **→ Lane 2 read-only triage dispatched** (`T8-hs27-hs83-gate-regression-triage-lane2.md`): isolate each, classify flake-vs-real, recommend baseline action.
+- Build id **`20260716b10`** stamped (supersedes b6/b8/b9); `known-failing.json` NOT updated (gate not clean); build NOT blessed. Lane 2 to fill manifest TBDs (`ecaa8a9c` + `20260716b10`) — done, but bless waits on both blockers.
+- Host-only ~1/10 flake confirmed present (panel B stable) — matches Lane 1 flag, not a panel-B regression.
+
+**Path to bless:** (1) D-020x ruling on ESC-020 discriminator → (2) Lane 2 triage clears H-S27/H-S83 → (3) Lane 4 re-baseline (remove H-R07, promote H-S34) + re-run gate clean → (4) bless `20260716b10` → PO parity-checklist.
+
+**→ ESC-020 RESOLVED by D-023 (2026-07-16):** dedupe A/B is H-R03's discriminator of record; D-021 rule UPDATED (every trusted row carries a named discriminator that provably flips it red; moves with the mechanism via escalation). **H-R02 needs its own re-derived discriminator BEFORE bless** (its Phase-1 anchor is retired → currently undiscriminated green = I15-forbidden on critical path). P1 stays committed+gated, honest ledger note (load-bearing role for H-R02/H-R03 now unproven; retire = fresh escalation). Bless adds: one more clean 10/10; host-side flake gets its OWN tracked row if it recurs — no flake labels.
+**→ Lane 4 DISPATCHED** (`T0-lane4-hr02-discriminator-plus-rebless-D023.md`): TASK 1 derive H-R02 discriminator (small, only new work), TASK 2 P1 ledger note, TASK 3 re-bless (HOLD until Lane 2 triage verdict).
+
+### Lane 2 H-S27/H-S83 triage ACCEPTED — both FLAKES, not b10 regressions; TASK 3 released — 2026-07-16
+**ACCEPTED (`T8-hs27-hs83-triage-report.md`, read-only).** Criterion 5 unblocked without an engine fix.
+- **H-S83:** isolated **10/10 PASS**; switch-OFF A/B **non-vacuous this cycle** (`maxStep=28.5M`, not the old 0 — honesty concern explicitly cleared). Full-gate fail = session-order pollution. Owning lane if ever real: T8/Lane 2 (`__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE`).
+- **H-S27:** isolated **5/10 PASS** — flake even isolated; failure = synthetic `replayFrame` seek-loop race (`followRenders` grow while `replayTs` flat), NOT production tick-play. Owning lane if real: T8/Lane 2 (`panel-cmd-bridge.js :685` finer-self-owner follow).
+- Both **disjoint** from `ecaa8a9c`/`817a81a1`. PO not gated on H-S27 for bless; H-S83 rides parity-checklist §4.1 (TAL-01603b+c retest).
+- **HONESTY caveat (H-S27):** its RED is a synthetic-harness artifact → per I15 NOT a trusted row until re-actuated production-faithfully / per-scenario fresh boot. Recorded as post-bless T8 follow-up; does NOT count as fixed or real-fail in fix-rate stats.
+**→ TASK 3 RELEASED to Lane 4:** re-add both as tracked flakes (exact reasons in prompt) → gate exit 0 → remove H-R07, promote H-S34 → one more clean 10/10 → bless. Still gated on TASK 1 (H-R02 discriminator).
+
+### Lane 4 D-023 report — TASK 1/2 DONE; bless BLOCKED on gate:react session-order flakes — 2026-07-16
+**TASK 1 ✅** H-R02 discriminator = `--hr02-actuation-miss` (no engine one-knob exists on b10; D-023 harness fallback) — **10/10 PASS default / 10/10 FAIL-REAL-BUG**; recorded in HARNESS-REFERENCE + manifest §2.1. Confirmed via probe 379416 (`--gear-fix-off`/`--phase5-off` keep H-R02 green = no engine knob) + 379419 (all 4 discriminators flip).
+**TASK 2 ✅** P1 ledger note (load-bearing role for H-R02/H-R03 unproven post `ecaa8a9c`; retire = fresh escalation).
+**TASK 3 ⚠️ BLOCKED:** discriminator A/B all green; H-R03 bless run 10/10; **manager gate r3 = 0 regressions** (H-R07 removed, H-S34 promoted, H-S27/H-S30/H-S50/H-S83 tracked flakes). **`gate:react` fails — rows H-R04/H-R06/H-R09/H-R12 fail on ROTATING runs across 5 retries.**
+- **Diagnosis (Manager):** rotating (not same row each run) = **session-order/state-bleed flake between scenarios**, NOT a deterministic regression (H-R06 was clean 10/10 in discriminator suite). Harness-fidelity issue, not product breakage.
+- **Discipline call:** must NOT bless via retry-until-green (I15 anti-pattern). Fix session isolation so suite == isolated, then bless deterministically.
+**→ Lane 4 RE-DISPATCHED** (`T0-lane4-gatereact-session-isolation-fix-plus-bless.md`): STEP 1 isolate 4 rows ×10 (prove flakes / catch real regression) → STEP 2 fix gate:react per-scenario state reset (Lane-4 harness scope, frozen actuation intact) → STEP 3 deterministic multi-run clean gate + discriminator re-confirm → bless b10 + reconcile stale manifest lines.
+**Not escalated:** harness hygiene within Lane 4 scope, no scope/architecture change; escalate only if STEP 1 surfaces a real regression.
+
+### Lane 4 session-isolation fix — root cause found, most rotation gone, bless STILL BLOCKED on panel-B chrome rows — 2026-07-16
+**Report `T0-lane4-gatereact-isolation-fix-plus-bless-report.md`.** ROOT CAUSE: full `gate:react` reused ONE Chromium across 14 scenarios (cold page each, but shared browser → rotating timing flakes). Fix `REACT_PARITY_ISOLATE_SESSION=1` (fresh browser/scenario) + H-R12 gear-ready ladder + H-R04 dbl-click retry + H-S80 reload wait (I8 both trees). Removed most rotation. **NOT 3/3 consecutive clean** — residual rotates on **H-R01/H-R04/H-R05/H-R12 (all panel-B parent-chrome timing rows)**. Worker HONESTLY did NOT bless (I15, no retry-until-green) — correct.
+- **Crossroads:** residual is either harness fixed-timeout waits OR a real panel-B parent-chrome readiness race. Resolving in parallel:
+  - **Lane 4 RE-DISPATCHED** (`T0-lane4-panelB-chrome-readiness-deterministic-bless.md`): STEP 1 strict isolation ×10 of the 4 rows (isolated-clean ⇒ suite-timing; isolated-flake ⇒ real race, stop); STEP 2 replace timeouts with real readiness-signal waits; STEP 3 3-consecutive-clean bless or BLOCKED.
+  - **Lane 1 DISPATCHED read-only** (`T3-panelB-chrome-readiness-race-DIAGNOSTIC-lane1.md`): is panel-B parent-chrome readiness deterministic or a real routing race? name a ready-signal for the harness / the race for a fix. Disjoint from Lane 4 harness files.
+- **WATCH:** 2nd harness pass on the bless. If this pass + diagnostic don't yield a deterministic bless (real race needing a fix, or gate standard unreachable for these rows), escalate to Director on acceptance for the panel-B chrome rows. Not escalated yet — driving to green honestly first.
+
+### Panel-B chrome readiness = REAL race (H-R04/H-R05); ESC-021 filed (D-021 verify-fail trigger) — 2026-07-16
+**Lane 4 STEP 1 isolation + Lane 1 diagnostic converge.** Fresh-browser isolated ×10 on b10:
+- H-R01 **10/10**, H-R12 **10/10** → were shared-browser suite noise (session isolation fixed them).
+- **H-R04 1/10** (settings `open=false` after dbl-click) + **H-R05 7/10** (settings not open before Esc) → **REAL panel-B iframe→parent settings-routing readiness race** (fresh browser per run, not suite-order). Worker 4 STOPPED STEP 2/3 (no masking, I15). Evidence `pbcr-hr04/05-x10.txt`.
+- **Root (Lane 1 read-only):** parent chrome emits gear/settings-ready **before DOM commit/bind** → dbl-click/Esc in that window no-ops. Proposed gated fix: emit ready **after DOM commit** in `TalariaV8bLive.jsx` + gate manager selection handler, switch `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4`. NOT implemented (diagnostic only).
+**→ ESC-021 FILED** (required by D-021: verify-only P3 row failing = fresh escalation with evidence). Recommend authorizing the single gated Lane 1 fix; acceptance = H-R04/H-R05 10/10 isolated + switch-OFF FAIL discriminator → Lane 4 re-isolate → 3/3 gate → bless.
+**→ HOLDS:** bless held; Lane 1 fix held pending ruling; Lane 4 STEP 2/3 held. All 4 lanes idle at the bless gate — correctness over speed (this is the exact spot the plan gets burned).
+**Honest note:** D-021 assumed H-R04 (P3) green on fallback — that greenness was shared-browser masking. Real defect surfaced by honest isolation; labeled truthfully (not "regression", pre-existing race exposed).
+
+### ESC-021 RESOLVED by D-024 — fix authorized; Lane 1 dispatched — 2026-07-16
+Fix AUTHORIZED (fenced to readiness ordering; transport untouched). **→ Lane 1 DISPATCHED** (`T3-panelB-chrome-dom-ready-FIX-lane1-D024.md`): emit ready-signal after DOM commit + gate selection handler, switch `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4`, expose ready-signal as harness wait primitive (D-024). Acceptance: H-R04+H-R05 10/10 ON / 10/10 FAIL OFF (discriminator from birth) → Lane 4 re-isolate + 3 consecutive clean gate:react → bless.
+**D-024 ledger note:** this race is likely the root of historical "settings only opens on 2nd/double-click" tester complaints → those tickets **retest on combined build**, not treated as separate bugs.
+**Bless now 2 real items away** (Director's list of 4 includes 2 already done): (1) this fix green, (2) green assembly gate. [H-R02 discriminator ✅ done; H-S27/H-S83 triage ✅ done.]
+
+### Lane 1 H-R03 fix LANDED — `ecaa8a9c` — LAST ENGINE FIX; Lane 4 dispatched for combined cut — 2026-07-16
+**ACCEPTED (`T3-hr03-iframe-ctrlselect-dedupe-FIX-report.md`).** H-R03 panel-B ctrl multi-select GREEN, honestly proven.
+- **Two-layer root cause confirmed & fixed:** (1) iframe ctrl+click double-actuation (canvas mousedown + shape click) → 80ms suppress missed → toggle-off removed d2; (2) synced host-drawing wrong-pick — after host H-R03, host drawings sync into panel B's store and geometric `findDrawingsAtPoint[0]` picked the host line at same coords instead of panel B's native line.
+- **Fix (`drawing-tools-manager.js` only, I8 both trees, SHA `40778A12…`):** switch `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (unset=ON); 250ms suppress + toggle-off guard; DOM-pointer helpers (`_resolveDrawingFromDomPoint`/`_resolveDrawingFromPointerEvent`); iframe ctrl+click prefers topmost DOM drawing over geometric hit; shape-click early-return when suppress fresh.
+- **A/B (I15-honest):** `--only=H-R03 --runs=10` → **10/10 PASS**; `--iframe-ctrl-dedupe-off` → **10/10 FAIL-REAL-BUG**; `--phase5-off`/`--peer-deselect-off` → still PASS (proves regression was NOT peer-isolation — root correctly placed).
+- **Commit `ecaa8a9c`** (2 files, engine only; local build `20260716b8` not in commit per guardrails). Noted: ~1/10 host-only harness flake, out of scope for this ticket (panel B stable all runs) — Lane 4 to treat as host-leg flake, not a panel-B regression.
+
+**→ RE-MIGRATION ENGINE FULLY COMPLETE:** H-R03 + H-R06 + H-R07 all green + kill-switched. Only assembly + PO parity-checklist remain.
+
+**→ Lane 4 DISPATCHED** (`T0-lane4-combined-build-assembly-gate-v2.md`): fresh combined cut (id > b9, incl. `ecaa8a9c` + `817a81a1`) → assembly gate → isolated H-R03 A/B re-confirm on the built dist → remove H-R07 from known-failing + promote H-S34 → hand PO the parity-checklist build id. Lane 2 fills manifest TBDs (`ecaa8a9c` + new build id) after Lane 4 names the id.
+
+### Lane 2 manifest + parity-checklist refresh DONE — committed `a6a2e865` (docs only) — 2026-07-16
+**ACCEPTED (`T3-combined-manifest-refresh-report.md`).** Assembly docs ready; only 2 TBDs remain (Lane 1 H-R03 hash + fresh build id).
+- `T3-COMBINED-BUILD-MANIFEST.md`: `20260716b6` marked **SUPERSEDED / NOT BLESSED** (H-R03 regr); §1.1b re-migration commit table (P1 `6dc552a8`, H-R06 `f46e6d9d`, H-R07 `52894a8d`, harness `ba07584c`, I13 hygiene `817a81a1`, H-R03 fix `TBD`); §2.1 kill-switch map corrected P5 master + added H-R03 hotfix switch; §4.1 PENDING-DEPLOY retest checklist (all 6: TAL-01609/10/11/12, 01600, 01603 b+c).
+- `MULTICHART-PARITY-CHECKLIST.md`: Row 3 H-R03 PO step + kill-switch map (P1/P4/P5 + H-R03 hotfix with harness hooks).
+**→ Lane 2 PAUSED.** All prep banked. Critical path = Lane 1 H-R03 fix → Lane 4 fresh combined cut.
+
+---
+
+## Lane 4 hit-coord fix + revalidation — Phase 1 GREEN; matrix 11→2; ESC-018 filed; Phase-1 commit FIRED — 2026-07-16
+
+**ACCEPTED (`T3-remig-harness-hitcoord-fix-plus-revalidate-report.md`).** Critical-path unblocked.
+
+- **Harness root fix (`react-parity-lib.mjs`, SHA `D8FBDDD6…`):** panned charts produced off-viewport hit coords; ctrl+click swallowed; resize-handle circle clicks replaced selection. Fixed: `dismissClickBlockers`, chart-layout geometry (`dataIndexToPixel`+`yScale` not stale SVG bbox), line-midpoint sampling requiring topmost line/path (reject canvas/circles), iframe-aware `elementFromPoint` in panel B, separated H-R03 placements (barOffset 0 vs 55).
+- **Phase 1 PROVEN:** ON → H-R02/H-R03 **10/10 PASS**; `--phase1-off` → **H-R03 10/10 FAIL-REAL-BUG** (panel-B ctrl leg) = substrate genuinely required. Harness still catches real bugs (I15-honest, not blanket-green).
+- **MATERIAL MATRIX CHANGE (11 → 2 honest REDs):** 8 prior REDs were click-miss artifacts → now GENUINELY-GREEN (H-R01/02/03/04/05/08/13/14). Only honest engine REDs left: **H-R06 (Delete)**, **H-R07 (cross-panel select)**. react known-failing 11 → 2.
+- **Gate cleanup:** manager gate ran all 83 scenarios, 0 regressions; exit 1 was stale-baseline only. Worker removed H-S27 + H-S83 from `known-failing.json` (host baseline 33 → 31), mirrored both trees. Re-run should exit clean.
+
+**→ ESC-018 FILED** (matrix revalidation WATCH triggered): re-scope Phases 2–6. P2/P3/P6 target rows now green on fallback → convert to **verify-only** (D-018 forbids re-fixing working rows); P4 shrinks to **H-R06 Delete**; P5 = **H-R07**. Honesty attested via Phase-1 A/B.
+
+**→ Phase 1 commit FIRED** (independently proven, kill-switched — does not wait on ESC-018). Lane 1 commit manifest (7 file-scoped paths + build `20260716b1`).
+
+**→ Phase 2 start HELD** pending Director re-scope (P2 target row already green).
+
+---
+
+## D-021 ABSORBED — re-migration = 2 engine rows; all lanes dispatched — 2026-07-16
+
+### FROZEN HARNESS REFERENCE (D-021 condition #1)
+
+| Artifact | SHA256 | Trees |
+|----------|--------|-------|
+| `react-parity-lib.mjs` (hit-coord actuation freeze) | `D8FBDDD63BD75332AB2CF25C9810A88527A0B2FE7F5BB6FAE49E3CFC301A625F` | `chart v 1.4/chart/multichart-prod/harness/` + `homepage/public/chart/multichart-prod/harness/` |
+
+Post-D021 A/B hook wiring adds `--panel-keyboard-off` / `--peer-deselect-off` CLI (see `HARNESS-REFERENCE.md`) — does not change hit-coord logic. **Any actuation edit must re-run Phase-1 A/B** (`H-R02/H-R03 x10` ON vs `--phase1-off`) before trusting greens.
+
+**D-021 granted all four ESC-018 requests.** Re-migration reduced to **H-R06 (Delete-in-panel)** + **H-R07 (cross-panel select)**; P2/P3/P6 → verify-only; Phase-1 commit fires now; unfreeze gate re-derived (6 criteria). Parallel H-R06/H-R07 allowed on disjoint file sets (one-phase-per-PR on `MultichartGrid.jsx` binds).
+
+**Dispatch (all 4 lanes busy):**
+- **Lane 1 → `T3-remig-phase4-lane1-HR06-delete-IMPL-D021.md`** — STEP 0: fire Phase-1 commit (banked manifest, build `20260716b1`) + region-map; then implement H-R06 Delete only (Esc dropped to verify-only), new `PANEL_KEYBOARD_V1` switch. LANDMINE: multi-delete must read `dm.selectedDrawings`. Proof on frozen harness 10/10 + switch-OFF A/B.
+- **Lane 2 → continues Phase 5 peer-isolation prep** (already running); its output becomes the H-R07 IMPL. Manager issues H-R07 impl prompt when prep lands. Peer-iso = MultichartGrid/manager path (disjoint from Lane 1 Delete = keyboard/bridge), coordinate `MultichartGrid.jsx` hunks.
+- **Lane 3 → `T3-verify-only-spec-lane3-P2P3P6-D021.md`** (read-only, anti-idle) — define verify-only pass spec for P2/P3/P6 (+P4-Esc) on combined build.
+- **Lane 4 → `T0-lane4-D021-harness-freeze-artifact-closure.md`** — freeze hit-coord harness as reference (SHA `D8FBDDD6…`) + Phase-1 A/B as its regression discriminator; close 8 HR-PARITY rows as **measurement-artifact** (not fixed); promote H-S34/35/44; wire A/B switch-OFF hooks for H-R06/H-R07; re-gate clean.
+
+**Combined-build manifest:** Manager assembles in parallel (updates Lane 2's earlier manifest with re-scope + H-R06/H-R07 + artifact closures) once both engine rows land.
+
+## Combined build b6 — H-R03 REGRESSION confirmed (not flake); ESC-019 filed; diagnostic dispatched — 2026-07-16
+
+**Lane 4 combined-build gate: STOP — NOT parity-ready.** `T0-lane4-combined-build-assembly-gate-report.md`. Commits confirmed: P1 `6dc552a8`, H-R06 `f46e6d9d`, H-R07 `52894a8d`, harness reconcile `ba07584c`. One build id `20260716b6` (supersedes b2/b5). Discriminator STEP 1: H-R02 10/10 both arms; **H-R03 panel-B 0/10 PASS both P1-ON and P1-OFF**. Isolated STEP 2: **H-R03 10/10 FAIL-REAL-BUG (genuine regression, was GREEN on 20260715b2)**; H-R06/H-R07 10/10 PASS; H-R04/H-R05 panel-B flakes secondary.
+
+**CRITICAL: no kill-switch reverts H-R03** (`--phase1-off`/`--phase5-off`/`--peer-deselect-off`/`--panel-keyboard-off` all FAIL) → **ungated path / likely I13 gap** in the H-R06/H-R07 bundle. **Process breach:** P4+P5 MultichartGrid.jsx hunks mixed into ONE commit `f46e6d9d` (one-phase-per-PR rule violated) → switch-bisect inconclusive.
+
+**→ ESC-019 filed** (informational + I13/discipline flag; no ruling blocks the fix). **→ Lane 4 held** H-R07 + H-S34 baseline removal. **→ Lane 2 diagnostic dispatched** (`T3-hr03-panelb-ctrlselect-regression-DIAGNOSTIC-lane2.md`, read-only): find the ungated path clobbering panel-B's 2nd ctrl+click (prime suspect P5 peer-deselect debounce), confirm I13 gap, name owning lane + fix. **Commit hygiene note:** b6 build NOT blessed → do NOT commit b6 stamp; superseded by post-fix rebuild.
+
+**Commits landed:** H-R06 engine `f46e6d9d` (7 engine paths both trees + b2 artifacts; NO harness/known-failing). H-R07 manager `52894a8d` (multichart-manager both trees). MultichartGrid P5 peer hunks rode `f46e6d9d` (mixed with P4 — see breach above). Harness reconcile `ba07584c`.
+
+---
+
+## H-R07 landed — BOTH engine rows done; combined-build assembly + H-R03 isolate-confirm gate — 2026-07-16
+
+**Lane 2 H-R07 ACCEPTED (pending combined gate).** `T3-remig-phase5-HR07-peer-isolation-IMPL-report.md`: P5 master `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` gates debounced peer-deselect (`schedulePeerDeselectPanel` + cancel-on-select + selection-guard) so a stale async `deselectDrawings` can't wipe panel B's fresh commit. `MultichartGrid.jsx` + `multichart-manager.js` (I8). H-R07 **10/10 PASS** (`A.selected=false B.selected=true`) + `--phase5-off` **9/10 FAIL** (dual-selection leak; 1 flake) on built `20260716b5`. MultichartGrid hunks (~88-105, ~1848, ~5155-5225, ~6467/6519) **disjoint from Lane 1 Delete**. H-S34 promotable; H-S35/H-S44 = chrome-proxy gap, stay known-failing (defer to chrome routing). **RE-MIGRATION ENGINE WORK COMPLETE (dev): H-R06 + H-R07 both green.**
+
+**WATCH — H-R03 gate FAIL (discriminator row):** full-suite `gate:react` shows H-R03 (panel-B ctrl-select) FAIL + H-R04 flake. Both Lane 2 + Lane 4 attribute to full-suite session-order flake (isolated fresh-boot authoritative per D-018 Phase 0). **NOT accepted on assumption** — H-R03 is the Phase-1 A/B discriminator; it MUST be isolate-confirmed 10/10 green before the combined build is blessed. If isolated FAIL → regression from P1/H-R06/H-R07 → Director escalation.
+
+**Build-id divergence:** Lane 1 cut `20260716b2`, Lane 2 cut `20260716b5` (parallel). Combined build needs ONE coherent id.
+
+**Working-tree pileup (one tree):** committed = Phase1 `6dc552a8`. Uncommitted = H-R06 engine (L1), H-R07 engine (L2), Lane 4 harness+registry+`focusReactPanelSoft`+`--phase5-off` hooks. File-scoped commits + single combined-build cut required.
+
+**Combined-build assembly plan:**
+1. **Lane 1** commits H-R06 engine (`panel-cmd-bridge`, `MultichartGrid.jsx` delete hunks, `drawing-tools-manager`, `keyboard-shortcuts` both trees) — NO harness/known-failing.
+2. **Lane 2** commits H-R07 engine (`MultichartGrid.jsx` peer hunks, `multichart-manager.js` both trees) — NO harness/known-failing. (MultichartGrid.jsx delete vs peer hunks disjoint → sequential file-scoped commits OK.)
+3. **Lane 4 → `T0-lane4-combined-build-assembly-gate.md`**: reconcile harness (focusReactPanelSoft + phase5-off + hooks), re-run **Phase-1 A/B discriminator**, **isolated fresh-boot** H-R02/03/04/05/06/07 (+12-row matrix), rule H-R03/H-R04 in/out (flake vs regression), remove H-R06+H-R07 from known-failing, cut ONE combined build id, full `gate` + `gate:react` clean. If H-R03 isolated FAIL → STOP + escalate.
+
+**Lane 1 H-R06 ACCEPTED (pending discriminator).** `T3-remig-phase4-HR06-delete-IMPL-report.md`: Delete bridge behind new `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` (decoupled from quickbar switch per D-018 #2); Esc paths untouched (D-021 verify-only). Multi-delete reads `dm.selectedDrawings` (landmine honored). H-R06 **10/10 PASS** + switch-OFF **10/10 FAIL-REAL-BUG** on built `20260716b2`; region-map disjoint from Lane 2 peer-routing + T8. I8 SHA verified (3 engine pairs). **Uncommitted.**
+
+**Lane 4 D-021 ACCEPTED.** `T0-lane4-D021-harness-freeze-artifact-closure-report.md`: frozen reference SHA `D8FBDDD6…` logged + `HARNESS-REFERENCE.md`; **8 surfaces closed `measurement-artifact` (NOT fixed)** (H-R01/02/03/04/05/08/13/14 → HR-PARITY#1/9/10/2/3/8/7/8); HR-PARITY#4 (H-R06) + #5 (H-R07) stay open; A/B hooks `--panel-keyboard-off` / `--peer-deselect-off` wired + smoke-tested; baseline held **2-row react + 31 host**. H-S34/35/44 promotion queued for H-R07 land.
+
+**Lane 3 verify-spec ACCEPTED.** `T3-VERIFY-ONLY-PASS-SPEC.md` — P2/P3/P6 (+Esc) verify-pass assertions for combined build. Read-only doc.
+
+---
+
+## H-R06 landed + verify-spec + harness-freeze; react-parity-lib.mjs 2-lane reconcile → Lane 4 A/B discriminator — 2026-07-16
+
+**Lane 1 H-R06 ACCEPTED (pending discriminator).** `T3-remig-phase4-HR06-delete-IMPL-report.md`: Delete bridge behind new `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` (decoupled from quickbar switch per D-018 #2); Esc paths untouched (D-021 verify-only). Multi-delete reads `dm.selectedDrawings` (landmine honored). H-R06 **10/10 PASS** + switch-OFF **10/10 FAIL-REAL-BUG** on built `20260716b2`; region-map disjoint from Lane 2 peer-routing + T8. I8 SHA verified (3 engine pairs). **Uncommitted.**
+
+**Lane 4 D-021 ACCEPTED.** `T0-lane4-D021-harness-freeze-artifact-closure-report.md`: frozen reference SHA `D8FBDDD6…` logged + `HARNESS-REFERENCE.md`; **8 surfaces closed `measurement-artifact` (NOT fixed)** (H-R01/02/03/04/05/08/13/14 → HR-PARITY#1/9/10/2/3/8/7/8); HR-PARITY#4 (H-R06) + #5 (H-R07) stay open; A/B hooks `--panel-keyboard-off` / `--peer-deselect-off` wired + smoke-tested; baseline held **2-row react + 31 host**. H-S34/35/44 promotion queued for H-R07 land.
+
+**Lane 3 verify-spec ACCEPTED.** `T3-VERIFY-ONLY-PASS-SPEC.md` — P2/P3/P6 (+Esc) verify-pass assertions for combined build. Read-only doc.
+
+**COORDINATION (react-parity-lib.mjs 2-lane touch):** Worker 1 layered `focusReactPanelSoft` (actuation fix — old `focusReactPanel` canvas-click deselected before Delete) on top of Lane 4's D-021 hooks; working tree consistent (Worker 1 confirmed Lane 4 hooks present), no lost work. Per **D-021 condition**, this actuation change requires **Lane 4 to re-run the Phase-1 A/B discriminator** (confirm H-R03 still 10/10 FAIL with `--phase1-off` on the changed harness) before H-R06's green is trusted → then remove H-R06 from `known-failing.json`.
+
+**Resolution / dispatch:**
+- **Lane 1** commits H-R06 **file-scoped ENGINE + build artifacts ONLY** (panel-cmd-bridge, MultichartGrid, drawing-tools-manager, keyboard-shortcuts + dist/serve/SW/embed/live for `20260716b2`) — **EXCLUDING `react-parity-lib.mjs` + `known-failing.json`** (Lane 4 owns/commits harness).
+- **Lane 4** re-runs Phase-1 A/B discriminator on the reconciled harness (with `focusReactPanelSoft`), re-confirms H-R06 10/10, then commits harness file-scoped + removes H-R06 from known-failing once H-R07 also lands (combined baseline update).
+- **Lane 2** H-R07 still in flight.
+
+---
+
+**Phase-1 commit LANDED — `6dc552a8` (build `20260716b1`).** Manifest-scoped land + build bump (engine substrate 6 I8 files + proof was already on main from `d01c7877`; H-S18 gate-unblock too). Pre-commit: I8 SHA pairs matched, `t3-remig-phase1-engine-proof.mjs` passed; build id in serve.mjs/live/SW/chart-embed/dist + `CHART_ENGINE_BUILD` both chart.js mirrors. Harness/docs Lane-4 edits stayed unstaged (manifest exclusion). **Lane 1 now proceeds to H-R06 Delete IMPL** (STEP 0 done). Re-migration engine rows remaining: H-R06 (Lane 1, in flight) + H-R07 (Lane 2, prep→impl).
+
+---
+
 ## **ACTION — Lane 4: H-S59b actuation sign-off required (D-014 ruling 4)** — 2026-07-15
 
 **T8 step 3 (Lane 2)** landed **H-S59b** — production-faithful independent-symbol replay advance (TAL-01590 P1). Lane 4 must review actuation + write **one sign-off line here** before H-S59b is trusted in baseline.
@@ -157,6 +339,42 @@ Lane 2 (manifest), Lane 3 (step 7 closure sweep), Lane 4 (step 17) all completed
 **Lane 2 Phase 3 PREP ACCEPTED (`T3-remig-phase3-lane2-PREP-report.md`):** master `__TALARIA_DISABLE_MC_REMIGRATION_PHASE3_SETTINGS` + child open/flash switches (naming-debt split fixed at impl), full open/apply/close I14 transport map, rows H-R04/H-R13/H-R09-settings-leg (H-R08=P6, H-R12 green-on-fallback confirmed). No panel-cmd-bridge/chart.js/replay collisions. Gated on Phase-2 green. **Lane 3 order landing-seq ACCEPTED (`T4-order-interaction-landing-sequence-report.md`):** A6-1 + #4/#5 + A6-3-order-half consolidated into ONE `order-interaction-guard.mjs` provisional-edit model; 5-phase file-scoped landing; Phases 0–3 freeze-safe (order-manager only); RC5-OI-1..4 REDs reconciled with A6 contract. **BLOCKED on ESC-017** (Director must rule apply-on-release invariant + A6-4 architecture + sequencing before execution).
 
 **Re-dispatch (anti-idle, freeze-safe):** **Lane 2 → `T3-remig-phase5-lane2-PREP-readonly.md`** (Phase 5 peer-isolation design prep — Lane 2's last un-prepped phase; banks all Lane 2 phases like Lane 1). **Lane 3 → `T6-step4-lane3-phase3-settings-invalidation.md`** (RC-6 Phase 3 M3 settings-apply invalidation impl — freeze-safe indicator work, own switch, unblocked by the ESC-017 hold on order work). Lane 1 stays paused. Lane 4 remains critical path (re-gate running).
+
+### Lane 4 Phase 0 freeze+regate DONE — matrix held at 11; hit-coord fix STILL the Phase-1 gate — 2026-07-16
+
+**ACCEPTED (`T3-remig-phase0-freeze-plus-regate-report.md`).** Frozen matrix `T3-PHASE0-FROZEN-MATRIX.md`: **11 honest REDs on b2** (H-R12 dropped green; **H-R07 restored RED** 0/3 on b2 → Phase 5 shrink reverted, P5 = H-R07 + H-S35/H-S44). This is within D-018 #1's anticipated Phase-0 reconciliation (12→11) — **NOT a material shrink → no Director escalation on the matrix**. `--phase1-off` / `REACT_PARITY_PHASE1_OFF` wired both trees. Re-gate clean: H-S18 PASS (no poison), H-S40/41/42 PASS in-session, `gate:react` 11 tracked REDs / 0 regressions. **H-S83** back as tracked flake (switch-OFF A/B leg vacuous maxStep=0 under full-suite load) — confirmation gate `remig-phase0-gate-confirmed.txt` running. Baseline: 83 exp / 33 KF host, 11 react KF; `known-failing.json` SHA `7B7CEFBE…`.
+
+**CRITICAL — do not conflate:** this was the freeze+regate task, NOT the hit-coord fix. Per Worker 1's Phase-1 IMPL finding, H-R02/H-R03 on built dist b2 fail 0/10 because the harness click lands off-viewport on panned charts (pre-dates Phase 1; `--migration-on` fails identically). The frozen matrix's H-R02/H-R03 (and panned-click setups H-R01/H-R08/H-R14) REDs are therefore **not yet proven honest vs click-miss**. **`T3-remig-harness-hitcoord-fix-plus-revalidate.md` remains Lane 4's NEXT task and the true Phase-1 GREEN gate.** Escalation-watch stays OPEN until hit-coord re-validation confirms whether any row flips green.
+
+### D-020 absorbed — ESC-017 RESOLVED; Lane 3 order-interaction landing UNBLOCKED — 2026-07-16
+
+**D-020 rules ESC-017 (all 3 approved).** (1) **A6-1 apply-on-release APPROVED** as canonical SL/TP invariant: pointer-down = provisional (renders at cursor, store unchanged, no fill/close/hit against it); commit once on release; replay ticks hit-test the LAST COMMITTED value. Two mandated edge cells: **(a)** price crossing the *committed* SL mid-drag **DOES** close (invariant protects the provisional line, not committed-order risk — default safer semantics); **(b)** drag-cancel (Esc/pointer-leave/replay-stop) discards provisional cleanly, no partial commit. (2) **A6-4 host-canonical order store RATIFIED but dispatch GATED post-re-migration** (edits MultichartGrid.jsx + panel-cmd-bridge.js — re-migration surfaces; slots as post-unfreeze tranche alongside Phase 7). Binding design note: the missing `order:opened-updated` fan-out is a SYMPTOM — do NOT bolt another sync event onto the clone model; fix = ownership inversion. (3) **Sequence APPROVED:** A6-1 now (freeze-safe, Lane 3), **#4/#5 bundled into the SAME Lane-3 order-manager.js series** (same drag region, one owner, sequential gated commits, separate switches); A6-2 persistence next (D-019 spec: pending+open survive F5, session-scoped); A6-3 order-side isolation only (axis Defect D cancelled) + A6-4 post-unfreeze.
+
+**Dispatch:** Lane 3 finishes RC-6 M3 (in flight), then executes **`T4-order-interaction-EXECUTE-lane3-D020.md`** — Phase 0 (guard module) → Phase 1 (A6-1 apply-on-release + edge cells) → Phase 2 (#4 replay×drag). Freeze-safe (order-manager.js + order-interaction-guard.mjs only). #5 Phase 3, A6-3-order-half Phase 4 follow. Acceptance: RED→GREEN on TAL-01602 repro + property tests (committed-value invariant, single commit, cancel discards) + switch A/B + gate + PO staging confirm (drag SL across price during play = held no-close; release commits) + F5 persistence (A6-2 per D-019).
+
+### Lane 3 order-interaction Phases 0-2 LANDED (D-020) — re-dispatch Phase 3+4 — 2026-07-16
+
+**ACCEPTED (`T4-order-interaction-EXECUTE-report.md`).** 3 file-scoped commits: **Phase 0** guard module `order-interaction-guard.mjs` (`84926d3e`, 25/25 property tests, both trees I8), **Phase 1** A6-1 apply-on-release (`b50d45d4`, `__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX`), **Phase 2** #4 replay×drag deferral (`b6b4473d`, `__TALARIA_DISABLE_ORDER_PREVIEW_REPLAY_DRAG_FIX`). D-020 edge cells implemented + proven: (a) committed SL cross fires during drag; (b) Esc/replay-stop cancel reverts, no partial commit. Unified `_oiShouldSuppressSltpHits` (no TP-only asymmetry). RED-again 9 fail on master OFF. SHA256 both trees match. Freeze-safe (no replay-system/multichart-parent/chart.js). **Status DONE dev-only — NEEDS-LIVE** (property/mock-level per I15; PO confirms RC5-OI-1/2 on combined build). Caveat: `mouseleave`-cancel not wired (unreliable on document) → PO verifies pointer-leave live.
+
+**Re-dispatch:** Lane 3 → **`T4-order-interaction-phase3-4-lane3.md`** — Phase 3 (#5 keyboard-pan draft desync, `__TALARIA_DISABLE_ORDER_DRAFT_SCALE_REFRESH_FIX`; optional chart.js viewport hook flagged, not forced) → Phase 4 (A6-3 order-half price-axis isolation, `__TALARIA_DISABLE_ORDER_PRICE_AXIS_ISOLATION_FIX`; chart-half flag = separate post-combined-build PR). Still freeze-safe (order-manager.js only). Then A6-2 (F5 persist) is the next Lane-3 task.
+
+### Lane 3 order-interaction Phases 3-4 LANDED — freeze-safe series COMPLETE; Lane 3 → A6-2 F5 persist — 2026-07-16
+
+**ACCEPTED (`T4-order-interaction-phase3-4-report.md`).** **Phase 3** #5 keyboard-pan draft desync (`5889a1f0`, `__TALARIA_DISABLE_ORDER_DRAFT_SCALE_REFRESH_FIX`): `_oiSyncPreviewLinePricesFromStore` re-anchors from panel inputs (never invert(mouse)→store); position-only refresh on unchanged type; **no chart.js edit needed** (existing render/pan already calls `updatePreviewLinePositions`). **Phase 4** A6-3 order-half (`2f70df64`, `__TALARIA_DISABLE_ORDER_PRICE_AXIS_ISOLATION_FIX`): `_oiIsChartAxisGestureActive` read-only probe skips store writes during axis gesture; chart-half setter deferred to post-combined-build chart PR. 36 property tests pass; RED-again 2 fail on #5 switch OFF. **Freeze-safe order-interaction series (Phases 0-4) COMPLETE** — 5 gated commits, order-manager.js + guard module only. All DONE dev-only, NEEDS-LIVE on combined build.
+
+**RC-5 order-interaction switches landed:** GUARD_V2, SLTP_APPLY_ON_RELEASE, PREVIEW_REPLAY_DRAG, DRAFT_SCALE_REFRESH, PRICE_AXIS_ISOLATION (all default ON).
+
+**Lane 3 next:** dispatched **`T4-order-A6-2-persist-lane3.md`** — A6-2 F5 order persistence (D-019 spec: pending + open orders survive refresh, session-scoped). NOTE: touches chart.js boot/restore hook — worker must FIRST map the touch region + confirm disjoint from re-migration Phase-1 (~2349-2365) / D-017 snap-back (2456-2526, 17296-17357) / T8 replay-cadence regions; gate behind kill-switch; if region collides, STOP and report for Manager scheduling (not blindly freeze-safe like Phases 0-4).
+
+### Lane 3 A6-2 LANDED — freeze-safe A6 contract COMPLETE; Lane 3 → RC-6 M4 (closes T6) — 2026-07-16
+
+**ACCEPTED (`T4-order-A6-2-persist-report.md`).** A6-2 F5 persistence (`258ba30f`, `__TALARIA_DISABLE_ORDER_PERSISTENCE_V1`): STEP-0 region map confirmed chart.js boot hooks (~9830/10591/10644/11580) **disjoint** from re-migration/D-017/T8 regions → restore lives in `order-manager.js init()` via `_bootstrapRuntimeOrderPersistenceV1`, **no chart.js edit / no merge hazard**. sessionStorage-scoped (pending+open+SL/TP+splits+counters+account per D-019); one-time localStorage migration; pagehide/beforeunload flush. New `order-runtime-persist.mjs` + test (both trees I8). 16 property tests pass, RED-again on switch OFF. DONE dev-only, NEEDS-LIVE (F5 on built product). **FREEZE-SAFE A6 ORDER-INTERACTION CONTRACT COMPLETE** (Phases 0-4 + A6-2). Deferred: A6-4 host-canonical (post-re-migration), A6-3 chart-half flag (post-combined-build).
+
+**RC-6 status (git-confirmed):** M1 `3502177c`, M2 `314fbb3d`, M3 `db82aed4`, M5 `40be56dd` all landed; M4 diagnostic `0d95b05d` done. **M4 gate now CLEARED** — D-017 snap-back committed (`9462cef3`) + finest-TF cadence committed (`d6d9822f`), no in-flight replay-system edits (Lane 2 read-only). **Lane 3 → `T6-step8-lane3-M4-replay-ui-sync-IMPL.md`** — implement M4 (replay indicator UI sync) behind `__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2`, indicator files only (NO replay-system.js edit). Closes RC-6/T6.
+
+### Lane 3 M4 LANDED — RC-6/T6 mechanism set COMPLETE (dev) — 2026-07-16
+
+**ACCEPTED (`T6-step8-M4-replay-ui-sync-IMPL-report.md`).** M4 chart-side slice landed: new `indicator-replay-ui-sync.{mjs,js,test.mjs}` (both trees I8) + `chart-indicators-full.js` (pin playhead `hoverIndex` before replay recalc rebuild; post-rAF `applyReplayLegendSyncAfterRecalc`; lightweight `_syncReplayPlayheadCrosshairValues` when V2 ON) + `indicator-ui.js` (`talariaCrosshairBarIndex` prefers replay playhead) + loaders. Switch `__TALARIA_RC6_INDICATOR_REPLAY_UI_SYNC_V2` (default ON). Root: `_syncReplayPlayheadCrosshairValues` ran before async rAF recalc → stale legend until click; post-rAF sync closes the race. **No `replay-system.js` residual required** — chart-side sufficient. Targets TAL-00350#2/#7. I15-honest: property tests synthetic (dev-only), harness row `RC6-M4-replay-legend-sync` is Lane 4 scope (not registered), **NEEDS-LIVE** (play 10+ bars, scrub, switch-OFF repro). SHA256 recorded both trees. **RC-6/T6 mechanism set COMPLETE (M1–M5 + M4) in working tree, modulo PO live-confirm** — T6 not closed as proven until live pass. Commit: **`ca35d176`** — file-scoped, 20 files (indicator files + new module both trees + 6 loaders), no `git add -A`; harness/docs/hitcoord probes left unstaged. **Lane 3 freeze-safe backlog now EXHAUSTED** — remaining A6-4 (host-canonical) + A6-3 chart-half are post-re-migration / post-combined-build. Lane 3 PAUSES with Lane 1 until Lane 4 unblocks the critical path.
 
 ### Lane 3 — RC-6 M4 diagnostic ACCEPTED (read-only) — 2026-07-15
 

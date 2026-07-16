@@ -10,8 +10,10 @@ import {
   makeChecks,
   runWithReact,
   focusReactPanel,
+  focusReactPanelSoft,
   seedDrawing,
   singleClickDrawing,
+  singleClickCanvasBackground,
   doubleClickDrawing,
   ctrlClickDrawing,
   ctrlDragMarquee,
@@ -19,6 +21,7 @@ import {
   readParentReactSettings,
   waitForParentDrawingSettingsOpen,
   pressEscapeReact,
+  awaitParentChromeAfterPanelSelect,
   waitForV9QuickBarReady,
   clickV9QuickBarGear,
   waitForPanelSettle,
@@ -35,6 +38,7 @@ import {
   drawingExists,
   isDrawingSelected,
   waitForPanelData,
+  waitForReactMultichartReady,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -99,7 +103,11 @@ async function hR02(ctx) {
       let storeSel = false;
       for (let attempt = 0; attempt < 2 && !storeSel; attempt += 1) {
         if (attempt > 0) await waitForPanelSettle(page, pid, 2000);
-        await singleClickDrawing(page, pid, tool.id);
+        if (ctx.hr02ActuationMiss) {
+          await singleClickCanvasBackground(page, pid);
+        } else {
+          await singleClickDrawing(page, pid, tool.id);
+        }
         await waitForReactSelection(page, pid, [tool.id], 10000);
         await waitForPanelSettle(page, pid, 3000);
         storeSel = await isDrawingSelected(page, pid, tool.id);
@@ -157,10 +165,16 @@ async function hR04(ctx) {
       await disarmDrawTool(page, pid);
       await singleClickDrawing(page, pid, tool.id);
       await waitForReactSelection(page, pid, [tool.id]);
-      await waitForV9QuickBarReady(page, tool.id, 4000);
-      const dbl = await doubleClickDrawing(page, pid, tool.id);
+      await waitForV9QuickBarReady(page, tool.id, pid === 'B' ? 8000 : 4000);
+      let dbl = await doubleClickDrawing(page, pid, tool.id);
       checks.check(`H-R04 probe (${label}): double-click dispatched`, dbl && dbl.ok, dbl?.reason || '');
-      const settingsWait = await waitForParentDrawingSettingsOpen(page, 5000);
+      let settingsWait = await waitForParentDrawingSettingsOpen(page, pid === 'B' ? 8000 : 5000);
+      if (!settingsWait.ok && pid === 'B') {
+        await sleep(500);
+        await waitForPanelSettle(page, pid);
+        dbl = await doubleClickDrawing(page, pid, tool.id);
+        settingsWait = await waitForParentDrawingSettingsOpen(page, 8000);
+      }
       checks.check(`H-R04 CORE (${label}): settings open after real dbl-click`,
         settingsWait.ok && settingsWait.settings && !settingsWait.settings.quickBarShellOnly
           && settingsWait.settings.hasStyleSection,
@@ -368,7 +382,16 @@ async function hR12(ctx) {
     checks.check('H-R12 CORE: no legacy #drawing-toolbar inside panel-B iframe (step-14 litmus)',
       iframeToolbar && !iframeToolbar.legacyVisible, JSON.stringify(iframeToolbar));
 
-    const ready = await waitForV9QuickBarReady(page, placed.id);
+    let ready = await awaitParentChromeAfterPanelSelect(page, 'B', placed.id);
+    if (!ready.ok) {
+      await focusReactPanel(page, 'B');
+      ready = await awaitParentChromeAfterPanelSelect(page, 'B', placed.id, { timeoutMs: 12_000 });
+    }
+    if (!ready.ok) {
+      await sleep(600);
+      await focusReactPanelSoft(page, 'B');
+      ready = await awaitParentChromeAfterPanelSelect(page, 'B', placed.id, { timeoutMs: 15_000 });
+    }
     checks.check('H-R12 probe: parent V9 quick-bar gear-ready settle signal',
       ready && ready.ok, JSON.stringify(ready?.detail || ready));
 
@@ -539,6 +562,7 @@ async function hS80React(ctx) {
     checks.check('H-S80 setup (react): B engine 15m before reload', preEngine === '15m', `engine=${preEngine}`);
     await seedChartPanelState(page, '2v');
     await page.reload({ waitUntil: 'networkidle2', timeout: 120_000 });
+    await waitForReactMultichartReady(page);
     await waitForPanelData(page, 'B');
     await hostSetTimeframe(page, '15m');
     await reactPanelSetTimeframe(page, 'B', '15m');

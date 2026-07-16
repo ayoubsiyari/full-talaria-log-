@@ -39,7 +39,7 @@ function runReactHarnessOnce() {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ['react-run.mjs'], {
       cwd: __dirname,
-      env: process.env,
+      env: { ...process.env, REACT_PARITY_ISOLATE_SESSION: '1' },
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

@@ -5,7 +5,7 @@
  * CLI flags: --runs=N, --only=H-R01,H-R12, --headful
  */
 
-import { ensureBuiltReactStack, launchBrowser } from './react-parity-lib.mjs';
+import { ensureBuiltReactStack, launchBrowser, sleep } from './react-parity-lib.mjs';
 import { reactScenarioList } from './react-parity-scenarios.mjs';
 
 function parseArgs(argv) {
@@ -13,6 +13,9 @@ function parseArgs(argv) {
     runs: 1, only: null, headful: false,
     migrationOn: false, phase1Off: false, phase5Off: false,
     panelKeyboardOff: false, peerDeselectOff: false,
+    iframeCtrlDedupeOff: false, lifecycleOff: false, legacySelectionOff: false,
+    drawingLocalInvalidationOff: false, chromeRoutingOff: false, hr02ActuationMiss: false,
+    isolateSession: false,
   };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
@@ -21,6 +24,13 @@ function parseArgs(argv) {
     else if (a === '--phase5-off') args.phase5Off = true;
     else if (a === '--panel-keyboard-off') args.panelKeyboardOff = true;
     else if (a === '--peer-deselect-off') args.peerDeselectOff = true;
+    else if (a === '--iframe-ctrl-dedupe-off') args.iframeCtrlDedupeOff = true;
+    else if (a === '--lifecycle-off') args.lifecycleOff = true;
+    else if (a === '--legacy-selection-off') args.legacySelectionOff = true;
+    else if (a === '--drawing-local-invalidation-off') args.drawingLocalInvalidationOff = true;
+    else if (a === '--chrome-routing-off') args.chromeRoutingOff = true;
+    else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
+    else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
   }
@@ -35,60 +45,92 @@ function verdictOf(result) {
   };
 }
 
+function buildScenarioCtx(args, browser, stack) {
+  return {
+    browser, stack,
+    migrationOn: args.migrationOn,
+    phase1Off: args.phase1Off,
+    phase5Off: args.phase5Off,
+    panelKeyboardOff: args.panelKeyboardOff,
+    switchOffPeerDeselect: args.peerDeselectOff,
+    iframeCtrlDedupeOff: args.iframeCtrlDedupeOff,
+    lifecycleOff: args.lifecycleOff,
+    legacySelectionOff: args.legacySelectionOff,
+    drawingLocalInvalidationOff: args.drawingLocalInvalidationOff,
+    chromeRoutingOff: args.chromeRoutingOff,
+    hr02ActuationMiss: args.hr02ActuationMiss,
+  };
+}
+
+async function runScenarioOnce(s, ctx, verdicts) {
+  let result;
+  try {
+    result = await s.run(ctx);
+  } catch (err) {
+    console.log(`[react-run] ${s.id} threw: ${(err && err.stack) || err}`);
+    verdicts[s.id].push('FAIL');
+    console.log(`RESULT ${s.id} FAIL`);
+    return;
+  }
+  const v = verdictOf(result);
+  verdicts[s.id].push(v.pass ? 'PASS' : 'FAIL');
+  for (const c of result.checks.items) {
+    console.log(`   [${c.ok ? ' ok ' : 'FAIL'}] ${c.label}${c.detail ? ' — ' + c.detail : ''}`);
+  }
+  console.log(`RESULT ${s.id} ${v.pass ? 'PASS' : 'FAIL'}`);
+}
+
 async function main() {
   const args = parseArgs(process.argv);
-  const stack = await ensureBuiltReactStack();
-  console.log(`[react-run] built-product url: ${stack.url}`);
-  console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
-  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff}`);
-
   const scenarios = reactScenarioList().filter((s) => !args.only || args.only.includes(s.id));
   if (!scenarios.length) {
     console.error('[react-run] no scenarios matched --only filter');
-    await stack.close();
     process.exit(2);
   }
 
-  const browser = await launchBrowser({ headful: args.headful });
+  const stack = await ensureBuiltReactStack();
+  const isolateSession = args.isolateSession
+    || process.env.REACT_PARITY_ISOLATE_SESSION === '1'
+    || (!args.only && scenarios.length > 1);
+  console.log(`[react-run] built-product url: ${stack.url}`);
+  console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
+  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} isolateSession=${isolateSession} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff} iframeCtrlDedupeOff=${args.iframeCtrlDedupeOff} lifecycleOff=${args.lifecycleOff} legacySelectionOff=${args.legacySelectionOff} hr02ActuationMiss=${args.hr02ActuationMiss}`);
+
   const verdicts = {};
   const notesById = {};
   for (const s of scenarios) verdicts[s.id] = [];
 
   try {
-    for (let run = 1; run <= args.runs; run++) {
-      console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
-      for (const s of scenarios) {
-        const ctx = {
-          browser, stack,
-          migrationOn: args.migrationOn,
-          phase1Off: args.phase1Off,
-          phase5Off: args.phase5Off,
-          panelKeyboardOff: args.panelKeyboardOff,
-          switchOffPeerDeselect: args.peerDeselectOff,
-        };
-        let result;
-        try {
-          result = await s.run(ctx);
-        } catch (err) {
-          console.log(`[react-run] ${s.id} threw: ${(err && err.stack) || err}`);
-          verdicts[s.id].push('FAIL');
-          console.log(`RESULT ${s.id} FAIL`);
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
+    if (isolateSession) {
+      for (let run = 1; run <= args.runs; run++) {
+        console.log(`\n========== REACT RUN ${run}/${args.runs} (isolate-session) ==========`);
+        for (const s of scenarios) {
+          const browser = await launchBrowser({ headful: args.headful });
+          try {
+            const ctx = buildScenarioCtx(args, browser, stack);
+            await runScenarioOnce(s, ctx, verdicts);
+          } finally {
+            await browser.close().catch(() => {});
+            await sleep(2000);
+          }
         }
-        const v = verdictOf(result);
-        verdicts[s.id].push(v.pass ? 'PASS' : 'FAIL');
-        if (result.notes && result.notes.length) notesById[s.id] = result.notes;
-
-        for (const c of result.checks.items) {
-          console.log(`   [${c.ok ? ' ok ' : 'FAIL'}] ${c.label}${c.detail ? ' — ' + c.detail : ''}`);
+      }
+    } else {
+      const browser = await launchBrowser({ headful: args.headful });
+      try {
+        for (let run = 1; run <= args.runs; run++) {
+          console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
+          for (const s of scenarios) {
+            const ctx = buildScenarioCtx(args, browser, stack);
+            await runScenarioOnce(s, ctx, verdicts);
+            await sleep(1500);
+          }
         }
-        console.log(`RESULT ${s.id} ${v.pass ? 'PASS' : 'FAIL'}`);
-        await new Promise((r) => setTimeout(r, 1500));
+      } finally {
+        await browser.close();
       }
     }
   } finally {
-    await browser.close();
     await stack.close();
   }
 

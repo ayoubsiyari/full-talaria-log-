@@ -38,4 +38,4 @@ Each maps to staged D-015 / D-009 / D-016 fixes with retest surfaces on the bles
 
 **DONE** — docs ready for Lane 4 fresh combined cut once Lane 1 lands H-R03 fix.
 
-**Commit:** (see below)
+**Commit:** `a6a2e865`

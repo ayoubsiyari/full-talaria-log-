@@ -3,9 +3,9 @@
 **Status:** Living document — update as re-migration phases land and staging commits accumulate.  
 **Authority:** D-018 ruling #4 — deploy unfreeze ships as **ONE** combined build (re-migration + all accumulated staging work). PO `MULTICHART-PARITY-CHECKLIST.md` sign-off happens on that exact build id; nothing appends after cut.  
 **Last shipped baseline (plan-1):** `20260707b105` (`ba85d960` — 29-scenario gate GREEN, I9).  
-**Current HEAD tip (pre-combined-cut):** `817a81a1`+ — re-migration P1/P4/P5 + I13 hygiene landed; **H-R03 iframe dedupe pending Lane 1**.  
+**Current HEAD tip:** `ecaa8a9c`+ — re-migration P1/P4/P5 + I13 hygiene + H-R03 iframe dedupe landed.  
 **Last assembly attempt:** `20260716b6` — **SUPERSEDED / NOT BLESSED** (H-R03 panel-B regression; ESC-019). **Do not PO-sign or deploy b6.**  
-**Next combined build id:** **`TBD`** — Lane 4 cuts after Lane 1 H-R03 fix commit lands + canonical bump (must include `817a81a1` hygiene + H-R03 fix; not b6).
+**Blessed combined build (D-023):** **`20260716b10`** — **BLOCKED** pending clean `gate:react` (manager gate PASS r3; react gate session-order flake on H-R04/H-R06/H-R09/H-R12 across retries — see `T0-lane4-hr02-discriminator-plus-rebless-report.md`).
 
 ---
 
@@ -39,12 +39,12 @@ Commits listed **oldest → newest**. Assembly gate authority: `T0-lane4-combine
 
 | Commit | Phase / row | Build ref | What it carries | Gate / PO status |
 |--------|-------------|-----------|-----------------|------------------|
-| `6dc552a8` | **P1** | `20260716b1` | Engine selection substrate — `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` (+ child lifecycle/legacy-retire) | **GREEN** — H-R02/H-R03 10/10 with P1 ON (pre-b6 baseline) |
+| `6dc552a8` | **P1** | `20260716b1` | Engine selection substrate — `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` (+ child lifecycle/legacy-retire) | **GREEN** — defense-in-depth; harness-visible load-bearing role for H-R02/H-R03 **UNPROVEN** post `ecaa8a9c` (see §2.1 P1 ledger note) |
 | `f46e6d9d` | **P4** + **H-R06** | `20260716b2` artifacts | Delete keyboard bridge — `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1`; **known mixed commit** — P5 `MultichartGrid.jsx` peer hunks bundled (D-022; do not rewrite history) | **GREEN** — H-R06 10/10 on b6 |
 | `52894a8d` | **P5** (manager) | — | `multichart-manager.js` P5 master gate on `multichartPeerDeselectV1Enabled()` (both trees, I8) | **GREEN** — H-R07 10/10 on b6 |
 | `ba07584c` | Lane 4 harness | — | `focusReactPanelSoft`, D-021 CLI hooks (`--phase1-off`, `--panel-keyboard-off`, `--peer-deselect-off`, `--phase5-off`), H-R06 baseline removal | Harness reconcile — not engine |
 | `817a81a1` | **I13 hygiene** (Lane 2) | `20260716b9` (local dist only) | Focus `useEffect` peer churn gated behind P5 master; manager `clearDrawingUiOnOtherPanels` / `deselectDrawingsOnNonFocusedPanels` entry guards | **DONE (dev)** — hygiene only; **include in next combined cut** |
-| **`TBD`** | **H-R03 fix** (Lane 1) | **`TBD`** | Iframe ctrl-select dedupe — `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (`drawing-tools-manager.js` both trees, I8) | **PENDING** — blocks next bless; target H-R03 10/10 panel-B + switch-OFF A/B |
+| `ecaa8a9c` | **H-R03 fix** (Lane 1) | `20260716b10` | Iframe ctrl-select dedupe — `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (`drawing-tools-manager.js` both trees, I8) | **GREEN** — H-R03 10/10 + `--iframe-ctrl-dedupe-off` A/B |
 
 **Assembly attempt `20260716b6`:** bundled P1 + H-R06 + H-R07 + harness reconcile. **STOP — NOT PARITY-CHECKLIST READY** (H-R03 panel-B 10/10 FAIL-REAL-BUG; host 10/10). Superseded — await Lane 1 fix + fresh cut.
 
@@ -95,16 +95,21 @@ Commits listed **oldest → newest**. Assembly gate authority: `T0-lane4-combine
 | Phase | One-knob master (preferred) | Child switches (all must gate every touched file) | Files (primary) | Revert effect |
 |-------|----------------------------|---------------------------------------------------|-----------------|---------------|
 | **P0** | — (harness only) | Fallback-B defaults | predicates in §2.2 | 12/12 honest RED on default posture |
-| **P1** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` | `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2`, `__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2` | `tool-lifecycle-store.js`, `drawing-tools-manager.js`, `chart.js` | iframe: lifecycle + legacy retire OFF → H-R02/03 RED |
+| **P1** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` | `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2`, `__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2` | `tool-lifecycle-store.js`, `drawing-tools-manager.js`, `chart.js` | iframe: lifecycle + legacy retire OFF → **no longer flips H-R02/H-R03** post `ecaa8a9c`; stays committed+gated as defense-in-depth (D-023 ledger note below) |
 | **P2** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE2_ROUTING` (designed PREP) | `__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2`, `__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3` | `MultichartGrid.jsx`, `TalariaV8bLive.jsx`, `drawing-tools-manager.js` (emit) | No parent V9 bar on panel select → H-R01 RED |
 | **P3** | `__TALARIA_DISABLE_MULTICHART_SETTINGS_FLASH_FIX_V2` | `__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2` (settings-open subset) | `MultichartGrid.jsx`, `drawing-tools-ui.js`, `drawing-tools-manager.js` | Settings flash-close / no modal → H-R04/13 RED |
 | **P4** | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` (**new**, mandatory) | May extend quickbar switch after I13 audit | `MultichartGrid.jsx`, `panel-cmd-bridge.js`, `keyboard-shortcuts.js`, `drawing-tools-manager.js` | Esc/Delete no cross-frame → H-R05/06 RED |
 | **P5** | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` (master) | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` (child) | `MultichartGrid.jsx`, `multichart-manager.js` | Dual selection / peer UI churn → H-R07 RED |
-| **H-R03 hotfix** | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (own switch — **not** P1/P4/P5 child) | — | `drawing-tools-manager.js` (both trees, I8) | Iframe panel-B ctrl multi-select toggles off → H-R03 panel-B RED |
+| **H-R03 hotfix** | `__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1` (own switch — **not** P1/P4/P5 child) | — | `drawing-tools-manager.js` (both trees, I8) | Iframe panel-B ctrl multi-select toggles off → H-R03 panel-B RED (**discriminator of record**, D-023) |
+| **H-R02 harness** | `REACT_PARITY_HR02_ACTUATION_MISS` (harness boot flag; CLI `--hr02-actuation-miss` / `--hr02-discriminator-off`) | — | `react-parity-lib.mjs`, `react-parity-scenarios.mjs`, `react-run.mjs` | Real mouse click on empty canvas (store-empty miss) → H-R02 10/10 FAIL-REAL-BUG. **No engine one-knob on `20260716b10`** — D-023 I15 fallback; Lane 1 may add engine switch later via escalation. |
 | **P6** | `__TALARIA_DISABLE_MULTICHART_PANEL_MARQUEE_V1` | — | `chart.js`, `drawing-tools-manager.js` | No iframe marquee → H-R14 RED |
 | **P7** (post-unfreeze) | `__TALARIA_RC3_MC_PARITY_PHASE5` | reuse migration switches | `sync-bridge.js`, `embed-bridge.js`, drawing modules | H-S45–50 RED |
 
 **Fallback-B exit (unfreeze target):** iframe effective **false** on lifecycle + legacy-retire + ownership for interaction slice; per-phase switches ON (unset) with documented revert.
+
+**P1 ledger note (D-023):** P1 engine substrate (`6dc552a8`) stays committed + gated as defense-in-depth; its load-bearing role for H-R02/H-R03 is now **UNPROVEN** after `ecaa8a9c`. Retiring it as dead code requires a fresh escalation with evidence — not a cleanup commit.
+
+**H-S27 honesty follow-up (post-bless, does NOT block bless):** H-S27 RED is caused by its own synthetic seek loop, not the product. Per I15 it is **not a trusted row** until re-actuated production-faithfully (or given per-scenario fresh-boot). T8/Lane-2 follow-up; does NOT count as fixed or as a real fail in fix-rate stats.
 
 ### 2.2 Fallback-B + T1 interaction bundle (landed — default OFF in iframe)
 
@@ -177,9 +182,7 @@ Each staging id is **superseded** by the next; the combined cut must stamp **one
 | **20260715a5** | `d457dbe1` (T8 step 9) | a4 + TF label sync (PLAN2-FOUND#6, H-S80) | a4 |
 | **20260715b1** | `d6d9822f` (T8 step 13) | a5 + finest-TF unified cadence (D-016, H-S83) | a5 |
 | **20260715b2** | `9462cef3` + serve stamp | b1 + D-017 snap-back (H-S82) | b1 |
-| **20260716b6** | P1 `6dc552a8` + H-R06 `f46e6d9d` + H-R07 `52894a8d` + harness `ba07584c` | Re-migration assembly attempt — P1/P4/P5 in one dist | b2 — **SUPERSEDED / NOT BLESSED** (H-R03 panel-B regression) |
-
-**Combined build (next cut — not yet cut):** must equal **b2 staging content** + **re-migration P1–P6** + **`817a81a1` I13 hygiene** + **Lane 1 H-R03 fix (`TBD`)** + **registry-committed** RC-5/RC-6/RC-3 slices + **T1 step 19** prototypes (if Manager includes) + **single canonical** `BUILD_ID` on host and every panel iframe. **Build id: `TBD`** (Lane 4; do **not** reuse `20260716b6`).
+| **20260716b10** | P1 `6dc552a8` + H-R06 `f46e6d9d` + H-R07 `52894a8d` + I13 `817a81a1` + H-R03 `ecaa8a9c` + harness D-023 | Combined build — **NOT BLESSED** (`gate:react` session flake; discriminators + manager gate green) | b6 — supersedes b6/b8/b9 |
 
 **Known stamp drift (pre-cut):** local I13 hygiene built `20260716b9` (Grid-only); assembly `b6` stamped before hygiene. Manager coordinates one bump at cut.
 

@@ -88,4 +88,4 @@ On build with P5 master OFF: change focus A→B→C rapidly — peer panels shou
 | `MultichartGrid.jsx` | `b7363dab64b28901361b1e12d6adc8e3a431707930cdd89b07182e470cd119d1` |
 | `multichart-manager.js` (both trees) | `e286f098aa8a18d757f96b61201175fc271f4c9d1722ef303a6cd9ce94f8c682` |
 
-**Commit:** file-scoped (source + manager mirrors + dist bundle for Grid).
+**Commit:** `817a81a1` — file-scoped (source + manager mirrors + dist bundle for Grid).

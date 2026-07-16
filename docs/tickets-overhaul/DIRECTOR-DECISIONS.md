@@ -2,6 +2,144 @@
 
 ---
 
+## D-024 — ESC-021: chrome-readiness race fix AUTHORIZED (P3 verify-only → fix-scope per the D-021 contingency); ready-signal becomes the harness wait primitive
+
+**Date:** 2026-07-16
+**Escalation:** ESC-021 (the D-021 fresh-escalation contingency, correctly fired)
+**Track:** T3 / RC-1+RC-4 (re-migration) — P3 settings + Esc leg
+**RC:** RC-2-adjacent (readiness/commit ordering) within RC-4
+
+### Framing
+This is the verify-only contingency working as designed: a verify row failed for real, nobody patched it silently, the evidence came back (1/10 and 7/10 under per-run browser isolation — unambiguously a race, not suite noise), and a read-only diagnostic named the mechanism before any code was proposed. Worker 4's refusal to mask with sleeps is exactly the I15 posture. Authorization granted.
+
+### Rulings
+
+**1. P3 (+ the Esc verify leg) converts from verify-only to fix-scope** for this one root: the parent chrome advertises gear/settings readiness **before the DOM is committed and handlers are bound**, so real user events landing in that window no-op. One small gated Lane 1 fix as recommended: emit the ready signal **after DOM commit** (`TalariaV8bLive.jsx`) + gate the manager selection handler, behind **`__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4`** (unset = fix ON). Scope fence: readiness ordering only — no changes to the settings-open transport itself (that mechanism is proven; the signal timing is the defect).
+
+**2. Acceptance (per D-023's discriminator rule, applied from birth):** H-R04 and H-R05 **10/10 PASS isolated**, switch-OFF **10/10 FAIL** — the switch is the named discriminator of record for both rows from day one. Then Lane 4 re-runs the STEP-1 isolation matrix and requires **3 consecutive clean `gate:react`** runs before bless. No sleeps, no retries.
+
+**3. The ready-signal becomes the harness wait primitive — ratified as part of this fix.** Lane 4 replaces timeout-based waits with awaiting the real "chrome ready" signal wherever the harness interacts with panel chrome. This is the honest-measurement dividend: the product emits a truthful readiness event and the harness consumes it — races become deterministic assertions instead of tuned timeouts. (It also means any future readiness regression fails loudly in the harness rather than flaking.)
+
+**4. Real-user impact note for the ledger:** this race is almost certainly the mechanism behind the historical "settings open only on double-click / second try" family of tester reports (the first click landed in the unready window). When the fix is green, the Manager cites those registry rows for retest on the combined build rather than treating them as separate defects.
+
+**5. Bless sequence (consolidated, now four items):** (i) this fix green per ruling 2, (ii) H-R02 discriminator (D-023), (iii) H-S27/H-S83 triage (already dispatched), (iv) assembly gate green → PO parity checklist on the blessed combined build. Baseline promotions continue to ride the gate-green commit.
+
+---
+
+## D-023 — ESC-020: dedupe A/B accepted as H-R03's discriminator; H-R02 needs its own discriminator BEFORE bless; P1 stays as gated defense-in-depth
+
+**Date:** 2026-07-16
+**Escalation:** ESC-020
+**Track:** T3 / RC-1+RC-4 (re-migration) + T0 (harness honesty)
+**RC:** RC-1 / RC-4 / RC-7
+
+### Framing
+The Manager was right to bring this rather than self-approve — swapping a Director-mandated honesty gate is exactly the class of decision that must not happen silently. The situation itself is benign: `ecaa8a9c` is a more complete selection mechanism, so the old discriminator's power moved, it didn't vanish. The job now is to re-anchor the honesty proof to where the load actually is.
+
+### Rulings
+
+**1. Dedupe A/B ACCEPTED as the discriminator of record for H-R03.** `--iframe-ctrl-dedupe-off` → 10/10 FAIL-REAL-BUG is a genuine one-knob discriminator, stronger than the Phase-1 leg it replaces (it isolates the exact mechanism that fixed the row). Criterion 4 is satisfied for H-R03 via criterion 1. The D-021 standing condition is updated, not retired: **every trusted row must have a named discriminator that provably flips it red; when a mechanism change moves the load, the discriminator moves with it via escalation — never silently.** (This case is now the worked example.)
+
+**2. H-R02 requires its own re-derived discriminator BEFORE bless — Manager's option (a) with the hard half of the question answered.** The trust in the 8 flipped-green rows (D-021) was anchored on the Phase-1 A/B; that anchor is now retired for H-R02, which currently has **no** proof the harness can detect its failure mode. An undiscriminated green row on the bless-critical path is exactly what I15 forbids us to trust. Lane 4 re-derives a small H-R02 discriminator (e.g. a switch-off or targeted stub that provably breaks single-select store commit → H-R02 10/10 FAIL) before `20260716b10`-or-successor is blessed. This is the only new work this ruling adds, and the Manager already sized it as small.
+
+**3. P1 stays committed + gated as defense-in-depth — with an honest ledger note.** Manager's read (a) is accepted: the engine substrate still owns non-ctrl selection routing the harness rows don't isolate. But the ledger records plainly that **P1's harness-visible load-bearing role for H-R02/H-R03 is now unproven**. If a future cleanup proposes retiring P1 as dead code, that is a fresh escalation with evidence (a discriminator that flips something when P1 goes off) — not a housekeeping commit.
+
+**4. Bless sequence restated:** bless of the combined build waits on (i) this ruling's H-R02 discriminator, (ii) the criterion-5 triage (H-S27/H-S83 — separate, already dispatched), (iii) assembly gate green with the r1 host-only H-R03 flake watched (one more 10/10 run on the bless candidate; if the host flake recurs, it gets a row per the D-022 watch-item rule). Baseline promotions continue to ride the gate-green commit (D-022 directive 3).
+
+### Watch item
+The r1 host-only H-R03 flake: one recurrence on the bless candidate = its own tracked row, not a flake label.
+
+---
+
+## D-022 — ESC-019 acknowledged (no blocking ruling); three Director directives on the discipline breaches
+
+**Date:** 2026-07-16
+**Escalation:** ESC-019 (informational — H-R03 regression on combined b6; ungated path; mixed P4+P5 commit)
+**Track:** T3 / RC-1+RC-4 (re-migration)
+
+### Acknowledgment
+Manager's handling endorsed in full: stop-on-bless, holding the baseline promotions, read-only diagnostic first. The unfreeze slipping one fix+re-gate cycle is the process working, not failing — b6 was caught by the assembly gate, not by testers. No ruling blocks the fix; the pre-authorization stands as filed (Manager drives to green unless the fix needs scope/architecture change).
+
+### Directives (recorded so they bind the fix and the aftermath)
+
+**1. The I13 gap is part of the fix's exit criteria, not a separate cleanup.** Whatever the diagnostic finds, the fix is not accepted until: (a) H-R03 is 10/10 on the combined build, AND (b) **every path the offending change touched is behind a switch whose OFF state provably restores pre-change behavior** (switch-off A/B recorded in the report). "Row green but path still ungated" is a bounce. If the ungated path turns out to be pre-existing (not introduced by P4/P5), report that honestly — it then becomes a registry row rather than retroactive blame, but the new code riding it still gets gated.
+
+**2. Mixed-commit corrective — mechanical, not aspirational.** The one-phase-per-PR rule was breached by two phases' hunks sharing a working tree at commit time. Corrective rule (binding, all lanes): **before any commit on a shared-surface file (`MultichartGrid.jsx`, `panel-cmd-bridge.js`, `drawing-tools-manager.js`), the committing worker runs `git diff --stat` against the phase's declared file manifest and stages by hunk if anything out-of-manifest is present; any out-of-manifest hunk in the diff = STOP and report to the Manager.** The Manager includes the manifest check in every land-prompt for shared surfaces. If P4 and P5 cannot be retro-split (history already shared), do not rewrite history — record `f46e6d9d` as a known mixed commit and rely on the (now-mandatory) switch coverage for independent revert.
+
+**3. Assembly-gate promotion order.** Lane 4's hold is correct and becomes the standing pattern: **no baseline promotion (known-failing removals, H-S34/35/44 etc.) lands until the assembly gate is green on the combined build** — promotions ride the gate-green commit, never precede it. This prevents a broken combined build from inheriting an optimistic baseline.
+
+### Watch item
+H-R04/H-R05 panel-B "secondary flakes behind the H-R03 block" — after the H-R03 fix, both must show 10/10 before they're called flakes; if either stays unstable, it gets its own row, not a flake label (I15).
+
+---
+
+## D-021 — ESC-018: revalidated 2-row matrix trusted; Phases 2/3/6 → verify-only, P4 reduced to Delete, P5 stands; Phase-1 commit fires now; unfreeze gate re-derived
+
+**Date:** 2026-07-16
+**Escalation:** ESC-018
+**Track:** T3 / RC-1 + RC-4 (re-migration)
+**RC:** RC-1 / RC-4
+
+### Framing
+This is D-018's standing condition doing exactly what it was written for — "if rows are genuinely green on fallback, affected phases shrink; we don't re-fix working rows" — at a larger magnitude than anyone expected (8 of 11). The honesty question is the only question, and the Phase-1 A/B answers it: a harness that flips 10/10 FAIL-REAL-BUG on H-R03 the moment the engine substrate is switched off is not a blanket-green harness — it discriminates. That is the I15 standard: the assertion detects absence of the mechanism, not just presence of a pass.
+
+### Rulings
+
+**1. The revalidated 2-row matrix is TRUSTED as the authoritative honest baseline.** The 8 flips (H-R01/02/03/04/05/08/13/14) are accepted as click-miss artifacts of the pre-fix actuation, not new false-greens. Two conditions attached:
+- **Lane 4 freezes the hit-coord-fixed harness** as the reference version (SHA recorded in the findings log); any future actuation change re-runs the Phase-1 A/B discriminator before its results are trusted — the A/B is now the harness's own regression test.
+- The ledger records the honest history plainly: the original "12 honest RED" baseline was itself partially an artifact. This is the second time measurement error inflated apparent breakage (opposite sign from ESC-011). Standing lesson for the registry: **HR-PARITY#1–#8 rows that correspond to flipped-green surfaces close as measurement-artifact, not as fixed** — testers' live experience never disagreed with these 8 rows, and misclassifying them as fixes would corrupt the fix-rate statistics.
+
+**2. Re-scope APPROVED as requested:**
+- **P2, P3, P6 → verify-only**: each runs its rows 10/10 on the combined build and confirms no regression; **no new engine fix, no new switches**. Their planned mechanisms (routing V3 re-enable, settings transport, marquee) are NOT dispatched — if a verify-only pass fails on the combined build, that phase reverts to fix-scope via a fresh escalation with the failure evidence.
+- **P4 reduces to the H-R06 Delete leg** (still the new `PANEL_KEYBOARD_V1` switch per D-018; the Esc half becomes a verify-only row since H-R05 is green). The Phase-4 `panel-cmd-bridge.js` collision window with T8 still applies, but it just got much shorter.
+- **P5 stands for H-R07** (cross-panel select store empty) + its H-S34/35/44 promotion duties.
+- Owners: Manager assigns H-R06 and H-R07 to Lane 1/Lane 2 per queue; they may run in parallel if their file sets stay disjoint (Delete = keyboard/bridge path; peer isolation = MultichartGrid/manager path) — the one-phase-per-PR rule on `MultichartGrid.jsx` still binds.
+
+**3. Phase-1 commit FIRES NOW — confirmed.** It discharges a proven honest RED (H-R03 fails 10/10 without it), is kill-switched with the D-018-mandated master slice switch, and is file-scoped. It does not need to wait on anything in this ruling.
+
+**4. Unfreeze gate re-derived — confirmed, with the criteria list restated so nothing silently drops:**
+1. P1 + P4-Delete (H-R06) + P5 (H-R07) green 10/10 on the honest harness, switch-OFF REDs proven.
+2. P2/P3/P6 verify-only rows pass on the combined build (they are still gate rows — verify-only ≠ skipped).
+3. The full 12-row matrix green on the **combined build** (not just the phase builds), build-id asserted inside panel B.
+4. Accumulated staging work folded in (cadence b1, order-entry incl. A6-1 if landed, settings/Esc/Delete, TF-label, refresh-persistence) with smoke rows for previously PO-confirmed items.
+5. H-S34/35/44 promoted; no open HR-PARITY registry rows (the 8 artifact rows close per ruling 1).
+6. **PO parity-checklist sign-off on that exact combined build** — unchanged, still the final gate.
+
+### Net effect
+The engine work remaining before unfreeze is two rows: **Delete-in-panel and cross-panel selection isolation.** Everything else is verification. This is the closest the freeze-lift has ever been; the Manager should sequence H-R06/H-R07 as the top items on their lanes and begin assembling the combined build manifest in parallel.
+
+---
+
+## D-020 — ESC-017: apply-on-release invariant approved; A6-4 host-canonical order store ratified in principle (dispatch post-re-migration); landing sequence approved
+
+**Date:** 2026-07-16
+**Escalation:** ESC-017
+**Track:** T4 / RC-5 (intake amendment A6)
+**RC:** RC-5
+
+### Rulings
+
+**1. A6-1 apply-on-release — APPROVED as the canonical SL/TP interaction invariant.**
+- The invariant, stated for the contract: **while the pointer is down, a dragged SL/TP line is provisional** — it renders at the cursor, but the store value does not change and no fill/close/hit logic may evaluate against it; **commit happens once, on release**. Replay ticks during the drag hit-test against the *last committed* value, not the provisional one.
+- Two edge cells the fix must specify in its state matrix (so we don't meet them as regressions):
+  (a) **Committed-value crossing during drag:** if price crosses the *last committed* SL while the user is dragging, the close **does** fire — apply-on-release protects the provisional line, it does not suspend risk semantics on the committed order. If the PO wants drags to freeze hit-testing entirely, that is a separate spec question; default is committed-value semantics.
+  (b) **Drag cancel (Esc / pointer leaves window / replay stopped mid-drag):** provisional discards, line returns to the committed value — no partial commit.
+- Freeze-safe as stated (`order-manager.js` only), switch `__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX`, RED-first repro = TAL-01602's exact scenario (replay playing, drag SL across price, hold — no close; release beyond price — normal behavior).
+
+**2. A6-4 host-canonical order store — RATIFIED as the target architecture; dispatch GATED behind the re-migration.**
+- The architecture is correct and is the RC-5 sibling of every ownership lesson this project has learned: one canonical owner (host `orderManager`), panels render projections, edits route to host and fan out (I14 postMessage transport). Per-panel mutable clones with partial sync is the exact defect class we're eliminating everywhere else.
+- Dispatch after the re-migration combined build ships (it edits `MultichartGrid.jsx` + `panel-cmd-bridge.js` — both re-migration surfaces; landing it mid-phase would break the one-phase-per-PR serialization). It slots naturally as a **post-unfreeze tranche alongside Phase 7** — Manager schedules the two so they don't collide on `panel-cmd-bridge.js`.
+- Design note binding on the eventual fix: the missing `order:opened-updated` fan-out is a symptom, not the fix — do NOT patch a second sync event onto the clone model. The fix is the ownership inversion.
+
+**3. Landing sequence — APPROVED:** A6-1 now (freeze-safe, Lane 3 executes immediately); A6-2 persistence next/parallel (spec settled by D-019: pending + open, per session); A6-3 (price-axis order isolation) + A6-4 post-unfreeze. Note A6-3's spec context: D-019 cancelled the *axis-side* Defect D (price-label drag behavior stays as-is) — A6-3 is only the *order-side* isolation (axis gesture must not move order lines, TAL-01615); its RED must assert order-line invariance, not axis behavior.
+
+**4. TAL-00752 #4/#5 (replay×drag / keyboard-pan) — YES, land coherently with A6-1** as one `order-manager.js` region series: same worker, same region, sequential gated commits (A6-1 first, then #4/#5 per T8 step-15's consolidation note), each behind its own switch. One region owner avoids a three-way merge in the drag-handler code. T8's step-15 landing-order recommendation (H-S25 seam → #4/#5 → H-S30 promote) is folded around this: #4/#5 ride the Lane-3 series since they're `order-manager.js`, not bridge files.
+
+### Acceptance
+A6-1: RED→GREEN on the TAL-01602 repro + property tests (drag sequences: committed value invariant under move; single commit on release; cancel discards) + switch A/B + full gate + **PO staging confirm** (drag SL across price during play — held = no close; release = commits). A6-2 acceptance per D-019's spec (pending + open survive F5, per session).
+
+---
+
 ## D-019 — PO spec answers (P6): price-label drag stays as-is; order persistence = pending + open
 
 **Date:** 2026-07-16

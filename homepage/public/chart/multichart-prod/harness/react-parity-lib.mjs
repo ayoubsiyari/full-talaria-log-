@@ -430,6 +430,11 @@ export async function installBuiltProductBoot(page, {
   migrationOn = false,
   phase1Off = false,
   phase5Off = false,
+  iframeCtrlDedupeOff = false,
+  lifecycleOff = false,
+  legacySelectionOff = false,
+  drawingLocalInvalidationOff = false,
+  chromeRoutingOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -437,11 +442,21 @@ export async function installBuiltProductBoot(page, {
   const mig = migrationOn || process.env.REACT_PARITY_MIGRATION_ON === '1';
   const p1Off = phase1Off || process.env.REACT_PARITY_PHASE1_OFF === '1';
   const p5Off = phase5Off || process.env.REACT_PARITY_PHASE5_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn) => {
+  const dedupeOff = iframeCtrlDedupeOff || process.env.REACT_PARITY_IFRAME_CTRL_DEDUPE_OFF === '1';
+  const lcOff = lifecycleOff || process.env.REACT_PARITY_LIFECYCLE_OFF === '1';
+  const legOff = legacySelectionOff || process.env.REACT_PARITY_LEGACY_SELECTION_OFF === '1';
+  const dliOff = drawingLocalInvalidationOff || process.env.REACT_PARITY_DRAWING_LOCAL_INVALIDATION_OFF === '1';
+  const croff = chromeRoutingOff || process.env.REACT_PARITY_CHROME_ROUTING_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
     if (panelKbOff) window.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1 = true;
+    if (iframeDedupeOff) window.__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1 = true;
+    if (lifecycleOffOn) window.__TALARIA_DISABLE_TOOL_LIFECYCLE_V2 = true;
+    if (legacySelOffOn) window.__TALARIA_DISABLE_LEGACY_SELECTION_RETIRE_V2 = true;
+    if (dliOffOn) window.__TALARIA_DISABLE_DRAWING_LOCAL_INVALIDATION_V2 = true;
+    if (chromeRoutingOffOn) window.__TALARIA_DISABLE_MULTICHART_PANEL_SELECTION_CHROME_ROUTING_V3 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -454,7 +469,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -648,6 +663,20 @@ export async function waitForPanelSettle(page, panelId, budgetMs = 4000) {
   }), budgetMs);
 }
 
+/**
+ * After iframe/panel selection, wait for parent chrome routing to settle.
+ * @param opts.requireGearReady — when true (default), wait for V9 gear-ready event (H-R12 gear route).
+ *   When false, only focus+settle (H-R04/H-R09 dbl-click paths — gear event may not fire).
+ */
+export async function awaitParentChromeAfterPanelSelect(page, panelId, drawingId, opts = {}) {
+  const requireGear = opts.requireGearReady !== false;
+  const timeoutMs = opts.timeoutMs ?? (panelId === 'B' ? 12_000 : 5000);
+  await focusReactPanelSoft(page, panelId);
+  await waitForPanelSettle(page, panelId);
+  if (!requireGear) return { ok: true, detail: { signal: 'settle-only', panelId } };
+  return waitForV9QuickBarReady(page, drawingId, timeoutMs);
+}
+
 export async function readParentReactSettings(page) {
   return page.evaluate(() => {
     const root = document.getElementById('multichart-global-settings-root');
@@ -837,6 +866,17 @@ export async function singleClickDrawing(page, panelId, drawId) {
   await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 1, delay: 30 });
   await waitForPanelSettle(page, panelId);
   return { ok: true, clicked: pagePt, actuation: 'page.mouse.click', hitMethod: hit.method };
+}
+
+/** Real mouse click on empty chart canvas (I15 miss actuation — H-R02 discriminator arm). */
+export async function singleClickCanvasBackground(page, panelId) {
+  await dismissClickBlockers(page, panelId);
+  const pagePt = await reactChartCanvasPagePoint(page, panelId, 0.08, 0.12);
+  if (!pagePt) return { ok: false, reason: 'no canvas point' };
+  await page.mouse.move(pagePt.x, pagePt.y);
+  await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 1, delay: 30 });
+  await waitForPanelSettle(page, panelId);
+  return { ok: true, clicked: pagePt, actuation: 'page.mouse.click(canvas-miss)' };
 }
 
 export async function doubleClickDrawing(page, panelId, drawId) {
@@ -1114,6 +1154,11 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     migrationOn: !!opts.migrationOn,
     phase1Off: !!opts.phase1Off,
     phase5Off: !!opts.phase5Off,
+    iframeCtrlDedupeOff: !!opts.iframeCtrlDedupeOff,
+    lifecycleOff: !!opts.lifecycleOff,
+    legacySelectionOff: !!opts.legacySelectionOff,
+    drawingLocalInvalidationOff: !!opts.drawingLocalInvalidationOff,
+    chromeRoutingOff: !!opts.chromeRoutingOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

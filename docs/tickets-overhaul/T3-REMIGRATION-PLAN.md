@@ -56,8 +56,8 @@ Model: T5-style phased discharge — one root per phase, kill-switch per phase, 
 | Item | Detail |
 |------|--------|
 | **Goal** | Frozen acceptance matrix + A/B harness |
-| **Deliverable** | Step-17 table locked; `npm run gate:react` baseline; `--migration-on` flag documented |
-| **Gate** | 12/12 RED on fallback-B default; 0 false greens |
+| **Deliverable** | **`T3-PHASE0-FROZEN-MATRIX.md`** (step-17 table locked on b2); `npm run gate:react` baseline; `--migration-on` + **`--phase1-off`** documented |
+| **Gate** | 11/11 honest RED on fallback-B b2; H-R12 green; manager `gate` 0 regressions after H-S18 fix (83 expected / 33 knownFailing) |
 
 ### Phase 1 — Engine selection substrate (Group A)
 
