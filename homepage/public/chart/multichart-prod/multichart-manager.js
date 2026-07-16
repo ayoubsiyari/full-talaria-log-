@@ -839,6 +839,7 @@
     };
 
     MultichartManager.prototype.deselectDrawingsOnNonFocusedPanels = function (focusedId) {
+        if (!multichartPeerDeselectV1Enabled()) return Promise.resolve();
         const source = focusedId || null;
         const jobs = [];
         for (const c of this.charts.values()) {
@@ -853,6 +854,7 @@
     };
 
     MultichartManager.prototype.clearDrawingUiOnOtherPanels = function (sourceId, opts) {
+        if (!multichartPeerDeselectV1Enabled()) return Promise.resolve();
         const source = sourceId || null;
         const skipDismiss = !!(opts && opts.skipV9Dismiss);
         const jobs = [];

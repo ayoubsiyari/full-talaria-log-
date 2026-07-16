@@ -4051,11 +4051,13 @@ export default function MultichartGrid({
             // Panel id changed — always publish even when symbol/tf/file match a prior visit.
             lastFocusMirrorKeyRef.current = "";
             dispatchFocusChanged(focusedPanelId, { force: true });
-            const grid = window.__multichartGrid;
-            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                grid.clearDrawingUiOnOtherPanels(focusedPanelId);
-            } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                grid.deselectDrawingsOnNonFocusedPanels(focusedPanelId);
+            if (multichartPeerDeselectV1Enabled()) {
+                const grid = window.__multichartGrid;
+                if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    grid.clearDrawingUiOnOtherPanels(focusedPanelId);
+                } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                    grid.deselectDrawingsOnNonFocusedPanels(focusedPanelId);
+                }
             }
             const syncDate = !!(layoutSyncRef.current && layoutSyncRef.current.dateRange);
             const mgr = managerRef.current;
