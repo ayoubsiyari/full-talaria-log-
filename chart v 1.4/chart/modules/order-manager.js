@@ -17260,7 +17260,7 @@ class OrderManager {
 
         if (!this._isDraftOrderPreviewActive()) return;
         if (this._orderPlacedAwaitingReset) return;
-        if (this.isDraggingPreviewLine) return;
+        if (this._oiShouldDeferReplayPreviewSync()) return;
 
         // For pending (limit/stop) orders: entry is fixed but type should flip
         // when the replay price crosses the entry — same logic as dragging past current price.
