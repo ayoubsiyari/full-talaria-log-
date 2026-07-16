@@ -886,3 +886,34 @@ Trade-offs the Director owns:
 **Director ruling:** D-025 (2026-07-16)  
 **Outcome:** Manager recommendation adopted in full + scope precision. (1) **Option B endorsed as dispatched** — freeze-safe edge marker is the interim answer and the actual bug fix (registry row cites B). (2) **Option A approved, post-unfreeze only, opt-in "keep orders in view" default OFF**, own kill-switch (independent revert from B); queues with the other post-unfreeze chart.js work (A6-4, Phase 7) so the frozen core reopens once, deliberately. (3) **Implementation bounds:** domain inclusion = active order/pending **entry levels only** (SL/TP legs excluded by default, later toggle refinement if PO wants); inclusion is **bounded** — a level beyond a sane multiple of the visible range falls back to B's edge marker instead of stretching the axis (fat-finger protection). (4) **Option C UX contract:** toggle OFF = default autoscale + edge markers; toggle ON = bounded inclusion + marker beyond the bound. PO staging A/B of both postures = Option A acceptance.
 
+---
+
+## ESC-023 — Panel-B settings-open transport is a real intermittent race (beyond D-024); authorize gated Lane 1 transport fix + correct the H-R04/H-R05 record
+
+**Filed:** 2026-07-16 (Manager)  
+**Status:** RESOLVED — **D-026** (2026-07-16): transport fix authorized with mechanism-first fence (name the dismisser, causal cure; guard-widening only as defense-in-depth); proof bar ratified **plus amplified stress leg** (10/10 with `focusReactPanelSoft` in place); H-R04/H-R05 record corrected (never genuinely green — lucky run, not false-green); bless stays blocked, sequence amended; A7 stays out of this build.  
+**Class:** real product defect, fix scope beyond an existing ruling (D-024) + honesty correction to prior "green" claims.
+
+### What the reconciliation proved
+Lane 1's reconciliation (`T3-panelB-settings-transport-reconcile-report.md`) resolved the Worker 1 (10/10) vs Lane 4 (0–4/10) contradiction on the same build id:
+- **(A) stale/incomplete dist — RULED OUT.** Served `dist-v9` contains the D-024 fix (markers verified, byte-identical both I8 trees, built after `2537d3d0b`). No rebuild needed.
+- **(B) TRANSPORT — root cause.** Panel-B iframe dbl-click → parent V9 settings modal is a **genuine intermittent product failure** measured with the honest real-modal assertion (`hasStyleSection`). Failure signature `{open:false, hasStyleSection:false, quickBarShellOnly:false}` **after** the dbl-click actuates and **after** dom-ready honestly reports `panelId:B, domReady:true`. D-024 fixed chrome **readiness ordering**; it did NOT fix the **settings-open transport** (`requestMultichartParentDrawingSettings` → `MultichartGrid.openDrawingSettingsForPanel` ~5281). The modal isn't invoked in time, or is dismissed by a peer-clear/focus side-effect before it mounts, within budget.
+- **(C) harness exacerbation.** Lane 4's `focusReactPanelSoft` before the panel-B dbl-click worsens it (0/10 vs 6/10 Worker-1-style) — amplifies, not causes. Lane 4 owns that adjustment.
+
+### Honesty correction (I15) — important
+Worker 1's earlier **H-R04 10/10 / H-R05 9/10 was a timing-lucky run, not a false-green** (same honest `hasStyleSection` probe). Re-run today on the verified-fresh dist = **6/10**. Therefore **H-R04 and H-R05 were never genuinely green** — they are an intermittent transport race that luck masked. The re-migration ENGINE rows (H-R02/H-R03/H-R06/H-R07) are unaffected — those passed 10/10 with real switch-OFF discriminators and are solid. This is confined to the panel-B settings-open surface.
+
+### Why it needs the Director
+1. **Scope beyond D-024.** D-024 authorized readiness-ordering only ("transport untouched"). The fix now needs to touch the **settings-open transport**: `MultichartGrid.openDrawingSettingsForPanel` (~5281), `requestMultichartParentDrawingSettings` (~236), and the dismiss/peer-clear guard window (`__v9DrawingSettingsOpenGuardUntil`). `MultichartGrid.jsx` is re-migration territory.
+2. **Likely closes real tester pain.** This is almost certainly the root of the historical "settings opens only on 2nd/double-click" tickets D-024 flagged for retest — so it's a genuine fix, not a harness chase.
+
+### Decision requested
+Authorize a **gated Lane 1 settings-open transport fix**:
+- Switch `window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1` (default ON = fix enabled).
+- Likely touch: `openDrawingSettingsForPanel` (coalesce/guard the open against the peer-clear dismiss), `requestMultichartParentDrawingSettings`, extend `__v9DrawingSettingsOpenGuardUntil`.
+- **Proof bar:** H-R04 panel-B **10/10** AND H-R05 panel-B **10/10** isolated ON with honest `hasStyleSection`; switch-OFF honest RED. Lane 4 removes/defers `focusReactPanelSoft` (item C) and re-runs.
+- Then the standard bless (3× clean gate:react + manager gate 0-regr) on the re-cut build.
+
+### Manager recommendation
+Authorize the gated transport fix as scoped. Keep the bless blocked until H-R04/H-R05 panel-B reach honest 10/10 (no lucky-run acceptance). Do NOT fold A7 indicator-perf into this build — land it separately after bless for clean attribution.
+

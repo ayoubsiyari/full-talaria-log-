@@ -2,6 +2,38 @@
 
 ---
 
+## D-026 — ESC-023: gated settings-open transport fix AUTHORIZED (scope extends D-024); H-R04/H-R05 record corrected; amplified stress leg added to the proof bar; bless stays blocked
+
+**Date:** 2026-07-16
+**Escalation:** ESC-023
+**Track:** T3 / RC-4 (re-migration) — panel-B settings-open surface
+**RC:** RC-4 (cross-window transport), RC-2-adjacent (open-vs-dismiss ordering)
+
+### Framing
+
+The reconciliation did exactly what the process exists to do: two contradictory results on the same build id were treated as a measurement problem first, the stale-dist hypothesis was killed with evidence, and what remained was a real product defect. Blocking the bless on this was the right call — blessing on a 6/10 surface would have shipped the historical "settings only opens on the second click" pain under a green label.
+
+### Rulings
+
+**1. Honesty correction ACCEPTED into the record.** H-R04/H-R05 are re-marked as **never genuinely green** — an intermittent transport race that a timing-lucky run masked. Note the important distinction for the ledger: this was *not* a false-green (the probe was honest, `hasStyleSection`); it was insufficient sampling against a race. Standing lesson: **a first-pass 10/10 on a surface with known race history earns bless-eligibility only after the D-023 discriminator AND a repeat run** — luck is not reproducibility. The engine rows (H-R02/H-R03/H-R06/H-R07) stand untouched; their switch-OFF discriminators are exactly why they are not in doubt.
+
+**2. Gated Lane 1 transport fix AUTHORIZED — with a mechanism-first fence.** Switch `__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1` (unset = fix ON), touching `openDrawingSettingsForPanel`, `requestMultichartParentDrawingSettings`, and the dismiss window as scoped. One condition on the *shape* of the fix: the worker must first **name the actual dismisser** — trace which peer-clear/focus side-effect kills or preempts the modal inside the budget window — and cure it **causally** (sequence the open after the clear, or make the open request suppress the pending clear). Widening `__v9DrawingSettingsOpenGuardUntil` is authorized only as defense-in-depth **on top of** the causal cure, never as the cure itself. This is the D-024 lesson applied: races get fixed by ordering/ownership, not by tuned timing windows — a wider guard that merely outlasts today's race re-flakes on slower hardware.
+
+**3. Proof bar RATIFIED and strengthened with an amplified stress leg.** Item (C) is measurement gold, not just an artifact to remove: `focusReactPanelSoft` before the dbl-click drives the failure to 0/10, making it the sharpest RED detector for this race. Therefore:
+- H-R04 **10/10** and H-R05 **10/10** isolated ON, honest `hasStyleSection`; switch-OFF honest RED (discriminator of record from birth, per D-023).
+- **Plus: 10/10 with the `focusReactPanelSoft` amplifier still in place.** If the fix is causal it survives the amplifier; if it only wins the timing race, the amplifier exposes it. Lane 4 may drop the amplifier from the standard gate afterward, but the stress leg runs at bless time and is recorded.
+- Then the standard bless: 3× clean `gate:react`, manager gate 0-regressions, on the re-cut build.
+
+**4. Discipline riders (standing rules apply, restated because `MultichartGrid.jsx` is re-migration territory):** full I13 gating — every hunk behind the switch, verified by switch-OFF diff; D-022 mechanical corrective — worker diffs against the manifest and stages by hunk, this fix is its own PR/commit, not bundled with anything else on the bless path.
+
+**5. Bless of `20260716b10` stays BLOCKED; the bless sequence (D-024 ruling 5) is amended:** item (i) becomes "chrome DOM-ready fix + settings-open transport fix green per rulings 2–3." No other items change. A re-cut build follows the fix; baseline promotions keep riding the gate-green commit.
+
+**6. A7 (indicator perf) stays OUT of this build — ratified as recommended.** Clean attribution beats bundling; A7 lands separately after bless per the intake priority note.
+
+**7. Ledger note:** when green, this fix — together with D-024's readiness fix — closes the mechanism behind the "settings opens only on 2nd/double-click" tester family. The Manager cites those registry rows (incl. TAL-01589-adjacent settings rows and the D-024 ruling-4 list) for retest on the combined build rather than as separate defects.
+
+---
+
 ## D-025 — ESC-022: Option B ships now (endorsed); Option A approved as post-unfreeze OPT-IN ("keep orders in view", default OFF) — Option C is the end state
 
 **Date:** 2026-07-16
