@@ -102,6 +102,12 @@ function _orderDraftScaleRefreshFixEnabled() {
         && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_DRAFT_SCALE_REFRESH_FIX);
 }
 
+/** A6-3 order-half price-axis store isolation (default ON when master ON). */
+function _orderPriceAxisIsolationFixEnabled() {
+    return _orderInteractionGuardV2Enabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PRICE_AXIS_ISOLATION_FIX);
+}
+
 function _oiCreateProvisionalEditState() {
     return {
         phase: 'idle',
@@ -682,6 +688,21 @@ class OrderManager {
     _oiShouldRefreshDraftGeometryOnly() {
         if (!_orderDraftScaleRefreshFixEnabled()) return false;
         return this._oiIsProvisionalEditActive() || !!this.isDraggingPreviewLine;
+    }
+
+    _oiIsChartAxisGestureActive(chart) {
+        if (!_orderPriceAxisIsolationFixEnabled()) return false;
+        const ch = chart || this.chart || this._getOrderContextChart();
+        if (!ch || typeof ch._isPriceAxisZoomDragging !== 'function') return false;
+        try {
+            return !!ch._isPriceAxisZoomDragging();
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _oiShouldBlockStoreWriteDuringAxisGesture(chart) {
+        return this._oiIsChartAxisGestureActive(chart);
     }
 
     _oiResolveProvisionalPreviewPrice(lineKind) {
@@ -29883,13 +29904,15 @@ class OrderManager {
                     }
                 }
 
+                const blockStoreForAxis = self._oiShouldBlockStoreWriteDuringAxisGesture(ctx);
+
                 // Update the order object
                 if (lineType === 'entry') {
-                    order.openPrice = newPrice;
+                    if (!blockStoreForAxis) order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
                     if (_orderSltpApplyOnReleaseFixEnabled()) {
                         self._oiUpdateProvisionalPrice(newPrice);
-                    } else {
+                    } else if (!blockStoreForAxis) {
                         // Same bar as updatePositions() / getCurrentCandle — not ctx (line may be on another panel).
                         const guardBar = self.getCurrentCandle();
                         const siblings = order.isSplitEntry && order.splitGroupId
@@ -29905,7 +29928,7 @@ class OrderManager {
                 } else if (lineType === 'tp') {
                     if (_orderSltpApplyOnReleaseFixEnabled()) {
                         self._oiUpdateProvisionalPrice(newPrice);
-                    } else {
+                    } else if (!blockStoreForAxis) {
                         const guardBar = self.getCurrentCandle();
                         const siblings = order.isSplitEntry && order.splitGroupId
                             ? self._getSplitGroupOpenPositions(order) : [order];
@@ -29918,6 +29941,7 @@ class OrderManager {
                         }
                     }
                 } else if (lineType === 'be') {
+                    if (!blockStoreForAxis) {
                     // Update breakevenSettings value based on new price (vs first-leg trigger anchor)
                     const beRef = self._beTriggerAnchorEntry(order);
                     const beQ = self._beChartBreakevenQtyOpen(order);
@@ -29959,6 +29983,7 @@ class OrderManager {
                     // Update price text
                     if (extraElements.priceText) {
                         extraElements.priceText.text(self.formatPrice(newPrice));
+                    }
                     }
                 }
                 
@@ -30297,8 +30322,10 @@ class OrderManager {
                     newY = ctx.scales.yScale(newPrice);
                 }
 
+                const blockStoreForAxis = self._oiShouldBlockStoreWriteDuringAxisGesture(ctx);
+
                 // Update target price in the order (and all split siblings)
-                if (order.tpTargets && order.tpTargets[targetIndex]) {
+                if (!blockStoreForAxis && order.tpTargets && order.tpTargets[targetIndex]) {
                     const guardBar = self.getCurrentCandle();
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
