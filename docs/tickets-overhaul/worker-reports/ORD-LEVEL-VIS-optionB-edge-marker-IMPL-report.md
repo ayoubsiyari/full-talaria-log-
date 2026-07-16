@@ -134,7 +134,7 @@ When `yScale(price)` maps outside `[margin.t, plotBottom]`:
 |------|---------------------|
 | `order-manager.js` | `9CBF3D021531A9E0E9AB7E2357F2274C40F719F7456FA1D7EBDFDA0C77602742` |
 
-**Commit hash:** *(pending file-scoped commit)*
+**Commit hash:** `6fe92e25`
 
 ---
 
