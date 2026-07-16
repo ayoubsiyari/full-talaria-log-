@@ -5271,6 +5271,31 @@ export default function MultichartGrid({
                     }
                 }
             } catch (_) {}
+            // D-026 Hunk B: focus/peer-clear must not flash-dismiss while the source iframe
+            // still has an active drawing selection (focusReactPanelSoft before dbl-click).
+            if (!protectSource
+                && multichartPanelBSettingsTransportV1Enabled()
+                && String(source) !== HOST_PANEL_ID) {
+                try {
+                    const mgr = managerRef.current;
+                    if (mgr && mgr.charts && typeof mgr.charts.entries === "function") {
+                        for (const [pid, entry] of mgr.charts.entries()) {
+                            if (String(pid) !== String(source) || !entry || entry.host || !entry.frame) {
+                                continue;
+                            }
+                            const cw = entry.frame.contentWindow;
+                            const dm = cw && cw.chart && cw.chart.drawingManager;
+                            const hasSel = !!(dm && (dm.selectedDrawing
+                                || (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length > 0)));
+                            if (hasSel) {
+                                protectSource = true;
+                                protectOpenSource = String(source);
+                                break;
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
             const skipDismiss = protectSource || (ownershipV2 && !!(opts && opts.skipV9Dismiss));
             const preserveSourceSettings = protectSource
                 || (ownershipV2 && !!(opts && (opts.skipV9Dismiss || opts.preserveSourceSettings)));
@@ -5367,10 +5392,14 @@ export default function MultichartGrid({
                 try {
                     const now = performance.now();
                     const prev = window.__v9PanelBSettingsOpenCoalesce;
+                    const root = document.getElementById("multichart-global-settings-root");
+                    const rootText = String((root && root.innerText) || "");
+                    const hasStyle = /\bstyle\b/i.test(rootText);
                     if (prev
                         && String(prev.source) === String(source)
                         && String(prev.drawingId) === String(wantId)
-                        && (now - Number(prev.at)) < 120) {
+                        && (now - Number(prev.at)) < 120
+                        && hasStyle) {
                         return Promise.resolve(true);
                     }
                     window.__v9PanelBSettingsOpenCoalesce = {
@@ -6537,12 +6566,21 @@ export default function MultichartGrid({
                 return;
             }
             if (msg.type === "multichart-drawing-deselected") {
-                // D-026 Hunk B: do not flash-dismiss while settings-open guard is active.
+                // D-026 Hunk B: do not flash-dismiss while settings-open guard is active or
+                // the parent Style panel is visibly open for this tile.
                 if (multichartPanelBSettingsTransportV1Enabled()) {
                     try {
+                        const msgSrc = msg.source != null ? String(msg.source) : null;
                         if (window.__v9DrawingSettingsOpenGuardUntil
                             && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
                             return;
+                        }
+                        const openSrc = window.__v9DrawingSettingsOpenSource != null
+                            ? String(window.__v9DrawingSettingsOpenSource) : null;
+                        if (openSrc && msgSrc && openSrc === msgSrc) {
+                            const root = document.getElementById("multichart-global-settings-root");
+                            const rootText = String((root && root.innerText) || "");
+                            if (/\bstyle\b/i.test(rootText)) return;
                         }
                     } catch (_) {}
                 }

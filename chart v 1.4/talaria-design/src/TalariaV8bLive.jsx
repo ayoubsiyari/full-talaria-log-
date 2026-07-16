@@ -19917,10 +19917,15 @@ const TalariaV8bLive = () => {
       } catch (_) {}
       // D-026 Hunk B: skip flash-close while panel-B settings open is in flight.
       try {
-        if (multichartPanelBSettingsTransportV1Enabled()
-          && editingDrawingRef.current
-          && window.__v9DrawingSettingsOpenSource) {
-          return;
+        if (multichartPanelBSettingsTransportV1Enabled()) {
+          if (editingDrawingRef.current && window.__v9DrawingSettingsOpenSource) {
+            return;
+          }
+          const root = document.getElementById("multichart-global-settings-root");
+          const rootText = String((root && root.innerText) || "");
+          if (/\bstyle\b/i.test(rootText) && window.__v9DrawingSettingsOpenSource) {
+            return;
+          }
         }
       } catch (_) {}
       try {
@@ -21358,6 +21363,17 @@ const TalariaV8bLive = () => {
         const detail = ev && ev.detail;
         const t = detail && detail.drawingType;
         if (!t) return;
+        // D-026 Hunk B: late selection sync must not disturb an open settings session.
+        if (multichartPanelBSettingsTransportV1Enabled()) {
+          const brEarly = v9ToolbarBridgeActRef.current;
+          if (brEarly?.tlSettOpenRef?.current && detail.drawingId != null) {
+            const editSess = brEarly.editingDrawingRef?.current;
+            if (editSess?.drawing?.id != null
+                && String(editSess.drawing.id) === String(detail.drawingId)) {
+              return;
+            }
+          }
+        }
         const br = v9ToolbarBridgeActRef.current;
         let live = null;
         try {

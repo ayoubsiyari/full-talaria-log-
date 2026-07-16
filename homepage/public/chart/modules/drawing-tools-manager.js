@@ -104,6 +104,24 @@ function multichartChromeDomReadyV4Enabled() {
     return true;
 }
 
+/** D-026: panel-B iframe dbl-click → parent settings transport. Default ON; I13 kill-switch. */
+function multichartPanelBSettingsTransportV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
 /** T3 P4: panel keyboard bridge (Delete transport in iframe). Default ON; I13 kill-switch. */
 function multichartPanelKeyboardV1Enabled() {
     if (typeof window === 'undefined') return true;
@@ -156,6 +174,29 @@ function notifyMultichartParentSelectionCleared(chartInstance) {
             panelId = chartInstance._getMultichartPanelId();
         }
     } catch (_) { /* ignore */ }
+    // D-026 Hunk B: suppress spurious deselect ping while parent settings open is in flight.
+    if (multichartPanelBSettingsTransportV1Enabled()) {
+        try {
+            const parent = window.parent;
+            if (parent && parent !== window) {
+                const perf = parent.performance;
+                const nowFn = perf && typeof perf.now === 'function' ? perf.now.bind(perf) : Date.now;
+                if (parent.__v9DrawingSettingsOpenGuardUntil
+                    && nowFn() < parent.__v9DrawingSettingsOpenGuardUntil) {
+                    return;
+                }
+                const openSrc = parent.__v9DrawingSettingsOpenSource != null
+                    ? String(parent.__v9DrawingSettingsOpenSource) : null;
+                const pid = panelId != null ? String(panelId) : null;
+                if (openSrc && pid && openSrc === pid) {
+                    const root = parent.document && parent.document.getElementById
+                        ? parent.document.getElementById('multichart-global-settings-root') : null;
+                    const rootText = String((root && root.innerText) || '');
+                    if (/\bstyle\b/i.test(rootText)) return;
+                }
+            }
+        } catch (_) { /* cross-origin / ignore */ }
+    }
     try {
         if (window.parent && window.parent !== window && isMultichartIframeEmbed()) {
             window.parent.postMessage({
