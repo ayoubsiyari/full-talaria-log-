@@ -9,11 +9,18 @@ import { ensureBuiltReactStack, launchBrowser } from './react-parity-lib.mjs';
 import { reactScenarioList } from './react-parity-scenarios.mjs';
 
 function parseArgs(argv) {
-  const args = { runs: 1, only: null, headful: false, migrationOn: false, phase1Off: false };
+  const args = {
+    runs: 1, only: null, headful: false,
+    migrationOn: false, phase1Off: false, phase5Off: false,
+    panelKeyboardOff: false, peerDeselectOff: false,
+  };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
     else if (a === '--migration-on') args.migrationOn = true;
     else if (a === '--phase1-off') args.phase1Off = true;
+    else if (a === '--phase5-off') args.phase5Off = true;
+    else if (a === '--panel-keyboard-off') args.panelKeyboardOff = true;
+    else if (a === '--peer-deselect-off') args.peerDeselectOff = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
   }
@@ -33,7 +40,7 @@ async function main() {
   const stack = await ensureBuiltReactStack();
   console.log(`[react-run] built-product url: ${stack.url}`);
   console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
-  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off}`);
+  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff}`);
 
   const scenarios = reactScenarioList().filter((s) => !args.only || args.only.includes(s.id));
   if (!scenarios.length) {
@@ -51,7 +58,14 @@ async function main() {
     for (let run = 1; run <= args.runs; run++) {
       console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
       for (const s of scenarios) {
-        const ctx = { browser, stack, migrationOn: args.migrationOn, phase1Off: args.phase1Off };
+        const ctx = {
+          browser, stack,
+          migrationOn: args.migrationOn,
+          phase1Off: args.phase1Off,
+          phase5Off: args.phase5Off,
+          panelKeyboardOff: args.panelKeyboardOff,
+          switchOffPeerDeselect: args.peerDeselectOff,
+        };
         let result;
         try {
           result = await s.run(ctx);

@@ -198,11 +198,26 @@ export async function localToPagePoint(page, panelId, localX, localY) {
   if (panelId === 'A') {
     return { x: Math.round(localX), y: Math.round(localY) };
   }
-  const fr = await reactFrameRectForPanel(page, panelId);
-  if (!fr) return null;
+  const iframeHandle = await page.evaluateHandle((pid) => {
+    for (const el of document.querySelectorAll('iframe')) {
+      try {
+        if (new URL(el.src, location.href).searchParams.get('panelId') === pid) return el;
+      } catch (_) { /* ignore */ }
+    }
+    return null;
+  }, panelId);
+  const box = await iframeHandle.asElement()?.boundingBox();
+  if (!box) {
+    const fr = await reactFrameRectForPanel(page, panelId);
+    if (!fr) return null;
+    return {
+      x: Math.round(fr.left + localX),
+      y: Math.round(fr.top + localY),
+    };
+  }
   return {
-    x: Math.round(fr.left + localX),
-    y: Math.round(fr.top + localY),
+    x: Math.round(box.x + localX),
+    y: Math.round(box.y + localY),
   };
 }
 
@@ -210,34 +225,169 @@ export async function localToPagePoint(page, panelId, localX, localY) {
 export async function drawingHitLocalPoint(page, panelId, drawId, { aim = 'body' } = {}) {
   const frame = chartTarget(page, panelId);
   if (!frame) return { ok: false, reason: `no frame for ${panelId}` };
-  return frame.evaluate((id, aimMode) => {
-    const dm = window.chart && window.chart.drawingManager;
+  const geom = await frame.evaluate((id, aimMode) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
     const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
-    if (!d || !d.group) return { ok: false, reason: 'no group' };
-    const node = d.group.node();
-    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
-    const bb = node.getBBox();
-    const svg = dm.svg && dm.svg.node();
-    if (!svg) return { ok: false, reason: 'no svg' };
-    const sr = svg.getBoundingClientRect();
-    const line = node.querySelector('line');
-    if (aimMode === 'center' && line) {
-      const x1 = parseFloat(line.getAttribute('x1'));
-      const y1 = parseFloat(line.getAttribute('y1'));
-      const x2 = parseFloat(line.getAttribute('x2'));
-      const y2 = parseFloat(line.getAttribute('y2'));
-      return {
-        ok: true,
-        x: Math.round(sr.left + (x1 + x2) / 2),
-        y: Math.round(sr.top + (y1 + y2) / 2),
-      };
+    if (!d || !dm) return { ok: false, reason: 'no drawing' };
+
+    let points = Array.isArray(d.points) ? d.points : [];
+    if (typeof CoordinateUtils !== 'undefined' && typeof CoordinateUtils.resolveDrawingPoints === 'function') {
+      try {
+        const resolved = CoordinateUtils.resolveDrawingPoints(d, ch);
+        if (resolved && resolved.length) points = resolved;
+      } catch (_) { /* ignore */ }
     }
+    if (!points.length) return { ok: false, reason: 'no points' };
+
+    const yScale = ch.yScale;
+    const toLayout = (p) => {
+      const lx = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(Number(p.x)) : NaN;
+      const ly = yScale && typeof yScale === 'function' ? yScale(Number(p.y)) : NaN;
+      return [lx, ly];
+    };
+
+    const candidates = [];
+    const isAreaShape = d.type === 'rectangle' || d.type === 'ellipse';
+    if (points.length >= 2 && isAreaShape) {
+      const [x1, y1] = toLayout(points[0]);
+      const [x2, y2] = toLayout(points[points.length - 1]);
+      const left = Math.min(x1, x2);
+      const right = Math.max(x1, x2);
+      const top = Math.min(y1, y2);
+      const bottom = Math.max(y1, y2);
+      candidates.push(
+        [(left + right) / 2, (top + bottom) / 2],
+        [(left + right) / 2, top],
+        [(left + right) / 2, bottom],
+        [left, (top + bottom) / 2],
+        [right, (top + bottom) / 2],
+      );
+    } else if (points.length >= 2) {
+      const [x1, y1] = toLayout(points[0]);
+      const [x2, y2] = toLayout(points[points.length - 1]);
+      const ts = [0.5];
+      for (let t = 0.05; t <= 0.9501; t += 0.05) {
+        if (Math.abs(t - 0.5) < 0.001) continue;
+        ts.push(t);
+      }
+      for (const t of ts) {
+        candidates.push([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t]);
+      }
+    } else {
+      const [x1, y1] = toLayout(points[0]);
+      candidates.push([x1, y1]);
+    }
+
+    const r = typeof ch._pointerLayoutRect === 'function'
+      ? ch._pointerLayoutRect()
+      : (ch.canvas && ch.canvas.parentElement
+        ? ch.canvas.parentElement.getBoundingClientRect()
+        : ch.canvas.getBoundingClientRect());
+    const z = typeof ch._v9LayoutZoom === 'function' ? ch._v9LayoutZoom() : 1;
+    const toClient = (lx, ly) => [lx * z + r.left, ly * z + r.top];
+    const options = [];
+    if (typeof dm.findDrawingsAtPoint === 'function') {
+      for (const [lx, ly] of candidates) {
+        if (!Number.isFinite(lx) || !Number.isFinite(ly)) continue;
+        const hits = dm.findDrawingsAtPoint(lx, ly, { includeVolumeProfileBodyHit: true }) || [];
+        if (!hits.some((h) => h && String(h.id) === String(id))) continue;
+        const [clientX, clientY] = toClient(lx, ly);
+        const exclusive = hits.length === 1 && hits[0] && String(hits[0].id) === String(id);
+        options.push({ layoutX: lx, layoutY: ly, clientX, clientY, exclusive });
+      }
+    }
+    const m = ch.margin || { l: 0, r: 0, t: 0, b: 0 };
+    const w = ch.w || (ch.canvas && ch.canvas.width) || 0;
+    const h = ch.h || (ch.canvas && ch.canvas.height) || 0;
     return {
-      ok: true,
-      x: Math.round(sr.left + bb.x + Math.max(4, bb.width * 0.22)),
-      y: Math.round(sr.top + bb.y + Math.max(4, bb.height * 0.35)),
+      ok: options.length > 0,
+      reason: options.length ? null : 'findDrawingsAtPoint miss',
+      options,
+      drawType: d.type,
+      offsetX: ch.offsetX,
+      margin: m,
+      w,
+      h,
     };
   }, drawId, aim);
+
+  if (!geom || !geom.ok || !geom.options || !geom.options.length) {
+    return { ok: false, reason: geom?.reason || 'no hit options' };
+  }
+
+  const LINE_DRAW_TYPES = new Set([
+    'trendline', 'ray', 'extended_line', 'arrow', 'horizontal_line', 'vertical_line',
+    'fib_retracement', 'fib_extension',
+  ]);
+
+  const scoreViewportPixel = async (clientX, clientY, drawType) => frame.evaluate((x, y, dtype) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return { score: 0, tag: null };
+    if (el.id === 'backtestingLoader' || el.tagName === 'BODY' || el.tagName === 'HTML') {
+      return { score: 0, tag: el.tagName };
+    }
+    const tag = (el.tagName || '').toLowerCase();
+    const needsSvg = dtype === 'trendline' || dtype === 'ray' || dtype === 'extended_line'
+      || dtype === 'arrow' || dtype === 'horizontal_line' || dtype === 'vertical_line'
+      || dtype === 'fib_retracement' || dtype === 'fib_extension';
+    if (tag === 'line' || tag === 'path') return { score: 3, tag };
+    if (tag === 'rect' || tag === 'circle') return { score: needsSvg ? 0 : 2, tag };
+    if (el.closest && el.closest('.drawing, .resize-handle, .resize-handle-group, .resize-handle-hit, #drawingSvg')) {
+      return { score: needsSvg ? 0 : 2, tag };
+    }
+    if (el.id === 'chartCanvas' || tag === 'canvas') {
+      return { score: needsSvg ? 0 : 1, tag };
+    }
+    return { score: 0, tag };
+  }, clientX, clientY, drawType);
+
+  const needsLineBody = LINE_DRAW_TYPES.has(geom.drawType);
+  const isLineBodyPixel = async (clientX, clientY) => frame.evaluate((x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const tag = (el && el.tagName ? el.tagName : '').toLowerCase();
+    return tag === 'line' || tag === 'path';
+  }, clientX, clientY);
+
+  const minScore = needsLineBody ? 3 : 1;
+  const ranked = [];
+  for (const opt of geom.options) {
+    if (needsLineBody && !(await isLineBodyPixel(opt.clientX, opt.clientY))) continue;
+    const scored = await scoreViewportPixel(opt.clientX, opt.clientY, geom.drawType);
+    if (!scored || scored.score < minScore) continue;
+    const pagePt = await localToPagePoint(page, panelId, opt.clientX, opt.clientY);
+    if (!pagePt) continue;
+    ranked.push({ opt, scored, pagePt });
+  }
+  ranked.sort((a, b) => {
+    if (a.opt.exclusive !== b.opt.exclusive) return a.opt.exclusive ? -1 : 1;
+    return b.scored.score - a.scored.score;
+  });
+  const exclusiveRanked = ranked.filter((r) => r.opt.exclusive);
+  const best = (exclusiveRanked.length ? exclusiveRanked : ranked)[0] || null;
+
+  if (!best) {
+    return { ok: false, reason: 'no svg actuatable pixel', drawType: geom.drawType };
+  }
+
+  const { opt, scored } = best;
+  const onPlot = opt.layoutX >= geom.margin.l && opt.layoutX <= (geom.w - geom.margin.r)
+    && opt.layoutY >= geom.margin.t && opt.layoutY <= (geom.h - geom.margin.b);
+  return {
+    ok: true,
+    x: Math.round(opt.clientX),
+    y: Math.round(opt.clientY),
+    method: 'chart-layout',
+    findHit: true,
+    onPlot,
+    layoutX: opt.layoutX,
+    layoutY: opt.layoutY,
+    offsetX: geom.offsetX,
+    actuatable: true,
+    pixelTag: scored.tag,
+    pixelScore: scored.score,
+    exclusive: !!opt.exclusive,
+  };
 }
 
 /** Engine store: is drawing id in selectedDrawings or d.selected? (I15 — no handle proxy). */
@@ -276,16 +426,22 @@ export async function readParentV9BarVisible(page, panelId) {
 export async function installBuiltProductBoot(page, {
   switchOffGearFix = false,
   switchOffPeerDeselect = false,
+  panelKeyboardOff = false,
   migrationOn = false,
   phase1Off = false,
+  phase5Off = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
+  const kbOff = panelKeyboardOff || process.env.REACT_PARITY_PANEL_KEYBOARD_OFF === '1';
   const mig = migrationOn || process.env.REACT_PARITY_MIGRATION_ON === '1';
   const p1Off = phase1Off || process.env.REACT_PARITY_PHASE1_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, migOn, phase1OffOn) => {
+  const p5Off = phase5Off || process.env.REACT_PARITY_PHASE5_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
+    if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
+    if (panelKbOff) window.__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -298,7 +454,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, mig, p1Off);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -362,6 +518,27 @@ const PAINTED_FN = () => {
   return !!(c && c.drawingManager && Array.isArray(c.data) && c.data.length > 0);
 };
 
+/** Strip host bt-preload splash (#backtestingLoader) that blocks page.mouse on panel A (I15). */
+export async function dismissClickBlockers(page, panelId = 'A') {
+  const dismissFn = () => {
+    try { document.documentElement.classList.remove('bt-preload'); } catch (_) { /* ignore */ }
+    const loader = document.getElementById('backtestingLoader');
+    if (loader) {
+      loader.classList.remove('active');
+      loader.style.display = 'none';
+      loader.style.pointerEvents = 'none';
+      loader.style.visibility = 'hidden';
+    }
+    const root = document.getElementById('root');
+    if (root) root.style.visibility = 'visible';
+  };
+  await page.evaluate(dismissFn).catch(() => {});
+  const frame = chartTarget(page, panelId);
+  if (frame && frame !== page) {
+    await frame.evaluate(dismissFn).catch(() => {});
+  }
+}
+
 export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
   await page.waitForFunction(
     () => !!(window.__multichartGrid),
@@ -390,6 +567,13 @@ export async function waitForReactMultichartReady(page, timeoutMs = 120000) {
     return !!(c && Array.isArray(c.data) && c.data.length > 0);
   }).catch(() => false);
 
+  await page.waitForFunction(
+    () => !document.documentElement.classList.contains('bt-preload')
+      || (window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 0),
+    { timeout: 30_000 },
+  ).catch(() => {});
+  await dismissClickBlockers(page, 'A');
+
   return { hostReady, bReady: true };
 }
 
@@ -412,12 +596,24 @@ export async function assertBuildIds(page, expectedId) {
 }
 
 export async function focusReactPanel(page, panelId) {
+  await dismissClickBlockers(page, panelId);
   await page.evaluate((pid) => {
     const grid = window.__multichartGrid;
     if (grid && typeof grid.focusPanelById === 'function') grid.focusPanelById(pid);
   }, panelId);
   const pt = await reactChartCanvasPagePoint(page, panelId, 0.45, 0.5);
   if (pt) await page.mouse.click(pt.x, pt.y, { delay: 25 });
+  await waitForPanelSettle(page, panelId);
+  return { ok: true, panelId };
+}
+
+/** Focus panel for keyboard modifiers without canvas click (preserves selection). */
+export async function focusReactPanelSoft(page, panelId) {
+  await dismissClickBlockers(page, panelId);
+  await page.evaluate((pid) => {
+    const grid = window.__multichartGrid;
+    if (grid && typeof grid.focusPanelById === 'function') grid.focusPanelById(pid);
+  }, panelId);
   await waitForPanelSettle(page, panelId);
   return { ok: true, panelId };
 }
@@ -615,16 +811,36 @@ export async function seedDrawing(page, panelId, toolType = 'trendline') {
 }
 
 export async function singleClickDrawing(page, panelId, drawId) {
+  await dismissClickBlockers(page, panelId);
   const hit = await drawingHitLocalPoint(page, panelId, drawId, { aim: 'body' });
   if (!hit || !hit.ok) return hit;
   const pagePt = await localToPagePoint(page, panelId, hit.x, hit.y);
   if (!pagePt) return { ok: false, reason: 'no page point' };
+
+  let onScreen = await page.evaluate((x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const tag = el ? el.tagName : null;
+    const id = el && el.id;
+    return { ok: !!el, tag, id, x, y };
+  }, pagePt.x, pagePt.y);
+
+  if (!onScreen.ok) {
+    return { ok: false, reason: 'elementFromPoint null', hit, pagePt, onScreen };
+  }
+  if (hit.findHit === false) {
+    return { ok: false, reason: 'findDrawingsAtPoint miss', hit, pagePt, onScreen };
+  }
+  if (hit.actuatable === false) {
+    return { ok: false, reason: 'no svg actuatable pixel', hit, pagePt, onScreen };
+  }
+  await page.mouse.move(pagePt.x, pagePt.y);
   await page.mouse.click(pagePt.x, pagePt.y, { clickCount: 1, delay: 30 });
   await waitForPanelSettle(page, panelId);
-  return { ok: true, clicked: pagePt, actuation: 'page.mouse.click' };
+  return { ok: true, clicked: pagePt, actuation: 'page.mouse.click', hitMethod: hit.method };
 }
 
 export async function doubleClickDrawing(page, panelId, drawId) {
+  await dismissClickBlockers(page, panelId);
   const hit = await drawingHitLocalPoint(page, panelId, drawId, { aim: 'center' });
   if (!hit || !hit.ok) return hit;
   const pagePt = await localToPagePoint(page, panelId, hit.x, hit.y);
@@ -635,6 +851,7 @@ export async function doubleClickDrawing(page, panelId, drawId) {
 }
 
 export async function ctrlClickDrawing(page, panelId, drawId) {
+  await focusReactPanelSoft(page, panelId);
   await page.keyboard.down('Control');
   try {
     return await singleClickDrawing(page, panelId, drawId);
@@ -695,7 +912,7 @@ export async function pressEscapeReact(page, panelId) {
 
 /** Delete selected drawing via real page.keyboard (I15). */
 export async function deleteSelectedViaKeyboard(page, panelId) {
-  await focusReactPanel(page, panelId);
+  await focusReactPanelSoft(page, panelId);
   await page.keyboard.press('Delete');
   await waitForPanelSettle(page, panelId);
   return { ok: true, actuation: 'page.keyboard.press(Delete)' };
@@ -833,10 +1050,11 @@ export async function reactDefaultTrendlinePoints(page, panelId = 'A', barOffset
   const pts = await frame.evaluate((pid, offset) => {
     const ch = window.chart;
     if (!ch || !Array.isArray(ch.data) || ch.data.length < 120) return null;
-    const n = ch.data.length;
-    const skew = pid === 'B' ? 40 : 0;
-    const i0 = Math.max(0, n - 105 - skew - offset);
-    const i1 = Math.max(0, n - 58 - skew - offset);
+    const spacing = typeof ch.getCandleSpacing === 'function' ? ch.getCandleSpacing() : 7;
+    const visStart = Math.max(0, Math.floor(-(ch.offsetX || 0) / spacing) + 12);
+    const skew = pid === 'B' ? 8 : 0;
+    const i0 = Math.min(ch.data.length - 35, visStart + skew + offset);
+    const i1 = Math.min(ch.data.length - 1, i0 + 28);
     const p0 = ch.data[i0];
     const p1 = ch.data[i1];
     if (!p0 || !p1) return null;
@@ -854,10 +1072,11 @@ export async function reactDefaultRectanglePoints(page, panelId = 'A', barOffset
   const pts = await frame.evaluate((pid, offset) => {
     const ch = window.chart;
     if (!ch || !Array.isArray(ch.data) || ch.data.length < 120) return null;
-    const n = ch.data.length;
-    const skew = pid === 'B' ? 40 : 0;
-    const i0 = Math.max(0, n - 92 - skew - offset);
-    const i1 = Math.max(0, n - 62 - skew - offset);
+    const spacing = typeof ch.getCandleSpacing === 'function' ? ch.getCandleSpacing() : 7;
+    const visStart = Math.max(0, Math.floor(-(ch.offsetX || 0) / spacing) + 12);
+    const skew = pid === 'B' ? 8 : 0;
+    const i0 = Math.min(ch.data.length - 35, visStart + skew + offset);
+    const i1 = Math.min(ch.data.length - 1, i0 + 28);
     const p0 = ch.data[i0];
     const p1 = ch.data[i1];
     if (!p0 || !p1) return null;
@@ -891,8 +1110,10 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
   await installBuiltProductBoot(page, {
     switchOffGearFix: !!opts.switchOffGearFix,
     switchOffPeerDeselect: !!opts.switchOffPeerDeselect,
+    panelKeyboardOff: !!opts.panelKeyboardOff,
     migrationOn: !!opts.migrationOn,
     phase1Off: !!opts.phase1Off,
+    phase5Off: !!opts.phase5Off,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

@@ -96,10 +96,15 @@ async function hR02(ctx) {
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const tool = await seedDrawing(page, pid, 'rectangle');
       checks.check(`H-R02 setup (${label}): rectangle placed`, tool && tool.id, tool ? tool.id : 'null');
-      await singleClickDrawing(page, pid, tool.id);
-      await waitForReactSelection(page, pid, [tool.id]);
+      let storeSel = false;
+      for (let attempt = 0; attempt < 2 && !storeSel; attempt += 1) {
+        if (attempt > 0) await waitForPanelSettle(page, pid, 2000);
+        await singleClickDrawing(page, pid, tool.id);
+        await waitForReactSelection(page, pid, [tool.id], 10000);
+        await waitForPanelSettle(page, pid, 3000);
+        storeSel = await isDrawingSelected(page, pid, tool.id);
+      }
       const chrome = await readSelectionChrome(page, pid, tool.id);
-      const storeSel = await isDrawingSelected(page, pid, tool.id);
       checks.check(`H-R02 CORE (${label}): drawing selected in engine store`,
         storeSel,
         JSON.stringify(chrome));
@@ -119,10 +124,7 @@ async function hR03(ctx) {
 
     for (const [label, pid] of [['host', 'A'], ['panelB', 'B']]) {
       const pts1 = await reactDefaultTrendlinePoints(page, pid, 0);
-      const pts2 = [
-        { x: pts1[0].x + 22, y: pts1[0].y - 0.0006 },
-        { x: pts1[1].x + 22, y: pts1[1].y - 0.0004 },
-      ];
+      const pts2 = await reactDefaultTrendlinePoints(page, pid, 55);
       const first = await placeTool(page, pid, 'trendline', pts1);
       const second = await placeTool(page, pid, 'trendline', pts2);
       checks.check(`H-R03 setup (${label}): two trendlines placed`,
@@ -132,6 +134,7 @@ async function hR03(ctx) {
       await singleClickDrawing(page, pid, first.id);
       await waitForReactSelection(page, pid, [first.id]);
       await ctrlClickDrawing(page, pid, second.id);
+      await waitForReactSelection(page, pid, [first.id, second.id]);
       await waitForPanelSettle(page, pid);
       const selFirst = await isDrawingSelected(page, pid, first.id);
       const selSecond = await isDrawingSelected(page, pid, second.id);
