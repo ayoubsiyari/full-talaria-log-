@@ -8,6 +8,18 @@ const MAX_ENTRY_LEVELS = 4;
 
 // localStorage key for the no-session runtime order fallback (must match chart.js).
 const ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';
+/** sessionStorage key prefix for A6-2 session-scoped runtime orders (D-019). */
+const ORDER_RUNTIME_SESSION_STORAGE_KEY = 'chart_orders_runtime_session_v1';
+
+/** A6-2 order persistence across F5 — default ON. */
+function _orderPersistenceV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
+}
+
+function _runtimeOrderStorageKey(sessionId) {
+    const sid = sessionId != null && String(sessionId).trim() !== '' ? String(sessionId).trim() : 'no-session';
+    return `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
+}
 
 /** RC-5: default ON — recompute aggregates from entry list; kill-switch restores legacy deltas. */
 function _orderAggregatesV2Enabled() {
@@ -537,6 +549,7 @@ class OrderManager {
         this._orderProvisionalEdit = _oiCreateProvisionalEditState();
         this._oiProvisionalDragCtx = null;
         this._oiProvisionalCancelHandlersInstalled = false;
+        this._runtimeOrderPersistenceBootstrapped = false;
         
         this.init();
     }
@@ -4108,6 +4121,38 @@ class OrderManager {
      * @param {{ critical?: boolean }} [opts] - If critical, also PATCH immediately (with journal-related saves) so balance/positions match the close in the same moment.
      */
     persistRuntimeOrderState(opts = {}) {
+        if (!_orderPersistenceV1Enabled()) {
+            this._persistRuntimeOrderStateLegacy(opts);
+            return;
+        }
+
+        const sessionId =
+            this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+
+        const patch = this._buildRuntimeOrderPersistPatch();
+        this._writeRuntimeOrderStateToSessionStorage(patch);
+
+        if (!sessionId) {
+            console.log('[orders-persist] no session → sessionStorage save:',
+                'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
+            return;
+        }
+
+        console.log('[orders-persist] session save (sessionId=' + sessionId + '):',
+            'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
+
+        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
+            this.chart.scheduleSessionStateSave(patch);
+        }
+        if (opts.critical && this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            this.chart.queueCriticalSessionStateSave(patch);
+        }
+    }
+
+    /** Legacy persist path when __TALARIA_DISABLE_ORDER_PERSISTENCE_V1 is set. */
+    _persistRuntimeOrderStateLegacy(opts = {}) {
         const sessionId =
             this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
@@ -4143,8 +4188,6 @@ class OrderManager {
             order_counters,
         };
 
-        // No trading session: keep pending/executed orders across a refresh via a
-        // local fallback. Session-backed charts still use the API path below (unchanged).
         if (!sessionId) {
             console.log('[orders-persist] no session → local fallback save:',
                 'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
@@ -5102,8 +5145,146 @@ class OrderManager {
         
         console.log('✅ Order Manager initialized');
         
+        this._installRuntimeOrderPersistenceHooks();
+        this._bootstrapRuntimeOrderPersistenceV1();
+
         // Initialize order sounds
         this.initOrderSounds();
+    }
+
+    _getPersistenceSessionId() {
+        if (this.chart && typeof this.chart.getActiveTradingSessionId === 'function') {
+            const sid = this.chart.getActiveTradingSessionId();
+            if (sid) return String(sid);
+        }
+        const sess = this.chart && this.chart.backtestingSession;
+        if (sess) {
+            const id = sess.id != null ? sess.id : sess.session_id;
+            if (id != null && String(id).trim() !== '') return String(id);
+        }
+        return null;
+    }
+
+    _buildRuntimeOrderPersistPatch() {
+        const safeClone = (arr) => {
+            try {
+                return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+            } catch (e) {
+                return [];
+            }
+        };
+        const account_runtime = {
+            balance: this.balance,
+            equity: this.equity,
+            initialBalance: this.initialBalance,
+            session_current_time:
+                this.orderService && this.orderService.multiInstrumentSession
+                    ? this.orderService.multiInstrumentSession.current_time
+                    : undefined,
+        };
+        const order_counters = {
+            orderIdCounter: this.orderIdCounter,
+            tradeGroupIdCounter: this.tradeGroupIdCounter,
+        };
+        return {
+            pending_orders: safeClone(this.pendingOrders),
+            open_positions: safeClone(this.openPositions),
+            account_runtime,
+            order_counters,
+            savedAt: Date.now(),
+        };
+    }
+
+    _writeRuntimeOrderStateToSessionStorage(patch) {
+        if (!_orderPersistenceV1Enabled() || typeof sessionStorage === 'undefined') return;
+        try {
+            const key = _runtimeOrderStorageKey(this._getPersistenceSessionId());
+            sessionStorage.setItem(key, JSON.stringify(patch));
+        } catch (e) {
+            console.warn('[orders-persist] sessionStorage save failed:', e);
+        }
+    }
+
+    _readRuntimeOrderStateFromSessionStorage(sessionId) {
+        if (typeof sessionStorage === 'undefined') return null;
+        try {
+            const key = _runtimeOrderStorageKey(sessionId);
+            const raw = sessionStorage.getItem(key);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (e) {
+            console.warn('[orders-persist] sessionStorage read failed:', e);
+            return null;
+        }
+    }
+
+    _readLegacyLocalRuntimeOrders() {
+        try {
+            if (typeof userStorage === 'undefined' || !userStorage?.getItem) return null;
+            const raw = userStorage.getItem(ORDER_MANAGER_LOCAL_RUNTIME_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _hasRestorableRuntimeOrders(state) {
+        if (!state || typeof state !== 'object') return false;
+        const pending = Array.isArray(state.pending_orders) ? state.pending_orders.length : 0;
+        const open = Array.isArray(state.open_positions) ? state.open_positions.length : 0;
+        return pending > 0 || open > 0;
+    }
+
+    _bootstrapRuntimeOrderPersistenceV1() {
+        if (!_orderPersistenceV1Enabled()) return;
+        const tryRestore = () => {
+            if (this._runtimeOrderPersistenceBootstrapped) return;
+            const storeCount = (this.pendingOrders?.length || 0) + (this.openPositions?.length || 0);
+            if (storeCount > 0) {
+                this._runtimeOrderPersistenceBootstrapped = true;
+                return;
+            }
+            const sessionId = this._getPersistenceSessionId();
+            let snap = this._readRuntimeOrderStateFromSessionStorage(sessionId);
+            if (!this._hasRestorableRuntimeOrders(snap)) {
+                snap = this._readLegacyLocalRuntimeOrders();
+            }
+            if (!this._hasRestorableRuntimeOrders(snap)) return;
+            this._runtimeOrderPersistenceBootstrapped = true;
+            console.log('[orders-restore] A6-2 bootstrap from sessionStorage:',
+                'pending=', snap.pending_orders?.length || 0,
+                'open=', snap.open_positions?.length || 0);
+            this.restoreRuntimeOrderStateFromSession(snap);
+        };
+        tryRestore();
+        if (typeof setTimeout === 'function') {
+            setTimeout(tryRestore, 0);
+            setTimeout(tryRestore, 150);
+        }
+    }
+
+    _installRuntimeOrderPersistenceHooks() {
+        if (!_orderPersistenceV1Enabled() || typeof window === 'undefined') return;
+        if (OrderManager._runtimePersistUnloadHookInstalled) return;
+        OrderManager._runtimePersistUnloadHookInstalled = true;
+        const flush = () => {
+            try {
+                const om = window.chart && window.chart.orderManager;
+                if (!om || !_orderPersistenceV1Enabled()) return;
+                const patch = om._buildRuntimeOrderPersistPatch();
+                om._writeRuntimeOrderStateToSessionStorage(patch);
+            } catch (_e) { /* ignore */ }
+        };
+        window.addEventListener('pagehide', flush);
+        window.addEventListener('beforeunload', flush);
+    }
+
+    _schedulePersistAfterOrderMutation(opts = {}) {
+        if (!_orderPersistenceV1Enabled()) return;
+        this.persistRuntimeOrderState(opts);
     }
 
     /**
@@ -25750,6 +25931,7 @@ class OrderManager {
 
         this.updatePositionsPanel();
         this.showPositionsPanel();
+        this._schedulePersistAfterOrderMutation({ critical: true });
     }
     
     /**
