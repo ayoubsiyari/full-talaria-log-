@@ -96,6 +96,12 @@ function _orderPreviewReplayDragFixEnabled() {
         && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_REPLAY_DRAG_FIX);
 }
 
+/** #5 draft scale refresh on viewport change (default ON when master ON). */
+function _orderDraftScaleRefreshFixEnabled() {
+    return _orderInteractionGuardV2Enabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_DRAFT_SCALE_REFRESH_FIX);
+}
+
 function _oiCreateProvisionalEditState() {
     return {
         phase: 'idle',
@@ -673,6 +679,91 @@ class OrderManager {
         if (rs && !rs.isActive) this._oiCancelActiveProvisionalEdit('replay-stop');
     }
 
+    _oiShouldRefreshDraftGeometryOnly() {
+        if (!_orderDraftScaleRefreshFixEnabled()) return false;
+        return this._oiIsProvisionalEditActive() || !!this.isDraggingPreviewLine;
+    }
+
+    _oiResolveProvisionalPreviewPrice(lineKind) {
+        const st = this._orderProvisionalEdit;
+        if (
+            _orderSltpApplyOnReleaseFixEnabled()
+            && st?.phase === 'preview'
+            && st.lineKind === lineKind
+            && Number.isFinite(Number(st.provisionalPrice))
+        ) {
+            return Number(st.provisionalPrice);
+        }
+        return null;
+    }
+
+    /**
+     * #5 — re-anchor preview lineData.price from panel store before scale-driven geometry refresh.
+     */
+    _oiSyncPreviewLinePricesFromStore() {
+        if (!_orderDraftScaleRefreshFixEnabled() || !this.previewLines) return;
+
+        const provEntry = this._oiResolveProvisionalPreviewPrice('entry');
+        const entryStore = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (this.previewLines.entry) {
+            if (provEntry != null) this.previewLines.entry.price = provEntry;
+            else if (entryStore > 0) this.previewLines.entry.price = entryStore;
+        }
+
+        const provSl = this._oiResolveProvisionalPreviewPrice('sl');
+        const slStore = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (this.previewLines.sl) {
+            if (provSl != null) this.previewLines.sl.price = provSl;
+            else if (slStore > 0) this.previewLines.sl.price = slStore;
+        }
+
+        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        const tpStore = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        if (this.previewLines.tp) {
+            if (provTp != null) this.previewLines.tp.price = provTp;
+            else if (tpStore > 0) this.previewLines.tp.price = tpStore;
+        }
+
+        if (this.previewLines.multipleTPs && this.tpTargets?.length) {
+            this.previewLines.multipleTPs.forEach((tpLine, idx) => {
+                const tgt = this.tpTargets[idx];
+                if (!tpLine || !tgt) return;
+                const p = Number(tgt.price);
+                if (p > 0) tpLine.price = p;
+            });
+        }
+
+        if (this.previewLines.splitEntries && this.multiEntryLevels?.length) {
+            this.previewLines.splitEntries.forEach((splitLine, idx) => {
+                const lv = this.multiEntryLevels[idx];
+                if (!splitLine || !lv) return;
+                const p = Number(lv.price);
+                if (p > 0) splitLine.price = p;
+            });
+        }
+
+        if (this.previewLines.avgEntry && this.cachedAverage > 0) {
+            this.previewLines.avgEntry.price = this.cachedAverage;
+        }
+    }
+
+    /**
+     * Thin viewport hook — chart.js already calls updatePreviewLinePositions on render/pan;
+     * this entry point is for optional external callers after scale/offset changes.
+     * @param {object} [sourceChart]
+     */
+    onChartViewportChanged(sourceChart) {
+        if (!_orderDraftScaleRefreshFixEnabled()) return;
+        if (!this._isDraftOrderPreviewActive() && !this.previewLines) return;
+        if (this._oiShouldRefreshDraftGeometryOnly()) {
+            this._oiSyncPreviewLinePricesFromStore();
+        }
+        this.updatePreviewLinePositions();
+        if (sourceChart && sourceChart !== this.chart && typeof this.updateOrderLines === 'function') {
+            this.updateOrderLines(sourceChart);
+        }
+    }
+
     // ── Market Calculation Engine helpers ──────────────────────────────────────
     // These delegate to window.marketCalcEngine when available, falling back to
     // the legacy pipSize × pipValuePerLot math so existing behaviour is preserved.
@@ -836,6 +927,11 @@ class OrderManager {
             && !!window.__talariaV9OrderRailOpen;
         if (!panelEl?.classList.contains('visible') && !v9ReactRailOpen) return;
         if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
+        if (this._oiShouldRefreshDraftGeometryOnly()) {
+            this._oiSyncPreviewLinePricesFromStore();
+            this.updatePreviewLinePositions();
+            return;
+        }
         if (this.isDraggingPreviewLine) return;
         if (!this._isMultiPanelLayout()) return;
         this.removePreviewLines();
@@ -846,6 +942,11 @@ class OrderManager {
                 && !!window.__talariaV9OrderRailOpen;
             if (!p?.classList.contains('visible') && !v9Open) return;
             if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
+            if (this._oiShouldRefreshDraftGeometryOnly()) {
+                this._oiSyncPreviewLinePricesFromStore();
+                this.updatePreviewLinePositions();
+                return;
+            }
             if (this.isDraggingPreviewLine) return;
             this.updatePreviewLines();
         });
@@ -867,6 +968,11 @@ class OrderManager {
         if (!surfaceChart || !active || surfaceChart !== active) return;
         const entryPx = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         if (!(entryPx > 0)) return;
+        if (this._oiShouldRefreshDraftGeometryOnly()) {
+            this._oiSyncPreviewLinePricesFromStore();
+            this.updatePreviewLinePositions();
+            return;
+        }
         if (this.previewLines?.entry?.labelGroup) return;
         if (this._draftPreviewResyncScheduled) return;
         this._draftPreviewResyncScheduled = true;
@@ -17265,8 +17371,14 @@ class OrderManager {
         // For pending (limit/stop) orders: entry is fixed but type should flip
         // when the replay price crosses the entry — same logic as dragging past current price.
         if (this.orderType === 'limit' || this.orderType === 'stop') {
+            const otBefore = this.orderType;
             this._autoDetectOrderTypeFromEntry();
-            this.updatePreviewLines();
+            if (_orderDraftScaleRefreshFixEnabled() && otBefore === this.orderType) {
+                this._oiSyncPreviewLinePricesFromStore();
+                this.updatePreviewLinePositions();
+            } else {
+                this.updatePreviewLines();
+            }
             return;
         }
 
@@ -17943,7 +18055,9 @@ class OrderManager {
         }
         if (this._orderPlacedAwaitingReset) return;
 
-        
+        if (_orderDraftScaleRefreshFixEnabled()) {
+            this._oiSyncPreviewLinePricesFromStore();
+        }
 
         const widthChanged = this._lastPreviewChartWidth !== pc.w;
         this._lastPreviewChartWidth = pc.w;

@@ -56,6 +56,24 @@ export function previewReplayDragFixEnabled(scope) {
     return true;
 }
 
+/** #5 draft scale refresh — default ON when master guard ON. */
+export function draftScaleRefreshFixEnabled(scope) {
+    if (!orderInteractionGuardV2Enabled(scope)) return false;
+    const g = resolveScope(scope);
+    if (g.__TALARIA_DISABLE_ORDER_DRAFT_SCALE_REFRESH_FIX === true) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_DRAFT_SCALE_REFRESH_FIX === '0') return false;
+    return true;
+}
+
+/** A6-3 order-half price-axis isolation — default ON when master guard ON. */
+export function priceAxisIsolationFixEnabled(scope) {
+    if (!orderInteractionGuardV2Enabled(scope)) return false;
+    const g = resolveScope(scope);
+    if (g.__TALARIA_DISABLE_ORDER_PRICE_AXIS_ISOLATION_FIX === true) return false;
+    if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_PRICE_AXIS_ISOLATION_FIX === '0') return false;
+    return true;
+}
+
 /** @returns {OrderProvisionalEdit} */
 export function createProvisionalEditState() {
     return {
@@ -195,13 +213,13 @@ export function shouldDeferReplayPreviewSync(om, scope) {
     return isProvisionalPreviewEdit(om._orderProvisionalEdit);
 }
 
-/** #5 placeholder — geometry refresh without store mutation (Phase 3). */
+/** #5 — geometry-only refresh during provisional preview edit (no store commit). */
 export function shouldRefreshDraftGeometryOnly(om, scope) {
-    if (!orderInteractionGuardV2Enabled(scope) || !om) return false;
+    if (!draftScaleRefreshFixEnabled(scope) || !om) return false;
     return isProvisionalPreviewEdit(om._orderProvisionalEdit) || !!om.isDraggingPreviewLine;
 }
 
-/** A6-3 placeholder — read chart axis gesture (Phase 4). */
+/** A6-3 — read chart price-axis gesture probe (chart-half sets the flag). */
 export function isChartAxisGestureActive(chart) {
     if (!chart || typeof chart._isPriceAxisZoomDragging !== 'function') return false;
     try {
@@ -209,6 +227,54 @@ export function isChartAxisGestureActive(chart) {
     } catch {
         return false;
     }
+}
+
+/** A6-3 — block invert→store writes while price-axis gesture is active. */
+export function shouldBlockOrderStoreWriteDuringAxisGesture(chart, scope) {
+    return priceAxisIsolationFixEnabled(scope) && isChartAxisGestureActive(chart);
+}
+
+/**
+ * #5 — resolve preview line Y from store price after scale change (never invert mouse→store).
+ * @param {number} storePrice
+ * @param {(v:number)=>number} yScale
+ */
+export function previewLineYFromStorePrice(storePrice, yScale) {
+    const p = Number(storePrice);
+    if (!(p > 0) || typeof yScale !== 'function') return null;
+    const y = yScale(p);
+    return Number.isFinite(y) ? y : null;
+}
+
+/**
+ * #5 — sync cached preview line price from authoritative store (panel inputs).
+ * @param {number|null} linePrice drifted preview cache
+ * @param {number} storePrice committed store value
+ * @param {boolean} fixOn
+ */
+export function syncPreviewLinePriceFromStore(linePrice, storePrice, fixOn) {
+    if (!fixOn) return linePrice;
+    const s = Number(storePrice);
+    if (Number.isFinite(s) && s > 0) return s;
+    return linePrice;
+}
+
+/**
+ * Simulate open-line drag store write during price-axis gesture (RC5-OI-4).
+ * @param {{ openPrice?: number, stopLoss?: number }} order
+ * @param {'entry'|'sl'|'tp'} lineType
+ * @param {number} invertedPrice
+ * @param {boolean} axisGestureActive
+ * @param {object} [scope]
+ * @returns {boolean} true if store was mutated
+ */
+export function simulateOpenLineDragStoreWrite(order, lineType, invertedPrice, axisGestureActive, scope) {
+    const chart = { _isPriceAxisZoomDragging: () => axisGestureActive };
+    if (shouldBlockOrderStoreWriteDuringAxisGesture(chart, scope)) return false;
+    if (lineType === 'entry') order.openPrice = invertedPrice;
+    else if (lineType === 'sl') order.stopLoss = invertedPrice;
+    else if (lineType === 'tp') order.takeProfit = invertedPrice;
+    return true;
 }
 
 /**
