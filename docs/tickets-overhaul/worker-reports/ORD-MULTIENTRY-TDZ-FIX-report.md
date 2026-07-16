@@ -105,4 +105,4 @@ Active build id: **20260716b11** (both `chart/dist-v9/index.html` and `homepage/
 
 TDZ fix and dist cache bump are in source; PO must confirm no crash + preview renders on the real built product.
 
-**Commit:** _(pending — fill after file-scoped commit)_
+**Commit:** `51bd2a3d` — Fix multi-entry TDZ crash by declaring splitOrderType before use in updatePreviewLines.
