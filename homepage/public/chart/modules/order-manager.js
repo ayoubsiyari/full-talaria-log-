@@ -18703,8 +18703,8 @@ class OrderManager {
                             splitOpts = { disabled: true };
                         }
                     }
-                    const splitColor = _resolvePreviewEntryColor(this.orderSide, splitOrderType);
                     const splitOrderType = splitEntry.orderType || this.orderType;
+                    const splitColor = _resolvePreviewEntryColor(this.orderSide, splitOrderType);
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
                     const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
                     splitOpts = {
