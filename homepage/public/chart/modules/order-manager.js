@@ -79,6 +79,36 @@ function _orderEntryPanelSltpFixEnabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_ENTRY_PANEL_SLTP_FIX;
 }
 
+/** T4 order-interaction guard — master switch (default ON). Mirrors order-interaction-guard.mjs. */
+function _orderInteractionGuardV2Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_INTERACTION_GUARD_V2;
+}
+
+/** A6-1 SL/TP apply-on-release (default ON when master ON). */
+function _orderSltpApplyOnReleaseFixEnabled() {
+    return _orderInteractionGuardV2Enabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX);
+}
+
+/** #4 preview replay × drag deferral (default ON when master ON). */
+function _orderPreviewReplayDragFixEnabled() {
+    return _orderInteractionGuardV2Enabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PREVIEW_REPLAY_DRAG_FIX);
+}
+
+function _oiCreateProvisionalEditState() {
+    return {
+        phase: 'idle',
+        lineKind: null,
+        orderId: null,
+        splitGroupId: null,
+        previewLabel: null,
+        tpTargetIndex: null,
+        provisionalPrice: null,
+        committedPrice: null,
+    };
+}
+
 /** @param {string} side @param {string} [legOrderType] */
 function _resolvePreviewEntryColor(side, legOrderType = 'limit') {
     if (!_orderEntryPreviewColorFixEnabled()) {
@@ -491,8 +521,156 @@ class OrderManager {
 
         /** localStorage key for named order-panel template presets */
         this._orderPanelPresetsStorageKey = 'orderPanelPresets';
+
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        this._oiProvisionalCancelHandlersInstalled = false;
         
         this.init();
+    }
+
+    // ── Order-interaction provisional edit guard (D-020) ───────────────────────
+
+    _oiIsProvisionalEditActive() {
+        const st = this._orderProvisionalEdit;
+        return !!(st && st.phase !== 'idle');
+    }
+
+    _oiBeginProvisionalEdit(opts = {}) {
+        const st = this._orderProvisionalEdit || _oiCreateProvisionalEditState();
+        const committed = Number(opts.committedPrice);
+        st.phase = opts.phase || 'open';
+        st.lineKind = opts.lineKind ?? null;
+        st.orderId = opts.orderId ?? null;
+        st.splitGroupId = opts.splitGroupId ?? null;
+        st.previewLabel = opts.previewLabel ?? null;
+        st.tpTargetIndex = opts.tpTargetIndex ?? null;
+        st.committedPrice = Number.isFinite(committed) ? committed : null;
+        st.provisionalPrice = st.committedPrice;
+        this._orderProvisionalEdit = st;
+        return st;
+    }
+
+    _oiUpdateProvisionalPrice(price) {
+        const st = this._orderProvisionalEdit;
+        if (!st || st.phase === 'idle') return;
+        const p = Number(price);
+        if (Number.isFinite(p)) st.provisionalPrice = p;
+    }
+
+    _oiCommitProvisionalEdit() {
+        const st = this._orderProvisionalEdit;
+        if (!st || st.phase === 'idle') {
+            this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+            return null;
+        }
+        const committed = Number.isFinite(Number(st.provisionalPrice)) ? Number(st.provisionalPrice) : null;
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        return committed;
+    }
+
+    _oiEnsureProvisionalCancelHandlers() {
+        if (this._oiProvisionalCancelHandlersInstalled) return;
+        this._oiProvisionalCancelHandlersInstalled = true;
+        const self = this;
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || !self._oiIsProvisionalEditActive()) return;
+            self._oiCancelActiveProvisionalEdit('escape');
+        });
+    }
+
+    _oiCancelActiveProvisionalEdit(reason) {
+        const st = this._orderProvisionalEdit;
+        if (!st || st.phase === 'idle') return;
+        const revert = st.committedPrice;
+        const ctx = this._oiProvisionalDragCtx;
+        this._orderProvisionalEdit = _oiCreateProvisionalEditState();
+        this._oiProvisionalDragCtx = null;
+        this.isDraggingPreviewLine = false;
+        this._isDraggingOrderLine = false;
+        this._draggingManagedOpenLineKind = null;
+        this._multichartPostDraftDragBusy(false);
+
+        if (st.phase === 'open' && ctx?.line && ctx.chartCtx?.scales?.yScale && Number.isFinite(revert)) {
+            const y = ctx.chartCtx.scales.yScale(revert);
+            ctx.line.attr('y1', y).attr('y2', y);
+            if (ctx.hitLine) ctx.hitLine.attr('y1', y).attr('y2', y);
+            if (ctx.priceText) ctx.priceText.text(this.formatPrice(revert));
+        } else if (st.phase === 'preview' && ctx?.lineData && Number.isFinite(revert)) {
+            const ch = ctx.lineData._previewChart || this._getPreviewChart() || this.chart;
+            ctx.lineData.price = revert;
+            if (ch?.scales?.yScale) {
+                const y = ch.scales.yScale(revert);
+                ctx.lineData.line?.attr('y1', y)?.attr('y2', y);
+                ctx.lineData.hitLine?.attr('y1', y)?.attr('y2', y);
+            }
+        }
+
+        if (st.phase === 'open') {
+            try { this.updateOrderLines(); } catch (e) { /* ignore */ }
+        } else if (st.phase === 'preview') {
+            try { this.updatePreviewLines(); } catch (e) { /* ignore */ }
+        }
+        if (reason) console.log(`↩️ Provisional SL/TP edit cancelled (${reason})`);
+    }
+
+    _oiShouldDeferReplayPreviewSync() {
+        if (!_orderPreviewReplayDragFixEnabled()) {
+            return !!this.isDraggingPreviewLine;
+        }
+        if (this.isDraggingPreviewLine) return true;
+        const st = this._orderProvisionalEdit;
+        return !!(st && st.phase === 'preview');
+    }
+
+    _oiShouldSuppressSltpHits(kind) {
+        if (!_orderSltpApplyOnReleaseFixEnabled()) {
+            return !!(this._isDraggingOrderLine && this._draggingManagedOpenLineKind === 'tp' && kind === 'tp');
+        }
+        return false;
+    }
+
+    _oiCommitOpenSltpToStore(order, lineType, price) {
+        if (!Number.isFinite(price)) return;
+        const siblings = order.isSplitEntry && order.splitGroupId
+            ? this._getSplitGroupOpenPositions(order) : [order];
+        for (const sib of siblings) {
+            if (lineType === 'sl') sib.stopLoss = price;
+            else if (lineType === 'tp') sib.takeProfit = price;
+        }
+    }
+
+    _oiCommitPreviewSltpFromDragEnd(lineData) {
+        if (!_orderSltpApplyOnReleaseFixEnabled()) return;
+        const st = this._orderProvisionalEdit;
+        if (!st || st.phase !== 'preview') return;
+        const committed = this._oiCommitProvisionalEdit();
+        if (!Number.isFinite(committed)) return;
+        const formatted = this.formatPrice(committed);
+        if (lineData.label === 'SL') {
+            lineData.price = committed;
+            const slInput = document.getElementById('slPrice');
+            if (slInput) slInput.value = formatted;
+        } else if (lineData.label === 'TP') {
+            lineData.price = committed;
+            const tpInput = document.getElementById('tpPrice');
+            if (tpInput) tpInput.value = formatted;
+        } else if (lineData.label && /^TP\d+$/.test(String(lineData.label))
+            && lineData.targetIndex !== undefined
+            && this.tpTargets?.[lineData.targetIndex]) {
+            this.tpTargets[lineData.targetIndex].price = parseFloat(committed.toFixed(this.getPricePrecision(committed)));
+            const tpInput = document.getElementById(`tpTarget${this.tpTargets[lineData.targetIndex].id}Price`);
+            if (tpInput) tpInput.value = formatted;
+        }
+    }
+
+    _oiMaybeCancelProvisionalOnReplayStop() {
+        if (!_orderSltpApplyOnReleaseFixEnabled() || !this._oiIsProvisionalEditActive()) return;
+        const st = this._orderProvisionalEdit;
+        if (st.phase !== 'open') return;
+        const rs = this.replaySystem;
+        if (rs && !rs.isActive) this._oiCancelActiveProvisionalEdit('replay-stop');
     }
 
     // ── Market Calculation Engine helpers ──────────────────────────────────────
@@ -18710,6 +18888,23 @@ class OrderManager {
                 self.isDraggingPreviewLine = true;
                 self._multichartPostDraftDragBusy(true);
 
+                if (_orderSltpApplyOnReleaseFixEnabled()) {
+                    const lbl = lineData.label;
+                    const isSlPreview = lbl === 'SL';
+                    const isTpPreview = lbl === 'TP' || (lbl && /^TP\d+$/.test(String(lbl)));
+                    if (isSlPreview || isTpPreview) {
+                        self._oiEnsureProvisionalCancelHandlers();
+                        self._oiBeginProvisionalEdit({
+                            phase: 'preview',
+                            lineKind: isSlPreview ? 'sl' : 'tp',
+                            previewLabel: lbl,
+                            tpTargetIndex: lineData.targetIndex,
+                            committedPrice: lineData.price,
+                        });
+                        self._oiProvisionalDragCtx = { lineData };
+                    }
+                }
+
                 if (lineData.label === 'Entry' || (lineData.label && String(lineData.label).startsWith('Entry#'))) {
                     self._previewEntryDecoupledFromRR = true;
                     self._previewEntryLinkedToRiskReward = false;
@@ -18833,10 +19028,17 @@ class OrderManager {
                 if (lineData.hitLine) {
                     lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
                 }
+
+                if (_orderSltpApplyOnReleaseFixEnabled()) {
+                    const lblProv = lineData.label;
+                    if (lblProv === 'SL' || lblProv === 'TP' || (lblProv && /^TP\d+$/.test(String(lblProv)))) {
+                        self._oiUpdateProvisionalPrice(newPrice);
+                    }
+                }
                 
                 const formattedPrice = self.formatPrice(newPrice);
                 // Sync SL input before $/lot label math (multi-entry uses #slPrice for per-level lots).
-                if (lineData.label === 'SL') {
+                if (lineData.label === 'SL' && !_orderSltpApplyOnReleaseFixEnabled()) {
                     self.slManuallyPositioned = true;
                     const slInputEarly = document.getElementById('slPrice');
                     if (slInputEarly) slInputEarly.value = formattedPrice;
@@ -18905,7 +19107,7 @@ class OrderManager {
                     lineData.yAxisHighlight.select('.y-axis-price-text').text(formattedPrice);
                 }
                 
-                if (lineData.label === 'TP') {
+                if (lineData.label === 'TP' && !_orderSltpApplyOnReleaseFixEnabled()) {
                     // Mark TP as manually positioned BEFORE updating input (prevents sync)
                     self.tpManuallyPositioned = true;
                     const tpInput = document.getElementById('tpPrice');
@@ -18938,7 +19140,8 @@ class OrderManager {
                             if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                     }
-                } else if (lineData.label && lineData.label.startsWith('TP') && lineData.targetIndex !== undefined) {
+                } else if (lineData.label && lineData.label.startsWith('TP') && lineData.targetIndex !== undefined
+                    && !_orderSltpApplyOnReleaseFixEnabled()) {
                     // Handle multiple TP line drag — only update price, preserve user-set percentages
                     if (self.tpTargets && self.tpTargets[lineData.targetIndex]) {
                         self.tpTargets[lineData.targetIndex].price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
@@ -19478,6 +19681,16 @@ class OrderManager {
 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
+
+                self._oiCommitPreviewSltpFromDragEnd(lineData);
+                if (lineData.label === 'SL' && _orderSltpApplyOnReleaseFixEnabled()) {
+                    self.slManuallyPositioned = true;
+                }
+                if ((lineData.label === 'TP' || (lineData.label && /^TP\d+$/.test(String(lineData.label))))
+                    && _orderSltpApplyOnReleaseFixEnabled()) {
+                    self.tpManuallyPositioned = true;
+                }
+
                 if (self.isMultiEntryMode) {
                     self._syncSplitEntriesFromMultiEntryLevels();
                 }
@@ -27324,6 +27537,7 @@ class OrderManager {
         if (this._shouldDeferOrderExecutionForTimeframeTransition()) {
             return;
         }
+        this._oiMaybeCancelProvisionalOnReplayStop();
         const parentGuardCandle = this._getMultichartParentGuardCandle();
         const currentCandle = parentGuardCandle || this.getCurrentCandle();
         if (!currentCandle) return;
@@ -27364,8 +27578,7 @@ class OrderManager {
             return oc?.currentFileId != null ? String(oc.currentFileId) : '';
         })();
 
-        const suppressTpHitsWhileDraggingTp =
-            this._isDraggingOrderLine && this._draggingManagedOpenLineKind === 'tp';
+        const suppressTpHitsWhileDraggingTp = this._oiShouldSuppressSltpHits('tp');
 
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
@@ -29483,6 +29696,24 @@ class OrderManager {
                         : beRef - profitPrice;
                 }
             }
+
+            if (_orderSltpApplyOnReleaseFixEnabled() && (lineType === 'sl' || lineType === 'tp')) {
+                self._oiEnsureProvisionalCancelHandlers();
+                self._oiBeginProvisionalEdit({
+                    phase: 'open',
+                    lineKind: lineType,
+                    orderId: order.id,
+                    splitGroupId: order.splitGroupId || null,
+                    committedPrice: dragStartPrice,
+                });
+                self._oiProvisionalDragCtx = {
+                    line,
+                    chartCtx: ctx,
+                    hitLine: extraElements.hitLine,
+                    priceText: extraElements.priceText,
+                    order,
+                };
+            }
             
             console.log(`🖱️ Drag started: ${lineType.toUpperCase()} @ ${startPrice.toFixed(5)}`);
             
@@ -29542,26 +29773,34 @@ class OrderManager {
                 if (lineType === 'entry') {
                     order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
-                    // Same bar as updatePositions() / getCurrentCandle — not ctx (line may be on another panel).
-                    const guardBar = self.getCurrentCandle();
-                    const siblings = order.isSplitEntry && order.splitGroupId
-                        ? self._getSplitGroupOpenPositions(order) : [order];
-                    for (const sib of siblings) {
-                        sib.stopLoss = newPrice;
-                        if (guardBar) {
-                            sib._slNoTriggerBeforeTime = guardBar.t;
-                            sib._slNoTriggerBeforeTick = Infinity;
+                    if (_orderSltpApplyOnReleaseFixEnabled()) {
+                        self._oiUpdateProvisionalPrice(newPrice);
+                    } else {
+                        // Same bar as updatePositions() / getCurrentCandle — not ctx (line may be on another panel).
+                        const guardBar = self.getCurrentCandle();
+                        const siblings = order.isSplitEntry && order.splitGroupId
+                            ? self._getSplitGroupOpenPositions(order) : [order];
+                        for (const sib of siblings) {
+                            sib.stopLoss = newPrice;
+                            if (guardBar) {
+                                sib._slNoTriggerBeforeTime = guardBar.t;
+                                sib._slNoTriggerBeforeTick = Infinity;
+                            }
                         }
                     }
                 } else if (lineType === 'tp') {
-                    const guardBar = self.getCurrentCandle();
-                    const siblings = order.isSplitEntry && order.splitGroupId
-                        ? self._getSplitGroupOpenPositions(order) : [order];
-                    for (const sib of siblings) {
-                        sib.takeProfit = newPrice;
-                        if (guardBar) {
-                            sib._tpNoTriggerBeforeTime = guardBar.t;
-                            sib._tpNoTriggerBeforeTick = Infinity;
+                    if (_orderSltpApplyOnReleaseFixEnabled()) {
+                        self._oiUpdateProvisionalPrice(newPrice);
+                    } else {
+                        const guardBar = self.getCurrentCandle();
+                        const siblings = order.isSplitEntry && order.splitGroupId
+                            ? self._getSplitGroupOpenPositions(order) : [order];
+                        for (const sib of siblings) {
+                            sib.takeProfit = newPrice;
+                            if (guardBar) {
+                                sib._tpNoTriggerBeforeTime = guardBar.t;
+                                sib._tpNoTriggerBeforeTick = Infinity;
+                            }
                         }
                     }
                 } else if (lineType === 'be') {
@@ -29737,6 +29976,13 @@ class OrderManager {
             isDragging = false;
             self._isDraggingOrderLine = false;
             self._draggingManagedOpenLineKind = null;
+
+            if (_orderSltpApplyOnReleaseFixEnabled() && (lineType === 'sl' || lineType === 'tp')) {
+                const committed = self._oiCommitProvisionalEdit();
+                if (Number.isFinite(committed)) {
+                    self._oiCommitOpenSltpToStore(order, lineType, committed);
+                }
+            }
             
             // Remove document listeners
             document.removeEventListener('mousemove', onMouseMove);
