@@ -26,9 +26,19 @@
         throw new Error('multichart-manager: MultichartGuards must load first');
     }
 
+    /** T3 Phase 5: peer isolation master (D-018 #2). Unset = ON. */
+    function _isMcRemigrationPhase5PeerIsolationSliceActive() {
+        try {
+            return !(global && global.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION);
+        } catch (_) {
+            return true;
+        }
+    }
+
     /** T3 step 5: cross-panel peer deselect (I13). Default ON. */
     function multichartPeerDeselectV1Enabled() {
         try {
+            if (!_isMcRemigrationPhase5PeerIsolationSliceActive()) return false;
             return !(global && global.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1);
         } catch (_) {
             return true;
