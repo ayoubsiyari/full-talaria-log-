@@ -36,6 +36,46 @@ function _orderProvisionalFocusCancelV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PROVISIONAL_FOCUS_CANCEL_V1;
 }
 
+/** D-030 Step 0: mark/close from owning panel feed only — never focused peer (default ON). */
+function _orderOwningPanelPriceV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1;
+}
+
+/** A6-4 master package (unset = ON). */
+function _orderMcStateConvergeFixEnabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX;
+}
+
+function _orderMcHostPersistOnlyV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_HOST_PERSIST_ONLY_V1);
+}
+
+function _orderMcHostPlaceV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_HOST_PLACE_V1);
+}
+
+function _orderMcSnapshotProjectionV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1);
+}
+
+function _orderMcOpenPatchV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_OPEN_PATCH_V1);
+}
+
+function _orderMcPnlHubV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1);
+}
+
+function _orderMcLegacyIframeOrderV1Enabled() {
+    return _orderMcStateConvergeFixEnabled()
+        && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_LEGACY_IFRAME_ORDER_V1);
+}
+
 function _runtimeOrderStorageKey(sessionId, panelScope) {
     const sid = sessionId != null && String(sessionId).trim() !== '' ? String(sessionId).trim() : 'no-session';
     let key = `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
@@ -713,12 +753,32 @@ class OrderManager {
 
     _oiCommitOpenSltpToStore(order, lineType, price) {
         if (!Number.isFinite(price)) return;
+        if (_orderMcOpenPatchV1Enabled() && this._multichartIsEmbedIframe()) {
+            this._postHostOrderCommand('patch-open-leg', {
+                orderId: order.id,
+                lineType: lineType,
+                price: price,
+                splitGroupId: order.splitGroupId || null,
+            });
+            return;
+        }
         const siblings = order.isSplitEntry && order.splitGroupId
             ? this._getSplitGroupOpenPositions(order) : [order];
         for (const sib of siblings) {
             if (lineType === 'sl') sib.stopLoss = price;
             else if (lineType === 'tp') sib.takeProfit = price;
         }
+    }
+
+    /** A6-4 Step 4: iframe open-leg commits route to host store. */
+    _postHostOrderCommand(cmd, payload) {
+        if (typeof window === 'undefined' || !window.parent || window.parent === window) return;
+        try {
+            window.parent.postMessage(Object.assign({
+                type: 'order-command',
+                cmd: cmd,
+            }, payload || {}), '*');
+        } catch (_e) { /* ignore */ }
     }
 
     _oiCommitPreviewSltpFromDragEnd(lineData) {
@@ -997,6 +1057,60 @@ class OrderManager {
 
     _positionTicker(position) {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
+    }
+
+    /** D-030: position OHLC/mark must come from this document's chart instrument, not getActiveChart(). */
+    _positionBelongsOnLocalChart(position) {
+        if (!position || !this.chart) return false;
+        const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
+        const localFileId = this.chart.currentFileId != null ? String(this.chart.currentFileId) : '';
+        if (posFileId && localFileId) return posFileId === localFileId;
+        const posTicker = this._positionTicker(position);
+        const localTicker = this._normalizeTicker(this.chart.currentSymbol);
+        if (posTicker && localTicker) return posTicker === localTicker;
+        return false;
+    }
+
+    _positionNeedsBackgroundBar(position) {
+        if (_orderOwningPanelPriceV1Enabled()) {
+            return !this._positionBelongsOnLocalChart(position);
+        }
+        const posTicker = this._positionTicker(position);
+        const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
+        const chartTickerForBar = this._getActiveTicker();
+        const chartFileId = (() => {
+            const oc = this._getOrderContextChart() || this.chart;
+            return oc?.currentFileId != null ? String(oc.currentFileId) : '';
+        })();
+        const tickerMismatch = !!(posTicker && chartTickerForBar && posTicker !== chartTickerForBar);
+        const fileMismatch = !!(posFileId && chartFileId && posFileId !== chartFileId);
+        return tickerMismatch || fileMismatch;
+    }
+
+    _resolveOwningPanelMidMarkPrice(position, currentCandle) {
+        if (!position || !currentCandle) return null;
+        const tMs = Number(currentCandle.t);
+        if (!Number.isFinite(tMs)) return null;
+        const posTicker = this._positionTicker(position);
+        const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
+
+        if (this._positionBelongsOnLocalChart(position)) {
+            const live = Number.parseFloat(currentCandle.c);
+            if (Number.isFinite(live)) return live;
+        }
+
+        const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
+        if (bgBar) {
+            const intrabar = this._miIntrabarMarkForBackgroundBar(bgBar, tMs);
+            if (Number.isFinite(intrabar)) return intrabar;
+            const c = Number.parseFloat(bgBar.c);
+            if (Number.isFinite(c)) return c;
+        }
+
+        const panelMc = this._markFromPanelDataLastClose(posTicker);
+        if (Number.isFinite(panelMc)) return panelMc;
+
+        return this._resolveBackgroundMarkPrice(position, tMs);
     }
 
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
@@ -2120,6 +2234,9 @@ class OrderManager {
     /** Mid/last quote before exit-side spread adjustment (candle close or background bar). */
     _resolveMidMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
+        if (_orderOwningPanelPriceV1Enabled()) {
+            return this._resolveOwningPanelMidMarkPrice(position, currentCandle);
+        }
         const tMs = Number(currentCandle.t);
         if (!Number.isFinite(tMs)) return null;
         const posTicker = this._positionTicker(position);
@@ -5276,6 +5393,7 @@ class OrderManager {
     }
 
     _shouldSkipMcIframeRuntimePersist() {
+        if (_orderMcHostPersistOnlyV1Enabled() && this._multichartIsEmbedIframe()) return true;
         return _mcOrderPersistPanelScopeV1Enabled() && this._multichartIsEmbedIframe();
     }
 
@@ -26866,13 +26984,9 @@ class OrderManager {
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
         
-        // Resolve correct close price — if the position belongs to a different pair,
-        // use its background mark price instead of the active chart's candle.
-        const posTicker = this._positionTicker(position);
-        const activeTicker = this._getActiveTicker();
         let closePrice;
-        if (posTicker && activeTicker && posTicker !== activeTicker) {
-            const mark = this._resolveUnrealizedMarkPrice(position, currentCandle);
+        if (_orderOwningPanelPriceV1Enabled()) {
+            const mark = this._resolveOwningPanelMidMarkPrice(position, currentCandle);
             if (Number.isFinite(mark)) {
                 closePrice = mark;
             } else if (Number.isFinite(position._miLastMarkPrice)) {
@@ -26881,7 +26995,22 @@ class OrderManager {
                 closePrice = position.openPrice;
             }
         } else {
-            closePrice = currentCandle.c;
+            // Resolve correct close price — if the position belongs to a different pair,
+            // use its background mark price instead of the active chart's candle.
+            const posTicker = this._positionTicker(position);
+            const activeTicker = this._getActiveTicker();
+            if (posTicker && activeTicker && posTicker !== activeTicker) {
+                const mark = this._resolveUnrealizedMarkPrice(position, currentCandle);
+                if (Number.isFinite(mark)) {
+                    closePrice = mark;
+                } else if (Number.isFinite(position._miLastMarkPrice)) {
+                    closePrice = position._miLastMarkPrice;
+                } else {
+                    closePrice = position.openPrice;
+                }
+            } else {
+                closePrice = currentCandle.c;
+            }
         }
         const closeTime = currentCandle.t;
         
@@ -28028,14 +28157,15 @@ class OrderManager {
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
             const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
-            const tickerMismatch = !!(posTicker && chartTickerForBar && posTicker !== chartTickerForBar);
-            const fileMismatch = !!(posFileId && chartFileId && posFileId !== chartFileId);
-            // Split / multi-entry: shared SL/TP must use the **active chart's OHLC** whenever this leg is the
-            // same instrument as the chart (`!tickerMismatch`). Per-leg `sourceFileId` can still differ
-            // (`fileMismatch`) — those legs used to take the background branch only, so often **only one**
-            // leg got an SL fill while the SL label summed every leg → e.g. ~$260 on the line vs ~$87 realized.
-            const splitUseMainChartBar = !!(position.isSplitEntry && position.splitGroupId && !tickerMismatch);
-            if ((tickerMismatch || fileMismatch) && !splitUseMainChartBar) {
+            const useBackgroundBar = _orderOwningPanelPriceV1Enabled()
+                ? this._positionNeedsBackgroundBar(position)
+                : (() => {
+                    const tickerMismatch = !!(posTicker && chartTickerForBar && posTicker !== chartTickerForBar);
+                    const fileMismatch = !!(posFileId && chartFileId && posFileId !== chartFileId);
+                    return tickerMismatch || fileMismatch;
+                })();
+            const splitUseMainChartBar = !!(position.isSplitEntry && position.splitGroupId && !useBackgroundBar);
+            if (useBackgroundBar && !splitUseMainChartBar) {
                 const tMs = Number(currentCandle.t);
                 const pref = posFileId || null;
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
