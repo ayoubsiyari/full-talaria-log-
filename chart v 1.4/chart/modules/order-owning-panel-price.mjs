@@ -65,7 +65,11 @@ export function resolveOwningPanelMidMarkPrice(position, currentCandle, deps) {
     const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
 
     if (positionBelongsOnLocalChart(position, localChart, normalizeTicker)) {
-        const live = Number.parseFloat(currentCandle.c);
+        // Prefer an explicit localCandle when provided — callers must not pass a
+        // focused-peer candle as currentCandle for local positions.
+        const localCandle = deps && deps.localCandle;
+        const bar = localCandle || currentCandle;
+        const live = Number.parseFloat(bar && (bar.c ?? bar.close));
         if (Number.isFinite(live)) return live;
     }
 

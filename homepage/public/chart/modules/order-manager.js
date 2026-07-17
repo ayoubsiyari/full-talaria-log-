@@ -1127,8 +1127,19 @@ class OrderManager {
         const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
 
         if (this._positionBelongsOnLocalChart(position)) {
-            const live = Number.parseFloat(currentCandle.c);
-            if (Number.isFinite(live)) return live;
+            // CRITICAL: `currentCandle` often comes from getActiveChart() (focused
+            // peer tile). For a local EUR order with panel B (GBP) focused, that
+            // candle is GBP — using it as mark/TP caused instant absurd closes.
+            // Always prefer THIS document's chart OHLC for local positions.
+            const localBar = this._getCurrentCandleForChart(this.chart);
+            const localClose = Number.parseFloat(localBar && (localBar.c ?? localBar.close));
+            if (Number.isFinite(localClose)) return localClose;
+            const ctx = this._getOrderContextChart();
+            if (ctx && this._sameChartInstrument(this.chart, ctx)) {
+                const live = Number.parseFloat(currentCandle.c);
+                if (Number.isFinite(live)) return live;
+            }
+            return null;
         }
 
         const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
@@ -1143,6 +1154,18 @@ class OrderManager {
         if (Number.isFinite(panelMc)) return panelMc;
 
         return this._resolveBackgroundMarkPrice(position, tMs);
+    }
+
+    /**
+     * Candle used for SL/TP / mark on a position under owning-panel-price rules.
+     * Local positions → this.chart; foreign → background bar or null (caller handles).
+     */
+    _evalCandleForPosition(position, fallbackCandle) {
+        if (!position) return fallbackCandle || null;
+        if (_orderOwningPanelPriceV1Enabled() && this._positionBelongsOnLocalChart(position)) {
+            return this._getCurrentCandleForChart(this.chart) || fallbackCandle || null;
+        }
+        return fallbackCandle || null;
     }
 
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
@@ -28169,19 +28192,22 @@ class OrderManager {
         }
         this._oiMaybeCancelProvisionalOnReplayStop();
         const parentGuardCandle = this._getMultichartParentGuardCandle();
-        const currentCandle = parentGuardCandle || this.getCurrentCandle();
-        if (!currentCandle) return;
+        // Focused/active candle (may be peer tile). Per-position path rebinds
+        // to this.chart OHLC for local orders so EUR never marks off GBP.
+        const activeCandle = parentGuardCandle || this.getCurrentCandle();
+        if (!activeCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
-            this.orderService.multiInstrumentSession.current_time = currentCandle.t;
+            this.orderService.multiInstrumentSession.current_time = activeCandle.t;
         }
         
-        const currentPrice = currentCandle.c;
-        const open = currentCandle.o;
-        const high = currentCandle.h;
-        const low = currentCandle.l;
+        let currentCandle = activeCandle;
+        let currentPrice = activeCandle.c;
+        let open = activeCandle.o;
+        let high = activeCandle.h;
+        let low = activeCandle.l;
         
         // Check and execute pending orders
-        this.checkPendingOrders(currentCandle);
+        this.checkPendingOrders(activeCandle);
 
         // Keep preview order lines tracking the current price during replay
         this._syncPreviewToReplayPrice();
@@ -28211,6 +28237,13 @@ class OrderManager {
         const suppressTpHitsWhileDraggingTp = this._oiShouldSuppressSltpHits('tp');
 
         this.openPositions.forEach(position => {
+            // Reset to focused/active candle each iteration (prior local rebind must not leak).
+            currentCandle = activeCandle;
+            currentPrice = activeCandle.c;
+            open = activeCandle.o;
+            high = activeCandle.h;
+            low = activeCandle.l;
+
             const posTicker = this._positionTicker(position);
             const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
             const useBackgroundBar = _orderOwningPanelPriceV1Enabled()
@@ -28246,6 +28279,22 @@ class OrderManager {
                 }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
                 return;
+            }
+
+            // Local-instrument path: SL/TP/mark must use THIS chart's OHLC.
+            // Shadow outer candle locals for the rest of this iteration so every
+            // SL/TP/BE/trail path stays on-instrument when peer panel is focused.
+            {
+                const evalCandle = this._evalCandleForPosition(position, currentCandle) || currentCandle;
+                const evalHigh = Number.parseFloat(evalCandle.h ?? evalCandle.high);
+                const evalLow = Number.parseFloat(evalCandle.l ?? evalCandle.low);
+                const evalOpen = Number.parseFloat(evalCandle.o ?? evalCandle.open);
+                const evalClose = Number.parseFloat(evalCandle.c ?? evalCandle.close);
+                currentCandle = evalCandle;
+                if (Number.isFinite(evalHigh)) high = evalHigh;
+                if (Number.isFinite(evalLow)) low = evalLow;
+                if (Number.isFinite(evalOpen)) open = evalOpen;
+                if (Number.isFinite(evalClose)) currentPrice = evalClose;
             }
 
             if (position._beTriggeredBarT != null && position._beTriggeredBarT !== currentCandle.t) {

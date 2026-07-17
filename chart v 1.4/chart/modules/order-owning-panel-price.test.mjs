@@ -109,6 +109,29 @@ section('resolveOwningPanelMidMarkPrice direct');
 const mid = resolveOwningPanelMidMarkPrice(gbpPosition, eurCandle, deps);
 assert(Math.abs(mid - 1.64683) < 1e-5, 'mid from owning bg bar not EUR candle');
 
+section('local EUR position must not mark off focused GBP peer candle');
+const eurPosition = {
+    id: 10,
+    ticker: 'EURUSD',
+    symbol: 'EUR/USD',
+    sourceFileId: 'file-eur',
+    openPrice: 1.16837,
+};
+const gbpPeerCandle = { c: 1.35365, t: 1784276100000 };
+const eurLocalCandle = { c: 1.16840, t: 1784276100000 };
+const leaked = resolveOwningPanelMidMarkPrice(eurPosition, gbpPeerCandle, {
+    localChart: eurLocalChart,
+});
+assert(Math.abs(leaked - 1.35365) < 1e-5, 'without localCandle, belongs-local still reads passed candle (caller bug)');
+const fixedLocal = resolveOwningPanelMidMarkPrice(eurPosition, gbpPeerCandle, {
+    localChart: eurLocalChart,
+    localCandle: eurLocalCandle,
+});
+assert(Math.abs(fixedLocal - 1.16840) < 1e-5, 'GREEN: localCandle wins over focused GBP peer');
+const EUR_SESSION = { min: 1.16, max: 1.18 };
+assert(assertMarkWithinOwningSymbolRange(eurPosition, fixedLocal, EUR_SESSION).ok, 'EUR mark in EUR session range');
+assert(!assertMarkWithinOwningSymbolRange(eurPosition, gbpPeerCandle.c, EUR_SESSION).ok, 'GBP peer rejected for EUR session');
+
 section('A6-4 host snapshot helpers');
 const snap = buildHostOrderStoreSnapshot({
     pendingOrders: [{ id: 1, ticker: 'EURUSD' }],
