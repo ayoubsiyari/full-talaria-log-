@@ -247,6 +247,8 @@ Small batch, but **TAL-01590 is the standout** — a full replay freeze on indep
 | TAL-01663 | Inactive order + chart drag = freeze | **T4/T8 diagnostic row** — possibly order hit-test on pan path; needs mechanism before owner |
 | TAL-01634 | Long/Short position TOOL: SL move doesn't update amount/pts/RR | **T1 per-tool family** (position-tool internal aggregates; RC-5-like math in a drawing tool) |
 | TAL-01636 | Opening-range indicator must close before 18:00 NY, not 00:00 | **T6 correctness row** — tester stated the spec; includes their extension suggestion (OR-start→day-end) as the bounded-render option |
+| TAL-01648 | Manual-replay highlight (cut region) not shown on all layouts | **T3 replay-UI parity row** (late-add, missed in first pass) — replay chrome must render on every panel, not just host |
+| TAL-01649 | Chart draggable from above indicator main menu; indicator list navigation sometimes stuck | **T6 indicator-menu interaction** (late-add, missed in first pass) — menu must capture its own pointer events |
 
 ### GAP — plan amended (A7 + A8) — 11 tickets
 

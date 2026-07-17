@@ -12117,6 +12117,12 @@ class DrawingToolsManager {
         if (this.chart && this.chart._receivingDrawingSync) return;
         const chart = this.chart;
         if (!chart || typeof chart.scheduleRender !== 'function') return;
+        // redrawAll runs inside chart.render() with _isRendering=true; scheduling another
+        // full render at the tail is redundant and can amplify VP placement storms (A7b P0).
+        if (chart._isRendering
+            && !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_DRAWING_INVALIDATION_DURING_RENDER_GUARD)) {
+            return;
+        }
         // scheduleRender is synchronous during replay PLAY / inertial pan; redrawAll at
         // the end of chart.render() would recurse render→redrawAll→scheduleRender (H-S18).
         const replayPlaying = chart.replaySystem && chart.replaySystem.isPlaying;
@@ -15038,6 +15044,8 @@ class DrawingToolsManager {
             return this.isVolumeProfileAnchoredBodyHit(drawing, mouseX, mouseY);
         }
 
+        const vpPanFixOn = !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_VP_BODY_PAN_BLOCK_FIX);
+
         try {
             const insideRect = (rectNode, pad = 0) => {
                 if (!rectNode) return false;
@@ -15051,6 +15059,13 @@ class DrawingToolsManager {
                 return mouseX >= (x - pad) && mouseX <= (x + width + pad)
                     && mouseY >= (y - pad) && mouseY <= (y + height + pad);
             };
+
+            if (vpPanFixOn) {
+                if (this.isVolumeProfileBarHit(drawing, mouseX, mouseY)) return true;
+                const hitbox = drawing.group.select('.volume-profile-hitbox').node();
+                if (drawing.selected && insideRect(hitbox, 0.75)) return true;
+                return false;
+            }
 
             const hitbox = drawing.group.select('.volume-profile-hitbox').node();
             const range = drawing.group.select('.volume-profile-range').node();
@@ -15099,11 +15114,16 @@ class DrawingToolsManager {
 
     /** Block chart pan/drag when the pointer is over fixed-range VP background (not level lines). */
     isVolumeProfileChartPanBlockedAtPoint(mouseX, mouseY) {
+        const vpPanFixOn = !(typeof window !== 'undefined' && window.__TALARIA_DISABLE_VP_BODY_PAN_BLOCK_FIX);
         const drawing = this.findVolumeProfilePanBlockDrawingAtPoint(mouseX, mouseY);
         if (!drawing) return false;
+        if (vpPanFixOn && !drawing.selected) return false;
         if (this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY)) return false;
         if (this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return false;
         if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) return false;
+        if (vpPanFixOn) {
+            return this.isVolumeProfileBarHit(drawing, mouseX, mouseY);
+        }
         return true;
     }
 

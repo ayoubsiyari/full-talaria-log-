@@ -1,0 +1,153 @@
+﻿unit,origin,track,title,status,note
+RC-1,engineering,root-cause,First-click / multichart interaction dead on fallback-B,STAGED,RESOLVED | Engine substrate on main + kill-switched
+RC-2,engineering,root-cause,Slow interaction / grid renders above candles while panning,STAGED,RESOLVED | peer/iframe repaint deferred to re-migration
+RC-3,engineering,root-cause,Label mis-anchor / drawing anchoring drift,STAGED,RESOLVED | Phase 5 (multichart parity) deferred into RC-4 re-migration track
+RC-4,engineering,root-cause,Multichart re-migration interaction family,STAGED,RESOLVED-DEV | Combined-build bless pending Worker 1 chrome fix
+RC-5,engineering,root-cause,Order-entry parse / drag-input family,STAGED,RESOLVED-NEEDS-LIVE | PO live-confirm outstanding on a5
+RC-6,engineering,root-cause,Indicator lifecycle / visibility / settings-apply / replay UI sync,STAGED,RESOLVED-NEEDS-LIVE | synthetic actuation; needs live confirm
+RC-8,engineering,root-cause,(replay/cadence family,IN-TRACK,d6d9822f (staging b1) | no
+H-R02,engineering,remig-row,Panel-B ctrl-select actuation,STAGED,RESOLVED | discriminator of record established (D-023)
+H-R03,engineering,remig-row,Panel-B ctrl-select double-actuation regression,STAGED,RESOLVED | was regressed on b6; discriminator = dedupe A/B
+H-R04,engineering,remig-row,Panel-B settings gear open,IN-TRACK,IN-PROGRESS | Worker 1 implementing per D-024
+H-R05,engineering,remig-row,Panel-B Esc close,IN-TRACK,IN-PROGRESS | Worker 1 implementing per D-024
+H-R06,engineering,remig-row,Panel-B Delete drawing,STAGED,RESOLVED | engine committed
+H-R07,engineering,remig-row,Panel peer-isolation (dual-select leak),STAGED,RESOLVED | MultichartGrid+multichart-manager
+H-R08,engineering,remig-row,Marquee select,IN-TRACK,DEFERRED | impl gated on P5 green; low priority
+H-R14,engineering,remig-row,Marquee variant,IN-TRACK,DEFERRED | rides combined build
+H-R12,engineering,remig-row,Chrome leg,STAGED,RESOLVED | dropped from Phase 2 scope
+H-S18,engineering,replay,Manager gate poison / infinite redraw loop,STAGED,RESOLVED | root = T2 invalidation x replay recursion
+H-S20,engineering,replay,Coarse 1D mirror regression,STAGED,RESOLVED | true step-5 regression fixed
+H-S25,engineering,replay,Panel replay-follow seam leap,IN-TRACK,NEEDS-REFIX | post-b1 landing order item 1
+H-S27,engineering,replay,seek-loop race,IN-TRACK,FLAKE-TRACKED | per I15 not trusted row until re-actuated faithfully
+H-S28,engineering,replay,Boot reanchor,STAGED,RESOLVED
+H-S30,engineering,replay,Step-spam refetch,STAGED,RESOLVED | false-green -> promote-only
+H-S40,engineering,harness,bar-open drift probe,STAGED,RESOLVED | promoted (-2 KF)
+H-S41,engineering,harness,bar-open drift probe,STAGED,RESOLVED | promoted
+H-S59b,engineering,freeze,TAL-01590 independent-symbol freeze,IN-TRACK,GREEN-SYNTHETIC | not promoted (WEAK/DEV-ONLY)
+H-S73,engineering,replay,Snap-back pin (TAL-01579),IN-TRACK,OPEN-TRACKED | NOT folded into snap-back
+H-S79,engineering,replay,Playhead save/restore,STAGED,RESOLVED
+H-S80,engineering,replay,TF-label desync after refresh,CLOSED-VERIFIED,RESOLVED-NEEDS-LIVE | PO confirmed label persists (a5)
+H-S82,engineering,replay,Pan-release snap-back,STAGED,RESOLVED | D-017 policy
+H-S83,engineering,replay,Finest-TF cadence RED,STAGED,RESOLVED | PO A/B pending
+TAL-01590,engineering,freeze,Panel-freeze / edge-park mixed-TF,CLOSED-VERIFIED,RESOLVED | PO accepted (staging authority)
+A6-1,engineering,order,Apply-on-release order landing,STAGED,RESOLVED-NEEDS-LIVE | D-020 approved
+A6-2,engineering,order,F5 order persistence,STAGED,RESOLVED-NEEDS-LIVE | NEEDS-LIVE F5
+A6-3,engineering,order,Order-half interaction,STAGED,RESOLVED-NEEDS-LIVE | A6-3-chart post-unfreeze
+A6-4,engineering,order,Host-canonical order store,IN-TRACK,DEFERRED | dispatch post-re-migration w/ Phase 7
+OrderEntry#4,engineering,order,keyboard-pan deferral,STAGED,RESOLVED | cross-track consolidated
+OrderEntry#5,engineering,order,keyboard-pan,STAGED,RESOLVED
+OT-MS,engineering,backlog,V9 Layers / legacy tree no multi-select highlight,IN-TRACK,OPEN-BACKLOG | post-P1 rides combined build; NOT critical path
+PLAN2-FOUND#3,engineering,objects-tree,Objects-tree duplication,BLOCKED-ON-DECISION,NEEDS-PO-CONFIRM | independent of lifecycle collapse
+ESC-021,engineering,escalation,Panel-B chrome-readiness race,IN-TRACK,IN-PROGRESS | ready-signal becomes harness wait primitive
+COMBINED-BUILD,engineering,gate,Unfreeze = one combined build,IN-TRACK,BLOCKED | blocked only on H-R04/H-R05 chrome fix
+DEPLOY,engineering,deploy,b88 confirmed broken - deploy frozen,IN-TRACK,FROZEN | unfreezes when interaction family genuinely green
+TAL-01669,ticket,T4/A6,Place order,IN-TRACK,
+TAL-01668,ticket,UI-polish(L5),Wntry box place order,IN-TRACK,
+TAL-01667,ticket,A7b(L5),Tool/Anchored Volume Profile.,IN-TRACK,
+TAL-01666,ticket,A7b(L5),Tool/Anchored Volume Profile,IN-TRACK,
+TAL-01665,ticket,A7b(L5),Tool/Anchored Volume Profile,IN-TRACK,
+TAL-01664,ticket,A7b(L5),Tool/Price and Time labels do not work,IN-TRACK,
+TAL-01663,ticket,T4/T8-diag,inactive order freeze chart,IN-TRACK,
+TAL-01662,ticket,A7b(L5),Tool/Fixed Range Volume Profile,IN-TRACK,
+TAL-01661,ticket,A7b(L5),Tools/Fixed Range Volume Profile,IN-TRACK,
+TAL-01660,ticket,PO-decision,add TP,BLOCKED-ON-DECISION,
+TAL-01659,ticket,A7,Tools,IN-TRACK,
+TAL-01658,ticket,T4-multientry,add entry to order,IN-TRACK,
+TAL-01657,ticket,UI-polish(L5),Tools,IN-TRACK,
+TAL-01656,ticket,UI-polish(L5),Tools,IN-TRACK,
+TAL-01655,ticket,A8(L5),all Tools,IN-TRACK,
+TAL-01654,ticket,A8(L5),tool,IN-TRACK,
+TAL-01653,ticket,A6-1,order postion,STAGED,
+TAL-01652,ticket,T1-locked(L5),Layouts,IN-TRACK,
+TAL-01651,ticket,A8(L5),Layouts,IN-TRACK,
+TAL-01650,ticket,D-015/016,Layouts,STAGED,
+TAL-01649,ticket,T6-menu,Layouts,IN-TRACK,
+TAL-01648,ticket,T3-replay-ui,Layouts,IN-TRACK,
+TAL-01647,ticket,D-009,Chart,STAGED,
+TAL-01646,ticket,T6-phase6,Layouts,IN-TRACK,
+TAL-01645,ticket,A7,Layouts,IN-TRACK,
+TAL-01644,ticket,T3-row14,Layouts,IN-TRACK,
+TAL-01643,ticket,T2/RC-2,Chart,IN-TRACK,
+TAL-01642,ticket,T8-diag,Chart,IN-TRACK,
+TAL-01641,ticket,A1-axis,chart,IN-TRACK,
+TAL-01640,ticket,A7,Chart,IN-TRACK,
+TAL-01639,ticket,A1-axis,Chart,IN-TRACK,
+TAL-01638,ticket,T4-reclassify,order types change,STAGED,
+TAL-01637,ticket,out-of-scope,Card after closed trade,OUT-OF-SCOPE,
+TAL-01636,ticket,T6-correctness,opening range indicator ends,IN-TRACK,
+TAL-01635,ticket,A7,opening range indicator,IN-TRACK,
+TAL-01634,ticket,T1-tool-math,short- long postion tool,IN-TRACK,
+TAL-01633,ticket,T8/perf,Chart,IN-TRACK,
+TAL-01632,ticket,A7,chart,IN-TRACK,
+TAL-01631,ticket,T8,Chart,STAGED,
+TAL-01630,ticket,T3-row11,Chart,IN-TRACK,
+TAL-01629,ticket,T8,Chart,STAGED,
+TAL-01628,ticket,needs-repro,Chart,IN-TRACK,
+TAL-01627,ticket,UI-polish(L5),chart,IN-TRACK,
+TAL-01626,ticket,T8-persist,Chart,STAGED,
+TAL-01625,ticket,A1-axis,Grid Line,IN-TRACK,
+TAL-01624,ticket,T2-zoom(L5),shourtcuts / zoom in with keybord,IN-TRACK,
+TAL-01623,ticket,UI-polish(L5),shortcuts/ shift + ->,IN-TRACK,
+TAL-01622,ticket,T2/T6,options next to indicator name,IN-TRACK,
+TAL-01621,ticket,T6,opening range indicator,IN-TRACK,
+TAL-01620,ticket,A7,Vwap with replay,IN-TRACK,
+TAL-01619,ticket,A1-axis,indicator price label,IN-TRACK,
+TAL-01618,ticket,A1-axis,gridline,IN-TRACK,
+TAL-01617,ticket,T4/A6,Order sl price label,IN-TRACK,
+TAL-01616,ticket,A6-2,order when refresh,STAGED,
+TAL-01615,ticket,A6-3,order moves with price label,IN-TRACK,
+TAL-01614,ticket,T4,PNL next to opend order,IN-TRACK,
+TAL-01613,ticket,A1-axis,Time label with replay,IN-TRACK,
+TAL-01612,ticket,D-009,Replay,STAGED,
+TAL-01611,ticket,D-009,chart,STAGED,
+TAL-01610,ticket,D-015,Layouts,STAGED,
+TAL-01609,ticket,D-015,Layouts,STAGED,
+TAL-01608,ticket,perf-backlog,chart,IN-TRACK,
+TAL-01607,ticket,UI-polish(L5),Compare Symbol,IN-TRACK,
+TAL-01606,ticket,T1/T2,chart,IN-TRACK,
+TAL-01605,ticket,T8/T3,chart,IN-TRACK,
+TAL-01604,ticket,A1-axis,chart,IN-TRACK,
+TAL-01603,ticket,T8-diag,chart,IN-TRACK,
+TAL-01602,ticket,A6-1,SL/TP lines when play Replay,STAGED,
+TAL-01601,ticket,A6-4,Order 2 layout,IN-TRACK,
+TAL-01600,ticket,D-015/016,play replay with 2 layouts,STAGED,
+TAL-01599,ticket,needs-repro,chart,IN-TRACK,
+TAL-01598,ticket,perf-backlog,chart,IN-TRACK,
+TAL-01597,ticket,T8-diag,chart,IN-TRACK,
+TAL-01596,ticket,closed-by-tester,symbol names,CLOSED-VERIFIED,
+TAL-01595,ticket,T8,Chart,IN-TRACK,
+TAL-01594,ticket,T1/T2,trend line,IN-TRACK,
+TAL-01593,ticket,A8(L5),rectangle,IN-TRACK,
+TAL-01592,ticket,T3-row14,Layouts,IN-TRACK,
+TAL-01591,ticket,T3-row16,Layouts,IN-TRACK,
+TAL-01590,ticket,D-015,Layouts,CLOSED-VERIFIED,
+TAL-01589,ticket,T1/T2,apply default then visibility,IN-TRACK,
+TAL-01588,ticket,closed-by-PO,install talaria,CLOSED-VERIFIED,
+TAL-01587,ticket,T3-row11,Layouts,IN-TRACK,
+TAL-01586,ticket,T3-row15,Layouts,IN-TRACK,
+TAL-01585,ticket,T5,Layers moves while change  time frame,STAGED,
+TAL-01584,ticket,T1,"ctrl, cross remain",IN-TRACK,
+TAL-01583,ticket,A1-axis,time label,IN-TRACK,
+TAL-01582,ticket,A3,Tick by tick,STAGED,
+TAL-01581,ticket,A3,Interval replay,STAGED,
+TAL-01580,ticket,UI-polish(L5),EU news no flag,IN-TRACK,
+TAL-01579,ticket,T8/H-S73,Layouts,IN-TRACK,
+TAL-01578,ticket,T8,Layouts,IN-TRACK,
+TAL-01577,ticket,T8,Layouts,IN-TRACK,
+TAL-01576,ticket,UI-polish(L5),Layouts,IN-TRACK,
+TAL-01575,ticket,T8,Layouts,IN-TRACK,
+TAL-01574,ticket,T3-row14,Layouts,IN-TRACK,
+TAL-01573,ticket,T8,Layouts,IN-TRACK,
+TAL-01572,ticket,A1-axis,Time frame with time label,IN-TRACK,
+TAL-01571,ticket,T3-row13,Layouts,IN-TRACK,
+TAL-01570,ticket,T1,cross on chart,IN-TRACK,
+TAL-01569,ticket,T1,Ctrl,IN-TRACK,
+TAL-01568,ticket,T1,Brushs tools,IN-TRACK,
+TAL-01567,ticket,RC-2-render,charts moves,IN-TRACK,
+TAL-01566,ticket,A1-axis,price label,IN-TRACK,
+TAL-01565,ticket,A1-axis,Grid / time label,IN-TRACK,
+TAL-01564,ticket,Lane2-hygiene,Reload button,IN-TRACK,
+TAL-01563,ticket,T8,Layouts,IN-TRACK,
+TAL-01562,ticket,T8,Layouts,IN-TRACK,
+TAL-01561,ticket,perf-backlog,Layouts,IN-TRACK,
+TAL-01560,ticket,T8,Layouts,IN-TRACK,

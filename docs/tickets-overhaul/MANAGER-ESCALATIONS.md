@@ -927,3 +927,61 @@ Lane 1 read-only pinpoint (`T3-panelB-settings-transport-pinpoint-report.md`) tr
 
 **ADDENDUM RESOLVED — D-026 addendum ruling (2026-07-17):** pinpoint accepted as satisfying the mechanism-first fence; 3-hunk implementation authorized with binding classification — **hunk B (honor guard on the deselected/dismiss path) is the causal cure and cannot be dropped; hunk C is legitimate dedupe (second instance of the duplicate-actuation family, alongside H-R03); hunk A's guard extension is defense-in-depth only.** Proof bar restated in full: 10/10 ON + switch-OFF RED **+ 10/10 with the `focusReactPanelSoft` amplifier in place** (the addendum's ask omitted the stress leg — it stands). Non-blocking follow-up: log why the iframe fires `deselectAll(fromCanvasBackground)` during a dbl-click-on-drawing as a registry row (possible hit-test defect), not as scope creep here. I13 switch-OFF diff + own-PR hunk-staging riders unchanged.
 
+---
+
+## ESC-024 — I9 ratchet vs. intermittent flakes: gate cannot reach exit 0 when tracked flakes pass green; authorize a first-class "quarantine-flake" bucket
+
+**Filed:** 2026-07-17 (Manager)  
+**Status:** RESOLVED — **D-027** (2026-07-17): quarantine bucket authorized as scoped; Criterion 5 re-worded (clean gate = 0 unexpected regr + non-quarantine known-failing FAIL as expected + quarantine tolerated). Four hardenings added: quarantine rows still run and print in every gate summary (ratchet-neutral, never invisible; 100%-fail drift re-escalates); entry requires completed flake-triage with run counts; **no bless-path discriminator/acceptance row may ever be quarantined**; >5 rows or overstay past the post-bless T8 review auto-escalates. Never fix-counted/ticket-closing ratified; H-S30 peer-B backfill registered as post-bless T8 candidate; bless stays gated on D-026, not this exit code.  
+**Class:** harness/gate contract change (I9 ratchet semantics) — affects the unfreeze gate definition (Criterion 5)
+
+### What Lane 4 hit (`T0-lane4-track-hs30-report.md`)
+Three replay rows — **H-S27, H-S30, H-S83** — are genuine **intermittent flakes** (e.g. H-S30: host guard healthy, peer-B 1h backfill fails ~60% in isolation; not caused by any shipped fix; not fix-counted). They were re-added to `known-failing.json` in both I8 trees with triage-specific reasons.
+
+Manager-gate result this cycle:
+- **Criterion 5 (no unexpected regressions): CLEARED.** The prior H-S30 block is gone; no unexpected reds.
+- **But full `[gate]` PASS did not land (exit 1).** Reason is purely mechanical: `gate.mjs`'s **I9 ratchet requires a tracked known-failing row to FAIL in-run** for exit 0. This cycle all three flakes happened to **pass green while tracked**, so the ratchet flags the baseline as stale and wants them **removed**.
+
+### The flake trap (why neither current option works)
+- **Leave them in known-failing:** when they pass green (like this cycle), ratchet → exit 1 ("remove these, they're fixed").
+- **Remove them (mark fixed):** next run they fail (~60% for H-S30) → **unexpected regression** → exit 1, and dishonestly claims a fix that doesn't exist (I15 violation).
+- There is today **no bucket for "allowed to pass OR fail"** — `known-failing` means *expected-to-FAIL*, which an intermittent row is not.
+
+### Why it needs the Director
+The `known-failing`/ratchet contract is an I9 invariant and it defines **Criterion 5** of the unfreeze gate. Changing what a clean gate *means* (accepting quarantined flakes) is a gate-semantics decision, not a Manager call. It also must not become a laundry chute for real bugs.
+
+### Decision requested — authorize a first-class "quarantine-flake" classification
+- Add a named **`quarantine`/`flaky` allowlist** to the harness (distinct from `known-failing`) whose rows are **tolerated on either outcome** (pass or fail) and do **NOT** trip the ratchet in either direction.
+- Rows: **H-S27, H-S30, H-S83** move here with their triage reasons + measured fail-rate.
+- **Guardrails (so it's honest, not a dumping ground):** (1) each quarantine row carries a mandatory reason + a **post-bless T8 owner** to actually diagnose/fix or prove it pure-harness-noise; (2) quarantine rows are **never fix-counted** and **never close a ticket**; (3) entry requires a completed flake-triage (like H-S30's); (4) a periodic review empties it — quarantine is a holding pen, not a graveyard.
+- **Gate definition update:** a clean gate = **0 unexpected regressions + all non-quarantine known-failing rows FAIL as expected + quarantine rows ignored**. `exit 0` becomes reachable deterministically.
+
+### Manager recommendation
+Authorize the quarantine bucket as scoped. It's the honest resolution (I15-clean: we're not faking a FAIL to satisfy the ratchet, nor faking a fix). H-S30's peer-B ~60% backfill is registered as a **post-bless T8 candidate** (may be real unnecessary backfill, not pure noise) — not closed, not counted. Bless remains gated on the **real** blocker (D-026 panel-B settings transport reaching honest 10/10), not on this mechanical exit code.
+
+---
+
+## ESC-025 — Anchored/Fixed-range Volume Profile axis-crush (R2) needs the `chart.js` `PRICE_AXIS_MIN_R` floor ported to production; authorize pull-forward or confirm post-unfreeze?
+
+**Filed:** 2026-07-17 (Manager)
+**Status:** RESOLVED — **D-029** (2026-07-17): Manager recommendation adopted — **no `chart.js` edit before the bless**; option 1 authorized NOW as **item #1 of the post-bless `chart.js` batch** (own gated build/PR, does not wait for A6-4/Option A/Phase 7 readiness). Proof bar: RED-first **in the multichart topology** (single-panel can't carry it), switch-OFF discriminator from birth, full gate + **D-026 proof-bar re-run** on the clamp-inclusive build. Plus: **dev-only-clamp parity sweep ordered** (read-only inventory of `chart-host.html`-and-kin fixes production never got — D-010-cousin risk pattern); tester workaround (remove tool) noted on the A7b row. Lane 5's refusal to touch the frozen core commended.
+**Class:** freeze-risk decision (`chart.js` core edit during the interaction-family freeze)
+
+### Context
+Two separate anchored-VP defects surfaced on PO live test:
+1. **P0 whole-chart freeze — FIXED (Lane 5, freeze-safe).** Root was a **regression we introduced**: RC-3 anchoring (`ce3b28d2`) caused mutual recursion `resolveDrawingPoints` ↔ `resolveAnchoredVolumeProfileRange` → stack overflow on placement. Cured causally in the drawing modules (anchor reads `pointsFromTimestamps`), + render-storm guard + bin cache. Placement now ~35ms, responsive. H-S42 anchor-survives-TF PASS. This part needs no ruling.
+2. **R2 axis-crush — pre-existing, separate, NOT fixed.** In multichart, placing anchored/fixed-range VP makes the price+time **scales vanish** (chart hard to control until the tool is removed). Root is `chart.js _syncAdaptivePriceAxisMargin` early-returning when plot height `ch<=0` **without a floor on `margin.r`** → axis width collapses. Tester tickets **TAL-01665/01666/01667**. Single-panel harness shows stable `margin.r=55`; the crush is multichart-specific.
+
+### The proven fix already exists but never shipped to production
+`chart v 1.4/chart/multichart/chart-host.html:964-986` carries a **dev-only** post-`drawAxes` clamp `PRICE_AXIS_MIN_R=60`. Production `chart-embed.html` has **no such clamp** (grep-clean). The fix is essentially: port that clamp into the `chart.js` axis-margin contract (enforce min `margin.r`/`margin.b`, guard `ch<=0` after VP redraw), behind its own kill-switch.
+
+### Why it needs the Director
+`chart.js` is the **frozen core** on the bless path. Any edit there risks the interaction family we're about to bless. Lane 5 correctly refused to touch it and handed back.
+
+### Decision requested
+1. **Pull the `PRICE_AXIS_MIN_R` floor forward now** (small, isolated, already dev-proven), behind switch `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX`, landing on its own build **after** the combined-build bless (so it doesn't perturb the D-026 proof) — OR
+2. **Hold to the post-unfreeze `chart.js` batch** (alongside A6-4 / Option A / Phase 7), reopening the frozen core once, deliberately.
+
+### Manager recommendation
+**Do NOT touch `chart.js` before the bless** — the P0 freeze (the urgent part) is already cured freeze-safe, so R2 is no longer emergency-class (workaround: remove the tool). Recommend **option 1 but sequenced immediately post-bless**: land the clamp as the first item of the post-unfreeze `chart.js` batch on its own gated build, so the bless build stays exactly the proven re-migration+transport set. If the Director judges the multichart axis-crush severe enough to warrant a pre-bless core edit, authorize option 1-now with a mandatory D-026 proof-bar re-run on the clamp-inclusive build.
+

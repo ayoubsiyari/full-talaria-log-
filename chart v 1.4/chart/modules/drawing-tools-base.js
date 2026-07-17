@@ -695,6 +695,17 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'arrow'
 ]);
 
+/** A7b R4b: VP types default axis labels ON when fix active (unset = ON). */
+const VP_AXIS_LABEL_DEFAULT_TYPES = new Set([
+    'volume-profile',
+    'fixed-range-volume-profile',
+    'anchored-volume-profile',
+]);
+
+function _isVpAxisLabelDefaultOnFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_VP_AXIS_LABEL_DEFAULT_ON_FIX !== true;
+}
+
 /** Freehand strokes: axis labels only at path endpoints (not every point). */
 const FREEHAND_AXIS_LABEL_TYPES = new Set(['brush', 'highlighter']);
 
@@ -2167,6 +2178,7 @@ class BaseDrawing {
     isAxisLabelDefaultEnabled() {
         if (AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES.has(this.type)) return false;
         if (FREEHAND_AXIS_LABEL_TYPES.has(this.type)) return false;
+        if (_isVpAxisLabelDefaultOnFixEnabled() && VP_AXIS_LABEL_DEFAULT_TYPES.has(this.type)) return true;
         return AXIS_LABEL_DEFAULT_LINE_TYPES.has(this.type);
     }
 
@@ -3413,7 +3425,18 @@ class CoordinateUtils {
         const tsOpts = tsOptsOverride !== undefined
             ? tsOptsOverride
             : CoordinateUtils.buildTimestampResolveOptions(drawing, chart);
-        const anchorPts = CoordinateUtils.resolveDrawingPoints(drawing, chart, tsOpts);
+        // Resolve anchor only — must NOT call resolveDrawingPoints (re-enters this helper for anchored VP).
+        let anchorPts;
+        if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
+            anchorPts = CoordinateUtils.pointsFromTimestamps(
+                drawing.timestampPoints,
+                chart.data,
+                chart.currentTimeframe,
+                tsOpts
+            );
+        } else {
+            anchorPts = drawing.points || [];
+        }
         const anchor = anchorPts[0] || (drawing.points && drawing.points[0]);
         if (!anchor) return anchorPts;
 

@@ -2,7 +2,81 @@
 
 ---
 
-## D-026 — ESC-023: gated settings-open transport fix AUTHORIZED (scope extends D-024); H-R04/H-R05 record corrected; amplified stress leg added to the proof bar; bless stays blocked
+## D-029 — ESC-025: R2 axis-crush fix HELD off the bless build; authorized as item #1 of the post-bless `chart.js` batch (option 1, sequenced immediately post-bless); dev-only-clamp parity sweep ordered
+
+**Date:** 2026-07-17
+**Escalation:** ESC-025
+**Track:** T5/A7b (volume-profile cluster) × frozen `chart.js` core
+**RC:** RC-3-adjacent (axis-margin contract), RC-7 (dev/prod parity)
+
+### Rulings
+
+**1. Manager recommendation ADOPTED: no `chart.js` edit before the bless.** The calculus is straightforward: the P0 half (whole-chart freeze) is already cured freeze-safe, so the residual R2 severity is "scales vanish until the tool is removed" — painful but recoverable, while the downside of perturbing the bless build is re-proving the entire D-026 proof bar and delaying every one of the 42 STAGED closures. A recoverable defect does not outrank the unfreeze. Lane 5's refusal to touch the frozen core and hand back is exactly the fence working — noted with approval.
+
+**2. Option 1, sequenced immediately post-bless — AUTHORIZED NOW so it dispatches without another round-trip.** The `PRICE_AXIS_MIN_R` floor ports into the `chart.js` axis-margin contract (min `margin.r`/`margin.b`, `ch<=0` guard after VP redraw) behind `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX`, as the **first item of the post-unfreeze `chart.js` batch**, on its own gated build, own PR. It does NOT wait for the batch's later items (A6-4 / Option A / Phase 7) to be ready — "reopen the core once, deliberately" means the batch is sequenced, not that its first item idles.
+
+**3. Proof bar for the clamp build:**
+- **RED-first in the multichart topology.** The single-panel harness shows a stable `margin.r=55` — it cannot carry the assertion. The scenario must reproduce the crush in the multichart/embed topology (place anchored VP → assert axis margins hold ≥ floor, scales remain rendered), RED on today's code, GREEN with the clamp, switch-OFF RED as discriminator of record from birth.
+- **Full regression gate + a D-026 proof-bar re-run on the clamp-inclusive build** — the clamp touches the axis path every interaction row renders through; "small and isolated" is the claim, the re-run is the evidence.
+- Closes TAL-01665/01666/01667 only via tester retest on the shipped build (per D-028 scoreboard rules: STAGED until then).
+
+**4. Dev-only-clamp parity sweep ORDERED (small, read-only, any free worker).** The finding that `chart-host.html` (dev) has carried this clamp while production `chart-embed.html` never got it is a standing-risk pattern, not a one-off: dev surfaces accumulating fixes production lacks means dev testing silently validates behavior production doesn't have — a cousin of the D-010 `dev:live` lesson. Sweep the dev-only surfaces (`chart-host.html` and kin) for other production-absent fixes/clamps; report as a registry list with a port/discard disposition per item. No code changes under this sweep — inventory only.
+
+**5. Interim posture for testers:** until the clamp ships, the known workaround (remove the VP tool) stands; the Manager notes it on the A7b family row so testers aren't re-filing the same crush daily. — PO directive: ONE unified progress number (tickets are plan items, not a second lane); PLAN2-SCOREBOARD becomes the single source of truth; Worker 5 / Lane 5 authorized and ordered
+
+**Date:** 2026-07-17
+**Origin:** PO directive (not an escalation)
+**Track:** program-wide (reporting contract + team structure)
+**RC:** RC-7 (process)
+
+### The PO's correction, restated as the plan's goal
+
+Plan 2's goal is **not** "close the engineering task list we set at the start." The goal is: **solve the root causes, polish the engineering, and close every bug arriving in the tickets.** Tickets are therefore not a side-ledger to be reported next to the plan — they ARE plan scope from the moment they arrive. The daily intake already enforces the integration half of this (every ticket gets exactly one disposition into a track — no orphan bucket exists). What was wrong is the **reporting**: two figures ("engineering ~90%" / "tickets ~30/110") present one program as two, and the engineering figure can hit 100% while the actual goal is unmet.
+
+### Rulings
+
+**1. One denominator, one number — the two-figure format is retired effective immediately.** No progress report, status answer, or daily update may present "engineering %" and "ticket %" as separate lanes. There is one plan and it has one completion number.
+
+**2. `PLAN2-SCOREBOARD.csv` is created as the single source of truth.** One row per unit of work, from BOTH origins, same status vocabulary:
+- Unit = an RC milestone / contract row / re-migration row / bless criterion, **or** a ticket (or ticket-family where the intake grouped them, e.g. A7's six tickets = one family row plus member refs).
+- Status vocabulary (exactly one per row): **CLOSED-VERIFIED** (tester/PO confirmed on a shipped or blessed build) · **STAGED** (fix landed + proven, awaiting the combined build / deploy) · **IN-TRACK** (owned by a named track, work not landed) · **BLOCKED-ON-DECISION** (needs PO/Director input, named) · **OUT-OF-SCOPE** (explicitly ruled out, e.g. journal shell — the only rows excluded from the denominator).
+- **Progress = CLOSED-VERIFIED / (all rows − OUT-OF-SCOPE).** One number. STAGED may be shown as a *forecast* delta ("X% now, +Y% on ship") because it honestly predicts the post-ship step-change — but the headline number counts only verified closure, per I15.
+- **Invariant (standing):** after every daily intake, **zero rows are unassigned**. A ticket that fits no existing track forces either a track-scope amendment or a new track *in the same intake* — the intake is not done until the ticket has a home. (This codifies what the intake ledger already practices.)
+- Lane 4 owns the scoreboard build (it already has the registry/status tooling; `TICKET-STATUS-SIMPLE` and `RESOLUTION-TRACKER` fold into it as views, not competitors). Manager updates it with every report; the Director's `DAILY-INTAKE.md` triage feeds it row-for-row.
+
+**3. Worker 5 / Lane 5 — AUTHORIZED AND ORDERED (not optional).** The PO opens a fifth worker, treated identically to Workers 1–4 (same invariants, kill-switch discipline, honest-proof bar, land-prompt format). **Lane 5's charter: intake absorption** — the ticket families that today queue behind busy lanes:
+- **A7b** volume-profile defect cluster (diagnostic + gated fixes) — first assignment, it is the most severe unowned-in-practice family.
+- **A8** Shift-modifier drag family; locked-tool pass-through (TAL-01652); keyboard-zoom anchor (TAL-01624).
+- The **UI-polish batch** (TAL-01576/01580/01607/01623/01627/01656/01657/01668) as fill work.
+- Standing rule: **freeze-safe surfaces only until the combined build ships** (no re-migration files, no `chart.js` core) — Lane 5 must never create a new bless blocker. After unfreeze, Lane 5 becomes the standing intake-absorption lane so daily tickets stop stealing capacity from A6-4/Phase-7 structural work.
+- Manager onboards Lane 5 with the same worker-prompt pattern and adds it to the morning-relay table.
+
+**4. Sequencing guardrail unchanged:** nothing in this ruling touches the bless path. Lanes 1–4 morning-relay actions (D-026 commit, b4 revert, order interims, quarantine bucket → assembly → bless) proceed exactly as reported. The scoreboard and Lane 5 onboarding run in parallel and must not delay the bless by a minute.
+
+**5. First deliverable:** the Manager's next progress update leads with the single number computed from the scoreboard (with the STAGED forecast delta), and every subsequent "how far are we?" answer uses it. The two-figure table format of `PROGRESS-REPORT-2026-07-17.md` §1 is the last of its kind. — ESC-024: quarantine-flake bucket AUTHORIZED (I9 ratchet semantics amended); guardrails hardened so quarantine stays a holding pen
+
+**Date:** 2026-07-17
+**Escalation:** ESC-024
+**Track:** T0 / harness gate contract (I9) — unfreeze Criterion 5
+**RC:** RC-7 (process/measurement)
+
+### Framing
+
+The Manager's diagnosis is correct and the trap is real: a binary expected-to-FAIL bucket cannot represent an intermittent row, and both available moves (leave in / mark fixed) produce a dishonest exit code — one fakes staleness, the other fakes a fix. A quarantine class is the standard, honest resolution. The risk is not the mechanism; it is drift — quarantine buckets rot into graveyards. The guardrails below make that structurally hard.
+
+### Rulings
+
+**1. Quarantine bucket AUTHORIZED as scoped.** A named `quarantine` allowlist, distinct from `known-failing`: rows tolerated on either outcome, ratchet-neutral in both directions. H-S27, H-S30, H-S83 move in with their triage reasons and measured fail-rates. **Gate definition ratified:** clean gate = 0 unexpected regressions + all non-quarantine known-failing rows FAIL as expected + quarantine rows tolerated. Criterion 5 of the unfreeze gate reads accordingly.
+
+**2. Manager's four guardrails ratified as binding, plus four hardenings:**
+- **(a) Quarantine rows still RUN every gate and their pass/fail is logged and printed in the gate summary** — quarantine means ratchet-neutral, never invisible. The accumulating outcome log is the dataset the post-bless owner diagnoses from (fail-rate drift over builds is itself a signal: a quarantined row that goes 100%-fail has become a real regression and re-escalates).
+- **(b) Entry bar:** a row enters quarantine only with a completed flake-triage (H-S30-style: isolation runs, measured rate, exonerated recent fixes) — a flaky row without triage stays a gate failure. Entries are recorded with the run count behind the measured rate.
+- **(c) Exclusion rule:** no row may be quarantined while it is a **discriminator of record or the acceptance row for a fix on the bless path** (none of the three are — codified so it stays true). A bless-path row that flakes is a blocker, not a quarantine candidate — exactly the ESC-023 posture.
+- **(d) Growth alarm:** the bucket holding **more than 5 rows**, or any row resident past its review point, auto-escalates to the Director. First review point: the post-bless T8 sweep — each of the three rows leaves by then as fixed, re-classified real-bug, or proven-harness-noise (with evidence).
+
+**3. Never fix-counted, never ticket-closing — ratified as written.** H-S30's peer-B ~60% backfill is registered as a post-bless T8 candidate (the Manager is right that unnecessary backfill may be a real defect, not noise); H-S27 and H-S83 carry their existing triage dispositions.
+
+**4. Bless posture confirmed:** the bless remains gated on the real blocker (D-026 transport fix reaching its full proof bar), not on this exit code. This ruling makes exit 0 deterministically reachable so that when the transport fix lands, the gate's verdict is meaningful. — ESC-023: gated settings-open transport fix AUTHORIZED (scope extends D-024); H-R04/H-R05 record corrected; amplified stress leg added to the proof bar; bless stays blocked
 
 **Date:** 2026-07-16
 **Escalation:** ESC-023

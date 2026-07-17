@@ -3,7 +3,8 @@
  *
  * The raw harness intentionally exits non-zero while known real engine defects
  * remain. This wrapper ratchets that state: only the tracked failures may stay
- * red, newly green tracked failures must be removed from known-failing.json, and
+ * red, newly green tracked failures must be removed from known-failing.json,
+ * quarantine rows are ratchet-neutral (either outcome tolerated, D-027), and
  * scenario ID drift must update the baseline deliberately.
  */
 
@@ -15,6 +16,8 @@ import { scenarioList } from './scenarios.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = path.join(__dirname, 'known-failing.json');
+const QUARANTINE_LOG_PATH = path.join(__dirname, 'quarantine-outcomes.jsonl');
+const MAX_QUARANTINE_ROWS = 5;
 
 function sameSet(a, b) {
   return a.length === b.length && a.every((x) => b.includes(x));
@@ -31,7 +34,29 @@ async function loadBaseline() {
   const knownFailing = parsed.knownFailing && typeof parsed.knownFailing === 'object'
     ? parsed.knownFailing
     : {};
-  return { expectedTests, knownFailing };
+  const quarantine = parsed.quarantine && typeof parsed.quarantine === 'object'
+    ? parsed.quarantine
+    : {};
+  return { expectedTests, knownFailing, quarantine };
+}
+
+async function appendQuarantineLog(buildId, outcomes) {
+  const line = `${JSON.stringify({
+    at: new Date().toISOString(),
+    buildId: buildId || 'unknown',
+    outcomes,
+  })}\n`;
+  await fs.appendFile(QUARANTINE_LOG_PATH, line, 'utf8');
+}
+
+async function readServeBuildId() {
+  try {
+    const serve = await fs.readFile(path.join(__dirname, 'serve.mjs'), 'utf8');
+    const m = serve.match(/const buildId = '([^']+)'/);
+    return m ? m[1] : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function extraHarnessArgs() {
@@ -75,12 +100,18 @@ function parseResults(output) {
   return results;
 }
 
-function printGateSummary({ expectedTests, actualTests, knownFailIds, results, regressions, knownStillFailing, newlyFixed, missingResults, unexpectedResults }) {
+function printGateSummary({
+  expectedTests, actualTests, knownFailIds, quarantineIds, results,
+  regressions, knownStillFailing, newlyFixed, quarantineOutcomes,
+  missingResults, unexpectedResults,
+}) {
   console.log('\n================= GATE SUMMARY =================');
   console.log(`Expected tests: ${expectedTests.join(', ')}`);
   console.log(`Harness tests:  ${actualTests.join(', ')}`);
   console.log(`Known failing baseline: ${formatList(knownFailIds)}`);
+  console.log(`Quarantine baseline (D-027): ${formatList(quarantineIds)}`);
   console.log(`Known-failing still red: ${formatList(knownStillFailing)}`);
+  console.log(`Quarantine outcomes (ratchet-neutral): ${quarantineOutcomes.map((o) => `${o.id}=${o.result}`).join(', ') || '(none)'}`);
   console.log(`Regressions (not in baseline but failed): ${formatList(regressions)}`);
   console.log(`Newly fixed (remove from known-failing): ${formatList(newlyFixed)}`);
   if (missingResults.length || unexpectedResults.length) {
@@ -88,20 +119,41 @@ function printGateSummary({ expectedTests, actualTests, knownFailIds, results, r
     console.log(`Unexpected RESULT lines: ${formatList(unexpectedResults)}`);
   }
   for (const id of expectedTests) {
-    console.log(`GATE ${id} ${results.get(id) || 'MISSING'}${knownFailIds.includes(id) ? ' (known-failing)' : ''}`);
+    let tag = '';
+    if (knownFailIds.includes(id)) tag = ' (known-failing)';
+    else if (quarantineIds.includes(id)) tag = ' (quarantine)';
+    console.log(`GATE ${id} ${results.get(id) || 'MISSING'}${tag}`);
   }
 }
 
 async function main() {
-  const { expectedTests, knownFailing } = await loadBaseline();
+  const { expectedTests, knownFailing, quarantine } = await loadBaseline();
   const knownFailIds = Object.keys(knownFailing).sort();
+  const quarantineIds = Object.keys(quarantine).sort();
   const actualTests = scenarioList().map((s) => s.id);
   const expectedSorted = [...expectedTests].sort();
   const actualSorted = [...actualTests].sort();
 
+  const overlap = knownFailIds.filter((id) => quarantineIds.includes(id));
+  if (overlap.length) {
+    console.error(`[gate] row(s) in both knownFailing and quarantine: ${overlap.join(', ')}`);
+    process.exit(1);
+  }
+
+  if (quarantineIds.length > MAX_QUARANTINE_ROWS) {
+    console.error(`[gate] FAIL: quarantine bucket has ${quarantineIds.length} rows (max ${MAX_QUARANTINE_ROWS}) — Director escalation required (D-027)`);
+    process.exit(1);
+  }
+
   const baselineKnownOutsideExpected = knownFailIds.filter((id) => !expectedTests.includes(id));
   if (baselineKnownOutsideExpected.length) {
     console.error(`[gate] known-failing contains IDs outside expectedTests: ${baselineKnownOutsideExpected.join(', ')}`);
+    process.exit(1);
+  }
+
+  const quarantineOutsideExpected = quarantineIds.filter((id) => !expectedTests.includes(id));
+  if (quarantineOutsideExpected.length) {
+    console.error(`[gate] quarantine contains IDs outside expectedTests: ${quarantineOutsideExpected.join(', ')}`);
     process.exit(1);
   }
 
@@ -117,18 +169,33 @@ async function main() {
   const resultIds = [...results.keys()].sort();
   const missingResults = expectedSorted.filter((id) => !results.has(id));
   const unexpectedResults = resultIds.filter((id) => !expectedTests.includes(id));
-  const regressions = expectedTests.filter((id) => !knownFailIds.includes(id) && results.get(id) === 'FAIL');
+  const regressions = expectedTests.filter((id) => !knownFailIds.includes(id)
+    && !quarantineIds.includes(id)
+    && results.get(id) === 'FAIL');
   const knownStillFailing = expectedTests.filter((id) => knownFailIds.includes(id) && results.get(id) === 'FAIL');
   const newlyFixed = expectedTests.filter((id) => knownFailIds.includes(id) && results.get(id) === 'PASS');
+  const quarantineOutcomes = quarantineIds.map((id) => ({
+    id,
+    result: results.get(id) || 'MISSING',
+  }));
+
+  const quarantineLog = {};
+  for (const o of quarantineOutcomes) quarantineLog[o.id] = o.result;
+  const buildId = process.env.BUILD_ID || await readServeBuildId();
+  await appendQuarantineLog(buildId, quarantineLog).catch((err) => {
+    console.error('[gate] warn: could not append quarantine-outcomes.jsonl:', err.message);
+  });
 
   printGateSummary({
     expectedTests,
     actualTests,
     knownFailIds,
+    quarantineIds,
     results,
     regressions,
     knownStillFailing,
     newlyFixed,
+    quarantineOutcomes,
     missingResults,
     unexpectedResults,
   });
@@ -145,12 +212,13 @@ async function main() {
     console.error(`[gate] FAIL: baseline stale; remove fixed test(s) from known-failing.json: ${newlyFixed.join(', ')}`);
     process.exit(1);
   }
-  if (run.code !== 0 && knownStillFailing.length !== knownFailIds.length) {
-    console.error(`[gate] FAIL: raw harness exited ${run.code}, but failures did not match baseline.`);
+  const knownNotFailing = knownFailIds.filter((id) => results.get(id) !== 'FAIL');
+  if (knownNotFailing.length) {
+    console.error(`[gate] FAIL: known-failing expected FAIL but passed: ${knownNotFailing.join(', ')}`);
     process.exit(1);
   }
 
-  console.log(`[gate] PASS: no new regressions; ${knownStillFailing.length} known-failing tracked.`);
+  console.log(`[gate] PASS: 0 unexpected regressions; ${knownStillFailing.length} known-failing tracked; ${quarantineIds.length} quarantine tolerated (log: quarantine-outcomes.jsonl).`);
 }
 
 main().catch((err) => {

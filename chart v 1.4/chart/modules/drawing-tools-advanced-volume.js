@@ -8,6 +8,102 @@ function _isRc3VolumeRenderResolveEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_RC3_VOLUME_RENDER_RESOLVE !== false;
 }
 
+/** A7b P0: memoize anchored VP bin aggregation across proxy re-renders (default ON). */
+function _isAnchoredVpBinCacheFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ANCHORED_VP_BIN_CACHE_FIX !== true;
+}
+
+function _anchoredVpBinCacheMatches(cache, key) {
+    if (!cache || !key) return false;
+    return cache.startIndex === key.startIndex
+        && cache.endIndex === key.endIndex
+        && cache.dataVersion === key.dataVersion
+        && cache.numBins === key.numBins
+        && cache.priceLow === key.priceLow
+        && cache.priceHigh === key.priceHigh
+        && cache.rowsLayout === key.rowsLayout
+        && cache.rowSize === key.rowSize
+        && cache.showDevelopingPOC === key.showDevelopingPOC
+        && cache.showDevelopingVA === key.showDevelopingVA;
+}
+
+function _buildAnchoredVpBinCacheKey(startIndex, endIndex, dataVersion, numBins, priceLow, priceHigh, rowsLayout, rowSize, showDevelopingPOC, showDevelopingVA) {
+    return {
+        startIndex,
+        endIndex,
+        dataVersion,
+        numBins,
+        priceLow,
+        priceHigh,
+        rowsLayout,
+        rowSize,
+        showDevelopingPOC,
+        showDevelopingVA,
+    };
+}
+
+/** A7b R3: allow chart pan on VP zone background (unset = fix ON). */
+function _isVpBodyPanBlockFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_VP_BODY_PAN_BLOCK_FIX !== true;
+}
+
+/** A7b R4a: axis highlights from computed profile span (unset = fix ON). */
+function _isVpAxisHighlightGeometryFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_VP_AXIS_HIGHLIGHT_GEOMETRY_FIX !== true;
+}
+
+function _buildVolumeProfileHighlightPoints(tool) {
+    const chart = tool.chart;
+    const yScale = chart && (chart.yScale || chart.scales?.yScale);
+    if (!chart || !yScale || !Array.isArray(tool.points) || tool.points.length < 1) {
+        return null;
+    }
+
+    let profileTopY = tool._profileTopY;
+    let profileBottomY = tool._profileBottomY;
+    if (!Number.isFinite(profileTopY) || !Number.isFinite(profileBottomY)) {
+        const yDomain = typeof yScale.domain === 'function' ? yScale.domain() : null;
+        if (!Array.isArray(yDomain) || yDomain.length < 2) return null;
+        profileTopY = Math.min(yScale(yDomain[0]), yScale(yDomain[1]));
+        profileBottomY = Math.max(yScale(yDomain[0]), yScale(yDomain[1]));
+    }
+    const topPrice = yScale.invert(Math.min(profileTopY, profileBottomY));
+    const bottomPrice = yScale.invert(Math.max(profileTopY, profileBottomY));
+    if (!Number.isFinite(topPrice) || !Number.isFinite(bottomPrice) || topPrice === bottomPrice) {
+        return null;
+    }
+
+    const dataLen = Array.isArray(chart.data) ? chart.data.length : 0;
+    let minIndex;
+    let maxIndex;
+    if (tool.type === 'anchored-volume-profile') {
+        const anchorX = Number(tool.points[0]?.x);
+        minIndex = Number.isFinite(anchorX) ? anchorX : 0;
+        maxIndex = dataLen > 0 ? dataLen - 1 : minIndex;
+    } else if (tool.points.length >= 2) {
+        minIndex = Math.min(Number(tool.points[0].x), Number(tool.points[1].x));
+        maxIndex = Math.max(Number(tool.points[0].x), Number(tool.points[1].x));
+    } else {
+        return null;
+    }
+
+    return [
+        { x: minIndex, y: Math.max(topPrice, bottomPrice) },
+        { x: maxIndex, y: Math.min(topPrice, bottomPrice) },
+    ];
+}
+
+function _volumeProfileShowAxisHighlights(tool, opts = {}) {
+    if (!_isVpAxisHighlightGeometryFixEnabled()) {
+        return BaseDrawing.prototype.showAxisHighlights.call(tool, opts);
+    }
+    const highlightPoints = _buildVolumeProfileHighlightPoints(tool);
+    if (!highlightPoints) {
+        return BaseDrawing.prototype.showAxisHighlights.call(tool, opts);
+    }
+    return BaseDrawing.prototype.showAxisHighlights.call(tool, { ...opts, pointsOverride: highlightPoints });
+}
+
 /**
  * Resolve render-time bar indices for volume tools. When the kill-switch is ON and
  * timestampPoints exist, uses CoordinateUtils.resolveDrawingPoints (read-only).
@@ -1454,16 +1550,35 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        // Capture pointer over the zone so chart pan does not start through the profile body.
+        // Capture pointer over the bar column (not the full anchor span) so chart pan works on zone background.
         // Level lines, boundaries, and labels sit above this layer for their own hit targets.
+        let hitboxLeft = zoneLeft;
+        let hitboxWidth = zoneWidth;
+        let hitboxPointerEvents = isAnchoredProxy ? 'none' : 'all';
+        if (_isVpBodyPanBlockFixEnabled()) {
+            const barColumnWidth = Math.max(12, (isAnchoredProxy && hasFixedProfileSide)
+                ? zoneWidth
+                : effectiveProfileWidth * profileWidthRatioEarly);
+            if (isAnchoredProxy && hasFixedProfileSide) {
+                hitboxLeft = zoneLeft;
+                hitboxWidth = zoneWidth;
+            } else {
+                const placement = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
+                hitboxLeft = placement === 'right'
+                    ? (effectiveProfileRight - barColumnWidth)
+                    : effectiveProfileLeft;
+                hitboxWidth = barColumnWidth;
+            }
+            hitboxPointerEvents = this.selected ? 'all' : 'none';
+        }
         this.group.append('rect')
             .attr('class', 'volume-profile-hitbox')
-            .attr('x', zoneLeft)
+            .attr('x', hitboxLeft)
             .attr('y', top)
-            .attr('width', Math.max(1, zoneWidth))
+            .attr('width', Math.max(1, hitboxWidth))
             .attr('height', Math.max(1, height))
             .attr('fill', 'transparent')
-            .style('pointer-events', isAnchoredProxy ? 'none' : 'all')
+            .style('pointer-events', hitboxPointerEvents)
             .style('cursor', 'default');
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
@@ -1602,16 +1717,53 @@ class VolumeProfileTool extends BaseDrawing {
             ? Math.max(1, Math.min(100, valueAreaPercentRaw))
             : 70;
         const barHeight = height / numBins;
-        const buyVolumeBins = new Array(numBins).fill(0);
-        const sellVolumeBins = new Array(numBins).fill(0);
-        const totalVolumeBins = new Array(numBins).fill(0);
-
         const showDevelopingPOC = this.style.showDevelopingPOC === true;
         const showDevelopingVA = this.style.showDevelopingVA === true;
         const shouldRenderDevelopingLevels = showDevelopingPOC || showDevelopingVA;
         const developingPocPoints = [];
         const developingVahPoints = [];
         const developingValPoints = [];
+
+        const binCacheHost = this._isAnchoredProxy === true ? this._anchoredVpBinCacheHost : null;
+        const dataVersion = scales.chart
+            ? (scales.chart.dataVersion ?? chartData.length)
+            : chartData.length;
+        const binCacheKey = _buildAnchoredVpBinCacheKey(
+            startIndex,
+            endIndex,
+            dataVersion,
+            numBins,
+            priceLow,
+            priceHigh,
+            rowsLayout,
+            rowSize,
+            showDevelopingPOC,
+            showDevelopingVA
+        );
+
+        let buyVolumeBins;
+        let sellVolumeBins;
+        let totalVolumeBins;
+        let usedCachedBins = false;
+
+        if (_isAnchoredVpBinCacheFixEnabled()
+            && binCacheHost
+            && _anchoredVpBinCacheMatches(binCacheHost._vpBinCache, binCacheKey)) {
+            const cached = binCacheHost._vpBinCache;
+            buyVolumeBins = cached.buyVolumeBins.slice();
+            sellVolumeBins = cached.sellVolumeBins.slice();
+            totalVolumeBins = cached.totalVolumeBins.slice();
+            if (shouldRenderDevelopingLevels && Array.isArray(cached.developingPocPoints)) {
+                developingPocPoints.push(...cached.developingPocPoints.map((p) => ({ ...p })));
+                developingVahPoints.push(...(cached.developingVahPoints || []).map((p) => ({ ...p })));
+                developingValPoints.push(...(cached.developingValPoints || []).map((p) => ({ ...p })));
+            }
+            usedCachedBins = true;
+        } else {
+            buyVolumeBins = new Array(numBins).fill(0);
+            sellVolumeBins = new Array(numBins).fill(0);
+            totalVolumeBins = new Array(numBins).fill(0);
+        }
 
         const resolvePocIndex = (volumeBins) => {
             let bestIdx = 0;
@@ -1661,6 +1813,7 @@ class VolumeProfileTool extends BaseDrawing {
         const binIndexToCenterY = (binIndex) => bottom - ((binIndex + 0.5) * barHeight);
 
         // Aggregate volume by price level
+        if (!usedCachedBins) {
         for (let i = startIndex; i <= endIndex; i++) {
             const candle = chartData[i];
             if (!candle) continue;
@@ -1749,6 +1902,19 @@ class VolumeProfileTool extends BaseDrawing {
                         y: binIndexToCenterY(developingLow)
                     });
                 }
+            }
+        }
+
+            if (_isAnchoredVpBinCacheFixEnabled() && binCacheHost) {
+                binCacheHost._vpBinCache = {
+                    ...binCacheKey,
+                    buyVolumeBins: buyVolumeBins.slice(),
+                    sellVolumeBins: sellVolumeBins.slice(),
+                    totalVolumeBins: totalVolumeBins.slice(),
+                    developingPocPoints: developingPocPoints.map((p) => ({ ...p })),
+                    developingVahPoints: developingVahPoints.map((p) => ({ ...p })),
+                    developingValPoints: developingValPoints.map((p) => ({ ...p })),
+                };
             }
         }
 
@@ -2237,6 +2403,10 @@ class VolumeProfileTool extends BaseDrawing {
         return true;
     }
 
+    showAxisHighlights(opts = {}) {
+        return _volumeProfileShowAxisHighlights(this, opts);
+    }
+
     static fromJSON(data) {
         const tool = new VolumeProfileTool(data.points, data.style);
         tool.id = data.id;
@@ -2255,6 +2425,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('anchored-volume-profile', points, style);
         this.requiredPoints = 1;
+        this._vpBinCache = null;
 
         const hasOwn = (prop) => Object.prototype.hasOwnProperty.call(style, prop);
 
@@ -2348,9 +2519,12 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
             ? this._activeResizingPointIndex
             : null;
         proxy._isAnchoredProxy = true;
+        proxy._anchoredVpBinCacheHost = this;
         proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         proxy.render(container, scales, renderOptsArg = {});
 
+        this._profileTopY = proxy._profileTopY;
+        this._profileBottomY = proxy._profileBottomY;
         this.group = proxy.group;
         this.group
             .attr('class', 'drawing drawing-anchored-volume-profile')
@@ -2398,6 +2572,10 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         };
         this.meta.updatedAt = Date.now();
         return true;
+    }
+
+    showAxisHighlights(opts = {}) {
+        return _volumeProfileShowAxisHighlights(this, opts);
     }
 
     static fromJSON(data) {
