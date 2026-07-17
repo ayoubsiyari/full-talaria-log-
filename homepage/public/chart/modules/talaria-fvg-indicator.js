@@ -165,10 +165,14 @@
             var isFirst = (bullGap || bearGap) && c1Today && !firstDoneByDay[dayKey] && tagFirst;
             if (isFirst) firstDoneByDay[dayKey] = true;
             var tg = isFirst ? ('fpFVG · ' + tfTag) : (tagAll && qual ? ('FVG · ' + tfTag) : '');
+            // Gap is confirmed once candle-3 has fully closed; mitigation is only
+            // judged on chart bars AFTER that — never on the pattern's own candles.
+            var activateTime = cT3 + cfg.streamTfMs;
             if (bullGap && (qual || isFirst)) {
                 events.push({
                     leftTime: cT2,
                     leftIndex: indexAtOrBefore(chartTimes, cT2),
+                    activateTime: activateTime,
                     top: cL3,
                     bottom: cH1,
                     dir: 1,
@@ -182,6 +186,7 @@
                 events.push({
                     leftTime: cT2,
                     leftIndex: indexAtOrBefore(chartTimes, cT2),
+                    activateTime: activateTime,
                     top: cL1,
                     bottom: cH3,
                     dir: -1,
@@ -264,7 +269,7 @@
             streams.push(processTfStream({
                 enabled: true, tfOk: true, bars: resampleOhlc(source, '5m', resampleFn),
                 chartTimes: chartTimes, mult: Number(p.mult5) || 0, tagFirst: false, tagAll: false,
-                tfTag: '5m', dailyOpens: dailyOpens, atrLen: p.atrLen,
+                tfTag: '5m', dailyOpens: dailyOpens, atrLen: p.atrLen, streamTfMs: tfToMs('5m'),
                 bullFill: p.cB5f, bearFill: p.cR5f, firstFill: p.cF15
             }));
         }
@@ -272,7 +277,7 @@
             streams.push(processTfStream({
                 enabled: true, tfOk: true, bars: resampleOhlc(source, '15m', resampleFn),
                 chartTimes: chartTimes, mult: Number(p.mult15) || 0, tagFirst: !!p.first15, tagAll: true,
-                tfTag: '15m', dailyOpens: dailyOpens, atrLen: p.atrLen,
+                tfTag: '15m', dailyOpens: dailyOpens, atrLen: p.atrLen, streamTfMs: tfToMs('15m'),
                 bullFill: p.cB15f, bearFill: p.cR15f, firstFill: p.cF15
             }));
         }
@@ -280,7 +285,7 @@
             streams.push(processTfStream({
                 enabled: true, tfOk: true, bars: resampleOhlc(source, '30m', resampleFn),
                 chartTimes: chartTimes, mult: Number(p.mult30) || 0, tagFirst: !!p.first30, tagAll: true,
-                tfTag: '30m', dailyOpens: dailyOpens, atrLen: p.atrLen,
+                tfTag: '30m', dailyOpens: dailyOpens, atrLen: p.atrLen, streamTfMs: tfToMs('30m'),
                 bullFill: p.cB30f, bearFill: p.cR30f, firstFill: p.cF30
             }));
         }
@@ -289,8 +294,9 @@
         streams.forEach(function (evs) {
             evs.forEach(function (e) { spawns.push(e); });
         });
+        // Activate boxes in the order their gap candles close.
         spawns.sort(function (a, b) {
-            return a.leftIndex - b.leftIndex || a.leftTime - b.leftTime;
+            return a.activateTime - b.activateTime || a.leftIndex - b.leftIndex;
         });
 
         var live = [];
@@ -370,7 +376,9 @@
                 prevDay = dk;
             }
 
-            while (spawnPtr < spawns.length && spawns[spawnPtr].leftIndex <= i) {
+            // Box goes live only once its gap candle has closed (activateTime),
+            // so the pattern's own candles can never self-mitigate it.
+            while (spawnPtr < spawns.length && chartData[i].t >= spawns[spawnPtr].activateTime) {
                 spawnBox(spawns[spawnPtr], i);
                 spawnPtr++;
             }

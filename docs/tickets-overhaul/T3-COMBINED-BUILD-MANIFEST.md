@@ -5,8 +5,8 @@
 **Last shipped baseline (plan-1):** `20260707b105` (`ba85d960` — 29-scenario gate GREEN, I9).  
 **Current HEAD tip:** `ecaa8a9c`+ — re-migration P1/P4/P5 + I13 hygiene + H-R03 iframe dedupe landed.  
 **Last assembly attempt:** `20260716b6` — **SUPERSEDED / NOT BLESSED** (H-R03 panel-B regression; ESC-019). **Do not PO-sign or deploy b6.**  
-**Blessed combined build (D-023):** **`20260716b10`** — **BLOCKED** pending clean `gate:react` (manager gate PASS r3; react gate session-order flake on H-R04/H-R06/H-R09/H-R12 across retries — see `T0-lane4-hr02-discriminator-plus-rebless-report.md`).  
-**Last assembly attempt (D-027):** **`20260717b11`** — **BLOCKED** — quarantine bucket landed; D-026 proof bar + 3× `gate:react` **PASS**; manager gate **FAIL** unexpected regression **H-S42** (see `T0-lane4-quarantine-assembly-bless-report.md`). **Interim:** H-S42 back in `knownFailing` pending Worker 5 **b16** RC-3 fix; bless after re-cut + H-S42 PASS + clean manager gate.
+**Blessed combined build (D-027):** **`20260717b16`** — **BLESSED** 2026-07-17 — D-027 quarantine + D-026 transport + Worker 5 H-S42 fix; manager gate PASS (r2); 3× `gate:react` PASS. PO parity-checklist sign-off build. See `T0-lane4-bless-b16-report.md`.  
+**Superseded (not blessed):** `20260716b10` (D-023 react flake), `20260717b11` (H-S42 regress pre-b16 fix).
 
 ---
 
@@ -184,7 +184,8 @@ Each staging id is **superseded** by the next; the combined cut must stamp **one
 | **20260715b1** | `d6d9822f` (T8 step 13) | a5 + finest-TF unified cadence (D-016, H-S83) | a5 |
 | **20260715b2** | `9462cef3` + serve stamp | b1 + D-017 snap-back (H-S82) | b1 |
 | **20260716b10** | P1 `6dc552a8` + H-R06 `f46e6d9d` + H-R07 `52894a8d` + I13 `817a81a1` + H-R03 `ecaa8a9c` + harness D-023 | Combined build — **NOT BLESSED** (`gate:react` session flake; discriminators + manager gate green) | b6 — supersedes b6/b8/b9 |
-| **20260717b11** | D-027 quarantine + D-026 transport (`b03`) + ORD-LEVEL-VIS revert (`b4`) + full re-migration/cadence stack on one `build:live` cut | **NOT BLESSED** — 3× `gate:react` PASS; manager gate FAIL **H-S42** regression | b10 lineage — supersedes b03/b4 serve stamps |
+| **20260717b11** | D-027 quarantine + D-026 transport (`b03`) + ORD-LEVEL-VIS revert (`b4`) + full re-migration/cadence stack | **NOT BLESSED** — H-S42 regress (fixed in b16) | b10 lineage |
+| **20260717b16** | b11 + Worker 5 RC-3 H-S42 fix + harness quarantine (D-027) | **BLESSED** — manager gate PASS r2; 3× `gate:react` PASS; H-S42 promoted | **PO parity-checklist build** |
 
 **Known stamp drift (pre-cut):** local I13 hygiene built `20260716b9` (Grid-only); assembly `b6` stamped before hygiene. Manager coordinates one bump at cut.
 
@@ -277,4 +278,4 @@ Phase 0 frozen
 - `docs/tickets-overhaul/worker-reports/T6-step7-rc5-rc6-closure-sweep-report.md` (RC-5/RC-6 PO appendix)
 - `docs/tickets-overhaul/worker-reports/T7-step2-multichart-replay-closure-sweep-READONLY-report.md` (RC-4 → re-migration map)
 
-**Manifest maintenance:** When each re-migration phase lands, add its commit hash to §1.1b, confirm the phase switch in §2.1, and re-run §5 before requesting combined build cut. **Do not bless superseded build ids** (currently `20260716b6`).
+**Manifest maintenance:** When each re-migration phase lands, add its commit hash to §1.1b, confirm the phase switch in §2.1, and re-run §5 before requesting combined build cut. **Blessed PO build:** `20260717b16` (2026-07-17). Do not bless superseded ids (`20260716b6`, `20260716b10`, `20260717b11`).

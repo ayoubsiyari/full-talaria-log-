@@ -11,17 +11,36 @@
         return parseInt(parts[0], 10) + (parseInt(parts[1] || '0', 10) / 60);
     }
 
+    // Reuse Intl formatters — creating one per bar freezes the UI on large datasets.
+    var _timeFmtCache = Object.create(null);
+    var _dateFmtCache = Object.create(null);
+    function _timeFmt(tz) {
+        var key = tz || 'America/New_York';
+        if (!_timeFmtCache[key]) {
+            _timeFmtCache[key] = new Intl.DateTimeFormat('en-GB', {
+                timeZone: key, hour: '2-digit', minute: '2-digit', hour12: false
+            });
+        }
+        return _timeFmtCache[key];
+    }
+    function _dateFmt(tz) {
+        var key = tz || 'America/New_York';
+        if (!_dateFmtCache[key]) {
+            _dateFmtCache[key] = new Intl.DateTimeFormat('en-CA', {
+                timeZone: key, year: 'numeric', month: '2-digit', day: '2-digit'
+            });
+        }
+        return _dateFmtCache[key];
+    }
+
     function wallDecimal(ms, tz) {
         try {
-            var parts = new Intl.DateTimeFormat('en-GB', {
-                timeZone: tz || 'America/New_York',
-                hour: '2-digit', minute: '2-digit', hour12: false
-            }).formatToParts(new Date(ms));
+            var parts = _timeFmt(tz).formatToParts(new Date(ms));
             var h = 0; var m = 0;
-            parts.forEach(function (p) {
-                if (p.type === 'hour') h = parseInt(p.value, 10);
-                if (p.type === 'minute') m = parseInt(p.value, 10);
-            });
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].type === 'hour') h = parseInt(parts[i].value, 10);
+                else if (parts[i].type === 'minute') m = parseInt(parts[i].value, 10);
+            }
             return h + m / 60;
         } catch (_) {
             var d = new Date(ms);
@@ -31,10 +50,7 @@
 
     function sessDateKey(ms, tz) {
         try {
-            return new Intl.DateTimeFormat('en-CA', {
-                timeZone: tz || 'America/New_York',
-                year: 'numeric', month: '2-digit', day: '2-digit'
-            }).format(new Date(ms)).replace(/-/g, '');
+            return _dateFmt(tz).format(new Date(ms)).replace(/-/g, '');
         } catch (_) {
             return new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
         }
