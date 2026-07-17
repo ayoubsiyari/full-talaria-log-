@@ -3651,10 +3651,37 @@ class DrawingToolsManager {
         if (!payload.id) return;
         if (Array.isArray(pointsOverride)) {
             payload.points = pointsOverride.map((p) => ({ ...p }));
-            // Live move/resize uses bar-index preview points — do not send stale
-            // timestampPoints from toJSON or peers may ignore the moved geometry.
-            payload.coordinateSystem = 'index';
-            delete payload.timestampPoints;
+            // A8-3 checkpoint: __TALARIA_DISABLE_A8_SHIFT_LIVE_CROSSPANEL_SYNC_FIX
+            if (typeof _isA8ShiftLiveCrosspanelSyncFixEnabled === 'function'
+                && _isA8ShiftLiveCrosspanelSyncFixEnabled()
+                && typeof CoordinateUtils !== 'undefined'
+                && typeof CoordinateUtils.pointsToTimestamps === 'function'
+                && this.chart
+                && Array.isArray(this.chart.data)
+                && this.chart.data.length > 0) {
+                try {
+                    const previewTs = CoordinateUtils.pointsToTimestamps(
+                        pointsOverride,
+                        this.chart.data,
+                        this.chart.currentTimeframe || null
+                    );
+                    if (previewTs.length === pointsOverride.length) {
+                        payload.timestampPoints = previewTs;
+                        payload.coordinateSystem = 'timestamp';
+                    } else {
+                        payload.coordinateSystem = 'index';
+                        delete payload.timestampPoints;
+                    }
+                } catch (_) {
+                    payload.coordinateSystem = 'index';
+                    delete payload.timestampPoints;
+                }
+            } else {
+                // Live move/resize uses bar-index preview points — do not send stale
+                // timestampPoints from toJSON or peers may ignore the moved geometry.
+                payload.coordinateSystem = 'index';
+                delete payload.timestampPoints;
+            }
         }
         this.chart.broadcastDrawingChange('update', payload);
     }
@@ -4996,6 +5023,17 @@ class DrawingToolsManager {
     /** Shift + first corner while placing a 2-point box (rectangle / ellipse preview). */
     _constrainBoxPlacementPoint(toolType, anchor, point) {
         if (!anchor || !point || !this._isBoxShiftSnapTool(toolType)) return point;
+        // A8-1 checkpoint: __TALARIA_DISABLE_A8_BOX_SHIFT_SQUARE_PIXEL_FIX
+        if (typeof _isA8BoxShiftSquarePixelFixEnabled === 'function'
+            && _isA8BoxShiftSquarePixelFixEnabled()
+            && this.chart
+            && typeof squareConstrainedBoxPointPixel === 'function'
+            && typeof deriveBoxCornerRole === 'function'
+            && typeof boxBoundsFromPoints === 'function') {
+            const role = deriveBoxCornerRole(point, anchor.x, anchor.y);
+            const start = boxBoundsFromPoints([anchor, point]);
+            return squareConstrainedBoxPointPixel(role, start, point, this.chart);
+        }
         const ax = anchor.x;
         const ay = anchor.y;
         const dx = point.x - ax;
@@ -5092,6 +5130,23 @@ class DrawingToolsManager {
             : null;
         if (!startPts || !startPts.length) return;
         this._commitDrawingPixelDragDelta(drawing, startPts, { x: 0, y: 0 });
+    }
+
+    /**
+     * A8-4 checkpoint: __TALARIA_DISABLE_A8_LOCKED_DRAWING_PAN_PASSTHROUGH_FIX
+     * Locked shapes pass pointer events to chart pan instead of capturing body hits.
+     */
+    _applyLockedDrawingPanPassthrough(drawing) {
+        if (!drawing?.group || drawing.group.empty()) return;
+        const fixOn = typeof _isA8LockedDrawingPanPassthroughFixEnabled === 'function'
+            && _isA8LockedDrawingPanPassthroughFixEnabled();
+        if (fixOn && drawing.locked) {
+            drawing.group.style('pointer-events', 'none');
+            return;
+        }
+        if (fixOn && !drawing.locked) {
+            drawing.group.style('pointer-events', null);
+        }
     }
 
     /**
@@ -6556,8 +6611,10 @@ class DrawingToolsManager {
         }
         if (!applied) {
             drawing.points[pointIndex] = this._snapPointXForDrawingType(point, drawing.type);
-            this._syncHorizontalAnchorToolPointY(drawing);
             applied = true;
+        }
+        if (this._isHorizontalAnchorToolType(drawing.type)) {
+            this._syncHorizontalAnchorToolPointY(drawing);
         }
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         if (drawing.type === 'anchored-vwap' && drawing._cache) {
@@ -8102,7 +8159,9 @@ class DrawingToolsManager {
         }
 
         // Locked shapes: block move previews (stale d3 handlers / multichart live sync).
-        if (drawing.locked) {
+        const a8LockedPanFix = typeof _isA8LockedDrawingPanPassthroughFixEnabled === 'function'
+            && _isA8LockedDrawingPanPassthroughFixEnabled();
+        if (drawing.locked && !a8LockedPanFix) {
             this._detachDrawingDragHandlers(drawing);
             interactiveElements.on('mousedown.locked-guard', null);
             interactiveElements.on('mousedown.locked-guard', function(event) {
@@ -8136,6 +8195,8 @@ class DrawingToolsManager {
         } else {
             interactiveElements.on('mousedown.locked-guard', null);
         }
+
+        this._applyLockedDrawingPanPassthrough(drawing);
     }
     
     /**
@@ -8489,6 +8550,9 @@ class DrawingToolsManager {
                     event.sourceEvent.stopPropagation();
                     self._bodyDragDepth = (self._bodyDragDepth || 0) + 1;
                     self._commitInlineTextEditorBeforeGeometryEdit();
+                    // A8-2 checkpoint: __TALARIA_DISABLE_A8_SHIFT_DRAG_STALE_TRANSFORM_FIX
+                    const a8StaleTransformFix = typeof _isA8ShiftDragStaleTransformFixEnabled === 'function'
+                        && _isA8ShiftDragStaleTransformFixEnabled();
 
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -8499,6 +8563,9 @@ class DrawingToolsManager {
                         && self._isHorizontalAnchorElementTarget(drawing.type, targetEl);
 
                     if (horizontalAnchorPointDrag) {
+                        if (a8StaleTransformFix) {
+                            self._commitStaleDrawingGroupTransform(drawing);
+                        }
                         if (!drawing.selected) {
                             self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                         }
@@ -8542,9 +8609,17 @@ class DrawingToolsManager {
                         }));
                         multiDragStartPoints.forEach((item) => self._beginRRToolWholeDragSnapshot(item.drawing));
                         self._bodyDragActiveDrawings = multiDragStartPoints.map((item) => item.drawing);
+                        if (a8StaleTransformFix) {
+                            multiDragStartPoints.forEach((item) => {
+                                if (item?.drawing) self._commitStaleDrawingGroupTransform(item.drawing);
+                            });
+                        }
                     } else {
                         multiDragStartPoints = null;
                         self._bodyDragActiveDrawings = [drawing];
+                        if (a8StaleTransformFix) {
+                            self._commitStaleDrawingGroupTransform(drawing);
+                        }
                         // Capture state for undo (single drawing)
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
@@ -9190,6 +9265,13 @@ class DrawingToolsManager {
         }));
         this._directMoveStartStates = startStates;
         startStates.forEach((item) => this._beginRRToolWholeDragSnapshot(item.drawing));
+        // A8-2 checkpoint: __TALARIA_DISABLE_A8_SHIFT_DRAG_STALE_TRANSFORM_FIX
+        if (typeof _isA8ShiftDragStaleTransformFixEnabled === 'function'
+            && _isA8ShiftDragStaleTransformFixEnabled()) {
+            startStates.forEach((item) => {
+                if (item?.drawing) this._commitStaleDrawingGroupTransform(item.drawing);
+            });
+        }
         this._directMoveDrawings = drawings;
         this._directMovePendingFrame = false;
         this._directMoveLastEvent = null;
@@ -9782,6 +9864,7 @@ class DrawingToolsManager {
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
         this._syncResizeHandleChrome(drawing);
+        this._broadcastLiveEditUpdate(drawing);
         if (!this._skipHandleSetup && !drawing.locked) {
             this.setupHandleDrag(drawing);
         }

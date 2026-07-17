@@ -93,7 +93,11 @@ import {
   fireMultichartParentMessage,
   probePeerDeselectScopeGuard,
   filterPeerDeselectScopeErrors,
+  chartTarget,
 } from './interactive-helpers.mjs';
+
+const A1_TRANCHE_G_SWITCH = '__TALARIA_DISABLE_INDICATOR_AXIS_LABEL_ANCHOR_FIX';
+const A1_TRANCHE_B_SWITCH = '__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX';
 
 const HOST_FILE = '25';
 const IND_FILE = '27';
@@ -8592,6 +8596,367 @@ async function hS58(ctx) {
   });
 }
 
+// ── H-A1-B ───────────────────────────────────────────────────────────────
+// A1 tranche B: right-edge grid filler ticks wall-clock aligned (30m tail).
+async function readTimeAxisTailProbe(page, panelId = 'A') {
+  const frame = panelId === 'A' ? page : panelFrameMap(page)[panelId];
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch || !Array.isArray(ch.data) || !ch.data.length) return { ok: false, reason: 'no data' };
+    const m = ch.margin || { l: 60, r: 60 };
+    const plotLeft = m.l;
+    const plotRight = ch.w - (m.r || 0);
+    const tfMs = typeof ch.parseTimeframe === 'function'
+      ? Number(ch.parseTimeframe(ch.currentTimeframe)) : NaN;
+    let ticks = [];
+    try {
+      ticks = typeof ch._buildTimeTicks === 'function'
+        ? ch._buildTimeTicks({ full: true })
+        : (Array.isArray(ch._timeTicks) ? ch._timeTicks.slice() : []);
+    } catch (_) { ticks = []; }
+    const labeled = ticks.filter((t) => t && t.label && Number.isFinite(t.x) && t.idx != null);
+    const tail = labeled.filter((t) => t.x >= plotLeft + (plotRight - plotLeft) * 0.72);
+    const interior = labeled.filter((t) => t.x >= plotLeft && t.x < plotLeft + (plotRight - plotLeft) * 0.72);
+    const halfHourMs = 30 * 60 * 1000;
+    const labelStep = Math.max(1, Math.floor(
+      ch._lastComputedTimeLabelInterval
+      || (typeof ch._getFastTimeLabelIntervalBars === 'function'
+        ? ch._getFastTimeLabelIntervalBars()
+        : 1),
+    ));
+    const checkAlign = (t) => {
+      if (t.isBoundary) return { aligned: true, ts: null, skippedBoundary: true };
+      if (typeof ch._barIndexIsWallClockAligned === 'function' && Number.isFinite(tfMs) && tfMs > 0) {
+        const aligned = ch._barIndexIsWallClockAligned(t.idx, labelStep, tfMs);
+        let ts = null;
+        const bar = ch.data[t.idx];
+        if (bar && Number.isFinite(bar.t)) ts = bar.t;
+        else if (typeof ch._projectBarIndexTimestamp === 'function') {
+          ts = ch._projectBarIndexTimestamp(t.idx);
+        }
+        return { aligned, ts, labelStep };
+      }
+      const bar = ch.data[t.idx];
+      let ts = bar && Number.isFinite(bar.t) ? bar.t : null;
+      if (!Number.isFinite(ts) && typeof ch._projectBarIndexTimestamp === 'function') {
+        ts = ch._projectBarIndexTimestamp(t.idx);
+      }
+      if (!Number.isFinite(ts)) return { aligned: false, ts: null };
+      if (String(ch.currentTimeframe || '').toLowerCase() === '30m') {
+        const rem = ((ts % halfHourMs) + halfHourMs) % halfHourMs;
+        return { aligned: rem < 500 || rem > halfHourMs - 500, ts };
+      }
+      if (Number.isFinite(tfMs) && tfMs > 0) {
+        const rem = ((ts % tfMs) + tfMs) % tfMs;
+        return { aligned: rem < 500 || rem > tfMs - 500, ts };
+      }
+      return { aligned: true, ts };
+    };
+    const tailDetail = tail.map((t) => ({ ...t, ...checkAlign(t) }));
+    let legacyFillerMisaligned = 0;
+    let fixOffTailDiffers = false;
+    if (typeof ch._fillTimeTicksToViewport === 'function' && Number.isFinite(tfMs) && tfMs > 0) {
+      const lastRealIdx = ch.data.length - 1;
+      const adaptiveStep = Math.max(1, Math.floor(
+        typeof ch._getFastTimeLabelIntervalBars === 'function'
+          ? ch._getFastTimeLabelIntervalBars()
+          : labelStep,
+      ));
+      const anchorIdx = Math.max(0, lastRealIdx - 60);
+      const anchorX = typeof ch.dataIndexToPixel === 'function'
+        ? ch.dataIndexToPixel(anchorIdx)
+        : null;
+      if (Number.isFinite(anchorX)) {
+        const seed = [{ idx: anchorIdx, x: anchorX, label: 'probe', isBoundary: false }];
+        const runFill = (fixOn) => {
+          const saved = window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX;
+          if (fixOn) {
+            try { delete window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX; } catch (_) {
+              window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX = undefined;
+            }
+          } else {
+            window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX = true;
+          }
+          let filled = [];
+          try {
+            filled = ch._fillTimeTicksToViewport(
+              seed.map((t) => ({ idx: t.idx, x: t.x, label: t.label, isBoundary: !!t.isBoundary })),
+              adaptiveStep,
+              tfMs,
+            );
+          } catch (_) { filled = []; }
+          window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX = saved;
+          return filled;
+        };
+        const filledOff = runFill(false);
+        const filledOn = runFill(true);
+        const tailIdx = (arr) => arr
+          .filter((t) => t && t.idx != null && Number.isFinite(t.x) && t.x >= plotLeft + (plotRight - plotLeft) * 0.72)
+          .map((t) => t.idx);
+        fixOffTailDiffers = JSON.stringify(tailIdx(filledOff)) !== JSON.stringify(tailIdx(filledOn));
+        const added = filledOff.filter((t) => t.idx !== anchorIdx);
+        legacyFillerMisaligned = added.filter((t) => (
+          !t.isBoundary
+          && typeof ch._barIndexIsWallClockAligned === 'function'
+          && !ch._barIndexIsWallClockAligned(t.idx, adaptiveStep, tfMs)
+        )).length;
+      }
+    }
+    const spacing = (arr) => {
+      const dx = [];
+      for (let i = 1; i < arr.length; i++) dx.push(arr[i].x - arr[i - 1].x);
+      const pos = dx.filter((d) => d > 0);
+      if (pos.length < 2) return null;
+      return Math.max(...pos) / Math.min(...pos);
+    };
+    const tailSpacingRatio = spacing(tail);
+    const interiorSpacingRatio = spacing(interior.slice(-4));
+    const misaligned = tailDetail.filter((t) => !t.isBoundary && !t.aligned).length;
+    return {
+      ok: true,
+      tf: String(ch.currentTimeframe || ''),
+      tfMs,
+      tailCount: tail.length,
+      misaligned,
+      legacyFillerMisaligned,
+      fixOffTailDiffers,
+      labelStep,
+      tailSpacingRatio,
+      interiorSpacingRatio,
+      tailDetail: tailDetail.slice(-4),
+      offsetX: Number(ch.offsetX),
+    };
+  });
+}
+
+async function hA1BCore(page, checks, expectFixOn, skipSetup = false, getInFlightDataRequests = null) {
+  const inFlight = getInFlightDataRequests || (() => 0);
+  if (!skipSetup) {
+    await waitBootSettled(page, ['A'], 20_000, inFlight);
+    await sleep(400);
+    const zoom = await wheelZoomOutPanel(page, 'A', 10);
+    checks.check('H-A1-B setup: wheel zoom-out applied', zoom && zoom.ok,
+      JSON.stringify(zoom || null));
+    await waitBootSettled(page, ['A'], 15_000, inFlight);
+    await page.waitForFunction(() => {
+      const ch = window.chart;
+      if (!ch || ch._panLoading) return false;
+      const rd = Array.isArray(ch.rawData) ? ch.rawData : [];
+      const cur = ch._serverCursors;
+      if (!cur || rd.length === 0) return false;
+      return Number(cur.firstTs) === Number(rd[0].t)
+        && Number(cur.lastTs) === Number(rd[rd.length - 1].t);
+    }, { timeout: 20_000 }).catch(() => {});
+  }
+
+  const probe = await readTimeAxisTailProbe(page, 'A');
+  checks.check('H-A1-B setup: tail probe ok', probe && probe.ok && probe.tailCount >= 3,
+    JSON.stringify(probe || null));
+  if (!probe || !probe.ok) return;
+
+  if (expectFixOn) {
+    checks.check('H-A1-B CORE: right-edge bar times TF-aligned',
+      probe.misaligned === 0,
+      `misaligned=${probe.misaligned} tail=${JSON.stringify(probe.tailDetail)}`);
+    if (Number.isFinite(probe.tailSpacingRatio) && Number.isFinite(probe.interiorSpacingRatio)) {
+      checks.check('H-A1-B CORE: tail spacing matches interior',
+        probe.tailSpacingRatio <= 1.25,
+        `tailRatio=${probe.tailSpacingRatio} interiorRatio=${probe.interiorSpacingRatio}`);
+    }
+    checks.check('H-A1-B CORE: no filler index-step drift',
+      probe.tailDetail.length === 0 || probe.tailDetail.every((t) => t.isBoundary || t.aligned),
+      JSON.stringify(probe.tailDetail));
+  } else {
+    checks.check('H-A1-B switch-OFF: tail misalignment RED (legacy filler)',
+      probe.misaligned >= 1
+      || probe.legacyFillerMisaligned >= 1
+      || probe.fixOffTailDiffers === true
+      || (Number.isFinite(probe.tailSpacingRatio) && probe.tailSpacingRatio > 1.4),
+      `misaligned=${probe.misaligned} legacyFiller=${probe.legacyFillerMisaligned} fixOffDiff=${probe.fixOffTailDiffers} tailRatio=${probe.tailSpacingRatio}`);
+  }
+}
+
+async function hA1B(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '30m' }, async (boot) => {
+    const { page, getInFlightDataRequests } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, getInFlightDataRequests);
+    if (!ctx.bug) {
+      await page.evaluate((flag) => {
+        try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+      }, A1_TRANCHE_B_SWITCH);
+    }
+    await hA1BCore(page, checks, true, false, getInFlightDataRequests);
+    if (!ctx.bug) {
+      await page.evaluate((flag) => { window[flag] = true; }, A1_TRANCHE_B_SWITCH);
+      await hA1BCore(page, checks, false, true, getInFlightDataRequests);
+      await page.evaluate((flag) => {
+        try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+      }, A1_TRANCHE_B_SWITCH);
+    }
+    await waitBootSettled(page, ['A'], 12_000, getInFlightDataRequests);
+    await page.waitForFunction(() => {
+      const ch = window.chart;
+      if (!ch || ch._panLoading) return false;
+      const rd = Array.isArray(ch.rawData) ? ch.rawData : [];
+      const cur = ch._serverCursors;
+      if (!cur || rd.length === 0) return false;
+      return Number(cur.firstTs) === Number(rd[0].t)
+        && Number(cur.lastTs) === Number(rd[rd.length - 1].t);
+    }, { timeout: 20_000 }).catch(() => {});
+    return checks;
+  });
+}
+
+// ── H-S85 ────────────────────────────────────────────────────────────────
+// TAL-01619 / A1 tranche G: separate-panel indicator axis pill stays on
+// last-bar anchor while crosshair moves (RSI + MACD); switch-OFF reverts to
+// crosshair-Y tracking live pill.
+async function readIndicatorAxisPillProbe(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  return frame.evaluate(() => {
+    const canvas = document.getElementById('chartCanvas');
+    const wrapper = canvas ? canvas.parentElement : null;
+    const overlay = wrapper ? wrapper.querySelector('#separatePanelsOverlay') : null;
+    if (!overlay) return { ok: false, reason: 'no separatePanelsOverlay' };
+    const live = overlay.querySelector('[data-talaria-sp-live-axis]');
+    const tags = Array.from(overlay.querySelectorAll('[data-talaria-sp-axis-tag]'));
+    const readEl = (el) => {
+      if (!el) return null;
+      if (el.style.display === 'none') return null;
+      if (el.style.visibility === 'hidden') return null;
+      const top = parseFloat(el.style.top);
+      if (!Number.isFinite(top)) return null;
+      return { top, text: (el.textContent || '').trim() };
+    };
+    const tagTops = tags.map(readEl).filter(Boolean);
+    const liveVis = readEl(live);
+    return {
+      ok: true,
+      live: liveVis,
+      tags: tagTops,
+      tagCount: tagTops.length,
+    };
+  });
+}
+
+async function moveCrosshairInSeparateSlot(page, panelId, slotIndex, fractionX, fractionY) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+  const coords = await frame.evaluate((si, fx, fy) => {
+    const ch = window.chart;
+    const slots = ch.separatePanelInfo && ch.separatePanelInfo.panelSlots;
+    if (!slots || !slots[si]) return null;
+    const slot = slots[si];
+    const m = ch.margin || { l: 60, r: 60 };
+    const x = m.l + Math.max(0, Math.min(1, fx)) * Math.max(1, ch.w - m.l - m.r);
+    const y = slot.top + Math.max(0, Math.min(1, fy)) * Math.max(1, slot.height);
+    const canvas = ch.canvas;
+    if (!canvas) return null;
+    const r = canvas.getBoundingClientRect();
+    return {
+      pageX: r.left + x,
+      pageY: r.top + y,
+      slotTop: slot.top,
+      slotBottom: slot.bottom,
+      indicatorType: slot.indicator && slot.indicator.type,
+    };
+  }, slotIndex, fractionX, fractionY);
+  if (!coords) return { ok: false, reason: 'no slot coords' };
+  await page.mouse.move(coords.pageX, coords.pageY);
+  await sleep(80);
+  return { ok: true, ...coords };
+}
+
+async function hS85Core(page, checks, expectAnchored, skipSetup = false) {
+  if (!skipSetup) {
+    await waitBootSettled(page, ['A'], 20_000);
+    await sleep(400);
+
+    const addRsi = await addIndicator(page, 'A', 'rsi', { period: 14 });
+    checks.check('H-S85 setup: RSI separate panel added', addRsi && addRsi.ok && addRsi.count >= 1,
+      JSON.stringify(addRsi || null));
+    await sleep(350);
+
+    const addMacd = await addIndicator(page, 'A', 'macd', { fast: 12, slow: 26, signal: 9 });
+    checks.check('H-S85 setup: MACD separate panel added', addMacd && addMacd.ok && addMacd.count >= 2,
+      JSON.stringify(addMacd || null));
+    await sleep(500);
+  }
+
+  const slotMap = await page.evaluate(() => {
+    const ch = window.chart;
+    const slots = (ch.separatePanelInfo && ch.separatePanelInfo.panelSlots) || [];
+    return slots.map((s, i) => ({
+      i,
+      type: s.indicator && s.indicator.type,
+      top: s.top,
+      bottom: s.bottom,
+    }));
+  });
+  const rsiSlot = slotMap.find((s) => s.type === 'rsi');
+  const macdSlot = slotMap.find((s) => s.type === 'macd');
+  checks.check('H-S85 setup: RSI+MACD slots resolved', !!(rsiSlot && macdSlot),
+    JSON.stringify(slotMap));
+
+  const probeSlot = async (slot, label) => {
+    await moveCrosshairInSeparateSlot(page, 'A', slot.i, 0.35, 0.15);
+    const hiP = await readIndicatorAxisPillProbe(page, 'A');
+    await moveCrosshairInSeparateSlot(page, 'A', slot.i, 0.65, 0.85);
+    const loP = await readIndicatorAxisPillProbe(page, 'A');
+    const hiTop = (hiP && hiP.live && hiP.live.top) ?? (hiP && hiP.tags[0] && hiP.tags[0].top);
+    const loTop = (loP && loP.live && loP.live.top) ?? (loP && loP.tags[0] && loP.tags[0].top);
+    const delta = (Number.isFinite(hiTop) && Number.isFinite(loTop)) ? Math.abs(hiTop - loTop) : null;
+    return { hiP, loP, hiTop, loTop, delta, label };
+  };
+
+  const rsi = rsiSlot ? await probeSlot(rsiSlot, 'RSI') : null;
+  const macd = macdSlot ? await probeSlot(macdSlot, 'MACD') : null;
+
+  if (expectAnchored) {
+    checks.check('H-S85 CORE (RSI): axis pill Y stable across crosshair move (anchored)',
+      rsi && Number.isFinite(rsi.delta) && rsi.delta < 3,
+      `delta=${rsi && rsi.delta} hiTop=${rsi && rsi.hiTop} loTop=${rsi && rsi.loTop} hi=${JSON.stringify(rsi && rsi.hiP)} lo=${JSON.stringify(rsi && rsi.loP)}`);
+    checks.check('H-S85 CORE (RSI): static axis tags visible (no live crosshair pill)',
+      rsi && rsi.hiP && rsi.hiP.tagCount >= 1 && !rsi.hiP.live,
+      JSON.stringify(rsi && rsi.hiP));
+    checks.check('H-S85 CORE (MACD): axis pill Y stable across crosshair move (anchored)',
+      macd && Number.isFinite(macd.delta) && macd.delta < 3,
+      `delta=${macd && macd.delta} hiTop=${macd && macd.hiTop} loTop=${macd && macd.loTop}`);
+    checks.check('H-S85 CORE (MACD): static axis tags visible (no live crosshair pill)',
+      macd && macd.hiP && macd.hiP.tagCount >= 1 && !macd.hiP.live,
+      JSON.stringify(macd && macd.hiP));
+  } else {
+    checks.check('H-S85 switch-OFF (RSI): live axis pill tracks crosshair Y (RED when anchored fix ON)',
+      rsi && Number.isFinite(rsi.delta) && rsi.delta >= 8,
+      `delta=${rsi && rsi.delta} liveHi=${JSON.stringify(rsi && rsi.hiP && rsi.hiP.live)}`);
+    checks.check('H-S85 switch-OFF (MACD): live axis pill tracks crosshair Y',
+      macd && Number.isFinite(macd.delta) && macd.delta >= 8,
+      `delta=${macd && macd.delta} liveHi=${JSON.stringify(macd && macd.hiP && macd.hiP.live)}`);
+  }
+}
+
+async function hS85(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await page.evaluate((flag) => {
+      try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+    }, A1_TRANCHE_G_SWITCH);
+    await hS85Core(page, checks, true);
+
+    await page.evaluate((flag) => { window[flag] = true; }, A1_TRANCHE_G_SWITCH);
+    await hS85Core(page, checks, false, true);
+    await page.evaluate((flag) => {
+      try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+    }, A1_TRANCHE_G_SWITCH);
+
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -8681,6 +9046,8 @@ export function scenarioList() {
     { id: 'H-S83', title: 'T8 step 13 / D-016: finest-TF cadence — 4h-focused 1m sub-advance + coalesce', run: hS83 },
     { id: 'H-S83b', title: 'D-016 V1: host A=4h coarse main — tick+candle finest cadence on 1m peer (H-S83b)', run: hS83b },
     { id: 'H-S84', title: 'TAL-01612 V1: interval owner — stale hidden select ignored on Auto step', run: hS84 },
+    { id: 'H-A1-B', title: 'A1-B: 30m right-edge grid tail wall-clock aligned (TAL-01565/01618/01625)', run: hA1B },
+    { id: 'H-S85', title: 'TAL-01619 / A1-G: separate-panel indicator axis pill anchored (not crosshair-Y)', run: hS85 },
     { id: 'H-S82', title: 'TAL-01579 / D-017: pan-release snap-back — settled offsetX holds release', run: hS82 },
     // Reserved (T0 step 16 — not yet implemented):
     // H-S81: mixed-coarse tick-play fetch+render budget fence (T8 step 10; deferred Lane-4/T2)

@@ -3,7 +3,7 @@ RC-1,engineering,root-cause,First-click / multichart interaction dead on fallbac
 RC-2,engineering,root-cause,Slow interaction / grid renders above candles while panning,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set E)
 RC-3,engineering,root-cause,Label mis-anchor / drawing anchoring drift,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 RC-4,engineering,root-cause,Multichart re-migration interaction family,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
-RC-5,engineering,root-cause,Order-entry parse / drag-input family,STAGED,RESOLVED-NEEDS-LIVE | PO live-confirm outstanding on a5
+RC-5,engineering,root-cause,Order-entry parse / drag-input family,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set F)
 RC-6,engineering,root-cause,Indicator lifecycle / visibility / settings-apply / replay UI sync,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set D)
 RC-8,engineering,root-cause,(replay/cadence family,IN-TRACK,d6d9822f (staging b1) | no
 H-R02,engineering,remig-row,Panel-B ctrl-select actuation,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
@@ -20,7 +20,7 @@ H-S20,engineering,replay,Coarse 1D mirror regression,CLOSED-VERIFIED,PO retest P
 H-S25,engineering,replay,Panel replay-follow seam leap,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (replay axis move / chart-stuck resolved) - NEEDS-RECONCILE into codebase (kill-switch + harness pin)
 H-S27,engineering,replay,seek-loop race,IN-TRACK,FLAKE-TRACKED | per I15 not trusted row until re-actuated faithfully
 H-S28,engineering,replay,Boot reanchor,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
-H-S30,engineering,replay,Step-spam refetch,STAGED,RESOLVED | false-green -> promote-only
+H-S30,engineering,replay,Step-spam refetch,CLOSED-VERIFIED,PO retest PASS 2026-07-17
 H-S40,engineering,harness,bar-open drift probe,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 H-S41,engineering,harness,bar-open drift probe,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 H-S59b,engineering,freeze,TAL-01590 independent-symbol freeze,IN-TRACK,GREEN-SYNTHETIC | not promoted (WEAK/DEV-ONLY)
@@ -34,8 +34,8 @@ A6-1,engineering,order,Apply-on-release order landing,CLOSED-VERIFIED,PO retest 
 A6-2,engineering,order,F5 order persistence,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 A6-3,engineering,order,Order-half interaction,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 A6-4,engineering,order,Host-canonical order store,IN-TRACK,DEFERRED | dispatch post-re-migration w/ Phase 7
-OrderEntry#4,engineering,order,keyboard-pan deferral,STAGED,RESOLVED | cross-track consolidated
-OrderEntry#5,engineering,order,keyboard-pan,STAGED,RESOLVED
+OrderEntry#4,engineering,order,keyboard-pan deferral,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
+OrderEntry#5,engineering,order,keyboard-pan,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 OT-MS,engineering,backlog,V9 Layers / legacy tree no multi-select highlight,IN-TRACK,OPEN-BACKLOG | post-P1 rides combined build; NOT critical path
 PLAN2-FOUND#3,engineering,objects-tree,Objects-tree duplication,BLOCKED-ON-DECISION,NEEDS-PO-CONFIRM | independent of lifecycle collapse
 ESC-021,engineering,escalation,Panel-B chrome-readiness race,IN-TRACK,IN-PROGRESS | ready-signal becomes harness wait primitive
@@ -46,9 +46,9 @@ TAL-01668,ticket,UI-polish(L5),Wntry box place order,IN-TRACK,
 TAL-01667,ticket,A7b(L5),Tool/Anchored Volume Profile.,IN-TRACK,
 TAL-01666,ticket,A7b(L5),Tool/Anchored Volume Profile,IN-TRACK,
 TAL-01665,ticket,A7b(L5),Tool/Anchored Volume Profile,IN-TRACK,
-TAL-01664,ticket,A7b(L5),Tool/Price and Time labels do not work,IN-TRACK,
+TAL-01664,ticket,A7b(L5),Tool/Price and Time labels do not work,STAGED,A8-VP-2 coord bridge dev-proven b44 H-A8-VP-2 10/10 - NEEDS-LIVE PO confirm (corrected from premature CLOSED)
 TAL-01663,ticket,T4/T8-diag,inactive order freeze chart,IN-TRACK,
-TAL-01662,ticket,A7b(L5),Tool/Fixed Range Volume Profile,IN-TRACK,
+TAL-01662,ticket,A7b(L5),Tool/Fixed Range Volume Profile,STAGED,A8-VP-1 label bridge dev-proven b44 H-A8-VP-1 10/10 - NEEDS-LIVE PO confirm (corrected from premature CLOSED)
 TAL-01661,ticket,A7b(L5),Tools/Fixed Range Volume Profile,IN-TRACK,
 TAL-01660,ticket,PO-decision,add TP,BLOCKED-ON-DECISION,
 TAL-01659,ticket,A7,Tools,IN-TRACK,

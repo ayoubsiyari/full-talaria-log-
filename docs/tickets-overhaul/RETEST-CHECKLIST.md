@@ -1,6 +1,6 @@
 # Retest checklist — what's resolved vs what to test vs what's still in progress
 
-Snapshot 2026-07-17. Scoreboard: **27 CLOSED-VERIFIED / 155 = 17.4%**. 25 STAGED (fix done,
+Snapshot 2026-07-17. Scoreboard: **27 CLOSED-VERIFIED / 155 = 17.4%**. 26 STAGED (fix done,
 awaiting your retest) · ~100 IN-TRACK (still being worked).
 
 ---
@@ -13,7 +13,7 @@ tester-closed TAL-01588/01596.
 
 ---
 
-## 🧪 READY TO VERIFY NOW — 25 STAGED (fix landed, your PASS flips them CLOSED)
+## 🧪 READY TO VERIFY NOW — 26 STAGED (fix landed, your PASS flips them CLOSED)
 Test on the current deployed checkpoint. Each = one row that closes on PASS.
 
 ### Test set A — Orders (single-chart + persistence)
@@ -35,6 +35,7 @@ Test on the current deployed checkpoint. Each = one row that closes on PASS.
 - [ ] **H-S30** — step-spam refetch (no excess fetches on tick play)
 
 ### Test set C — Drawing / anchoring (RC-3)
+- [ ] **MC-DRAW-FIRSTCLICK** — arm shape on host A → **one click** on unfocused panel B starts draw (rectangle lands on B; not 2-click focus-then-draw). Build must read **`20260717b44`** (CKPT-003).
 - [ ] **RC-3** — labels/drawings don't drift-anchor across TF/paste/fractional
 - [ ] **TAL-01585** — layers/drawings don't move when changing timeframe
 - [ ] **H-S40 / H-S41** — bar-open anchoring stable
@@ -53,7 +54,7 @@ Test on the current deployed checkpoint. Each = one row that closes on PASS.
 ## 🔧 STILL IN PROGRESS — IN-TRACK (~100) — not ready to test
 Largest buckets: A1 axis (11), UI-polish L5 (8), T8 replay/mirror (8), A7/A7b perf (12),
 T1 lifecycle (4), A8 drawing tranches (4), T3 layout-state rows (row11/13/14/15/16), plus the
-new finds (MC-STEPFWD step-forward, MC-DRAW-FIRSTCLICK draw-on-click-1). These are being fixed
+new finds (MC-STEPFWD step-forward). MC-DRAW-FIRSTCLICK moved to STAGED (CKPT-003/b44). These are being fixed
 or specced; I'll move them to STAGED as builds land, then they join the list above.
 
 ---

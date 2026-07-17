@@ -733,6 +733,26 @@ function _isAnchoredVpRightEdgeTimestampFixEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_ANCHORED_VP_RIGHT_EDGE_TIMESTAMP_FIX !== true;
 }
 
+/** A8-1: Shift+box corner square constraint in pixel space (unset = fix ON). */
+function _isA8BoxShiftSquarePixelFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_A8_BOX_SHIFT_SQUARE_PIXEL_FIX !== true;
+}
+
+/** A8-2: commit stale SVG transform before body drag (unset = fix ON). */
+function _isA8ShiftDragStaleTransformFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_A8_SHIFT_DRAG_STALE_TRANSFORM_FIX !== true;
+}
+
+/** A8-3: live cross-panel sync carries timestamp preview (unset = fix ON). */
+function _isA8ShiftLiveCrosspanelSyncFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_A8_SHIFT_LIVE_CROSSPANEL_SYNC_FIX !== true;
+}
+
+/** A8-4: locked drawing body passes pan to chart (unset = fix ON). */
+function _isA8LockedDrawingPanPassthroughFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_A8_LOCKED_DRAWING_PAN_PASSTHROUGH_FIX !== true;
+}
+
 function _getEffectiveCandleIndexClampTypes() {
     const out = new Set(CANDLE_INDEX_CLAMPED_TYPES);
     if (_isRc3ClampPolicyEnabled()) {

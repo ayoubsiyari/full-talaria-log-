@@ -341,6 +341,78 @@ function squareConstrainedBoxPoint(role, start, dataPoint) {
     };
 }
 
+/** A8-1 checkpoint: __TALARIA_DISABLE_A8_BOX_SHIFT_SQUARE_PIXEL_FIX — pixel-space square from anchor corner. */
+function squareConstrainedBoxPointPixel(role, start, dataPoint, chart) {
+    if (!start || !dataPoint || !role || !String(role).startsWith('corner-')) {
+        return dataPoint;
+    }
+    if (!chart || typeof chart.yScale !== 'function') {
+        return squareConstrainedBoxPoint(role, start, dataPoint);
+    }
+
+    const yScale = chart.yScale;
+    let ax = start.left;
+    let ay = start.top;
+    switch (role) {
+        case 'corner-br':
+            ax = start.left;
+            ay = start.top;
+            break;
+        case 'corner-tl':
+            ax = start.right;
+            ay = start.bottom;
+            break;
+        case 'corner-tr':
+            ax = start.left;
+            ay = start.bottom;
+            break;
+        case 'corner-bl':
+            ax = start.right;
+            ay = start.top;
+            break;
+        default:
+            return dataPoint;
+    }
+
+    const toPxX = (x) => {
+        if (typeof chart.dataIndexToPixel === 'function') {
+            const px = chart.dataIndexToPixel(x);
+            if (Number.isFinite(px)) return px;
+        }
+        return x;
+    };
+
+    const axPx = toPxX(ax);
+    const ayPx = yScale(ay);
+    const pxPx = toPxX(dataPoint.x);
+    const pyPx = yScale(dataPoint.y);
+    if (![axPx, ayPx, pxPx, pyPx].every(Number.isFinite)) {
+        return squareConstrainedBoxPoint(role, start, dataPoint);
+    }
+
+    const dxPx = pxPx - axPx;
+    const dyPx = pyPx - ayPx;
+    const sizePx = Math.max(Math.abs(dxPx), Math.abs(dyPx));
+    if (!Number.isFinite(sizePx) || sizePx === 0) return { ...dataPoint };
+
+    const sxPx = axPx + (dxPx >= 0 ? sizePx : -sizePx);
+    const syPx = ayPx + (dyPx >= 0 ? sizePx : -sizePx);
+
+    let x = dataPoint.x;
+    let y = dataPoint.y;
+    if (typeof chart.pixelToDataIndex === 'function') {
+        const idx = chart.pixelToDataIndex(sxPx);
+        if (Number.isFinite(idx)) x = idx;
+    }
+    if (typeof yScale.invert === 'function') {
+        y = yScale.invert(syPx);
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return squareConstrainedBoxPoint(role, start, dataPoint);
+    }
+    return { x, y };
+}
+
 /**
  * TradingView-style box resize: opposite edge/corner from drag start stays fixed;
  * crossing flips which handle is active so resize continues instead of collapsing to a line.
@@ -937,7 +1009,15 @@ class RectangleTool extends BaseDrawing {
         const start = this._resizeStart || boxBoundsFromPoints(this.points);
         let dragPoint = dataPoint;
         if (context.shiftKey && start) {
-            dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+            const chart = this.chart || context.chart || (context.scales && context.scales.chart);
+            if (typeof _isA8BoxShiftSquarePixelFixEnabled === 'function'
+                && _isA8BoxShiftSquarePixelFixEnabled()
+                && chart
+                && typeof squareConstrainedBoxPointPixel === 'function') {
+                dragPoint = squareConstrainedBoxPointPixel(role, start, dataPoint, chart);
+            } else {
+                dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+            }
         }
         const next = applyBoxHandleDragWithFlip(role, start, dragPoint);
         if (!next) {
@@ -1236,7 +1316,16 @@ class EllipseTool extends BaseDrawing {
         const role = this._resizeRole || handleRole;
         const start = this._resizeStart || boxBoundsFromPoints(this.points);
         if (context.shiftKey && start && String(role || '').startsWith('corner-')) {
-            let dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+            const chart = this.chart || context.chart || (context.scales && context.scales.chart);
+            let dragPoint;
+            if (typeof _isA8BoxShiftSquarePixelFixEnabled === 'function'
+                && _isA8BoxShiftSquarePixelFixEnabled()
+                && chart
+                && typeof squareConstrainedBoxPointPixel === 'function') {
+                dragPoint = squareConstrainedBoxPointPixel(role, start, dataPoint, chart);
+            } else {
+                dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+            }
             const next = applyBoxHandleDragWithFlip(role, start, dragPoint);
             if (!next) return false;
             if (next.activeRole !== role) {

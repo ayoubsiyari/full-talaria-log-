@@ -566,6 +566,9 @@ export async function installBuiltProductBoot(page, {
   panelBSettingsTransportAOff = false,
   orderMcStateConvergeOff = false,
   v9QuickbarLiveResolveOff = false,
+  vpV9AvLabelBridgeOff = false,
+  vpV9AvCoordRepositionOff = false,
+  axisMarginFloorOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -583,7 +586,10 @@ export async function installBuiltProductBoot(page, {
   const pbstAOff = panelBSettingsTransportAOff || process.env.REACT_PARITY_PANELB_SETTINGS_TRANSPORT_A_OFF === '1';
   const omscOff = orderMcStateConvergeOff || process.env.REACT_PARITY_ORDER_MC_STATE_CONVERGE_OFF === '1';
   const v9qlrOff = v9QuickbarLiveResolveOff || process.env.REACT_PARITY_V9_QUICKBAR_LIVE_RESOLVE_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn) => {
+  const vpAvLblOff = vpV9AvLabelBridgeOff || process.env.REACT_PARITY_VP_V9_AV_LABEL_BRIDGE_OFF === '1';
+  const vpAvCoordOff = vpV9AvCoordRepositionOff || process.env.REACT_PARITY_VP_V9_AV_COORD_REPOSITION_OFF === '1';
+  const amfOff = axisMarginFloorOff || process.env.REACT_PARITY_AXIS_MARGIN_FLOOR_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -598,6 +604,9 @@ export async function installBuiltProductBoot(page, {
     if (panelBTransportAOffOn) window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1 = true;
     if (orderMcStateConvergeOffOn) window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX = true;
     if (v9QuickbarLiveResolveOffOn) window.__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1 = true;
+    if (vpAvLabelBridgeOffOn) window.__TALARIA_DISABLE_VP_V9_AV_LABEL_BRIDGE_FIX = true;
+    if (vpAvCoordRepositionOffOn) window.__TALARIA_DISABLE_VP_V9_AV_COORD_REPOSITION_FIX = true;
+    if (axisMarginFloorOffOn) window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -610,7 +619,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -1361,6 +1370,494 @@ export async function waitForPanelData(page, panelId, timeoutMs = 90_000) {
   return true;
 }
 
+/** Off-5m-boundary anchor index + close price for VP tools (H-A8-VP-*). */
+export async function defaultVolumeAnchorPoints(page, pointCount = 1, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) throw new Error(`defaultVolumeAnchorPoints: no frame for panel ${panelId}`);
+  return frame.evaluate((n) => {
+    const ch = window.chart;
+    const len = Array.isArray(ch?.data) ? ch.data.length : 0;
+    const pickOffFiveMinuteBoundary = (startFraction) => {
+      const start = Math.max(10, Math.floor(len * startFraction));
+      for (let i = start; i < Math.min(len - 1, start + 120); i++) {
+        const t = Number(ch.data[i]?.t);
+        if (Number.isFinite(t) && t % (5 * 60 * 1000) !== 0) return i;
+      }
+      return start;
+    };
+    const first = pickOffFiveMinuteBoundary(0.30);
+    const second = Math.max(first + 10, pickOffFiveMinuteBoundary(0.45));
+    const a = ch.data[first];
+    const b = ch.data[second];
+    if (!a || !Number.isFinite(Number(a.c))) {
+      const fallback = ch.data[Math.max(10, Math.floor(len * 0.5))];
+      if (!fallback) return [];
+      return [{ x: Math.max(10, Math.floor(len * 0.5)), y: Number(fallback.c ?? fallback.close ?? 1) }];
+    }
+    if (n === 1) return [{ x: first, y: Number(a.c) }];
+    return [
+      { x: first, y: Number(a.h) },
+      { x: second, y: Number(b.l) },
+    ];
+  }, pointCount);
+}
+
+function avSettingsPanelTitleRe(kind) {
+  return kind === 'fixed' ? /Fixed Range Volume Profile/i : /Anchored Volume Profile/i;
+}
+
+/** V9 floating UI uses onPointerDown (modalPointerActivate) — dispatch pointerdown at page coords. */
+async function pointerActivateAt(page, x, y) {
+  await page.mouse.move(x, y);
+  const fired = await page.evaluate((px, py) => {
+    const el = document.elementFromPoint(px, py);
+    if (!el) return false;
+    el.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: px,
+      clientY: py,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+    }));
+    return true;
+  }, x, y);
+  if (!fired) {
+    await page.mouse.down();
+    await page.mouse.up();
+  }
+  return { ok: true };
+}
+
+export async function waitForAvVolumeProfileSettingsOpen(page, { kind = 'anchored', timeoutMs = 6000 } = {}) {
+  const titleRe = avSettingsPanelTitleRe(kind);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snap = await page.evaluate((reSrc, reFlags) => {
+      const re = new RegExp(reSrc, reFlags);
+      const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+        .find((el) => re.test(el.innerText || ''));
+      if (!panel) return { ok: false };
+      const text = panel.innerText || '';
+      return {
+        ok: true,
+        hasLabelsRow: /\bLabels\b/i.test(text) && /\bPrice\b/i.test(text) && /\bTime\b/i.test(text),
+        hasCoordinatesTab: /\bCoordinates\b/i.test(text),
+        snippet: text.slice(0, 200),
+      };
+    }, titleRe.source, titleRe.flags);
+    if (snap.ok) return snap;
+    await sleep(100);
+  }
+  return { ok: false, reason: 'timeout' };
+}
+
+/** Open anchored VP V9 settings via dbl-click, AV toolbar gear, or anchor-handle dbl-click (I15). */
+export async function openAvVolumeProfileSettings(page, panelId, drawId) {
+  await focusReactPanelSoft(page, panelId);
+  let dbl = await doubleClickDrawing(page, panelId, drawId);
+  let open = await waitForAvVolumeProfileSettingsOpen(page, { timeoutMs: 2500 });
+  if (open.ok) return { ok: true, method: dbl?.ok ? 'dblclick' : 'dblclick-late', open };
+
+  const gear = await page.evaluate(() => {
+    const btn = document.querySelector('#avb-sett');
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  if (gear) {
+    await page.mouse.click(gear.x, gear.y, { delay: 30 });
+    await sleep(200);
+    open = await waitForAvVolumeProfileSettingsOpen(page, { timeoutMs: 4000 });
+    if (open.ok) return { ok: true, method: 'av-toolbar-gear', open };
+  }
+
+  const handle = await resolveAnchoredVpAnchorHandlePagePoint(page, panelId, drawId);
+  if (handle?.ok) {
+    await page.mouse.click(handle.x, handle.y, { clickCount: 2, delay: 40 });
+    await sleep(200);
+    open = await waitForAvVolumeProfileSettingsOpen(page, { timeoutMs: 4000 });
+    if (open.ok) return { ok: true, method: 'handle-dblclick', open };
+  }
+
+  const frame = chartTarget(page, panelId);
+  const frameRect = frame ? await reactFrameRectForPanel(page, panelId) : null;
+  if (frame) {
+    const invoked = await frame.evaluate((id, frameLeft, frameTop) => {
+      try {
+        const dm = window.chart && window.chart.drawingManager;
+        const d = dm && (dm.drawings || []).find((x) => x && String(x.id) === String(id));
+        if (!d || typeof dm.editDrawing !== 'function') return { ok: false, reason: 'no editDrawing' };
+        const pageX = frameLeft + Math.max(80, window.innerWidth / 2);
+        const pageY = frameTop + Math.max(80, window.innerHeight / 2);
+        dm.editDrawing(d, pageX, pageY);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: String(err && err.message ? err.message : err) };
+      }
+    }, drawId, frameRect?.left || 0, frameRect?.top || 0);
+    if (invoked?.ok) {
+      await sleep(250);
+      open = await waitForAvVolumeProfileSettingsOpen(page, { timeoutMs: 4000 });
+      if (open.ok) return { ok: true, method: 'editDrawing-fallback', open };
+    }
+  }
+
+  return { ok: false, reason: 'settings not opened', dblReason: dbl?.reason || null, open };
+}
+
+export async function clickAvSettingsTab(page, tabId) {
+  const tabPatterns = {
+    style: /^Style$/i,
+    coordinates: /^Coordinates$/i,
+    inputs: /^Inputs$/i,
+    visibility: /^Visibility$/i,
+  };
+  const tabRe = tabPatterns[tabId] || new RegExp(`^${String(tabId)}$`, 'i');
+  const rect = await page.evaluate((reSrc, reFlags) => {
+    const re = new RegExp(reSrc, reFlags);
+    const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+      .find((el) => /Anchored Volume Profile/i.test(el.innerText || ''));
+    if (!panel) return null;
+    const btn = [...panel.querySelectorAll('button')].find((b) => re.test((b.innerText || '').trim()));
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, tabRe.source, tabRe.flags);
+  if (!rect) return { ok: false, reason: 'tab not found' };
+  await page.mouse.click(rect.x, rect.y);
+  await sleep(120);
+  return { ok: true };
+}
+
+export async function clickAvLabelCheckbox(page, which) {
+  const boxIdx = which === 'time' ? 1 : 0;
+  const rect = await page.evaluate((idx) => {
+    const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+      .find((el) => /Anchored Volume Profile/i.test(el.innerText || ''));
+    if (!panel) return null;
+    const labelsSpan = [...panel.querySelectorAll('span')]
+      .find((s) => (s.textContent || '').trim() === 'Labels');
+    if (!labelsSpan) return null;
+    const row = labelsSpan.parentElement;
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'center' });
+    const boxes = row
+      ? [...row.querySelectorAll('div')].filter((d) => /width:\s*66/.test(d.getAttribute('style') || ''))
+      : [];
+    const box = boxes[idx];
+    const flex = box && box.querySelector('div[style*="inline-flex"]');
+    if (!flex) return { fail: true, boxCount: boxes.length };
+    const r = flex.getBoundingClientRect();
+    return { x: r.left + 5, y: r.top + r.height / 2, boxCount: boxes.length };
+  }, boxIdx);
+  if (!rect || rect.fail) return { ok: false, reason: 'checkbox not found', detail: rect };
+  await page.mouse.move(rect.x, rect.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await sleep(200);
+  return { ok: true };
+}
+
+export async function readAvVpLabelBridgeProbe(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  const engine = await frame.evaluate((id) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const d = dm && (dm.drawings || []).find((x) => x && String(x.id) === String(id));
+    if (!d || !d.style) return { ok: false, reason: 'drawing missing' };
+    const svg = ch && ch.svg;
+    let highlightNodes = 0;
+    if (svg && typeof svg.selectAll === 'function') {
+      highlightNodes = svg.selectAll(`.axis-highlight-group[data-drawing-id="${id}"]`).nodes().length;
+    }
+    const priceLabelEls = svg && typeof svg.selectAll === 'function'
+      ? svg.selectAll('.axis-highlight-price, .axis-highlight-price-text').nodes().length
+      : 0;
+    const timeLabelEls = svg && typeof svg.selectAll === 'function'
+      ? svg.selectAll('.axis-highlight-time, .axis-highlight-time-text, .axis-highlight-time-start, .axis-highlight-time-end').nodes().length
+      : 0;
+    return {
+      ok: true,
+      type: d.type,
+      selected: !!d.selected,
+      showPriceLabel: d.style.showPriceLabel !== false,
+      showTimeLabel: d.style.showTimeLabel !== false,
+      highlightGroupCount: highlightNodes,
+      priceAxisLabelCount: priceLabelEls,
+      timeAxisLabelCount: timeLabelEls,
+      highlightsVisible: highlightNodes > 0 && (priceLabelEls > 0 || timeLabelEls > 0),
+    };
+  }, drawId);
+  const parent = await page.evaluate(() => {
+    const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+      .find((el) => /Anchored Volume Profile/i.test(el.innerText || ''));
+    if (!panel) return { panelOpen: false };
+    const text = panel.innerText || '';
+    return {
+      panelOpen: true,
+      hasLabelsRow: /\bLabels\b/i.test(text) && /\bPrice\b/i.test(text) && /\bTime\b/i.test(text),
+      snippet: text.slice(0, 200),
+    };
+  });
+  return { ...engine, ...parent };
+}
+
+export async function readAvVpCoordTabFields(page) {
+  return page.evaluate(() => {
+    const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+      .find((el) => /Anchored Volume Profile/i.test(el.innerText || ''));
+    if (!panel) return { ok: false, reason: 'panel closed' };
+    if (!/\bCoordinates\b/i.test(panel.innerText)) return { ok: false, reason: 'not on coordinates tab' };
+    const inputs = panel.querySelectorAll('input.tlr-nospinner[type="number"]');
+    const anchorPrice = inputs[0]?.value ?? '';
+    const anchorBar = inputs[1]?.value ?? '';
+    return { ok: true, anchorPrice, anchorBar, inputCount: inputs.length };
+  });
+}
+
+export async function readAvVpAnchorGeometryProbe(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id) => {
+    const ch = window.chart;
+    const d = ch?.drawingManager?.drawings?.find((x) => String(x.id) === String(id));
+    if (!d || !d.points?.[0]) return { ok: false, reason: 'no anchor point' };
+    const p = d.points[0];
+    const dec = typeof ch.priceDecimals === 'number' ? ch.priceDecimals : 5;
+    return {
+      ok: true,
+      barIndex: Number(p.x),
+      price: Number(p.y),
+      priceFormatted: Number(p.y).toFixed(dec),
+      type: d.type,
+    };
+  }, drawId);
+}
+
+export async function editAvCoordFieldViaSpinner(page, field, deltaSteps) {
+  const rowLabel = field === 'anchorBar' ? 'Bar' : 'Price';
+  const up = deltaSteps >= 0;
+  const steps = Math.abs(deltaSteps);
+  for (let i = 0; i < steps; i++) {
+    const rect = await page.evaluate((lbl, wantUp) => {
+      const panel = [...document.querySelectorAll('[data-sdrop="1"]')]
+        .find((el) => /Anchored Volume Profile/i.test(el.innerText || ''));
+      if (!panel) return null;
+      const rows = [...panel.querySelectorAll('span')].filter((s) => (s.textContent || '').trim() === lbl);
+      const rowSpan = rows[rows.length - 1];
+      if (!rowSpan) return null;
+      const gridRow = rowSpan.closest('div[style*="grid"]') || rowSpan.parentElement?.parentElement;
+      if (!gridRow) return null;
+      const inputWrap = gridRow.querySelector('input.tlr-nospinner');
+      if (!inputWrap) return null;
+      const spinCol = inputWrap.parentElement?.querySelector('div[style*="absolute"]');
+      const buttons = spinCol ? [...spinCol.querySelectorAll('button')] : [];
+      const btn = wantUp ? buttons[0] : buttons[1];
+      if (!btn) return null;
+      const r = btn.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, rowLabel, up);
+    if (!rect) return { ok: false, reason: 'spinner not found', step: i };
+    await page.mouse.move(rect.x, rect.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await sleep(40);
+  }
+  return { ok: true };
+}
+
+/** Pan host/iframe chart so anchored VP anchor bar sits inside the plot (CORE-B drag setup). */
+export async function ensureDrawingAnchorInPlotView(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id) => {
+    const ch = window.chart;
+    const dm = ch?.drawingManager;
+    const d = dm?.drawings?.find((x) => String(x.id) === String(id));
+    if (!d?.points?.[0]) return { ok: false, reason: 'no drawing' };
+    const barIdx = Number(d.points[0].x);
+    const spacing = typeof ch.getCandleSpacing === 'function' ? ch.getCandleSpacing() : 7;
+    const m = ch.margin || { l: 0, r: 0, t: 0, b: 0 };
+    const plotW = (ch.w || 0) - m.l - m.r;
+    if (plotW <= 0) return { ok: false, reason: 'no plot' };
+    const lx = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(barIdx) : NaN;
+    const plotLeft = m.l;
+    const plotRight = m.l + plotW;
+    const pad = Math.max(spacing * 4, 24);
+    let changed = false;
+    if (Number.isFinite(lx) && (lx < plotLeft + pad || lx > plotRight - pad)) {
+      const targetLx = m.l + plotW * 0.55;
+      ch.offsetX = (ch.offsetX || 0) + (targetLx - lx);
+      changed = true;
+      if (typeof ch.scheduleRender === 'function') ch.scheduleRender();
+      if (typeof dm?.renderDrawings === 'function') dm.renderDrawings();
+    }
+    const lxAfter = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(barIdx) : NaN;
+    return { ok: true, changed, lxBefore: lx, lxAfter, offsetX: ch.offsetX };
+  }, drawId);
+}
+
+export async function resolveAnchoredVpAnchorHandlePagePoint(page, panelId, drawId) {
+  await ensureDrawingAnchorInPlotView(page, panelId, drawId);
+  await sleep(180);
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  const local = await frame.evaluate((id) => {
+    const ch = window.chart;
+    const dm = ch?.drawingManager;
+    const d = dm?.drawings?.find((x) => String(x.id) === String(id));
+    if (!d) return null;
+    const handleNodeFromSel = (sel) => {
+      const node = sel && typeof sel.node === 'function' ? sel.node() : null;
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return null;
+      if (r.right < 0 || r.bottom < 0) return null;
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, source: 'handle' };
+    };
+    if (d.group) {
+      const handleQueries = d.type === 'anchored-volume-profile'
+        ? [
+          () => d.group.select?.('.resize-handle[data-point-index="0"]'),
+          () => d.group.select?.('.resize-handle-hit[data-point-index="0"]'),
+          () => d.group.select?.('.resize-handle'),
+          () => d.group.select?.('.custom-handle'),
+        ]
+        : [
+          () => d.group.select?.('.custom-handle'),
+          () => d.group.select?.('.resize-handle'),
+          () => d.group.select?.('circle'),
+        ];
+      for (const q of handleQueries) {
+        const pt = handleNodeFromSel(q());
+        if (pt) return pt;
+      }
+    }
+    const p = d.points?.[0];
+    if (!p) return null;
+    const lx = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(Number(p.x)) : NaN;
+    const ly = ch.yScale && typeof ch.yScale === 'function' ? ch.yScale(Number(p.y)) : NaN;
+    if (!Number.isFinite(lx) || !Number.isFinite(ly)) return null;
+    const m = ch.margin || { l: 0, r: 0, t: 0, b: 0 };
+    const plotW = (ch.w || 0) - m.l - m.r;
+    if (plotW > 0 && (lx < m.l || lx > m.l + plotW)) return null;
+    const r = typeof ch._pointerLayoutRect === 'function'
+      ? ch._pointerLayoutRect()
+      : (ch.canvas?.parentElement?.getBoundingClientRect() || ch.canvas?.getBoundingClientRect() || { left: 0, top: 0 });
+    const z = typeof ch._v9LayoutZoom === 'function' ? ch._v9LayoutZoom() : 1;
+    return { x: lx * z + r.left, y: ly * z + r.top, source: 'geometry' };
+  }, drawId);
+  if (!local) {
+    const hit = await drawingHitLocalPoint(page, panelId, drawId, { aim: 'center' });
+    if (hit?.ok) {
+      const pt = await localToPagePoint(page, panelId, hit.x, hit.y);
+      return pt ? { ok: true, ...pt, source: 'hit' } : { ok: false, reason: 'no page point' };
+    }
+    return { ok: false, reason: 'no handle' };
+  }
+  const pagePt = await localToPagePoint(page, panelId, local.x, local.y);
+  return pagePt ? { ok: true, ...pagePt, source: local.source } : { ok: false, reason: 'no page point' };
+}
+
+export async function dragPointerPath(page, x0, y0, x1, y1, { steps = 10 } = {}) {
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    await page.mouse.move(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    await sleep(16);
+  }
+}
+
+export async function reactPanelLoadFile(page, panelId, fileId) {
+  return page.evaluate(async (pid, fid) => {
+    const grid = window.__multichartGrid;
+    if (grid && typeof grid.runCommand === 'function') {
+      return grid.runCommand('loadFile', { fileId: String(fid) }, { panelId: pid });
+    }
+    return false;
+  }, panelId, fileId);
+}
+
+export async function readReactPanelFileIds(page) {
+  const host = await page.evaluate(() => {
+    const ch = window.chart;
+    return ch && ch.currentFileId != null ? String(ch.currentFileId) : null;
+  });
+  const frameB = panelFrameMap(page).B;
+  const b = frameB
+    ? await frameB.evaluate(() => {
+      const ch = window.chart;
+      return ch && ch.currentFileId != null ? String(ch.currentFileId) : null;
+    })
+    : null;
+  return { A: host, B: b };
+}
+
+export async function readAxisMarginCrushProbe(page, panelId = 'B') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate(() => {
+    const ch = window.chart;
+    if (!ch || !ch.margin || !ch.yScale) return { ok: false, reason: 'missing chart/yScale' };
+    const m = ch.margin;
+    const axisLeft = !!ch.priceAxisLeft;
+    const axisW = axisLeft ? Number(m.l) : Number(m.r);
+    const chPlot = Number(ch.h) - Number(m.t) - Number(m.b);
+    const priceSideKey = axisLeft ? 'l' : 'r';
+    const priceMin = 60;
+    const timeMin = 24;
+    const numYTicks = Math.max(8, Math.min(15, Math.floor(chPlot / 60)));
+    let labelCount = 0;
+    const yTicks = typeof ch._getYPriceTicks === 'function' ? ch._getYPriceTicks(numYTicks) : [];
+    const pricePlotBottom = chPlot > 0 ? (ch.h - m.b) : 0;
+    yTicks.forEach((price) => {
+      const y = ch.yScale(price);
+      if (y > m.t + 8 && y < pricePlotBottom - 8) labelCount += 1;
+    });
+    const timeTicks = (typeof ch._buildTimeTicks === 'function')
+      ? ch._buildTimeTicks({ full: true })
+      : (ch._timeTicks || []);
+    const crush =
+      axisW < 48 ||
+      chPlot <= 0 ||
+      labelCount === 0 ||
+      (Array.isArray(timeTicks) && timeTicks.length === 0);
+    return {
+      ok: !crush,
+      crush,
+      marginR: Number(m.r),
+      marginL: Number(m.l),
+      marginB: Number(m.b),
+      axisW,
+      chPlot,
+      labelCount,
+      timeTickCount: Array.isArray(timeTicks) ? timeTicks.length : 0,
+      priceSideKey,
+      floorOk: Number(m[priceSideKey]) >= priceMin && Number(m.b) >= timeMin,
+    };
+  });
+}
+
+export async function waitForVpDrawingSettle(page, panelId, drawId, budgetMs = 3000) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return false;
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const settled = await frame.evaluate((id) => {
+      const ch = window.chart;
+      const dm = ch && ch.drawingManager;
+      const d = dm && dm.drawings && dm.drawings.find((x) => x && String(x.id) === String(id));
+      const rendered = ch && ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0;
+      return !!(d && d.type === 'anchored-volume-profile' && rendered > 0);
+    }, drawId);
+    if (settled) return true;
+    await sleep(150);
+  }
+  return false;
+}
+
 /**
  * Boot one cold React multichart page (2v layout) for a scenario.
  */
@@ -1384,6 +1881,9 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     panelBSettingsTransportAOff: !!opts.panelBSettingsTransportAOff,
     orderMcStateConvergeOff: !!opts.orderMcStateConvergeOff,
     v9QuickbarLiveResolveOff: !!opts.v9QuickbarLiveResolveOff,
+    vpV9AvLabelBridgeOff: !!opts.vpV9AvLabelBridgeOff,
+    vpV9AvCoordRepositionOff: !!opts.vpV9AvCoordRepositionOff,
+    axisMarginFloorOff: !!opts.axisMarginFloorOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

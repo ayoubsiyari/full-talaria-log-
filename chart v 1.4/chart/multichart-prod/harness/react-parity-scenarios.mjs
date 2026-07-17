@@ -42,6 +42,21 @@ import {
   isDrawingSelected,
   waitForPanelData,
   waitForReactMultichartReady,
+  defaultVolumeAnchorPoints,
+  waitForAvVolumeProfileSettingsOpen,
+  openAvVolumeProfileSettings,
+  clickAvSettingsTab,
+  clickAvLabelCheckbox,
+  readAvVpLabelBridgeProbe,
+  readAvVpCoordTabFields,
+  readAvVpAnchorGeometryProbe,
+  editAvCoordFieldViaSpinner,
+  resolveAnchoredVpAnchorHandlePagePoint,
+  dragPointerPath,
+  reactPanelLoadFile,
+  readReactPanelFileIds,
+  readAxisMarginCrushProbe,
+  waitForVpDrawingSettle,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -589,6 +604,97 @@ async function hR14(ctx) {
   });
 }
 
+// ── H-A7b-R2 — D-029 R2: multichart anchored VP must not crush price/time axes ─
+async function hA7bR2(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    checks.check('H-A7b-R2 L1: build id on host + panel B iframe', boot.buildIds.ok,
+      JSON.stringify(boot.buildIds));
+    checks.check('H-A7b-R2 L1: iframe boundary (panel B embed)', boot.boundary && boot.boundary.ok,
+      JSON.stringify(boot.boundary));
+    checks.check('H-A7b-R2 L1: real bar data in panel B iframe', boot.iframeBars > 50,
+      `dataLen=${boot.iframeBars}`);
+
+    await reactPanelLoadFile(page, 'B', '27');
+    await waitForPanelData(page, 'B', 60_000);
+    const fileDeadline = Date.now() + 30_000;
+    let fileIds = await readReactPanelFileIds(page);
+    while (Date.now() < fileDeadline && fileIds.B !== '27') {
+      await sleep(250);
+      fileIds = await readReactPanelFileIds(page);
+    }
+    checks.check('H-A7b-R2 setup: independent pair A=file25 B=file27',
+      fileIds.A === '25' && fileIds.B === '27', JSON.stringify(fileIds));
+
+    const dataDeadline = Date.now() + 30_000;
+    let bBars = 0;
+    while (Date.now() < dataDeadline) {
+      const frameB = panelFrameMap(page).B;
+      bBars = frameB
+        ? await frameB.evaluate(() => (window.chart && window.chart.data ? window.chart.data.length : 0))
+        : 0;
+      if (bBars > 50) break;
+      await sleep(200);
+    }
+    checks.check('H-A7b-R2 setup: panel B bars loaded after file27 switch', bBars > 50, `len=${bBars}`);
+
+    await focusReactPanel(page, 'B');
+    await waitForPanelSettle(page, 'B');
+    // Multichart-topology stress amplifier (D-029 §4.2): resize cycle before VP.
+    await page.setViewport({ width: 1280, height: 720 });
+    await waitForPanelSettle(page, 'B', 2000);
+    await page.setViewport({ width: 1440, height: 960 });
+    await waitForPanelSettle(page, 'B', 2000);
+    let pts;
+    try {
+      pts = await defaultVolumeAnchorPoints(page, 1, 'B');
+    } catch (err) {
+      checks.check('H-A7b-R2 setup: anchor points resolved', false, String(err && err.message || err));
+      return checks;
+    }
+    const placed = await placeTool(page, 'B', 'anchored-volume-profile', pts);
+    checks.check('H-A7b-R2 setup: anchored VP placed on panel B', placed && placed.id,
+      placed ? placed.id : 'null');
+    await waitForVpDrawingSettle(page, 'B', placed.id, 3000);
+    await waitForPanelSettle(page, 'B', 1500);
+
+    const probe = await readAxisMarginCrushProbe(page, 'B');
+    const switchOff = !!ctx.axisMarginFloorOff;
+    checks.check('H-A7b-R2 CORE: axes not crushed after anchored VP (multichart topology)',
+      switchOff ? !(probe && probe.ok) : (probe && probe.ok), JSON.stringify(probe));
+    checks.check('H-A7b-R2 CORE: margin floor contract (price side >=60, b >=24)',
+      switchOff ? !(probe && probe.floorOk) : (probe && probe.floorOk), JSON.stringify(probe));
+
+    const frameB = panelFrameMap(page).B;
+    const i13 = frameB ? await frameB.evaluate((off) => {
+      const ch = window.chart;
+      if (!ch || typeof ch._enforceAxisMarginFloor !== 'function') {
+        return { ok: false, reason: 'no _enforceAxisMarginFloor' };
+      }
+      ch.margin.r = 5;
+      ch._enforceAxisMarginFloor();
+      const after = Number(ch.margin.r);
+      if (off) {
+        return {
+          ok: after <= 10,
+          after,
+          switchOff: window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX === true,
+        };
+      }
+      return { ok: after >= 60, after };
+    }, switchOff) : { ok: false, reason: 'no frame B' };
+    if (switchOff) {
+      checks.check('H-A7b-R2 I13: _enforceAxisMarginFloor no-op when switch OFF',
+        i13 && i13.ok && i13.switchOff, JSON.stringify(i13));
+    } else {
+      checks.check('H-A7b-R2 I13: _enforceAxisMarginFloor clamps margin.r when switch ON',
+        i13 && i13.ok, JSON.stringify(i13));
+    }
+    return checks;
+  });
+}
+
 // ── H-S80 — PLAN2-FOUND#6: panel TF label sync after refresh (built V9) ───
 const H_S80_LABEL_SYNC_SWITCH = '__TALARIA_MC_PANEL_TF_LABEL_SYNC';
 
@@ -646,6 +752,143 @@ async function hS80React(ctx) {
   });
 }
 
+// ── H-A8-VP-1 — Anchored VP V9 label bridge (TAL-01662) ────────────────
+async function hA8Vp1(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const panelId = 'A';
+
+    await waitForPanelSettle(page, panelId);
+    const pts = await defaultVolumeAnchorPoints(page, 1, panelId);
+    const placed = await placeTool(page, panelId, 'anchored-volume-profile', pts);
+    checks.check('H-A8-VP-1 setup: anchored VP placed', placed && placed.id, placed ? placed.id : 'null');
+    if (!placed?.id) return checks;
+
+    await disarmDrawTool(page, panelId);
+    await singleClickDrawing(page, panelId, placed.id);
+    await waitForReactSelection(page, panelId, [placed.id]);
+    await waitForParentV9ChromeDomReady(page, panelId, placed.id, 4000);
+    const opened = await openAvVolumeProfileSettings(page, panelId, placed.id);
+    checks.check('H-A8-VP-1 probe: settings open actuation', opened.ok, JSON.stringify(opened));
+
+    const open = opened.open || await waitForAvVolumeProfileSettingsOpen(page, { kind: 'anchored', timeoutMs: 1000 });
+    checks.check('H-A8-VP-1 setup: AV settings open', open.ok, JSON.stringify(open));
+    checks.check('H-A8-VP-1 setup: Labels row present', open.hasLabelsRow, open.snippet || '');
+    if (!open.ok) return checks;
+
+    await clickAvSettingsTab(page, 'style');
+
+    await clickAvLabelCheckbox(page, 'price');
+    await sleep(150);
+    let probe = await readAvVpLabelBridgeProbe(page, panelId, placed.id);
+    checks.check('H-A8-VP-1 CORE: Price OFF → engine showPriceLabel false',
+      probe.ok && probe.showPriceLabel === false,
+      JSON.stringify(probe));
+
+    await clickAvLabelCheckbox(page, 'price');
+    await sleep(150);
+    probe = await readAvVpLabelBridgeProbe(page, panelId, placed.id);
+    checks.check('H-A8-VP-1 CORE: Price ON → highlights visible',
+      probe.ok && probe.showPriceLabel === true && probe.highlightsVisible === true,
+      JSON.stringify(probe));
+
+    await clickAvLabelCheckbox(page, 'time');
+    await sleep(150);
+    probe = await readAvVpLabelBridgeProbe(page, panelId, placed.id);
+    checks.check('H-A8-VP-1 CORE: Time OFF → engine showTimeLabel false',
+      probe.ok && probe.showTimeLabel === false,
+      JSON.stringify(probe));
+
+    await clickAvLabelCheckbox(page, 'time');
+    await sleep(150);
+    probe = await readAvVpLabelBridgeProbe(page, panelId, placed.id);
+    checks.check('H-A8-VP-1 CORE: Time ON → highlights visible',
+      probe.ok && probe.showTimeLabel === true && probe.highlightsVisible === true,
+      JSON.stringify(probe));
+
+    return checks;
+  });
+}
+
+// ── H-A8-VP-2 — Anchored VP coord tab ↔ canvas sync (TAL-01664) ─────────
+async function hA8Vp2(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const panelId = 'A';
+
+    await waitForPanelSettle(page, panelId);
+    const placed = await placeTool(page, panelId, 'anchored-volume-profile',
+      await defaultVolumeAnchorPoints(page, 1, panelId));
+    checks.check('H-A8-VP-2 setup: placed', placed?.id, placed?.id || 'null');
+    if (!placed?.id) return checks;
+
+    await disarmDrawTool(page, panelId);
+    await singleClickDrawing(page, panelId, placed.id);
+    await waitForReactSelection(page, panelId, [placed.id]);
+    await waitForParentV9ChromeDomReady(page, panelId, placed.id, 4000);
+    const opened = await openAvVolumeProfileSettings(page, panelId, placed.id);
+    checks.check('H-A8-VP-2 setup: settings open actuation', opened.ok, JSON.stringify(opened));
+    const open = opened.open || await waitForAvVolumeProfileSettingsOpen(page, { kind: 'anchored', timeoutMs: 1000 });
+    checks.check('H-A8-VP-2 setup: settings open', open.ok, JSON.stringify(open));
+    if (!open.ok) return checks;
+
+    await clickAvSettingsTab(page, 'coordinates');
+    // Prime avCoordBridge (first user edit after boot is skipped by avCoordBridgeReady).
+    await editAvCoordFieldViaSpinner(page, 'anchorBar', +1);
+    await sleep(250);
+    const fields0 = await readAvVpCoordTabFields(page);
+    const geo0 = await readAvVpAnchorGeometryProbe(page, panelId, placed.id);
+    checks.check('H-A8-VP-2 setup: coord fields readable', fields0.ok, JSON.stringify(fields0));
+    checks.check('H-A8-VP-2 setup: initial tab/geo bar match',
+      fields0.ok && geo0.ok && Math.abs(parseFloat(fields0.anchorBar) - geo0.barIndex) < 0.05,
+      `tab=${fields0.anchorBar} geo=${geo0.barIndex}`);
+
+    const barBefore = geo0.barIndex;
+    await editAvCoordFieldViaSpinner(page, 'anchorBar', +10);
+    await sleep(200);
+    const geo1 = await readAvVpAnchorGeometryProbe(page, panelId, placed.id);
+    const fields1 = await readAvVpCoordTabFields(page);
+    const dBar = geo1.barIndex - barBefore;
+    checks.check('H-A8-VP-2 CORE-A: coord tab Bar +10 moves anchor',
+      geo1.ok && Math.abs(dBar - 10) <= 0.05,
+      `dBar=${dBar} geo1=${JSON.stringify(geo1)}`);
+    checks.check('H-A8-VP-2 CORE-A′: tab Bar field matches geometry',
+      fields1.ok && Math.abs(parseFloat(fields1.anchorBar) - geo1.barIndex) <= 0.05,
+      JSON.stringify({ fields1, geo1 }));
+
+    const handle = await resolveAnchoredVpAnchorHandlePagePoint(page, panelId, placed.id);
+    checks.check('H-A8-VP-2 setup: anchor handle resolved', handle?.ok, JSON.stringify(handle || null));
+    if (handle?.ok) {
+      await page.mouse.move(handle.x, handle.y);
+      await page.mouse.down();
+      await dragPointerPath(page, handle.x, handle.y, handle.x - 70, handle.y + 18, { steps: 12 });
+      await page.mouse.up();
+      await sleep(250);
+    }
+    const geo2 = await readAvVpAnchorGeometryProbe(page, panelId, placed.id);
+    let fields2 = await readAvVpCoordTabFields(page);
+    if (!fields2.ok && fields2.reason === 'panel closed') {
+      await openAvVolumeProfileSettings(page, panelId, placed.id);
+      await clickAvSettingsTab(page, 'coordinates');
+      await sleep(200);
+      fields2 = await readAvVpCoordTabFields(page);
+    }
+    const moved = geo2.ok && (Math.abs(geo2.barIndex - geo1.barIndex) >= 0.5
+      || Math.abs(geo2.price - geo1.price) >= 1e-5);
+    checks.check('H-A8-VP-2 CORE-B: canvas drag moves anchor', moved, JSON.stringify({ geo1, geo2 }));
+    const priceTick = 1e-5;
+    checks.check('H-A8-VP-2 CORE-B′: coord tab tracks canvas drag',
+      fields2.ok && geo2.ok
+        && Math.abs(parseFloat(fields2.anchorBar) - geo2.barIndex) <= 0.05
+        && Math.abs(parseFloat(fields2.anchorPrice) - geo2.price) <= priceTick,
+      JSON.stringify({ fields1, fields2, geo2 }));
+
+    return checks;
+  });
+}
+
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -662,6 +905,9 @@ export function reactScenarioList() {
     { id: 'H-R08', title: 'parity row 8: Ctrl+drag marquee (host + panel B)', run: hR08 },
     { id: 'H-R09', title: 'parity row 9: single→double-click chain + Esc (host + panel B)', run: hR09 },
     { id: 'H-R09-LR', title: 'H-R09 live-resolve lag pin (panel B single-click + parent bar)', run: hR09Lr },
+    { id: 'H-A7b-R2', title: 'D-029 R2: multichart anchored VP must not crush price/time axes', run: hA7bR2 },
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label sync after refresh (built V9)', run: hS80React },
+    { id: 'H-A8-VP-1', title: 'A8-VP-1: anchored VP V9 label bridge (Price/Time toggles → engine + axis highlights)', run: hA8Vp1 },
+    { id: 'H-A8-VP-2', title: 'A8-VP-2: anchored VP coord tab ↔ canvas anchor sync', run: hA8Vp2 },
   ];
 }

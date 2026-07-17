@@ -5242,6 +5242,24 @@ function multichartPanelBSettingsTransportADepthEnabled() {
   }
 }
 
+/** A8-VP-1: anchored VP V9 label bridge (TAL-01662). unset = ON. */
+function _isVpV9AvLabelBridgeFixEnabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_VP_V9_AV_LABEL_BRIDGE_FIX === true);
+  } catch (_) {
+    return true;
+  }
+}
+
+/** A8-VP-2: anchored VP coordinates-tab reposition (TAL-01664). unset = ON. */
+function _isVpV9AvCoordRepositionFixEnabled() {
+  try {
+    return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_VP_V9_AV_COORD_REPOSITION_FIX === true);
+  } catch (_) {
+    return true;
+  }
+}
+
 /**
  * Durable parent ready-signal for harness (Lane 4): state + event + DOM attribute.
  * Returns true when gear/bar visible and signal was emitted (or already matched).
@@ -13663,8 +13681,10 @@ const TalariaV8bLive = () => {
   /** Final push of tlStyle when settings OK closes (belt-and-suspenders for fib subtypes). */
   const v9StyleBridgeFlushRef = useRef(null);
   const vpStyleBridgeFlushRef = useRef(null);
+  const avStyleBridgeFlushRef = useRef(null);
   const vwapStyleBridgeFlushRef = useRef(null);
   const vpStyleLiveRef = useRef(null);
+  const avStyleLiveRef = useRef(null);
   const vwapStyleLiveRef = useRef(null);
   const tlSettOpenRef = useRef(false);
   /** Chart click dismissed settings only — keep shape selected + quick bar; skip prevTool restore. */
@@ -13924,6 +13944,8 @@ const TalariaV8bLive = () => {
     rowsLayout: "Number of Rows", rowSize: "24",
     volumeOn: true, volumeType: "Up/Down",
     valueAreaVol: "70", extendRight: false,
+    priceLabels: true,
+    timeLabels: true,
     anchorPrice: "0.00000", anchorBar: "0",
     visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
@@ -13936,6 +13958,7 @@ const TalariaV8bLive = () => {
   vwapSettOpenRef.current = vwapSettOpen;
   vpSettOpenRef.current = vpSettOpen;
   vpStyleLiveRef.current = vpStyle;
+  avStyleLiveRef.current = avStyle;
   vwapStyleLiveRef.current = vwapStyle;
   avSettOpenRef.current = avSettOpen;
   indSettOpenRef.current = indSettOpen;
@@ -18651,6 +18674,15 @@ const TalariaV8bLive = () => {
           flushSync(() => toggle());
           vwapStyleBridgeFlushRef.current?.();
         })
+      : opts?.avImmediate
+      ? modalPointerActivate(() => {
+          const now = Date.now();
+          const last = tlChkLastActRef.current[hKey] || 0;
+          if (now - last < 100) return;
+          tlChkLastActRef.current[hKey] = now;
+          flushSync(() => toggle());
+          avStyleBridgeFlushRef.current?.();
+        })
       : opts?.immediate
       ? modalPointerActivate(toggle)
       : modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle));
@@ -20616,45 +20648,71 @@ const TalariaV8bLive = () => {
       if (!coordsOnly && v9DrawingUsesFibStyleBridge(d.type)) {
         Object.assign(patch, v9TlStylePatchFromDrawing(d) || {});
       }
-      if (Object.keys(patch).length === 0) return;
-      suppressForwardBridge.current = true;
-      suppressCoordBridge.current = true;
-      setTlStyle((s) => {
-        let changed = false;
-        const next = { ...s };
-        for (const key of Object.keys(patch)) {
-          const pv = patch[key];
-          const nv = next[key];
-          const eq = Array.isArray(pv) && Array.isArray(nv)
-            ? JSON.stringify(pv) === JSON.stringify(nv)
-            : (pv && nv && typeof pv === "object" && typeof nv === "object"
-              && !Array.isArray(pv) && !Array.isArray(nv))
+      const vpPatch = v9IsVolumeProfileDrawingType(d.type) ? v9VpCoordVisPatchFromDrawing(d) : {};
+      const avPatch = (_isVpV9AvCoordRepositionFixEnabled() && d.type === "anchored-volume-profile")
+        ? v9AnchorCoordPatchFromDrawing(d)
+        : {};
+      if (Object.keys(patch).length === 0
+        && Object.keys(vpPatch).length === 0
+        && Object.keys(avPatch).length === 0) return;
+      if (Object.keys(patch).length > 0) {
+        suppressForwardBridge.current = true;
+        suppressCoordBridge.current = true;
+        setTlStyle((s) => {
+          let changed = false;
+          const next = { ...s };
+          for (const key of Object.keys(patch)) {
+            const pv = patch[key];
+            const nv = next[key];
+            const eq = Array.isArray(pv) && Array.isArray(nv)
               ? JSON.stringify(pv) === JSON.stringify(nv)
-              : nv === pv;
-          if (!eq) {
-            next[key] = Array.isArray(pv)
-              ? pv.map((x) => (x && typeof x === "object" ? { ...x } : x))
-              : (pv && typeof pv === "object" ? { ...pv } : pv);
-            changed = true;
-          }
-        }
-        return changed ? next : s;
-      });
-      if (v9IsVolumeProfileDrawingType(d.type)) {
-        const vpPatch = v9VpCoordVisPatchFromDrawing(d);
-        if (Object.keys(vpPatch).length > 0) {
-          setVpStyle((s) => {
-            let changed = false;
-            const next = { ...s };
-            for (const key of Object.keys(vpPatch)) {
-              if (next[key] !== vpPatch[key]) {
-                next[key] = vpPatch[key];
-                changed = true;
-              }
+              : (pv && nv && typeof pv === "object" && typeof nv === "object"
+                && !Array.isArray(pv) && !Array.isArray(nv))
+                ? JSON.stringify(pv) === JSON.stringify(nv)
+                : nv === pv;
+            if (!eq) {
+              next[key] = Array.isArray(pv)
+                ? pv.map((x) => (x && typeof x === "object" ? { ...x } : x))
+                : (pv && typeof pv === "object" ? { ...pv } : pv);
+              changed = true;
             }
-            return changed ? next : s;
-          });
-        }
+          }
+          return changed ? next : s;
+        });
+      }
+      if (Object.keys(vpPatch).length > 0) {
+        setVpStyle((s) => {
+          let changed = false;
+          const next = { ...s };
+          for (const key of Object.keys(vpPatch)) {
+            if (next[key] !== vpPatch[key]) {
+              next[key] = vpPatch[key];
+              changed = true;
+            }
+          }
+          return changed ? next : s;
+        });
+      }
+      if (Object.keys(avPatch).length > 0) {
+        suppressAvBridge.current = true;
+        suppressCoordBridge.current = true;
+        setAvStyle((s) => {
+          let changed = false;
+          const next = { ...s };
+          for (const key of Object.keys(avPatch)) {
+            if (next[key] !== avPatch[key]) {
+              next[key] = avPatch[key];
+              changed = true;
+            }
+          }
+          return changed ? next : s;
+        });
+        try {
+          const live = getSelectedDrawingAcrossCharts(null);
+          if (live && live.type === "anchored-volume-profile" && String(live.id) === String(d.id)) {
+            v9SyncDrawingAxisHighlights(live);
+          }
+        } catch (_) { /* ignore */ }
       }
       if (drawingTypeToPanelGroupRef.current(d.type) === "text") {
         const txtPatch = {
@@ -20712,13 +20770,14 @@ const TalariaV8bLive = () => {
         if (!id || !Array.isArray(points) || points.length === 0) return;
         const editSess = editingDrawingRef.current;
         const editDraw = editSess?.drawing;
+        const liveType = detail.type;
         if (editDraw && editDraw.id === id) {
-          applyCanvasToTlStylePatch({ ...editDraw, points }, { coordsOnly: true });
+          applyCanvasToTlStylePatch({ ...editDraw, type: liveType || editDraw.type, points }, { coordsOnly: true });
           return;
         }
         const sel = getSelectedDrawingAcrossCharts(editDraw);
         if (sel && sel.id === id) {
-          applyCanvasToTlStylePatch({ ...sel, points }, { coordsOnly: true });
+          applyCanvasToTlStylePatch({ ...sel, type: liveType || sel.type, points }, { coordsOnly: true });
         }
       } catch (_) { /* ignore */ }
     };
@@ -21154,7 +21213,7 @@ const TalariaV8bLive = () => {
           const PLC_R3 = {left:"Left",right:"Right"};
           const ROW_R3 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
           const VOL_R3 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
-          setAvStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R3[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R3[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R3[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight, ...v9AnchorCoordPatchFromDrawing(drawingForStyle) }));
+          setAvStyle(prev => ({...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor||prev.valuesColor, widthPct: String(Math.round((ds.profileWidthRatio??0.3)*100)), placement: PLC_R3[ds.profilePlacement]||prev.placement, zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill||prev.zoneBgColor, zoneBgAlpha: Math.round((ds.backgroundOpacity??0.85)*100), upVolColor: ds.buyColor||prev.upVolColor, downVolColor: ds.sellColor||prev.downVolColor, valueAreaUpColor: ds.valueAreaBuyColor||prev.valueAreaUpColor, valueAreaDownColor: ds.valueAreaSellColor||prev.valueAreaDownColor, pocOn: ds.showPOC !== false, pocColor: ds.pocColor||prev.pocColor, vahOn: ds.showVAH !== false, vahColor: ds.VAHColor||prev.vahColor, valOn: ds.showVAL !== false, valColor: ds.VALColor||prev.valColor, devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor||prev.devPocColor, devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor||prev.devVAColor, rowsLayout: ROW_R3[ds.rowsLayout]||prev.rowsLayout, rowSize: String(ds.rowSize??prev.rowSize), volumeOn: ds.showVolume !== false, volumeType: VOL_R3[ds.volumeDisplay]||prev.volumeType, valueAreaVol: String(ds.valueAreaVolume??prev.valueAreaVol), extendRight: !!ds.extendRight, priceLabels: ds.showPriceLabel !== false, timeLabels: ds.showTimeLabel !== false, ...v9AnchorCoordPatchFromDrawing(drawingForStyle) }));
           v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setAvSettPos({ x: px, y: py });
@@ -21536,6 +21595,8 @@ const TalariaV8bLive = () => {
                 rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
                 volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
                 valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
+                priceLabels: ds.showPriceLabel !== false,
+                timeLabels: ds.showTimeLabel !== false,
                 ...v9AnchorCoordPatchFromDrawing(drawing),
               }));
             }
@@ -21996,6 +22057,8 @@ const TalariaV8bLive = () => {
               volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
               valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
               extendRight: !!s.extendRight,
+              priceLabels: s.showPriceLabel !== false,
+              timeLabels: s.showTimeLabel !== false,
               ...v9AnchorCoordPatchFromDrawing(live),
             }));
           }
@@ -23739,10 +23802,8 @@ const TalariaV8bLive = () => {
   }, [vpStyle.pt1Price, vpStyle.pt1Bar, vpStyle.pt2Price, vpStyle.pt2Bar, vpSettOpen]);
 
   // ─── V9 avStyle → selected anchored-volume-profile drawing ─────────────
-  const avBridgeReady = useRef(false);
-  useLayoutEffect(() => {
-    if (!avBridgeReady.current) { avBridgeReady.current = true; return; }
-    if (suppressAvBridge.current) { suppressAvBridge.current = false; return; }
+  const applyAvStyleBridgeFromSnapshot = (styleSnap) => {
+    if (!styleSnap) return;
     try {
       const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
       const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
@@ -23752,39 +23813,54 @@ const TalariaV8bLive = () => {
         if (!d || !d.style || d.type !== 'anchored-volume-profile') return;
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        d.style.showValues = !!avStyle.valuesOn;
-        d.style.valuesColor = avStyle.valuesColor;
-        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(avStyle.widthPct,10)||30)/100));
-        d.style.profilePlacement = PLC_MAP[avStyle.placement] || 'left';
-        d.style.showBackground = !!avStyle.zoneBgOn;
-        d.style.fill = avStyle.zoneBgColor;
-        d.style.backgroundOpacity = (avStyle.zoneBgAlpha ?? 85) / 100;
-        d.style.buyColor = avStyle.upVolColor;
-        d.style.sellColor = avStyle.downVolColor;
-        d.style.valueAreaBuyColor = avStyle.valueAreaUpColor;
-        d.style.valueAreaSellColor = avStyle.valueAreaDownColor;
-        d.style.showPOC = !!avStyle.pocOn;
-        d.style.pocColor = avStyle.pocColor;
-        d.style.showVAH = !!avStyle.vahOn;
-        d.style.VAHColor = avStyle.vahColor;
-        d.style.showVAL = !!avStyle.valOn;
-        d.style.VALColor = avStyle.valColor;
-        d.style.showDevelopingPOC = !!avStyle.devPocOn;
-        d.style.developingPOCColor = avStyle.devPocColor;
-        d.style.showDevelopingVA = !!avStyle.devVAOn;
-        d.style.developingVAColor = avStyle.devVAColor;
-        d.style.rowsLayout = ROW_MAP[avStyle.rowsLayout] || 'numberOfRows';
-        d.style.rowSize = parseInt(avStyle.rowSize,10) || 24;
-        d.style.showVolume = !!avStyle.volumeOn;
-        d.style.volumeDisplay = VOL_MAP[avStyle.volumeType] || 'upDown';
-        d.style.valueAreaVolume = parseInt(avStyle.valueAreaVol,10) || 70;
-        d.style.extendRight = !!avStyle.extendRight;
+        d.style.showValues = !!styleSnap.valuesOn;
+        d.style.valuesColor = styleSnap.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(styleSnap.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[styleSnap.placement] || 'left';
+        d.style.showBackground = !!styleSnap.zoneBgOn;
+        d.style.fill = styleSnap.zoneBgColor;
+        d.style.backgroundOpacity = (styleSnap.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = styleSnap.upVolColor;
+        d.style.sellColor = styleSnap.downVolColor;
+        d.style.valueAreaBuyColor = styleSnap.valueAreaUpColor;
+        d.style.valueAreaSellColor = styleSnap.valueAreaDownColor;
+        d.style.showPOC = !!styleSnap.pocOn;
+        d.style.pocColor = styleSnap.pocColor;
+        d.style.showVAH = !!styleSnap.vahOn;
+        d.style.VAHColor = styleSnap.vahColor;
+        d.style.showVAL = !!styleSnap.valOn;
+        d.style.VALColor = styleSnap.valColor;
+        d.style.showDevelopingPOC = !!styleSnap.devPocOn;
+        d.style.developingPOCColor = styleSnap.devPocColor;
+        d.style.showDevelopingVA = !!styleSnap.devVAOn;
+        d.style.developingVAColor = styleSnap.devVAColor;
+        d.style.rowsLayout = ROW_MAP[styleSnap.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(styleSnap.rowSize,10) || 24;
+        d.style.showVolume = !!styleSnap.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[styleSnap.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(styleSnap.valueAreaVol,10) || 70;
+        d.style.extendRight = !!styleSnap.extendRight;
+        if (_isVpV9AvLabelBridgeFixEnabled()) {
+          d.style.showPriceLabel = !!styleSnap.priceLabels;
+          d.style.showTimeLabel = !!styleSnap.timeLabels;
+        }
         try { dm.renderDrawing?.(d); } catch (_) {}
         try { dm.saveDrawings?.(); } catch (_) {}
+        if (_isVpV9AvLabelBridgeFixEnabled()) {
+          v9SyncDrawingAxisHighlights(d);
+        }
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
     } catch (err) { console.warn("[V9 avStyle bridge] failed:", err); }
+  };
+  avStyleBridgeFlushRef.current = () => applyAvStyleBridgeFromSnapshot(avStyleLiveRef.current);
+
+  const avBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!avBridgeReady.current) { avBridgeReady.current = true; return; }
+    if (suppressAvBridge.current) { suppressAvBridge.current = false; return; }
+    applyAvStyleBridgeFromSnapshot(avStyle);
   }, [
     avStyle.valuesOn, avStyle.valuesColor, avStyle.widthPct, avStyle.placement,
     avStyle.zoneBgOn, avStyle.zoneBgColor, avStyle.zoneBgAlpha,
@@ -23792,7 +23868,7 @@ const TalariaV8bLive = () => {
     avStyle.pocOn, avStyle.pocColor, avStyle.vahOn, avStyle.vahColor, avStyle.valOn, avStyle.valColor,
     avStyle.devPocOn, avStyle.devPocColor, avStyle.devVAOn, avStyle.devVAColor,
     avStyle.rowsLayout, avStyle.rowSize, avStyle.volumeOn, avStyle.volumeType, avStyle.valueAreaVol,
-    avStyle.extendRight,
+    avStyle.extendRight, avStyle.priceLabels, avStyle.timeLabels,
   ]);
 
   // ─── V9 avStyle coordinates → anchored-volume-profile anchor point ─────
@@ -23800,6 +23876,33 @@ const TalariaV8bLive = () => {
   useLayoutEffect(() => {
     if (!avCoordBridgeReady.current) { avCoordBridgeReady.current = true; return; }
     if (!avSettOpen) return;
+    if (_isVpV9AvCoordRepositionFixEnabled()) {
+      if (suppressCoordBridge.current) { suppressCoordBridge.current = false; return; }
+      const editSess = editingDrawingRef.current;
+      try {
+        const chartsToRender = new Set();
+        collectV9BridgeTargets().forEach(({ dm, d }) => {
+          if (!d || d.type !== "anchored-volume-profile") return;
+          if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+          let moved = false;
+          try { moved = v9ApplyAnchorPointsFromAvStyle(d, avStyle); } catch (_) {}
+          if (!moved) return;
+          const tb = dm.toolbar;
+          try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+          try {
+            if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+            else dm.renderDrawing?.(d);
+          } catch (_) {
+            try { dm.renderDrawing?.(d); } catch (_) {}
+          }
+          try { dm.saveDrawings?.(); } catch (_) {}
+          v9SyncDrawingAxisHighlights(d);
+          if (dm.chart) chartsToRender.add(dm.chart);
+        });
+        chartsToRender.forEach((ch) => ch.scheduleRender && ch.scheduleRender());
+      } catch (err) { console.warn("[V9 av coord bridge] failed:", err); }
+      return;
+    }
     try {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
@@ -31526,6 +31629,13 @@ const TalariaV8bLive = () => {
                   <div style={R()}>{chk("valOn")}{lbl("VAL",avStyle.valOn)}{sw("av_valColor",avStyle.valColor,!avStyle.valOn)}<div/><div/></div>
                   <div style={R()}>{chk("devPocOn")}{lbl("Developing POC",avStyle.devPocOn)}{sw("av_devPocColor",avStyle.devPocColor,!avStyle.devPocOn)}<div/><div/></div>
                   <div style={R()}>{chk("devVAOn")}{lbl("Developing VA",avStyle.devVAOn)}{sw("av_devVAColor",avStyle.devVAColor,!avStyle.devVAOn)}<div/><div/></div>
+                  <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:4}}>
+                    <span style={{fontSize:12,color:c.ts}}>Labels</span>
+                    <div style={{display:"flex",alignItems:"center",marginLeft:"auto"}}>
+                      <div style={{width:66}}>{TlChk(avStyle.priceLabels,"avc-priceLabels","Price",()=>setAvStyle(s=>({...s,priceLabels:!s.priceLabels})),{avImmediate:true})}</div>
+                      <div style={{width:66}}>{TlChk(avStyle.timeLabels,"avc-timeLabels","Time",()=>setAvStyle(s=>({...s,timeLabels:!s.timeLabels})),{avImmediate:true})}</div>
+                    </div>
+                  </div>
                 </>);
               })()}
 

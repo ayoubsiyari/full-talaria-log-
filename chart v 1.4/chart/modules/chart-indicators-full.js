@@ -11227,13 +11227,61 @@ Chart.prototype._syncSeparatePanelCrosshairUi = function(opts) {
         hide();
         return;
     }
-    setStaticAxisTagsVisible(false);
+
+    let indicatorAxisAnchorFixOn = true;
+    try {
+        indicatorAxisAnchorFixOn = typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_INDICATOR_AXIS_LABEL_ANCHOR_FIX !== true;
+    } catch (_) { indicatorAxisAnchorFixOn = true; }
 
     const ind = opts.indicator;
     const slot = opts.slot;
     const fmt = typeof this._formatIndicatorValueAtBar === 'function'
         ? this._formatIndicatorValueAtBar(ind, opts.barIdx)
         : null;
+
+    // Tranche G (TAL-01619): keep the right-axis indicator pill on the last-bar /
+    // scale anchor from render(); crosshair may still update the legend tooltip.
+    if (indicatorAxisAnchorFixOn) {
+        setStaticAxisTagsVisible(true);
+        if (liveAxis) liveAxis.style.display = 'none';
+        if (!fmt) {
+            if (tip) tip.style.display = 'none';
+            return;
+        }
+        const lineX = Number.isFinite(opts.lineX) ? opts.lineX : 0;
+        const cursorY = Number.isFinite(opts.y) ? opts.y : slot.top + slot.height * 0.5;
+        const indName = ind.name || ind.type || 'Indicator';
+        const bg = fmt.color || ind._displayColor || (ind.style && ind.style.color) || '#2962ff';
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.setAttribute('data-talaria-sp-crosshair-tip', '1');
+            overlay.appendChild(tip);
+        }
+        tip.textContent = indName + ': ' + ((fmt.text !== undefined && fmt.text !== null && fmt.text !== '')
+            ? String(fmt.text) : '—');
+        tip.style.cssText = [
+            'position:absolute',
+            'left:' + (lineX + 10) + 'px',
+            'top:' + (cursorY - 20) + 'px',
+            'padding:2px 6px',
+            'border-radius:2px',
+            'border:1px solid ' + bg,
+            'background:rgba(19,23,34,0.92)',
+            'color:' + bg,
+            'font:500 11px Roboto,sans-serif',
+            'line-height:1.3',
+            'white-space:nowrap',
+            'pointer-events:none',
+            'z-index:13',
+            'box-sizing:border-box'
+        ].join(';');
+        tip.style.display = 'block';
+        return;
+    }
+
+    setStaticAxisTagsVisible(false);
+
     const numVal = typeof this._pickIndicatorPlotValue === 'function'
         ? this._pickIndicatorPlotValue(ind, opts.barIdx)
         : null;

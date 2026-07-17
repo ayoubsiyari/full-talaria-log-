@@ -428,7 +428,11 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260717b73';
+const CHART_ENGINE_BUILD = '20260718b04';
+/** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
+const PRICE_AXIS_MIN_R = 60;
+const PRICE_AXIS_MIN_L = 60;
+const PRICE_AXIS_MIN_B = 24;
 
 /**
  * TradingView-style nice wall-clock steps (ms). Prefer values that divide a day
@@ -26972,6 +26976,7 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
 
         this._syncAdaptivePriceAxisMargin();
+        this._enforceAxisMarginFloor();
         if (!this.isPanel && typeof this._syncDomAxisCursorZones === 'function') {
             this._syncDomAxisCursorZones();
         }
@@ -27206,6 +27211,42 @@ class Chart {
         return best;
     }
 
+    /** A1 tranche B (TAL-01565/01618/01625): right-edge filler uses wall-clock align. */
+    _isAxisRightEdgeTickAlignFixActive() {
+        try {
+            return typeof window === 'undefined'
+                || window.__TALARIA_DISABLE_AXIS_RIGHT_EDGE_TICK_ALIGN_FIX !== true;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** True when bar index sits on the same wall-clock grid as _fastTimeTickAlignStart. */
+    _barIndexIsWallClockAligned(idx, labelStep, timeframeMs) {
+        labelStep = Math.max(1, Math.floor(labelStep));
+        if (!Number.isFinite(idx)) return false;
+        if (!this.data || this.data.length === 0 || !Number.isFinite(timeframeMs) || timeframeMs <= 0) {
+            return (idx % labelStep) === 0;
+        }
+        const labelIntervalMs = labelStep * timeframeMs;
+        const anchorBar = this.data[this.data.length - 1];
+        let alignBase = anchorBar ? anchorBar.t : this.data[0].t;
+        if (Number.isFinite(alignBase) && labelIntervalMs > 0
+            && (86400000 % labelIntervalMs === 0 || labelIntervalMs % 86400000 === 0)) {
+            const dN = this.convertToTimezone(alignBase);
+            const msOfDayN = (((dN.getUTCHours() * 60 + dN.getUTCMinutes()) * 60
+                + dN.getUTCSeconds()) * 1000) + dN.getUTCMilliseconds();
+            alignBase = alignBase - msOfDayN;
+        }
+        const ts = typeof this._projectBarIndexTimestamp === 'function'
+            ? this._projectBarIndexTimestamp(idx)
+            : null;
+        if (!Number.isFinite(ts)) return false;
+        const delta = ts - alignBase;
+        const rem = ((delta % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
+        return rem < 0.5 || rem > labelIntervalMs - 0.5;
+    }
+
     /** Extend tick list until the viewport right edge has grid/axis coverage. */
     _fillTimeTicksToViewport(ticks, labelInterval, timeframeMs) {
         const m = this.margin || { l: 60, r: 60 };
@@ -27217,10 +27258,13 @@ class Chart {
         const coverRight = viewRight - minSpacingPx * 0.6;
         const maxTicks = Math.max(6, Math.ceil(plotW / (minSpacingPx * 0.65)) + 4);
         const minBars = Math.max(1, Math.ceil(minSpacingPx / Math.max(1e-6, vp.spacing || 1)));
-        const step = Math.max(
-            minBars,
-            Math.max(1, Math.floor(labelInterval || this._getFastTimeLabelIntervalBars())),
+        const labelStep = Math.max(
+            1,
+            Math.floor(labelInterval || this._getFastTimeLabelIntervalBars()),
         );
+        const pixelStep = Math.max(minBars, labelStep);
+        const useAlignedFiller = this._isAxisRightEdgeTickAlignFixActive();
+        const advanceStep = useAlignedFiller ? labelStep : pixelStep;
         const merged = Array.isArray(ticks) ? ticks.slice() : [];
         merged.sort((a, b) => a.idx - b.idx);
 
@@ -27232,16 +27276,28 @@ class Chart {
             return merged;
         }
 
-        let idx = merged.length
-            ? merged[merged.length - 1].idx + step
-            : this._fastTimeTickAlignStart(vp.first, step, timeframeMs);
+        let idx;
+        if (merged.length) {
+            const afterLast = merged[merged.length - 1].idx + 1;
+            idx = useAlignedFiller
+                ? this._fastTimeTickAlignStart(afterLast, labelStep, timeframeMs)
+                : merged[merged.length - 1].idx + pixelStep;
+        } else {
+            idx = this._fastTimeTickAlignStart(
+                vp.first,
+                useAlignedFiller ? labelStep : pixelStep,
+                timeframeMs,
+            );
+        }
 
-        while (idx <= vp.last + step * 2 && merged.length < maxTicks) {
+        while (idx <= vp.last + advanceStep * 3 && merged.length < maxTicks) {
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
             if (!Number.isFinite(x) || x > viewRight + minSpacingPx) break;
-            if (x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
+            const alignedOk = !useAlignedFiller
+                || this._barIndexIsWallClockAligned(idx, labelStep, timeframeMs);
+            if (alignedOk && x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
                 const label = this._formatTimeLabelForBarIndex(idx);
                 if (label) {
                     merged.push({ idx, x, label, isBoundary: false });
@@ -27249,7 +27305,7 @@ class Chart {
                     rightMost = x;
                 }
             }
-            idx += step;
+            idx += advanceStep;
             if (rightMost >= coverRight) break;
         }
         merged.sort((a, b) => a.idx - b.idx);
@@ -27770,12 +27826,17 @@ class Chart {
             let futureIdx;
 
             if (useUniformIntradayTicks) {
-                // Keep extrapolated replay labels on the same candle-index cadence
-                // so spacing stays visually uniform even across session gaps.
-                const lastRealTick = candidates.length > 0 ? candidates[candidates.length - 1] : null;
-                futureIdx = lastRealTick ? (lastRealTick.idx + labelInterval) : (lastRealIdx + labelInterval);
-                while (futureIdx <= lastRealIdx) {
-                    futureIdx += labelInterval;
+                if (this._isAxisRightEdgeTickAlignFixActive()) {
+                    // A1 tranche B: wall-clock grid for right-edge future ticks (not index cadence).
+                    futureIdx = this._fastTimeTickAlignStart(lastRealIdx + 1, labelInterval, timeframeMs);
+                } else {
+                    // Keep extrapolated replay labels on the same candle-index cadence
+                    // so spacing stays visually uniform even across session gaps.
+                    const lastRealTick = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+                    futureIdx = lastRealTick ? (lastRealTick.idx + labelInterval) : (lastRealIdx + labelInterval);
+                    while (futureIdx <= lastRealIdx) {
+                        futureIdx += labelInterval;
+                    }
                 }
             } else {
                 const lastTs = last.t;
@@ -27808,7 +27869,9 @@ class Chart {
                 }
                 fPrevDay = fDay; fPrevMonth = fMonth; fPrevYear = fYear;
 
-                const isRoundFuture = (fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx);
+                const isRoundFuture = this._isAxisRightEdgeTickAlignFixActive()
+                    ? this._barIndexIsWallClockAligned(fi, labelInterval, timeframeMs)
+                    : ((fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx));
                 const hasFBoundary = fIsBoundary && !!fBoundaryLabel;
                 const shouldEmitFuture = suppressDayBoundaries
                     ? hasFBoundary
@@ -28336,6 +28399,22 @@ class Chart {
     }
 
     /**
+     * D-029 R2 — enforce minimum price/time axis strip widths after VP finalize / ch<=0 races.
+     */
+    _enforceAxisMarginFloor() {
+        if (window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX === true) return;
+        const m = this.margin;
+        if (!m) return;
+        const axisLeft = !!this.priceAxisLeft;
+        if (axisLeft) {
+            if (Number(m.l) < PRICE_AXIS_MIN_L) m.l = PRICE_AXIS_MIN_L;
+        } else {
+            if (Number(m.r) < PRICE_AXIS_MIN_R) m.r = PRICE_AXIS_MIN_R;
+        }
+        if (Number(m.b) < PRICE_AXIS_MIN_B) m.b = PRICE_AXIS_MIN_B;
+    }
+
+    /**
      * Widen the price axis (left or right) so long formatted prices (high precision) stay inside the margin.
      * Called from drawAxes() each frame; uses the same font and decimals as the axis labels.
      */
@@ -28347,7 +28426,10 @@ class Chart {
             : null;
         const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - this.margin.b);
         const ch = this.h - this.margin.t - this.margin.b;
-        if (ch <= 0) return;
+        if (ch <= 0) {
+            this._enforceAxisMarginFloor();
+            return;
+        }
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
@@ -28395,6 +28477,7 @@ class Chart {
             this.margin.r = newW;
         }
 
+        this._enforceAxisMarginFloor();
         this._syncOhlcLegendMaxWidth();
         if (typeof this._ensureScaleResetCorner === 'function') {
             this._ensureScaleResetCorner();

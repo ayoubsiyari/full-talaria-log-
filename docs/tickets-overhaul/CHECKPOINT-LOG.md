@@ -15,10 +15,31 @@ Each entry is the ≤10-line manager report per deploy: build id · contents · 
 
 ---
 
-## CKPT-002 — 20260717b73 (A6-4 + PO order/replay/cadence + crash pin) — 2026-07-17
+## CKPT-003 — 20260717b44 (MC-DRAW-FIRSTCLICK draw-on-click-1) — 2026-07-17
+- **Build:** `20260717b44` (draw-only cut; host + panel-B iframe + dist-v9)
+- **Contents:** MC-DRAW-FIRSTCLICK — parent armed shape inherits on iframe pointerdown (`__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1`); harness `MC-DRAW-FIRSTCLICK` 10/10 ON + switch-OFF 10/10 RED (2026-07-17 rerun PASS).
+- **Re-verify (PO):** confirm `__TALARIA_CHART_BUILD_ID === 20260717b44`; arm rectangle on host A → single click on unfocused panel B starts draw (not focus-then-second-click). See RETEST-CHECKLIST **MC-DRAW-FIRSTCLICK** row (+1).
+- **Watch:** isolated from A6-4 bundle — PO sign-off closes scoreboard row only; does not bless H-R05.
+- **Deploy (tester):** push + `./scripts/vps-deploy-after-pull.sh homepage` on VPS; hard-refresh host + panel-B iframe. Agent SSH often times out — manual deploy OK.
+- **Rollback:** `__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1`.
+
+---
+
+## CKPT-002 — 20260717b73 (A6-4 reconcile + PO order/replay/cadence + crash pin) — 2026-07-17
 - **Build:** `20260717b73` (host + panel-B iframe + dist-v9); git `1666b7171` + Lane 4 harness (`MC-PEER-DESELECT-SCOPE`)
-- **Contents:** A6-4 switches + owning-panel-price (`__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1`); I16 `build_id`+`schema_version` stamping; PO manual multichart order/replay/cadence (D-016 candle-mode V1 in `replay-system.js`); `cancelScheduledPeerDeselect` grid export + typeof guards (MultichartGrid.jsx:6256/7106/7187); MC-DRAW-FIRSTCLICK; MC-PEER-DESELECT-SCOPE harness pin.
+- **Contents:** A6-4 switches + owning-panel-price (`__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1`); I16 `build_id`+`schema_version` stamping; PO manual multichart order/replay/cadence (D-016 candle-mode V1 in `replay-system.js`); `cancelScheduledPeerDeselect` grid export + typeof guards (MultichartGrid.jsx:6256/7106/7187); MC-PEER-DESELECT-SCOPE harness pin. *(MC-DRAW moved to CKPT-003/b44.)*
 - **Duplicate-fix check:** owning-panel-price = single kill-switch path (worker `order-owning-panel-price.mjs` + runtime mirror in `order-manager.js` — aligned, not fighting). Cadence = engine-owned in `replay-system.js` (V1 switches); MultichartGrid only broadcasts via `getReplayStepTimeframeForSync()` — complementary, not duplicate math.
 - **Re-verify (PO):** confirm `__TALARIA_CHART_BUILD_ID === 20260717b73`; cross-ticker order PnL; candle PLAY 4h-main + 1m-peer; panel-B select (no console ReferenceError); close trade → row has `build_id` + `schema_version:1`.
 - **Watch:** H-R05 harness row still NOT green (CHROME-STAB-01); manager gate ratchet wants H-S59b/H-S83b promoted from known-failing (both PASS this cycle — 0 regressions).
+- **Deploy (tester):** push + `./scripts/vps-deploy-after-pull.sh homepage` on VPS; PO confirms `__TALARIA_CHART_BUILD_ID === 20260717b73` after hard-refresh. Deploy after CKPT-003/b44 draw verify if sequencing PO rows.
 - **Rollback switches:** `__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX`, `__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1`, `__TALARIA_DISABLE_ORDER_PERSIST_STAMP_V1`, `__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1`, `__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1`, `__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1`, `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1`.
+
+---
+
+## CKPT-004 — 20260718b01 (CORE-1 D-029 R2 axis-margin floor) — 2026-07-17
+- **Build:** `20260718b01` (single post-bless `chart.js` reopen — host + panel-B iframe + dist-v9)
+- **Contents:** D-029 R2 `_enforceAxisMarginFloor()` in `chart.js` (`PRICE_AXIS_MIN_R/L=60`, `MIN_B=24`); switch `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX`; harness `H-A7b-R2` (multichart 2v, independent file25/27, anchored VP on B).
+- **Proof:** `H-A7b-R2` 10/10 PASS (fix ON); `--axis-margin-floor-off` 10/10 FAIL-REAL-BUG; D-026 `H-R04`/`H-R05` ×10 PASS on b01. Closes **TAL-01665/01666/01667** (scale-strip leg).
+- **Re-verify (PO):** 2v multichart → panel B different symbol → place anchored VP → price + time scales remain visible; build id `20260718b01`.
+- **Watch:** H-R05 acceptance row still NOT green (CHROME-STAB-01) — D-026 re-run PASS does not promote H-R05 PO row.
+- **Rollback:** `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX`.
