@@ -803,8 +803,15 @@
             var _pcD015 = readParentChart();
             var _hTfD015 = _pcD015 ? String(_pcD015.currentTimeframe || '').toLowerCase().trim() : '';
             var _pTfD015 = String(ch.currentTimeframe || '').toLowerCase().trim();
-            if (!(ch._mcIntervalSyncOn && _hTfD015 && _pTfD015 && _hTfD015 !== _pTfD015
-                    && !ch._timeframeSwitching)) {
+            // Interval-sync + mixed TF: skip D-015 only for SAME-symbol peers that
+            // are about to mirror the host TF. Independent tickers (different fileId)
+            // must keep own-master advance — otherwise they fall into catch-up breaker
+            // cooldown and the fine panel looks stuck, then resumes (~2.5s).
+            var _skipD015ForIntervalTfSync = !!(ch._mcIntervalSyncOn
+                && _hTfD015 && _pTfD015 && _hTfD015 !== _pTfD015
+                && !ch._timeframeSwitching
+                && isSameSymbolAsHost(ch));
+            if (!_skipD015ForIntervalTfSync) {
                 try {
                     if (typeof ch._multichartFinerSamePairPanelSelfOwns === 'function'
                         && ch._multichartFinerSamePairPanelSelfOwns()) {
@@ -1231,6 +1238,15 @@
         // showing the furthest candle the panel already holds.
         if (ch && Number.isFinite(ch._mcCatchUpCooldownUntil)
             && Date.now() < ch._mcCatchUpCooldownUntil) {
+            // Soft park: still paint the furthest loaded bar + pin shared playhead
+            // so independent fine panels don't look fully frozen during cooldown.
+            try {
+                var rsCd = ch.replaySystem;
+                if (rsCd && args) {
+                    renderFurthestLoadedMirrorFrame(ch, rsCd, args);
+                    if (Number.isFinite(ts)) rsCd.replayTimestamp = ts;
+                }
+            } catch (_) {}
             return;
         }
         if (Number.isFinite(ts)) {
@@ -2162,6 +2178,20 @@
                     });
                 } catch (_) {}
             }
+        }
+
+        // Independent ticker: while /bars catch-up is in flight, paint the furthest
+        // loaded bar immediately so the fine panel does not hard-freeze mid-play.
+        if (!isEnter && !isSameSymbolAsHost(ch)) {
+            try {
+                renderFurthestLoadedMirrorFrame(ch, rs, {
+                    timestamp: ts,
+                    isPlaying: true,
+                    tickProgress: 0,
+                    tickElapsedMs: 0,
+                });
+                rs.replayTimestamp = ts;
+            } catch (_) {}
         }
 
         if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {

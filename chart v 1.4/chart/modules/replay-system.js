@@ -795,17 +795,38 @@ class ReplaySystem {
         return this._getRawBarPeriodMs();
     }
 
-    /** How many finest-TF ticks subdivide one selected-panel candle (speed anchor). */
+    /**
+     * Coarse market-time step that candle mode / INTERVAL would take without
+     * finest-TF cadence. Use max(host display, selected/focused, explicit step)
+     * so focusing a 1m peer cannot collapse subdivisions and let candle PLAY
+     * jump by host 4h via calculateNextIndex().
+     */
+    _getCoarseReplayCadenceAnchorMs() {
+        const out = [];
+        if (this.chart && this.chart.currentTimeframe) {
+            const hostMs = this.timeframeToMs(this.chart.currentTimeframe);
+            if (Number.isFinite(hostMs) && hostMs > 0) out.push(hostMs);
+        }
+        const selected = this._getSelectedReplayCadenceMs();
+        if (Number.isFinite(selected) && selected > 0) out.push(selected);
+        try {
+            const stepMs = this._resolveReplayStepTimeframeMs();
+            if (Number.isFinite(stepMs) && stepMs > 0) out.push(stepMs);
+        } catch (_e) { /* ignore */ }
+        return out.length ? Math.max(...out) : null;
+    }
+
+    /** How many finest-TF ticks subdivide one coarse candle (speed + play cadence). */
     _finestTfCadenceSubdivisions() {
         if (!this._isFinestTfReplayCadenceEnabled()) return 1;
         const finest = this._getFinestReplayCadenceMs();
-        const selected = this._getSelectedReplayCadenceMs();
-        if (!Number.isFinite(finest) || !Number.isFinite(selected) || finest <= 0) return 1;
-        if (selected <= finest * 1.02) return 1;
-        return Math.max(1, Math.round(selected / finest));
+        const coarse = this._getCoarseReplayCadenceAnchorMs();
+        if (!Number.isFinite(finest) || !Number.isFinite(coarse) || finest <= 0) return 1;
+        if (coarse <= finest * 1.02) return 1;
+        return Math.max(1, Math.round(coarse / finest));
     }
 
-    /** Coarse selected anchor vs global finest — subdivisions > 1. */
+    /** Coarse host/interval/focus anchor vs global finest — subdivisions > 1. */
     _isFinestTfCadenceSubStepActive() {
         return !!(this._isFinestTfReplayCadenceEnabled()
             && this._finestTfCadenceSubdivisions() > 1);
@@ -4133,6 +4154,23 @@ class ReplaySystem {
             this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
             return;
         }
+        // D-016 candle V1: finest sub-step BEFORE coarse legacy / interval bucket.
+        // Candle-by-candle must not jump host 4h when a peer is on 1m.
+        if (this._shouldUseFinestTfSubStepIndexAdvance()) {
+            if (this.currentIndex >= this.fullRawData.length - 1) {
+                if (this._handleForwardEdgeWhilePlaying(() => {
+                    if (this.isPlaying) this.simpleStepForward();
+                })) {
+                    return;
+                }
+                this._finishPlaybackAtSessionEnd();
+                return;
+            }
+            const oldIdxFinest = this.currentIndex;
+            this._advanceReplayPlayheadOneStep();
+            this.updateChartData(this.autoScrollEnabled && oldIdxFinest !== this.currentIndex);
+            return;
+        }
         if (this._advanceCoarseLegacyCandleBucket()) {
             this.updateChartData(this.autoScrollEnabled);
             return;
@@ -4155,23 +4193,18 @@ class ReplaySystem {
             this.chart.checkViewportLoadMore('forward');
         }
         
-        // Get the target index respecting timeframe selection
+        // Interval / display-TF bucket step (legacy when finest cadence inactive).
         const oldIndex = this.currentIndex;
-        if (this._shouldUseFinestTfSubStepIndexAdvance()) {
-            this._advanceReplayPlayheadOneStep();
-        } else {
-            const targetIndex = this.calculateNextIndex();
-            this.currentIndex = targetIndex;
-            this.edgeProbeRetryCount = 0;
-            this._replayForwardEdgeWait = false;
+        const targetIndex = this.calculateNextIndex();
+        this.currentIndex = targetIndex;
+        this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
 
-            // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
-            if (this.fullRawData && this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                this.tickElapsedMs = 0;
-            }
+        if (this.fullRawData && this.fullRawData[this.currentIndex]) {
+            this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            this.tickElapsedMs = 0;
         }
-        
+
         this.updateChartData(this.autoScrollEnabled && oldIndex !== this.currentIndex);
     }
     
