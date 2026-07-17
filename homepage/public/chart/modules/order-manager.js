@@ -27156,6 +27156,17 @@ class OrderManager {
         const id = Number(orderId);
         if (!Number.isFinite(id)) return;
 
+        // Snapshot projection ON: host fan-out is canonical. Mirror-remove raced
+        // pending-removed (fill) against applyOrderSnapshot and deleted the newly
+        // opened multi-entry leg / dissolved siblings — wrong TP lots + hidden entry.
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX !== true
+                && window.__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1 !== true) {
+                return;
+            }
+        } catch (_) { /* ignore */ }
+
         const pos = (this.openPositions || []).find((p) => p && p.id === id)
             || (this.orderService?.openPositions || []).find((p) => p && p.id === id);
         if (pos) {

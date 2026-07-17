@@ -87,14 +87,31 @@ export function filterSnapshotForPanel(snapshot, panelMeta, normalizeTicker) {
         if (!row) return false;
         const rowSym = norm(row.symbol || row.ticker || '');
         const rowFid = row.sourceFileId != null ? String(row.sourceFileId) : '';
-        if (fid && rowFid) return rowFid === fid;
-        if (sym && rowSym) return rowSym === sym;
+        // fileId match sufficient; symbol fallback (keep same-symbol split siblings)
+        if (fid && rowFid && rowFid === fid) return true;
+        if (sym && rowSym && rowSym === sym) return true;
         return false;
     };
+    const expandSplit = (matched, all) => {
+        const gids = new Set(
+            matched.filter((o) => o?.isSplitEntry && o.splitGroupId != null)
+                .map((o) => String(o.splitGroupId))
+        );
+        if (!gids.size) return matched;
+        const byId = new Map(matched.filter((o) => o?.id != null).map((o) => [o.id, o]));
+        for (const o of all || []) {
+            if (!o?.isSplitEntry || o.id == null || o.splitGroupId == null) continue;
+            if (!gids.has(String(o.splitGroupId))) continue;
+            if (!byId.has(o.id)) byId.set(o.id, o);
+        }
+        return [...byId.values()];
+    };
+    const openAll = snapshot?.openPositions || [];
+    const pendingAll = snapshot?.pendingOrders || [];
     return {
         version: snapshot?.version || 0,
-        visibleOpen: (snapshot?.openPositions || []).filter(matchRow),
-        visiblePending: (snapshot?.pendingOrders || []).filter(matchRow),
+        visibleOpen: expandSplit(openAll.filter(matchRow), openAll),
+        visiblePending: expandSplit(pendingAll.filter(matchRow), pendingAll),
     };
 }
 

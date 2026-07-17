@@ -6665,11 +6665,42 @@ export default function MultichartGrid({
                 ));
             }
             const attr = getPanelOrderAttribution(panelId);
-            if (attr.fileId) created.sourceFileId = attr.fileId;
-            if (attr.panelId) created.sourcePanelId = attr.panelId;
-            if (attr.ticker) {
-                created.ticker = attr.ticker;
-                created.symbol = attr.symbol;
+            // Multi-entry places N legs — stamp every NEW open/pending row (and
+            // any split sibling of `created`) so panel-B snapshot filter keeps
+            // the full ladder for aggregate TP/SL.
+            const stampOne = (o) => {
+                if (!o) return;
+                if (attr.fileId) o.sourceFileId = attr.fileId;
+                if (attr.panelId) o.sourcePanelId = attr.panelId;
+                if (attr.ticker) {
+                    o.ticker = attr.ticker;
+                    o.symbol = attr.symbol;
+                }
+            };
+            const stamped = new Set();
+            const stampNewLists = () => {
+                for (const list of [om.openPositions, om.pendingOrders]) {
+                    if (!Array.isArray(list)) continue;
+                    for (const o of list) {
+                        if (!o || o.id == null || beforeIds.has(o.id) || stamped.has(o.id)) continue;
+                        stampOne(o);
+                        stamped.add(o.id);
+                    }
+                }
+            };
+            stampNewLists();
+            stampOne(created);
+            stamped.add(created.id);
+            if (created.isSplitEntry && created.splitGroupId) {
+                const gid = created.splitGroupId;
+                for (const list of [om.openPositions, om.pendingOrders]) {
+                    if (!Array.isArray(list)) continue;
+                    for (const o of list) {
+                        if (!o || o.splitGroupId !== gid || !o.isSplitEntry) continue;
+                        stampOne(o);
+                        stamped.add(o.id);
+                    }
+                }
             }
             if (orderMcSnapshotProjectionV1Enabled()) {
                 fanOutOrderSnapshot(null);
@@ -6848,6 +6879,14 @@ export default function MultichartGrid({
         /** Fan-out order line / pending removal to every peer that mirrors this instrument (not the source). */
         function broadcastOrderRemoval(sourceId, kind, order) {
             if (!order || order.id == null) return;
+            // Snapshot path is canonical. pending-removed on a FILL must not
+            // call removeMirroredOrderClone — that deletes the newly opened leg
+            // on peers and dissolves multi-entry siblings (hides the other entry
+            // + breaks aggregate multi-TP lots). Fan the host store instead.
+            if (orderMcSnapshotProjectionV1Enabled()) {
+                fanOutOrderSnapshot(sourceId === HOST_PANEL_ID ? null : sourceId);
+                return;
+            }
             const oid = order.id;
             const mgr = managerRef.current;
             const symNorm = normalizeOrderTickerForMirror(

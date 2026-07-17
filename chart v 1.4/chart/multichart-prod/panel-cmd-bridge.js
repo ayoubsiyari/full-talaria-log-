@@ -121,16 +121,47 @@
         if (!om || !snapshot) return { ok: false, reason: 'missing' };
         var sym = String(ch.currentSymbol || '').replace(/\//g, '').toUpperCase();
         var fid = ch.currentFileId != null ? String(ch.currentFileId) : '';
+        // FileId match is sufficient; symbol match is fallback. Do NOT reject a
+        // same-symbol multi-entry sibling just because one leg still carries the
+        // host tile's sourceFileId (host-canonical place stamps focus panel on
+        // only one of the new rows).
         function matchRow(row) {
             if (!row) return false;
             var rs = String(row.symbol || row.ticker || '').replace(/\//g, '').toUpperCase();
             var rf = row.sourceFileId != null ? String(row.sourceFileId) : '';
-            if (fid && rf) return rf === fid;
-            if (sym && rs) return rs === sym;
+            if (fid && rf && rf === fid) return true;
+            if (sym && rs && rs === sym) return true;
             return false;
         }
-        var open = (snapshot.openPositions || []).filter(matchRow);
-        var pending = (snapshot.pendingOrders || []).filter(matchRow);
+        function expandSplitSiblings(matched, all) {
+            var gids = {};
+            var i;
+            for (i = 0; i < matched.length; i++) {
+                var m = matched[i];
+                if (m && m.isSplitEntry && m.splitGroupId != null) {
+                    gids[String(m.splitGroupId)] = true;
+                }
+            }
+            var gidKeys = Object.keys(gids);
+            if (!gidKeys.length) return matched;
+            var byId = {};
+            for (i = 0; i < matched.length; i++) {
+                if (matched[i] && matched[i].id != null) byId[matched[i].id] = matched[i];
+            }
+            for (i = 0; i < all.length; i++) {
+                var o = all[i];
+                if (!o || o.id == null || !o.isSplitEntry || o.splitGroupId == null) continue;
+                if (!gids[String(o.splitGroupId)]) continue;
+                if (!byId[o.id]) byId[o.id] = o;
+            }
+            var out = [];
+            Object.keys(byId).forEach(function (k) { out.push(byId[k]); });
+            return out;
+        }
+        var openAll = snapshot.openPositions || [];
+        var pendingAll = snapshot.pendingOrders || [];
+        var open = expandSplitSiblings(openAll.filter(matchRow), openAll);
+        var pending = expandSplitSiblings(pendingAll.filter(matchRow), pendingAll);
         om.openPositions = cloneOrderList(open);
         om.pendingOrders = cloneOrderList(pending);
         var ids = new Set();
@@ -140,21 +171,29 @@
             return o && ids.has(o.id);
         });
         om._hostSnapshotVersion = snapshot.version;
+        // Full strip+redraw so pending→open fills keep every multi-entry leg
+        // (and correct aggregate TP/SL lots). Piecemeal drawOrderLine left stale
+        // pending graphics and raced with pending-removed mirror deletes.
         try {
-            open.forEach(function (ord) {
-                if (typeof om.drawOrderLine === 'function') om.drawOrderLine(ord, ch);
-                if (typeof om.drawSLTPLines === 'function') om.drawSLTPLines(ord, ch);
-            });
-            pending.forEach(function (ord) {
-                if (typeof om.scheduleRefreshPendingOrderGraphicsForChart === 'function') {
-                    om.scheduleRefreshPendingOrderGraphicsForChart(ord, ch);
-                } else if (typeof om.refreshPendingOrderGraphicsForChart === 'function') {
-                    om.refreshPendingOrderGraphicsForChart(ord, ch);
-                }
-            });
+            if (typeof om.syncOrderVisualsToActiveChart === 'function') {
+                om.syncOrderVisualsToActiveChart();
+            } else {
+                open.forEach(function (ord) {
+                    if (typeof om.drawOrderLine === 'function') om.drawOrderLine(ord, ch);
+                    if (typeof om.drawSLTPLines === 'function') om.drawSLTPLines(ord, ch);
+                });
+                pending.forEach(function (ord) {
+                    if (typeof om.scheduleRefreshPendingOrderGraphicsForChart === 'function') {
+                        om.scheduleRefreshPendingOrderGraphicsForChart(ord, ch);
+                    } else if (typeof om.refreshPendingOrderGraphicsForChart === 'function') {
+                        om.refreshPendingOrderGraphicsForChart(ord, ch);
+                    }
+                });
+                if (typeof om._rebuildSplitGroupAvgLines === 'function') om._rebuildSplitGroupAvgLines();
+                if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch);
+                if (typeof ch.render === 'function') ch.render();
+            }
         } catch (_) {}
-        try { if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch); } catch (_) {}
-        try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
         return { ok: true, version: snapshot.version };
     }
 
