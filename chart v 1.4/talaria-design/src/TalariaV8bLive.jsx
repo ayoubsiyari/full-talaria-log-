@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, mergeOrderManagerForMultichartTrades, mcReplayPnlHostAggV1Enabled, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -973,6 +973,15 @@ function mcPanelTfLabelSyncEnabled() {
   } catch (_) {
     return true;
   }
+}
+
+function resolveTradesPanelOrderManager() {
+  const hostOm = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  const snaps = (typeof window !== "undefined" && window.__TALARIA_MC_ORDER_PANEL_SNAPSHOTS) || [];
+  return {
+    om: mergeOrderManagerForMultichartTrades(hostOm, snaps),
+    panelSnapshots: snaps,
+  };
 }
 
 /** Focused iframe panel id when multichart is active; null when host A owns focus. */
@@ -11621,14 +11630,14 @@ const TalariaV8bLive = () => {
   /** Latest `c` theme for listeners registered before `const c` exists (avoids TDZ on `c`). */
   const tradeRowThemeRef = useRef({ gn: "#00D4A1", rd: "#FF5068", tm: "rgba(255,255,255,0.50)" });
   const exportBtmTrades = useCallback(() => {
-    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    const { om, panelSnapshots } = resolveTradesPanelOrderManager();
     if (btmTab === "analytics") {
       if (om && typeof om.exportAnalyticsToCSV === "function") {
         om.exportAnalyticsToCSV();
       }
       return;
     }
-    const allTrades = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current);
+    const allTrades = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current, { panelSnapshots });
     const allTradesR = allTrades.map((t) => {
       const ov = tradeTagOverrides[t.id];
       return ov ? { ...t, preTags: ov.pre ?? t.preTags, postTags: ov.post ?? t.postTags } : t;
@@ -11683,7 +11692,8 @@ const TalariaV8bLive = () => {
       const maxAttempts = 25;
       const tryOpen = () => {
         attempts += 1;
-        const rows = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current);
+        const { om: rowOm, panelSnapshots: rowSnaps } = resolveTradesPanelOrderManager();
+        const rows = buildLiveTradeRowsFromOrderManager(rowOm, tradeRowThemeRef.current, { panelSnapshots: rowSnaps });
         const r = rows.find((x) => Number(x.omId) === Number(oid));
         if (r) {
           const tid = r.omId;
@@ -11995,6 +12005,42 @@ const TalariaV8bLive = () => {
       unsubs.forEach((fn) => {
         try { fn(); } catch (_) { /* noop */ }
       });
+    };
+  }, []);
+
+  // Multichart: aggregate iframe panel order snapshots for trades rail PnL/open rows.
+  useEffect(() => {
+    if (!mcReplayPnlHostAggV1Enabled()) {
+      try { delete window.__TALARIA_MC_ORDER_PANEL_SNAPSHOTS; } catch (_) {}
+      return undefined;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      if (!grid || typeof grid.isMounted !== "function" || !grid.isMounted()) {
+        window.__TALARIA_MC_ORDER_PANEL_SNAPSHOTS = [];
+        if (!cancelled) setOmTradeRev((n) => n + 1);
+        return;
+      }
+      const ids = typeof grid.getPanelIds === "function" ? grid.getPanelIds() : ["A"];
+      const snaps = [];
+      for (const pid of ids) {
+        if (pid === "A") continue;
+        try {
+          const s = await grid.runCommand("getOrderTradeSnapshot", null, { panelId: pid });
+          if (s) snaps.push(s);
+        } catch (_) { /* panel not ready */ }
+      }
+      if (!cancelled) {
+        window.__TALARIA_MC_ORDER_PANEL_SNAPSHOTS = snaps;
+        setOmTradeRev((n) => n + 1);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 800);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
     };
   }, []);
 
@@ -23547,6 +23593,10 @@ const TalariaV8bLive = () => {
         const fid = grid && typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
         if (fid == null || String(d.source || "") !== String(fid)) return;
         multichartDraftDragBusyRef.current = !!d.busy;
+        return;
+      }
+      if (d.type === "multichart-focus-loss-clear-draft") {
+        multichartDraftDragBusyRef.current = false;
         return;
       }
       if (d.type === "multichart-draft-field-snapshot") {
@@ -35893,7 +35943,8 @@ const TalariaV8bLive = () => {
             {/* Tab bar — always visible outside the collapsing panel */}
             {(()=>{
               void omTradeRev;
-              const rawCounts = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
+              const { om: countOm, panelSnapshots: countSnaps } = resolveTradesPanelOrderManager();
+              const rawCounts = buildLiveTradeRowsFromOrderManager(countOm, c, { panelSnapshots: countSnaps });
               const nAll = rawCounts.length;
               const nPend = rawCounts.filter((r) => r.status === "pending").length;
               const nOpen = rawCounts.filter((r) => r.status === "open").length;
@@ -35937,7 +35988,8 @@ const TalariaV8bLive = () => {
             <div ref={btmPanelRef} style={{height:btmResizing?btmDragRef.current.curH:btmOpen?btmHeight:0,overflow:"hidden",transition:btmResizing?"none":"height 0.2s ease",display:"flex",flexDirection:"column"}}>
               {(()=>{
                 void omTradeRev;
-                const allTrades = buildLiveTradeRowsFromOrderManager(typeof window !== "undefined" ? window.chart?.orderManager : null, c);
+                const { om: tableOm, panelSnapshots: tableSnaps } = resolveTradesPanelOrderManager();
+                const allTrades = buildLiveTradeRowsFromOrderManager(tableOm, c, { panelSnapshots: tableSnaps });
                 // Apply tag edits overlay
                 const allTradesR = allTrades.map(t => { const ov=tradeTagOverrides[t.id]; return ov ? {...t, preTags:ov.pre??t.preTags, postTags:ov.post??t.postTags} : t; });
                 const updPreTags = (id, tags) => setTradeTagOverrides(prev => ({...prev, [id]: {...(prev[id]||{}), pre: tags}}));

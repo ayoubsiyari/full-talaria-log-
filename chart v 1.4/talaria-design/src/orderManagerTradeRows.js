@@ -2,6 +2,81 @@
  * Maps chart.orderManager state → bottom-panel trade rows (shared by TalariaV8b + TalariaV8bLive).
  */
 
+export function tradeDurationNormV1Enabled() {
+  return typeof window === "undefined" || !window.__TALARIA_DISABLE_TRADE_DURATION_NORM_V1;
+}
+
+export function mcReplayPnlHostAggV1Enabled() {
+  return typeof window === "undefined" || window.__TALARIA_MC_REPLAY_PNL_HOST_AGG_V1 !== false;
+}
+
+/** Match legacy dock normalizeEpochMs (order-manager cross-instrument dock). */
+export function normalizeEpochMs(value, fallback = NaN) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return raw < 1e12 ? raw * 1000 : raw;
+}
+
+function dedupeOrdersById(list) {
+  const out = [];
+  const seen = new Set();
+  (list || []).forEach((o) => {
+    if (!o || o.id == null) return;
+    const k = String(o.id);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(o);
+  });
+  return out;
+}
+
+/** Merge host + iframe panel snapshots for multichart trades rail (INT-8). */
+export function mergeOrderManagerForMultichartTrades(hostOm, panelSnapshots) {
+  if (!hostOm) return null;
+  if (!mcReplayPnlHostAggV1Enabled() || !Array.isArray(panelSnapshots) || !panelSnapshots.length) {
+    return hostOm;
+  }
+  const pending = dedupeOrdersById([
+    ...(hostOm.pendingOrders || []),
+    ...panelSnapshots.flatMap((s) => s.pendingOrders || []),
+  ]);
+  const open = dedupeOrdersById([
+    ...(hostOm.openPositions || []),
+    ...panelSnapshots.flatMap((s) => s.openPositions || []),
+  ]);
+  return Object.assign(Object.create(Object.getPrototypeOf(hostOm)), hostOm, {
+    pendingOrders: pending,
+    openPositions: open,
+  });
+}
+
+export function resolveOrderManagerForTradesPanel(hostOm) {
+  if (!hostOm || typeof window === "undefined") return hostOm;
+  const grid = window.__multichartGrid;
+  if (!grid || typeof grid.isMounted !== "function" || !grid.isMounted()) return hostOm;
+  const snaps = window.__TALARIA_MC_ORDER_PANEL_SNAPSHOTS;
+  return mergeOrderManagerForMultichartTrades(hostOm, snaps);
+}
+
+function resolveTradeRowNowMs(om, panelSnapshots) {
+  let rowNowMs = NaN;
+  if (tradeDurationNormV1Enabled()) {
+    const sessionNow = normalizeEpochMs(om?.orderService?.multiInstrumentSession?.current_time, NaN);
+    if (Number.isFinite(sessionNow)) rowNowMs = sessionNow;
+  }
+  if (!Number.isFinite(rowNowMs)) {
+    rowNowMs = normalizeEpochMs(typeof window !== "undefined" ? window.chart?.replaySystem?.replayTimestamp : NaN, NaN);
+  }
+  if (mcReplayPnlHostAggV1Enabled() && Array.isArray(panelSnapshots)) {
+    panelSnapshots.forEach((s) => {
+      const ts = normalizeEpochMs(s?.replayTimestamp, NaN);
+      if (Number.isFinite(ts) && (!Number.isFinite(rowNowMs) || ts > rowNowMs)) rowNowMs = ts;
+    });
+  }
+  if (!Number.isFinite(rowNowMs)) rowNowMs = Date.now();
+  return rowNowMs;
+}
+
 function v9FormatTradeTime(ms) {
   if (!ms || !Number.isFinite(ms)) return "— — —";
   const d = new Date(ms);
@@ -1201,12 +1276,10 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
  * @param {object|null} om - window.chart.orderManager
  * @param {{ gn: string, rd: string, tm: string }} theme - palette fragment `c`
  */
-export function buildLiveTradeRowsFromOrderManager(om, theme) {
+export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
   if (!om) return [];
-  const rowNowMs =
-    typeof window !== "undefined" && Number.isFinite(window.chart?.replaySystem?.replayTimestamp)
-      ? window.chart.replaySystem.replayTimestamp
-      : Date.now();
+  const panelSnapshots = opts.panelSnapshots || null;
+  const rowNowMs = resolveTradeRowNowMs(om, panelSnapshots);
   const fmtPx = (p) => {
     const x = Number.parseFloat(p);
     if (!Number.isFinite(x)) return "—";
@@ -1270,7 +1343,10 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
   });
 
   open.forEach((o) => {
-    const tMs = o.openTime || Date.now();
+    const rawOpenMs = tradeDurationNormV1Enabled()
+      ? normalizeEpochMs(o.openTime, rowNowMs)
+      : (o.openTime || rowNowMs);
+    const tMs = Number.isFinite(rawOpenMs) ? rawOpenMs : rowNowMs;
     const pnlN = extractOpenPositionDisplayPnL(o);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
@@ -1301,8 +1377,12 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
   });
 
   closed.forEach((o) => {
-    const tOpen = o.openTime;
-    const tClose = o.closeTime;
+    const tOpen = tradeDurationNormV1Enabled()
+      ? normalizeEpochMs(o.openTime, NaN)
+      : o.openTime;
+    const tClose = tradeDurationNormV1Enabled()
+      ? normalizeEpochMs(o.closeTime, NaN)
+      : o.closeTime;
     const sortMs = Number.isFinite(tClose) ? tClose : tOpen || 0;
     const pnlN = extractOrderManagerTradePnl(o, om);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);

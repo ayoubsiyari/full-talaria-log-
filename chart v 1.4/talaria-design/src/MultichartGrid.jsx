@@ -51,6 +51,39 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
+function orderMcRestoreDedupeV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
+function orderMcPlaceReplayGateV1Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_PLACE_REPLAY_GATE_V1);
+    } catch (_) {
+        return true;
+    }
+}
+
+function orderIdExistsInOrderManager(om, orderId) {
+    if (!om || orderId == null) return false;
+    if ((om.orders || []).some((o) => o && o.id === orderId)) return true;
+    if (!orderMcRestoreDedupeV1Enabled()) return false;
+    if ((om.openPositions || []).some((o) => o && o.id === orderId)) return true;
+    if ((om.pendingOrders || []).some((o) => o && o.id === orderId)) return true;
+    return false;
+}
+
+function cloneOrderManagerList(arr) {
+    try {
+        return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+    } catch (_) {
+        return Array.isArray(arr) ? arr.slice() : [];
+    }
+}
+
 function multichartOwnershipV2Enabled() {
     try {
         return typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2 === false;
@@ -4686,6 +4719,34 @@ export default function MultichartGrid({
                     // capture-phase interceptor (installed below)
                     // doesn't re-route it back into runCommand and
                     // recursively re-fire forever.
+                    case "getReplayReady": {
+                        const rs = ch.replaySystem;
+                        return Promise.resolve({
+                            replayActive: !!(rs && rs.isActive),
+                            replayTimestamp: rs && Number.isFinite(Number(rs.replayTimestamp))
+                                ? Number(rs.replayTimestamp)
+                                : null,
+                        });
+                    }
+                    case "getOrderTradeSnapshot": {
+                        const omSnap = ch.orderManager;
+                        if (!omSnap) {
+                            return Promise.resolve({
+                                panelId: HOST_PANEL_ID,
+                                openPositions: [],
+                                pendingOrders: [],
+                            });
+                        }
+                        return Promise.resolve({
+                            panelId: HOST_PANEL_ID,
+                            openPositions: cloneOrderManagerList(omSnap.openPositions),
+                            pendingOrders: cloneOrderManagerList(omSnap.pendingOrders),
+                            unrealizedPnL: Number.parseFloat(omSnap.unrealizedPnL) || 0,
+                            replayTimestamp: ch.replaySystem && Number.isFinite(Number(ch.replaySystem.replayTimestamp))
+                                ? Number(ch.replaySystem.replayTimestamp)
+                                : null,
+                        });
+                    }
                     case "placeOrder": {
                         const om = ch.orderManager;
                         if (!om || typeof om.placeAdvancedOrder !== "function") {
@@ -4710,8 +4771,9 @@ export default function MultichartGrid({
                         const order = args && args.order;
                         if (!order) return Promise.reject(new Error("addOrder: missing args.order"));
                         const kind = (args.kind === "pending") ? "pending" : "opened";
-                        const existing = (om.orders || []).some((o) => o && o.id != null && o.id === order.id);
-                        if (existing) return Promise.resolve({ skipped: true, reason: "duplicate" });
+                        if (orderIdExistsInOrderManager(om, order && order.id)) {
+                            return Promise.resolve({ skipped: true, reason: "duplicate" });
+                        }
                         // Loop guard — same trick as iframe side; the
                         // host's eventBus listener (installed below)
                         // will skip emitting THIS id.
@@ -6690,6 +6752,18 @@ export default function MultichartGrid({
         // preventDefault and route via runCommand. When focus is the
         // host (or no panel focused / no multichart active), we let
         // the click through unchanged.
+        function waitIframeReplayReady(grid, panelId, maxMs = 4000) {
+            const t0 = Date.now();
+            const poll = () => grid.runCommand("getReplayReady", null, { panelId })
+                .then((d) => {
+                    if (d && d.replayActive) return true;
+                    if (Date.now() - t0 >= maxMs) return false;
+                    return new Promise((r) => setTimeout(r, 100)).then(poll);
+                })
+                .catch(() => false);
+            return poll();
+        }
+
         function onPlaceOrderClickCapture(ev) {
             const t = ev && ev.target;
             if (!t || t.id !== "placeOrderButton") return;
@@ -6704,18 +6778,22 @@ export default function MultichartGrid({
                 console.warn("[MultichartGrid] placeOrder intercept: __multichartGrid not ready");
                 return;
             }
-            grid.runCommand("placeOrder", args, { panelId: focused })
-                .then(() => {
-                    // Drain "Execute" rail visual feedback by firing
-                    // the same talaria event chart.orderManager would
-                    // fire — keeps any badges / journal listeners in
-                    // sync. order-manager's own emit handles this in
-                    // single-chart mode; here we wait for the iframe-
-                    // order broadcast to mirror the rest.
-                })
+            const place = () => grid.runCommand("placeOrder", args, { panelId: focused })
                 .catch((e) => {
                     console.warn("[MultichartGrid] iframe placeOrder failed:", e && e.message || e);
                 });
+            if (orderMcPlaceReplayGateV1Enabled()) {
+                waitIframeReplayReady(grid, focused)
+                    .then((ready) => {
+                        if (!ready) {
+                            console.warn("[MultichartGrid] iframe replay not active — placeOrder blocked for panel", focused);
+                            return;
+                        }
+                        return place();
+                    });
+            } else {
+                place();
+            }
         }
         document.addEventListener("click", onPlaceOrderClickCapture, true);
 
