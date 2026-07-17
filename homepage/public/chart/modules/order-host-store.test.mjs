@@ -120,6 +120,41 @@ assert(syncedGreen.has('B') && syncedGreen.has('C'), 'synced set updated');
 assert(calls.every((c) => c.cmd === 'applyOrderSnapshot'), 'no addOrder on snapshot path');
 assert(calls.some((c) => c.panelId === 'B') && calls.some((c) => c.panelId === 'C'), 'B/C iframes receive snapshot after F5');
 
+section('primeReadyPanelsWithHostOrders — empty host does NOT mark peers synced (F5 race)');
+calls.length = 0;
+const emptyOm = {
+    openPositions: [],
+    pendingOrders: [],
+    closedPositions: [],
+    orders: [],
+    balance: 10000,
+    equity: 10000,
+    initialBalance: 10000,
+    orderIdCounter: 1,
+    tradeGroupIdCounter: 1,
+};
+const syncedEmpty = new Set(['A']);
+const emptyPrime = primeReadyPanelsWithHostOrders({
+    readyPanelIds: ['A', 'B'],
+    syncedSet: syncedEmpty,
+    hostPanelId: 'A',
+    orderManager: emptyOm,
+    grid: {
+        runCommand(cmd, args, opts) {
+            calls.push({ cmd, panelId: opts?.panelId });
+            return Promise.resolve();
+        },
+    },
+    managerCharts: makeManagerCharts(new Map([
+        ['B', { id: 'B', host: false, ready: true }],
+    ])),
+    chart: { orderManager: emptyOm, getActiveTradingSessionId: () => 'sess-1' },
+    versionHolder: { current: 0 },
+    win: WIN_ON,
+});
+assert(emptyPrime.deferredSync === true, 'flags deferred sync when host OM empty');
+assert(!syncedEmpty.has('B'), 'B stays unsynced so later restore fan-out / re-prime can land');
+
 section('primeReadyPanelsWithHostOrders RED — ready-panels switch OFF falls back to addOrder');
 calls.length = 0;
 const syncedRed = new Set(['A']);

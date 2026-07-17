@@ -10316,15 +10316,41 @@ class Chart {
         om._journalMarkerRestorePending = true;
         if (typeof om._scheduleSessionMarkerRedraw === 'function') {
             om._scheduleSessionMarkerRedraw();
-            return;
+        } else if (typeof om.syncOrderVisualsToActiveChart === 'function') {
+            const delays = [0, 150, 400, 900, 1800, 3000];
+            delays.forEach((ms) => {
+                setTimeout(() => {
+                    try {
+                        om.syncOrderVisualsToActiveChart();
+                    } catch (_) {}
+                }, ms);
+            });
         }
-        if (typeof om.syncOrderVisualsToActiveChart !== 'function') return;
-        const delays = [0, 150, 400, 900, 1800, 3000];
+        // Multichart: host restore often finishes AFTER peer bridge-ready primed
+        // an empty snapshot. Re-fan host open/pending to iframes so Panel B keeps
+        // order lines across F5 (kill-switch: __TALARIA_DISABLE_ORDER_MC_RESTORE_FANOUT_V1).
+        this._scheduleMultichartOrderSnapshotFanOutAfterRestore();
+    }
+
+    /**
+     * Push host-canonical open/pending to ready multichart iframes after session
+     * (or local) runtime restore. Retries briefly so late bridge-ready peers catch up.
+     */
+    _scheduleMultichartOrderSnapshotFanOutAfterRestore() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_ORDER_MC_RESTORE_FANOUT_V1 === true) {
+                return;
+            }
+        } catch (_) { /* ignore */ }
+        const delays = [0, 120, 400, 900, 1800, 3200];
         delays.forEach((ms) => {
             setTimeout(() => {
                 try {
-                    om.syncOrderVisualsToActiveChart();
-                } catch (_) {}
+                    const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+                    if (!grid || typeof grid.fanOutHostOrderSnapshot !== 'function') return;
+                    grid.fanOutHostOrderSnapshot();
+                } catch (_) { /* ignore */ }
             }, ms);
         });
     }

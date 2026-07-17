@@ -1,10 +1,10 @@
 ﻿unit,origin,track,title,status,note
 RC-1,engineering,root-cause,First-click / multichart interaction dead on fallback-B,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
-RC-2,engineering,root-cause,Slow interaction / grid renders above candles while panning,STAGED,RESOLVED | peer/iframe repaint deferred to re-migration
-RC-3,engineering,root-cause,Label mis-anchor / drawing anchoring drift,STAGED,RESOLVED | Phase 5 (multichart parity) deferred into RC-4 re-migration track
+RC-2,engineering,root-cause,Slow interaction / grid renders above candles while panning,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set E)
+RC-3,engineering,root-cause,Label mis-anchor / drawing anchoring drift,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 RC-4,engineering,root-cause,Multichart re-migration interaction family,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 RC-5,engineering,root-cause,Order-entry parse / drag-input family,STAGED,RESOLVED-NEEDS-LIVE | PO live-confirm outstanding on a5
-RC-6,engineering,root-cause,Indicator lifecycle / visibility / settings-apply / replay UI sync,STAGED,RESOLVED-NEEDS-LIVE | synthetic actuation; needs live confirm
+RC-6,engineering,root-cause,Indicator lifecycle / visibility / settings-apply / replay UI sync,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set D)
 RC-8,engineering,root-cause,(replay/cadence family,IN-TRACK,d6d9822f (staging b1) | no
 H-R02,engineering,remig-row,Panel-B ctrl-select actuation,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-R03,engineering,remig-row,Panel-B ctrl-select double-actuation regression,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (x5)
@@ -21,8 +21,8 @@ H-S25,engineering,replay,Panel replay-follow seam leap,CLOSED-VERIFIED,PO manual
 H-S27,engineering,replay,seek-loop race,IN-TRACK,FLAKE-TRACKED | per I15 not trusted row until re-actuated faithfully
 H-S28,engineering,replay,Boot reanchor,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 H-S30,engineering,replay,Step-spam refetch,STAGED,RESOLVED | false-green -> promote-only
-H-S40,engineering,harness,bar-open drift probe,STAGED,RESOLVED | promoted (-2 KF)
-H-S41,engineering,harness,bar-open drift probe,STAGED,RESOLVED | promoted
+H-S40,engineering,harness,bar-open drift probe,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
+H-S41,engineering,harness,bar-open drift probe,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 H-S59b,engineering,freeze,TAL-01590 independent-symbol freeze,IN-TRACK,GREEN-SYNTHETIC | not promoted (WEAK/DEV-ONLY)
 H-S73,engineering,replay,Snap-back pin (TAL-01579),IN-TRACK,OPEN-TRACKED | NOT folded into snap-back
 H-S79,engineering,replay,Playhead save/restore,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
@@ -30,9 +30,9 @@ H-S80,engineering,replay,TF-label desync after refresh,CLOSED-VERIFIED,RESOLVED-
 H-S82,engineering,replay,Pan-release snap-back,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 H-S83,engineering,replay,Finest-TF cadence RED,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (multichart replay now runs on the finest TF) - NEEDS-RECONCILE into codebase (kill-switch + harness pin)
 TAL-01590,engineering,freeze,Panel-freeze / edge-park mixed-TF,CLOSED-VERIFIED,RESOLVED | PO accepted (staging authority)
-A6-1,engineering,order,Apply-on-release order landing,STAGED,RESOLVED-NEEDS-LIVE | D-020 approved
-A6-2,engineering,order,F5 order persistence,STAGED,RESOLVED-NEEDS-LIVE | NEEDS-LIVE F5
-A6-3,engineering,order,Order-half interaction,STAGED,RESOLVED-NEEDS-LIVE | A6-3-chart post-unfreeze
+A6-1,engineering,order,Apply-on-release order landing,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
+A6-2,engineering,order,F5 order persistence,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
+A6-3,engineering,order,Order-half interaction,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 A6-4,engineering,order,Host-canonical order store,IN-TRACK,DEFERRED | dispatch post-re-migration w/ Phase 7
 OrderEntry#4,engineering,order,keyboard-pan deferral,STAGED,RESOLVED | cross-track consolidated
 OrderEntry#5,engineering,order,keyboard-pan,STAGED,RESOLVED
@@ -57,13 +57,13 @@ TAL-01657,ticket,UI-polish(L5),Tools,IN-TRACK,
 TAL-01656,ticket,UI-polish(L5),Tools,IN-TRACK,
 TAL-01655,ticket,A8(L5),all Tools,IN-TRACK,
 TAL-01654,ticket,A8(L5),tool,IN-TRACK,
-TAL-01653,ticket,A6-1,order postion,STAGED,
+TAL-01653,ticket,A6-1,order postion,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 TAL-01652,ticket,T1-locked(L5),Layouts,IN-TRACK,
 TAL-01651,ticket,A8(L5),Layouts,IN-TRACK,
-TAL-01650,ticket,D-015/016,Layouts,STAGED,
+TAL-01650,ticket,D-015/016,Layouts,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01649,ticket,T6-menu,Layouts,IN-TRACK,
 TAL-01648,ticket,T3-replay-ui,Layouts,IN-TRACK,
-TAL-01647,ticket,D-009,Chart,STAGED,
+TAL-01647,ticket,D-009,Chart,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01646,ticket,T6-phase6,Layouts,IN-TRACK,
 TAL-01645,ticket,A7,Layouts,IN-TRACK,
 TAL-01644,ticket,T3-row14,Layouts,IN-TRACK,
@@ -72,16 +72,16 @@ TAL-01642,ticket,T8-diag,Chart,IN-TRACK,
 TAL-01641,ticket,A1-axis,chart,IN-TRACK,
 TAL-01640,ticket,A7,Chart,IN-TRACK,
 TAL-01639,ticket,A1-axis,Chart,IN-TRACK,
-TAL-01638,ticket,T4-reclassify,order types change,STAGED,
+TAL-01638,ticket,T4-reclassify,order types change,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 TAL-01637,ticket,out-of-scope,Card after closed trade,OUT-OF-SCOPE,
 TAL-01636,ticket,T6-correctness,opening range indicator ends,IN-TRACK,
 TAL-01635,ticket,A7,opening range indicator,IN-TRACK,
 TAL-01634,ticket,T1-tool-math,short- long postion tool,IN-TRACK,
 TAL-01633,ticket,T8/perf,Chart,IN-TRACK,
 TAL-01632,ticket,A7,chart,IN-TRACK,
-TAL-01631,ticket,T8,Chart,STAGED,
+TAL-01631,ticket,T8,Chart,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01630,ticket,T3-row11,Chart,IN-TRACK,
-TAL-01629,ticket,T8,Chart,STAGED,
+TAL-01629,ticket,T8,Chart,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01628,ticket,needs-repro,Chart,IN-TRACK,
 TAL-01627,ticket,UI-polish(L5),chart,IN-TRACK,
 TAL-01626,ticket,T8-persist,Chart,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
@@ -94,12 +94,12 @@ TAL-01620,ticket,A7,Vwap with replay,IN-TRACK,
 TAL-01619,ticket,A1-axis,indicator price label,IN-TRACK,
 TAL-01618,ticket,A1-axis,gridline,IN-TRACK,
 TAL-01617,ticket,T4/A6,Order sl price label,IN-TRACK,
-TAL-01616,ticket,A6-2,order when refresh,STAGED,
+TAL-01616,ticket,A6-2,order when refresh,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 TAL-01615,ticket,A6-3,order moves with price label,IN-TRACK,
 TAL-01614,ticket,T4,PNL next to opend order,IN-TRACK,
 TAL-01613,ticket,A1-axis,Time label with replay,IN-TRACK,
-TAL-01612,ticket,D-009,Replay,STAGED,
-TAL-01611,ticket,D-009,chart,STAGED,
+TAL-01612,ticket,D-009,Replay,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B) - 10-day jump resolved
+TAL-01611,ticket,D-009,chart,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01610,ticket,D-015,Layouts,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 TAL-01609,ticket,D-015,Layouts,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 TAL-01608,ticket,perf-backlog,chart,IN-TRACK,
@@ -108,7 +108,7 @@ TAL-01606,ticket,T1/T2,chart,IN-TRACK,
 TAL-01605,ticket,T8/T3,chart,IN-TRACK,
 TAL-01604,ticket,A1-axis,chart,IN-TRACK,
 TAL-01603,ticket,T8-diag,chart,IN-TRACK,
-TAL-01602,ticket,A6-1,SL/TP lines when play Replay,STAGED,
+TAL-01602,ticket,A6-1,SL/TP lines when play Replay,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set A)
 TAL-01601,ticket,A6-4,Order 2 layout,IN-TRACK,
 TAL-01600,ticket,D-015/016,play replay with 2 layouts,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (2-layout replay cadence) - NEEDS-RECONCILE
 TAL-01599,ticket,needs-repro,chart,IN-TRACK,
@@ -125,11 +125,11 @@ TAL-01589,ticket,T1/T2,apply default then visibility,IN-TRACK,
 TAL-01588,ticket,closed-by-PO,install talaria,CLOSED-VERIFIED,
 TAL-01587,ticket,T3-row11,Layouts,IN-TRACK,
 TAL-01586,ticket,T3-row15,Layouts,IN-TRACK,
-TAL-01585,ticket,T5,Layers moves while change  time frame,STAGED,
+TAL-01585,ticket,T5,Layers moves while change  time frame,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set C)
 TAL-01584,ticket,T1,"ctrl, cross remain",IN-TRACK,
 TAL-01583,ticket,A1-axis,time label,IN-TRACK,
-TAL-01582,ticket,A3,Tick by tick,STAGED,
-TAL-01581,ticket,A3,Interval replay,STAGED,
+TAL-01582,ticket,A3,Tick by tick,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
+TAL-01581,ticket,A3,Interval replay,CLOSED-VERIFIED,PO retest PASS 2026-07-17 (set B)
 TAL-01580,ticket,UI-polish(L5),EU news no flag,IN-TRACK,
 TAL-01579,ticket,T8/H-S73,Layouts,IN-TRACK,
 TAL-01578,ticket,T8,Layouts,IN-TRACK,

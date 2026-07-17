@@ -210,10 +210,19 @@ export function primeReadyPanelsWithHostOrders(deps) {
     if (newPanelIds.length === 0) {
         return { ok: true, action: 'none', newPanelIds: [] };
     }
-    for (const id of newPanelIds) syncedSet.add(id);
 
     const runCommand = grid && typeof grid.runCommand === 'function' ? grid.runCommand.bind(grid) : null;
     const hostChart = chart || (win && win.chart) || null;
+    const openN = Array.isArray(orderManager?.openPositions) ? orderManager.openPositions.length : 0;
+    const pendN = Array.isArray(orderManager?.pendingOrders) ? orderManager.pendingOrders.length : 0;
+    const hostHasLiveOrders = (openN + pendN) > 0;
+    // F5 race: bridge-ready often fires before session restore fills the host
+    // OM. Marking peers synced on an empty fan-out permanently skips them —
+    // only stamp synced when the host already has live rows (or after a later
+    // restore fan-out path).
+    if (hostHasLiveOrders) {
+        for (const id of newPanelIds) syncedSet.add(id);
+    }
 
     if (orderMcReadyPanelsSnapshotV1Enabled(win)) {
         const fan = fanOutHostOrderSnapshotToIframes({
@@ -228,6 +237,7 @@ export function primeReadyPanelsWithHostOrders(deps) {
             action: 'applyOrderSnapshot',
             newPanelIds,
             fanOut: fan,
+            deferredSync: !hostHasLiveOrders,
         };
     }
 

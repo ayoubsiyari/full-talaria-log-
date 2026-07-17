@@ -3934,6 +3934,23 @@ export default function MultichartGrid({
     // Sending replayEnter the moment B is ready closes that window.
     const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
     const hostOrderSnapshotVersionRef = useRef(0);
+    const fanOutHostOrderSnapshotImpl = useCallback(() => {
+        if (!orderMcSnapshotProjectionV1Enabled()) return { ok: false, reason: "snapshot-off" };
+        const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+        const mgr = managerRef.current;
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        if (!grid || typeof grid.runCommand !== "function" || !mgr || !mgr.charts || !ch) {
+            return { ok: false, reason: "missing-deps" };
+        }
+        return fanOutHostOrderSnapshotToIframes({
+            excludePanelId: null,
+            managerCharts: mgr.charts,
+            runCommand: (cmd, args, opts) => grid.runCommand(cmd, args, opts).catch(() => {}),
+            chart: ch,
+            versionHolder: hostOrderSnapshotVersionRef,
+            win: typeof window !== "undefined" ? window : {},
+        });
+    }, []);
     useEffect(() => {
         // Defer to next microtask so the manager's `c.ready` flag has
         // been set (onChartReady runs synchronously before this state
@@ -3971,8 +3988,19 @@ export default function MultichartGrid({
     }, [readyPanels]);
 
     // Re-prime replay when a panel's first bars land (not only bridge-ready).
+    // Also re-fan host orders: applyOrderSnapshot at bridge-ready can miss
+    // match/filter before the peer has symbol/fileId + OHLC for visuals.
     useEffect(() => {
-        const t = setTimeout(() => { _primeReplayFromParent(); }, 0);
+        const t = setTimeout(() => {
+            _primeReplayFromParent();
+            try {
+                const ch = typeof window !== "undefined" ? window.chart : null;
+                const om = ch && ch.orderManager;
+                const live = ((om && om.openPositions) || []).length
+                    + ((om && om.pendingOrders) || []).length;
+                if (live > 0) fanOutHostOrderSnapshotImpl();
+            } catch (_) {}
+        }, 0);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataReadyPanels]);
@@ -6303,6 +6331,8 @@ export default function MultichartGrid({
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
             broadcastClearDraftPreview,
+            // F5 / session restore: chart.js calls this after host OM hydrate.
+            fanOutHostOrderSnapshot: () => fanOutHostOrderSnapshotImpl(),
         };
         window.__multichartOpenShapeSettings = function multichartOpenShapeSettings(sourceId, drawingOrId, x, y) {
             return openDrawingSettingsForPanel(sourceId, drawingOrId, x, y);
@@ -6517,6 +6547,10 @@ export default function MultichartGrid({
 
         function fanOutOrderSnapshot(excludePanelId) {
             if (!orderMcSnapshotProjectionV1Enabled()) return;
+            if (excludePanelId == null) {
+                fanOutHostOrderSnapshotImpl();
+                return;
+            }
             const grid = window.__multichartGrid;
             const mgr = managerRef.current;
             if (!grid || !mgr || !mgr.charts) return;
@@ -6526,6 +6560,7 @@ export default function MultichartGrid({
                 runCommand: (cmd, args, opts) => grid.runCommand(cmd, args, opts).catch(() => {}),
                 chart: window.chart,
                 versionHolder: hostOrderSnapshotVersionRef,
+                win: typeof window !== "undefined" ? window : {},
             });
         }
 
@@ -6937,6 +6972,34 @@ export default function MultichartGrid({
             if (!order || order.id == null) return;
             if (orderMcSnapshotProjectionV1Enabled()
                 && (kind === "opened" || kind === "pending" || kind === "pending-updated")) {
+                // Snapshot fan-out reads the HOST store. A→B works because host
+                // already mutated. B→A was broken: we re-pushed stale host prices
+                // and never merged the iframe drag. Merge peer pending-updated
+                // into host first, refresh host lines, then fan (exclude source).
+                if (kind === "pending-updated" && sourceId !== HOST_PANEL_ID) {
+                    try {
+                        const hostChart = window.chart;
+                        applyMirroredPendingOrderSnapshot(hostChart, order);
+                        const omH = hostChart && hostChart.orderManager;
+                        let poH = null;
+                        if (omH && Array.isArray(omH.pendingOrders)) {
+                            poH = omH.pendingOrders.find((o) => o && o.id === order.id);
+                        }
+                        if (!poH && omH && omH.orderService
+                            && Array.isArray(omH.orderService.pendingOrders)) {
+                            poH = omH.orderService.pendingOrders.find(
+                                (o) => o && o.id === order.id
+                            );
+                        }
+                        if (poH && typeof omH.scheduleRefreshPendingOrderGraphicsForChart === "function") {
+                            omH.scheduleRefreshPendingOrderGraphicsForChart(poH, hostChart);
+                        } else if (poH && typeof omH.refreshPendingOrderGraphicsForChart === "function") {
+                            omH.refreshPendingOrderGraphicsForChart(poH, hostChart);
+                        } else if (omH && typeof omH.updateOrderLines === "function") {
+                            try { omH.updateOrderLines(hostChart); } catch (_) {}
+                        }
+                    } catch (_) { /* ignore */ }
+                }
                 fanOutOrderSnapshot(sourceId === HOST_PANEL_ID ? null : sourceId);
                 return;
             }
