@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260717b64';
+const CHART_ENGINE_BUILD = '20260717b67';
 
 /**
  * TradingView-style nice wall-clock steps (ms). Prefer values that divide a day
@@ -25810,6 +25810,34 @@ class Chart {
         if (!om) return;
         // Same frame as canvas + redrawDrawings(). Deferred rAF "lite" updates lagged one
         // frame behind candles and skipped entirely during price/time axis drag (not pan).
+        //
+        // Multichart iframe: full updateOrderLines every pan frame is heavy (purge +
+        // console + marker rebuild) and makes draft levels trail candles. Default ON:
+        // during active pan prefer thin preview reposition; still run full lines when
+        // open/pending overlays exist. Kill-switch:
+        //   window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_LITE_V1 = true
+        let panLite = false;
+        try {
+            panLite = !!panActive
+                && !(typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_LITE_V1 === true);
+        } catch (_) { panLite = !!panActive; }
+        if (panLite) {
+            let hasOrderLines = false;
+            try {
+                const lines = om.orderLines;
+                if (Array.isArray(lines) && lines.length) {
+                    hasOrderLines = lines.some((ol) => !ol || !ol.chart || ol.chart === this);
+                }
+            } catch (_) { hasOrderLines = true; }
+            if (hasOrderLines && typeof om.updateOrderLines === 'function') {
+                om.updateOrderLines(this);
+            }
+            if (typeof om.updatePreviewLinePositions === 'function') {
+                om.updatePreviewLinePositions();
+            }
+            return;
+        }
         if (typeof om.updateOrderLines === 'function') {
             om.updateOrderLines(this);
         }
@@ -26483,8 +26511,23 @@ class Chart {
             if (syncDrawingsNow) {
                 this.redrawDrawings();
             }
-            if (syncDrawingsNow) {
-                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
+            // Order/preview levels: always glue on the fast path (even when lite paint
+            // skips drawings). Uncommitted pan + interactionLite used to skip sync and
+            // left multichart draft SL/TP trailing the candles. Kill-switch:
+            //   window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1 = true
+            let alwaysOrderSync = true;
+            try {
+                alwaysOrderSync = !(typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1 === true);
+            } catch (_) { alwaysOrderSync = true; }
+            if (alwaysOrderSync || syncDrawingsNow) {
+                this._syncOrderOverlaysDuringPan(
+                    chartViewPanning
+                    || axisZoomDragging
+                    || wheelBurstLight
+                    || !!this._chartPanRenderLoopActive
+                    || (typeof this._isPanSyncFollowBurst === 'function' && this._isPanSyncFollowBurst())
+                );
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();

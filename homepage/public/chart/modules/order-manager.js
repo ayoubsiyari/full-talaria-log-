@@ -18758,6 +18758,14 @@ class OrderManager {
             this._oiSyncPreviewLinePricesFromStore();
         }
 
+        // Prefer live chart.yScale (updated every pan frame) over a stale
+        // scales.yScale snapshot — multichart iframe lite-pan used to leave
+        // draft levels a frame behind the candles.
+        const yScale = (typeof pc.yScale === 'function')
+            ? pc.yScale
+            : (pc.scales && typeof pc.scales.yScale === 'function' ? pc.scales.yScale : null);
+        if (!yScale) return;
+
         const widthChanged = this._lastPreviewChartWidth !== pc.w;
         this._lastPreviewChartWidth = pc.w;
 
@@ -18768,9 +18776,9 @@ class OrderManager {
             if (lineData.isBadge && this._useEntryAnchoredTpSlBadges()
                 && (lineData.label === 'TP' || lineData.label === 'SL')) {
                 const entry = this.previewLines?.entry;
-                if (entry?.price > 0 && pc.scales?.yScale) {
+                if (entry?.price > 0) {
                     lineData.price = entry.price;
-                    this.positionPreviewLabel(lineData, pc.scales.yScale(entry.price));
+                    this.positionPreviewLabel(lineData, yScale(entry.price));
                     
                 }
                 return;
@@ -18815,7 +18823,7 @@ class OrderManager {
         
         // Update entry line position
         if (this.previewLines.entry) {
-            const entryY = pc.scales.yScale(this.previewLines.entry.price);
+            const entryY = yScale(this.previewLines.entry.price);
             
             // Update line if it exists
             if (this.previewLines.entry.line) {
@@ -18837,7 +18845,7 @@ class OrderManager {
         
         // Update TP line/badge position (works for both badges and full lines)
         if (this.previewLines.tp && this.previewLines.tp.price) {
-            const tpY = pc.scales.yScale(this.previewLines.tp.price);
+            const tpY = yScale(this.previewLines.tp.price);
             
             // Update line if it exists (full line mode)
             if (this.previewLines.tp.line) {
@@ -18859,7 +18867,7 @@ class OrderManager {
         
         // Update SL line/badge position (works for both badges and full lines)
         if (this.previewLines.sl && this.previewLines.sl.price) {
-            const slY = pc.scales.yScale(this.previewLines.sl.price);
+            const slY = yScale(this.previewLines.sl.price);
             
             // Update line if it exists (full line mode)
             if (this.previewLines.sl.line) {
@@ -18882,8 +18890,8 @@ class OrderManager {
         // Update multi-TP badge positions (follow entry Y, stacked)
         if (this.previewLines.multiTPBadges && this.previewLines.multiTPBadges.length > 0) {
             const entryPx = this.previewLines.entry?.price;
-            if (entryPx > 0 && pc.scales?.yScale) {
-                const ey = pc.scales.yScale(entryPx);
+            if (entryPx > 0) {
+                const ey = yScale(entryPx);
                 this.previewLines.multiTPBadges.forEach(bd => {
                     if (bd && bd.labelGroup) {
                         bd.price = entryPx;
@@ -18898,7 +18906,7 @@ class OrderManager {
         if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
-                    const tpY = pc.scales.yScale(tpLine.price);
+                    const tpY = yScale(tpLine.price);
                     
                     // Update line
                     if (tpLine.line) {
@@ -18922,7 +18930,7 @@ class OrderManager {
         
         // Update BE (Breakeven) line position
         if (this.previewLines.be && this.previewLines.be.price) {
-            const beY = pc.scales.yScale(this.previewLines.be.price);
+            const beY = yScale(this.previewLines.be.price);
             
             // Update line if it exists
             if (this.previewLines.be.line) {
@@ -18946,7 +18954,7 @@ class OrderManager {
         if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
             this.previewLines.splitEntries.forEach(splitLine => {
                 if (splitLine && splitLine.price) {
-                    const splitY = pc.scales.yScale(splitLine.price);
+                    const splitY = yScale(splitLine.price);
                     
                     if (splitLine.line) {
                         splitLine.line
@@ -18969,7 +18977,7 @@ class OrderManager {
 
         // Multi-entry weighted average line
         if (this.previewLines.avgEntry && this.previewLines.avgEntry.price) {
-            const avgY = pc.scales.yScale(this.previewLines.avgEntry.price);
+            const avgY = yScale(this.previewLines.avgEntry.price);
             if (this.previewLines.avgEntry.line) {
                 this.previewLines.avgEntry.line
                     .attr('y1', avgY)
@@ -40172,8 +40180,6 @@ class OrderManager {
                 }
 
                 const y = ch.scales.yScale(price);
-
-                console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
 
                 // Pending entry drag / post-drag freeze: drawPendingOrderLine owns layout until settle pass completes.
                 const skipPendingEntryGeom = isPending && (

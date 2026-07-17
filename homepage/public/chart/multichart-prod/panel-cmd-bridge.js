@@ -1238,16 +1238,22 @@
         // showing the furthest candle the panel already holds.
         if (ch && Number.isFinite(ch._mcCatchUpCooldownUntil)
             && Date.now() < ch._mcCatchUpCooldownUntil) {
-            // Soft park: still paint the furthest loaded bar + pin shared playhead
-            // so independent fine panels don't look fully frozen during cooldown.
-            try {
-                var rsCd = ch.replaySystem;
-                if (rsCd && args) {
-                    renderFurthestLoadedMirrorFrame(ch, rsCd, args);
-                    if (Number.isFinite(ts)) rsCd.replayTimestamp = ts;
-                }
-            } catch (_) {}
-            return;
+            // During Play on a different ticker, do not hard-park on cooldown —
+            // clear and retry cover (saved-session restore often trips the breaker).
+            if (pendingPlayDesired && !isSameSymbolAsHost(ch) && isPlayEagerCoverEnabled()) {
+                clearIndependentCatchUpCooldown(ch);
+            } else {
+                // Soft park: still paint the furthest loaded bar + pin shared playhead
+                // so independent fine panels don't look fully frozen during cooldown.
+                try {
+                    var rsCd = ch.replaySystem;
+                    if (rsCd && args) {
+                        renderFurthestLoadedMirrorFrame(ch, rsCd, args);
+                        if (Number.isFinite(ts)) rsCd.replayTimestamp = ts;
+                    }
+                } catch (_) {}
+                return;
+            }
         }
         if (Number.isFinite(ts)) {
             coalescedMirrorCatchUpTs = coalescedMirrorCatchUpTs == null
@@ -2136,6 +2142,58 @@
      * Hard guard: ensure iframe rawData covers ts, then seek. Panels that
      * loaded a session-start window cannot follow host A without refetch.
      */
+    /**
+     * Saved-session Play: different-ticker peers often boot with a short
+     * `_panelFullRawData` behind the restored host playhead, then park at
+     * their loaded edge (TAL-01590 / D-015). Clear catch-up cooldown and
+     * eagerly cover the host ts before frames race ahead.
+     * Kill-switch: window.__TALARIA_DISABLE_MC_PLAY_EAGER_COVER_V1 = true
+     */
+    function isPlayEagerCoverEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_MC_PLAY_EAGER_COVER_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function clearIndependentCatchUpCooldown(ch) {
+        if (!ch) return;
+        try {
+            ch._mcCatchUpFails = 0;
+            ch._mcCatchUpCooldownUntil = 0;
+        } catch (_) {}
+    }
+
+    function eagerCoverIndependentOnPlay(ch) {
+        if (!ch || !isPlayEagerCoverEnabled()) return;
+        if (isSameSymbolAsHost(ch)) return;
+        clearIndependentCatchUpCooldown(ch);
+        var coverTs = readParentReplayTimestamp();
+        var rs = ch.replaySystem;
+        if (!Number.isFinite(coverTs) && rs && Number.isFinite(rs.replayTimestamp)) {
+            coverTs = rs.replayTimestamp;
+        }
+        if (!Number.isFinite(coverTs)) return;
+        if (typeof ch.ensureReplayDataCoversTimestamp !== 'function') {
+            forceReplaySeek(ch, coverTs, false);
+            return;
+        }
+        ch._mcPlayEagerCoverInflight = true;
+        ch.ensureReplayDataCoversTimestamp(coverTs).then(function () {
+            ch._mcPlayEagerCoverInflight = false;
+            if (!pendingPlayDesired) return;
+            if (!ch.replaySystem || !ch.replaySystem.isActive) return;
+            clearIndependentCatchUpCooldown(ch);
+            forceReplaySeek(ch, coverTs, false);
+        }).catch(function (e) {
+            ch._mcPlayEagerCoverInflight = false;
+            warn('eagerCoverIndependentOnPlay failed', e && e.message);
+            if (pendingPlayDesired) forceReplaySeek(ch, coverTs, false);
+        });
+    }
+
     function forceReplaySeek(ch, ts, isEnter, onDone) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:forceReplaySeek');
         markHostReplayContext(ch);
@@ -2147,6 +2205,12 @@
         if (!rs) {
             if (typeof onDone === 'function') onDone();
             return;
+        }
+
+        // Don't inherit a pre-Play catch-up cooldown into active play — that
+        // parks different-ticker tiles after saved-session restore.
+        if (pendingPlayDesired && !isSameSymbolAsHost(ch) && isPlayEagerCoverEnabled()) {
+            clearIndependentCatchUpCooldown(ch);
         }
 
         function finish() {
@@ -2352,11 +2416,17 @@
                 }
                 pendingReplayTs = null;
                 try { drainPendingPlay(ch); } catch (_) {}
+                if (pendingPlayDesired) {
+                    try { eagerCoverIndependentOnPlay(ch); } catch (_) {}
+                }
             });
         } else {
             scheduleMultichartPanelReplayFollow(ch);
             pendingReplayTs = null;
             try { drainPendingPlay(ch); } catch (_) {}
+            if (pendingPlayDesired) {
+                try { eagerCoverIndependentOnPlay(ch); } catch (_) {}
+            }
         }
         log('replayEnter applied: ts=' + ts
             + ' isActive=' + rs.isActive
@@ -3397,6 +3467,9 @@
                     }
                     ch._multichartPassivePlayActive = true;
                     ensurePanelReplaySeries(ch);
+                    // Different ticker + saved playhead: cover host ts before
+                    // play frames park the peer at a short master edge.
+                    try { eagerCoverIndependentOnPlay(ch); } catch (_eagerPlay) {}
                     if (!rsP.isActive) {
                         log('replayPlay stashed (not yet active)');
                         return;
