@@ -3957,6 +3957,38 @@
         return { boxes: boxes.length > maxBoxes ? boxes.slice(-maxBoxes) : boxes };
     }
 
+    function _applyIndicatorDefParams(indicator, typeKey, params) {
+        var def = (typeof window !== 'undefined' && window.INDICATOR_DEFINITIONS)
+            ? window.INDICATOR_DEFINITIONS[typeKey] : null;
+        if (!def || !def.params) return;
+        def.params.forEach(function (p) {
+            if (p.type === 'heading' || p.type === 'divider') return;
+            var raw = params[p.id] !== undefined ? params[p.id] : p.default;
+            if (p.type === 'checkbox') raw = !!raw;
+            else if (p.type === 'number') {
+                raw = parseFloat(raw);
+                if (isNaN(raw)) raw = p.default;
+            }
+            indicator.params[p.id] = raw;
+        });
+    }
+
+    function calculateTalariaFvgIndicator(data, indicator, chartRef) {
+        var mod = global.TalariaFvgIndicator;
+        if (!mod || typeof mod.calculate !== 'function') return { boxes: [], dayLines: [], midLines: [] };
+        return mod.calculate(data, indicator.params, {
+            resample: chartRef && typeof chartRef.resampleData === 'function' ? chartRef.resampleData.bind(chartRef) : null,
+            rawData: chartRef && Array.isArray(chartRef.rawData) ? chartRef.rawData : data,
+            currentTimeframe: chartRef && chartRef.currentTimeframe
+        });
+    }
+
+    function calculateTalariaRatioGapIndicator(data, indicator) {
+        var mod = global.TalariaRatioGapIndicator;
+        if (!mod || typeof mod.calculate !== 'function') return { lines: [], boxes: [], labels: [], infoCells: [] };
+        return mod.calculate(data, indicator.params);
+    }
+
     /**
      * Premium/discount vs previous completed session window (UTC), e.g. NY 13:00–21:00.
      * Looks back up to maxLookbackDays for the last day that had bars in that session (weekends).
@@ -6511,6 +6543,24 @@
                 this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
                 break;
 
+            case 'talariafvg':
+                indicator.overlay = true;
+                indicator.isTalariaFvg = true;
+                indicator.name = 'Talaria — FVG';
+                indicator.params = indicator.params || {};
+                _applyIndicatorDefParams(indicator, 'talariafvg', params);
+                this.indicators.data[indicator.id] = calculateTalariaFvgIndicator(this.data, indicator, this);
+                break;
+
+            case 'talariaratiogap':
+                indicator.overlay = true;
+                indicator.isTalariaRatioGap = true;
+                indicator.name = 'Talaria — Ratio + Gap';
+                indicator.params = indicator.params || {};
+                _applyIndicatorDefParams(indicator, 'talariaratiogap', params);
+                this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -7757,6 +7807,14 @@
                 indicator.name = 'ICT Everything';
                 this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
                 break;
+            case 'talariafvg':
+                indicator.name = 'Talaria — FVG';
+                this.indicators.data[indicator.id] = calculateTalariaFvgIndicator(this.data, indicator, this);
+                break;
+            case 'talariaratiogap':
+                indicator.name = 'Talaria — Ratio + Gap';
+                this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -7920,7 +7978,8 @@
             var workerSkip = [
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
-                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'
+                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
+                'talariafvg', 'talariaratiogap'
             ];
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
@@ -7948,7 +8007,7 @@
         }
 
         // Run sync fallback for skipped indicators immediately
-        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
+        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap'];
         var needsSyncOnly = chart.indicators.active.some(function(ind) {
             return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
         });
@@ -8403,7 +8462,8 @@
             const workerSkip = [
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
-                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'volume', 'custom'
+                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
+                'talariafvg', 'talariaratiogap', 'volume', 'custom'
             ];
             const indType = String(ind.type || '').toLowerCase();
             if (workerSkip.indexOf(indType) >= 0) return;
@@ -8789,6 +8849,12 @@
                     break;
                 case 'icteverything':
                     this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
+                    break;
+                case 'talariafvg':
+                    this.indicators.data[indicator.id] = calculateTalariaFvgIndicator(this.data, indicator, this);
+                    break;
+                case 'talariaratiogap':
+                    this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -9251,6 +9317,10 @@
                 this.drawKillzones(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'icteverything' || indicator.isIctEverything) {
                 this.drawIctEverything(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'talariafvg' || indicator.isTalariaFvg) {
+                this.drawTalariaFvg(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'talariaratiogap' || indicator.isTalariaRatioGap) {
+                this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'adr' || indicator.isADR) {
                 this.drawADRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.isATR) {

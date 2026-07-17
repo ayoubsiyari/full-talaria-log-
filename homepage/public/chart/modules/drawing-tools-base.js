@@ -728,6 +728,11 @@ function _isRc3ClampPolicyEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_RC3_CLAMP_POLICY !== false;
 }
 
+/** H-S42: anchored VP right edge resolves from captured timestampPoints[1] (unset = fix ON). */
+function _isAnchoredVpRightEdgeTimestampFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_ANCHORED_VP_RIGHT_EDGE_TIMESTAMP_FIX !== true;
+}
+
 function _getEffectiveCandleIndexClampTypes() {
     const out = new Set(CANDLE_INDEX_CLAMPED_TYPES);
     if (_isRc3ClampPolicyEnabled()) {
@@ -3415,6 +3420,41 @@ class CoordinateUtils {
     }
 
     /**
+     * Persist / extend anchored VP right-edge timestamp (index 1) for TF-stable resolve.
+     * Index 0 is the user anchor; index 1 tracks the latest loaded bar open time.
+     */
+    static ensureAnchoredVolumeProfileRightEdgeTimestamp(drawing, chart) {
+        if (!_isAnchoredVpRightEdgeTimestampFixEnabled()) return;
+        if (!drawing || drawing.type !== 'anchored-volume-profile' || !chart) return;
+        if (!Array.isArray(chart.data) || chart.data.length === 0) return;
+        if (!Array.isArray(drawing.timestampPoints) || drawing.timestampPoints.length === 0) return;
+
+        const lastBar = chart.data[chart.data.length - 1];
+        const lastTs = lastBar && Number.isFinite(Number(lastBar.t)) ? Number(lastBar.t) : null;
+        if (lastTs == null) return;
+
+        const anchorPrice = Number.isFinite(Number(drawing.timestampPoints[0]?.price))
+            ? Number(drawing.timestampPoints[0].price)
+            : (drawing.points && drawing.points[0] && Number.isFinite(Number(drawing.points[0].y))
+                ? Number(drawing.points[0].y)
+                : null);
+
+        const existingRight = drawing.timestampPoints[1];
+        const existingTs = existingRight && Number.isFinite(Number(existingRight.timestamp))
+            ? Number(existingRight.timestamp)
+            : null;
+
+        if (existingTs == null || lastTs > existingTs) {
+            drawing.timestampPoints[1] = {
+                timestamp: lastTs,
+                price: Number.isFinite(anchorPrice) ? anchorPrice : (existingRight?.price ?? anchorPrice),
+            };
+        } else if (existingRight && !Number.isFinite(Number(existingRight.price)) && Number.isFinite(anchorPrice)) {
+            existingRight.price = anchorPrice;
+        }
+    }
+
+    /**
      * Anchored volume profile: anchor from timestampPoints + right edge at last loaded bar
      * (timestamp-stable across TF switches; replaces render-time latestDataIndex proxy).
      */
@@ -3425,6 +3465,7 @@ class CoordinateUtils {
         const tsOpts = tsOptsOverride !== undefined
             ? tsOptsOverride
             : CoordinateUtils.buildTimestampResolveOptions(drawing, chart);
+        CoordinateUtils.ensureAnchoredVolumeProfileRightEdgeTimestamp(drawing, chart);
         // Resolve anchor only — must NOT call resolveDrawingPoints (re-enters this helper for anchored VP).
         let anchorPts;
         if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
@@ -3441,14 +3482,28 @@ class CoordinateUtils {
         if (!anchor) return anchorPts;
 
         const lastBar = chart.data[chart.data.length - 1];
-        const rightX = _isRc3ClampPolicyEnabled() && lastBar
-            ? CoordinateUtils.timestampToIndex(
+        let rightX;
+        const rightTsPt = drawing.timestampPoints && drawing.timestampPoints[1];
+        const capturedRightTs = rightTsPt && Number.isFinite(Number(rightTsPt.timestamp))
+            ? Number(rightTsPt.timestamp)
+            : null;
+        if (_isAnchoredVpRightEdgeTimestampFixEnabled() && capturedRightTs != null) {
+            rightX = CoordinateUtils.timestampToIndex(
+                capturedRightTs,
+                chart.data,
+                chart.currentTimeframe,
+                tsOpts
+            );
+        } else if (_isRc3ClampPolicyEnabled() && lastBar) {
+            rightX = CoordinateUtils.timestampToIndex(
                 Number(lastBar.t),
                 chart.data,
                 chart.currentTimeframe,
                 tsOpts
-            )
-            : chart.data.length - 1;
+            );
+        } else {
+            rightX = chart.data.length - 1;
+        }
         const y = Number.isFinite(anchor.y) ? anchor.y : (drawing.points[0] && drawing.points[0].y);
         return [
             { x: anchor.x, y: y },

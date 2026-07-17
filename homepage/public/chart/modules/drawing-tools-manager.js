@@ -7156,6 +7156,15 @@ class DrawingToolsManager {
                 }
             } catch (_) {}
         }
+        if (
+            drawing.type === 'anchored-volume-profile'
+            && typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.ensureAnchoredVolumeProfileRightEdgeTimestamp === 'function'
+        ) {
+            try {
+                CoordinateUtils.ensureAnchoredVolumeProfileRightEdgeTimestamp(drawing, this.chart);
+            } catch (_) {}
+        }
         
         this.drawings.push(drawing);
         this.renderDrawing(drawing, fromClonePayload ? { skipTimestampSync: true } : undefined);
@@ -11984,6 +11993,14 @@ class DrawingToolsManager {
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
         }
+        if (
+            drawing.type === 'anchored-volume-profile'
+            && typeof CoordinateUtils.ensureAnchoredVolumeProfileRightEdgeTimestamp === 'function'
+        ) {
+            try {
+                CoordinateUtils.ensureAnchoredVolumeProfileRightEdgeTimestamp(drawing, this.chart);
+            } catch (_) {}
+        }
         const dataLen = Array.isArray(this.chart.data) ? this.chart.data.length : 0;
         const lastIdx = dataLen > 0 ? dataLen - 1 : 0;
         const hasTimestampAnchors = drawing.timestampPoints && drawing.timestampPoints.length > 0;
@@ -12005,7 +12022,16 @@ class DrawingToolsManager {
                 : this._getTimestampConversionOptions(drawing);
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart, tsOpts);
             if (Array.isArray(resolved) && resolved.length > 0) {
-                drawing.points = resolved;
+                if (drawing.type === 'anchored-volume-profile') {
+                    const anchorResolved = resolved[0];
+                    if (Array.isArray(drawing.points) && drawing.points.length > 0 && anchorResolved) {
+                        drawing.points[0] = { ...drawing.points[0], ...anchorResolved };
+                    } else if (anchorResolved) {
+                        drawing.points = [{ ...anchorResolved }];
+                    }
+                } else {
+                    drawing.points = resolved;
+                }
                 if (
                     typeof drawing.finalizeDrawing === 'function' &&
                     (drawing.type === 'arc' || drawing.type === 'curve') &&

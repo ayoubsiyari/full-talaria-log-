@@ -14893,6 +14893,10 @@ const TalariaV8bLive = () => {
     { id:"ADX", type:"adx", name:"Average Directional Index", abbr:"ADX", cat:"others", desc:"Measures trend strength, not direction" },
     { id:"ADR", type:"adr", name:"Average Daily Range", abbr:"ADR", cat:"others", desc:"Average daily high-low range" },
     { id:"COT", type:"cotnet", name:"COT Net (Commercial vs Non-Commercial)", abbr:"COT", cat:"others", desc:"Commitments of Traders net positioning" },
+
+    // Talaria (proprietary)
+    { id:"TALARIA_FVG", type:"talariafvg", name:"Talaria — FVG", abbr:"FVG", cat:"talaria", desc:"Multi-timeframe fair value gaps with fpFVG session bias tags" },
+    { id:"TALARIA_RG", type:"talariaratiogap", name:"Talaria — Ratio + Gap", abbr:"R+G", cat:"talaria", desc:"NY-session range/gap ratios, PDR levels, ORB-15 & IB-60 info box" },
   ];
   const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
     acc[row.id] = row.type;
@@ -15767,7 +15771,7 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (indicatorType === "icteverything" || indicatorType === "cotnet") first = "input";
+      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap") first = "input";
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
@@ -15776,7 +15780,7 @@ const TalariaV8bLive = () => {
       v9SuppressNextChartDeselect();
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const halfW = indicatorType === "custom" ? 270 : indicatorType === "icteverything" ? 260 : 210;
+      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap") ? 260 : 210;
       setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
       flushSync(() => {
         setIndSettDraft(draft);
@@ -18126,7 +18130,7 @@ const TalariaV8bLive = () => {
     });
   }, [tagSels, orderPanelOpen, preTradeDefRevision]);
 
-  const catColors = {trend:c.acL, momentum:"#E8820A", volatility:"#C9A84C", volume:c.gn, sessions:"#FF5068", others:c.ts};
+  const catColors = {trend:c.acL, momentum:"#E8820A", volatility:"#C9A84C", volume:c.gn, sessions:"#FF5068", others:c.ts, talaria:"#7B61FF"};
   const tplWatchKeys = new Set(["bullBody","bullBorder","bullWick","bearBody","bearBorder","bearWick","background","gridColor","unifiedBarColorVal","crosshairColor","priceLineColor","textColor"]);
   const updateSetting = (key, val) => setSettings(prev => {
     const next = {...prev, [key]: val};
@@ -28188,16 +28192,17 @@ const TalariaV8bLive = () => {
           ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
         if (!def || !ctx.indicator) return null;
         const isIctEverything = ctx.indicatorType === "icteverything";
+        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap";
         const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
-        const tabFn = isIctEverything ? () => "input" : tabFnBase;
+        const tabFn = (isIctEverything || isTalariaNative) ? () => "input" : tabFnBase;
         const isCustom = ctx.indicatorType === "custom";
-        const panelW = isCustom ? 520 : isIctEverything ? 520 : 400;
+        const panelW = isCustom ? 520 : (isIctEverything || isTalariaNative) ? 520 : 400;
         const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
         const isCotNet = ctx.indicatorType === "cotnet";
         const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
-        const tabsShown = isIctEverything
+        const tabsShown = isIctEverything || isTalariaNative
           ? [["input","Settings"],["visibility","Visibility"]]
           : isCotNet
             ? [["input","Input"],["visibility","Visibility"]]
@@ -32736,10 +32741,10 @@ const TalariaV8bLive = () => {
       })()}
 
       {(indOpen || closing.has("ind")) && (()=>{
-        const indTabs=[["active","Active"],["pinned","Pinned"],["all","All"],["trend","Trend"],["momentum","Momentum"],["volatility","Volatility"],["volume","Volume"],["sessions","Sessions"],["others","Others"]];
+        const indTabs=[["active","Active"],["pinned","Pinned"],["all","All"],["trend","Trend"],["momentum","Momentum"],["volatility","Volatility"],["volume","Volume"],["sessions","Sessions"],["others","Others"],["talaria","Talaria"]];
         const indTabIdx=indTabs.findIndex(([id])=>id===indCat);
         const closeInd=()=>{animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);};
-        const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
+        const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : id==="talaria"?"#7B61FF" : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
         <div data-indicators-panel="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
