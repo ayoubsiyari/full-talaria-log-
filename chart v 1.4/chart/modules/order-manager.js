@@ -18850,9 +18850,11 @@ class OrderManager {
             return;
         }
 
-        // Order was placed via ✓ badge — wait for "Make new order" before drawing anything
+        // Order was placed via ✓ badge — wait for "Make new order" before drawing anything.
+        // Skip multichart fan-out clear: broadcasting here wipes a peer panel's
+        // setDraftPreview (e.g. place on A → focus B → B draft instantly cleared).
         if (this._orderPlacedAwaitingReset) {
-            this.removePreviewLines();
+            this.removePreviewLines({ multichartSkipBroadcast: true });
             return;
         }
 

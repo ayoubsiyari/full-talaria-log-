@@ -1124,7 +1124,15 @@ function v9FloatingUiDragBounds(zz, barW, barH, panelW = 0) {
 
 /** Chart instance that should drive the V9 pair + timeframe display. */
 function v9ActiveChartInstance() {
-  return typeof window !== "undefined" ? (window.chart || null) : null;
+  if (typeof window === "undefined") return null;
+  // MultichartGrid: toolbar / OMS must follow the focused tile (panel B ≠ host A).
+  try {
+    if (typeof window.getActiveChart === "function") {
+      const a = window.getActiveChart();
+      if (a) return a;
+    }
+  } catch (_) { /* ignore */ }
+  return window.chart || null;
 }
 
 /** chart.js compact ticker → V9 toolbar label (EURJPY → EUR/JPY). */
@@ -17785,10 +17793,26 @@ const TalariaV8bLive = () => {
         }
       } catch (_) {}
       if (!orderPanelOpen) return;
+      const om = window.chart?.orderManager;
+      // After place, rail waits for "Make new order" — do not paint a draft yet.
+      if (om && om._orderPlacedAwaitingReset) return;
+
+      // On panel focus, re-anchor to that tile's live market price. Forwarding a
+      // stale EUR limit onto GBP leaves the draft line off-scale / invisible.
+      const ensureMarketType = () => {
+        try {
+          if (om) om.orderType = "market";
+          document.querySelectorAll("#orderPanel .order-type-btn").forEach((b) => {
+            b.classList.toggle("active", b.getAttribute("data-type") === "market");
+          });
+          setOrderType("market");
+        } catch (_) {}
+      };
+
       // Host focused: re-anchor market entry + redraw host preview SVG.
       if (fid == null || String(fid) === String(hid)) {
         try {
-          const om = window.chart?.orderManager;
+          ensureMarketType();
           syncMarketEntryFromActiveChart();
           if (om && typeof om.updatePreviewLines === "function") {
             om.updatePreviewLines();
@@ -17800,17 +17824,14 @@ const TalariaV8bLive = () => {
       // setDraftPreview so the draft appears on panel B/C (not host A).
       try {
         if (multichartDraftDragBusyRef.current) return;
-        const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
-        const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
-        if (typeFwd === "market") {
-          syncMarketEntryFromActiveChart();
-        }
+        ensureMarketType();
+        syncMarketEntryFromActiveChart();
         grid.runCommand("setDraftPreview", collectDraftArgs(), { panelId: fid }).catch(() => {});
       } catch (_) {}
     };
     window.addEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
     return () => window.removeEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
-  }, [orderPanelOpen, setEntryRows]);
+  }, [orderPanelOpen, setEntryRows, setOrderType]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.

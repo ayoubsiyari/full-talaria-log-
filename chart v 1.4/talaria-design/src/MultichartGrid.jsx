@@ -6106,6 +6106,7 @@ export default function MultichartGrid({
             runCommand,
             runCommandOnAllPanels,
             deselectDrawingsOnNonFocusedPanels,
+            cancelScheduledPeerDeselect,
             closeDrawingSettingsOnOtherPanels,
             closeDrawingSettingsForPanel,
             closeDrawingSettingsOnAllPanels,
@@ -6916,8 +6917,12 @@ export default function MultichartGrid({
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
                 if (multichartPeerDeselectV1Enabled() && sourceId) {
-                    cancelScheduledPeerDeselect(sourceId);
-                    focusPanelById(sourceId);
+                    if (grid && typeof grid.cancelScheduledPeerDeselect === "function") {
+                        grid.cancelScheduledPeerDeselect(sourceId);
+                    }
+                    if (grid && typeof grid.focusPanelById === "function") {
+                        grid.focusPanelById(sourceId);
+                    }
                     if (sourceId !== HOST_PANEL_ID) {
                         try {
                             const dm = window.chart && window.chart.drawingManager;
@@ -6992,10 +6997,14 @@ export default function MultichartGrid({
                     if ((multichartOwnershipV2Enabled() || multichartPanelSelectionChromeRoutingV3Enabled())
                         && msg.source != null) {
                         const sourceId = String(msg.source);
-                        cancelScheduledPeerDeselect(sourceId);
-                        focusPanelById(sourceId);
+                        const grid = window.__multichartGrid;
+                        if (grid && typeof grid.cancelScheduledPeerDeselect === "function") {
+                            grid.cancelScheduledPeerDeselect(sourceId);
+                        }
+                        if (grid && typeof grid.focusPanelById === "function") {
+                            grid.focusPanelById(sourceId);
+                        }
                         if (multichartPeerDeselectV1Enabled() && sourceId !== HOST_PANEL_ID) {
-                            const grid = window.__multichartGrid;
                             if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
                                 grid.deselectDrawingsOnNonFocusedPanels(sourceId, { ignoreSelectionGuard: true });
                             }
@@ -7105,10 +7114,65 @@ export default function MultichartGrid({
             return poll();
         }
 
+        function forwardDraftPreviewToFocusedPanel(panelId) {
+            const grid = window.__multichartGrid;
+            if (!grid || typeof grid.runCommand !== "function") return;
+            const hid = HOST_PANEL_ID;
+            const pid = panelId != null ? String(panelId) : hid;
+            if (pid === String(hid)) {
+                try {
+                    const om = window.chart && window.chart.orderManager;
+                    if (om && typeof om.updatePreviewLines === "function") {
+                        om.updatePreviewLines();
+                    }
+                } catch (_) {}
+                return;
+            }
+            try {
+                const args = collectOrderArgs();
+                // collectOrderArgs has side/qty/prices; draft needs enable flags too.
+                const chk = (id) => {
+                    const el = document.getElementById(id);
+                    return !!(el && el.checked);
+                };
+                grid.runCommand("setDraftPreview", {
+                    side: args.side,
+                    type: args.type,
+                    entryPrice: args.entryPrice,
+                    slEnabled: chk("enableSL"),
+                    slPrice: args.slPrice,
+                    tpEnabled: chk("enableTP"),
+                    tpPrice: args.tpPrice,
+                }, { panelId: pid }).catch(() => {});
+            } catch (_) {}
+        }
+
         function onPlaceOrderClickCapture(ev) {
             const t = ev && ev.target;
             if (!t || t.id !== "placeOrderButton") return;
             const focused = focusedPanelIdRef.current || HOST_PANEL_ID;
+            const om = window.chart && window.chart.orderManager;
+
+            // After a place, the button is "Make new order". That must reset the
+            // draft on the HOST om — not be intercepted as a cross-panel place.
+            // Intercepting while panel B is focused left B with no preview.
+            if (om && om._orderPlacedAwaitingReset) {
+                ev.stopImmediatePropagation();
+                ev.preventDefault();
+                try {
+                    if (typeof om.beginNewOrderDraft === "function") {
+                        om.beginNewOrderDraft();
+                    }
+                } catch (e) {
+                    notifyPlaceFailure((e && e.message) || "Make new order failed");
+                    return;
+                }
+                // beginNewOrderDraft redraws host preview on a 100ms timer; also
+                // paint the focused iframe tile once entry is re-anchored.
+                setTimeout(() => forwardDraftPreviewToFocusedPanel(focused), 130);
+                return;
+            }
+
             if (orderMcHostPlaceV1Enabled() && focused !== HOST_PANEL_ID) {
                 ev.stopImmediatePropagation();
                 ev.preventDefault();
