@@ -15478,10 +15478,19 @@ const TalariaV8bLive = () => {
     clearSettingsPanelHover();
     try {
       // D-026 Hunk A: preserve open-guard during in-flight panel-B transport open.
-      if (!multichartPanelBSettingsTransportADepthEnabled()
-          || !window.__v9MultichartSettingsPanelId) {
+      if (!multichartPanelBSettingsTransportADepthEnabled()) {
         window.__v9DrawingSettingsOpenGuardUntil = 0;
         window.__v9DrawingSettingsOpenSource = null;
+      } else {
+        const guardActive = window.__v9DrawingSettingsOpenGuardUntil
+          && performance.now() < window.__v9DrawingSettingsOpenGuardUntil;
+        const inFlight = window.__v9MultichartSettingsPanelId
+          || window.__v9DrawingSettingsOpenSource
+          || guardActive;
+        if (!inFlight) {
+          window.__v9DrawingSettingsOpenGuardUntil = 0;
+          window.__v9DrawingSettingsOpenSource = null;
+        }
       }
     } catch (_) {}
     v9DismissQuickBarPopoversSync();
@@ -19903,27 +19912,27 @@ const TalariaV8bLive = () => {
 
   // Multichart: close parent V9 settings when another panel takes focus or opens its own.
   useEffect(() => {
-    const onDismissMcSettings = () => {
+    const onDismissMcSettings = (ev) => {
+      const intentionalDismiss = !!(ev && ev.detail && ev.detail.intentional === true);
       // Gear / dblclick arm __v9DrawingSettingsOpenGuardUntil before open. Peer-clear
       // often still dispatches this event in the same tick — honor the guard here so
       // a single gear click cannot open-then-instant-close.
       try {
-        if (typeof window !== "undefined"
+        if (!intentionalDismiss
+          && typeof window !== "undefined"
           && window.__v9DrawingSettingsOpenGuardUntil
           && performance.now() < window.__v9DrawingSettingsOpenGuardUntil
           && !window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2) {
           return;
         }
       } catch (_) {}
-      // D-026 Hunk B: skip flash-close while panel-B settings open is in flight.
+      // D-026 Hunk B: swallow spurious peer/deselect dismiss while Style is visible.
+      // Intentional closes (Esc → multichart-close-drawing-settings) pass detail.intentional.
       try {
-        if (multichartPanelBSettingsTransportV1Enabled()) {
-          if (editingDrawingRef.current && window.__v9DrawingSettingsOpenSource) {
-            return;
-          }
+        if (!intentionalDismiss && multichartPanelBSettingsTransportV1Enabled()) {
           const root = document.getElementById("multichart-global-settings-root");
           const rootText = String((root && root.innerText) || "");
-          if (/\bstyle\b/i.test(rootText) && window.__v9DrawingSettingsOpenSource) {
+          if (/\bstyle\b/i.test(rootText)) {
             return;
           }
         }

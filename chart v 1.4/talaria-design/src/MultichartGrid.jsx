@@ -5153,7 +5153,9 @@ export default function MultichartGrid({
             } catch (_) {}
             closeGlobalLegacyDrawingSettings();
             try {
-                window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
+                window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings", {
+                    detail: { intentional: true },
+                }));
             } catch (_) {}
             if (source === HOST_PANEL_ID) {
                 return applyHostCommand("closeDrawingSettings", null).catch((e) => {
@@ -5392,15 +5394,20 @@ export default function MultichartGrid({
                 try {
                     const now = performance.now();
                     const prev = window.__v9PanelBSettingsOpenCoalesce;
-                    const root = document.getElementById("multichart-global-settings-root");
-                    const rootText = String((root && root.innerText) || "");
-                    const hasStyle = /\bstyle\b/i.test(rootText);
                     if (prev
                         && String(prev.source) === String(source)
                         && String(prev.drawingId) === String(wantId)
-                        && (now - Number(prev.at)) < 120
-                        && hasStyle) {
-                        return Promise.resolve(true);
+                        && (now - Number(prev.at)) < 120) {
+                        const guardLive = window.__v9DrawingSettingsOpenGuardUntil
+                            && performance.now() < window.__v9DrawingSettingsOpenGuardUntil;
+                        const root = document.getElementById("multichart-global-settings-root");
+                        const rootText = String((root && root.innerText) || "");
+                        const hasStyle = /\bstyle\b/i.test(rootText);
+                        // Skip only when the first actuation is in-flight or already mounted.
+                        if (guardLive || hasStyle) {
+                            return Promise.resolve(true);
+                        }
+                        // First attempt failed/cleared — allow this call through.
                     }
                     window.__v9PanelBSettingsOpenCoalesce = {
                         source: String(source),
@@ -5441,6 +5448,11 @@ export default function MultichartGrid({
                 } catch (_) {}
             };
             armV9SettingsOpenGuard();
+            if (multichartPanelBSettingsTransportV1Enabled()) {
+                try {
+                    window.__v9PanelBSettingsTransportGraceUntil = performance.now() + 400;
+                } catch (_) {}
+            }
             const v9Open = typeof window.__v9OpenDrawingSettings === "function"
                 ? window.__v9OpenDrawingSettings
                 : null;
@@ -5454,6 +5466,11 @@ export default function MultichartGrid({
                             // Re-arm after open in case the guard was consumed by a
                             // same-tick dismiss race during v9Open's React flush.
                             armV9SettingsOpenGuard();
+                            if (multichartPanelBSettingsTransportV1Enabled()) {
+                                try {
+                                    window.__v9PanelBSettingsTransportGraceUntil = performance.now() + 400;
+                                } catch (_) {}
+                            }
                             // v9Open just rendered the settings for `source` (for an
                             // iframe panel this happens inside that panel). Close only
                             // the OTHER panels — never `source` — otherwise, with
@@ -6575,12 +6592,14 @@ export default function MultichartGrid({
                             && performance.now() < window.__v9DrawingSettingsOpenGuardUntil) {
                             return;
                         }
-                        const openSrc = window.__v9DrawingSettingsOpenSource != null
-                            ? String(window.__v9DrawingSettingsOpenSource) : null;
-                        if (openSrc && msgSrc && openSrc === msgSrc) {
-                            const root = document.getElementById("multichart-global-settings-root");
-                            const rootText = String((root && root.innerText) || "");
-                            if (/\bstyle\b/i.test(rootText)) return;
+                        const root = document.getElementById("multichart-global-settings-root");
+                        const rootText = String((root && root.innerText) || "");
+                        if (/\bstyle\b/i.test(rootText)) {
+                            const openSrc = window.__v9DrawingSettingsOpenSource != null
+                                ? String(window.__v9DrawingSettingsOpenSource) : null;
+                            if (!openSrc || !msgSrc || openSrc === msgSrc) {
+                                return;
+                            }
                         }
                     } catch (_) {}
                 }

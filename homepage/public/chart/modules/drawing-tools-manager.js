@@ -185,14 +185,16 @@ function notifyMultichartParentSelectionCleared(chartInstance) {
                     && nowFn() < parent.__v9DrawingSettingsOpenGuardUntil) {
                     return;
                 }
-                const openSrc = parent.__v9DrawingSettingsOpenSource != null
-                    ? String(parent.__v9DrawingSettingsOpenSource) : null;
-                const pid = panelId != null ? String(panelId) : null;
-                if (openSrc && pid && openSrc === pid) {
-                    const root = parent.document && parent.document.getElementById
-                        ? parent.document.getElementById('multichart-global-settings-root') : null;
-                    const rootText = String((root && root.innerText) || '');
-                    if (/\bstyle\b/i.test(rootText)) return;
+                const root = parent.document && parent.document.getElementById
+                    ? parent.document.getElementById('multichart-global-settings-root') : null;
+                const rootText = String((root && root.innerText) || '');
+                if (/\bstyle\b/i.test(rootText)) {
+                    const openSrc = parent.__v9DrawingSettingsOpenSource != null
+                        ? String(parent.__v9DrawingSettingsOpenSource) : null;
+                    const pid = panelId != null ? String(panelId) : null;
+                    if (!openSrc || !pid || openSrc === pid) {
+                        return;
+                    }
                 }
             }
         } catch (_) { /* cross-origin / ignore */ }
@@ -271,6 +273,9 @@ function armMultichartParentSettingsOpenGuard(panelId) {
         const nowTs = (perf && typeof perf.now === 'function') ? perf.now() : Date.now();
         parent.__v9DrawingSettingsOpenGuardUntil = nowTs + 1500;
         parent.__v9DrawingSettingsOpenSource = panelId != null ? String(panelId) : null;
+        if (multichartPanelBSettingsTransportV1Enabled()) {
+            parent.__v9PanelBSettingsTransportGraceUntil = nowTs + 400;
+        }
     } catch (_) { /* cross-origin / ignore */ }
 }
 
@@ -357,12 +362,42 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
     }
 }
 
+function armMultichartParentUserCloseDrawingSettings() {
+    if (!multichartPanelBSettingsTransportV1Enabled()) return;
+    try {
+        const parent = window.parent;
+        if (parent && parent !== window) {
+            parent.__v9UserCloseDrawingSettingsRequest = true;
+        }
+    } catch (_) { /* cross-origin / ignore */ }
+}
+
 function requestMultichartParentCloseDrawingSettings() {
     if (!isMultichartIframeEmbed() || !multichartQuickbarSettingsFixEnabled()) return false;
     let panelId = 'embed';
     try {
         panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
     } catch (_q) { /* ignore */ }
+    // D-026 Hunk B: spurious iframe deselect during dbl-click must not close parent settings.
+    if (multichartPanelBSettingsTransportV1Enabled()) {
+        try {
+            const parent = window.parent;
+            if (parent && parent !== window) {
+                let userClose = false;
+                try {
+                    userClose = parent.__v9UserCloseDrawingSettingsRequest === true;
+                    if (userClose) delete parent.__v9UserCloseDrawingSettingsRequest;
+                } catch (_) {}
+                const perf = parent.performance;
+                const nowFn = perf && typeof perf.now === 'function' ? perf.now.bind(perf) : Date.now;
+                if (!userClose
+                    && parent.__v9DrawingSettingsOpenGuardUntil
+                    && nowFn() < parent.__v9DrawingSettingsOpenGuardUntil) {
+                    return false;
+                }
+            }
+        } catch (_) { /* cross-origin / ignore */ }
+    }
     try {
         if (window.parent && window.parent !== window) {
             window.parent.postMessage({
@@ -5697,6 +5732,7 @@ class DrawingToolsManager {
                     this.deselectAll(bridgeOpts);
                     this.clearTool();
                     if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                        armMultichartParentUserCloseDrawingSettings();
                         requestMultichartParentCloseDrawingSettings();
                     }
                 }
@@ -5748,6 +5784,7 @@ class DrawingToolsManager {
                 this.deselectAll(bridgeOpts);
                 this.clearTool();
                 if (isMultichartIframeEmbed() && multichartQuickbarSettingsFixEnabled()) {
+                    armMultichartParentUserCloseDrawingSettings();
                     requestMultichartParentCloseDrawingSettings();
                 }
             }
