@@ -424,7 +424,8 @@
                 tblPos: p.tblPos,
                 tblLayout: p.tblLayout,
                 txtSize: p.txtSize,
-                cTxt: p.cTxt
+                cTxt: p.cTxt,
+                cellOpacity: Number(p.cellOpacity) || 90
             }
         };
     }
@@ -522,23 +523,23 @@
                 }, this);
                 // Sort top→bottom by pixel (higher price first).
                 placed.sort(function (a, b) { return a.y - b.y; });
-                var priceTh = (lm.avgR != null && lm.mergeK) ? lm.avgR * lm.mergeK : 0;
-                var colGap = Math.max(48, (Number(lm.stagger) || 10) * 7);
-                var lastPrice = null;
-                var col = 0;
+                // Width-aware stagger: any label that sits within a text line of the
+                // one above it is pushed fully to the LEFT of it, so texts never
+                // overlap regardless of their length ("Y-CLOSE (fill)" vs "MID").
+                var gap = 6;
+                var vThresh = fontSize + 3;
+                var groupRight = plotR - 4;
+                var prevY = -Infinity;
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
-                    var close = lastPrice != null &&
-                        (priceTh > 0 ? Math.abs(lastPrice - it.price) <= priceTh
-                                     : (li > 0 && (it.y - placed[li - 1].y) < fontSize + 2));
-                    if (close) col += 1; else col = 0;
-                    lastPrice = it.price;
                     var tw = ctx.measureText(it.text).width;
-                    var rightEdge = plotR - 4 - col * colGap;
-                    var x = rightEdge - tw;
+                    if ((it.y - prevY) >= vThresh) groupRight = plotR - 4;
+                    var x = groupRight - tw;
                     if (x < plotL + 2) x = plotL + 2;
                     ctx.fillStyle = it.color || '#ffffff';
                     ctx.fillText(it.text, x, it.y);
+                    groupRight = x - gap;
+                    prevY = it.y;
                 }
             }
 
@@ -552,65 +553,90 @@
             var ctx = this.ctx;
             var m = this.margin;
             var layout = meta.tblLayout || 'headers — horizontal';
+            var isVertical = layout.indexOf('vertical') >= 0;
+            var isCompact = layout.indexOf('compact') >= 0;
             var txtSize = meta.txtSize === 'tiny' ? 10 : meta.txtSize === 'small' ? 11
                 : meta.txtSize === 'huge' ? 16 : meta.txtSize === 'normal' ? 12 : 14;
             var hdrSize = Math.max(9, txtSize - 2);
-            var cellW = 72;
-            var cellH = layout.indexOf('vertical') >= 0 ? 22 : 20;
-            var hdrH = layout.indexOf('compact') >= 0 ? 0 : 16;
+            var cTxt = meta.cTxt || '#ffffff';
+            var op = Math.max(0, Math.min(100, Number(meta.cellOpacity) || 90)) / 100;
+            var hdrBg = 'rgba(30,41,59,' + op + ')';
+            var txtColor = cTxt;
+            var pad = 12;
             var cols = cells.length;
-            var rows = layout.indexOf('vertical') >= 0 ? cols * 2 : (layout.indexOf('compact') >= 0 ? 1 : 2);
-            var panelW = layout.indexOf('vertical') >= 0 ? cellW * 2 + 8 : cols * cellW + 8;
-            var panelH = rows * cellH + hdrH + 10;
-            var anchor = tableAnchor(meta.tblPos, this.w, this.h, m, panelW, panelH);
+
             ctx.save();
+            ctx.textBaseline = 'middle';
+
+            // Measure to size cells to their content (no clipping, TV-like).
+            ctx.font = '700 ' + txtSize + 'px Roboto, system-ui, sans-serif';
+            var valW = cells.map(function (c) { return ctx.measureText(c.value).width; });
+            ctx.font = '600 ' + hdrSize + 'px Roboto, system-ui, sans-serif';
+            var nameW = cells.map(function (c) { return ctx.measureText(c.name).width; });
+
+            var cellH = 22;
+            var cellW;
+            var panelW; var panelH;
+            if (isVertical) {
+                var maxName = Math.max.apply(null, nameW);
+                var maxVal = Math.max.apply(null, valW);
+                cellW = Math.ceil(Math.max(maxName, maxVal)) + pad * 2;
+                panelW = cellW + 8;
+                panelH = cols * cellH + 8;
+            } else {
+                var perCol = cells.map(function (_, i) {
+                    return Math.ceil(Math.max(nameW[i], valW[i])) + pad;
+                });
+                cellW = Math.max.apply(null, perCol);
+                cellW = Math.max(cellW, isCompact ? 58 : 52);
+                panelW = cols * cellW + 8;
+                panelH = (isCompact ? cellH : cellH * 2) + 8;
+            }
+
+            var anchor = tableAnchor(meta.tblPos, this.w, this.h, m, panelW, panelH);
+            var px = anchor.x; var py = anchor.y;
+
+            // Panel background.
             ctx.fillStyle = 'rgba(13,17,23,0.92)';
             ctx.strokeStyle = 'rgba(255,255,255,0.12)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.rect(anchor.x, anchor.y, panelW, panelH);
+            ctx.rect(px + 0.5, py + 0.5, panelW - 1, panelH - 1);
             ctx.fill();
             ctx.stroke();
-            var x0 = anchor.x + 4;
-            var y0 = anchor.y + 5;
+
+            var gx = px + 4;
+            var gy = py + 4;
+
+            function drawCell(x, y, w, h, bg, text, font, isHdr) {
+                ctx.fillStyle = bg;
+                ctx.fillRect(x, y, w - 2, h - 2);
+                ctx.font = font;
+                ctx.fillStyle = isHdr ? cTxt : txtColor;
+                ctx.textAlign = 'center';
+                ctx.fillText(text, x + (w - 2) / 2, y + (h - 2) / 2 + 0.5);
+            }
+
+            var hdrFont = '600 ' + hdrSize + 'px Roboto, system-ui, sans-serif';
+            var valFont = '700 ' + txtSize + 'px Roboto, system-ui, sans-serif';
+
             cells.forEach(function (cell, ci) {
-                var cx; var cy;
-                if (layout.indexOf('vertical') >= 0) {
-                    cx = x0;
-                    cy = y0 + ci * (cellH * 2);
-                    ctx.font = '600 ' + hdrSize + 'px Roboto, system-ui, sans-serif';
-                    ctx.fillStyle = meta.cTxt || '#ffffff';
-                    ctx.fillText(cell.name, cx, cy);
-                    ctx.font = '700 ' + txtSize + 'px Roboto, system-ui, sans-serif';
-                    ctx.fillStyle = meta.cTxt || '#ffffff';
-                    ctx.fillRect(cx, cy + hdrH - 2, cellW * 2 - 4, cellH);
-                    ctx.fillStyle = cell.bg || 'rgba(120,120,120,0.5)';
-                    ctx.globalAlpha = 0.85;
-                    ctx.fillRect(cx, cy + hdrH - 2, cellW * 2 - 4, cellH);
-                    ctx.globalAlpha = 1;
-                    ctx.fillStyle = meta.cTxt || '#ffffff';
-                    ctx.fillText(cell.value, cx + 4, cy + hdrH + cellH / 2);
-                } else if (layout.indexOf('compact') >= 0) {
-                    cx = x0 + ci * cellW;
-                    cy = y0;
-                    ctx.fillStyle = cell.bg || 'rgba(120,120,120,0.5)';
-                    ctx.fillRect(cx, cy, cellW - 2, cellH + hdrH);
-                    ctx.font = '700 ' + txtSize + 'px Roboto, system-ui, sans-serif';
-                    ctx.fillStyle = meta.cTxt || '#ffffff';
+                if (isVertical) {
+                    var vy = gy + ci * cellH;
+                    // name label (left) + value chip (right) share one row
+                    drawCell(gx, vy, cellW * 0.42, cellH, hdrBg, cell.name, hdrFont, true);
+                    drawCell(gx + cellW * 0.42, vy, cellW * 0.58, cellH, cell.bg || hdrBg, cell.value, valFont, false);
+                } else if (isCompact) {
+                    var cx = gx + ci * cellW;
                     var prefix = cell.name === 'RANGE' ? 'R ' : cell.name === 'GAP' ? 'G ' : cell.name + ' ';
-                    ctx.fillText(prefix + cell.value, cx + 4, cy + (cellH + hdrH) / 2);
+                    drawCell(cx, gy, cellW, cellH, cell.bg || hdrBg, prefix + cell.value, valFont, false);
                 } else {
-                    cx = x0 + ci * cellW;
-                    ctx.font = '600 ' + hdrSize + 'px Roboto, system-ui, sans-serif';
-                    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-                    ctx.fillText(cell.name, cx + 4, y0);
-                    ctx.fillStyle = cell.bg || 'rgba(120,120,120,0.5)';
-                    ctx.fillRect(cx, y0 + hdrH - 2, cellW - 4, cellH);
-                    ctx.font = '700 ' + txtSize + 'px Roboto, system-ui, sans-serif';
-                    ctx.fillStyle = meta.cTxt || '#ffffff';
-                    ctx.fillText(cell.value, cx + 4, y0 + hdrH + cellH / 2);
+                    var hx = gx + ci * cellW;
+                    drawCell(hx, gy, cellW, cellH, hdrBg, cell.name, hdrFont, true);
+                    drawCell(hx, gy + cellH, cellW, cellH, cell.bg || hdrBg, cell.value, valFont, false);
                 }
             });
+
             ctx.restore();
         };
     }
