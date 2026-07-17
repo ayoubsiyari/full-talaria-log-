@@ -194,3 +194,49 @@ Shared miss: panel-B `talaria:v9-quickbar-dom-ready` timeout → settings/chrome
 | H-R09 10/10 isolated | **FAIL — 7/10** |
 
 **Do not clear for PO.** Refresh dist to b42 stamp + Lane 1 chrome hardening must reach **10/10** on all three rows before next ship-gate close attempt.
+
+---
+
+## CKPT-001 confirmation — b42 deploy + D-032 tripwire (2026-07-17)
+
+**Build:** `20260717b42` (local dist verified; `homepage/public/chart/dist-v9/index.html` stamps b42)  
+**Deploy:** **PENDING manual** — agent SSH to `root@srv904606:/opt/talaria` timed out; run `git pull && ./scripts/vps-deploy-after-pull.sh homepage` on VPS after push.
+
+### D-032 tripwire (harness instrumented — checkable)
+
+On every failing H-R04/H-R05/H-R09 run, harness now logs:
+
+- Console: `[D-032-TRIPWIRE]` + `[D-032] tripwireClass=… sig={storeOk,v9BarVisible,modalTeardown,…}`
+- File: `chart v 1.4/chart/multichart-prod/harness/d032-tripwire-outcomes.jsonl` (mirrored via sync to homepage harness tree)
+
+**Sample (H-R05 run 1/10 fail):** `storeOk=null`, `v9BarVisible=false`, `modalTeardown=false`, `d026TeardownSig=false`, `tripwireClass=OTHER` — panel-B dom-ready timeout, **not** D-026 void signature.
+
+**Void tripwire (same-day escalation):** `storeOk=false` or D-026 teardown signature — **not observed** on b42 ckpt001 runs.
+
+### gate:react vs baseline (single run, b42 dist)
+
+| Item | b42 ckpt001 | b16 bless baseline |
+|------|-------------|-------------------|
+| **Command** | `node react-gate.mjs` | prior clean gate |
+| **Log** | `ckpt001-b42-gate-react-r2.txt` | — |
+| **Exit** | **1 — regressions H-R03, H-R09** | PASS |
+| **H-R05** | **PASS** (1/1 in gate suite) | PASS |
+| **H-R09-LR** | **PASS** (added to `reactParity.expectedTests`) | n/a |
+
+Gate suite H-R05 green on single run does **not** override isolated bar — session-order / host-panel flake still present under 10× isolation.
+
+### H-R05 isolated 10× vs b03/b16 (D-026 transport proof baseline)
+
+| Build | H-R05 isolated 10× | Verdict |
+|-------|-------------------|---------|
+| **20260717b03** (D-026) | **10/10 PASS** | `d026-hr05-on-x10-b03-r2.txt` |
+| **20260717b16** (bless) | **10/10 PASS** (PO-verified) | T0-lane4-bless-b16-report |
+| **20260717b42** (CKPT-001) | **9/10 FAIL-FLAKE** | `ckpt001-b42-hr05-x10-baseline-r1.txt` |
+
+**Miss signature (run 1):** panel-B `talaria:v9-quickbar-dom-ready` timeout → settings never open → tripwire `v9BarVisible=false`, no modal teardown.
+
+**Record:** H-R05 **NOT green** on harness acceptance bar. Product fix verified on b16; b42 regression vs b03/b16 is **harness chrome flake only** (CHROME-STAB-01), decoupled per D-032.
+
+### CHROME-STAB-01 (tracked debt — T8 review)
+
+Owned in `CHROME-STAB-01-panelB-domready.md` + `RESOLUTION-TRACKER.csv`. Deeper dom-ready barrier candidate; no quarantine; exit = genuine 10/10 on H-R04/H-R05/H-R09/H-R09-LR simultaneously.

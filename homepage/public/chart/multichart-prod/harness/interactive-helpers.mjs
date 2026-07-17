@@ -56,14 +56,27 @@ export async function installParentSettingsProbe(page) {
     window.__harnessDrawingSettingsMessages = [];
     window.__harnessParentSettingsOpen = false;
     window.__harnessParentSettingsClosed = false;
+    window.__harnessD032StyleSeen = false;
+    window.__harnessD032ModalTeardown = false;
     if (window.__harnessDrawingSettingsProbeInstalled) return true;
     window.__harnessDrawingSettingsProbeInstalled = true;
+    const scanStyleModal = () => {
+      try {
+        const modal = document.querySelector('.tv-settings-modal');
+        const root = document.getElementById('multichart-global-settings-root');
+        const text = String((modal && modal.innerText) || (root && root.innerText) || '');
+        if (modal && modal.offsetParent !== null && /\bstyle\b/i.test(text)) {
+          window.__harnessD032StyleSeen = true;
+        }
+      } catch (_) { /* ignore */ }
+    };
     window.addEventListener('message', (ev) => {
       const msg = ev && ev.data;
       if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'multichart-open-drawing-settings') {
         window.__harnessParentSettingsOpen = true;
         window.__harnessParentSettingsClosed = false;
+        scanStyleModal();
         window.__harnessDrawingSettingsMessages.push({
           type: msg.type,
           source: msg.source || null,
@@ -71,6 +84,7 @@ export async function installParentSettingsProbe(page) {
         });
       }
       if (msg.type === 'multichart-close-drawing-settings') {
+        if (window.__harnessD032StyleSeen) window.__harnessD032ModalTeardown = true;
         window.__harnessParentSettingsOpen = false;
         window.__harnessParentSettingsClosed = true;
         window.__harnessDrawingSettingsMessages.push({
@@ -94,6 +108,12 @@ export async function installParentSettingsProbe(page) {
         });
       }
     }, true);
+    try {
+      const root = document.getElementById('multichart-global-settings-root') || document.body;
+      const obs = new MutationObserver(() => { scanStyleModal(); });
+      obs.observe(root, { childList: true, subtree: true, characterData: true });
+      window.__harnessD032StyleObserver = obs;
+    } catch (_) { /* ignore */ }
     return true;
   });
 }

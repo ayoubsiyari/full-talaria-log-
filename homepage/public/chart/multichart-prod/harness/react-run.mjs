@@ -75,10 +75,11 @@ function buildScenarioCtx(args, browser, stack) {
   };
 }
 
-async function runScenarioOnce(s, ctx, verdicts) {
+async function runScenarioOnce(s, ctx, verdicts, runIndex = null) {
   let result;
+  const scenarioCtx = { ...ctx, scenarioId: s.id, runIndex };
   try {
-    result = await s.run(ctx);
+    result = await s.run(scenarioCtx);
   } catch (err) {
     console.log(`[react-run] ${s.id} threw: ${(err && err.stack) || err}`);
     verdicts[s.id].push('FAIL');
@@ -89,6 +90,9 @@ async function runScenarioOnce(s, ctx, verdicts) {
   verdicts[s.id].push(v.pass ? 'PASS' : 'FAIL');
   for (const c of result.checks.items) {
     console.log(`   [${c.ok ? ' ok ' : 'FAIL'}] ${c.label}${c.detail ? ' — ' + c.detail : ''}`);
+  }
+  if (result.d032Tripwire) {
+    console.log(`   [D-032] tripwireClass=${result.d032Tripwire.tripwireClass} sig=${JSON.stringify(result.d032Tripwire.signature)}`);
   }
   console.log(`RESULT ${s.id} ${v.pass ? 'PASS' : 'FAIL'}`);
 }
@@ -121,7 +125,7 @@ async function main() {
           const browser = await launchBrowser({ headful: args.headful });
           try {
             const ctx = buildScenarioCtx(args, browser, stack);
-            await runScenarioOnce(s, ctx, verdicts);
+            await runScenarioOnce(s, ctx, verdicts, run);
           } finally {
             await browser.close().catch(() => {});
             await sleep(2000);
@@ -135,7 +139,7 @@ async function main() {
           console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
           for (const s of scenarios) {
             const ctx = buildScenarioCtx(args, browser, stack);
-            await runScenarioOnce(s, ctx, verdicts);
+            await runScenarioOnce(s, ctx, verdicts, run);
             await sleep(1500);
           }
         }

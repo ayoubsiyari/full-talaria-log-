@@ -9,7 +9,7 @@ RC-8,engineering,root-cause,(replay/cadence family,IN-TRACK,d6d9822f (staging b1
 H-R02,engineering,remig-row,Panel-B ctrl-select actuation,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-R03,engineering,remig-row,Panel-B ctrl-select double-actuation regression,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (x5)
 H-R04,engineering,remig-row,Panel-B settings gear open,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (D-026 fix)
-H-R05,engineering,remig-row,Panel-B Esc close,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (D-026 fix). NOTE: b42 harness gate row flakes 8/10 (pre-existing panel-B dom-ready timeout) - DECOUPLED from CKPT-001 per D-032, bound to CHROME-STAB-01, NOT quarantined; product behavior remains PO-verified on b16
+H-R05,engineering,remig-row,Panel-B Esc close,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (D-026 fix). NOTE: b42 harness gate row flakes 9/10 (pre-existing panel-B dom-ready timeout) - DECOUPLED from CKPT-001 per D-032, bound to CHROME-STAB-01, NOT quarantined; product behavior remains PO-verified on b16; do NOT mark harness row green
 H-R06,engineering,remig-row,Panel-B Delete drawing,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-R07,engineering,remig-row,Panel peer-isolation (dual-select leak),CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-R08,engineering,remig-row,Marquee select,IN-TRACK,DEFERRED | impl gated on P5 green; low priority
@@ -154,3 +154,4 @@ TAL-01560,ticket,T8,Layouts,IN-TRACK,
 ORD-XPNL,engineering,order,Multichart order marks/closes at peer panel price -> garbage PnL (GBP closed at EUR 1.31315),IN-TRACK,D-032 SHIPPED in CKPT-001 b42 (A6-4 gate cleared: 0 regr + H-R04/H-R09 10/10; chrome flake decoupled). Awaiting PO live-confirm (7-row checklist on b42) to flip CLOSED-VERIFIED
 MC-STEPFWD,engineering,replay,Multichart step-forward does not advance like PLAY (mixed TF/ticker),IN-TRACK,Root (Lane 2): stepForward() always calculateNextIndex()+peer snap never finest-TF PLAY clock. Fix routes step through cadence+frame path (touches MultichartGrid ~5572/3573 - coordinate w/ A6-4 gate). Lane 2 impl dispatched
 ORD-DUP-DURATION,engineering,order,Trades panel duplication + wrong duration on multichart F5,IN-TRACK,SHIPPED in CKPT-001 b42 (A6-4 Steps1/3/6 + fan-out + RESTORE_DEDUPE_V1 + TRADE_DURATION_NORM_V1). Awaiting PO live-confirm rows 5-7 (DUP-2 + DURATION-1/2) on b42 to flip CLOSED-VERIFIED
+MC-DRAW-FIRSTCLICK,engineering,drawing,Multichart armed-tool first click focuses unfocused panel instead of starting draw (needs 2nd click),IN-TRACK,PO b42; suspected re-migration focus-routing swallow; Lane 1 read-only diagnostic dispatched

@@ -457,6 +457,94 @@ export async function readParentQuickBarLagSignature(page, panelId, drawId) {
   };
 }
 
+/** D-032 tripwire scenarios — signature logged on every failing run. */
+export const D032_TRIPWIRE_SCENARIO_IDS = ['H-R04', 'H-R05', 'H-R09'];
+
+const D032_TRIPWIRE_LOG = path.join(HARNESS_DIR, 'd032-tripwire-outcomes.jsonl');
+
+export async function readPanelBSelectedDrawingId(page) {
+  const frame = panelFrameMap(page).B;
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    const sel = dm && Array.isArray(dm.selectedDrawings) && dm.selectedDrawings[0];
+    if (sel && sel.id != null) return String(sel.id);
+    const ids = dm && Array.isArray(dm.selectedIds) ? dm.selectedIds : [];
+    return ids.length ? String(ids[0]) : null;
+  }).catch(() => null);
+}
+
+/** Capture D-032 signature fields for a failing chrome/settings leg. */
+export async function readD032FailureSignature(page, panelId = 'B', drawId = null) {
+  const id = drawId || (panelId === 'B' ? await readPanelBSelectedDrawingId(page) : null);
+  const storeOk = id ? await isDrawingSelected(page, panelId, id) : null;
+  const v9BarVisible = await readParentV9BarVisible(page, panelId);
+  const settings = await readParentReactSettings(page);
+  const probe = await readParentSettingsProbe(page);
+  const flags = await page.evaluate(() => ({
+    styleSeen: !!window.__harnessD032StyleSeen,
+    modalTeardown: !!window.__harnessD032ModalTeardown,
+    settingsClosed: !!window.__harnessParentSettingsClosed,
+    settingsOpen: !!window.__harnessParentSettingsOpen,
+  }));
+  const modalTeardown = !!(flags.modalTeardown
+    || (flags.styleSeen && flags.settingsClosed)
+    || (settings.hasStyleSection && probe.closed && !settings.open));
+  const d026TeardownSig = modalTeardown;
+  let tripwireClass = 'UNKNOWN';
+  if (storeOk === false) tripwireClass = 'VOID_TRANSPORT';
+  else if (d026TeardownSig) tripwireClass = 'VOID_TRANSPORT';
+  else if (storeOk === true && !v9BarVisible && !modalTeardown) tripwireClass = 'EXONERATING_DOM_READY';
+  else if (storeOk === true && v9BarVisible) tripwireClass = 'OTHER';
+  return {
+    panelId,
+    drawingId: id,
+    storeOk,
+    v9BarVisible,
+    modalTeardown,
+    d026TeardownSig,
+    tripwireClass,
+    styleSeen: flags.styleSeen,
+    settingsSnapshot: {
+      open: settings.open,
+      hasStyleSection: settings.hasStyleSection,
+      quickBarShellOnly: settings.quickBarShellOnly,
+    },
+    probeMessages: (probe.messages || []).slice(-8),
+  };
+}
+
+export function classifyD032Tripwire(sig) {
+  if (!sig) return 'UNKNOWN';
+  if (sig.storeOk === false || sig.d026TeardownSig) return 'VOID_TRANSPORT';
+  if (sig.storeOk === true && !sig.v9BarVisible && !sig.modalTeardown) return 'EXONERATING_DOM_READY';
+  return 'OTHER';
+}
+
+export async function appendD032TripwireLog(entry) {
+  const line = `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`;
+  await fs.promises.appendFile(D032_TRIPWIRE_LOG, line, 'utf8').catch((err) => {
+    console.error('[D-032-TRIPWIRE] warn: could not append log:', err.message);
+  });
+}
+
+export async function captureAndLogD032Tripwire({
+  scenarioId, buildId, page, panelId = 'B', drawId = null, checkFails = [], runIndex = null,
+}) {
+  const signature = await readD032FailureSignature(page, panelId, drawId);
+  const entry = {
+    buildId: buildId || null,
+    scenarioId,
+    runIndex,
+    signature,
+    tripwireClass: classifyD032Tripwire(signature),
+    checkFails,
+  };
+  await appendD032TripwireLog(entry);
+  console.log(`[D-032-TRIPWIRE] ${scenarioId} ${entry.tripwireClass} storeOk=${signature.storeOk} v9BarVisible=${signature.v9BarVisible} modalTeardown=${signature.modalTeardown} d026TeardownSig=${signature.d026TeardownSig}`);
+  return entry;
+}
+
 /**
  * Seed harness backtest session + optional I13 switches before chart boots.
  * migrationOn=true (D-011 step 0): re-enable retained T1 migration in panel + parent shell.
@@ -1323,10 +1411,22 @@ export async function runWithReact(ctx, body) {
   const boot = await bootReactMultichart(ctx.browser, ctx.stack, ctx);
   const notes = [];
   let checks;
+  let d032Tripwire = null;
   try {
     checks = await body(boot, notes);
+    const fails = (checks || makeChecks()).failures();
+    if (fails.length && ctx.scenarioId && D032_TRIPWIRE_SCENARIO_IDS.includes(ctx.scenarioId)) {
+      d032Tripwire = await captureAndLogD032Tripwire({
+        scenarioId: ctx.scenarioId,
+        buildId: ctx.stack?.buildId || boot.stack?.buildId,
+        page: boot.page,
+        panelId: 'B',
+        checkFails: fails.map((c) => c.label),
+        runIndex: ctx.runIndex ?? null,
+      });
+    }
   } finally {
     await boot.close();
   }
-  return { checks: checks || makeChecks(), inv: makeChecks(), notes };
+  return { checks: checks || makeChecks(), inv: makeChecks(), notes, d032Tripwire };
 }
