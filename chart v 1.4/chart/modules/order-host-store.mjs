@@ -9,9 +9,13 @@ import {
     orderMcLegacyIframeOrderV1Enabled,
     orderMcOpenPatchV1Enabled,
     orderMcPnlHubV1Enabled,
+    orderMcReadyPanelsSnapshotV1Enabled,
     orderMcSnapshotProjectionV1Enabled,
     orderMcStateConvergeFixEnabled,
 } from './order-owning-panel-price.mjs';
+import {
+    stampPersistedOrderRecords,
+} from './order-runtime-persist.mjs';
 
 export {
     orderMcHostPersistOnlyV1Enabled,
@@ -19,6 +23,7 @@ export {
     orderMcLegacyIframeOrderV1Enabled,
     orderMcOpenPatchV1Enabled,
     orderMcPnlHubV1Enabled,
+    orderMcReadyPanelsSnapshotV1Enabled,
     orderMcSnapshotProjectionV1Enabled,
     orderMcStateConvergeFixEnabled,
 };
@@ -32,7 +37,7 @@ export function cloneOrderList(arr) {
 }
 
 /** Build host-canonical snapshot from live OrderManager fields. */
-export function buildHostOrderStoreSnapshot(om, sessionId, version = 0) {
+export function buildHostOrderStoreSnapshot(om, sessionId, version = 0, ctx = {}) {
     if (!om) {
         return {
             version,
@@ -49,13 +54,15 @@ export function buildHostOrderStoreSnapshot(om, sessionId, version = 0) {
     const openPositions = cloneOrderList(om.openPositions);
     const closedRecent = cloneOrderList(om.closedPositions).slice(-50);
     const orders = cloneOrderList(om.orders);
+    const scope = ctx.scope || ctx.win || (typeof globalThis !== 'undefined' ? globalThis : {});
+    const stampCtx = { ...ctx, scope };
     return {
         version: Number(version) || 0,
         sessionId: sessionId != null ? String(sessionId) : null,
-        pendingOrders,
-        openPositions,
-        closedPositions: closedRecent,
-        orders,
+        pendingOrders: stampPersistedOrderRecords(pendingOrders, stampCtx),
+        openPositions: stampPersistedOrderRecords(openPositions, stampCtx),
+        closedPositions: stampPersistedOrderRecords(closedRecent, stampCtx),
+        orders: stampPersistedOrderRecords(orders, stampCtx),
         account: {
             balance: om.balance,
             equity: om.equity,
@@ -107,4 +114,130 @@ export function shouldRoutePlaceOrderToHost(isEmbedIframe, win = {}) {
 /** When ON, iframe-order opened/pending echo is retired (snapshot-only). */
 export function shouldSuppressLegacyIframeOrderEcho(win = {}) {
     return !orderMcLegacyIframeOrderV1Enabled(win);
+}
+
+/** Panel ids in readyPanels that have not yet received host order prime. */
+export function collectUnsyncedReadyPanelIds(readyPanelIds, syncedSet, hostPanelId = 'A') {
+    const out = [];
+    for (const panelId of readyPanelIds || []) {
+        if (panelId === hostPanelId) continue;
+        if (syncedSet && syncedSet.has(panelId)) continue;
+        out.push(panelId);
+    }
+    return out;
+}
+
+/**
+ * Fan host OM snapshot to ready iframe panels via applyOrderSnapshot.
+ * Pure — caller supplies runCommand + manager chart registry.
+ */
+export function fanOutHostOrderSnapshotToIframes(deps) {
+    const {
+        excludePanelId = null,
+        managerCharts,
+        runCommand,
+        chart,
+        versionHolder = { current: 0 },
+    } = deps || {};
+
+    const om = chart?.orderManager;
+    if (!om || typeof runCommand !== 'function') {
+        return { ok: false, reason: 'missing-deps', panelIds: [] };
+    }
+
+    versionHolder.current = (Number(versionHolder.current) || 0) + 1;
+    const sessionId = typeof chart.getActiveTradingSessionId === 'function'
+        ? chart.getActiveTradingSessionId()
+        : null;
+    const snap = buildHostOrderStoreSnapshot(om, sessionId, versionHolder.current, { win: deps?.win });
+
+    const panelIds = [];
+    if (managerCharts && typeof managerCharts.values === 'function') {
+        for (const c of managerCharts.values()) {
+            if (!c || !c.ready || c.host || c.id === excludePanelId) continue;
+            panelIds.push(c.id);
+            try {
+                const p = runCommand('applyOrderSnapshot', { snapshot: snap }, { panelId: c.id });
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+        }
+    }
+    return {
+        ok: panelIds.length > 0,
+        panelIds,
+        snapshotVersion: versionHolder.current,
+        openCount: (snap.openPositions || []).length,
+        pendingCount: (snap.pendingOrders || []).length,
+    };
+}
+
+/**
+ * A6-4 Step 3 completion — when a panel becomes bridge-ready, prime its
+ * order lines from the host store. Snapshot ON → applyOrderSnapshot fan-out;
+ * legacy → per-order addOrder (blocked when Step 3 blocks iframe addOrder).
+ */
+export function primeReadyPanelsWithHostOrders(deps) {
+    const {
+        readyPanelIds,
+        syncedSet,
+        hostPanelId = 'A',
+        orderManager,
+        grid,
+        managerCharts,
+        chart,
+        versionHolder = { current: 0 },
+        win = {},
+    } = deps || {};
+
+    const newPanelIds = collectUnsyncedReadyPanelIds(readyPanelIds, syncedSet, hostPanelId);
+    if (newPanelIds.length === 0) {
+        return { ok: true, action: 'none', newPanelIds: [] };
+    }
+    for (const id of newPanelIds) syncedSet.add(id);
+
+    const runCommand = grid && typeof grid.runCommand === 'function' ? grid.runCommand.bind(grid) : null;
+    const hostChart = chart || (win && win.chart) || null;
+
+    if (orderMcReadyPanelsSnapshotV1Enabled(win)) {
+        const fan = fanOutHostOrderSnapshotToIframes({
+            excludePanelId: null,
+            managerCharts,
+            runCommand,
+            chart: hostChart || { orderManager },
+            versionHolder,
+        });
+        return {
+            ok: fan.ok,
+            action: 'applyOrderSnapshot',
+            newPanelIds,
+            fanOut: fan,
+        };
+    }
+
+    if (!runCommand || !orderManager) {
+        return { ok: false, action: 'addOrder', newPanelIds, reason: 'missing-grid-or-om' };
+    }
+
+    const addOrderCalls = [];
+    const openPositions = Array.isArray(orderManager.openPositions) ? orderManager.openPositions : [];
+    const pendingOrders = Array.isArray(orderManager.pendingOrders) ? orderManager.pendingOrders : [];
+    for (const panelId of newPanelIds) {
+        for (const pos of openPositions) {
+            if (!pos || pos.id == null) continue;
+            try {
+                const p = runCommand('addOrder', { order: pos, kind: 'opened' }, { panelId });
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+            addOrderCalls.push({ panelId, kind: 'opened', orderId: pos.id });
+        }
+        for (const pend of pendingOrders) {
+            if (!pend || pend.id == null) continue;
+            try {
+                const p = runCommand('addOrder', { order: pend, kind: 'pending' }, { panelId });
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+            addOrderCalls.push({ panelId, kind: 'pending', orderId: pend.id });
+        }
+    }
+    return { ok: true, action: 'addOrder', newPanelIds, addOrderCalls };
 }

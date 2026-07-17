@@ -544,6 +544,21 @@ class ReplaySystem {
         return typeof window === 'undefined' || window.__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING !== false;
     }
 
+    /** TAL-01612 residual: Auto/sync interval owner = chart TF only (ignore stale #replayTimeframe). */
+    _isReplayIntervalOwnerFixEnabled() {
+        return typeof window === 'undefined' || window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 !== true;
+    }
+
+    /** D-016 V1: candle PLAY uses finest sub-step when host is coarser than a peer. */
+    _isFinestTfCandleCadenceFixEnabled() {
+        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1 !== true;
+    }
+
+    /** D-016 MC-STEPFWD: manual step uses finest sub-step (replay-system; Grid snap deferred). */
+    _isFinestTfStepForwardCadenceFixEnabled() {
+        return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 !== true;
+    }
+
     /** D-009 (A): tick persists when an explicit interval is set; interval bounds step size only. */
     _shouldUseTickAnimation() {
         if (this.getPlaybackMode() !== 'tick') return false;
@@ -671,6 +686,7 @@ class ReplaySystem {
 
     /** INTERVAL finer than native master — advance replayTimestamp, keep coarse fullRawData (no refetch/swap). */
     _isSubBarStepMode() {
+        if (this._isFinestTfCoarseLegacyCandleStep()) return false;
         if (!this._hasExplicitReplayStepInterval()) return false;
         const stepMs = this._resolveReplayStepTimeframeMs();
         const rawMs = this._getRawBarPeriodMs();
@@ -777,11 +793,60 @@ class ReplaySystem {
         return Math.max(1, Math.round(selected / finest));
     }
 
+    /** Coarse selected anchor vs global finest — subdivisions > 1. */
+    _isFinestTfCadenceSubStepActive() {
+        return !!(this._isFinestTfReplayCadenceEnabled()
+            && this._finestTfCadenceSubdivisions() > 1);
+    }
+
+    /** Candle play with finest V1 OFF — bucket by host display TF, not sub-bar INTERVAL. */
+    _isFinestTfCoarseLegacyCandleStep() {
+        return !!(this.getPlaybackMode() === 'candle'
+            && !this._isFinestTfCandleCadenceFixEnabled()
+            && this._isFinestTfCadenceSubStepActive());
+    }
+
+    /** One host-display bucket step for coarse-main legacy candle play (4h on 1m master). */
+    _advanceCoarseLegacyCandleBucket() {
+        if (!this._isFinestTfCoarseLegacyCandleStep()) return false;
+        if (!Array.isArray(this.fullRawData) || this.currentIndex >= this.fullRawData.length - 1) {
+            return false;
+        }
+        const chartTf = this.chart && this.chart.currentTimeframe;
+        const tfMs = chartTf ? this.timeframeToMs(chartTf) : null;
+        if (!tfMs || !this.fullRawData[this.currentIndex]) return false;
+        const currentTimestamp = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : Number(this.fullRawData[this.currentIndex].t);
+        if (!Number.isFinite(currentTimestamp)) return false;
+        const targetTimestamp = currentTimestamp + tfMs;
+        const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
+        const next = Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+        if (next <= this.currentIndex) return false;
+        this.currentIndex = next;
+        this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+        this.tickElapsedMs = 0;
+        this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
+        return true;
+    }
+
     /** During PLAY, selected TF is coarser than finest → step one finest bar per cycle. */
     _isFinestTfCadenceSubStepPlay() {
-        return !!(this.isPlaying
-            && this._isFinestTfReplayCadenceEnabled()
-            && this._finestTfCadenceSubdivisions() > 1);
+        return !!(this.isPlaying && this._isFinestTfCadenceSubStepActive());
+    }
+
+    /**
+     * Tick play, candle play (V1), or manual step (MC-STEPFWD V1) → +1 raw bar, not interval bucket.
+     */
+    _shouldUseFinestTfSubStepIndexAdvance() {
+        if (!this._isFinestTfCadenceSubStepActive()) return false;
+        if (this.isPlaying) {
+            if (this.getPlaybackMode() === 'tick') return true;
+            return this.getPlaybackMode() === 'candle'
+                && this._isFinestTfCandleCadenceFixEnabled();
+        }
+        return this._isFinestTfStepForwardCadenceFixEnabled();
     }
 
     /** Edge-triggered panel add/close/TF recompute (no viewport seek). */
@@ -791,19 +856,21 @@ class ReplaySystem {
 
     /** Play/step should advance by INTERVAL buckets (candle path), not raw tick bars. */
     _shouldStepByReplayInterval() {
+        if (this._shouldUseFinestTfSubStepIndexAdvance()) return false;
         if (this.getPlaybackMode() === 'candle') return true;
-        if (this._isFinestTfCadenceSubStepPlay()) return false;
         return this._hasExplicitReplayStepInterval();
     }
 
     /** Advance playhead one replay step (respects INTERVAL + candle mode). */
     _advanceReplayPlayheadOneStep() {
         if (this._shouldStepByReplayInterval()) {
-            const targetIndex = this.calculateNextIndex();
-            if (targetIndex > this.currentIndex) {
-                this.currentIndex = targetIndex;
-            } else if (this.currentIndex < this.fullRawData.length - 1) {
-                this.currentIndex++;
+            if (!this._advanceCoarseLegacyCandleBucket()) {
+                const targetIndex = this.calculateNextIndex();
+                if (targetIndex > this.currentIndex) {
+                    this.currentIndex = targetIndex;
+                } else if (this.currentIndex < this.fullRawData.length - 1) {
+                    this.currentIndex++;
+                }
             }
         } else if (this.currentIndex < this.fullRawData.length - 1) {
             this.currentIndex++;
@@ -3832,6 +3899,15 @@ class ReplaySystem {
         if (selectedTimeframe) {
             selectedTimeframe = String(selectedTimeframe).trim();
         }
+        if (this._isReplayIntervalOwnerFixEnabled()) {
+            if (selectedTimeframe) {
+                const lower = String(selectedTimeframe).toLowerCase();
+                if (lower !== 'sync' && lower !== 'auto') {
+                    return lower;
+                }
+            }
+            return this.chart?.currentTimeframe || null;
+        }
         const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
         if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
             selectedTimeframe = hiddenSelect.value;
@@ -3846,6 +3922,26 @@ class ReplaySystem {
             selectedTimeframe = this.chart?.currentTimeframe || null;
         }
         return selectedTimeframe || null;
+    }
+
+    /**
+     * Step interval for calculateNextIndex — when explicit INTERVAL is finer than the
+     * host display TF (coarse-main multichart), bucket steps use the display TF so
+     * candle legacy mode does not advance 1m while the host panel shows 4h.
+     */
+    _resolveReplayStepTimeframeForStep() {
+        const chartTf = this.chart && this.chart.currentTimeframe;
+        if (chartTf && this._isFinestTfCoarseLegacyCandleStep()) {
+            return chartTf;
+        }
+        const tf = this._resolveReplayStepTimeframe();
+        if (!tf || !chartTf) return tf;
+        const tfMs = this.timeframeToMs(tf);
+        const chartMs = this.timeframeToMs(chartTf);
+        if (Number.isFinite(tfMs) && Number.isFinite(chartMs) && tfMs < chartMs * 0.92) {
+            return chartTf;
+        }
+        return tf;
     }
 
     /** Milliseconds of market time represented by one candle-by-candle step. */
@@ -3870,7 +3966,14 @@ class ReplaySystem {
      */
     getCandleStepIntervalMs() {
         const speed = Math.max(1, Number(this.speed) || 1);
-        return Math.max(20, Math.floor(1000 / speed));
+        let ms = Math.max(20, Math.floor(1000 / speed));
+        if (this.isPlaying
+            && this._isFinestTfCandleCadenceFixEnabled()
+            && this._isFinestTfCadenceSubStepActive()) {
+            const sub = this._finestTfCadenceSubdivisions();
+            if (sub > 1) ms = Math.max(16, Math.floor(ms / sub));
+        }
+        return ms;
     }
     
     /**
@@ -3958,6 +4061,10 @@ class ReplaySystem {
             this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
             return;
         }
+        if (this._advanceCoarseLegacyCandleBucket()) {
+            this.updateChartData(this.autoScrollEnabled);
+            return;
+        }
         if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this._handleForwardEdgeWhilePlaying(() => {
                 if (this.isPlaying) this.simpleStepForward();
@@ -3978,18 +4085,22 @@ class ReplaySystem {
         
         // Get the target index respecting timeframe selection
         const oldIndex = this.currentIndex;
-        const targetIndex = this.calculateNextIndex();
-        this.currentIndex = targetIndex;
-        this.edgeProbeRetryCount = 0;
-        this._replayForwardEdgeWait = false;
-        
-        // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
-        if (this.fullRawData && this.fullRawData[this.currentIndex]) {
-            this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            this.tickElapsedMs = 0;
+        if (this._shouldUseFinestTfSubStepIndexAdvance()) {
+            this._advanceReplayPlayheadOneStep();
+        } else {
+            const targetIndex = this.calculateNextIndex();
+            this.currentIndex = targetIndex;
+            this.edgeProbeRetryCount = 0;
+            this._replayForwardEdgeWait = false;
+
+            // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
+            if (this.fullRawData && this.fullRawData[this.currentIndex]) {
+                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                this.tickElapsedMs = 0;
+            }
         }
         
-        this.updateChartData(this.autoScrollEnabled);
+        this.updateChartData(this.autoScrollEnabled && oldIndex !== this.currentIndex);
     }
     
     /** Milliseconds between consecutive rows in fullRawData (replay master). */
@@ -4002,9 +4113,19 @@ class ReplaySystem {
         return this.timeframeToMs(tf) || 60000;
     }
 
+    /** Raw spacing near `fromIndex` (global head sample can mis-state period after prepends). */
+    _getLocalRawBarPeriodMs(fromIndex = this.currentIndex) {
+        const arr = this.fullRawData;
+        if (!Array.isArray(arr) || arr.length < 2) return this._getRawBarPeriodMs();
+        const i = Math.max(0, Math.min(fromIndex | 0, arr.length - 2));
+        const dt = Math.abs(Number(arr[i + 1].t) - Number(arr[i].t));
+        if (Number.isFinite(dt) && dt > 0) return dt;
+        return this._getRawBarPeriodMs();
+    }
+
     /** Raw bar count for one replay INTERVAL step (legacy _replayIntervalRawCandles). */
     _resolveReplayStepRawBars() {
-        const selectedTimeframe = this._resolveReplayStepTimeframe();
+        const selectedTimeframe = this._resolveReplayStepTimeframeForStep();
         if (!selectedTimeframe) return 1;
         const tfMs = this.timeframeToMs(selectedTimeframe);
         const rawMs = this._getRawBarPeriodMs();
@@ -4020,15 +4141,26 @@ class ReplaySystem {
             return this.fullRawData.length - 1;
         }
 
+        const selectedTimeframe = this._resolveReplayStepTimeframeForStep();
+        const tfMs = selectedTimeframe ? this.timeframeToMs(selectedTimeframe) : null;
+        const localRawMs = this._getLocalRawBarPeriodMs();
+
+        // Time-anchored advance when step TF is coarser than adjacent raw bars.
+        if (tfMs && localRawMs && tfMs > localRawMs * 0.92) {
+            const currentTimestamp = Number.isFinite(this.replayTimestamp)
+                ? this.replayTimestamp
+                : this.fullRawData[this.currentIndex].t;
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const targetTimestamp = currentBucket + tfMs;
+            const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
+            return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+        }
+
         const stepBars = this._resolveReplayStepRawBars();
         if (stepBars <= 1) {
             return Math.min(this.currentIndex + 1, this.fullRawData.length - 1);
         }
 
-        // Time-anchored advance when the step spans multiple raw bars — keeps bucket
-        // alignment with resampleData (e.g. 1h step on 1m master lands on the hour).
-        const selectedTimeframe = this._resolveReplayStepTimeframe();
-        const tfMs = selectedTimeframe ? this.timeframeToMs(selectedTimeframe) : null;
         if (tfMs && tfMs > this._getRawBarPeriodMs()) {
             const currentTimestamp = this.fullRawData[this.currentIndex].t;
             const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
@@ -5566,6 +5698,20 @@ class ReplaySystem {
             if (this.tryRequestForwardDataProbe()) {
                 return;
             }
+            return;
+        }
+
+        if (this._shouldUseFinestTfSubStepIndexAdvance()) {
+            const prevIdx = this.currentIndex;
+            this._advanceReplayPlayheadOneStep();
+            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
+            this._syncMultichartAfterManualStep();
+            return;
+        }
+
+        if (this._advanceCoarseLegacyCandleBucket()) {
+            this.updateChartData(this.autoScrollEnabled);
+            this._syncMultichartAfterManualStep();
             return;
         }
 

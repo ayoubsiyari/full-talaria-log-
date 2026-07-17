@@ -2,7 +2,52 @@
 
 ---
 
-## D-030 — ESC-026: Option 1 GRANTED with the stopgap rider — A6-4 host-canonical order store is the #1 post-bless engineering item; wrong-panel price marking is data-integrity class; multichart-order ship-gate imposed
+## D-032 — ESC-027: Option 1 GRANTED — A6-4 checkpoint ships now (causal exoneration accepted); Option 3 REJECTED as a standing bar; a narrow "pre-existing-flake decouple" rule codified instead; one signature tripwire attached
+
+**Date:** 2026-07-17
+**Escalation:** ESC-027
+**Track:** T4/A6-4 checkpoint (b42) × chrome dom-ready stabilization
+**RC:** RC-5 (shipping) / RC-4-chrome (residual)
+
+### Rulings
+
+**1. Option 1 GRANTED — ship the A6-4 checkpoint on b42.** The decisive evidence is the **master-OFF A/B**: with A6-4 fully reverted, the flake reproduces identically — A6-4 cannot be its cause. D-030 item 4's *intent* was to prove A6-4 didn't regress the interaction family; that is proven (H-R04/H-R09 10/10, master-OFF no-delta, 0 gate regressions, A6-4's own money-path proof bar fully green). Holding a data-integrity fix hostage to a pre-existing chrome flake, with 115 customers imminent, inverts the severity order this program runs on. The checkpoint report to the PO names the known residual flake as a watch item per D-031.
+
+**2. The record stays honest:** H-R05 is **not marked green**. It stays a failing/unstable acceptance row on the scoreboard, attached to a **named chrome-stabilization work item** (Lane 4 owner, the deeper dom-ready barrier as its candidate mechanism). It is explicitly **NOT quarantined** — D-027's exclusion rule stands: it is an acceptance row, and quarantine would hide exactly the signal we need. What's granted is a *scoped decouple from this checkpoint*, not an acceptance.
+
+**3. Option 3 REJECTED as a standing numeric bar.** A permanent "≥9/10 counts" rule is ratchet erosion — D-026's central lesson was that lucky runs are not reproducibility, and a standing 9/10 bar institutionalizes the lucky run. Instead, a **narrow "pre-existing-flake decouple" rule** is codified: a blocked ship may decouple from a flaking acceptance row only when ALL of: (i) every failing run's signature matches a **named, already-tracked** flake item (logged per run); (ii) a suspect-fix **switch-OFF A/B shows no delta** (causal exoneration); (iii) a Director ruling per instance. No automatic threshold, ever.
+
+**4. Signature tripwire (binding on this decouple):** the exoneration rests on the failing signature being the harness dom-ready timeout (`storeOk=true`, `v9BarVisible=false`, no modal teardown). **If any failing run shows the D-026 teardown signature** (Style panel mounts then is dismissed) **or `storeOk=false`, the decouple is void** — that would be a transport/readiness regression, escalate same-day and the chrome item jumps to blocker class. Lane 4 logs the signature on every H-R04/H-R05/H-R09 failing run from now on so the tripwire is checkable, not aspirational.
+
+**5. Chrome-stabilization item gets a review point:** it is on the board with an owner and reports at the post-bless T8 review sweep alongside the D-027 quarantine rows — same discipline, different bucket. "Recovers on double-click" is the historical tester pain; this row is not allowed to become permanent background noise. — PO directive: 115-tester cohort goes live as CUSTOMERS; checkpoint-deploy protocol (3–6/day) replaces one-shot shipping; invariant I16 (customer-data durability) added
+
+**Date:** 2026-07-17
+**Origin:** PO directive (not an escalation)
+**Track:** program-wide (deploy protocol + data posture)
+**RC:** RC-7 (process)
+
+### The directive
+
+115 testers get access to **chart + strategy builder + sessions tabs only**. They backtest as real users and report bugs. Two consequences the PO has made explicit:
+1. **Chart updates ship to their server in 3–6 checkpoints per day**, each communicated to the PO through the Manager.
+2. **Their backtesting data is kept for future dashboard analysis. They are customers, not testers** — their data is production data.
+
+### Rulings
+
+**1. Checkpoint-deploy protocol (replaces the one-shot combined-build model, now that b16 is blessed).**
+- **Cadence:** 3–6 checkpoints/day, at the Manager's discretion within that band. A checkpoint with nothing shippable is skipped, never padded — cadence serves content, not the reverse.
+- **What qualifies for a checkpoint:** only work that has passed its own proof bar (RED→GREEN, switch-OFF discriminator, gate green, I8 trees identical, build id bumped). Nothing rides a checkpoint "to see if it helps." The D-030 ship-gate binds: no multichart-order build ships until the owning-panel-price RED is green.
+- **Checkpoint report to the PO (Manager sends one per deploy, ≤10 lines):** build id · what's in it (fix IDs + affected ticket refs) · what testers should re-verify · known risks/watch items · rollback switch list. The scoreboard's STAGED→CLOSED-VERIFIED pipeline updates on tester confirmation per P5.
+- **Rollback posture:** every checkpoint is revertible two ways — kill-switches (first resort, no redeploy) and previous-build restore (I16 forbids data loss in either path).
+- **Risk tiering:** interaction/order/data-path changes need a clean gate on the exact checkpoint build; pure UI-polish and additive registry/doc changes may batch into any checkpoint. When in doubt, the riskier classification applies.
+
+**2. Invariant I16 added (customer-data durability)** — full text in `INVARIANTS.md`, injected into every worker prompt from now on. Core: no destructive migrations; kill-switch flips never delete/orphan persisted data; new persisted records carry `build_id` + schema version at write time; persistence-touching tasks report their data-compatibility impact. "Wipe and start clean" is never a fix.
+- **Immediate application:** A6-2 (order persistence) and all A6-4 steps are persistence-touching — they adopt I16 retroactively at their next touch. The D-030 corrupt-PnL filter heuristic becomes MORE important, not less: those rows will sit in customer data until filtered — the Manager delivers it before the cohort starts, so day-one dashboard data is classifiable.
+- **Scale note:** 115 concurrent users is ~50× the current tester load. No pre-emptive perf work is ordered (the A7 diagnostic already covers the known hotspots), but the Manager adds a **standing checkpoint-watch item**: any server-side or persistence-layer strain reported by the cohort escalates same-day rather than riding the daily intake.
+
+**3. Intake consequence:** ticket volume from 115 reporters will dwarf the 2-tester flow. The daily-intake process stands (one disposition per ticket, zero-unassigned invariant), but the Director pre-authorizes the Manager to **batch duplicate reports into family rows at intake** (one row + member refs, as A7/A7b already do) so the scoreboard counts defects, not duplicate filings. Lane 5's intake-absorption charter (D-028) becomes load-bearing; if intake exceeds Lane 5 + Director triage capacity, the Manager escalates for a sixth worker rather than letting the ledger rot.
+
+**4. Access-scope note:** the tabs restriction (chart / strategy builder / sessions) is a server/auth configuration owned by the PO's deployment, not a plan-2 code task. If any restriction requires chart-code changes (e.g. hiding journal entry points), that lands as a small gated UI task in a checkpoint — the Manager flags it to the PO if discovered. — ESC-026: Option 1 GRANTED with the stopgap rider — A6-4 host-canonical order store is the #1 post-bless engineering item; wrong-panel price marking is data-integrity class; multichart-order ship-gate imposed
 
 **Date:** 2026-07-17
 **Escalation:** ESC-026

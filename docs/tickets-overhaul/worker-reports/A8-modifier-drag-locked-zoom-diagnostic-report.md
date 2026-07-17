@@ -272,7 +272,7 @@ Harness: add targeted probes (pointer synth) or document manual PO steps until s
 - Did **not** bisect existing drawing sync switches.
 - Did **not** confirm multichart keyboard routing for TAL-01624 (iframe focus).
 
-**Next step for implementation tranche:** Manager approval per leg; F (keyboard zoom) explicitly **out of Lane 5 fence**; A/E/B first as freeze-safe drawing-module work; C/D with multichart PO; derive H-S* or manual D-023 proofs before bless.
+**Next step:** Freeze-safe implementation spec (prep, HOLD until A6-4 gate): [`A8-FREEZE-SAFE-IMPL-SPEC.md`](../A8-FREEZE-SAFE-IMPL-SPEC.md) + dispatch [`worker-prompts/A8-freeze-safe-IMPL-lane5-HOLD.md`](../worker-prompts/A8-freeze-safe-IMPL-lane5-HOLD.md). Leg F (keyboard zoom) remains **Manager / chart.js**; land order A8-1 → A8-4 → A8-2 → A8-3.
 
 ---
 

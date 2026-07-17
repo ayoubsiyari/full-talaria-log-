@@ -15,6 +15,7 @@ Every **trusted** react-parity row must have a **named discriminator** that prov
 | **H-R07** | `--only=H-R07 --runs=10` → 10/10 PASS | `--phase5-off` → FAIL (≥9/10) | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` |
 | **H-R04** | `--only=H-R04 --runs=10` → 10/10 PASS | `--chrome-dom-ready-off` → FAIL (non-vacuous) | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` (D-024) |
 | **H-R05** | `--only=H-R05 --runs=10` → 10/10 PASS | `--chrome-dom-ready-off` → FAIL (non-vacuous) | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` (D-024) |
+| **H-R09-LR** | `--only=H-R09-LR --runs=10` → PASS (lag pin) | `--v9-quickbar-live-resolve-off --chrome-dom-ready-off` → FAIL | `__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1` (D-027) + D-024 for non-vacuous OFF |
 
 ### D-024 chrome DOM-ready wait primitive
 
@@ -62,6 +63,7 @@ node react-run.mjs --only=H-R03 --runs=10 --iframe-ctrl-dedupe-off
 | H-R06 Delete (P4) | `--panel-keyboard-off` | `REACT_PARITY_PANEL_KEYBOARD_OFF=1` | `__TALARIA_DISABLE_MULTICHART_PANEL_KEYBOARD_V1` |
 | H-R07 peer iso (P5) | `--phase5-off` | `REACT_PARITY_PHASE5_OFF=1` | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION` |
 | H-R04/H-R05 chrome DOM (D-024) | `--chrome-dom-ready-off` | `REACT_PARITY_CHROME_DOM_READY_OFF=1` | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` |
+| H-R09-LR live-resolve (D-027) | `--v9-quickbar-live-resolve-off` | `REACT_PARITY_V9_QUICKBAR_LIVE_RESOLVE_OFF=1` | `__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1` |
 | H-R07 peer iso (child) | `--peer-deselect-off` | `REACT_PARITY_PEER_DESELECT_OFF=1` | `__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1` |
 | P1 master (legacy) | `--phase1-off` | `REACT_PARITY_PHASE1_OFF=1` | `__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE` |
 | P1 child lifecycle | `--lifecycle-off` | `REACT_PARITY_LIFECYCLE_OFF=1` | `__TALARIA_DISABLE_TOOL_LIFECYCLE_V2` |

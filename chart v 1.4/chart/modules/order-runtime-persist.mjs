@@ -5,6 +5,9 @@
 
 export const ORDER_RUNTIME_SESSION_STORAGE_KEY = 'chart_orders_runtime_session_v1';
 
+/** I16 — persisted order/trade row schema (additive; bump only with migration). */
+export const ORDER_RECORD_SCHEMA_VERSION = 1;
+
 /** @param {object} [scope] */
 export function resolveScope(scope) {
     if (scope) return scope;
@@ -18,6 +21,47 @@ export function orderPersistenceV1Enabled(scope) {
     if (g.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1 === true) return false;
     if (typeof process !== 'undefined' && process.env?.TALARIA_ORDER_PERSISTENCE_V1 === '0') return false;
     return true;
+}
+
+/** I16 — stamp build_id + schema_version on persisted rows. Default ON when unset. */
+export function orderPersistStampV1Enabled(scope) {
+    const g = resolveScope(scope);
+    if (g.__TALARIA_DISABLE_ORDER_PERSIST_STAMP_V1 === true) return false;
+    return true;
+}
+
+/** @param {object} [scope] */
+export function resolvePersistBuildId(scope) {
+    const g = resolveScope(scope);
+    const id = g.__TALARIA_CHART_BUILD_ID;
+    if (id == null) return null;
+    const s = String(id).trim();
+    return s || null;
+}
+
+/**
+ * Additive I16 stamp on one order/trade row (never removes legacy fields).
+ * @param {object|null|undefined} record
+ * @param {{ buildId?: string|null, scope?: object, win?: object, onlyIfMissing?: boolean }} [ctx]
+ */
+export function stampPersistedOrderRecord(record, ctx = {}) {
+    if (!record || typeof record !== 'object') return record;
+    const scope = ctx.scope || ctx.win;
+    if (!orderPersistStampV1Enabled(scope)) return record;
+    if (ctx.onlyIfMissing && record.build_id != null && record.schema_version != null) return record;
+    const buildId = ctx.buildId !== undefined ? ctx.buildId : resolvePersistBuildId(scope);
+    return {
+        ...record,
+        build_id: buildId,
+        schema_version: ORDER_RECORD_SCHEMA_VERSION,
+    };
+}
+
+/** @param {object[]|null|undefined} records */
+export function stampPersistedOrderRecords(records, ctx = {}) {
+    if (!Array.isArray(records)) return records;
+    if (!orderPersistStampV1Enabled(ctx.scope || ctx.win)) return records;
+    return records.map((row) => stampPersistedOrderRecord(row, ctx));
 }
 
 /**
@@ -38,7 +82,7 @@ export function runtimeOrderStorageKey(sessionId, panelScope = null) {
  * @param {object} accountRuntime
  * @param {object} orderCounters
  */
-export function buildRuntimeOrderPatch(pendingOrders, openPositions, accountRuntime, orderCounters) {
+export function buildRuntimeOrderPatch(pendingOrders, openPositions, accountRuntime, orderCounters, ctx = {}) {
     const safeClone = (arr) => {
         try {
             return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
@@ -46,9 +90,11 @@ export function buildRuntimeOrderPatch(pendingOrders, openPositions, accountRunt
             return [];
         }
     };
+    const scope = ctx.scope || ctx.win;
+    const stampCtx = { ...ctx, scope };
     return {
-        pending_orders: safeClone(pendingOrders),
-        open_positions: safeClone(openPositions),
+        pending_orders: stampPersistedOrderRecords(safeClone(pendingOrders), stampCtx),
+        open_positions: stampPersistedOrderRecords(safeClone(openPositions), stampCtx),
         account_runtime: accountRuntime && typeof accountRuntime === 'object' ? { ...accountRuntime } : {},
         order_counters: orderCounters && typeof orderCounters === 'object' ? { ...orderCounters } : {},
         savedAt: Date.now(),

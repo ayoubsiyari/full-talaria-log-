@@ -17,6 +17,8 @@ function parseArgs(argv) {
     drawingLocalInvalidationOff: false, chromeRoutingOff: false, hr02ActuationMiss: false,
     isolateSession: false, chromeDomReadyOff: false,
     panelBSettingsTransportOff: false, panelBSettingsTransportAOff: false,
+    orderMcStateConvergeOff: false,
+    v9QuickbarLiveResolveOff: false,
   };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
@@ -33,6 +35,8 @@ function parseArgs(argv) {
     else if (a === '--chrome-dom-ready-off') args.chromeDomReadyOff = true;
     else if (a === '--panelb-settings-transport-off') args.panelBSettingsTransportOff = true;
     else if (a === '--panelb-settings-transport-a-off') args.panelBSettingsTransportAOff = true;
+    else if (a === '--order-mc-state-converge-off') args.orderMcStateConvergeOff = true;
+    else if (a === '--v9-quickbar-live-resolve-off') args.v9QuickbarLiveResolveOff = true;
     else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
     else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
@@ -66,6 +70,8 @@ function buildScenarioCtx(args, browser, stack) {
     chromeDomReadyOff: args.chromeDomReadyOff,
     panelBSettingsTransportOff: args.panelBSettingsTransportOff,
     panelBSettingsTransportAOff: args.panelBSettingsTransportAOff,
+    orderMcStateConvergeOff: args.orderMcStateConvergeOff,
+    v9QuickbarLiveResolveOff: args.v9QuickbarLiveResolveOff,
   };
 }
 
@@ -101,7 +107,7 @@ async function main() {
     || (!args.only && scenarios.length > 1);
   console.log(`[react-run] built-product url: ${stack.url}`);
   console.log(`[react-run] surface: ${stack.surface} build=${stack.buildId}`);
-  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} isolateSession=${isolateSession} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff} iframeCtrlDedupeOff=${args.iframeCtrlDedupeOff} lifecycleOff=${args.lifecycleOff} legacySelectionOff=${args.legacySelectionOff} hr02ActuationMiss=${args.hr02ActuationMiss} chromeDomReadyOff=${args.chromeDomReadyOff} panelBSettingsTransportOff=${args.panelBSettingsTransportOff} panelBSettingsTransportAOff=${args.panelBSettingsTransportAOff}`);
+  console.log(`[react-run] mode: runs=${args.runs} only=${args.only ? args.only.join(',') : 'ALL'} isolateSession=${isolateSession} migrationOn=${args.migrationOn} phase1Off=${args.phase1Off} phase5Off=${args.phase5Off} panelKeyboardOff=${args.panelKeyboardOff} peerDeselectOff=${args.peerDeselectOff} iframeCtrlDedupeOff=${args.iframeCtrlDedupeOff} lifecycleOff=${args.lifecycleOff} legacySelectionOff=${args.legacySelectionOff} hr02ActuationMiss=${args.hr02ActuationMiss} chromeDomReadyOff=${args.chromeDomReadyOff} panelBSettingsTransportOff=${args.panelBSettingsTransportOff} panelBSettingsTransportAOff=${args.panelBSettingsTransportAOff} orderMcStateConvergeOff=${args.orderMcStateConvergeOff} v9QuickbarLiveResolveOff=${args.v9QuickbarLiveResolveOff}`);
 
   const verdicts = {};
   const notesById = {};

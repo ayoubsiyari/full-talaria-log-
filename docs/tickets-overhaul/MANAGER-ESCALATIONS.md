@@ -1017,3 +1017,32 @@ The GBP/USD order's exit `1.31315` is a **EUR/USD-range price**: the order marke
 ### Manager recommendation
 **Option 1** — the deferral condition (post-re-migration) is satisfied and the defect is money-corrupting. Green-light A6-4 as the top post-bless item. If Lane 3 finds a clean freeze-safe stopgap (option 2), land that first to stop the bleeding, then complete A6-4. Do not ship any further multichart-order-touching build until at least the stopgap proves the owning-panel-price RED green.
 
+---
+
+## ESC-027 — A6-4 checkpoint is blocked only by a pre-existing panel-B chrome dom-ready harness flake (not an A6-4 regression); authorize decoupling the order checkpoint from the chrome acceptance-row 10/10 bar
+
+**Filed:** 2026-07-17 (Manager)
+**Status:** RESOLVED — **D-032** (2026-07-17): **Option 1 GRANTED — ship b42 now**; master-OFF A/B accepted as causal exoneration; D-030 item 4's intent (A6-4 didn't regress interactions) is met. Record stays honest: **H-R05 not marked green**, stays a failing acceptance row bound to a named Lane-4 chrome-stabilization item (deeper dom-ready barrier), explicitly NOT quarantined (D-027 exclusion stands). **Option 3 rejected** as a standing bar (9/10 institutionalizes the lucky run); narrow per-instance "pre-existing-flake decouple" rule codified instead (signature-match to tracked item + suspect-fix OFF A/B no-delta + Director ruling each time). **Signature tripwire binding:** any failing run showing the D-026 teardown signature or `storeOk=false` voids the decouple → same-day escalation, blocker class; Lane 4 logs signatures on every H-R04/H-R05/H-R09 failing run. Chrome item reports at the post-bless T8 review; PO checkpoint report names the residual flake.
+**Class:** ship-gate interpretation (D-030 proof-bar item 4) + D-027 acceptance-row policy
+
+### Situation (build 20260717b42 = A6-4 + fan-out + I16 stamp + H-R09 hardening)
+A6-4's own proof bar is fully green: owning-panel-price RED, store property test, panel-B lockout — all pass. Manager gate = **0 regressions**. The **only** unmet criterion is D-030 item 4's "H-R04/H-R05/H-R09 all 10/10":
+- H-R09 **10/10 PASS**, H-R04 **10/10 PASS** on b42 (Lane 1 live-resolve hardening + Worker 4 harness JSDoc fix).
+- H-R05 **8/10**, H-R09-LR 9/10 — the residual is the **panel-B dom-ready timeout flake** (signature `storeOk=true; v9BarVisible=false`, recovers on dbl-click).
+
+### Why this is not an A6-4 problem
+1. **A6-4 master-OFF A/B:** H-R09 10/10 PASS with `__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX` OFF — i.e. reverting A6-4 does not change the chrome behavior. A6-4 did not cause any chrome row.
+2. The flake **pre-exists A6-4** (seen on b16/b37 baseline; it is the D-024 chrome-readiness class) and is **non-order-path** (React chrome/selection timing, not the order store).
+3. It is a **whack-a-mole harness flake**: each isolated 10× run sprinkles 1–2 rows at 8–9/10; no single fix has driven all acceptance rows to a simultaneous 10/10, because the miss is a harness dom-ready **timeout under load**, not a product-visible defect (dbl-click recovers; the product-visible settings-open is fixed per D-024/D-026).
+
+### The bad trade
+D-030 item 4 was set to prove **A6-4 didn't regress the interaction family** — and the evidence shows it didn't (master-OFF identical; H-R04/H-R09 10/10). But a literal "all rows 10/10" reading keeps the **money-corruption fix (the worst defect class in this program) hostage to a pre-existing chrome harness flake** that is far less severe and unrelated to orders. With 115 customers imminent (D-031), the cross-ticker PnL bug should not wait on this.
+
+### Decision requested (pick one)
+1. **Decouple + ship (Manager recommendation):** accept that D-030 item 4's *intent* (no A6-4-caused interaction regression) is satisfied — H-R04/H-R09 10/10 + master-OFF A/B proves no A6-4 regression — and ship the A6-4 checkpoint now. The residual panel-B dom-ready flake (H-R05/H-R09-LR) is tracked as its **own** chrome-stabilization item (Lane 1/Lane 4), NOT quarantined as passing, and NOT counted as an A6-4 closure blocker. A6-4 order rows close on PO live-confirm; the chrome rows close when the flake reaches a genuine 10/10 on their own track.
+2. **Hold for true 10/10:** keep the A6-4 checkpoint blocked until Lane 4 lands a more robust dom-ready wait primitive (deeper barrier) that drives H-R04/H-R05/H-R09/H-R09-LR to a simultaneous 10/10 — money fix waits on the harness hardening.
+3. **Amend the chrome acceptance bar** to a defined threshold (e.g. ≥9/10 with the failing run showing the harness-timeout signature, not a product miss) as a standing D-027 rule for these specific dom-ready rows.
+
+### Manager recommendation
+**Option 1.** Ship the A6-4 checkpoint (money fix) on the evidence that the residual is a pre-existing, non-order, harness-timing flake; continue chrome-readiness stabilization as its own tracked item without lowering the bar dishonestly (no quarantine of an acceptance row, no fake 10/10). If the Director prefers a codified bar, Option 3 is acceptable; Option 2 pays a real cost (customers keep the corrupt-PnL bug while we chase a harness timeout).
+

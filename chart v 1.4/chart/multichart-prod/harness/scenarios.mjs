@@ -251,7 +251,12 @@ async function replayStartTs(page) {
 
 /** Boot, run body, always run H-INV, always close. */
 async function runWith(ctx, bootOpts, body) {
-  const boot = await bootLayout(ctx.browser, ctx.srv, { ...bootOpts, bug: ctx.bug, bugSwitches: ctx.bugSwitches });
+  const boot = await bootLayout(ctx.browser, ctx.srv, {
+    ...bootOpts,
+    bug: ctx.bug,
+    bugSwitches: ctx.bugSwitches,
+    orderMcStateConvergeOff: !!ctx.orderMcStateConvergeOff,
+  });
   const notes = [];
   let checks;
   try {
@@ -6616,7 +6621,10 @@ async function startHostProductionTickPlay(page, panelIds, mode = 'tick') {
       window.__multichartGrid = { getPanelIds: function () { return ids; } };
     }
     try {
-      if (typeof rs.setPlaybackMode === 'function') rs.setPlaybackMode(playMode);
+      rs.playbackMode = playMode === 'candle' ? 'candle' : 'tick';
+      if (typeof rs.setPlaybackMode === 'function') {
+        rs.setPlaybackMode(playMode, { restartPlayback: false });
+      }
       rs.fastMode = false;
       if (typeof rs.play === 'function') rs.play();
       return {
@@ -6624,6 +6632,7 @@ async function startHostProductionTickPlay(page, panelIds, mode = 'tick') {
         playing: !!rs.isPlaying,
         ts: Number.isFinite(rs.replayTimestamp) ? rs.replayTimestamp : null,
         mode: typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
+        loopKind: typeof rs.getPlaybackLoopKind === 'function' ? rs.getPlaybackLoopKind() : null,
         tickProgress: Number(rs.tickProgress) || 0,
       };
     } catch (e) {
@@ -6646,6 +6655,36 @@ async function stopHostProductionPlay(page) {
 }
 
 /** Sample replay probes every intervalMs for durationMs (wall-clock). */
+async function sampleHostReplayDuringProductionPlay(page, durationMs, intervalMs) {
+  const samples = [];
+  const start = Date.now();
+  while (Date.now() - start < durationMs) {
+    await sleep(intervalMs);
+    const host = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      return {
+        replayTs: rs && Number.isFinite(rs.replayTimestamp) ? Number(rs.replayTimestamp) : null,
+        playing: !!(rs && rs.isPlaying),
+        mode: rs && typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : null,
+      };
+    }).catch(() => null);
+    samples.push({ elapsedMs: Date.now() - start, host });
+  }
+  return samples;
+}
+
+function hostReplayTsStepDeltas(samples) {
+  const ts = samples
+    .map((s) => s.host && s.host.replayTs)
+    .filter((t) => Number.isFinite(t));
+  const deltas = [];
+  for (let i = 1; i < ts.length; i++) {
+    const d = ts[i] - ts[i - 1];
+    if (d > 0) deltas.push(d);
+  }
+  return { ts, deltas, total: ts.length >= 2 ? ts[ts.length - 1] - ts[0] : 0 };
+}
+
 async function sampleReplayDuringProductionPlay(page, ids, durationMs, intervalMs) {
   const samples = [];
   const start = Date.now();
@@ -6655,7 +6694,14 @@ async function sampleReplayDuringProductionPlay(page, ids, durationMs, intervalM
     for (const id of ids) {
       snap[id] = await readPanelReplayProbe(page, id);
     }
-    samples.push({ elapsedMs: Date.now() - start, snap });
+    const host = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      return {
+        replayTs: rs && Number.isFinite(rs.replayTimestamp) ? Number(rs.replayTimestamp) : null,
+        playing: !!(rs && rs.isPlaying),
+      };
+    }).catch(() => null);
+    samples.push({ elapsedMs: Date.now() - start, snap, host });
   }
   return samples;
 }
@@ -8068,6 +8114,308 @@ async function hS83(ctx) {
   });
 }
 
+// ── H-S83b ──────────────────────────────────────────────────────────────
+// D-016 V1: host A display 4h + peer B 1m — finest cadence on tick AND candle PLAY.
+const T8_CANDLE_CADENCE_SWITCH = '__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1';
+
+async function runCoarseMainCadencePlayLeg(page, ids, mode, playSpeed = 15) {
+  await stopHostProductionPlay(page).catch(() => {});
+  await page.evaluate(() => {
+    if (window.__multichartGrid && typeof window.__multichartGrid.refreshFinestReplayCadence === 'function') {
+      window.__multichartGrid.refreshFinestReplayCadence();
+    }
+  });
+  await sleep(200);
+  const tsBeforePlay = await page.evaluate(() => {
+    const rs = window.chart && window.chart.replaySystem;
+    return rs && Number.isFinite(rs.replayTimestamp) ? Number(rs.replayTimestamp) : null;
+  });
+  const playStart = await startHostProductionTickPlay(page, ids, mode);
+  await page.waitForFunction(
+    () => !!(window.chart && window.chart.replaySystem && window.chart.replaySystem.isPlaying),
+    { timeout: 5000 },
+  ).catch(() => {});
+  await page.evaluate((spd) => {
+    const rs = window.chart && window.chart.replaySystem;
+    if (rs && typeof rs.setSpeed === 'function') rs.setSpeed(spd);
+  }, playSpeed);
+  await sleep(300);
+  const samples = await sampleReplayDuringProductionPlay(page, ids, 6000, 150);
+  await stopHostProductionPlay(page);
+  await sleep(300);
+  const tsAfterPlay = await page.evaluate(() => {
+    const rs = window.chart && window.chart.replaySystem;
+    return rs && Number.isFinite(rs.replayTimestamp) ? Number(rs.replayTimestamp) : null;
+  });
+  const bSteps = replayTsStepDeltas(samples, 'B');
+  const aSteps = replayTsStepDeltas(samples, 'A');
+  const hostSteps = hostReplayTsStepDeltas(samples);
+  const maxStep = bSteps.deltas.length ? Math.max(...bSteps.deltas) : 0;
+  const hostMaxStep = hostSteps.deltas.length ? Math.max(...hostSteps.deltas) : 0;
+  const hostPlayTotal = (Number.isFinite(tsBeforePlay) && Number.isFinite(tsAfterPlay))
+    ? tsAfterPlay - tsBeforePlay
+    : hostSteps.total;
+  return {
+    playStart, bSteps, aSteps, hostSteps, maxStep, hostMaxStep, hostPlayTotal,
+    tsBeforePlay, tsAfterPlay, samples,
+  };
+}
+
+async function hS83b(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A', 'B'];
+    const PLAY_SPEED = 15;
+
+    await page.setViewport({ width: 2000, height: 1200 });
+    await sleep(500);
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S83b replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    const entered = await waitReplayQuiescent(page, ids, ts0, 20_000);
+    checks.check('H-S83b replay entered + quiescent', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    await hostSetTimeframe(page, '4h');
+    await sleep(1500);
+
+    const cadenceProbe = await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      const grid = window.__multichartGrid;
+      const hostTf = window.chart && window.chart.currentTimeframe;
+      const finestMs = rs && typeof rs._getFinestReplayCadenceMs === 'function'
+        ? rs._getFinestReplayCadenceMs()
+        : (grid && typeof grid.getFinestReplayCadenceMs === 'function'
+          ? grid.getFinestReplayCadenceMs() : null);
+      return {
+        hostTf,
+        finestMs,
+        subdivisions: rs && typeof rs._finestTfCadenceSubdivisions === 'function'
+          ? rs._finestTfCadenceSubdivisions() : null,
+        cadenceOn: rs && typeof rs._isFinestTfReplayCadenceEnabled === 'function'
+          ? rs._isFinestTfReplayCadenceEnabled() : null,
+      };
+    });
+    checks.check('H-S83b setup: host A=4h + finest cadence armed (subdivisions > 1)',
+      !!(cadenceProbe && cadenceProbe.hostTf === '4h'
+        && cadenceProbe.subdivisions > 1 && cadenceProbe.finestMs === ONE_M_MS),
+      JSON.stringify(cadenceProbe));
+
+    const tickLeg = await runCoarseMainCadencePlayLeg(page, ids, 'tick', PLAY_SPEED);
+    checks.check('H-S83b tick PLAY: 1m panel B advances (non-vacuous)',
+      tickLeg.bSteps.total > ONE_M_MS * 0.5,
+      `totalDelta=${tickLeg.bSteps.total} maxStep=${tickLeg.maxStep}`);
+    checks.check('H-S83b tick PLAY: no 4h jump on 1m panel B',
+      tickLeg.maxStep < FOUR_H_MS * 0.5,
+      `maxStep=${tickLeg.maxStep}`);
+
+    const candleLeg = await runCoarseMainCadencePlayLeg(page, ids, 'candle', PLAY_SPEED);
+    checks.check('H-S83b candle PLAY: 1m panel B advances (non-vacuous)',
+      candleLeg.bSteps.total > ONE_M_MS * 0.5,
+      `totalDelta=${candleLeg.bSteps.total} maxStep=${candleLeg.maxStep}`);
+    checks.check('H-S83b candle PLAY: no 4h jump on 1m panel B (V1 fix ON)',
+      candleLeg.maxStep < FOUR_H_MS * 0.5,
+      `maxStep=${candleLeg.maxStep} loop=${JSON.stringify(candleLeg.playStart)}`);
+
+    await page.evaluate((sw) => { window[sw] = true; }, T8_CANDLE_CADENCE_SWITCH);
+    await page.evaluate(() => {
+      if (window.__multichartGrid && typeof window.__multichartGrid.refreshFinestReplayCadence === 'function') {
+        window.__multichartGrid.refreshFinestReplayCadence();
+      }
+    });
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    await hostSetTimeframe(page, '4h');
+    await sleep(800);
+    await page.evaluate(() => {
+      const rs = window.chart && window.chart.replaySystem;
+      if (rs && typeof rs.setStepTimeframe === 'function') {
+        rs.setStepTimeframe(null, { restartPlayback: false });
+      }
+    });
+    const coarseProbe = await page.evaluate(() => {
+      window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 = true;
+      const rs = window.chart && window.chart.replaySystem;
+      if (!rs) return null;
+      rs.isPlaying = true;
+      rs.playbackMode = 'candle';
+      const before = Number(rs.replayTimestamp);
+      const beforeIdx = rs.currentIndex;
+      const nextIdx = rs.calculateNextIndex ? rs.calculateNextIndex() : null;
+      const stepBars = rs._resolveReplayStepRawBars ? rs._resolveReplayStepRawBars() : null;
+      const useFinest = rs._shouldUseFinestTfSubStepIndexAdvance
+        ? rs._shouldUseFinestTfSubStepIndexAdvance() : null;
+      const forStep = rs._resolveReplayStepTimeframeForStep
+        ? rs._resolveReplayStepTimeframeForStep() : null;
+      const tfMs = forStep && rs.timeframeToMs ? rs.timeframeToMs(forStep) : null;
+      const chartTf = window.chart && window.chart.currentTimeframe;
+      const bucketTfMs = chartTf && rs.timeframeToMs ? rs.timeframeToMs(chartTf) : null;
+      const coarseLegacy = rs._isFinestTfCoarseLegacyCandleStep
+        ? rs._isFinestTfCoarseLegacyCandleStep() : null;
+      const bucketOk = rs._advanceCoarseLegacyCandleBucket
+        ? rs._advanceCoarseLegacyCandleBucket() : null;
+      rs.isPlaying = false;
+      const after = Number(rs.replayTimestamp);
+      return {
+        stepBars,
+        useFinest,
+        forStep,
+        chartTf,
+        tfMs,
+        bucketTfMs,
+        bucketOk,
+        coarseLegacy,
+        nextIdx,
+        idxDelta: rs.currentIndex - beforeIdx,
+        mode: rs.getPlaybackMode ? rs.getPlaybackMode() : null,
+        delta: after - before,
+        hostTf: chartTf,
+        dataLen: rs.fullRawData ? rs.fullRawData.length : null,
+        atEnd: beforeIdx >= (rs.fullRawData ? rs.fullRawData.length - 1 : 0),
+      };
+    });
+    checks.check('H-S83b switch-OFF candle V1: simpleStepForward uses coarse interval (not finest)',
+      !!(coarseProbe && coarseProbe.useFinest === false && coarseProbe.forStep === '4h'
+        && coarseProbe.bucketOk === true && coarseProbe.delta >= 3600000 * 0.9),
+      JSON.stringify(coarseProbe));
+    await hostReplayEnter(page, ts0);
+    await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+    await waitReplayQuiescent(page, ids, ts0, 12_000);
+    await hostSetTimeframe(page, '4h');
+    await sleep(800);
+    const candleOff = await runCoarseMainCadencePlayLeg(page, ids, 'candle', PLAY_SPEED);
+    checks.check('H-S83b switch-OFF candle V1: host loop is candle (not tick fallback)',
+      !!(candleOff.playStart && candleOff.playStart.mode === 'candle'
+        && candleOff.playStart.loopKind === 'candle'),
+      JSON.stringify(candleOff.playStart));
+    checks.check('H-S83b switch-OFF candle V1: 1m panel sees coarse jump during play (max step >= 1h)',
+      candleOff.maxStep >= 3600000 * 0.9
+        || candleOff.hostMaxStep >= 3600000 * 0.9
+        || candleOff.hostPlayTotal >= 3600000 * 0.9
+        || candleOff.bSteps.total >= 3600000 * 0.9
+        || candleOff.aSteps.total >= 3600000 * 0.9,
+      `maxStep=${candleOff.maxStep} hostMax=${candleOff.hostMaxStep} hostPlayTotal=${candleOff.hostPlayTotal} `
+        + `before=${candleOff.tsBeforePlay} after=${candleOff.tsAfterPlay} `
+        + `totalB=${candleOff.bSteps.total} totalA=${candleOff.aSteps.total}`);
+    await page.evaluate((sw) => { try { delete window[sw]; } catch (_) { window[sw] = undefined; } },
+      T8_CANDLE_CADENCE_SWITCH);
+
+    notes.push('H-S83b D-016 V1: host A=4h coarse main — tick+candle finest cadence on 1m peer B.');
+    return checks;
+  });
+}
+
+// ── H-S84 ───────────────────────────────────────────────────────────────
+// TAL-01612 residual: stale #replayTimeframe must not drive calculateNextIndex when Auto.
+const INTERVAL_OWNER_SWITCH = '__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1';
+const ONE_W_MS = 604_800_000;
+const SIX_D_MS = 6 * 86_400_000;
+const TWELVE_H_MS = 12 * 3_600_000;
+
+async function hS84(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const ids = ['A'];
+
+    await waitBootSettled(page, ids, 25_000, boot.getInFlightDataRequests);
+    const ts0 = await replayStartTs(page);
+    checks.check('H-S84 replay start ts resolvable', ts0 != null, `ts0=${ts0}`);
+    if (ts0 == null) return checks;
+    await hostReplayEnter(page, ts0);
+    const entered = await waitReplayQuiescent(page, ids, ts0, 15_000);
+    checks.check('H-S84 replay entered', entered.ok, entered.detail);
+    if (!entered.ok) return checks;
+
+    async function stepOnceWithStaleHidden(ownerFixOn) {
+      return page.evaluate((fixOn) => {
+        window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 = true;
+        if (fixOn) {
+          try { delete window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1; }
+          catch (_) { window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 = undefined; }
+        } else {
+          window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 = true;
+        }
+        const rs = window.chart && window.chart.replaySystem;
+        if (!rs || !rs.isActive) return { ok: false, reason: 'no replay' };
+        let hidden = document.getElementById('replayTimeframe');
+        if (!hidden) {
+          hidden = document.createElement('select');
+          hidden.id = 'replayTimeframe';
+          hidden.style.display = 'none';
+          const opt = document.createElement('option');
+          opt.value = '1w';
+          opt.textContent = '1w';
+          hidden.appendChild(opt);
+          document.body.appendChild(hidden);
+        } else {
+          let hasWeek = false;
+          for (let i = 0; i < hidden.options.length; i++) {
+            if (hidden.options[i].value === '1w') { hasWeek = true; break; }
+          }
+          if (!hasWeek) {
+            const opt = document.createElement('option');
+            opt.value = '1w';
+            opt.textContent = '1w';
+            hidden.appendChild(opt);
+          }
+        }
+        hidden.value = '1w';
+        rs.timeframeSelect = hidden;
+        rs.stepTimeframeOverride = null;
+        const before = Number(rs.replayTimestamp);
+        const ownerFix = typeof rs._isReplayIntervalOwnerFixEnabled === 'function'
+          ? rs._isReplayIntervalOwnerFixEnabled() : null;
+        const resolved = typeof rs._resolveReplayStepTimeframe === 'function'
+          ? rs._resolveReplayStepTimeframe() : null;
+        const stepBars = typeof rs._resolveReplayStepRawBars === 'function'
+          ? rs._resolveReplayStepRawBars() : null;
+        if (typeof rs.simpleStepForward === 'function') rs.simpleStepForward();
+        const after = Number(rs.replayTimestamp);
+        return {
+          ok: Number.isFinite(before) && Number.isFinite(after),
+          before,
+          after,
+          delta: after - before,
+          resolved,
+          stepBars,
+          ownerFix,
+        };
+      }, ownerFixOn);
+    }
+
+    const on = await stepOnceWithStaleHidden(true);
+    checks.check('H-S84 fix ON: single step <= 1m (stale hidden 1w ignored)',
+      on.ok && on.delta > 0 && on.delta <= ONE_M_MS * 1.25 && on.resolved === '1m',
+      JSON.stringify(on));
+
+    await hostReplayEnter(page, ts0);
+    await waitReplayQuiescent(page, ids, ts0, 15_000);
+    const off = await stepOnceWithStaleHidden(false);
+    checks.check('H-S84 switch-OFF: stale hidden 1w drives multi-day leap',
+      off.ok && off.ownerFix === false && off.resolved === '1w'
+        && off.stepBars > 1000 && off.delta >= TWELVE_H_MS,
+      JSON.stringify(off));
+    await page.evaluate(() => {
+      try { delete window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1; }
+      catch (_) { window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 = undefined; }
+      try { delete window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1; }
+      catch (_) { window.__TALARIA_DISABLE_FINEST_TF_STEP_FORWARD_CADENCE_V1 = undefined; }
+    });
+
+    notes.push('H-S84 TAL-01612: interval owner V1 — Auto ignores stale #replayTimeframe.');
+    return checks;
+  });
+}
+
 // ── H-S58 ────────────────────────────────────────────────────────────────
 // TAL-00752#10/#20/#22: multi-entry close — stacked legs get pixel offsets;
 // removeMultiEntryLevel keeps splitEntries synced to levels[].
@@ -8227,6 +8575,8 @@ export function scenarioList() {
     { id: 'H-S79', title: 'PLAN2-FOUND#5: backtest replay playhead survives refresh (paused restore)', run: hS79 },
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label syncs to engine TF after refresh (T8 step 9)', run: hS80 },
     { id: 'H-S83', title: 'T8 step 13 / D-016: finest-TF cadence — 4h-focused 1m sub-advance + coalesce', run: hS83 },
+    { id: 'H-S83b', title: 'D-016 V1: host A=4h coarse main — tick+candle finest cadence on 1m peer (H-S83b)', run: hS83b },
+    { id: 'H-S84', title: 'TAL-01612 V1: interval owner — stale hidden select ignored on Auto step', run: hS84 },
     { id: 'H-S82', title: 'TAL-01579 / D-017: pan-release snap-back — settled offsetX holds release', run: hS82 },
     // Reserved (T0 step 16 — not yet implemented):
     // H-S81: mixed-coarse tick-play fetch+render budget fence (T8 step 10; deferred Lane-4/T2)

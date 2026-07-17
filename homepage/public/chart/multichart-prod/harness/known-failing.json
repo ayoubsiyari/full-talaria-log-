@@ -82,7 +82,9 @@
     "H-S79",
     "H-S80",
     "H-S82",
-    "H-S83"
+    "H-S83",
+    "H-S83b",
+    "H-S84"
   ],
   "expectedPendingPO": {},
   "knownFailing": {
@@ -115,7 +117,9 @@
     "H-S73": "T0 step 17 route T8/RC-3: FAIL-REAL-BUG B-FIX-C mirror prepend offsetX compensation (NOT TAL-01579 snap-back — reserved H-S82)",
     "H-S76": "T8 step 15 promotion: replay follow fallback — coarse B playhead off-screen after pan (B-FIX-1)",
     "H-S77": "T8 step 15 promotion: panel master-growth offset flat on prepend (B-FIX-C)",
-    "H-S78": "T8 step 15 promotion: BL-16 micro-pan during play recenters viewport (RED sub-check; A9 GREEN passes)"
+    "H-S78": "T8 step 15 promotion: BL-16 micro-pan during play recenters viewport (RED sub-check; A9 GREEN passes)",
+    "H-S59b": "RED until Lane 2 candle-cadence build. Discriminator: fix-ON candle Bdelta=0 while switch-OFF Bdelta>0 (__TALARIA_MC_DISABLE_PLAY_EDGE_PARK_ADVANCE / D-015 play-edge cadence RED pin); Lane 2 cadence fix in-flight, not in order build",
+    "H-S83b": "RED until Lane 2 candle-cadence build. Discriminator: switch-OFF candle V1 simpleStepForward uses coarse interval + 1m panel coarse jump maxStep>=1h (T8 candle-cadence V1 RED pin); Lane 2 cadence fix in-flight, not in order build"
   },
   "quarantine": {
     "H-S27": {

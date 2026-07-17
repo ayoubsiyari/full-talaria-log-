@@ -24,6 +24,8 @@ import {
   awaitParentChromeAfterPanelSelect,
   waitForV9QuickBarReady,
   waitForParentV9ChromeDomReady,
+  readParentQuickBarLagSignature,
+  readParentV9BarVisible,
   clickV9QuickBarGear,
   waitForPanelSettle,
   panelFrameMap,
@@ -357,6 +359,14 @@ async function hR09(ctx) {
       const click1 = await singleClickDrawing(page, pid, tool.id);
       checks.check(`H-R09 probe (${label}): single click`, click1 && click1.ok, click1?.reason || '');
       const afterSingle = await waitForReactSelection(page, pid, [tool.id]);
+      if (pid === 'B') {
+        await focusReactPanelSoft(page, pid);
+        await waitForPanelSettle(page, pid);
+      }
+      const domBudgetSingle = pid === 'B' ? 12_000 : 4000;
+      const domReadySingle = await waitForParentV9ChromeDomReady(page, pid, tool.id, domBudgetSingle);
+      checks.check(`H-R09 probe (${label}): parent V9 chrome DOM ready after single click`,
+        domReadySingle.ok, JSON.stringify(domReadySingle.detail));
       await assertReactMenuState(checks, `H-R09 CORE (${label}): single click selects + quick menu`, {
         selectedIds: [tool.id],
         toolbarVisible: true,
@@ -380,6 +390,35 @@ async function hR09(ctx) {
         !parent.open && !parent.hasStyleSection,
         `parentOpen=${parent.open} hasStyle=${parent.hasStyleSection}`);
     }
+    return checks;
+  });
+}
+
+// ── H-R09-LR — panel-B live-resolve lag pin (H-R09 contingency proof) ───
+async function hR09Lr(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const pid = 'B';
+    const label = 'panelB';
+
+    const tool = await seedDrawing(page, pid, 'trendline');
+    await disarmDrawTool(page, pid);
+    const click1 = await singleClickDrawing(page, pid, tool.id);
+    checks.check(`H-R09-LR probe (${label}): single click`, click1 && click1.ok, click1?.reason || '');
+    const afterSingle = await waitForReactSelection(page, pid, [tool.id]);
+    await focusReactPanelSoft(page, pid);
+    await waitForPanelSettle(page, pid);
+    const domReadySingle = await waitForParentV9ChromeDomReady(page, pid, tool.id, 12_000);
+    checks.check(`H-R09-LR probe (${label}): parent V9 chrome DOM ready after single click`,
+      domReadySingle.ok, JSON.stringify(domReadySingle.detail));
+    const lag = await readParentQuickBarLagSignature(page, pid, tool.id);
+    checks.check(`H-R09-LR LAG-PIN (${label}): split-brain diagnostic`,
+      true, JSON.stringify(lag));
+    await assertReactMenuState(checks, `H-R09-LR CORE (${label}): single click selects + quick menu`, {
+      selectedIds: [tool.id],
+      toolbarVisible: true,
+    }, afterSingle, page, pid);
     return checks;
   });
 }
@@ -622,6 +661,7 @@ export function reactScenarioList() {
     { id: 'H-R07', title: 'parity row 7: peer isolation on cross-panel select', run: hR07 },
     { id: 'H-R08', title: 'parity row 8: Ctrl+drag marquee (host + panel B)', run: hR08 },
     { id: 'H-R09', title: 'parity row 9: single→double-click chain + Esc (host + panel B)', run: hR09 },
+    { id: 'H-R09-LR', title: 'H-R09 live-resolve lag pin (panel B single-click + parent bar)', run: hR09Lr },
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label sync after refresh (built V9)', run: hS80React },
   ];
 }

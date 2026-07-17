@@ -47,6 +47,7 @@
 | Switch | When OFF (reverts to…) |
 |--------|-------------------------|
 | **`__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1`** | **`broadcastOrder` → `addOrder` register** on peers again; iframe mutable clone store returns. Files: `MultichartGrid.jsx`, `panel-cmd-bridge.js`, `order-host-store.mjs`. |
+| **`__TALARIA_DISABLE_ORDER_MC_READY_PANELS_SNAPSHOT_V1`** | **`readyPanels` effect → per-order `addOrder` prime** (silent fail on B/C when Step 3 ON). Files: `MultichartGrid.jsx`, `order-host-store.mjs`. Requires Step 3 ON for meaningful bisect. |
 
 ---
 

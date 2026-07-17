@@ -16,6 +16,38 @@ function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
 
+/** I16 — build_id + schema_version on persisted order/trade rows — default ON. */
+const ORDER_RECORD_SCHEMA_VERSION = 1;
+
+function _orderPersistStampV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSIST_STAMP_V1;
+}
+
+function _resolvePersistBuildId() {
+    if (typeof window !== 'undefined' && window.__TALARIA_CHART_BUILD_ID != null) {
+        const id = String(window.__TALARIA_CHART_BUILD_ID).trim();
+        if (id) return id;
+    }
+    return null;
+}
+
+function _stampPersistedOrderRecord(record, opts = {}) {
+    if (!record || typeof record !== 'object') return record;
+    if (!_orderPersistStampV1Enabled()) return record;
+    if (opts.onlyIfMissing && record.build_id != null && record.schema_version != null) return record;
+    return {
+        ...record,
+        build_id: opts.buildId !== undefined ? opts.buildId : _resolvePersistBuildId(),
+        schema_version: ORDER_RECORD_SCHEMA_VERSION,
+    };
+}
+
+function _stampPersistedOrderRecords(records, opts = {}) {
+    if (!Array.isArray(records)) return records;
+    if (!_orderPersistStampV1Enabled()) return records;
+    return records.map((row) => _stampPersistedOrderRecord(row, opts));
+}
+
 /** ORD-MULTICHART interims: mirror dedupe + restore orders[] rebuild (default ON). */
 function _orderMcRestoreDedupeV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1;
@@ -4387,8 +4419,8 @@ class OrderManager {
         };
 
         const patch = {
-            pending_orders: safeClone(this.pendingOrders),
-            open_positions: safeClone(this.openPositions),
+            pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
+            open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
             account_runtime,
             order_counters,
         };
@@ -5062,7 +5094,7 @@ class OrderManager {
             entry.orderType = this._resolvePositionOrderType(position);
         }
 
-        return entry;
+        return _stampPersistedOrderRecord(entry);
     }
 
     upsertJournalEntry(journalEntry, options = {}) {
@@ -5075,14 +5107,14 @@ class OrderManager {
             if (skipIfExists) {
                 return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
             }
-            this.tradeJournal[existingIndex] = {
+            this.tradeJournal[existingIndex] = _stampPersistedOrderRecord({
                 ...this.tradeJournal[existingIndex],
                 ...journalEntry
-            };
+            }, { onlyIfMissing: true });
             return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
         }
 
-        this.tradeJournal.push(journalEntry);
+        this.tradeJournal.push(_stampPersistedOrderRecord(journalEntry));
         const index = this.tradeJournal.length - 1;
         return { index, inserted: true, entry: this.tradeJournal[index] };
     }
@@ -5419,8 +5451,8 @@ class OrderManager {
             tradeGroupIdCounter: this.tradeGroupIdCounter,
         };
         return {
-            pending_orders: safeClone(this.pendingOrders),
-            open_positions: safeClone(this.openPositions),
+            pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
+            open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
             account_runtime,
             order_counters,
             savedAt: Date.now(),

@@ -35,6 +35,10 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+    fanOutHostOrderSnapshotToIframes,
+    primeReadyPanelsWithHostOrders,
+} from "../../chart/modules/order-host-store.mjs";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -3868,6 +3872,7 @@ export default function MultichartGrid({
     // but for paused replay (no ticks) B would stay misaligned forever.
     // Sending replayEnter the moment B is ready closes that window.
     const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
+    const hostOrderSnapshotVersionRef = useRef(0);
     useEffect(() => {
         // Defer to next microtask so the manager's `c.ready` flag has
         // been set (onChartReady runs synchronously before this state
@@ -3878,26 +3883,25 @@ export default function MultichartGrid({
 
             // Push host's existing open positions + pending orders to
             // newly-ready panels so order level lines appear immediately.
+            // A6-4 Step 3: route through applyOrderSnapshot fan-out (not
+            // addOrder — iframe addOrder is blocked under snapshot projection).
             try {
                 const ch = (typeof window !== "undefined") ? window.chart : null;
                 const om = ch && ch.orderManager;
                 const grid = window.__multichartGrid;
+                const mgr = managerRef.current;
                 if (om && grid && typeof grid.runCommand === "function") {
-                    const openPositions = Array.isArray(om.openPositions) ? om.openPositions : [];
-                    const pendingOrders = Array.isArray(om.pendingOrders) ? om.pendingOrders : [];
-                    for (const panelId of readyPanels) {
-                        if (panelId === HOST_PANEL_ID) continue;
-                        if (orderSyncedPanelsRef.current.has(panelId)) continue;
-                        orderSyncedPanelsRef.current.add(panelId);
-                        for (const pos of openPositions) {
-                            if (!pos || pos.id == null) continue;
-                            try { grid.runCommand("addOrder", { order: pos, kind: "opened" }, { panelId }).catch(() => {}); } catch (_) {}
-                        }
-                        for (const pend of pendingOrders) {
-                            if (!pend || pend.id == null) continue;
-                            try { grid.runCommand("addOrder", { order: pend, kind: "pending" }, { panelId }).catch(() => {}); } catch (_) {}
-                        }
-                    }
+                    primeReadyPanelsWithHostOrders({
+                        readyPanelIds: readyPanels,
+                        syncedSet: orderSyncedPanelsRef.current,
+                        hostPanelId: HOST_PANEL_ID,
+                        orderManager: om,
+                        grid,
+                        managerCharts: mgr && mgr.charts,
+                        chart: ch,
+                        versionHolder: hostOrderSnapshotVersionRef,
+                        win: typeof window !== "undefined" ? window : {},
+                    });
                 }
             } catch (_) {}
         }, 0);
@@ -6302,8 +6306,6 @@ export default function MultichartGrid({
             };
         }
 
-        let hostOrderSnapshotVersion = 0;
-
         function syncHostOrderPanelFromArgs(args) {
             const doc = document;
             const setVal = (id, v) => {
@@ -6349,26 +6351,18 @@ export default function MultichartGrid({
             };
         }
 
-        function buildSnapshotFromHost() {
-            const ch = window.chart;
-            const om = ch && ch.orderManager;
-            if (!om) return null;
-            hostOrderSnapshotVersion += 1;
-            const sessionId = ch.getActiveTradingSessionId?.() || null;
-            return buildHostOrderStoreSnapshot(om, sessionId, hostOrderSnapshotVersion);
-        }
-
         function fanOutOrderSnapshot(excludePanelId) {
             if (!orderMcSnapshotProjectionV1Enabled()) return;
-            const snap = buildSnapshotFromHost();
-            if (!snap) return;
             const grid = window.__multichartGrid;
             const mgr = managerRef.current;
             if (!grid || !mgr || !mgr.charts) return;
-            for (const c of mgr.charts.values()) {
-                if (!c || !c.ready || c.host || c.id === excludePanelId) continue;
-                grid.runCommand("applyOrderSnapshot", { snapshot: snap }, { panelId: c.id }).catch(() => {});
-            }
+            fanOutHostOrderSnapshotToIframes({
+                excludePanelId,
+                managerCharts: mgr.charts,
+                runCommand: (cmd, args, opts) => grid.runCommand(cmd, args, opts).catch(() => {}),
+                chart: window.chart,
+                versionHolder: hostOrderSnapshotVersionRef,
+            });
         }
 
         function tagLatestHostOrderWithPanel(panelId) {
@@ -6864,7 +6858,11 @@ export default function MultichartGrid({
                     // sync / quick-bar hide) instantly wipes the fresh selection and the
                     // shape never shows selected on B/C/D.
                     if (typeof window !== "undefined") {
-                        window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+                        const guardMs = (typeof window.__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1 === "boolean"
+                            && window.__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1 === true)
+                            ? 400
+                            : 600;
+                        window.__v9DrawingSelectionGuardUntil = performance.now() + guardMs;
                     }
                     if ((multichartOwnershipV2Enabled() || multichartPanelSelectionChromeRoutingV3Enabled())
                         && msg.source != null) {

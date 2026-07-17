@@ -10,13 +10,19 @@ import {
     deserializeRuntimeOrderPatch,
     hasRestorableRuntimeOrders,
     orderPersistenceV1Enabled,
+    orderPersistStampV1Enabled,
+    ORDER_RECORD_SCHEMA_VERSION,
     persistenceBackendForFixEnabled,
+    resolvePersistBuildId,
     runtimeOrderStorageKey,
     serializeRuntimeOrderPatch,
+    stampPersistedOrderRecord,
 } from './order-runtime-persist.mjs';
 
 const ON = {};
 const OFF = { __TALARIA_DISABLE_ORDER_PERSISTENCE_V1: true };
+const STAMP_OFF = { __TALARIA_DISABLE_ORDER_PERSIST_STAMP_V1: true };
+const STAMP_ON = { __TALARIA_CHART_BUILD_ID: '20260717b43' };
 
 let passed = 0;
 let failed = 0;
@@ -30,6 +36,9 @@ function assert(cond, msg) {
 console.log('\n--- switches ---');
 assert(orderPersistenceV1Enabled(ON), 'persistence V1 default ON');
 assert(!orderPersistenceV1Enabled(OFF), 'persistence V1 OFF when disabled');
+assert(orderPersistStampV1Enabled(ON), 'I16 stamp default ON');
+assert(!orderPersistStampV1Enabled(STAMP_OFF), 'I16 stamp OFF when disabled');
+assert(resolvePersistBuildId(STAMP_ON) === '20260717b43', 'resolve build id from scope');
 
 console.log('\n--- serialize roundtrip ---');
 const pending = [{ id: 1, orderType: 'limit', entryPrice: 1.095, stopLoss: 1.09, takeProfit: 1.11, status: 'PENDING' }];
@@ -66,6 +75,19 @@ const dupPatch = buildRuntimeOrderPatch(
     {}, {}
 );
 assert(countDuplicateOrderIds(dupPatch) === 1, 'duplicate id detected');
+
+console.log('\n--- I16 persist stamp (RED-again: STAMP_OFF) ---');
+const unstamped = buildRuntimeOrderPatch(pending, open, {}, {}, { scope: STAMP_OFF });
+assert(!unstamped.pending_orders[0].build_id, 'no build_id when stamp switch OFF');
+assert(!unstamped.open_positions[0].schema_version, 'no schema_version when stamp switch OFF');
+
+const stamped = buildRuntimeOrderPatch(pending, open, {}, {}, { scope: STAMP_ON, buildId: '20260717b43' });
+assert(stamped.pending_orders[0].build_id === '20260717b43', 'pending row stamped with build_id');
+assert(stamped.open_positions[0].schema_version === ORDER_RECORD_SCHEMA_VERSION, 'open row schema_version');
+const legacyRow = { id: 9, entryPrice: 1.2 };
+const merged = stampPersistedOrderRecord(legacyRow, { scope: STAMP_ON, buildId: '20260717b43', onlyIfMissing: true });
+assert(merged.build_id === '20260717b43', 'legacy row gains stamp additively');
+assert(applyRuntimeOrderPatchToStore({ pendingOrders: [], openPositions: [] }, stamped).pendingOrders[0].build_id === '20260717b43', 'restore keeps stamp fields');
 
 console.log(`\n=== ${passed} passed, ${failed} failed ===`);
 if (failed > 0) process.exit(1);

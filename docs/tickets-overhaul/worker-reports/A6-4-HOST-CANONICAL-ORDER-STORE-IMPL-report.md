@@ -44,8 +44,15 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 | Switch | Default | Files |
 |--------|---------|-------|
 | `__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1` | unset = ON | `MultichartGrid.jsx`, `panel-cmd-bridge.js`, `order-host-store.mjs` |
+| `__TALARIA_DISABLE_ORDER_MC_READY_PANELS_SNAPSHOT_V1` | unset = ON (requires Step 3) | `MultichartGrid.jsx`, `order-host-store.mjs` |
 
 **ON:** `broadcastOrder` → `fanOutOrderSnapshot` (`applyOrderSnapshot` cmd); iframe `addOrder` register blocked; read-only projection + redraw.
+
+**Step 3 completion (b38):** `readyPanels` effect no longer calls per-order `addOrder` (silent fail after F5). Newly bridge-ready B/C panels receive `applyOrderSnapshot` via `primeReadyPanelsWithHostOrders` → `fanOutHostOrderSnapshotToIframes`.
+
+**Proof (RED-first):** `order-host-store.test.mjs` — **16/16 PASS**; `__TALARIA_DISABLE_ORDER_MC_READY_PANELS_SNAPSHOT_V1` → RED `addOrder` path; live leg: 2-up, place orders, F5 → iframe order lines visible on B/C (not just host rail count).
+
+**Not landed:** `ORDER_PERSIST_DEDUPE_V1` — only if PO still sees duplicate ids in sessionStorage after this fix.
 
 ---
 
@@ -89,9 +96,9 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 | Store-level property (one feed / lifecycle) | **GREEN (node)** |
 | Panel-B lockout leg (same RED set) | **NEEDS-LIVE** |
 | Full gate + D-026 H-R04/H-R05 re-run vs b16 | **NOT RUN** (touches re-migration files — required before ship) |
-| SHIP-GATE owning-panel-price RED | **GREEN (node)** — blocks ship until live confirm |
+| ORD-DUP F5 iframe order lines (ready-panels prime) | **GREEN (node)** — `order-host-store.test.mjs`; **NEEDS-LIVE** (2-up F5 B/C lines) |
 
-**Also run:** `order-interaction-guard.test.mjs` — **36/36 PASS**
+**Also run:** `order-interaction-guard.test.mjs` — **36/36 PASS**; `order-host-store.test.mjs` — **16/16 PASS**
 
 ---
 
@@ -99,7 +106,8 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 
 | Item | Value |
 |------|-------|
-| Build id | **`20260717b37`** |
+| Build id | **`20260717b38`** (Lane 4 gate / PO live-confirm candidate) |
+| Prior | `20260717b37` (Steps 0–6 initial land) |
 | I8 | `order-manager.js`, `panel-cmd-bridge.js`, new `.mjs` helpers mirrored |
 
 ---
@@ -112,6 +120,7 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 | `470e0f88` | Steps 1–6 (MultichartGrid, panel-cmd-bridge, order-host-store.mjs) |
 | `950aa486` | dist **`20260717b37`** rebuild |
 | `bea25959` | Diagnostic + this report |
+| *(pending)* | Step 3 ready-panels fan-out + dist **`20260717b38`** |
 
 ---
 
@@ -121,7 +130,7 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 2. Place on panel B with A6-4 ON — host store row + iframe projection lines only.
 3. SL drag on B — host store updates; tile A matches after release.
 4. Dual replay — trades rail PnL moves for both tickers (PnL hub).
-5. F5 — single host restore; no dup rows (persist + snapshot).
+5. F5 — single host restore; no dup rows (persist + snapshot); **iframe order level lines on B/C** (ready-panels snapshot prime).
 6. Bisect each `__TALARIA_DISABLE_ORDER_MC_*` + stopgap switch per step table.
 
-**D-026:** Re-run H-R04/H-R05 10/10 ON on this build before bless/ship.
+**Lane 4 handoff:** Build **`20260717b38`** — D-026 H-R04/H-R05 re-run + PO live-confirm (panel-B lockout, ORD-DUP F5 legs, cross-ticker RED).

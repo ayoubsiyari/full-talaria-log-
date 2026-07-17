@@ -3967,13 +3967,106 @@ function v9AnyPanelHasPrimarySelection() {
   return false;
 }
 
-function v9RememberQuickBarSelection(dm, drawing) {
+function v9RememberQuickBarSelection(dm, drawing, panelIdHint) {
   if (!v9MultichartGridApi() || !drawing || !drawing.type) return;
+  let panelId = panelIdHint != null ? String(panelIdHint) : null;
+  if (!panelId) {
+    try {
+      const grid = v9MultichartGridApi();
+      if (grid && typeof grid.getFocusedPanelId === "function") {
+        panelId = grid.getFocusedPanelId() != null ? String(grid.getFocusedPanelId()) : null;
+      }
+    } catch (_) {}
+  }
   v9QuickBarSelectionAnchorRef.current = {
     drawingId: drawing.id != null ? drawing.id : null,
     type: drawing.type,
+    panelId,
     dm: dm || null,
   };
+}
+
+/** H-R09 contingency: anchor from postMessage when focused-panel DM lags iframe store. */
+function v9RememberQuickBarSelectionFromPostMessage(detail) {
+  if (!v9MultichartGridApi() || !detail || !detail.drawingType) return;
+  let dm = null;
+  try {
+    const grid = v9MultichartGridApi();
+    const pid = detail.panelId != null ? String(detail.panelId) : null;
+    if (grid && pid && typeof grid.getChartForPanel === "function" && detail.drawingId != null) {
+      const ch = grid.getChartForPanel(pid);
+      dm = (ch && ch.drawingManager) || null;
+    }
+  } catch (_) {}
+  v9QuickBarSelectionAnchorRef.current = {
+    drawingId: detail.drawingId != null ? detail.drawingId : null,
+    type: detail.drawingType,
+    panelId: detail.panelId != null ? String(detail.panelId) : null,
+    dm: dm || null,
+  };
+}
+
+function v9RetryHydrateQuickBarLiveFromAnchor(br, detail) {
+  if (!v9QuickbarLiveResolveV1Enabled() || !br) return;
+  let attempts = 0;
+  const maxAttempts = 60;
+  const step = () => {
+    attempts += 1;
+    const hydrated = v9ResolveLiveDrawingFromQuickBarAnchor();
+    if (hydrated) {
+      const dm = resolveDrawingManagerForDrawing(hydrated);
+      if (dm) v9RememberQuickBarSelection(dm, hydrated, detail && detail.panelId);
+      try {
+        if (multichartChromeDomReadyV4Enabled()) {
+          const pid = detail && detail.panelId != null ? String(detail.panelId) : null;
+          v9EmitQuickBarChromeDomReady(hydrated, pid);
+        }
+      } catch (_) {}
+      return;
+    }
+    if (attempts < maxAttempts) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  [50, 150, 300, 600].forEach((ms) => {
+    setTimeout(() => {
+      try {
+        if (!v9GetLiveSelectedDrawingForQuickBar()) {
+          v9ArmQuickBarFromPostMessageDetail(detail);
+        }
+      } catch (_) {}
+    }, ms);
+  });
+}
+
+/** H-R09 contingency: arm parent quick bar from iframe postMessage ids (shared by onV9Sel + message backup). */
+function v9ArmQuickBarFromPostMessageDetail(detail) {
+  if (!v9QuickbarLiveResolveV1Enabled() || !detail || !detail.drawingType) return null;
+  const t = detail.drawingType;
+  const srcPanel = detail.panelId != null ? String(detail.panelId) : null;
+  const wantId = detail.drawingId != null ? detail.drawingId : null;
+  const grid = v9MultichartGridApi();
+  if (!grid || !srcPanel || wantId == null) return null;
+  v9RememberQuickBarSelectionFromPostMessage(detail);
+  try {
+    if (typeof grid.focusPanelById === "function") grid.focusPanelById(srcPanel);
+  } catch (_) {}
+  const br = v9ToolbarBridgeActRef.current;
+  if (br) {
+    br.setTlBarSelected(true);
+    br.setTlBarSelectedType(t);
+  }
+  let live = null;
+  try {
+    if (typeof grid.getChartForPanel === "function") {
+      const ch = grid.getChartForPanel(srcPanel);
+      const pdm = ch && ch.drawingManager;
+      const forced = pdm && resolveLiveDrawingInDmById(pdm, wantId);
+      if (forced && forced.type === t) live = forced;
+    }
+  } catch (_) {}
+  if (!live) live = v9ResolveLiveDrawingFromQuickBarAnchor();
+  if (br) v9RetryHydrateQuickBarLiveFromAnchor(br, detail);
+  return live;
 }
 
 function v9ClearQuickBarSelectionAnchor() {
@@ -3985,6 +4078,26 @@ function v9ResolveLiveDrawingFromQuickBarAnchor() {
   try {
     const anchor = v9QuickBarSelectionAnchorRef.current;
     if (!anchor) return null;
+    if (v9QuickbarLiveResolveV1Enabled() && anchor.panelId && anchor.drawingId != null) {
+      const grid = v9MultichartGridApi();
+      if (grid && typeof grid.getChartForPanel === "function") {
+        const ch = grid.getChartForPanel(anchor.panelId);
+        const pdm = ch && ch.drawingManager;
+        if (pdm) {
+          const onOwner = resolveLiveDrawingInDmById(pdm, anchor.drawingId);
+          if (onOwner) {
+            const typeOk = !anchor.type || onOwner.type === anchor.type;
+            if (typeOk && (
+              onOwner.selected
+              || v9DrawingIsPrimarySelection(pdm, onOwner)
+              || (v9IsDrawingSelectionGuardActive() && typeOk)
+            )) {
+              return onOwner;
+            }
+          }
+        }
+      }
+    }
     const focusDm = v9GetFocusedPanelDrawingManager();
     if (anchor.dm && Array.isArray(anchor.dm.drawings)) {
       const onOwner =
@@ -4019,6 +4132,20 @@ function v9GetLiveSelectedDrawingForQuickBar() {
       if (onFocus) return onFocus;
       const anchored = v9ResolveLiveDrawingFromQuickBarAnchor();
       if (anchored) return anchored;
+      if (v9QuickbarLiveResolveV1Enabled() && v9IsDrawingSelectionGuardActive()) {
+        const anchor = v9QuickBarSelectionAnchorRef.current;
+        if (anchor?.panelId && anchor.drawingId != null) {
+          const grid = v9MultichartGridApi();
+          if (grid && typeof grid.getChartForPanel === "function") {
+            const ch = grid.getChartForPanel(anchor.panelId);
+            const pdm = ch && ch.drawingManager;
+            const hit = pdm && resolveLiveDrawingInDmById(pdm, anchor.drawingId);
+            if (hit && (!anchor.type || hit.type === anchor.type)
+              && (hit.selected || v9DrawingIsPrimarySelection(pdm, hit) || v9IsDrawingSelectionGuardActive()
+                || v9QuickbarLiveResolveV1Enabled())) return hit;
+          }
+        }
+      }
       const hostDm = typeof window !== "undefined" && window.chart ? window.chart.drawingManager : null;
       if (hostDm) {
         const onHost = v9ResolveSelectedDrawingOnDm(hostDm);
@@ -5073,6 +5200,16 @@ function v9QuickBarPanelSettingsFixEnabled() {
 function multichartChromeDomReadyV4Enabled() {
   try {
     return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4);
+  } catch (_) {
+    return true;
+  }
+}
+
+/** H-R09 contingency: trust postMessage ids when focused-panel DM lags iframe store. Default ON when landed. */
+function v9QuickbarLiveResolveV1Enabled() {
+  try {
+    return !(typeof window !== "undefined"
+      && window.__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1 === true);
   } catch (_) {
     return true;
   }
@@ -21365,7 +21502,37 @@ const TalariaV8bLive = () => {
     const sync = () => {
       if (v9IsDrawingSelectionGuardActive()) return;
       if (!v9GetLiveSelectedDrawingForQuickBar()) {
-        if (v9MultichartGridApi() && v9AnyPanelHasPrimarySelection()) return;
+        if (v9QuickbarLiveResolveV1Enabled() && v9MultichartGridApi()) {
+          try {
+            const grid = v9MultichartGridApi();
+            const fid = grid && typeof grid.getFocusedPanelId === "function"
+              ? String(grid.getFocusedPanelId() || "")
+              : "";
+            if (fid && fid !== "A" && typeof grid.getChartForPanel === "function") {
+              const ch = grid.getChartForPanel(fid);
+              const pdm = ch && ch.drawingManager;
+              const sel = pdm && v9ResolveSelectedDrawingOnDm(pdm);
+              if (sel && sel.type) {
+                v9ArmQuickBarFromPostMessageDetail({
+                  drawingType: sel.type,
+                  drawingId: sel.id != null ? sel.id : null,
+                  panelId: fid,
+                });
+                if (v9GetLiveSelectedDrawingForQuickBar()) return;
+              }
+            }
+          } catch (_) {}
+        }
+        if (v9MultichartGridApi() && v9AnyPanelHasPrimarySelection()) {
+          if (v9QuickbarLiveResolveV1Enabled()) {
+            const anchor = v9QuickBarSelectionAnchorRef.current;
+            if (anchor?.drawingId != null) {
+              const hydrated = v9ResolveLiveDrawingFromQuickBarAnchor();
+              if (hydrated) return;
+            }
+          }
+          return;
+        }
         v9ClearQuickBarSelectionAnchor();
         setTlBarSelected(false);
         setTlBarSelectedType(null);
@@ -21413,6 +21580,14 @@ const TalariaV8bLive = () => {
     tryEmit();
     return () => { cancelled = true; };
   }, [tlBarSelected, tlBarSelectedType, chartPrimarySelectedDrawingType]);
+
+  // H-R09 contingency: invalidate stale dom-ready when bar armed but not rendering (split-brain).
+  useLayoutEffect(() => {
+    if (!multichartChromeDomReadyV4Enabled() || !v9QuickbarLiveResolveV1Enabled()) return;
+    if (tlBarSelected && !tlBarShowQuickBar) {
+      v9ClearQuickBarDomReady();
+    }
+  }, [tlBarSelected, tlBarShowQuickBar, tlBarSelectedType, chartPrimarySelectedDrawingType]);
 
   // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
   // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
@@ -21476,8 +21651,11 @@ const TalariaV8bLive = () => {
             }
           }
         } catch (_) {}
+        if (!live && v9QuickbarLiveResolveV1Enabled()) {
+          live = v9ArmQuickBarFromPostMessageDetail(detail);
+        }
         if (!live) return;
-        v9RememberQuickBarSelection(resolveDrawingManagerForDrawing(live), live);
+        v9RememberQuickBarSelection(resolveDrawingManagerForDrawing(live), live, detail.panelId);
         try {
           const pid = detail.panelId;
           const grid = v9MultichartGridApi();
@@ -21704,6 +21882,24 @@ const TalariaV8bLive = () => {
     };
     window.addEventListener("talaria:v9-selected-drawing", onV9Sel);
     return () => window.removeEventListener("talaria:v9-selected-drawing", onV9Sel);
+  }, []);
+
+  // H-R09 contingency backup: arm from raw iframe postMessage if CustomEvent path lags.
+  useEffect(() => {
+    if (!v9QuickbarLiveResolveV1Enabled()) return;
+    const onMsg = (ev) => {
+      try {
+        const msg = ev && ev.data;
+        if (!msg || msg.type !== "multichart-drawing-selected" || !msg.drawingType) return;
+        v9ArmQuickBarFromPostMessageDetail({
+          drawingType: msg.drawingType,
+          drawingId: msg.drawingId != null ? msg.drawingId : null,
+          panelId: msg.source != null ? String(msg.source) : null,
+        });
+      } catch (_) {}
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────

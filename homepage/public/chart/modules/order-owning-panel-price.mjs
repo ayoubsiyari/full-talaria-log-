@@ -175,3 +175,9 @@ export function orderMcLegacyIframeOrderV1Enabled(win = {}) {
     if (!orderMcStateConvergeFixEnabled(win)) return false;
     return !win.__TALARIA_DISABLE_ORDER_MC_LEGACY_IFRAME_ORDER_V1;
 }
+
+/** A6-4 Step 3 completion — ready-panels prime via snapshot fan-out (not addOrder). */
+export function orderMcReadyPanelsSnapshotV1Enabled(win = {}) {
+    if (!orderMcSnapshotProjectionV1Enabled(win)) return false;
+    return !win.__TALARIA_DISABLE_ORDER_MC_READY_PANELS_SNAPSHOT_V1;
+}

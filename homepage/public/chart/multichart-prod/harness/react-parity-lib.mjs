@@ -419,6 +419,44 @@ export async function readParentV9BarVisible(page, panelId) {
   return !!(v9 && v9.v9Visible);
 }
 
+/** H-R09-LR lag signature: store selected + focus ok + parent bar absent (split-brain). */
+export async function readParentQuickBarLagSignature(page, panelId, drawId) {
+  const storeSelected = await isDrawingSelected(page, panelId, drawId);
+  const parent = await page.evaluate((pid, id) => {
+    let focusedOk = false;
+    try {
+      const grid = window.__multichartGrid;
+      const focused = grid && typeof grid.getFocusedPanelId === 'function'
+        ? String(grid.getFocusedPanelId() || '')
+        : '';
+      focusedOk = focused === String(pid);
+    } catch (_) { /* ignore */ }
+    const gear = document.querySelector('[data-v9-tl-btn="tl-sett"], #tl-sett');
+    const bar = document.querySelector('[data-tlbar="1"], #v9-tl-bar');
+    const gr = gear && gear.getBoundingClientRect();
+    const br = bar && bar.getBoundingClientRect();
+    const barVisible = !!((gr && gr.width > 0 && gr.height > 0) || (br && br.width > 0 && br.height > 0));
+    const cached = window.__talariaV9QuickBarDomReady || null;
+    return {
+      focusedOk,
+      barVisible,
+      liveNull: !cached || cached.domReady !== true || String(cached.drawingId) !== String(id),
+      domReadyCached: !!(cached && cached.domReady),
+      anchorId: cached && cached.drawingId != null ? String(cached.drawingId) : null,
+    };
+  }, panelId, drawId);
+  const lagClass = !!(storeSelected && parent.focusedOk && !parent.barVisible);
+  return {
+    lagClass,
+    storeSelected,
+    focusedOk: parent.focusedOk,
+    barVisible: parent.barVisible,
+    liveNull: parent.liveNull,
+    domReadyCached: parent.domReadyCached,
+    anchorId: parent.anchorId,
+  };
+}
+
 /**
  * Seed harness backtest session + optional I13 switches before chart boots.
  * migrationOn=true (D-011 step 0): re-enable retained T1 migration in panel + parent shell.
@@ -438,6 +476,8 @@ export async function installBuiltProductBoot(page, {
   chromeDomReadyOff = false,
   panelBSettingsTransportOff = false,
   panelBSettingsTransportAOff = false,
+  orderMcStateConvergeOff = false,
+  v9QuickbarLiveResolveOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -453,7 +493,9 @@ export async function installBuiltProductBoot(page, {
   const cdroff = chromeDomReadyOff || process.env.REACT_PARITY_CHROME_DOM_READY_OFF === '1';
   const pbstOff = panelBSettingsTransportOff || process.env.REACT_PARITY_PANELB_SETTINGS_TRANSPORT_OFF === '1';
   const pbstAOff = panelBSettingsTransportAOff || process.env.REACT_PARITY_PANELB_SETTINGS_TRANSPORT_A_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn) => {
+  const omscOff = orderMcStateConvergeOff || process.env.REACT_PARITY_ORDER_MC_STATE_CONVERGE_OFF === '1';
+  const v9qlrOff = v9QuickbarLiveResolveOff || process.env.REACT_PARITY_V9_QUICKBAR_LIVE_RESOLVE_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -466,6 +508,8 @@ export async function installBuiltProductBoot(page, {
     if (chromeDomReadyOffOn) window.__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4 = true;
     if (panelBTransportOffOn) window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_V1 = true;
     if (panelBTransportAOffOn) window.__TALARIA_DISABLE_MULTICHART_PANELB_SETTINGS_TRANSPORT_A_V1 = true;
+    if (orderMcStateConvergeOffOn) window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX = true;
+    if (v9QuickbarLiveResolveOffOn) window.__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -478,7 +522,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -1250,6 +1294,8 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     chromeDomReadyOff: !!opts.chromeDomReadyOff,
     panelBSettingsTransportOff: !!opts.panelBSettingsTransportOff,
     panelBSettingsTransportAOff: !!opts.panelBSettingsTransportAOff,
+    orderMcStateConvergeOff: !!opts.orderMcStateConvergeOff,
+    v9QuickbarLiveResolveOff: !!opts.v9QuickbarLiveResolveOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
