@@ -2,7 +2,34 @@
 
 ---
 
-## D-029 — ESC-025: R2 axis-crush fix HELD off the bless build; authorized as item #1 of the post-bless `chart.js` batch (option 1, sequenced immediately post-bless); dev-only-clamp parity sweep ordered
+## D-030 — ESC-026: Option 1 GRANTED with the stopgap rider — A6-4 host-canonical order store is the #1 post-bless engineering item; wrong-panel price marking is data-integrity class; multichart-order ship-gate imposed
+
+**Date:** 2026-07-17
+**Escalation:** ESC-026
+**Track:** T4/A6-4 (RC-5) × multichart (RC-4 surfaces)
+**RC:** RC-5 (per-panel order-clone model — the exact defect A6-4 was ratified to remove)
+
+### Severity framing
+
+Wrong money numbers are the worst defect class this program has seen — worse than freezes or crushes, because the user may not notice. A frozen chart announces itself; a GBP/USD order silently closed at a EUR/USD price produces a −587k PnL a trader might believe, or worse, a *plausible* wrong number they'd never question. Everything else in the post-bless queue yields to this.
+
+### Rulings
+
+**1. Option 1 GRANTED, with the Manager's own stopgap rider adopted:** if Lane 3's in-flight diagnostic shows the price-source is cleanly isolatable (the mark/close evaluation reads a shared/host feed instead of the owning panel's), land that narrow gated fix **first** to stop the bleeding, then complete A6-4. The stopgap is a bridge, not a destination: own kill-switch, and A6-4's landing explicitly retires it (no orphaned guard left behind — the plan-1 lesson). If the diagnostic shows the source is NOT cleanly isolatable, skip the stopgap — no half-guard on money paths.
+
+**2. A6-4 is the #1 post-bless engineering item, full stop.** Sequencing reconciliation with D-029: the axis clamp remains item #1 of the **`chart.js`-core batch** specifically; A6-4 runs on a **disjoint file set** (`MultichartGrid.jsx` + `panel-cmd-bridge.js` + order modules) so both proceed in parallel lanes without collision. Where lane capacity forces a choice, **A6-4 wins** — data integrity outranks axis polish. One-phase-per-PR on `MultichartGrid.jsx` still binds (D-022); the 6-step migration in `A6-4-HOST-CANONICAL-ORDER-STORE-DESIGN.md` lands step-gated, each step kill-switched, per the ratified design.
+
+**3. Proof bar:**
+- **RED-first in multichart topology, cross-ticker:** two panels, different symbols, order on each → assert every mark/close price lies within the owning symbol's price range, and PnL recomputes from the owning feed. RED on today's clone model, GREEN under A6-4 (or the stopgap), switch-OFF RED as discriminator of record from birth.
+- **Property test at the store level:** an order's entire lifecycle (mark, hit-test, close, PnL) consumes prices from exactly one symbol feed — its owner's. Random multi-panel/multi-order sequences.
+- **Because A6-4 touches re-migration files:** full gate + re-run of the D-026/interaction proof rows on the A6-4 build. The blessed b16 baseline is the reference.
+- The PO's "panel-B add/interaction intermittent" leg rides the same RED set (it is the lockout mechanism from §4.2 of the progress report — same root, same fix family).
+
+**4. Ship-gate IMPOSED as requested:** no further multichart-order build ships until the "order marks its own panel's price" RED is green. This gate binds the stopgap build too — the stopgap ships only carrying its own green RED.
+
+**5. Data-hygiene note for the PO (action outside the codebase):** PnL/journal records produced in multichart sessions on affected builds are suspect — any trade whose exit price is out-of-range for its symbol is corrupted evidence of this bug, not a real result. The Manager should give the PO a one-line SQL/filter heuristic (exit price outside the symbol's plausible range) so testers' recorded numbers don't contaminate later acceptance judgments.
+
+**6. In-flight work acknowledged, no ruling needed:** Lane 3's cross-ticker price-source diagnostic + GBP/EUR repro and Lane 2's replay step-forward/cadence diagnostic proceed as reported; the diagnostic's output decides the stopgap branch per ruling 1. — ESC-025: R2 axis-crush fix HELD off the bless build; authorized as item #1 of the post-bless `chart.js` batch (option 1, sequenced immediately post-bless); dev-only-clamp parity sweep ordered
 
 **Date:** 2026-07-17
 **Escalation:** ESC-025

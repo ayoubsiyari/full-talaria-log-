@@ -990,7 +990,7 @@ Two separate anchored-VP defects surfaced on PO live test:
 ## ESC-026 — Multichart orders mark/close at the WRONG panel's price → data-integrity PnL corruption; authorize immediate fix (pull A6-4 forward now that b16 is blessed)
 
 **Filed:** 2026-07-17 (Manager)
-**Status:** OPEN — awaiting Director ruling
+**Status:** RESOLVED — **D-030** (2026-07-17): **Option 1 GRANTED with the stopgap rider** — if Lane 3's diagnostic shows the price-source is cleanly isolatable, the narrow gated stopgap lands first (bridge only; A6-4 retires it — no orphaned guard); if not cleanly isolatable, no half-guard on money paths. **A6-4 = #1 post-bless engineering item** (outranks the D-029 clamp where capacity forces a choice; disjoint files, parallel otherwise; one-phase-per-PR on MultichartGrid binds; 6-step design lands step-gated). Proof bar: cross-ticker RED (every mark/close within owning symbol's range) + store-level property test (one order = one symbol feed) + full gate + D-026 proof-row re-run (touches re-migration files). **Ship-gate imposed:** no multichart-order build ships until the owning-panel-price RED is green — binds the stopgap too. PO data-hygiene note: multichart-session PnL records on affected builds are suspect; Manager supplies an out-of-range exit-price filter heuristic.
 **Class:** data-integrity defect (wrong money numbers) + scheduling decision (A6-4 was deferred until post-re-migration; re-migration is now BLESSED on `20260717b16`)
 
 ### Context / PO evidence (build 20260717b16)

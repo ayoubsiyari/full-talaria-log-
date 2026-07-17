@@ -151,5 +151,5 @@ TAL-01563,ticket,T8,Layouts,IN-TRACK,
 TAL-01562,ticket,T8,Layouts,IN-TRACK,
 TAL-01561,ticket,perf-backlog,Layouts,IN-TRACK,
 TAL-01560,ticket,T8,Layouts,IN-TRACK,
-ORD-XPNL,engineering,order,Multichart order marks/closes at peer panel price -> garbage PnL (GBP closed at EUR 1.31315),IN-TRACK,PO b16 image evidence; Lane 3 cross-ticker diagnostic dispatched; ties A6-4
+ORD-XPNL,engineering,order,Multichart order marks/closes at peer panel price -> garbage PnL (GBP closed at EUR 1.31315),IN-TRACK,D-030 A6-4 IMPLEMENTED dev-only b37 (stopgap+6 steps; owning-panel-price RED 20/20 GREEN + store property GREEN); ship-gate OPEN: full gate + D-026 H-R04/H-R05 re-run NOT RUN (Lane 4) then PO live-confirm
 MC-STEPFWD,engineering,replay,Multichart step-forward does not advance like PLAY (mixed TF/ticker),IN-TRACK,PO b16; Lane 2 cadence diagnostic addendum
