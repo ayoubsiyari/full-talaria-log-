@@ -3109,6 +3109,22 @@ class ReplaySystem {
     }
 
     /**
+     * Whether updateChartData should sync the viewport to the playhead.
+     * Must NOT require currentIndex to change — finest-TF / sub-bar advances often
+     * keep the same raw index while replayTimestamp (and the time axis) move, which
+     * previously left candles visually frozen while the axis kept scrolling.
+     */
+    _shouldAutoScrollChartUpdate(prevIndex = null) {
+        if (!this.autoScrollEnabled || this.userHasPanned || this._viewportLockForPlayback) {
+            return false;
+        }
+        if (this._timeframeChanging) return false;
+        if (this.isPlaying) return true;
+        if (prevIndex == null) return true;
+        return prevIndex !== this.currentIndex;
+    }
+
+    /**
      * Snapshot the current viewport when starting playback so Play never snaps back
      * to follow mode after the user panned/zoomed away.
      */
@@ -3473,9 +3489,11 @@ class ReplaySystem {
             }
         }
         
-        // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
+        // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned).
+        // While playing, always force recenter when follow is engaged — finest-TF steps can
+        // advance replayTimestamp without a big index jump, and drift must not freeze the chart.
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
-            && !this._timeframeChanging) {
+            && !this._timeframeChanging && !this.userHasPanned) {
             if (!this.isPlaying && this.chart._tfSwitchAnchorLock
                 && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
                 this.chart._reapplyTfSwitchAnchorLock();
@@ -3483,7 +3501,7 @@ class ReplaySystem {
                 this.syncReplayViewportToPlayhead(this.chart, {
                     resetPriceScale: false,
                     render: false,
-                    forceRecenter: this.isPlaying && !this.userHasPanned,
+                    forceRecenter: !!(this.isPlaying || autoScroll),
                 });
             }
         }
@@ -3829,6 +3847,8 @@ class ReplaySystem {
         }
 
         // TF-switch anchor lock is pause-only — release follow mode on Play.
+        // Also clear a stale viewport lock left from a prior play so the time axis
+        // cannot march while candles stay pinned (follow engaged on Play).
         if (!this.userHasPanned) {
             if (typeof this.chart._clearTfSwitchAnchorLock === 'function') {
                 this.chart._clearTfSwitchAnchorLock();
@@ -3843,6 +3863,9 @@ class ReplaySystem {
                     forceRecenter: true,
                 });
             }
+        } else if (this._viewportLockForPlayback && this.autoScrollEnabled) {
+            // Inconsistent lock vs follow flags — prefer follow while playing.
+            this._viewportLockForPlayback = null;
         }
 
         this._capturePlaybackViewportLock();
@@ -4151,7 +4174,7 @@ class ReplaySystem {
             }
             this.edgeProbeRetryCount = 0;
             this._replayForwardEdgeWait = false;
-            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
+            this.updateChartData(this._shouldAutoScrollChartUpdate(prevIdx));
             return;
         }
         // D-016 candle V1: finest sub-step BEFORE coarse legacy / interval bucket.
@@ -4168,7 +4191,7 @@ class ReplaySystem {
             }
             const oldIdxFinest = this.currentIndex;
             this._advanceReplayPlayheadOneStep();
-            this.updateChartData(this.autoScrollEnabled && oldIdxFinest !== this.currentIndex);
+            this.updateChartData(this._shouldAutoScrollChartUpdate(oldIdxFinest));
             return;
         }
         if (this._advanceCoarseLegacyCandleBucket()) {
@@ -4205,7 +4228,7 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
         }
 
-        this.updateChartData(this.autoScrollEnabled && oldIndex !== this.currentIndex);
+        this.updateChartData(this._shouldAutoScrollChartUpdate(oldIndex));
     }
     
     /** Milliseconds between consecutive rows in fullRawData (replay master). */
@@ -5795,7 +5818,7 @@ class ReplaySystem {
                 if (this.tryRequestForwardDataProbe()) return;
                 return;
             }
-            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
+            this.updateChartData(this._shouldAutoScrollChartUpdate(prevIdx));
             this._syncMultichartAfterManualStep();
             return;
         }
@@ -5810,7 +5833,7 @@ class ReplaySystem {
         if (this._shouldUseFinestTfSubStepIndexAdvance()) {
             const prevIdx = this.currentIndex;
             this._advanceReplayPlayheadOneStep();
-            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
+            this.updateChartData(this._shouldAutoScrollChartUpdate(prevIdx));
             this._syncMultichartAfterManualStep();
             return;
         }

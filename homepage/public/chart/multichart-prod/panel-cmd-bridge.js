@@ -2000,11 +2000,10 @@
                     if (Number.isFinite(applied)
                         && Math.round(target * dpr) === Math.round(applied * dpr)) {
                         // Same device-pixel column as the last applied eased offset →
-                        // SUB-PIXEL/stationary advance. Re-pin the viewport to the
-                        // applied offset (a seek may have nudged it) WITHOUT repainting,
-                        // so the coalesced frame stays exactly where the last paint left
-                        // it — then skip the render (guard still coalesces → ZERO cost).
-                        ch.offsetX = applied;
+                        // SUB-PIXEL/stationary advance. Keep offsetX tracking the eased
+                        // target (not the stale applied pin) so the next paint/seek does
+                        // not jump, but skip a full recenter+render this frame.
+                        ch.offsetX = target;
                         return;
                     }
                     easedOffsetX = target;
