@@ -415,19 +415,27 @@
                 }, this);
             }
 
+            var plotL = m.l;
+            var plotR = this.w - m.r;
+            var plotTop = m.t;
+            var plotBottom = this.h - m.b;
+
             if (data.lines && data.lines.length) {
                 data.lines.forEach(function (ln) {
-                    if (ln.endIndex < startIndex || ln.startIndex > endIndex) return;
-                    var x1 = this.dataIndexToPixel(Math.max(ln.startIndex, startIndex));
-                    var x2 = this.dataIndexToPixel(Math.min(ln.endIndex, endIndex));
+                    if (ln.startIndex > endIndex) return;
                     var y = this.yScale(ln.price);
+                    if (y < plotTop - 2 || y > plotBottom + 2) return;
+                    var x1 = this.dataIndexToPixel(Math.max(ln.startIndex, startIndex));
+                    // Current-session levels run to the right edge (like TradingView).
+                    var x2 = (ln.endIndex >= n - 1) ? plotR : this.dataIndexToPixel(Math.min(ln.endIndex, endIndex));
+                    if (x2 < plotL || x1 > plotR) return;
                     ctx.save();
                     ctx.strokeStyle = ln.color || '#ffffff';
                     ctx.lineWidth = ln.width || 1;
                     ctx.setLineDash(lineDash(ln.style));
                     ctx.beginPath();
-                    ctx.moveTo(Math.max(x1, m.l), y);
-                    ctx.lineTo(Math.min(x2, this.w - m.r), y);
+                    ctx.moveTo(Math.max(x1, plotL), y);
+                    ctx.lineTo(Math.min(x2, plotR), y);
                     ctx.stroke();
                     ctx.restore();
                 }, this);
@@ -435,16 +443,33 @@
 
             if (data.labels && data.labels.length) {
                 var fontSize = 11;
-                ctx.font = '500 ' + fontSize + 'px Roboto, system-ui, sans-serif';
+                ctx.font = '600 ' + fontSize + 'px Roboto, system-ui, sans-serif';
+                ctx.textBaseline = 'middle';
+                ctx.textAlign = 'left';
+                // Right-align each label just inside the price axis at its exact
+                // level; stagger horizontally (in columns) when levels stack.
+                var placed = [];
                 data.labels.forEach(function (lb) {
-                    if (lb.index < startIndex || lb.index > endIndex) return;
-                    var x = this.dataIndexToPixel(lb.index);
                     var y = this.yScale(lb.price);
-                    ctx.fillStyle = lb.color || '#ffffff';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(lb.text, x + 4, y);
+                    if (y < plotTop + 1 || y > plotBottom - 1) return;
+                    placed.push({ text: lb.text, color: lb.color, y: y });
                 }, this);
+                placed.sort(function (a, b) { return a.y - b.y; });
+                var lastY = -Infinity;
+                var col = 0;
+                var colGap = 96;
+                for (var li = 0; li < placed.length; li++) {
+                    var it = placed[li];
+                    if (it.y - lastY < fontSize + 2) col += 1;
+                    else col = 0;
+                    lastY = it.y;
+                    var tw = ctx.measureText(it.text).width;
+                    var rightEdge = plotR - 4 - col * colGap;
+                    var x = rightEdge - tw;
+                    if (x < plotL + 2) x = plotL + 2;
+                    ctx.fillStyle = it.color || '#ffffff';
+                    ctx.fillText(it.text, x, it.y);
+                }
             }
 
             if (data.infoCells && data.infoCells.length && typeof this._drawTalariaRatioInfoCells === 'function') {
