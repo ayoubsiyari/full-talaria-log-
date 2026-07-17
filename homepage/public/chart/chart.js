@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260717b62';
+const CHART_ENGINE_BUILD = '20260717b63';
 
 /**
  * TradingView-style nice wall-clock steps (ms). Prefer values that divide a day
@@ -25541,12 +25541,24 @@ class Chart {
             ? 1
             : Math.max(1, labelStep);
         const anchor = this.data && this.data.length ? (this.data.length - 1) : 0;
+        // Clock-aligned majors are often NOT congruent to the last-bar index.
+        // Edge-extend labels must use a labeled tick's phase or new bars stay blank
+        // until mouse-up rebuilds the idle axis. Kill-switch:
+        // window.__TALARIA_DISABLE_PAN_TIME_LABEL_PHASE_V1 = true  → legacy anchor phase
+        let labelPhaseIdx = labeled.length ? labeled[0].idx : anchor;
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_PAN_TIME_LABEL_PHASE_V1 === true) {
+                labelPhaseIdx = anchor;
+            }
+        } catch (_) { /* ignore */ }
         this._panTimeTickCache = {
             baseOffsetX: this.offsetX,
             ticks,
             step,
             labelStep: Math.max(1, labelStep),
             anchor,
+            labelPhaseIdx,
             maxZoomGrid: !!this._isMaxZoomPerCandleGrid(),
         };
         return ticks;
@@ -25574,6 +25586,13 @@ class Chart {
         const labelStep = Math.max(step, Math.floor(cache.labelStep || step));
         const anchor = Number.isFinite(cache.anchor) ? cache.anchor
             : (this.data && this.data.length ? this.data.length - 1 : 0);
+        let labelPhaseIdx = Number.isFinite(cache.labelPhaseIdx) ? cache.labelPhaseIdx : anchor;
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_PAN_TIME_LABEL_PHASE_V1 === true) {
+                labelPhaseIdx = anchor;
+            }
+        } catch (_) { /* ignore */ }
         const minLabelPx = 56;
 
         let mapped = cache.ticks.map((t) => {
@@ -25587,17 +25606,24 @@ class Chart {
         const toPixel = (idx) => (typeof this.dataIndexToPixel === 'function'
             ? this.dataIndexToPixel(idx)
             : (plotLeft + this.offsetX + idx * spacing));
+        const isMajorLabelIdx = (idx) => {
+            const rem = ((idx - labelPhaseIdx) % labelStep + labelStep) % labelStep;
+            return rem === 0;
+        };
         const labelFor = (idx) => {
             if (maxZoomGrid) {
                 return (typeof this._formatMaxZoomBarClockLabel === 'function')
                     ? this._formatMaxZoomBarClockLabel(idx)
                     : '';
             }
-            const rem = ((anchor - idx) % labelStep + labelStep) % labelStep;
-            if (rem !== 0) return '';
-            return (typeof this._formatTimeLabelForBarIndex === 'function')
-                ? (this._formatTimeLabelForBarIndex(idx) || '')
-                : '';
+            // Normal zoom edge-extend steps by labelStep (majors only) — always label.
+            // Phase gate is for max-zoom thinning / mixed meshes only.
+            if (step >= labelStep || isMajorLabelIdx(idx)) {
+                return (typeof this._formatTimeLabelForBarIndex === 'function')
+                    ? (this._formatTimeLabelForBarIndex(idx) || '')
+                    : '';
+            }
+            return '';
         };
 
         while (mapped.length && mapped[0].x > plotLeft - spacing) {
@@ -25636,6 +25662,10 @@ class Chart {
                 }
                 continue;
             }
+            // Refill majors that lost text when they left the viewport (cache trim).
+            if (!t.label && isMajorLabelIdx(t.idx)) {
+                t.label = labelFor(t.idx);
+            }
             if (!t.label) continue;
             if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
                 t.label = '';
@@ -25649,6 +25679,7 @@ class Chart {
         cache.step = step;
         cache.labelStep = labelStep;
         cache.anchor = anchor;
+        cache.labelPhaseIdx = labelPhaseIdx;
         return mapped;
     }
 

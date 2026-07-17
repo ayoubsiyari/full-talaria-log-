@@ -17,7 +17,7 @@ H-R14,engineering,remig-row,Marquee variant,IN-TRACK,DEFERRED | rides combined b
 H-R12,engineering,remig-row,Chrome leg,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-S18,engineering,replay,Manager gate poison / infinite redraw loop,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 H-S20,engineering,replay,Coarse 1D mirror regression,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
-H-S25,engineering,replay,Panel replay-follow seam leap,IN-TRACK,NEEDS-REFIX | post-b1 landing order item 1
+H-S25,engineering,replay,Panel replay-follow seam leap,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (replay axis move / chart-stuck resolved) - NEEDS-RECONCILE into codebase (kill-switch + harness pin)
 H-S27,engineering,replay,seek-loop race,IN-TRACK,FLAKE-TRACKED | per I15 not trusted row until re-actuated faithfully
 H-S28,engineering,replay,Boot reanchor,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 H-S30,engineering,replay,Step-spam refetch,STAGED,RESOLVED | false-green -> promote-only
@@ -28,7 +28,7 @@ H-S73,engineering,replay,Snap-back pin (TAL-01579),IN-TRACK,OPEN-TRACKED | NOT f
 H-S79,engineering,replay,Playhead save/restore,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
 H-S80,engineering,replay,TF-label desync after refresh,CLOSED-VERIFIED,RESOLVED-NEEDS-LIVE | PO confirmed label persists (a5)
 H-S82,engineering,replay,Pan-release snap-back,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S2
-H-S83,engineering,replay,Finest-TF cadence RED,STAGED,Root (Lane 2): D-016 sub-step only covers tick PLAY; candle mode bypasses -> 4h steps when host A=4h. Fix = extend finest-TF cadence to candle mode; pin H-S83b (host A=4h peer B=1m tick+candle). Lane 2 impl dispatched
+H-S83,engineering,replay,Finest-TF cadence RED,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (multichart replay now runs on the finest TF) - NEEDS-RECONCILE into codebase (kill-switch + harness pin)
 TAL-01590,engineering,freeze,Panel-freeze / edge-park mixed-TF,CLOSED-VERIFIED,RESOLVED | PO accepted (staging authority)
 A6-1,engineering,order,Apply-on-release order landing,STAGED,RESOLVED-NEEDS-LIVE | D-020 approved
 A6-2,engineering,order,F5 order persistence,STAGED,RESOLVED-NEEDS-LIVE | NEEDS-LIVE F5
@@ -110,7 +110,7 @@ TAL-01604,ticket,A1-axis,chart,IN-TRACK,
 TAL-01603,ticket,T8-diag,chart,IN-TRACK,
 TAL-01602,ticket,A6-1,SL/TP lines when play Replay,STAGED,
 TAL-01601,ticket,A6-4,Order 2 layout,IN-TRACK,
-TAL-01600,ticket,D-015/016,play replay with 2 layouts,STAGED,
+TAL-01600,ticket,D-015/016,play replay with 2 layouts,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (2-layout replay cadence) - NEEDS-RECONCILE
 TAL-01599,ticket,needs-repro,chart,IN-TRACK,
 TAL-01598,ticket,perf-backlog,chart,IN-TRACK,
 TAL-01597,ticket,T8-diag,chart,IN-TRACK,
@@ -151,7 +151,7 @@ TAL-01563,ticket,T8,Layouts,IN-TRACK,
 TAL-01562,ticket,T8,Layouts,IN-TRACK,
 TAL-01561,ticket,perf-backlog,Layouts,IN-TRACK,
 TAL-01560,ticket,T8,Layouts,IN-TRACK,
-ORD-XPNL,engineering,order,Multichart order marks/closes at peer panel price -> garbage PnL (GBP closed at EUR 1.31315),IN-TRACK,D-032 SHIPPED in CKPT-001 b42 (A6-4 gate cleared: 0 regr + H-R04/H-R09 10/10; chrome flake decoupled). Awaiting PO live-confirm (7-row checklist on b42) to flip CLOSED-VERIFIED
+ORD-XPNL,engineering,order,Multichart order marks/closes at peer panel price -> garbage PnL (GBP closed at EUR 1.31315),CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (different-ticker orders on multichart correct) - NEEDS-RECONCILE with A6-4 b42 (dedupe manual vs worker fix)
 MC-STEPFWD,engineering,replay,Multichart step-forward does not advance like PLAY (mixed TF/ticker),IN-TRACK,Root (Lane 2): stepForward() always calculateNextIndex()+peer snap never finest-TF PLAY clock. Fix routes step through cadence+frame path (touches MultichartGrid ~5572/3573 - coordinate w/ A6-4 gate). Lane 2 impl dispatched
-ORD-DUP-DURATION,engineering,order,Trades panel duplication + wrong duration on multichart F5,IN-TRACK,SHIPPED in CKPT-001 b42 (A6-4 Steps1/3/6 + fan-out + RESTORE_DEDUPE_V1 + TRADE_DURATION_NORM_V1). Awaiting PO live-confirm rows 5-7 (DUP-2 + DURATION-1/2) on b42 to flip CLOSED-VERIFIED
+ORD-DUP-DURATION,engineering,order,Trades panel duplication + wrong duration on multichart F5,CLOSED-VERIFIED,PO manual fix + verified 2026-07-17 (multichart orders work perfect) - NEEDS-RECONCILE with A6-4 b42
 MC-DRAW-FIRSTCLICK,engineering,drawing,Multichart armed-tool first click focuses unfocused panel instead of starting draw (needs 2nd click),LANDED-DEV,build 20260717b44; harness 10/10 ON + switch-OFF 10/10 RED; PO live pending
