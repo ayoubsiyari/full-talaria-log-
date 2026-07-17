@@ -111,7 +111,7 @@ Extends `_shouldSkipMcIframeRuntimePersist()` — iframe skip restore/write (ali
 | `f0c1fdca` | Step 0 stopgap + engine hooks (order-manager, owning-panel-price.mjs, test) |
 | `470e0f88` | Steps 1–6 (MultichartGrid, panel-cmd-bridge, order-host-store.mjs) |
 | `950aa486` | dist **`20260717b37`** rebuild |
-| *(pending)* | Diagnostic + this report |
+| `bea25959` | Diagnostic + this report |
 
 ---
 
