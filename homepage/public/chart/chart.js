@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260717b63';
+const CHART_ENGINE_BUILD = '20260717b64';
 
 /**
  * TradingView-style nice wall-clock steps (ms). Prefer values that divide a day
@@ -24392,24 +24392,29 @@ class Chart {
     }
 
     /**
-     * Freeze the bars-between-time-labels while a wheel-zoom burst is running so
-     * the date axis scales smoothly with the candles instead of re-densifying
-     * (jumping/drifting) each tick as the visible-bar count crosses a threshold.
-     * Mirrors the {@link #_wheelBurstSnapYDomain} freeze used for the price axis:
-     * during the burst we reuse the interval captured at burst start; once the
-     * burst settles the interval is recomputed once for the new zoom level.
+     * Wheel-zoom label cadence.
+     * Default ON (b64): live densify/thin during the burst so zoom-in grows
+     * majors + vertical grid immediately (TradingView-like), not only after
+     * scroll settle. Nice-calendar snap keeps steps on 30m/1h/… so the old
+     * 9:00→8:45 churn stays gone.
+     * Kill-switch (legacy freeze against densify mid-burst):
+     *   window.__TALARIA_DISABLE_WHEEL_LABEL_DENSIFY_V1 = true
      * @param {number} computed Freshly computed interval (bars between labels).
      * @returns {number} Interval to actually use this frame.
      */
     _stabilizeTimeLabelInterval(computed) {
         const tf = String(this._getRenderTimeframe() || '').toLowerCase().trim();
-        if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass
+        let freezeDensify = false;
+        try {
+            freezeDensify = typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_WHEEL_LABEL_DENSIFY_V1 === true;
+        } catch (_) { freezeDensify = false; }
+        if (freezeDensify
+            && this._isWheelZoomBurst() && !this._wheelBurstFinalPass
             && Number.isFinite(this._wheelBurstSnapLabelInterval)
             && this._wheelBurstSnapLabelInterval > 0
             && this._wheelBurstSnapLabelIntervalTf === tf) {
-            // Freeze only against densifying mid-burst (avoids 9:00→8:45 churn).
-            // Always allow thinning when zooming out — otherwise a snap from a
-            // zoomed-in cadence (e.g. every 5 bars) paints a solid label band.
+            // Legacy: freeze only against densifying mid-burst; allow thinning out.
             if (Number.isFinite(computed) && computed > this._wheelBurstSnapLabelInterval) {
                 this._wheelBurstSnapLabelInterval = computed;
             }
@@ -24418,6 +24423,10 @@ class Chart {
         if (Number.isFinite(computed) && computed > 0) {
             this._lastComputedTimeLabelInterval = computed;
             this._lastComputedTimeLabelIntervalTf = tf;
+            if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) {
+                this._wheelBurstSnapLabelInterval = computed;
+                this._wheelBurstSnapLabelIntervalTf = tf;
+            }
         }
         return computed;
     }

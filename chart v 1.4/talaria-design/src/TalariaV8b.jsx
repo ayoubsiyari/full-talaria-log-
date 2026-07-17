@@ -937,7 +937,7 @@ const TalariaV8b = () => {
   const [newsPos, setNewsPos] = useState({ x: 0, y: 0 });
   const [newsTab, setNewsTab] = useState("upcoming");
   const [newsSearch, setNewsSearch] = useState("");
-  const [newsImpact, setNewsImpact] = useState(["high","med","low"]);
+  const [newsImpact, setNewsImpact] = useState([]);
   const [newsSymbolOnly, setNewsSymbolOnly] = useState(false);
   const [newsFilterOpen, setNewsFilterOpen] = useState(false);
   const [newsFilterClosing, setNewsFilterClosing] = useState(false);

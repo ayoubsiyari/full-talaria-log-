@@ -14,7 +14,9 @@
         }
     }
 
-    var FILTER_STORAGE_KEY = 'economicCalendarFilters';
+    // v2: default axis markers OFF (all impact toggles false) until the user
+    // enables High/Medium/Low. Prior key kept high+medium on by default.
+    var FILTER_STORAGE_KEY = 'economicCalendarFilters_v2';
 
     var state = {
         events: [],
@@ -29,8 +31,8 @@
         replayDayReloadTimer: null,
         /** User filters: impact toggles, optional chart-pair-only, optional country subset. */
         filters: {
-            impactHigh: true,
-            impactMedium: true,
+            impactHigh: false,
+            impactMedium: false,
             impactLow: false,
             pairOnly: false,
             /** Empty = all countries; otherwise list of 2-letter (or EU) codes from country multiselect. */
@@ -1377,9 +1379,16 @@
         getEvents: function () {
             if (canUseParentCalendarSource()) {
                 try {
-                    var parentSource = window.parent.__economicCalendarForChart.getSourceEvents();
+                    var parentApi = window.parent.__economicCalendarForChart;
+                    var parentSource = parentApi.getSourceEvents();
                     var embedFilters = getEffectiveNewsFiltersForEmbed();
-                    if (!embedFilters) return [];
+                    if (!embedFilters) {
+                        // No mirrored filters yet — match host paint until broadcast lands.
+                        if (typeof parentApi.getEvents === 'function') {
+                            return parentApi.getEvents() || [];
+                        }
+                        return [];
+                    }
                     return filterSourceEvents(parentSource, embedFilters);
                 } catch (eEmbed) {
                     return [];
@@ -1670,6 +1679,10 @@
         },
         applyMirroredFilters: function (filters) {
             applyMirroredNewsFilters(filters);
+        },
+        /** Host → all iframe tiles: filters + marker redraw (also used when a panel joins). */
+        pushMarkersToMultichart: function () {
+            requestMultichartNewsMarkerRedraw();
         },
         displayForEvent: function (e) {
             if (!e || !Number.isFinite(e.t)) return null;

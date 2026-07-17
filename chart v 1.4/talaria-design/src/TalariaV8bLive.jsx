@@ -14123,7 +14123,8 @@ const TalariaV8bLive = () => {
   const [newsPos, setNewsPos] = useState({ x: 0, y: 0 });
   const [newsTab, setNewsTab] = useState("upcoming");
   const [newsSearch, setNewsSearch] = useState("");
-  const [newsImpact, setNewsImpact] = useState(["high","med","low"]);
+  // Axis markers off until user enables High/Medium/Low (matches economic-news-sidebar defaults).
+  const [newsImpact, setNewsImpact] = useState([]);
   const [newsSymbolOnly, setNewsSymbolOnly] = useState(false);
   const [newsFilterOpen, setNewsFilterOpen] = useState(false);
   const [newsFilterClosing, setNewsFilterClosing] = useState(false);
@@ -14408,8 +14409,8 @@ const TalariaV8bLive = () => {
 
   const pushEconNewsFiltersToModule = (impactArr, symOnly, cntSel) => {
     const api = window.__economicCalendarUi;
-    const impact =
-      Array.isArray(impactArr) && impactArr.length > 0 ? impactArr : ["high", "med", "low"];
+    // Empty impact = no axis markers (do not coerce back to all-on).
+    const impact = Array.isArray(impactArr) ? impactArr : [];
     const allOff = ECON_CAL_COUNTRIES.every((co) => !cntSel[co]);
     const allOn = ECON_CAL_COUNTRIES.every((co) => cntSel[co]);
     let countryCodes;
@@ -36904,11 +36905,10 @@ const TalariaV8bLive = () => {
                                   onClick={()=>{
                                     setNewsImpact((prev) => {
                                       const next = on ? prev.filter((x) => x !== lv) : [...prev, lv];
-                                      const effective = next.length === 0 ? ["high", "med", "low"] : next;
                                       queueMicrotask(() =>
-                                        pushEconNewsFiltersToModule(effective, newsSymbolOnly, newsCntSel)
+                                        pushEconNewsFiltersToModule(next, newsSymbolOnly, newsCntSel)
                                       );
-                                      return effective;
+                                      return next;
                                     });
                                   }}
                                   onMouseEnter={()=>setSwHov(`ni-${lv}`)} onMouseLeave={()=>setSwHov(null)}

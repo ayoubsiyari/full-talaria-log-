@@ -1050,6 +1050,17 @@
                 if (sourceChart) sourceChart.cmdReady = true;
                 this._log('info', 'panel-cmd-ready: ' + sourceId
                     + ' (cmds: ' + (msg.cmds || []).join(',') + ')');
+                // Push host news filters so the new tile paints the same
+                // time-axis flags as panel A (script loads after bridge-ready).
+                try {
+                    var ecoUi = (typeof window !== 'undefined')
+                        ? window.__economicCalendarUi : null;
+                    if (ecoUi && typeof ecoUi.pushMarkersToMultichart === 'function') {
+                        setTimeout(function () {
+                            try { ecoUi.pushMarkersToMultichart(); } catch (_) {}
+                        }, 0);
+                    }
+                } catch (_) {}
                 return;
 
             case 'panel-focus':
