@@ -5,7 +5,9 @@
  */
 import {
     assertMarkWithinOwningSymbolRange,
+    backgroundBarFromPeerCharts,
     legacyPositionNeedsBackgroundBar,
+    markCloseFromPeerCharts,
     orderOwningPanelPriceV1Enabled,
     positionBelongsOnLocalChart,
     positionNeedsBackgroundBar,
@@ -131,6 +133,32 @@ assert(Math.abs(fixedLocal - 1.16840) < 1e-5, 'GREEN: localCandle wins over focu
 const EUR_SESSION = { min: 1.16, max: 1.18 };
 assert(assertMarkWithinOwningSymbolRange(eurPosition, fixedLocal, EUR_SESSION).ok, 'EUR mark in EUR session range');
 assert(!assertMarkWithinOwningSymbolRange(eurPosition, gbpPeerCandle.c, EUR_SESSION).ok, 'GBP peer rejected for EUR session');
+
+section('MultichartGrid peer OHLC — GBP bar without panelManager / same TF');
+const tPlay = 1784276100000;
+const gbpBars = [
+    { t: tPlay - 60000, o: 1.64, h: 1.65, l: 1.63, c: 1.645 },
+    { t: tPlay, o: 1.645, h: 1.652, l: 1.644, c: 1.650 },
+];
+const peers = [
+    { currentSymbol: 'EUR/USD', currentFileId: 'file-eur', rawData: [{ t: tPlay, o: 1.16, h: 1.17, l: 1.15, c: 1.168 }], data: [] },
+    { currentSymbol: 'GBP/USD', currentFileId: 'file-gbp', currentTimeframe: '1m', rawData: gbpBars, data: gbpBars },
+];
+const gbpBg = backgroundBarFromPeerCharts(peers, {
+    tickerNorm: 'GBPUSD',
+    tMs: tPlay,
+    preferredFileId: 'file-gbp',
+});
+assert(gbpBg && Math.abs(gbpBg.h - 1.652) < 1e-9, 'peer fileId match returns GBP bar (mixed TF ok)');
+const gbpByTicker = backgroundBarFromPeerCharts(peers, { tickerNorm: 'GBP/USD', tMs: tPlay });
+assert(gbpByTicker && gbpByTicker.c === 1.650, 'peer ticker match without preferredFileId');
+const livePeers = [
+    { currentSymbol: 'GBP/USD', currentFileId: 'file-gbp', rawData: gbpBars, liveBar: { t: tPlay, o: 1.645, h: 1.655, l: 1.644, c: 1.651 } },
+];
+const liveBg = backgroundBarFromPeerCharts(livePeers, { tickerNorm: 'GBPUSD', tMs: tPlay, preferredFileId: 'file-gbp' });
+assert(liveBg && Math.abs(liveBg.h - 1.655) < 1e-9, 'live forming bar preferred when t matches');
+assert(markCloseFromPeerCharts(peers, 'GBPUSD') === 1.650, 'mark close from peer last bar');
+assert(backgroundBarFromPeerCharts([], { tickerNorm: 'GBPUSD', tMs: tPlay }) == null, 'empty peers → null');
 
 section('A6-4 host snapshot helpers');
 const snap = buildHostOrderStoreSnapshot({

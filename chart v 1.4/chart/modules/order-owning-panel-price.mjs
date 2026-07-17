@@ -48,6 +48,91 @@ export function positionNeedsBackgroundBar(position, activeChartTicker, localCha
 }
 
 /**
+ * Pick OHLC for a foreign ticker from MultichartGrid / layout peer charts.
+ * Prefer sourceFileId match, then ticker. Does NOT require same TF as host —
+ * V9 panels often run mixed intervals (EUR 1H + GBP 1m).
+ *
+ * @param {Array<{currentSymbol?:string,currentFileId?:*,rawData?:Array,data?:Array,liveBar?:object|null}>} peers
+ * @param {{tickerNorm:string,tMs:number,preferredFileId?:string|null,normalizeTicker?:Function,barAtOrBefore?:Function}} opts
+ * @returns {object|null} bar with at least {t,o,h,l,c}
+ */
+export function backgroundBarFromPeerCharts(peers, opts = {}) {
+    const normalizeTicker = opts.normalizeTicker || normalizeOrderTicker;
+    const T = normalizeTicker(opts.tickerNorm);
+    const tMs = Number(opts.tMs);
+    if (!Number.isFinite(tMs) || !Array.isArray(peers) || !peers.length) return null;
+    const pref = opts.preferredFileId != null && String(opts.preferredFileId) !== ''
+        ? String(opts.preferredFileId)
+        : '';
+    const barAtOrBefore = typeof opts.barAtOrBefore === 'function'
+        ? opts.barAtOrBefore
+        : (bars, t) => {
+            if (!Array.isArray(bars) || !bars.length || !Number.isFinite(t)) return null;
+            let ans = -1;
+            for (let i = 0; i < bars.length; i++) {
+                const bt = Number(bars[i] && bars[i].t);
+                if (Number.isFinite(bt) && bt <= t) ans = i;
+                else if (Number.isFinite(bt) && bt > t) break;
+            }
+            return ans >= 0 ? bars[ans] : null;
+        };
+
+    const pickFromPeer = (pc) => {
+        if (!pc) return null;
+        const live = pc.liveBar;
+        if (live && Number.isFinite(Number(live.t)) && Number(live.t) === tMs) {
+            return live;
+        }
+        const series = Array.isArray(pc.rawData) && pc.rawData.length
+            ? pc.rawData
+            : (Array.isArray(pc.data) && pc.data.length ? pc.data : null);
+        if (!series) return null;
+        return barAtOrBefore(series, tMs);
+    };
+
+    let byTicker = null;
+    for (let i = 0; i < peers.length; i++) {
+        const pc = peers[i];
+        if (!pc) continue;
+        const pcFile = pc.currentFileId != null ? String(pc.currentFileId) : '';
+        const pcT = normalizeTicker(pc.currentSymbol);
+        if (pref && pcFile && pcFile === pref) {
+            const bar = pickFromPeer(pc);
+            if (bar) return bar;
+        }
+        if (T && pcT === T && !byTicker) {
+            const bar = pickFromPeer(pc);
+            if (bar) byTicker = bar;
+        }
+    }
+    return byTicker;
+}
+
+/**
+ * Last close from a peer panel showing this ticker (any TF — MultichartGrid mixed intervals).
+ */
+export function markCloseFromPeerCharts(peers, tickerNorm, normalizeTicker = normalizeOrderTicker) {
+    const T = normalizeTicker(tickerNorm);
+    if (!T || !Array.isArray(peers)) return null;
+    for (let i = 0; i < peers.length; i++) {
+        const pc = peers[i];
+        if (!pc || normalizeTicker(pc.currentSymbol) !== T) continue;
+        if (pc.liveBar) {
+            const c = Number.parseFloat(pc.liveBar.c ?? pc.liveBar.close);
+            if (Number.isFinite(c)) return c;
+        }
+        const series = Array.isArray(pc.data) && pc.data.length
+            ? pc.data
+            : (Array.isArray(pc.rawData) && pc.rawData.length ? pc.rawData : null);
+        if (!series || !series.length) continue;
+        const last = series[series.length - 1];
+        const c = Number.parseFloat(last && (last.c ?? last.close));
+        if (Number.isFinite(c)) return c;
+    }
+    return null;
+}
+
+/**
  * Resolve mid mark from owning panel feed only (never conflate focused chart candle with foreign position).
  */
 export function resolveOwningPanelMidMarkPrice(position, currentCandle, deps) {

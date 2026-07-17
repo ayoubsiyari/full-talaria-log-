@@ -1387,7 +1387,78 @@ class OrderManager {
         if (pm && String(pm.currentLayout || '1') !== '1' && Array.isArray(pm.panels)) {
             pm.panels.forEach((p) => add(p.chartInstance));
         }
+        // V9 MultichartGrid: peer tiles live in iframes (no panelManager).
+        try {
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (grid && typeof grid.enumerateCharts === 'function') {
+                for (const ch of grid.enumerateCharts()) add(ch);
+            }
+        } catch (_e) { /* cross-origin / teardown */ }
         return out;
+    }
+
+    /**
+     * Live Chart instances from MultichartGrid (host + iframe peers).
+     * Used for foreign-ticker background SL/TP when panelManager is absent.
+     */
+    _collectMultichartPeerCharts() {
+        const out = [];
+        const seen = new Set();
+        try {
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (!grid || typeof grid.enumerateCharts !== 'function') return out;
+            for (const ch of grid.enumerateCharts()) {
+                if (!ch || seen.has(ch)) continue;
+                seen.add(ch);
+                out.push(ch);
+            }
+        } catch (_e) { /* ignore */ }
+        return out;
+    }
+
+    /**
+     * OHLC for a foreign instrument from a live MultichartGrid peer tile.
+     * Prefer sourceFileId, then ticker. Mixed panel TFs are allowed.
+     */
+    _backgroundBarFromMultichartPeers(tickerNorm, tMs, preferredFileId = null) {
+        const T = this._normalizeTicker(tickerNorm);
+        if (!Number.isFinite(tMs)) return null;
+        const peers = this._collectMultichartPeerCharts();
+        if (!peers.length) return null;
+        const pref = preferredFileId != null && String(preferredFileId) !== ''
+            ? String(preferredFileId)
+            : '';
+
+        const pickFromPeer = (pc) => {
+            if (!pc) return null;
+            try {
+                const live = this._getCurrentCandleForChart(pc);
+                if (live && Number.isFinite(Number(live.t)) && Number(live.t) === Number(tMs)) {
+                    return live;
+                }
+            } catch (_e) { /* ignore */ }
+            const series = Array.isArray(pc.rawData) && pc.rawData.length
+                ? pc.rawData
+                : (Array.isArray(pc.data) && pc.data.length ? pc.data : null);
+            if (!series) return null;
+            return this._barRecordAtOrBefore(series, tMs);
+        };
+
+        let byTicker = null;
+        for (let i = 0; i < peers.length; i++) {
+            const pc = peers[i];
+            const pcFile = pc.currentFileId != null ? String(pc.currentFileId) : '';
+            const pcT = this._normalizeTicker(pc.currentSymbol);
+            if (pref && pcFile && pcFile === pref) {
+                const bar = pickFromPeer(pc);
+                if (bar) return bar;
+            }
+            if (T && pcT === T && !byTicker) {
+                const bar = pickFromPeer(pc);
+                if (bar) byTicker = bar;
+            }
+        }
+        return byTicker;
     }
 
     /**
@@ -1979,6 +2050,11 @@ class OrderManager {
         if (!Number.isFinite(tMs)) return null;
         const mainTf = this._getReplayDecisionTimeframe();
 
+        // V9 MultichartGrid: peer iframe OHLC (panelManager is not present).
+        // Must run before lazy MI fetch — otherwise GBP TP never fires into the journal.
+        const mcBar = this._backgroundBarFromMultichartPeers(T || tickerNorm, tMs, preferredFileId);
+        if (mcBar) return mcBar;
+
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         if (T && pm && Array.isArray(pm.panels)) {
             for (let i = 0; i < pm.panels.length; i++) {
@@ -2387,6 +2463,26 @@ class OrderManager {
                 if (Number.isFinite(c)) return c;
             }
         }
+        // V9 MultichartGrid peers (any TF — mixed 1H/1m layouts are common).
+        try {
+            const peers = this._collectMultichartPeerCharts();
+            for (let i = 0; i < peers.length; i++) {
+                const pc = peers[i];
+                if (!pc || this._normalizeTicker(pc.currentSymbol) !== T) continue;
+                try {
+                    const live = this._getCurrentCandleForChart(pc);
+                    const liveC = Number.parseFloat(live && (live.c ?? live.close));
+                    if (Number.isFinite(liveC)) return liveC;
+                } catch (_e) { /* ignore */ }
+                const series = Array.isArray(pc.data) && pc.data.length
+                    ? pc.data
+                    : (Array.isArray(pc.rawData) && pc.rawData.length ? pc.rawData : null);
+                if (!series || !series.length) continue;
+                const last = series[series.length - 1];
+                const c = Number.parseFloat(last && last.c);
+                if (Number.isFinite(c)) return c;
+            }
+        } catch (_e) { /* ignore */ }
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         if (!pm || !Array.isArray(pm.panels)) return null;
         for (let i = 0; i < pm.panels.length; i++) {
