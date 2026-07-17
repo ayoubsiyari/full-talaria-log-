@@ -1976,6 +1976,80 @@ class OrderManager {
         return Number.isFinite(cl) ? cl : null;
     }
 
+    /**
+     * Full OHLC series for a foreign ticker (multichart peer → panelManager → MI cache).
+     * Used to catch up SL/TP when fast replay jumps past intermediate bars.
+     */
+    _getBackgroundSeriesForTicker(tickerNorm, preferredFileId = null) {
+        const T = this._normalizeTicker(tickerNorm);
+        const pref = preferredFileId != null && String(preferredFileId) !== ''
+            ? String(preferredFileId)
+            : '';
+
+        const peers = this._collectMultichartPeerCharts();
+        let byTickerSeries = null;
+        for (let i = 0; i < peers.length; i++) {
+            const pc = peers[i];
+            if (!pc) continue;
+            const pcFile = pc.currentFileId != null ? String(pc.currentFileId) : '';
+            const pcT = this._normalizeTicker(pc.currentSymbol);
+            const series = Array.isArray(pc.rawData) && pc.rawData.length
+                ? pc.rawData
+                : (Array.isArray(pc.data) && pc.data.length ? pc.data : null);
+            if (!series || !series.length) continue;
+            if (pref && pcFile && pcFile === pref) return series;
+            if (T && pcT === T && !byTickerSeries) byTickerSeries = series;
+        }
+        if (byTickerSeries) return byTickerSeries;
+
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (T && pm && Array.isArray(pm.panels)) {
+            const mainTf = this._getReplayDecisionTimeframe();
+            for (let i = 0; i < pm.panels.length; i++) {
+                const pc = pm.panels[i] && pm.panels[i].chartInstance;
+                if (!pc || !Array.isArray(pc.rawData) || !pc.rawData.length) continue;
+                if (this._normalizeTicker(pc.currentSymbol) !== T) continue;
+                const pcTf = String(pc.currentTimeframe || '1m').toLowerCase().trim() || '1m';
+                if (pcTf !== mainTf) continue;
+                return pc.rawData;
+            }
+        }
+
+        const tryFileIds = [];
+        if (pref) tryFileIds.push(pref);
+        if (T) {
+            const fid = this.resolveFileIdForTicker(T);
+            if (fid && !tryFileIds.includes(fid)) tryFileIds.push(fid);
+        }
+        const mainTf = this._getReplayDecisionTimeframe();
+        for (let i = 0; i < tryFileIds.length; i++) {
+            const cacheKey = this._miBackgroundSeriesKey(tryFileIds[i], mainTf);
+            const cached = this._miSeriesByFileId.get(cacheKey);
+            if (cached && Array.isArray(cached.raw) && cached.raw.length) return cached.raw;
+        }
+        return null;
+    }
+
+    /**
+     * Bars with open time in (afterExclusiveMs, throughInclusiveMs], chronological.
+     * Caps length so a huge seek cannot freeze the UI.
+     */
+    _barsAfterThrough(series, afterExclusiveMs, throughInclusiveMs, maxBars = 500) {
+        if (!Array.isArray(series) || !series.length || !Number.isFinite(throughInclusiveMs)) return [];
+        const after = Number.isFinite(afterExclusiveMs) ? afterExclusiveMs : -Infinity;
+        const out = [];
+        for (let i = 0; i < series.length; i++) {
+            const b = series[i];
+            const bt = Number(b?.t);
+            if (!Number.isFinite(bt)) continue;
+            if (bt <= after) continue;
+            if (bt > throughInclusiveMs) break;
+            out.push(b);
+            if (out.length >= maxBars) break;
+        }
+        return out;
+    }
+
     resolveFileIdForTicker(tickerNorm) {
         const T = this._normalizeTicker(tickerNorm);
         if (!T || !this.chart) return null;
@@ -5048,6 +5122,10 @@ class OrderManager {
         if (entry.exitTime == null) entry.exitTime = closeTime;
         if (entry.entryMarkerTimeMs == null && position.entryMarkerTimeMs != null) {
             entry.entryMarkerTimeMs = position.entryMarkerTimeMs;
+        }
+        if (entry.exitMarkerTimeMs == null) {
+            const exitAnchor = position.exitMarkerTimeMs ?? ctx.exitMarkerTimeMs;
+            if (exitAnchor != null) entry.exitMarkerTimeMs = exitAnchor;
         }
         if (entry.openTime == null) entry.openTime = openTime;
         if (!entry.entryDate) entry.entryDate = entryDate.toISOString();
@@ -9480,6 +9558,7 @@ class OrderManager {
             openTime: order.openTime,
             closeTime: closeData.closeTime,
             entryMarkerTimeMs: order.entryMarkerTimeMs ?? null,
+            exitMarkerTimeMs: closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs ?? null,
             riskAmount: order.riskAmount,
             pnl: closeData.pnl
         };
@@ -27194,6 +27273,13 @@ class OrderManager {
         const commRt = this._roundTripCommissionForLots(position, position.quantity);
         const pnl = gross - commRt;
         closePrice = execClosePrice;
+
+        const exitMarkerTimeMs = this._exitMarkerAnchorTimeMsFromClose(
+            this.chart, closeTime, closePrice, position
+        );
+        if (Number.isFinite(Number(exitMarkerTimeMs))) {
+            position.exitMarkerTimeMs = Number(exitMarkerTimeMs);
+        }
         
         // Update position
         position.closePrice = closePrice;
@@ -27410,6 +27496,7 @@ class OrderManager {
         this.drawExitMarker(position, {
             closePrice: closePrice,
             closeTime: closeTime,
+            exitMarkerTimeMs: position.exitMarkerTimeMs,
             pnl: pnl,
             type: 'MANUAL',
             quantity: position.quantity,
@@ -28353,13 +28440,33 @@ class OrderManager {
             if (useBackgroundBar && !splitUseMainChartBar) {
                 const tMs = Number(currentCandle.t);
                 const pref = posFileId || null;
-                const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
                 const markForPnL = this._resolveUnrealizedMarkPrice(position, currentCandle);
                 if (Number.isFinite(markForPnL)) {
                     position.unrealizedPnL = this._calculatePositionPnL(position, markForPnL);
                     position._miLastMarkPrice = markForPnL;
                 }
-                if (bgBar) {
+
+                // Fast replay / seek can jump many minutes on the focused chart while the
+                // foreign ticker only gets evaluated at the landing bar — catch up every
+                // intermediate OHLC so GBP TP/SL still lands in the journal.
+                const series = this._getBackgroundSeriesForTicker(posTicker || '', pref);
+                const lastEval = Number(position._bgSltpLastEvalTime);
+                const afterExclusive = Number.isFinite(lastEval)
+                    ? lastEval
+                    : (Number(position.entryMarkerTimeMs) || Number(position.openTime) || (tMs - 1));
+                let barsToEval = series
+                    ? this._barsAfterThrough(series, afterExclusive, tMs)
+                    : [];
+                if (!barsToEval.length) {
+                    const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
+                    if (bgBar) barsToEval = [bgBar];
+                }
+
+                const alreadyQueued = () => positionsToClose.some((row) => row && row.id === position.id);
+
+                for (let bi = 0; bi < barsToEval.length; bi++) {
+                    const bgBar = barsToEval[bi];
+                    if (!bgBar) continue;
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
                     const bgTime = Number(bgBar.t);
@@ -28369,10 +28476,21 @@ class OrderManager {
                     if (Number.isFinite(bh) && Number.isFinite(bl)) {
                         this._updatePositionPriceExtremes(position, bh, bl, bgTime);
                     }
-                    if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
-                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose, queuedSplitSlGroupIds, queuedSplitTpKeys);
+                    // Defer only the forming playhead bar (incomplete wicks); historical
+                    // catch-up bars are finished and must be evaluated.
+                    const isFormingPlayheadBar = Number.isFinite(bgTime) && bgTime === tMs
+                        && this._shouldDeferBackgroundSLTPTouches(bgBar);
+                    if (Number.isFinite(bh) && Number.isFinite(bl) && !isFormingPlayheadBar) {
+                        this._collectBackgroundSLTPTouches(
+                            position, bgBar, positionsToClose, queuedSplitSlGroupIds, queuedSplitTpKeys
+                        );
                     }
+                    if (alreadyQueued()) break;
                 }
+                if (Number.isFinite(tMs)) {
+                    position._bgSltpLastEvalTime = tMs;
+                }
+
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
                 return;
             }
@@ -29357,9 +29475,10 @@ class OrderManager {
         console.log(`🔍 closePositionAtPrice called: orderId=${orderId}, hitType=${hitType}, percentage=${percentage}, targetId=${targetId}`);
         
         const currentCandle = this.getCurrentCandle();
+        const evalCandle = this._evalCandleForPosition(position, currentCandle) || currentCandle;
         // For background (cross-pair) closes, use the background bar's timestamp.
         const closeTime = (Number.isFinite(bgCloseTime) ? bgCloseTime : null)
-            || (currentCandle ? currentCandle.t : Date.now());
+            || (evalCandle ? evalCandle.t : Date.now());
         const posTicker = this._positionTicker(position);
         const activeTicker = this._getActiveTicker();
         const isBackgroundClose = !!(posTicker && activeTicker && posTicker !== activeTicker);
@@ -29398,6 +29517,21 @@ class OrderManager {
 
         if (!isPartialClose) {
             this._freezeInTradeExcursionSnapshot(position);
+        }
+
+        // Hit-candle column for exit tick (survives refresh; parallel to entryMarkerTimeMs).
+        const markerChart = (!isBackgroundClose && this._isPositionForActiveChart(position))
+            ? this.chart
+            : (this._collectLayoutCharts?.() || []).find((ch) => this._positionTickerMatchesChartSymbol(position, ch))
+                || this.chart;
+        const exitMarkerTimeMs = this._exitMarkerAnchorTimeMsFromClose(
+            markerChart,
+            closeTime,
+            closePrice,
+            position
+        );
+        if (Number.isFinite(Number(exitMarkerTimeMs))) {
+            position.exitMarkerTimeMs = Number(exitMarkerTimeMs);
         }
         
         // Update balance
@@ -29447,6 +29581,7 @@ class OrderManager {
             position.partialCloses.push({
                 closePrice: closePrice,
                 closeTime: closeTime,
+                exitMarkerTimeMs: position.exitMarkerTimeMs,
                 bar: _barAtExit,
                 quantity: closeQuantity,
                 pnl: pnl,
@@ -29505,17 +29640,18 @@ class OrderManager {
                 return;
             }
             
-            // Draw partial profit marker only on the active chart
-            if (!isBackgroundClose) {
+            // Paint partial marker on owning chart (ticker guard inside drawPartialCloseMarker).
+            try {
                 this.drawPartialCloseMarker(position, {
                     closePrice: closePrice,
                     closeTime: closeTime,
+                    exitMarkerTimeMs: position.exitMarkerTimeMs,
                     pnl: pnl,
                     percentage: percentage,
                     targetId: targetId,
                     quantity: closeQuantity,
                 });
-            }
+            } catch (_) { /* ignore */ }
             
             // Show notification
             const remainingTargets = position.tpTargets.filter(t => !t.hit).length;
@@ -29652,16 +29788,17 @@ class OrderManager {
             
             if (!shouldCreateJournalEntry) {
                 // Don't add to journal yet - waiting for all group entries to close
-                // Draw exit marker only if position is on the active chart (skip for cross-pair)
-                if (!isBackgroundClose) {
+                // Still paint exit on the owning chart (ticker guard inside drawExitMarker).
+                try {
                     this.drawExitMarker(position, {
                         closePrice: closePrice,
                         closeTime: closeTime,
+                        exitMarkerTimeMs: position.exitMarkerTimeMs,
                         pnl: position.pnl,
                         type: hitType || 'MANUAL',
                         quantity: closeQuantity,
                     });
-                }
+                } catch (_) { /* ignore */ }
                 
                 // Remove the visual lines for this closed position
                 this.removeOrderLine(orderId);
@@ -30220,6 +30357,11 @@ class OrderManager {
                 // Save journal + account snapshot to server immediately (same second as close)
                 this.persistJournal();
                 this.persistRuntimeOrderState({ critical: true });
+                if (this.orderService && typeof this.orderService.addJournalEntries === 'function') {
+                    try {
+                        this.orderService.addJournalEntries(this.tradeJournal.slice());
+                    } catch (_) { /* optional hub sync */ }
+                }
                 console.log('💾 Saved journal');
                 
                 // Update the Journal tab immediately
@@ -30235,17 +30377,19 @@ class OrderManager {
                 console.warn(`⚠️ Trade #${tradeId} already exists in journal - skipping duplicate`);
             }
             
-            // Draw exit marker only on the active chart (skip for cross-pair background closes)
-            if (!isBackgroundClose) {
+            // Always paint exit on the owning instrument chart (background closes used to skip
+            // this, so GBP could show stale visuals / miss journal↔marker sync at fast replay).
+            try {
                 this.drawExitMarker(position, {
                     closePrice: closePrice,
                     closeTime: closeTime,
+                    exitMarkerTimeMs: position.exitMarkerTimeMs,
                     pnl: totalPnL,
                     type: hitType || 'MANUAL',
                     quantity: closeQuantity,
                 });
-                this._scheduleClosedJournalMarkerRedraw();
-            }
+            } catch (_) { /* ignore */ }
+            this._scheduleClosedJournalMarkerRedraw();
             
             this.removeEntryMarker(orderId);
 
@@ -35565,6 +35709,7 @@ class OrderManager {
             closeTime: closeTime != null ? Number(closeTime) : undefined,
             closePrice: closePrice != null ? Number.parseFloat(closePrice) : undefined,
             entryMarkerTimeMs: trade.entryMarkerTimeMs ?? trade.entry_marker_time_ms ?? undefined,
+            exitMarkerTimeMs: trade.exitMarkerTimeMs ?? trade.exit_marker_time_ms ?? undefined,
             quantity: Number.parseFloat(trade.quantity) || 0,
             originalQuantity: Number.parseFloat(trade.originalQuantity ?? trade.quantity) || 0,
             ticker,
@@ -35610,6 +35755,7 @@ class OrderManager {
                         this.drawPartialCloseMarker(pos, {
                             closePrice: pc.closePrice,
                             closeTime: pc.closeTime,
+                            exitMarkerTimeMs: pc.exitMarkerTimeMs ?? pos.exitMarkerTimeMs,
                             pnl: pc.pnl || 0,
                             percentage: pc.percentage || 1,
                             type: pc.type || 'TP',
@@ -35622,6 +35768,7 @@ class OrderManager {
                 this.drawExitMarker(pos, {
                     closePrice: Number(closePrice),
                     closeTime: Number(closeTime),
+                    exitMarkerTimeMs: pos.exitMarkerTimeMs,
                     pnl: pos.pnl || 0,
                     type: pos.closeType || 'MANUAL',
                 });
@@ -35801,6 +35948,7 @@ class OrderManager {
                         this.drawExitMarker(pos, {
                             closePrice: pos.closePrice,
                             closeTime: pos.closeTime,
+                            exitMarkerTimeMs: pos.exitMarkerTimeMs,
                             pnl: pos.pnl || 0,
                             type: pos.closeType || 'MANUAL'
                         });
@@ -36095,6 +36243,63 @@ class OrderManager {
     /** Exit marker column: same price-coherence scan as entry (SL/TP can print off-bucket in tick replay). */
     _refineExitMarkerIndexForClose(ch, idx0, closeTime, closePrice) {
         return this._refineEntryMarkerIndexForOpen(ch, idx0, closeTime, closePrice);
+    }
+
+    /**
+     * Exit / partial marker column: prefer persisted `exitMarkerTimeMs` (hit candle), else `closeTime`,
+     * then forward-only price coherence so SL/TP ticks stay on the candle that touched the level
+     * (chart render updates must use this — time-only mapping can snap back to the entry bar).
+     * @param {object} exitRef `{ closeTime, closePrice, exitMarkerTimeMs?, openTime?, entryMarkerTimeMs? }`
+     */
+    _chartIndexForExitMarkerOnChart(ch, exitRef) {
+        if (!exitRef) return -1;
+        const anchor = Number(exitRef.exitMarkerTimeMs);
+        const tForIndex = Number.isFinite(anchor) ? anchor : exitRef.closeTime;
+        let idx = this._chartIndexForCloseMarkerOnChart(ch, tForIndex);
+        if (idx === -1) return -1;
+        const px = Number(exitRef.closePrice);
+        if (!Number.isFinite(px)) return idx;
+        idx = this._refineExitMarkerIndexForClose(ch, idx, tForIndex, px);
+
+        // If time collapsed onto the entry bar (or a bar that never traded the exit price),
+        // rescan forward from the entry column so the tick lands on the SL/TP hit candle.
+        const bar = ch?.data?.[idx];
+        if (bar) {
+            const lo = Number(bar.l);
+            const hi = Number(bar.h);
+            if (Number.isFinite(lo) && Number.isFinite(hi)) {
+                const mn = Math.min(lo, hi);
+                const mx = Math.max(lo, hi);
+                if (px >= mn && px <= mx) return idx;
+            }
+        }
+        const entryAnchor = Number(exitRef.entryMarkerTimeMs);
+        const entryT = Number.isFinite(entryAnchor) ? entryAnchor : Number(exitRef.openTime);
+        if (!Number.isFinite(entryT)) return idx;
+        const entryIdx = this._chartIndexForCloseMarkerOnChart(ch, entryT);
+        if (entryIdx < 0) return idx;
+        return this._refineExitMarkerIndexForClose(ch, entryIdx, tForIndex, px);
+    }
+
+    /**
+     * Chart-bar open time for the exit tick column (parallel to entryMarkerTimeMs).
+     * Keeps SL/TP marks on the hit candle across refresh / render updates.
+     */
+    _exitMarkerAnchorTimeMsFromClose(chart, closeTime, closePrice, entryRef = null) {
+        const ch = chart || this.chart;
+        const exitRef = {
+            closeTime,
+            closePrice,
+            openTime: entryRef?.openTime,
+            entryMarkerTimeMs: entryRef?.entryMarkerTimeMs,
+        };
+        const idx = this._chartIndexForExitMarkerOnChart(ch, exitRef);
+        if (idx < 0 || !ch?.data?.[idx]) {
+            const ct = Number(closeTime);
+            return Number.isFinite(ct) ? ct : undefined;
+        }
+        const bt = Number(ch.data[idx].t);
+        return Number.isFinite(bt) ? bt : (Number.isFinite(Number(closeTime)) ? Number(closeTime) : undefined);
     }
 
     /**
@@ -36430,17 +36635,26 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        let dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
-        if (dataIndex >= 0 && closeData.closePrice != null) {
-            dataIndex = this._refineExitMarkerIndexForClose(
-                chart, dataIndex, closeData.closeTime, closeData.closePrice
-            );
-        }
+        const exitRef = {
+            closeTime: closeData.closeTime,
+            closePrice: closeData.closePrice,
+            exitMarkerTimeMs: closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs,
+            openTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
+        };
+        let dataIndex = this._chartIndexForExitMarkerOnChart(chart, exitRef);
         if (dataIndex === -1) {
             if (this._isMarkerTimeVisibleInReplay(chart, closeData.closeTime)) {
                 this._scheduleClosedJournalMarkerRedraw();
             }
             return;
+        }
+        const resolvedExitTime = Number(chart.data[dataIndex]?.t);
+        const markerTime = Number.isFinite(resolvedExitTime)
+            ? resolvedExitTime
+            : Number(exitRef.exitMarkerTimeMs ?? closeData.closeTime);
+        if (Number.isFinite(markerTime) && order.exitMarkerTimeMs == null) {
+            order.exitMarkerTimeMs = markerTime;
         }
 
         if (!this.exitMarkers) this.exitMarkers = [];
@@ -36450,7 +36664,7 @@ class OrderManager {
         const existingMarker = this.exitMarkers.find(m =>
             String(m.orderId) === orderIdKey
             && m.priceKey === priceKey
-            && m.time === closeData.closeTime
+            && (m.time === markerTime || m.time === closeData.closeTime)
             && (m.chart || this.chart) === chart
         );
 
@@ -36556,7 +36770,7 @@ class OrderManager {
         this.exitMarkers.push({
             orderId: order.id,
             marker: markerGroup,
-            time: closeData.closeTime,
+            time: markerTime,
             price: closeData.closePrice,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
@@ -36564,12 +36778,19 @@ class OrderManager {
             count: 1,
             isBuyExit,
             linkedOrderIds: [String(order.id)],
-            chart
+            chart,
+            openTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
+            exitMarkerTimeMs: markerTime,
         });
 
-        this._drawTradeConnector(order, closeData, chart);
+        this._drawTradeConnector(order, {
+            ...closeData,
+            closeTime: closeData.closeTime,
+            exitMarkerTimeMs: markerTime,
+        }, chart);
     }
-    
+
     /**
      * Draw a soft gray dashed line from entry tick to exit tick
      */
@@ -36585,13 +36806,20 @@ class OrderManager {
         if (!yScale) return;
 
         const entryIdx = this._chartIndexForEntryMarkerOnChart(chart, order);
-        const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
+        const exitIdx = this._chartIndexForExitMarkerOnChart(chart, {
+            closeTime: closeData.closeTime,
+            closePrice: closeData.closePrice,
+            exitMarkerTimeMs: closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs,
+            openTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
+        });
         if (entryIdx === -1 || exitIdx === -1) return;
 
         const x1 = chart.dataIndexToPixel(entryIdx);
         const y1 = yScale(order.openPrice);
         const x2 = chart.dataIndexToPixel(exitIdx);
         const y2 = yScale(closeData.closePrice);
+        const resolvedExitTime = Number(chart.data[exitIdx]?.t);
 
         const line = chart.svg.append('line')
             .attr('class', `trade-connector trade-connector-${order.id}`)
@@ -36610,6 +36838,9 @@ class OrderManager {
             entryMarkerTimeMs: order.entryMarkerTimeMs,
             entryPrice: order.openPrice,
             exitTime: closeData.closeTime,
+            exitMarkerTimeMs: Number.isFinite(resolvedExitTime)
+                ? resolvedExitTime
+                : (closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs),
             exitPrice: closeData.closePrice
         });
         // Keep entry→exit line and markers aligned without waiting for the next chart click/render.
@@ -36641,8 +36872,19 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
+        const exitRef = {
+            closeTime: closeData.closeTime,
+            closePrice: closeData.closePrice,
+            exitMarkerTimeMs: closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs,
+            openTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
+        };
+        const dataIndex = this._chartIndexForExitMarkerOnChart(chart, exitRef);
         if (dataIndex === -1) return;
+        const resolvedExitTime = Number(chart.data[dataIndex]?.t);
+        const markerTime = Number.isFinite(resolvedExitTime)
+            ? resolvedExitTime
+            : Number(exitRef.exitMarkerTimeMs ?? closeData.closeTime);
 
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
 
@@ -36653,7 +36895,7 @@ class OrderManager {
             String(m.orderId) === orderIdKey
             && m.targetId === targetIdKey
             && m.priceKey === priceKey
-            && m.time === closeData.closeTime
+            && (m.time === markerTime || m.time === closeData.closeTime)
             && (m.chart || this.chart) === chart
         );
 
@@ -36755,7 +36997,7 @@ class OrderManager {
             orderId: order.id,
             targetId: closeData.targetId,
             marker: markerGroup,
-            time: closeData.closeTime,
+            time: markerTime,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
             totalQuantity: closeQuantity,
@@ -36763,10 +37005,16 @@ class OrderManager {
             price: closeData.closePrice,
             isBuyExit,
             linkedOrderIds: [String(order.id)],
-            chart
+            chart,
+            openTime: order.openTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs,
+            exitMarkerTimeMs: markerTime,
         });
 
-        this._drawTradeConnector(order, closeData, chart);
+        this._drawTradeConnector(order, {
+            ...closeData,
+            exitMarkerTimeMs: markerTime,
+        }, chart);
 
         const pnlText = `${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
         console.log(`✅ Partial close marker drawn for order #${order.id} target #${closeData.targetId} (P&L: ${pnlText})`);
@@ -36820,17 +37068,29 @@ class OrderManager {
 
     _updateExitAndPartialMarkersOnMain() {
         if (this.exitMarkers && this.exitMarkers.length > 0) {
-            this.exitMarkers.forEach(({ orderId, marker, time, price, isBuyExit, chart: mch }) => {
+            this.exitMarkers.forEach((em) => {
+                const { orderId, marker, time, price, isBuyExit, chart: mch } = em;
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(orderId);
                 if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
-                const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
+                const dataIndex = this._chartIndexForExitMarkerOnChart(ch, {
+                    closeTime: time,
+                    closePrice: price,
+                    exitMarkerTimeMs: em.exitMarkerTimeMs ?? time,
+                    openTime: em.openTime ?? orderRef?.openTime,
+                    entryMarkerTimeMs: em.entryMarkerTimeMs ?? orderRef?.entryMarkerTimeMs,
+                });
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 if (!candle) return;
+                const resolvedT = Number(candle.t);
+                if (Number.isFinite(resolvedT)) {
+                    em.time = resolvedT;
+                    em.exitMarkerTimeMs = resolvedT;
+                }
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
                 const y = mainY(price);
@@ -36859,17 +37119,29 @@ class OrderManager {
         }
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
-            this.partialCloseMarkers.forEach(({ orderId, marker, time, price, isBuyExit, chart: mch }) => {
+            this.partialCloseMarkers.forEach((pm) => {
+                const { orderId, marker, time, price, isBuyExit, chart: mch } = pm;
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(orderId);
                 if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const partialY = ch.scales.yScale;
-                const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
+                const dataIndex = this._chartIndexForExitMarkerOnChart(ch, {
+                    closeTime: time,
+                    closePrice: price,
+                    exitMarkerTimeMs: pm.exitMarkerTimeMs ?? time,
+                    openTime: pm.openTime ?? orderRef?.openTime,
+                    entryMarkerTimeMs: pm.entryMarkerTimeMs ?? orderRef?.entryMarkerTimeMs,
+                });
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 if (!candle) return;
+                const resolvedT = Number(candle.t);
+                if (Number.isFinite(resolvedT)) {
+                    pm.time = resolvedT;
+                    pm.exitMarkerTimeMs = resolvedT;
+                }
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
                 const y = partialY(price);
@@ -36910,8 +37182,16 @@ class OrderManager {
                     entryMarkerTimeMs: tc.entryMarkerTimeMs
                 };
                 const eIdx = this._chartIndexForEntryMarkerOnChart(ch, entryRef);
-                const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
+                const xIdx = this._chartIndexForExitMarkerOnChart(ch, {
+                    closeTime: tc.exitTime,
+                    closePrice: tc.exitPrice,
+                    exitMarkerTimeMs: tc.exitMarkerTimeMs,
+                    openTime: tc.entryTime,
+                    entryMarkerTimeMs: tc.entryMarkerTimeMs,
+                });
                 if (eIdx === -1 || xIdx === -1) return;
+                const resolvedExitT = Number(ch.data[xIdx]?.t);
+                if (Number.isFinite(resolvedExitT)) tc.exitMarkerTimeMs = resolvedExitT;
                 tc.line
                     .attr('x1', ch.dataIndexToPixel(eIdx))
                     .attr('y1', mainY(tc.entryPrice))
