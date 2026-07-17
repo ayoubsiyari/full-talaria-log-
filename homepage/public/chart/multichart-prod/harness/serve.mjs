@@ -494,7 +494,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260717b72';
+  const buildId = '20260717b73';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -850,10 +850,58 @@ function hostPageHtml(query) {
           }
         } catch (e) {}
       }
+      // MC-PEER-DESELECT-SCOPE: mirror MultichartGrid cancelScheduledPeerDeselect export + guarded handlers.
+      var _peerDeselectTimers = {};
+      function cancelScheduledPeerDeselect(panelId) {
+        var pid = panelId != null ? String(panelId) : '';
+        if (_peerDeselectTimers[pid]) {
+          clearTimeout(_peerDeselectTimers[pid]);
+          delete _peerDeselectTimers[pid];
+        }
+      }
+      function focusPanelById(panelId) {
+        if (panelId != null && typeof window.harnessSetFocusedPanel === 'function') {
+          window.harnessSetFocusedPanel(String(panelId));
+        }
+      }
+      function multichartPeerDeselectV1Enabled() {
+        return !(typeof window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === 'boolean'
+          && window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === true);
+      }
+      window.addEventListener('message', function (ev) {
+        try {
+          var msg = ev.data;
+          if (!msg || typeof msg !== 'object' || !msg.type) return;
+          if (msg.type === 'multichart-clear-drawing-ui') {
+            var sourceId = msg.source != null ? String(msg.source) : null;
+            var grid = window.__multichartGrid;
+            if (multichartPeerDeselectV1Enabled() && sourceId && grid
+              && typeof grid.cancelScheduledPeerDeselect === 'function') {
+              grid.cancelScheduledPeerDeselect(sourceId);
+            }
+            if (grid && typeof grid.focusPanelById === 'function' && sourceId) {
+              grid.focusPanelById(sourceId);
+            }
+            return;
+          }
+          if (msg.type === 'multichart-drawing-selected') {
+            var src = msg.source != null ? String(msg.source) : null;
+            var g = window.__multichartGrid;
+            if (g && typeof g.cancelScheduledPeerDeselect === 'function' && src) {
+              g.cancelScheduledPeerDeselect(src);
+            }
+            if (g && typeof g.focusPanelById === 'function' && src) {
+              g.focusPanelById(src);
+            }
+          }
+        } catch (_) {}
+      });
       window.__multichartGrid = {
         getPanelIds: function () { return ['A'].concat(iframeIds); },
         getFinestReplayCadenceMs: finestReplayCadenceMs,
         refreshFinestReplayCadence: refreshFinestReplayCadence,
+        cancelScheduledPeerDeselect: cancelScheduledPeerDeselect,
+        focusPanelById: focusPanelById,
       };
 
       window.__harnessHostReady = true;
