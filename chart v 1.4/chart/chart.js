@@ -25816,6 +25816,11 @@ class Chart {
         // during active pan prefer thin preview reposition; still run full lines when
         // open/pending overlays exist. Kill-switch:
         //   window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_LITE_V1 = true
+        //
+        // Closed-trade entry/exit arrows live in entryMarkers/exitMarkers — not
+        // orderLines. Pan-lite used to skip them whenever there was no open line,
+        // so marks froze in screen space until mouse-up. Always thin-reposition
+        // those markers (and MFE/MAE) on the pan path.
         let panLite = false;
         try {
             panLite = !!panActive
@@ -25823,6 +25828,15 @@ class Chart {
                     && window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_LITE_V1 === true);
         } catch (_) { panLite = !!panActive; }
         if (panLite) {
+            // Prefer live yScale so iframe pan (panel B) does not leave marks a
+            // frame behind candles / look "stuck" until mouse-up.
+            try {
+                if (typeof this.yScale === 'function') {
+                    if (!this.scales) this.scales = {};
+                    this.scales.yScale = this.yScale;
+                    if (typeof this.xScale === 'function') this.scales.xScale = this.xScale;
+                }
+            } catch (_) { /* ignore */ }
             let hasOrderLines = false;
             try {
                 const lines = om.orderLines;
@@ -25831,7 +25845,21 @@ class Chart {
                 }
             } catch (_) { hasOrderLines = true; }
             if (hasOrderLines && typeof om.updateOrderLines === 'function') {
-                om.updateOrderLines(this);
+                // panLite: reposition without purge/align (full rebuild glitched panel B).
+                om.updateOrderLines(this, { panLite: true });
+            } else {
+                // No open/pending lines — still glue closed-trade marks to the candles.
+                try {
+                    if (typeof om._updateEntryMarkersForChart === 'function') {
+                        om._updateEntryMarkersForChart(this);
+                    }
+                    if (typeof om._updateExitAndPartialMarkersOnMain === 'function') {
+                        om._updateExitAndPartialMarkersOnMain();
+                    }
+                } catch (_) { /* ignore */ }
+            }
+            if (typeof om.updateMfeMaeMarkers === 'function') {
+                try { om.updateMfeMaeMarkers(this); } catch (_) { /* ignore */ }
             }
             if (typeof om.updatePreviewLinePositions === 'function') {
                 om.updatePreviewLinePositions();

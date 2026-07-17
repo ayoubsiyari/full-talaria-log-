@@ -40111,17 +40111,30 @@ class OrderManager {
         });
     }
 
-    updateOrderLines(sourceChart) {
+    /**
+     * @param {object} [sourceChart]
+     * @param {{ panLite?: boolean }} [opts] panLite: skip purge/align/connector rebuild
+     *   so multichart iframe pan stays smooth (markers still reposition).
+     */
+    updateOrderLines(sourceChart, opts) {
+        const panLite = !!(opts && opts.panLite);
         this._pruneReplayFutureTradeMarkers();
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
             this._collectLayoutCharts().forEach((c) => {
-                if (c?.scales?.yScale) this.updateOrderLines(c);
+                if (c?.scales?.yScale) this.updateOrderLines(c, opts);
             });
             return;
         }
 
         const ch = sourceChart || this.chart;
-        if (ch?.svg) {
+        // Pan frames: keep scales.yScale pointed at the live yScale (same as draft
+        // preview) so entry/exit arrows do not lag a frame behind candles.
+        if (panLite && ch && typeof ch.yScale === 'function') {
+            if (!ch.scales) ch.scales = {};
+            ch.scales.yScale = ch.yScale;
+            if (typeof ch.xScale === 'function') ch.scales.xScale = ch.xScale;
+        }
+        if (ch?.svg && !panLite) {
             this._purgeOrderOverlayArtifacts(ch);
             this._reconcileOrphanLabelAccents(ch);
             this._ensureLevelCtrlHover(ch);
@@ -40433,7 +40446,11 @@ class OrderManager {
             this.updateSLTPLines(ch);
         }
         this.updateBELines(ch);
-        this._drawExecutedOrderConnectors(ch);
+        // Pan-lite: skip connector rebuild — purge/redraw every frame made panel B
+        // hitch/glitch. Trade entry/exit connectors are updated above via markers.
+        if (!panLite) {
+            this._drawExecutedOrderConnectors(ch);
+        }
 
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
@@ -40442,11 +40459,18 @@ class OrderManager {
         if (!this._isDraggingPendingTarget) {
             this.positionPendingOrderTargets(ch);
         }
-        this._alignAllOrderLabels(ch);
-        if (ch?.svg) {
-            this._purgeOrderOverlayArtifacts(ch);
-            plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
-            this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
+        if (!panLite) {
+            this._alignAllOrderLabels(ch);
+            if (ch?.svg) {
+                this._purgeOrderOverlayArtifacts(ch);
+                plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
+                this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
+            }
+        } else if (ch?.svg) {
+            try {
+                plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
+                this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
+            } catch (_) { /* ignore */ }
         }
     }
 
