@@ -770,12 +770,24 @@ class ReplaySystem {
         return this._getRawBarPeriodMs();
     }
 
-    /** Selected-panel speed anchor (explicit INTERVAL or host display TF). */
+    /** Selected-panel speed anchor (explicit INTERVAL, focused tile TF, or host display TF). */
     _getSelectedReplayCadenceMs() {
         if (this._hasExplicitReplayStepInterval()) {
             const stepMs = this._resolveReplayStepTimeframeMs();
             if (Number.isFinite(stepMs) && stepMs > 0) return stepMs;
         }
+        // Multichart: speed anchors to the focused panel when present (D-016),
+        // but the clock still ticks at global min TF via _getFinestReplayCadenceMs.
+        try {
+            if (this._isFinestTfReplayCadenceEnabled()
+                && typeof window !== 'undefined'
+                && typeof window.getActiveChart === 'function') {
+                const active = window.getActiveChart();
+                const activeTf = active && active.currentTimeframe;
+                const activeMs = activeTf ? this.timeframeToMs(activeTf) : null;
+                if (Number.isFinite(activeMs) && activeMs > 0) return activeMs;
+            }
+        } catch (_e) { /* ignore */ }
         const chartTfMs = this.chart && this.chart.currentTimeframe
             ? this.timeframeToMs(this.chart.currentTimeframe)
             : null;
@@ -861,8 +873,65 @@ class ReplaySystem {
         return this._hasExplicitReplayStepInterval();
     }
 
+    /**
+     * D-016: advance shared market clock by one finest-TF bucket (timestamp),
+     * then sync currentIndex. Used when index++ would jump a coarser raw bar.
+     */
+    _advanceFinestTfTimestampStep() {
+        const finestMs = this._getFinestReplayCadenceMs();
+        if (!Number.isFinite(finestMs) || finestMs <= 0) return false;
+        if (!Array.isArray(this.fullRawData) || !this.fullRawData.length) return false;
+        let ts = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : Number(this.fullRawData[this.currentIndex]?.t);
+        if (!Number.isFinite(ts)) return false;
+        const nextTs = ts + finestMs;
+        const lastBar = this.fullRawData[this.fullRawData.length - 1];
+        const rawMs = this._getRawBarPeriodMs();
+        const lastEnd = lastBar && Number.isFinite(lastBar.t) ? lastBar.t + rawMs : Infinity;
+        if (nextTs >= lastEnd && this.currentIndex >= this.fullRawData.length - 1) {
+            return false;
+        }
+        this.replayTimestamp = nextTs;
+        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            try { this.syncCurrentIndexFromReplayTimestamp(nextTs); } catch (_e) { /* ignore */ }
+        } else {
+            const idx = this._lastRawIndexAtOrBeforeTs
+                ? this._lastRawIndexAtOrBeforeTs(nextTs)
+                : this.currentIndex;
+            if (Number.isFinite(idx) && idx >= 0) {
+                this.currentIndex = Math.min(idx, this.fullRawData.length - 1);
+            }
+        }
+        this.tickElapsedMs = 0;
+        this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
+        return true;
+    }
+
     /** Advance playhead one replay step (respects INTERVAL + candle mode). */
     _advanceReplayPlayheadOneStep() {
+        // Finest-TF sub-step: +finestMs on the shared clock when host raw is coarser
+        // than peer min TF; otherwise +1 raw bar (1m master).
+        if (this._shouldUseFinestTfSubStepIndexAdvance()) {
+            const finestMs = this._getFinestReplayCadenceMs();
+            const rawMs = this._getRawBarPeriodMs();
+            if (Number.isFinite(finestMs) && finestMs > 0
+                && Number.isFinite(rawMs) && rawMs > 0
+                && finestMs < rawMs * 0.92) {
+                if (this._advanceFinestTfTimestampStep()) return;
+            }
+            if (this.currentIndex < this.fullRawData.length - 1) {
+                this.currentIndex++;
+            }
+            this.edgeProbeRetryCount = 0;
+            this._replayForwardEdgeWait = false;
+            if (this.fullRawData && this.fullRawData[this.currentIndex]) {
+                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                this.tickElapsedMs = 0;
+            }
+            return;
+        }
         if (this._shouldStepByReplayInterval()) {
             if (!this._advanceCoarseLegacyCandleBucket()) {
                 const targetIndex = this.calculateNextIndex();
@@ -3717,6 +3786,9 @@ class ReplaySystem {
             return;
         }
 
+        // Re-scan panel TFs so coarse-main Play never uses a stale host-only finest.
+        try { this._onFinestTfCadencePanelsChanged(); } catch (_e) { /* ignore */ }
+
         const playbackMode = this.getPlaybackMode();
         const useTickAnimation = this._shouldUseTickAnimation();
         
@@ -5642,6 +5714,7 @@ class ReplaySystem {
         // currentIndex (visible backward jump / stuck loading). Playhead advance is
         // untouched — only the backward probe is deferred during the burst.
         this._mcManualStepBurstUntil = performance.now() + 150;
+        try { this._onFinestTfCadencePanelsChanged(); } catch (_e) { /* ignore */ }
         if (this.isPlaying) {
             this.pause();
         }

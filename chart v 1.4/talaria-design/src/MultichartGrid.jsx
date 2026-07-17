@@ -5855,13 +5855,40 @@ export default function MultichartGrid({
                 return null;
             }
             let minMs = null;
-            for (const ch of enumerateMultichartCharts()) {
-                if (!ch || !ch.currentTimeframe) continue;
-                const ms = timeframeToMsLocal(ch.currentTimeframe);
+            const considerTf = (tf) => {
+                if (!tf) return;
+                const ms = timeframeToMsLocal(tf);
                 if (Number.isFinite(ms) && ms > 0) {
                     minMs = minMs == null ? ms : Math.min(minMs, ms);
                 }
+            };
+            // Live Chart instances (host + iframe contentWindow.chart).
+            for (const ch of enumerateMultichartCharts()) {
+                if (!ch) continue;
+                considerTf(ch.currentTimeframe);
             }
+            // Manager tile state / cfg — covers peers whose iframe chart is not
+            // readable yet (or mid TF switch). Without this, host-only scan
+            // collapses finest to Panel A's 4h and Play/Step jump coarsely.
+            try {
+                const mgr = managerRef.current;
+                if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                    for (const entry of mgr.charts.values()) {
+                        if (!entry) continue;
+                        const stateTf = entry.state && entry.state.timeframe;
+                        const cfgTf = entry.cfg && (entry.cfg.tf || entry.cfg.timeframe);
+                        considerTf(stateTf || cfgTf);
+                        if (entry.host) {
+                            considerTf(window.chart && window.chart.currentTimeframe);
+                        } else if (entry.frame) {
+                            try {
+                                const iw = entry.frame.contentWindow;
+                                considerTf(iw && iw.chart && iw.chart.currentTimeframe);
+                            } catch (_) { /* cross-origin */ }
+                        }
+                    }
+                }
+            } catch (_) { /* teardown */ }
             return minMs;
         }
 
