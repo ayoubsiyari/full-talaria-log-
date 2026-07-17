@@ -161,6 +161,8 @@
         var lines = [];
         var boxes = [];
         var histLines = [];
+        var sessions = [];
+        var curSess = null;
 
         function pushLine(price, color, style, width, startIdx, endIdx, label) {
             if (!Number.isFinite(price)) return;
@@ -181,6 +183,7 @@
             var newSess = inSess && (!prevInSess || newDate);
 
             if (newSess) {
+                if (curSess) { curSess.endIdx = i - 1; sessions.push(curSess); }
                 if (curHi != null && curLo != null) ranges.push(curHi - curLo);
                 if (ranges.length > (Number(p.avgLen) || 14) + 1) ranges.shift();
                 prevHi = curHi;
@@ -193,6 +196,11 @@
                 curHi = bars[i].h;
                 curLo = bars[i].l;
                 curCl = bars[i].c;
+                curSess = {
+                    startIdx: i, endIdx: n - 1,
+                    prevHi: prevHi, prevLo: prevLo, prevCl: prevCl,
+                    todayOpen: todayOpen, orHi: null, orLo: null, ibHi: null, ibLo: null
+                };
             } else if (inSess) {
                 if (curHi == null) {
                     curHi = bars[i].h;
@@ -216,9 +224,15 @@
             if (inSess && !inIB && ibHi != null && !ibDone) ibDone = true;
             if (inSess && !inOR && orHi != null && !orDone) orDone = true;
 
+            if (curSess) {
+                curSess.orHi = orHi; curSess.orLo = orLo;
+                curSess.ibHi = ibHi; curSess.ibLo = ibLo;
+            }
+
             prevInSess = inSess;
             prevSessDate = sd;
         }
+        if (curSess) sessions.push(curSess);
 
         var avgLen = Math.max(5, Number(p.avgLen) || 14);
         var yRange = ranges.length ? ranges[ranges.length - 1] : null;
@@ -294,12 +308,53 @@
             pushLine(prevLo - 0.5 * pdrR2, p.cPTgi, p.sPTgi, p.wPrev, startIdx, endIdx, '−0.5× PDR');
         }
 
+        // Keep past sessions' levels frozen within their own span (Pine `keepSess`).
+        var keepSess = Math.max(0, Math.min(25, Number(p.keepSess) || 0));
+        if (keepSess > 0 && sessions.length > 1) {
+            function pushHist(price, color, style, width, s, e) {
+                if (!Number.isFinite(price)) return;
+                histLines.push({
+                    price: price, color: fadeColor(color, p.lvlOpacity),
+                    style: style, width: width || 1,
+                    startIndex: s, endIndex: e, label: ''
+                });
+            }
+            var past = sessions.slice(0, sessions.length - 1);
+            var fromIdx = Math.max(0, past.length - keepSess);
+            for (var hs = fromIdx; hs < past.length; hs++) {
+                var S = past[hs];
+                var s0 = S.startIdx; var e0 = S.endIdx;
+                var hMid = (S.prevHi != null && S.prevLo != null) ? (S.prevHi + S.prevLo) / 2 : null;
+                var hGapPts = (S.todayOpen != null && S.prevCl != null) ? S.todayOpen - S.prevCl : null;
+                var hG50 = (hGapPts != null && S.todayOpen != null) ? S.todayOpen - hGapPts / 2 : null;
+                if (p.showPDR && p.pdrLines && S.prevHi != null) {
+                    pushHist(S.prevHi, p.cPDHi, p.sPDHi, p.wPrev, s0, e0);
+                    pushHist(S.prevLo, p.cPDLi, p.sPDLi, p.wPrev, s0, e0);
+                    pushHist(hMid, p.cMidi, p.sMidi, p.wPrev, s0, e0);
+                }
+                if (p.showGapSect && p.gapLines && S.prevCl != null) {
+                    pushHist(S.prevCl, p.cPCi, p.sPCi, p.wGap, s0, e0);
+                    pushHist(hG50, p.cG50i, p.sG50i, p.wGap, s0, e0);
+                }
+                if (p.showGapSect && p.showOpen && S.todayOpen != null) {
+                    pushHist(S.todayOpen, p.cOPi, p.sOPi, p.wGap, s0, e0);
+                }
+                if (p.showOR && p.orLines && S.orHi != null) {
+                    pushHist(S.orHi, p.cORi, p.sORi, p.wOR, s0, e0);
+                    pushHist(S.orLo, p.cORi, p.sORi, p.wOR, s0, e0);
+                }
+                if (p.showIB && p.ibLines && S.ibHi != null) {
+                    pushHist(S.ibHi, p.cIBi, p.sIBi, p.wIB, s0, e0);
+                    pushHist(S.ibLo, p.cIBi, p.sIBi, p.wIB, s0, e0);
+                }
+            }
+        }
+
         var labels = [];
         if (p.showLbl) {
             lines.forEach(function (ln) {
                 if (!ln.label) return;
                 labels.push({
-                    index: endIdx + (Number(p.lblOff) || 2),
                     price: ln.price,
                     text: ln.label,
                     color: ln.color
@@ -358,6 +413,12 @@
             lines: lines.concat(histLines),
             boxes: boxes,
             labels: labels,
+            labelMeta: {
+                size: p.lblSizeS,
+                mergeK: Number(p.mergeK) || 0,
+                stagger: Number(p.lblStagger) || 10,
+                avgR: avgR
+            },
             infoCells: infoCells,
             infoMeta: {
                 tblPos: p.tblPos,
@@ -417,8 +478,10 @@
 
             var plotL = m.l;
             var plotR = this.w - m.r;
-            var plotTop = m.t;
-            var plotBottom = this.h - m.b;
+            var plotLayout = typeof this._getMainPricePlotLayout === 'function'
+                ? this._getMainPricePlotLayout() : null;
+            var plotTop = plotLayout ? plotLayout.plotTop : m.t;
+            var plotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
 
             if (data.lines && data.lines.length) {
                 data.lines.forEach(function (ln) {
@@ -442,27 +505,34 @@
             }
 
             if (data.labels && data.labels.length) {
-                var fontSize = 11;
+                var lm = data.labelMeta || {};
+                var fontSize = lm.size === 'tiny' ? 9 : lm.size === 'small' ? 10
+                    : lm.size === 'large' ? 14 : lm.size === 'huge' ? 17 : 12;
                 ctx.font = '600 ' + fontSize + 'px Roboto, system-ui, sans-serif';
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
                 // Right-align each label just inside the price axis at its exact
-                // level; stagger horizontally (in columns) when levels stack.
+                // level; stagger into columns (Pine mergeK / stagger) when levels
+                // sit closer than the price threshold.
                 var placed = [];
                 data.labels.forEach(function (lb) {
                     var y = this.yScale(lb.price);
                     if (y < plotTop + 1 || y > plotBottom - 1) return;
-                    placed.push({ text: lb.text, color: lb.color, y: y });
+                    placed.push({ text: lb.text, color: lb.color, y: y, price: lb.price });
                 }, this);
+                // Sort top→bottom by pixel (higher price first).
                 placed.sort(function (a, b) { return a.y - b.y; });
-                var lastY = -Infinity;
+                var priceTh = (lm.avgR != null && lm.mergeK) ? lm.avgR * lm.mergeK : 0;
+                var colGap = Math.max(48, (Number(lm.stagger) || 10) * 7);
+                var lastPrice = null;
                 var col = 0;
-                var colGap = 96;
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
-                    if (it.y - lastY < fontSize + 2) col += 1;
-                    else col = 0;
-                    lastY = it.y;
+                    var close = lastPrice != null &&
+                        (priceTh > 0 ? Math.abs(lastPrice - it.price) <= priceTh
+                                     : (li > 0 && (it.y - placed[li - 1].y) < fontSize + 2));
+                    if (close) col += 1; else col = 0;
+                    lastPrice = it.price;
                     var tw = ctx.measureText(it.text).width;
                     var rightEdge = plotR - 4 - col * colGap;
                     var x = rightEdge - tw;

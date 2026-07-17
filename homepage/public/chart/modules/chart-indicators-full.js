@@ -9318,9 +9318,13 @@
             } else if (indicator.type === 'icteverything' || indicator.isIctEverything) {
                 this.drawIctEverything(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'talariafvg' || indicator.isTalariaFvg) {
-                this.drawTalariaFvg(data, indicator.style, startIndex, endIndex);
+                if (typeof this.drawTalariaFvg === 'function') {
+                    this.drawTalariaFvg(data, indicator.style, startIndex, endIndex);
+                }
             } else if (indicator.type === 'talariaratiogap' || indicator.isTalariaRatioGap) {
-                this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
+                if (typeof this.drawTalariaRatioGap === 'function') {
+                    this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
+                }
             } else if (indicator.type === 'adr' || indicator.isADR) {
                 this.drawADRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.isATR) {

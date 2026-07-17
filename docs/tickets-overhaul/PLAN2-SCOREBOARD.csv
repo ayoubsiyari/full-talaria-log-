@@ -1,20 +1,20 @@
 ﻿unit,origin,track,title,status,note
-RC-1,engineering,root-cause,First-click / multichart interaction dead on fallback-B,STAGED,RESOLVED | Engine substrate on main + kill-switched
+RC-1,engineering,root-cause,First-click / multichart interaction dead on fallback-B,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 RC-2,engineering,root-cause,Slow interaction / grid renders above candles while panning,STAGED,RESOLVED | peer/iframe repaint deferred to re-migration
 RC-3,engineering,root-cause,Label mis-anchor / drawing anchoring drift,STAGED,RESOLVED | Phase 5 (multichart parity) deferred into RC-4 re-migration track
-RC-4,engineering,root-cause,Multichart re-migration interaction family,STAGED,RESOLVED-DEV | Combined-build bless pending Worker 1 chrome fix
+RC-4,engineering,root-cause,Multichart re-migration interaction family,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 RC-5,engineering,root-cause,Order-entry parse / drag-input family,STAGED,RESOLVED-NEEDS-LIVE | PO live-confirm outstanding on a5
 RC-6,engineering,root-cause,Indicator lifecycle / visibility / settings-apply / replay UI sync,STAGED,RESOLVED-NEEDS-LIVE | synthetic actuation; needs live confirm
 RC-8,engineering,root-cause,(replay/cadence family,IN-TRACK,d6d9822f (staging b1) | no
-H-R02,engineering,remig-row,Panel-B ctrl-select actuation,STAGED,RESOLVED | discriminator of record established (D-023)
-H-R03,engineering,remig-row,Panel-B ctrl-select double-actuation regression,STAGED,RESOLVED | was regressed on b6; discriminator = dedupe A/B
-H-R04,engineering,remig-row,Panel-B settings gear open,IN-TRACK,IN-PROGRESS | Worker 1 implementing per D-024
-H-R05,engineering,remig-row,Panel-B Esc close,IN-TRACK,IN-PROGRESS | Worker 1 implementing per D-024
-H-R06,engineering,remig-row,Panel-B Delete drawing,STAGED,RESOLVED | engine committed
-H-R07,engineering,remig-row,Panel peer-isolation (dual-select leak),STAGED,RESOLVED | MultichartGrid+multichart-manager
+H-R02,engineering,remig-row,Panel-B ctrl-select actuation,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
+H-R03,engineering,remig-row,Panel-B ctrl-select double-actuation regression,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (x5)
+H-R04,engineering,remig-row,Panel-B settings gear open,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (D-026 fix)
+H-R05,engineering,remig-row,Panel-B Esc close,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1 (D-026 fix)
+H-R06,engineering,remig-row,Panel-B Delete drawing,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
+H-R07,engineering,remig-row,Panel peer-isolation (dual-select leak),CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-R08,engineering,remig-row,Marquee select,IN-TRACK,DEFERRED | impl gated on P5 green; low priority
 H-R14,engineering,remig-row,Marquee variant,IN-TRACK,DEFERRED | rides combined build
-H-R12,engineering,remig-row,Chrome leg,STAGED,RESOLVED | dropped from Phase 2 scope
+H-R12,engineering,remig-row,Chrome leg,CLOSED-VERIFIED,PO retest PASS build:20260717b16 session:S1
 H-S18,engineering,replay,Manager gate poison / infinite redraw loop,STAGED,RESOLVED | root = T2 invalidation x replay recursion
 H-S20,engineering,replay,Coarse 1D mirror regression,STAGED,RESOLVED | true step-5 regression fixed
 H-S25,engineering,replay,Panel replay-follow seam leap,IN-TRACK,NEEDS-REFIX | post-b1 landing order item 1
