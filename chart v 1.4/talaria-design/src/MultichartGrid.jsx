@@ -84,6 +84,72 @@ function cloneOrderManagerList(arr) {
     }
 }
 
+function orderMcStateConvergeFixEnabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX);
+    } catch (_) {
+        return true;
+    }
+}
+
+function orderMcHostPlaceV1Enabled() {
+    return orderMcStateConvergeFixEnabled()
+        && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_HOST_PLACE_V1);
+}
+
+function orderMcSnapshotProjectionV1Enabled() {
+    return orderMcStateConvergeFixEnabled()
+        && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1);
+}
+
+function orderMcLegacyIframeOrderV1Enabled() {
+    return orderMcStateConvergeFixEnabled()
+        && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_LEGACY_IFRAME_ORDER_V1);
+}
+
+function orderMcPnlHubV1Enabled() {
+    return orderMcStateConvergeFixEnabled()
+        && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1);
+}
+
+function orderMcOpenPatchV1Enabled() {
+    return orderMcStateConvergeFixEnabled()
+        && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_OPEN_PATCH_V1);
+}
+
+function buildHostOrderStoreSnapshot(om, sessionId, version) {
+    if (!om) {
+        return {
+            version: version || 0,
+            sessionId: sessionId || null,
+            pendingOrders: [],
+            openPositions: [],
+            closedPositions: [],
+            orders: [],
+            account: {},
+            counters: {},
+        };
+    }
+    return {
+        version: Number(version) || 0,
+        sessionId: sessionId != null ? String(sessionId) : null,
+        pendingOrders: cloneOrderManagerList(om.pendingOrders),
+        openPositions: cloneOrderManagerList(om.openPositions),
+        closedPositions: cloneOrderManagerList(om.closedPositions).slice(-50),
+        orders: cloneOrderManagerList(om.orders),
+        account: {
+            balance: om.balance,
+            equity: om.equity,
+            initialBalance: om.initialBalance,
+            sessionCurrentTime: om.orderService?.multiInstrumentSession?.current_time,
+        },
+        counters: {
+            orderIdCounter: om.orderIdCounter,
+            tradeGroupIdCounter: om.tradeGroupIdCounter,
+        },
+    };
+}
+
 function multichartOwnershipV2Enabled() {
     try {
         return typeof window !== "undefined" && window.__TALARIA_DISABLE_MULTICHART_OWNERSHIP_V2 === false;
@@ -6236,6 +6302,120 @@ export default function MultichartGrid({
             };
         }
 
+        let hostOrderSnapshotVersion = 0;
+
+        function syncHostOrderPanelFromArgs(args) {
+            const doc = document;
+            const setVal = (id, v) => {
+                const el = doc.getElementById(id);
+                if (!el) return;
+                el.value = (v == null) ? "" : String(v);
+                try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}
+                try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+            };
+            const setChk = (id, v) => {
+                const el = doc.getElementById(id);
+                if (!el) return;
+                el.checked = !!v;
+                try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+            };
+            const side = (args.side === "SELL") ? "SELL" : "BUY";
+            const om = window.chart && window.chart.orderManager;
+            if (om) om.orderSide = side;
+            const bt = doc.getElementById("buyTab");
+            const st = doc.getElementById("sellTab");
+            if (bt) bt.classList.toggle("active", side === "BUY");
+            if (st) st.classList.toggle("active", side === "SELL");
+            const ot = (args.type === "limit" || args.type === "stop") ? args.type : "market";
+            doc.querySelectorAll("#orderPanel .order-type-btn").forEach((b) => {
+                b.classList.toggle("active", b.getAttribute("data-type") === ot);
+            });
+            if (args.quantity != null) setVal("orderQuantity", args.quantity);
+            if (args.entryPrice != null) setVal("orderEntryPrice", args.entryPrice);
+            setChk("enableTP", !!args.tpEnabled);
+            if (args.tpPrice != null) setVal("tpPrice", args.tpPrice);
+            setChk("enableSL", !!args.slEnabled);
+            if (args.slPrice != null) setVal("slPrice", args.slPrice);
+        }
+
+        function getPanelOrderAttribution(panelId) {
+            const ch = getChartForPanelId(panelId);
+            const sym = ch && ch.currentSymbol ? String(ch.currentSymbol) : "";
+            return {
+                panelId,
+                symbol: sym,
+                fileId: ch && ch.currentFileId != null ? String(ch.currentFileId) : "",
+                ticker: sym.replace(/\//g, "").toUpperCase(),
+            };
+        }
+
+        function buildSnapshotFromHost() {
+            const ch = window.chart;
+            const om = ch && ch.orderManager;
+            if (!om) return null;
+            hostOrderSnapshotVersion += 1;
+            const sessionId = ch.getActiveTradingSessionId?.() || null;
+            return buildHostOrderStoreSnapshot(om, sessionId, hostOrderSnapshotVersion);
+        }
+
+        function fanOutOrderSnapshot(excludePanelId) {
+            if (!orderMcSnapshotProjectionV1Enabled()) return;
+            const snap = buildSnapshotFromHost();
+            if (!snap) return;
+            const grid = window.__multichartGrid;
+            const mgr = managerRef.current;
+            if (!grid || !mgr || !mgr.charts) return;
+            for (const c of mgr.charts.values()) {
+                if (!c || !c.ready || c.host || c.id === excludePanelId) continue;
+                grid.runCommand("applyOrderSnapshot", { snapshot: snap }, { panelId: c.id }).catch(() => {});
+            }
+        }
+
+        function tagLatestHostOrderWithPanel(panelId) {
+            const om = window.chart && window.chart.orderManager;
+            if (!om) return null;
+            const attr = getPanelOrderAttribution(panelId);
+            const latestOpen = (om.openPositions && om.openPositions.length)
+                ? om.openPositions[om.openPositions.length - 1]
+                : null;
+            const latestPending = (om.pendingOrders && om.pendingOrders.length)
+                ? om.pendingOrders[om.pendingOrders.length - 1]
+                : null;
+            const latest = latestOpen || latestPending;
+            if (!latest) return null;
+            if (attr.fileId) latest.sourceFileId = attr.fileId;
+            if (attr.panelId) latest.sourcePanelId = attr.panelId;
+            if (attr.ticker) {
+                latest.ticker = attr.ticker;
+                latest.symbol = attr.symbol;
+            }
+            return latest;
+        }
+
+        function hostPlaceOrderFromPanel(panelId, args) {
+            const ch = window.chart;
+            const om = ch && ch.orderManager;
+            if (!om || typeof om.placeAdvancedOrder !== "function") {
+                return Promise.reject(new Error("host orderManager.placeAdvancedOrder missing"));
+            }
+            if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                return Promise.reject(new Error("host replay not active — cannot place order"));
+            }
+            syncHostOrderPanelFromArgs(args);
+            try {
+                om.placeAdvancedOrder({ keepPanelOpen: true });
+            } catch (e) {
+                return Promise.reject(e);
+            }
+            const tagged = tagLatestHostOrderWithPanel(panelId);
+            if (orderMcSnapshotProjectionV1Enabled()) {
+                fanOutOrderSnapshot(null);
+            } else if (tagged) {
+                broadcastOrder(HOST_PANEL_ID, tagged.status === "PENDING" ? "pending" : "opened", tagged);
+            }
+            return Promise.resolve({ ok: true, orderId: tagged ? tagged.id : null });
+        }
+
         // Find every ready multichart tile except `excludeId` — used when
         // all panels are guaranteed the same dataset (backtest lock or
         // identical fileId) so orders/drags appear on every chart at once.
@@ -6449,6 +6629,11 @@ export default function MultichartGrid({
 
         function broadcastOrder(sourceId, kind, order) {
             if (!order || order.id == null) return;
+            if (orderMcSnapshotProjectionV1Enabled()
+                && (kind === "opened" || kind === "pending" || kind === "pending-updated")) {
+                fanOutOrderSnapshot(sourceId === HOST_PANEL_ID ? null : sourceId);
+                return;
+            }
             const mgr = managerRef.current;
             const symNorm = normalizeOrderTickerForMirror(
                 order.symbol || order.ticker || order.pair || order.instrument || ""
@@ -6729,7 +6914,35 @@ export default function MultichartGrid({
                 }
                 return;
             }
-            if (msg.type !== "iframe-order") return;
+            if (msg.type !== "iframe-order") {
+                if (msg.type === "order-pnl-tick" && orderMcPnlHubV1Enabled()) {
+                    const hom = window.chart && window.chart.orderManager;
+                    if (hom && typeof hom.updatePositions === "function") {
+                        try { hom.updatePositions(); } catch (_) {}
+                    }
+                    return;
+                }
+                if (msg.type === "order-command" && msg.cmd === "patch-open-leg") {
+                    if (!orderMcOpenPatchV1Enabled()) return;
+                    const hom = window.chart && window.chart.orderManager;
+                    if (!hom || msg.orderId == null || !Number.isFinite(Number(msg.price))) return;
+                    const order = (hom.openPositions || []).find((p) => p && p.id === msg.orderId);
+                    if (!order) return;
+                    const lineType = msg.lineType === "tp" ? "tp" : "sl";
+                    const price = Number(msg.price);
+                    const siblings = order.isSplitEntry && order.splitGroupId
+                        ? hom._getSplitGroupOpenPositions(order) : [order];
+                    for (const sib of siblings) {
+                        if (lineType === "sl") sib.stopLoss = price;
+                        else sib.takeProfit = price;
+                    }
+                    try { if (typeof hom.drawSLTPLines === "function") hom.drawSLTPLines(order); } catch (_) {}
+                    fanOutOrderSnapshot(null);
+                    return;
+                }
+                return;
+            }
+            if (!orderMcLegacyIframeOrderV1Enabled()) return;
             const sourceId = msg.source;
             const kind     = msg.kind;
             const order    = msg.order;
@@ -6767,7 +6980,32 @@ export default function MultichartGrid({
         function onPlaceOrderClickCapture(ev) {
             const t = ev && ev.target;
             if (!t || t.id !== "placeOrderButton") return;
-            const focused = focusedPanelIdRef.current;
+            const focused = focusedPanelIdRef.current || HOST_PANEL_ID;
+            if (orderMcHostPlaceV1Enabled() && focused !== HOST_PANEL_ID) {
+                ev.stopImmediatePropagation();
+                ev.preventDefault();
+                const args = collectOrderArgs();
+                const runHostPlace = () => hostPlaceOrderFromPanel(focused, args)
+                    .catch((e) => {
+                        console.warn("[MultichartGrid] host-canonical placeOrder failed:",
+                            e && e.message || e);
+                    });
+                if (orderMcPlaceReplayGateV1Enabled()) {
+                    const grid = window.__multichartGrid;
+                    if (!grid || typeof grid.runCommand !== "function") return;
+                    waitIframeReplayReady(grid, focused)
+                        .then((ready) => {
+                            if (!ready) {
+                                console.warn("[MultichartGrid] panel replay not active — host place blocked for", focused);
+                                return;
+                            }
+                            return runHostPlace();
+                        });
+                } else {
+                    runHostPlace();
+                }
+                return;
+            }
             if (!focused || focused === HOST_PANEL_ID) return;
             // Iframe focused — route there.
             ev.stopImmediatePropagation();

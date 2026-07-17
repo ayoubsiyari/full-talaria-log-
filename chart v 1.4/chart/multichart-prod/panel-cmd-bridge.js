@@ -95,6 +95,69 @@
         }
     }
 
+    function orderMcStateConvergeFixEnabledBridge() {
+        try { if (global.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX) return false; } catch (_) {}
+        return true;
+    }
+
+    function orderMcHostPlaceV1EnabledBridge() {
+        return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_HOST_PLACE_V1;
+    }
+
+    function orderMcSnapshotProjectionV1EnabledBridge() {
+        return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1;
+    }
+
+    function orderMcLegacyIframeOrderV1EnabledBridge() {
+        return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_LEGACY_IFRAME_ORDER_V1;
+    }
+
+    function orderMcPnlHubV1EnabledBridge() {
+        return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1;
+    }
+
+    function applyOrderSnapshotProjection(ch, snapshot) {
+        var om = ch && ch.orderManager;
+        if (!om || !snapshot) return { ok: false, reason: 'missing' };
+        var sym = String(ch.currentSymbol || '').replace(/\//g, '').toUpperCase();
+        var fid = ch.currentFileId != null ? String(ch.currentFileId) : '';
+        function matchRow(row) {
+            if (!row) return false;
+            var rs = String(row.symbol || row.ticker || '').replace(/\//g, '').toUpperCase();
+            var rf = row.sourceFileId != null ? String(row.sourceFileId) : '';
+            if (fid && rf) return rf === fid;
+            if (sym && rs) return rs === sym;
+            return false;
+        }
+        var open = (snapshot.openPositions || []).filter(matchRow);
+        var pending = (snapshot.pendingOrders || []).filter(matchRow);
+        om.openPositions = cloneOrderList(open);
+        om.pendingOrders = cloneOrderList(pending);
+        var ids = new Set();
+        open.forEach(function (p) { if (p && p.id != null) ids.add(p.id); });
+        pending.forEach(function (p) { if (p && p.id != null) ids.add(p.id); });
+        om.orders = cloneOrderList(snapshot.orders || []).filter(function (o) {
+            return o && ids.has(o.id);
+        });
+        om._hostSnapshotVersion = snapshot.version;
+        try {
+            open.forEach(function (ord) {
+                if (typeof om.drawOrderLine === 'function') om.drawOrderLine(ord, ch);
+                if (typeof om.drawSLTPLines === 'function') om.drawSLTPLines(ord, ch);
+            });
+            pending.forEach(function (ord) {
+                if (typeof om.scheduleRefreshPendingOrderGraphicsForChart === 'function') {
+                    om.scheduleRefreshPendingOrderGraphicsForChart(ord, ch);
+                } else if (typeof om.refreshPendingOrderGraphicsForChart === 'function') {
+                    om.refreshPendingOrderGraphicsForChart(ord, ch);
+                }
+            });
+        } catch (_) {}
+        try { if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch); } catch (_) {}
+        try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+        return { ok: true, version: snapshot.version };
+    }
+
     /** T1 step 14 — same switch as drawing-tools-manager / TalariaV8bLive (I13). */
     function v9QuickBarPanelEmbedFixEnabled() {
         try {
@@ -1008,6 +1071,7 @@
     };
 
     function postIframeOrder(kind, order) {
+        if (!orderMcLegacyIframeOrderV1EnabledBridge()) return;
         if (!order || order.id == null) return;
         if (panelOrderState.suppressEmitId === order.id) return;
         try {
@@ -3240,6 +3304,16 @@
                     // ─── ALWAYS seek to parent's position ───────────
                     pendingReplayTs = ts2;
                     scheduleCoalescedSeek(ch, ts2);
+                    if (orderMcPnlHubV1EnabledBridge()) {
+                        try {
+                            window.parent.postMessage({
+                                type: 'order-pnl-tick',
+                                panelId: panelId,
+                                symbol: ch.currentSymbol || '',
+                                timestamp: ts2,
+                            }, '*');
+                        } catch (_pnlHub) { /* ignore */ }
+                    }
                     return;
                 }
                 case 'replayExit': {
@@ -3470,7 +3544,16 @@
                             : null,
                     };
                 }
+                case 'applyOrderSnapshot': {
+                    if (!orderMcSnapshotProjectionV1EnabledBridge()) {
+                        return { skipped: true, reason: 'snapshot_projection_off' };
+                    }
+                    return applyOrderSnapshotProjection(ch, args && args.snapshot);
+                }
                 case 'placeOrder': {
+                    if (orderMcHostPlaceV1EnabledBridge()) {
+                        throw new Error('placeOrder blocked: host-canonical placement active (A6-4)');
+                    }
                     var om = ch.orderManager;
                     if (!om) throw new Error('orderManager not available');
                     if (typeof om.placeAdvancedOrder !== 'function') {
@@ -3547,6 +3630,9 @@
                     return { orderId: newest ? newest.id : null };
                 }
                 case 'addOrder': {
+                    if (orderMcSnapshotProjectionV1EnabledBridge()) {
+                        throw new Error('addOrder blocked: host snapshot projection active (A6-4)');
+                    }
                     var om2 = ch.orderManager;
                     if (!om2) throw new Error('orderManager not available');
                     var svc = om2.orderService;
@@ -3855,6 +3941,7 @@
                 'replaySetStepTf',
                 'placeOrder',
                 'addOrder',
+                'applyOrderSnapshot',
                 'syncPendingOrder',
                 'removeMirroredOrder',
                 'clearDraftPreview',
