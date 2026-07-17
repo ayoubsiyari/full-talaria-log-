@@ -61,7 +61,7 @@ Iframe `deselectAll({ fromCanvasBackground: true })` during dbl-click on a drawi
 
 ## 8. Commit
 
-**Commit:** `(pending — see git log after file-scoped land)`
+**Commit:** `f8f07ebf` — file-scoped D-026 transport fix (build `20260717b03`).
 
 ### Files touched
 
