@@ -4115,12 +4115,28 @@ export default function MultichartGrid({
         }
         const mgr = managerRef.current;
         const c = mgr && mgr.charts && mgr.charts.get(panelId);
-        if (!c || !c.state) return null;
-        return {
-            symbol:    c.state.symbol    || null,
-            timeframe: c.state.timeframe || null,
-            fileId:    c.state.fileId    || null,
-        };
+        if (!c) return null;
+        let symbol = (c.state && c.state.symbol) || null;
+        let timeframe = (c.state && c.state.timeframe) || null;
+        let fileId = (c.state && c.state.fileId != null) ? c.state.fileId : null;
+        // chart-state can lag with placeholder "—" after ticker change; fall back
+        // to the live iframe chart so OMS/topbar mirror the focused tile.
+        if (isPlaceholderMultichartSymbol(symbol) || !timeframe || fileId == null || fileId === "") {
+            try {
+                const cw = c.frame && c.frame.contentWindow;
+                const ch = cw && cw.chart;
+                if (ch) {
+                    if (isPlaceholderMultichartSymbol(symbol) && ch.currentSymbol) {
+                        symbol = ch.currentSymbol;
+                    }
+                    if (!timeframe && ch.currentTimeframe) timeframe = ch.currentTimeframe;
+                    if ((fileId == null || fileId === "") && ch.currentFileId != null) {
+                        fileId = ch.currentFileId;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+        }
+        return { symbol, timeframe, fileId };
     }
 
     /** Dedupe mirror broadcasts — replay chart-state ticks must not re-fire tool sync every bar. */

@@ -17804,14 +17804,19 @@ class OrderManager {
      * Update entry price in panel
      */
     updateOrderPanelPrice() {
-        if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
         const ot = this._getActiveDraftOrderType();
         if (this._previewEntryLinkedToRiskReward && ot !== 'market') return;
         if (this._orderPlacedAwaitingReset) return;
         if (ot === 'limit' || ot === 'stop') return;
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
-        
+
+        // When MultichartGrid focus is an iframe tile (B/C/…), still write that
+        // tile's live close into the parent rail — but do NOT draw host preview
+        // SVG (iframe owns draft via setDraftPreview). Previously this method
+        // returned early and left EUR prices on the rail after focusing GBP.
+        const iframeFocused = this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile();
+
         const priceInput = document.getElementById('orderEntryPrice');
         if (priceInput) {
             const closePx = Number.parseFloat(currentCandle.c ?? currentCandle.close);
@@ -17820,16 +17825,17 @@ class OrderManager {
             const nextStr = this.formatPrice(closePx);
             const next = parseFloat(nextStr);
             priceInput.value = nextStr;
-            if (this._isDraftOrderPreviewActive()
+            if (!iframeFocused
+                && this._isDraftOrderPreviewActive()
                 && Number.isFinite(next) && Number.isFinite(prev)
                 && Math.abs(next - prev) >= 1e-10) {
                 this.updatePreviewLines();
             }
         }
-        
+
         // Set default TP and SL aligned with entry
         this.syncDefaultTargetsToEntry();
-        
+
         // Calculate position size and risk/reward
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
@@ -17842,7 +17848,22 @@ class OrderManager {
      */
     _syncPreviewToReplayPrice() {
         if (!this.replaySystem || !this.replaySystem.isActive) return;
-        if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
+        // Iframe tile focused: keep parent rail entry on that tile's mark, but do
+        // not move host SVG preview (setDraftPreview owns the focused iframe).
+        if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) {
+            if (this.orderType !== 'market') return;
+            if (!this._isDraftOrderPreviewActive()) return;
+            if (this._orderPlacedAwaitingReset) return;
+            const candle = this.getCurrentCandle();
+            if (!candle) return;
+            const px = Number.parseFloat(candle.c ?? candle.close);
+            if (!(px > 0)) return;
+            const priceInput = document.getElementById('orderEntryPrice');
+            if (!priceInput) return;
+            const nextStr = this.formatPrice(px);
+            if (priceInput.value !== nextStr) priceInput.value = nextStr;
+            return;
+        }
 
         if (!this._isDraftOrderPreviewActive()) return;
         if (this._orderPlacedAwaitingReset) return;

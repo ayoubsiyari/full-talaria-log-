@@ -11253,8 +11253,12 @@ function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   } catch (_) {}
   const ep = document.getElementById("orderEntryPrice")?.value ?? "";
   if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+  // When an iframe tile is focused, the parent must not draw preview SVG on
+  // getActiveChart() — panel-B draft is owned by setDraftPreview → iframe OM.
   try {
-    om.updatePreviewLines?.();
+    const iframeFocused = typeof om._shouldSkipParentOrderRailLivePriceForFocusedIframeTile === "function"
+      && om._shouldSkipParentOrderRailLivePriceForFocusedIframeTile();
+    if (!iframeFocused) om.updatePreviewLines?.();
   } catch (_) {}
 }
 
@@ -11276,7 +11280,9 @@ function v9TickMarketOrderEntryFromChart(om, setEntryRows) {
   const next = parseFloat(ep);
   if (Number.isFinite(next) && Number.isFinite(prev) && Math.abs(next - prev) >= 1e-10) {
     try {
-      om.updatePreviewLines?.();
+      const iframeFocused = typeof om._shouldSkipParentOrderRailLivePriceForFocusedIframeTile === "function"
+        && om._shouldSkipParentOrderRailLivePriceForFocusedIframeTile();
+      if (!iframeFocused) om.updatePreviewLines?.();
     } catch (_) {}
   }
 }
@@ -17709,12 +17715,58 @@ const TalariaV8bLive = () => {
   }, [orderPanelOpen, orderType, symbol]);
 
   // Multichart focus change: when the user clicks a different panel, clear the
-  // draft preview on the previously focused surface (host or iframe) so stale
-  // "new order" lines do not stack on executed TP/SL. Then draw the current
-  // draft on the newly focused iframe when the rail is open.
+  // draft preview on every OTHER surface so stale "new order" lines do not
+  // remain on the previous tile. Then draw the current draft on the newly
+  // focused panel when the rail is open.
+  //
+  // IMPORTANT: `broadcastClearDraftPreview(keepId)` clears all tiles EXCEPT
+  // `keepId`. Passing the *previous* panel id left that panel's preview up
+  // (panel-B focus still showed EUR preview on A).
   useEffect(() => {
     if (typeof window === "undefined") return;
     let lastFocusedForDraft = null;
+    const syncMarketEntryFromActiveChart = () => {
+      const om = window.chart?.orderManager;
+      if (!om) return null;
+      try {
+        const candle = typeof om.getCurrentCandle === "function" ? om.getCurrentCandle() : null;
+        if (!candle) return null;
+        const closePx = Number.parseFloat(candle.c ?? candle.close);
+        if (!Number.isFinite(closePx) || !(closePx > 0)) return null;
+        const el = document.getElementById("orderEntryPrice");
+        if (el) {
+          el.value = typeof om.formatPrice === "function"
+            ? om.formatPrice(closePx)
+            : String(closePx);
+          try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}
+          try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+        }
+        v9ApplyLiveEntryPriceToRows(setEntryRows, el?.value || String(closePx));
+        return closePx;
+      } catch (_) {
+        return null;
+      }
+    };
+    const collectDraftArgs = () => {
+      const numFromInput = (id) => {
+        const el = document.getElementById(id);
+        const v = el ? parseFloat(el.value) : NaN;
+        return Number.isFinite(v) ? v : null;
+      };
+      const chkOf = (id) => !!document.getElementById(id)?.checked;
+      const sideFwd = (document.getElementById("buyTab")?.classList.contains("active")) ? "BUY" : "SELL";
+      const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
+      const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
+      return {
+        side:       sideFwd,
+        type:       typeFwd,
+        entryPrice: numFromInput("orderEntryPrice"),
+        slEnabled:  chkOf("enableSL"),
+        slPrice:    numFromInput("slPrice"),
+        tpEnabled:  chkOf("enableTP"),
+        tpPrice:    numFromInput("tpPrice"),
+      };
+    };
     const onMultichartFocusChangedForDraft = (ev) => {
       const grid = window.__multichartGrid;
       if (!grid || typeof grid.runCommand !== "function") return;
@@ -17723,46 +17775,42 @@ const TalariaV8bLive = () => {
       const prevId = lastFocusedForDraft;
       lastFocusedForDraft = fid;
       multichartDraftDragBusyRef.current = false;
-      // Always clear the *previous* panel when focus moves, including when the
-      // previous panel was the host (prevId === hid). Excluding hid left host
-      // preview lines visible after switching to an iframe tile.
-      if (prevId != null && String(prevId) !== String(fid)) {
+      const keepId = fid != null ? String(fid) : String(hid);
+      // Clear every tile except the newly focused one (host + other iframes).
+      try {
+        if (typeof grid.broadcastClearDraftPreview === "function") {
+          grid.broadcastClearDraftPreview(keepId);
+        } else if (prevId != null && String(prevId) !== keepId) {
+          grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {});
+        }
+      } catch (_) {}
+      if (!orderPanelOpen) return;
+      // Host focused: re-anchor market entry + redraw host preview SVG.
+      if (fid == null || String(fid) === String(hid)) {
         try {
-          if (typeof grid.broadcastClearDraftPreview === "function") {
-            grid.broadcastClearDraftPreview(prevId);
-          } else {
-            grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {});
+          const om = window.chart?.orderManager;
+          syncMarketEntryFromActiveChart();
+          if (om && typeof om.updatePreviewLines === "function") {
+            om.updatePreviewLines();
           }
         } catch (_) {}
+        return;
       }
-      if (!orderPanelOpen) return;
-      if (fid == null || String(fid) === String(hid)) return;
+      // Iframe focused: parent rail must use THAT tile's price, then forward
+      // setDraftPreview so the draft appears on panel B/C (not host A).
       try {
-        const numFromInput = (id) => {
-          const el = document.getElementById(id);
-          const v = el ? parseFloat(el.value) : NaN;
-          return Number.isFinite(v) ? v : null;
-        };
-        const chkOf = (id) => !!document.getElementById(id)?.checked;
-        const sideFwd = (document.getElementById("buyTab")?.classList.contains("active")) ? "BUY" : "SELL";
+        if (multichartDraftDragBusyRef.current) return;
         const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
         const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
-        if (!multichartDraftDragBusyRef.current) {
-          grid.runCommand("setDraftPreview", {
-            side:       sideFwd,
-            type:       typeFwd,
-            entryPrice: numFromInput("orderEntryPrice"),
-            slEnabled:  chkOf("enableSL"),
-            slPrice:    numFromInput("slPrice"),
-            tpEnabled:  chkOf("enableTP"),
-            tpPrice:    numFromInput("tpPrice"),
-          }, { panelId: fid }).catch(() => {});
+        if (typeFwd === "market") {
+          syncMarketEntryFromActiveChart();
         }
+        grid.runCommand("setDraftPreview", collectDraftArgs(), { panelId: fid }).catch(() => {});
       } catch (_) {}
     };
     window.addEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
     return () => window.removeEventListener("multichartFocusChanged", onMultichartFocusChangedForDraft);
-  }, [orderPanelOpen]);
+  }, [orderPanelOpen, setEntryRows]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
