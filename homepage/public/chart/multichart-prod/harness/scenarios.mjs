@@ -70,6 +70,9 @@ import {
   focusPanelByClick,
   drawRectangleViaMouse,
   drawTrendlineViaMouse,
+  armHostDrawToolForMultichartSync,
+  twoClickRectangleOnPanel,
+  readDrawingManagerLiveState,
   readIndicatorState,
   addIndicator,
   removeAllIndicators,
@@ -256,6 +259,7 @@ async function runWith(ctx, bootOpts, body) {
     bug: ctx.bug,
     bugSwitches: ctx.bugSwitches,
     orderMcStateConvergeOff: !!ctx.orderMcStateConvergeOff,
+    armedDrawFocusForwardOff: !!ctx.armedDrawFocusForwardOff,
   });
   const notes = [];
   let checks;
@@ -5566,6 +5570,49 @@ async function hS45(ctx) {
   });
 }
 
+// ── MC-DRAW-FIRSTCLICK ───────────────────────────────────────────────────
+// Armed rectangle on focused host A → two-click draw on unfocused B must
+// complete on the first B session (inherit + draw-start on click 1), not
+// require a separate focus click first.
+async function mcDrawFirstclick(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const armRes = await armHostDrawToolForMultichartSync(page, 'rectangle');
+    checks.check('MC-DRAW-FIRSTCLICK setup: host A armed rectangle', armRes && armRes.ok,
+      JSON.stringify(armRes || null));
+
+    const preA = await readInteractiveState(page, 'A');
+    const preB = await readInteractiveState(page, 'B');
+    const focused = await readHarnessFocusedPanelId(page);
+    checks.check('MC-DRAW-FIRSTCLICK setup: host A has armed tool', preA && preA.currentTool === 'rectangle',
+      `A.tool=${preA?.currentTool}`);
+    checks.check('MC-DRAW-FIRSTCLICK setup: panel B has no local tool', preB && !preB.currentTool,
+      `B.tool=${preB?.currentTool}`);
+    checks.check('MC-DRAW-FIRSTCLICK setup: focus remains on A before B draw', focused === 'A',
+      `focused=${focused}`);
+
+    const drawRes = await twoClickRectangleOnPanel(page, 'B');
+    checks.check('MC-DRAW-FIRSTCLICK probe: two-click rectangle dispatched on B',
+      drawRes && drawRes.ok, JSON.stringify(drawRes || null));
+    checks.check('MC-DRAW-FIRSTCLICK probe: click-1 entered draw on B (mid-gesture)',
+      drawRes && drawRes.midIsDrawing === true && drawRes.midCurrentTool === 'rectangle',
+      `mid=${JSON.stringify({ isDrawing: drawRes?.midIsDrawing, tool: drawRes?.midCurrentTool })}`);
+
+    const afterA = await readInteractiveState(page, 'A');
+    const afterB = await readInteractiveState(page, 'B');
+    checks.check(
+      'MC-DRAW-FIRSTCLICK CORE: rectangle lands on B after first B session (not 2-click focus-then-draw)',
+      afterB && afterB.drawingCount >= 1,
+      `A.count=${afterA?.drawingCount} B.count=${afterB?.drawingCount}`,
+    );
+    return checks;
+  });
+}
+
 // ── H-S46 ────────────────────────────────────────────────────────────────
 // TAL-01498: Ctrl-select inside panel B with locally drawn tools — both stay
 // selected once; handle centers remain separated (no stacked blob).
@@ -8535,6 +8582,7 @@ export function scenarioList() {
     { id: 'H-S43', title: 'panel Ctrl-select selects two drawings once; no iframe double-toggle (TAL-01498)', run: hS43 },
     { id: 'H-S44', title: 'panel single-click settings flow: select, open settings, Esc closes settings (T1 step 5)', run: hS44 },
     { id: 'H-S45', title: 'drawing-target-focused-panel: focused B draw lands on B only (TAL-01495)', run: hS45 },
+    { id: 'MC-DRAW-FIRSTCLICK', title: 'multichart-armed-draw-firstclick: unfocused B draw on click 1', run: mcDrawFirstclick },
     { id: 'H-S46', title: 'panel-ctrl-select-local: panel-B local Ctrl-select stays separated (TAL-01498)', run: hS46 },
     { id: 'H-S47', title: 'panel-quick-menu: panel-B draw shows Quick Menu immediately (TAL-01499)', run: hS47 },
     { id: 'H-S48', title: 'indicator-isolation: panel-B indicators do not leak to host (TAL-01500/01501)', run: hS48 },

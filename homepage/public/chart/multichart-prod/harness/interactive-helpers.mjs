@@ -47,6 +47,7 @@ export async function readInteractiveState(page, panelId = 'A') {
       labelNodeCount: labelGroups,
       renders: ch._mcDiag ? Number(ch._mcDiag.renders) || 0 : 0,
       currentTool: dm.currentTool || null,
+      isDrawing: !!(dm.drawingState && dm.drawingState.isDrawing),
     };
   }).catch(() => null);
 }
@@ -444,6 +445,82 @@ export async function chartCanvasPagePoint(page, panelId, fracX, fracY) {
   return {
     x: Math.round(fr.left + local.x),
     y: Math.round(fr.top + local.y),
+  };
+}
+
+/** Live drawing-manager flags for first-click / in-gesture asserts. */
+export async function readDrawingManagerLiveState(page, panelId = 'A') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return { ok: false, reason: 'no drawingManager' };
+    return {
+      ok: true,
+      currentTool: dm.currentTool || null,
+      isDrawing: !!(dm.drawingState && dm.drawingState.isDrawing),
+      drawingCount: (dm.drawings || []).length,
+    };
+  }).catch(() => null);
+}
+
+/**
+ * Arm tool on host A and mirror production sync: host dm armed, peer iframes cleared.
+ */
+export async function armHostDrawToolForMultichartSync(page, tool = 'rectangle') {
+  const focusRes = await focusPanelByClick(page, 'A');
+  if (!focusRes || !focusRes.ok) return focusRes || { ok: false, reason: 'focus A failed' };
+  await sleep(150);
+  const res = await page.evaluate(async (toolName) => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm || typeof dm.setTool !== 'function') return { ok: false, reason: 'no host setTool' };
+    dm.setTool(toolName);
+    const grid = window.__multichartGrid;
+    if (grid && typeof grid.syncDrawingToolAcrossPanels === 'function') {
+      await grid.syncDrawingToolAcrossPanels(toolName);
+    }
+    return { ok: true, hostTool: dm.currentTool || null };
+  }, tool);
+  await sleep(200);
+  const frameB = chartTarget(page, 'B');
+  if (frameB) {
+    await frameB.evaluate(() => {
+      const dm = window.chart && window.chart.drawingManager;
+      if (!dm) return;
+      if (typeof dm.clearTool === 'function') dm.clearTool(true);
+      else dm.currentTool = null;
+    }).catch(() => {});
+  }
+  await sleep(100);
+  return res;
+}
+
+/** Two-click rectangle without pre-focus — unfocused-tile first-click family. */
+export async function twoClickRectangleOnPanel(page, panelId) {
+  const p1 = await chartCanvasPagePoint(page, panelId, 0.32, 0.38);
+  const p2 = await chartCanvasPagePoint(page, panelId, 0.58, 0.62);
+  if (!p1 || !p2) return { ok: false, reason: 'no canvas points' };
+  const frame = chartTarget(page, panelId);
+  await page.mouse.move(p1.x, p1.y);
+  await page.mouse.click(p1.x, p1.y, { delay: 35 });
+  await sleep(120);
+  const mid = frame
+    ? await frame.evaluate(() => {
+        const dm = window.chart && window.chart.drawingManager;
+        return {
+          isDrawing: !!(dm && dm.drawingState && dm.drawingState.isDrawing),
+          currentTool: dm && dm.currentTool,
+        };
+      }).catch(() => null)
+    : null;
+  await page.mouse.click(p2.x, p2.y, { delay: 35 });
+  await sleep(350);
+  const st = await readInteractiveState(page, panelId);
+  return {
+    ok: true,
+    midIsDrawing: !!(mid && mid.isDrawing),
+    midCurrentTool: mid && mid.currentTool,
+    drawingCount: st && st.ok ? st.drawingCount : null,
   };
 }
 

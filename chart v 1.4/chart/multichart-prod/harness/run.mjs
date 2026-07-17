@@ -55,12 +55,13 @@ import { launchBrowser } from './harness-lib.mjs';
 import { scenarioList, t8PendingScenarioList } from './scenarios.mjs';
 
 function parseArgs(argv) {
-  const args = { runs: 1, only: null, bug: false, headful: false, bugSwitches: null, pending: false, orderMcStateConvergeOff: false };
+  const args = { runs: 1, only: null, bug: false, headful: false, bugSwitches: null, pending: false, orderMcStateConvergeOff: false, armedDrawFocusForwardOff: false };
   for (const a of argv.slice(2)) {
     if (a === '--bug') args.bug = true;
     else if (a === '--headful') args.headful = true;
     else if (a === '--pending') args.pending = true;
     else if (a === '--order-mc-state-converge-off') args.orderMcStateConvergeOff = true;
+    else if (a === '--multichart-armed-draw-focus-forward-off') args.armedDrawFocusForwardOff = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
     else if (a.startsWith('--bugswitch=')) {
@@ -85,7 +86,7 @@ async function main() {
   const args = parseArgs(process.argv);
   const srv = await startServer(0);
   console.log(`[run] stub server: ${srv.url}`);
-  console.log(`[run] mode: runs=${args.runs} bug=${args.bug} pending=${args.pending} orderMcStateConvergeOff=${args.orderMcStateConvergeOff} only=${args.only ? args.only.join(',') : 'ALL'}`);
+  console.log(`[run] mode: runs=${args.runs} bug=${args.bug} pending=${args.pending} orderMcStateConvergeOff=${args.orderMcStateConvergeOff} armedDrawFocusForwardOff=${args.armedDrawFocusForwardOff} only=${args.only ? args.only.join(',') : 'ALL'}`);
 
   let allScenarios = scenarioList();
   if (args.pending) allScenarios = [...allScenarios, ...t8PendingScenarioList()];
@@ -106,7 +107,7 @@ async function main() {
     for (let run = 1; run <= args.runs; run++) {
       console.log(`\n========== RUN ${run}/${args.runs}${args.bug ? ' (BUG MODE)' : ''} ==========`);
       for (const s of scenarios) {
-        const ctx = { browser, srv, bug: args.bug, bugSwitches: args.bugSwitches, orderMcStateConvergeOff: args.orderMcStateConvergeOff };
+        const ctx = { browser, srv, bug: args.bug, bugSwitches: args.bugSwitches, orderMcStateConvergeOff: args.orderMcStateConvergeOff, armedDrawFocusForwardOff: args.armedDrawFocusForwardOff };
         let result;
         try {
           result = await s.run(ctx);

@@ -3524,8 +3524,28 @@
                 //   cancelOrder   { orderId }    → cancelPendingOrder
                 case 'getReplayReady': {
                     var rsReady = ch.replaySystem;
+                    var candleReady = false;
+                    try {
+                        if (rsReady && rsReady.isActive && rsReady.animatingCandle) {
+                            var ac = Number.parseFloat(
+                                rsReady.animatingCandle.close ?? rsReady.animatingCandle.c
+                            );
+                            if (Number.isFinite(ac)) candleReady = true;
+                        }
+                        if (!candleReady && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
+                            var rb = ch.rawData[ch.rawData.length - 1];
+                            var rc = Number.parseFloat(rb && (rb.c ?? rb.close));
+                            if (Number.isFinite(rc)) candleReady = true;
+                        }
+                        if (!candleReady && Array.isArray(ch.data) && ch.data.length > 0) {
+                            var db = ch.data[ch.data.length - 1];
+                            var dc = Number.parseFloat(db && (db.c ?? db.close));
+                            if (Number.isFinite(dc)) candleReady = true;
+                        }
+                    } catch (_cr) { /* ignore */ }
                     return {
                         replayActive: !!(rsReady && rsReady.isActive),
+                        candleReady: candleReady,
                         replayTimestamp: rsReady && Number.isFinite(Number(rsReady.replayTimestamp))
                             ? Number(rsReady.replayTimestamp)
                             : null,

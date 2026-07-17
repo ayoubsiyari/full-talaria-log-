@@ -6386,6 +6386,74 @@ export default function MultichartGrid({
             return latest;
         }
 
+        function notifyPlaceFailure(message) {
+            const msg = String(message || "Order placement failed");
+            console.warn("[MultichartGrid]", msg);
+            try {
+                const om = window.chart && window.chart.orderManager;
+                if (om && typeof om.showNotification === "function") {
+                    om.showNotification(msg, "warning", 4500);
+                    return;
+                }
+            } catch (_) { /* ignore */ }
+            try { window.alert(msg); } catch (_) { /* ignore */ }
+        }
+
+        function panelHasReadableCandle(panelId) {
+            const panelChart = getChartForPanelId(panelId);
+            if (!panelChart) return false;
+            try {
+                const rs = panelChart.replaySystem;
+                if (rs && rs.isActive && rs.animatingCandle) {
+                    const ac = Number.parseFloat(
+                        rs.animatingCandle.close ?? rs.animatingCandle.c
+                    );
+                    if (Number.isFinite(ac)) return true;
+                }
+                const raw = panelChart.rawData;
+                if (Array.isArray(raw) && raw.length > 0) {
+                    const bar = raw[raw.length - 1];
+                    const c = Number.parseFloat(bar && (bar.c ?? bar.close));
+                    if (Number.isFinite(c)) return true;
+                }
+                const data = panelChart.data;
+                if (Array.isArray(data) && data.length > 0) {
+                    const bar = data[data.length - 1];
+                    const c = Number.parseFloat(bar && (bar.c ?? bar.close));
+                    if (Number.isFinite(c)) return true;
+                }
+            } catch (_) { /* ignore */ }
+            return false;
+        }
+
+        function collectHostLiveOrderIds(om) {
+            const ids = new Set();
+            if (!om) return ids;
+            for (const o of (om.openPositions || [])) {
+                if (o && o.id != null) ids.add(o.id);
+            }
+            for (const o of (om.pendingOrders || [])) {
+                if (o && o.id != null) ids.add(o.id);
+            }
+            return ids;
+        }
+
+        function findNewestHostOrderNotIn(om, beforeIds) {
+            if (!om) return null;
+            const lists = [om.openPositions, om.pendingOrders];
+            let newest = null;
+            for (const list of lists) {
+                if (!Array.isArray(list)) continue;
+                for (let i = list.length - 1; i >= 0; i -= 1) {
+                    const o = list[i];
+                    if (!o || o.id == null) continue;
+                    if (beforeIds && beforeIds.has(o.id)) continue;
+                    if (!newest || Number(o.id) > Number(newest.id)) newest = o;
+                }
+            }
+            return newest;
+        }
+
         function hostPlaceOrderFromPanel(panelId, args) {
             const ch = window.chart;
             const om = ch && ch.orderManager;
@@ -6395,19 +6463,60 @@ export default function MultichartGrid({
             if (!ch.replaySystem || !ch.replaySystem.isActive) {
                 return Promise.reject(new Error("host replay not active — cannot place order"));
             }
+            const panelChart = getChartForPanelId(panelId);
+            if (!panelChart) {
+                return Promise.reject(new Error(`panel ${panelId} chart not ready — cannot place order`));
+            }
+            if (!panelHasReadableCandle(panelId)) {
+                return Promise.reject(new Error(
+                    `No price data on panel ${panelId} — wait for chart data after ticker change`
+                ));
+            }
+            const beforeIds = collectHostLiveOrderIds(om);
             syncHostOrderPanelFromArgs(args);
+            let placeResult = null;
             try {
-                om.placeAdvancedOrder({ keepPanelOpen: true });
+                placeResult = om.placeAdvancedOrder({ keepPanelOpen: true });
             } catch (e) {
                 return Promise.reject(e);
             }
-            const tagged = tagLatestHostOrderWithPanel(panelId);
+            if (placeResult && placeResult.ok === false) {
+                return Promise.reject(new Error(
+                    placeResult.reason || "placeAdvancedOrder rejected"
+                ));
+            }
+            let created = null;
+            if (placeResult && placeResult.ok === true && placeResult.orderId != null) {
+                const oid = placeResult.orderId;
+                created = (om.openPositions || []).find((o) => o && o.id === oid)
+                    || (om.pendingOrders || []).find((o) => o && o.id === oid)
+                    || null;
+            }
+            if (!created) {
+                created = findNewestHostOrderNotIn(om, beforeIds);
+            }
+            if (!created) {
+                return Promise.reject(new Error(
+                    `Order was not created for panel ${panelId} (no new open/pending row)`
+                ));
+            }
+            const attr = getPanelOrderAttribution(panelId);
+            if (attr.fileId) created.sourceFileId = attr.fileId;
+            if (attr.panelId) created.sourcePanelId = attr.panelId;
+            if (attr.ticker) {
+                created.ticker = attr.ticker;
+                created.symbol = attr.symbol;
+            }
             if (orderMcSnapshotProjectionV1Enabled()) {
                 fanOutOrderSnapshot(null);
-            } else if (tagged) {
-                broadcastOrder(HOST_PANEL_ID, tagged.status === "PENDING" ? "pending" : "opened", tagged);
+            } else {
+                broadcastOrder(
+                    HOST_PANEL_ID,
+                    created.status === "PENDING" ? "pending" : "opened",
+                    created
+                );
             }
-            return Promise.resolve({ ok: true, orderId: tagged ? tagged.id : null });
+            return Promise.resolve({ ok: true, orderId: created.id });
         }
 
         // Find every ready multichart tile except `excludeId` — used when
@@ -6967,7 +7076,12 @@ export default function MultichartGrid({
             const t0 = Date.now();
             const poll = () => grid.runCommand("getReplayReady", null, { panelId })
                 .then((d) => {
-                    if (d && d.replayActive) return true;
+                    const replayOk = !!(d && d.replayActive);
+                    // Prefer bridge candleReady; also accept parent-side readable candle
+                    // (covers older bridges that omit the field).
+                    const candleOk = (d && d.candleReady === true)
+                        || panelHasReadableCandle(panelId);
+                    if (replayOk && candleOk) return true;
                     if (Date.now() - t0 >= maxMs) return false;
                     return new Promise((r) => setTimeout(r, 100)).then(poll);
                 })
@@ -6985,16 +7099,22 @@ export default function MultichartGrid({
                 const args = collectOrderArgs();
                 const runHostPlace = () => hostPlaceOrderFromPanel(focused, args)
                     .catch((e) => {
-                        console.warn("[MultichartGrid] host-canonical placeOrder failed:",
-                            e && e.message || e);
+                        notifyPlaceFailure(
+                            (e && e.message) || "host-canonical placeOrder failed"
+                        );
                     });
                 if (orderMcPlaceReplayGateV1Enabled()) {
                     const grid = window.__multichartGrid;
-                    if (!grid || typeof grid.runCommand !== "function") return;
+                    if (!grid || typeof grid.runCommand !== "function") {
+                        notifyPlaceFailure("Multichart grid not ready — cannot place order");
+                        return;
+                    }
                     waitIframeReplayReady(grid, focused)
                         .then((ready) => {
                             if (!ready) {
-                                console.warn("[MultichartGrid] panel replay not active — host place blocked for", focused);
+                                notifyPlaceFailure(
+                                    `Panel ${focused} replay/price not ready — wait a moment and try Execute again`
+                                );
                                 return;
                             }
                             return runHostPlace();
@@ -7011,18 +7131,22 @@ export default function MultichartGrid({
             const args = collectOrderArgs();
             const grid = window.__multichartGrid;
             if (!grid || typeof grid.runCommand !== "function") {
-                console.warn("[MultichartGrid] placeOrder intercept: __multichartGrid not ready");
+                notifyPlaceFailure("placeOrder intercept: __multichartGrid not ready");
                 return;
             }
             const place = () => grid.runCommand("placeOrder", args, { panelId: focused })
                 .catch((e) => {
-                    console.warn("[MultichartGrid] iframe placeOrder failed:", e && e.message || e);
+                    notifyPlaceFailure(
+                        (e && e.message) || "iframe placeOrder failed"
+                    );
                 });
             if (orderMcPlaceReplayGateV1Enabled()) {
                 waitIframeReplayReady(grid, focused)
                     .then((ready) => {
                         if (!ready) {
-                            console.warn("[MultichartGrid] iframe replay not active — placeOrder blocked for panel", focused);
+                            notifyPlaceFailure(
+                                `Panel ${focused} replay/price not ready — placeOrder blocked`
+                            );
                             return;
                         }
                         return place();

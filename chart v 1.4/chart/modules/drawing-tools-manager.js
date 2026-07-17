@@ -160,6 +160,30 @@ function _isIframeCtrlSelectDedupeV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_IFRAME_CTRL_SELECT_DEDUPE_V1;
 }
 
+/** MC-DRAW-FIRSTCLICK: inherit parent armed shape tool on iframe pointerdown (same gesture draw-start). Default ON; I13 kill-switch. */
+function multichartArmedDrawFocusForwardV1Enabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
+function _isMultichartInheritableDrawTool(toolName) {
+    if (!toolName) return false;
+    const lt = String(toolName).toLowerCase().trim();
+    return lt !== 'crosshair' && lt !== 'cursor';
+}
+
 /** Suppress window for iframe ctrl-select toggle dedupe (ms). Matches __v9DrawingSelectionGuardUntil span when fix ON. */
 function _iframeCtrlSelectSuppressMs() {
     return _isIframeCtrlSelectDedupeV1Enabled() ? 250 : 80;
@@ -2623,7 +2647,21 @@ class DrawingToolsManager {
 
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) {
                     // Armed draw tool on empty chart — let SVG placement layer handle the click.
-                    if (this.currentTool) return;
+                    const hadTool = !!this.currentTool;
+                    if (!this.currentTool) {
+                        this._tryInheritMultichartParentArmedDrawTool();
+                    }
+                    if (this.currentTool) {
+                        // Canvas received the hit (svg was pointer-events:none). After
+                        // multichart inherit, forward this same gesture into draw-start.
+                        if (!hadTool) {
+                            this.handleMouseDown(event);
+                            suppressNextCanvasClick = true;
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        return;
+                    }
                     if (this._tryDeselectOnBackgroundPointer(event, mouseX, mouseY)) {
                         suppressNextCanvasClick = true;
                     }
@@ -3862,6 +3900,56 @@ class DrawingToolsManager {
     }
 
     /**
+     * Resolve an armed draw tool from the multichart parent shell (host dm or focused tile).
+     * Used when this embed iframe has no local tool but V9 still shows a shape tool armed elsewhere.
+     */
+    _resolveMultichartParentArmedDrawTool() {
+        if (!multichartArmedDrawFocusForwardV1Enabled() || !isMultichartIframeEmbed()) {
+            return null;
+        }
+        let parent = null;
+        try {
+            parent = window.parent;
+            if (!parent || parent === window) return null;
+        } catch (_) {
+            return null;
+        }
+        const pick = (dm) => {
+            const t = dm && dm.currentTool;
+            return _isMultichartInheritableDrawTool(t) ? t : null;
+        };
+        try {
+            const fromHost = pick(parent.chart && parent.chart.drawingManager);
+            if (fromHost) return fromHost;
+        } catch (_) { /* ignore */ }
+        try {
+            const grid = parent.__multichartGrid;
+            if (grid && typeof grid.getFocusedPanelId === 'function'
+                && typeof grid.getChartForPanelId === 'function') {
+                const fid = grid.getFocusedPanelId();
+                if (fid) {
+                    const ch = grid.getChartForPanelId(fid);
+                    const fromFocused = pick(ch && ch.drawingManager);
+                    if (fromFocused) return fromFocused;
+                }
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    /** Synchronously adopt parent armed shape tool on embed iframes (MC-DRAW-FIRSTCLICK). */
+    _tryInheritMultichartParentArmedDrawTool() {
+        if (this.currentTool) return false;
+        if (!multichartArmedDrawFocusForwardV1Enabled() || !isMultichartIframeEmbed()) {
+            return false;
+        }
+        const inheritedMc = this._resolveMultichartParentArmedDrawTool();
+        if (!inheritedMc || typeof this.setTool !== 'function') return false;
+        this.setTool(inheritedMc, true);
+        return true;
+    }
+
+    /**
      * Handle mouse down event
      */
     handleMouseDown(event) {
@@ -3931,6 +4019,10 @@ class DrawingToolsManager {
                 this.setTool(inheritedTool, true);
             }
         }
+
+        // V9 multichart embed: inherit parent armed shape tool synchronously so the
+        // first click on an unfocused tile starts drawing (focus postMessage is async).
+        this._tryInheritMultichartParentArmedDrawTool();
 
         // Multi-panel UX: if user clicks another panel while a tool is active,
         // switch selection first, but continue this same click as draw-start.

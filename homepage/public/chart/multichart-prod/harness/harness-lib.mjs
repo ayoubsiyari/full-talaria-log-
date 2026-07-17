@@ -82,7 +82,7 @@ export const DEFAULT_BUG_SWITCHES = [
 ];
 
 export async function bootLayout(browser, srv, opts = {}) {
-  const { pair = 'same', panels = 4, tf = '1m', bug = false, bugSwitches = null, hostFile = null, preDocument = null, orderMcStateConvergeOff = false } = opts;
+  const { pair = 'same', panels = 4, tf = '1m', bug = false, bugSwitches = null, hostFile = null, preDocument = null, orderMcStateConvergeOff = false, armedDrawFocusForwardOff = false } = opts;
   const params = new URLSearchParams();
   params.set('pair', pair);
   params.set('panels', String(panels));
@@ -124,6 +124,11 @@ export async function bootLayout(browser, srv, opts = {}) {
   if (orderMcStateConvergeOff || process.env.HARNESS_ORDER_MC_STATE_CONVERGE_OFF === '1') {
     await page.evaluateOnNewDocument(() => {
       window.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX = true;
+    });
+  }
+  if (armedDrawFocusForwardOff || process.env.HARNESS_MC_ARMED_DRAW_FOCUS_FORWARD_OFF === '1') {
+    await page.evaluateOnNewDocument(() => {
+      window.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1 = true;
     });
   }
   if (preDocument && typeof preDocument.fn === 'function') {

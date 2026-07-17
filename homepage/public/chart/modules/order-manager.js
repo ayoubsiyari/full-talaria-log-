@@ -25048,13 +25048,13 @@ class OrderManager {
         const keepPanelOpen = options.keepPanelOpen === true;
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
-            return;
+            return { ok: false, reason: 'replay_not_active' };
         }
         
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) {
             alert('No price data available');
-            return;
+            return { ok: false, reason: 'no_price_data' };
         }
 
         const ctxChart = this._getOrderContextChart() || this.chart;
@@ -25190,7 +25190,7 @@ class OrderManager {
                         </div>`;
                 }
                 this.showNotification('Trailing step must be ≤ initial risk (|entry − SL|)', 'error');
-                return;
+                return { ok: false, reason: 'trailing_step_risk' };
             }
         }
         
@@ -25217,7 +25217,7 @@ class OrderManager {
                         </div>
                     `).join('');
                 }
-                return; // Stop order placement
+                return { ok: false, reason: 'tp_validation' }; // Stop order placement
             }
             
             // Filter out targets with no price set and convert to actual percentages
@@ -25299,7 +25299,7 @@ class OrderManager {
             if (window.propFirmTracker && window.propFirmTracker.tradingDisabled) {
                 console.error('🚫 Trading is disabled due to prop firm rule violation');
                 this.showNotification('❌ Trading Disabled - Challenge rule violated', 'error');
-                return;
+                return { ok: false, reason: 'trading_disabled' };
             }
 
             const pipSz = this.pipSize || 0.0001;
@@ -25309,7 +25309,7 @@ class OrderManager {
             if (validLevels.length === 0) {
                 console.log('🟦OM-DIAG ABORT: no valid entry levels (need price>0 AND amount>0)');
                 this.showNotification('⚠️ No valid entry levels configured', 'warning');
-                return;
+                return { ok: false, reason: 'no_valid_entry_levels' };
             }
 
             if (slEnabled && slPrice > 0) {
@@ -25332,7 +25332,7 @@ class OrderManager {
                 }
                 if (slErrors.length > 0) {
                     this.showNotification(slErrors[0], 'warning');
-                    return;
+                    return { ok: false, reason: 'multi_entry_sl' };
                 }
             }
 
@@ -25404,7 +25404,7 @@ class OrderManager {
                             </div>`;
                     }
                     this.showNotification(msg, 'warning');
-                    return;
+                    return { ok: false, reason: 'multi_entry_size' };
                 }
             }
 
@@ -25450,7 +25450,7 @@ class OrderManager {
             }
             if (sessionValidationErrors.length > 0) {
                 this.showNotification(sessionValidationErrors[0], 'error');
-                return;
+                return { ok: false, reason: 'session_validation' };
             }
 
             this.removePreviewLines();
@@ -25619,7 +25619,7 @@ class OrderManager {
             if (placedCount === 0) {
                 console.log('🟦OM-DIAG ABORT: placedCount===0 (all legs computed 0 lots)');
                 this.showNotification('⚠️ Position size must be greater than 0 lots', 'warning');
-                return;
+                return { ok: false, reason: 'zero_lots' };
             }
 
             if (plannedEntrySnapshot.length > 1) {
@@ -25668,7 +25668,7 @@ class OrderManager {
             this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             this.clearSplitEntries();
             this._resetMultiEntryStateForNewOrder();
-            return;
+            return { ok: true, orderId: placedOrderIds[0] ?? null };
         }
         
         // Calculate ACTUAL risk from final quantity and SL distance
@@ -25779,7 +25779,7 @@ class OrderManager {
                 this.showNotification(sessionValidationErrors[0], 'error');
             }
             this._suppressChartRender = false;
-            return;
+            return { ok: false, reason: 'validation_failed' };
         }
         
         if (this.editingPendingOrderId && (this.orderType === 'limit' || this.orderType === 'stop')) {
@@ -25817,7 +25817,7 @@ class OrderManager {
             this._suppressChartRender = false;
             this._renderAllLayoutCharts();
             this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
-            return;
+            return { ok: true, orderId: this.editingPendingOrderId };
         }
 
         // Log order details with risk validation
@@ -25843,7 +25843,7 @@ class OrderManager {
             console.error('🚫 Trading is disabled due to prop firm rule violation');
             this.showNotification('❌ Trading Disabled - Challenge rule violated', 'error');
             this._suppressChartRender = false;
-            return;
+            return { ok: false, reason: 'trading_disabled' };
         }
         
         // For market orders: execute immediately
@@ -25947,7 +25947,7 @@ class OrderManager {
                 this._renderAllLayoutCharts();
                 this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             }
-            return;
+            return { ok: true, orderId: null };
         }
         
         // Market order: execute immediately
@@ -26121,6 +26121,7 @@ class OrderManager {
         
         // Show trade journal modal for entry notes
         this.showTradeJournalModal(order, false, null);
+        return { ok: true, orderId: order.id };
     }
 
     /**
