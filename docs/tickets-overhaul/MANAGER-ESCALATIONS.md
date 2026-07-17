@@ -985,3 +985,35 @@ Two separate anchored-VP defects surfaced on PO live test:
 ### Manager recommendation
 **Do NOT touch `chart.js` before the bless** — the P0 freeze (the urgent part) is already cured freeze-safe, so R2 is no longer emergency-class (workaround: remove the tool). Recommend **option 1 but sequenced immediately post-bless**: land the clamp as the first item of the post-unfreeze `chart.js` batch on its own gated build, so the bless build stays exactly the proven re-migration+transport set. If the Director judges the multichart axis-crush severe enough to warrant a pre-bless core edit, authorize option 1-now with a mandatory D-026 proof-bar re-run on the clamp-inclusive build.
 
+---
+
+## ESC-026 — Multichart orders mark/close at the WRONG panel's price → data-integrity PnL corruption; authorize immediate fix (pull A6-4 forward now that b16 is blessed)
+
+**Filed:** 2026-07-17 (Manager)
+**Status:** OPEN — awaiting Director ruling
+**Class:** data-integrity defect (wrong money numbers) + scheduling decision (A6-4 was deferred until post-re-migration; re-migration is now BLESSED on `20260717b16`)
+
+### Context / PO evidence (build 20260717b16)
+Multichart, two panels, **different tickers/TFs**, one order each. Trades panel (image evidence):
+- **#2 GBP/USD** Long: entry `1.64683`, **exit `1.31315`**, size 2.63 → **PnL -587757.04**
+- **#1 EUR/USD** Long: entry `1.31321`, exit `1.31316`, size 6.25 → PnL -$31.25
+
+The GBP/USD order's exit `1.31315` is a **EUR/USD-range price**: the order marked/closed against the **peer panel's** price feed → the PnL is corrupted (off by ~7× and negative). PO also reports orders "don't work good on both charts" (panel-B add/interaction intermittent / wrong-panel apply). Both are the **cross-panel order-state bleed** that **A6-4 (host-canonical order store)** was ratified (D-020) to fix, then deferred until post-re-migration.
+
+### Why it needs the Director now
+1. **Severity:** this produces *wrong money* on the P&L — worse than a visual glitch. It undermines trust in every multichart order.
+2. **The deferral condition is met:** A6-4 was gated "post-re-migration." Re-migration is **done and blessed** (`b16`). The blocker that deferred A6-4 no longer exists.
+3. A6-4 edits `MultichartGrid` + `panel-cmd-bridge` (re-migration files) → outside my freeze-safe authority to schedule as top priority without a ruling.
+
+### Decision requested (pick one)
+1. **Authorize A6-4 now** as the #1 post-bless engineering item (host-canonical order store: single owner of order state + each order marks against *its owning panel's* symbol/price), own kill-switch, RED-first in multichart topology, full gate + proof-bar. — **Manager recommendation**, OR
+2. **Authorize a narrower pre-A6-4 freeze-safe guard** if Lane 3's diagnostic (in flight) finds the price-source bug is isolatable without the full store inversion (own kill-switch, no `MultichartGrid`/`panel-cmd-bridge` edit), landing first as a stopgap while A6-4 follows, OR
+3. **Hold** to a later batch (not recommended given money-corruption severity).
+
+### In flight (read-only, no ruling needed)
+- Lane 3: `ORD-MULTICHART-CROSS-TICKER-PNL-diagnostic-lane3.md` — pinpoint wrong price source, deterministic GBP+EUR repro, decide whether option 2 (pre-A6-4 guard) is viable, RED spec.
+- Lane 2: `S2-COARSE-MAIN-CADENCE-diagnostic-lane2.md` (+ step-forward addendum) — separate replay-cadence family, not blocking this.
+
+### Manager recommendation
+**Option 1** — the deferral condition (post-re-migration) is satisfied and the defect is money-corrupting. Green-light A6-4 as the top post-bless item. If Lane 3 finds a clean freeze-safe stopgap (option 2), land that first to stop the bleeding, then complete A6-4. Do not ship any further multichart-order-touching build until at least the stopgap proves the owning-panel-price RED green.
+

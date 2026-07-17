@@ -490,8 +490,8 @@
                     var y = this.yScale(ln.price);
                     if (y < plotTop - 2 || y > plotBottom + 2) return;
                     var x1 = this.dataIndexToPixel(Math.max(ln.startIndex, startIndex));
-                    // Current-session levels run to the right edge (like TradingView).
-                    var x2 = (ln.endIndex >= n - 1) ? plotR : this.dataIndexToPixel(Math.min(ln.endIndex, endIndex));
+                    // Lines stop at the current/last bar (like TradingView), not the axis.
+                    var x2 = this.dataIndexToPixel(Math.min(ln.endIndex, endIndex));
                     if (x2 < plotL || x1 > plotR) return;
                     ctx.save();
                     ctx.strokeStyle = ln.color || '#ffffff';
@@ -512,33 +512,32 @@
                 ctx.font = '600 ' + fontSize + 'px Roboto, system-ui, sans-serif';
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
-                // Right-align each label just inside the price axis at its exact
-                // level; stagger into columns (Pine mergeK / stagger) when levels
-                // sit closer than the price threshold.
+                // Anchor labels just to the RIGHT of where the lines stop (the last
+                // bar) — like TradingView — so text never sits on top of a line.
+                var lastBarX = Math.min(this.dataIndexToPixel(n - 1), plotR);
+                var anchorX = lastBarX + 8;
                 var placed = [];
                 data.labels.forEach(function (lb) {
                     var y = this.yScale(lb.price);
                     if (y < plotTop + 1 || y > plotBottom - 1) return;
-                    placed.push({ text: lb.text, color: lb.color, y: y, price: lb.price });
+                    placed.push({ text: lb.text, color: lb.color, y: y });
                 }, this);
-                // Sort top→bottom by pixel (higher price first).
+                // Sort top→bottom; width-aware stagger to the RIGHT so vertically
+                // close labels sit side by side instead of on top of each other.
                 placed.sort(function (a, b) { return a.y - b.y; });
-                // Width-aware stagger: any label that sits within a text line of the
-                // one above it is pushed fully to the LEFT of it, so texts never
-                // overlap regardless of their length ("Y-CLOSE (fill)" vs "MID").
-                var gap = 6;
+                var gap = 8;
                 var vThresh = fontSize + 3;
-                var groupRight = plotR - 4;
+                var groupLeft = anchorX;
                 var prevY = -Infinity;
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
                     var tw = ctx.measureText(it.text).width;
-                    if ((it.y - prevY) >= vThresh) groupRight = plotR - 4;
-                    var x = groupRight - tw;
-                    if (x < plotL + 2) x = plotL + 2;
+                    if ((it.y - prevY) >= vThresh) groupLeft = anchorX;
+                    var x = groupLeft;
+                    if (x + tw > plotR - 2) x = Math.max(plotL + 2, plotR - 2 - tw);
                     ctx.fillStyle = it.color || '#ffffff';
                     ctx.fillText(it.text, x, it.y);
-                    groupRight = x - gap;
+                    groupLeft = x + tw + gap;
                     prevY = it.y;
                 }
             }
