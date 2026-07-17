@@ -1,3 +1,7 @@
+function _orderMcRestoreDedupeV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1;
+}
+
 class OrderService {
     constructor({ chart, replaySystem, eventBus }) {
         this.chart = chart;
@@ -290,6 +294,10 @@ class OrderService {
 
     registerPendingOrder(order) {
         if (!order) return order;
+        if (_orderMcRestoreDedupeV1Enabled() && order.id != null) {
+            const dup = this.pendingOrders.some((o) => o && o.id === order.id);
+            if (dup) return this.pendingOrders.find((o) => o && o.id === order.id);
+        }
         if (!order.symbol && this.chart && this.chart.currentSymbol) {
             order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
         }
@@ -308,6 +316,10 @@ class OrderService {
 
     registerOpenOrder(order) {
         if (!order) return order;
+        if (_orderMcRestoreDedupeV1Enabled() && order.id != null) {
+            const dup = this.openPositions.some((o) => o && o.id === order.id);
+            if (dup) return this.openPositions.find((o) => o && o.id === order.id);
+        }
         if (!order.symbol && this.chart && this.chart.currentSymbol) {
             order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
         }

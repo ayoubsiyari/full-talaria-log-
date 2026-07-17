@@ -22,11 +22,14 @@ export function orderPersistenceV1Enabled(scope) {
 
 /**
  * @param {string|null|undefined} sessionId
+ * @param {string|null|undefined} [panelScope]
  * @returns {string}
  */
-export function runtimeOrderStorageKey(sessionId) {
+export function runtimeOrderStorageKey(sessionId, panelScope = null) {
     const sid = sessionId != null && String(sessionId).trim() !== '' ? String(sessionId).trim() : 'no-session';
-    return `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
+    let key = `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
+    if (panelScope) key += `:panel:${String(panelScope)}`;
+    return key;
 }
 
 /**

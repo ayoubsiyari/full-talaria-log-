@@ -63,6 +63,38 @@
         } catch (_) {}
     }
 
+    function warn() {
+        try {
+            var args = Array.prototype.slice.call(arguments);
+            args.unshift('[panel-cmd:' + panelId + ']');
+            console.warn.apply(console, args);
+        } catch (_) {}
+    }
+
+    function orderMcRestoreDedupeV1Enabled() {
+        try {
+            if (global.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1) return false;
+        } catch (_) {}
+        return true;
+    }
+
+    function orderIdExistsInOm(om2, ordId) {
+        if (ordId == null) return false;
+        if ((om2.orders || []).some(function (o) { return o && o.id === ordId; })) return true;
+        if (!orderMcRestoreDedupeV1Enabled()) return false;
+        if ((om2.openPositions || []).some(function (o) { return o && o.id === ordId; })) return true;
+        if ((om2.pendingOrders || []).some(function (o) { return o && o.id === ordId; })) return true;
+        return false;
+    }
+
+    function cloneOrderList(arr) {
+        try {
+            return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+        } catch (_) {
+            return Array.isArray(arr) ? arr.slice() : [];
+        }
+    }
+
     /** T1 step 14 — same switch as drawing-tools-manager / TalariaV8bLive (I13). */
     function v9QuickBarPanelEmbedFixEnabled() {
         try {
@@ -3416,6 +3448,28 @@
                 //
                 //   closeOrder    { orderId }    → closePosition
                 //   cancelOrder   { orderId }    → cancelPendingOrder
+                case 'getReplayReady': {
+                    var rsReady = ch.replaySystem;
+                    return {
+                        replayActive: !!(rsReady && rsReady.isActive),
+                        replayTimestamp: rsReady && Number.isFinite(Number(rsReady.replayTimestamp))
+                            ? Number(rsReady.replayTimestamp)
+                            : null,
+                    };
+                }
+                case 'getOrderTradeSnapshot': {
+                    var omSnap = ch.orderManager;
+                    if (!omSnap) return { panelId: panelId, openPositions: [], pendingOrders: [] };
+                    return {
+                        panelId: panelId,
+                        openPositions: cloneOrderList(omSnap.openPositions),
+                        pendingOrders: cloneOrderList(omSnap.pendingOrders),
+                        unrealizedPnL: Number.parseFloat(omSnap.unrealizedPnL) || 0,
+                        replayTimestamp: ch.replaySystem && Number.isFinite(Number(ch.replaySystem.replayTimestamp))
+                            ? Number(ch.replaySystem.replayTimestamp)
+                            : null,
+                    };
+                }
                 case 'placeOrder': {
                     var om = ch.orderManager;
                     if (!om) throw new Error('orderManager not available');
@@ -3503,10 +3557,7 @@
                     }
                     var kind = (args.kind === 'pending') ? 'pending' : 'opened';
                     // De-dupe: if we already have this order id, skip.
-                    var existing = (om2.orders || []).some(function (o) {
-                        return o && o.id != null && o.id === ord.id;
-                    });
-                    if (existing) {
+                    if (orderIdExistsInOm(om2, ord && ord.id)) {
                         return { skipped: true, reason: 'duplicate' };
                     }
                     // Loop guard: tag the id so our own eventBus

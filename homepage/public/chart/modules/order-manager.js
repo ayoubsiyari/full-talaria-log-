@@ -16,9 +16,33 @@ function _orderPersistenceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PERSISTENCE_V1;
 }
 
-function _runtimeOrderStorageKey(sessionId) {
+/** ORD-MULTICHART interims: mirror dedupe + restore orders[] rebuild (default ON). */
+function _orderMcRestoreDedupeV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1;
+}
+
+/** ORD-MULTICHART interims: host-only persist + iframe skip restore (default ON). */
+function _mcOrderPersistPanelScopeV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_MC_ORDER_PERSIST_PANEL_SCOPE_V1 !== false;
+}
+
+/** ORD-MULTICHART interims: embed mark-from-own-chart + tick proxy (default ON). */
+function _mcReplayPnlHostAggV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_MC_REPLAY_PNL_HOST_AGG_V1 !== false;
+}
+
+/** ORD-MULTICHART interims: cancel provisional edit on panel focus loss (default ON). */
+function _orderProvisionalFocusCancelV1Enabled() {
+    return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PROVISIONAL_FOCUS_CANCEL_V1;
+}
+
+function _runtimeOrderStorageKey(sessionId, panelScope) {
     const sid = sessionId != null && String(sessionId).trim() !== '' ? String(sessionId).trim() : 'no-session';
-    return `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
+    let key = `${ORDER_RUNTIME_SESSION_STORAGE_KEY}:${sid}`;
+    if (_mcOrderPersistPanelScopeV1Enabled() && panelScope) {
+        key += `:panel:${String(panelScope)}`;
+    }
+    return key;
 }
 
 /** RC-5: default ON — recompute aggregates from entry list; kill-switch restores legacy deltas. */
@@ -612,6 +636,19 @@ class OrderManager {
             if (e.key !== 'Escape' || !self._oiIsProvisionalEditActive()) return;
             self._oiCancelActiveProvisionalEdit('escape');
         });
+        if (_orderProvisionalFocusCancelV1Enabled()) {
+            window.addEventListener('multichartFocusChanged', () => {
+                if (!self._oiIsProvisionalEditActive() && !self.isDraggingPreviewLine) return;
+                self._oiCancelActiveProvisionalEdit('focus-loss');
+            });
+            window.addEventListener('blur', () => {
+                if (!self._multichartIsEmbedIframe()) return;
+                if (self._oiIsProvisionalEditActive() || self.isDraggingPreviewLine) {
+                    self._oiCancelActiveProvisionalEdit('iframe-blur');
+                }
+                self._multichartPostDraftDragBusy(false);
+            });
+        }
     }
 
     _oiCancelActiveProvisionalEdit(reason) {
@@ -648,6 +685,14 @@ class OrderManager {
             try { this.updatePreviewLines(); } catch (e) { /* ignore */ }
         }
         if (reason) console.log(`↩️ Provisional SL/TP edit cancelled (${reason})`);
+        if (this._multichartIsEmbedIframe() && (reason === 'focus-loss' || reason === 'iframe-blur')) {
+            try {
+                window.parent.postMessage({
+                    type: 'multichart-focus-loss-clear-draft',
+                    source: this._multichartEmbedPanelId(),
+                }, '*');
+            } catch (_e) { /* ignore */ }
+        }
     }
 
     _oiShouldDeferReplayPreviewSync() {
@@ -2160,6 +2205,16 @@ class OrderManager {
         const T = this._normalizeTicker(tickerNorm);
         if (!T) return null;
         const mainTf = this._getReplayDecisionTimeframe();
+        if (_mcReplayPnlHostAggV1Enabled() && this._multichartIsEmbedIframe() && this.chart
+            && Array.isArray(this.chart.data) && this.chart.data.length) {
+            const chartT = this._normalizeTicker(this.chart.currentSymbol);
+            const pcTf = String(this.chart.currentTimeframe || '1m').toLowerCase().trim() || '1m';
+            if (chartT === T && pcTf === mainTf) {
+                const last = this.chart.data[this.chart.data.length - 1];
+                const c = Number.parseFloat(last && last.c);
+                if (Number.isFinite(c)) return c;
+            }
+        }
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         if (!pm || !Array.isArray(pm.panels)) return null;
         for (let i = 0; i < pm.panels.length; i++) {
@@ -4301,6 +4356,20 @@ class OrderManager {
         if (pendingOrders) this.pendingOrders = pendingOrders;
         if (openPositions) this.openPositions = openPositions;
 
+        if (_orderMcRestoreDedupeV1Enabled()) {
+            const pending = Array.isArray(this.pendingOrders) ? this.pendingOrders : [];
+            const open = Array.isArray(this.openPositions) ? this.openPositions : [];
+            const seen = new Set();
+            this.orders = [];
+            [...pending, ...open].forEach((o) => {
+                if (!o || o.id == null) return;
+                const k = String(o.id);
+                if (seen.has(k)) return;
+                seen.add(k);
+                this.orders.push(o);
+            });
+        }
+
         const accountRuntime = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
         if (accountRuntime) {
             const balance = Number.parseFloat(accountRuntime.balance);
@@ -5198,6 +5267,18 @@ class OrderManager {
         return null;
     }
 
+    _getPersistencePanelScope() {
+        if (!_mcOrderPersistPanelScopeV1Enabled()) return null;
+        if (this._multichartIsEmbedIframe()) {
+            return this._multichartEmbedPanelId() || 'iframe';
+        }
+        return 'host';
+    }
+
+    _shouldSkipMcIframeRuntimePersist() {
+        return _mcOrderPersistPanelScopeV1Enabled() && this._multichartIsEmbedIframe();
+    }
+
     _buildRuntimeOrderPersistPatch() {
         const safeClone = (arr) => {
             try {
@@ -5230,8 +5311,9 @@ class OrderManager {
 
     _writeRuntimeOrderStateToSessionStorage(patch) {
         if (!_orderPersistenceV1Enabled() || typeof sessionStorage === 'undefined') return;
+        if (this._shouldSkipMcIframeRuntimePersist()) return;
         try {
-            const key = _runtimeOrderStorageKey(this._getPersistenceSessionId());
+            const key = _runtimeOrderStorageKey(this._getPersistenceSessionId(), this._getPersistencePanelScope());
             sessionStorage.setItem(key, JSON.stringify(patch));
         } catch (e) {
             console.warn('[orders-persist] sessionStorage save failed:', e);
@@ -5241,8 +5323,12 @@ class OrderManager {
     _readRuntimeOrderStateFromSessionStorage(sessionId) {
         if (typeof sessionStorage === 'undefined') return null;
         try {
-            const key = _runtimeOrderStorageKey(sessionId);
-            const raw = sessionStorage.getItem(key);
+            const scope = this._getPersistencePanelScope();
+            const key = _runtimeOrderStorageKey(sessionId, scope);
+            let raw = sessionStorage.getItem(key);
+            if (!raw && _mcOrderPersistPanelScopeV1Enabled() && scope === 'host') {
+                raw = sessionStorage.getItem(_runtimeOrderStorageKey(sessionId, null));
+            }
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             return parsed && typeof parsed === 'object' ? parsed : null;
@@ -5273,8 +5359,16 @@ class OrderManager {
 
     _bootstrapRuntimeOrderPersistenceV1() {
         if (!_orderPersistenceV1Enabled()) return;
+        if (this._shouldSkipMcIframeRuntimePersist()) {
+            this._runtimeOrderPersistenceBootstrapped = true;
+            return;
+        }
         const tryRestore = () => {
             if (this._runtimeOrderPersistenceBootstrapped) return;
+            if (this._shouldSkipMcIframeRuntimePersist()) {
+                this._runtimeOrderPersistenceBootstrapped = true;
+                return;
+            }
             const storeCount = (this.pendingOrders?.length || 0) + (this.openPositions?.length || 0);
             if (storeCount > 0) {
                 this._runtimeOrderPersistenceBootstrapped = true;
@@ -5307,6 +5401,7 @@ class OrderManager {
             try {
                 const om = window.chart && window.chart.orderManager;
                 if (!om || !_orderPersistenceV1Enabled()) return;
+                if (om._shouldSkipMcIframeRuntimePersist && om._shouldSkipMcIframeRuntimePersist()) return;
                 const patch = om._buildRuntimeOrderPersistPatch();
                 om._writeRuntimeOrderStateToSessionStorage(patch);
             } catch (_e) { /* ignore */ }
