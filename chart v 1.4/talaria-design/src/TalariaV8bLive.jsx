@@ -17659,6 +17659,50 @@ const TalariaV8bLive = () => {
                   ? "BUY" : "SELL";
                 const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
                 const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
+                // Multi-entry / multi-TP live on host OM; peers need the full ladder
+                // or they only paint a single Entry/SL/TP (MC-MULTI-DRAFT).
+                const multiDraft = (() => {
+                  if (typeof window !== "undefined" && window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 === true) {
+                    return {};
+                  }
+                  const hostOm = window.chart?.orderManager;
+                  const payload = {
+                    isMultiEntryMode: false,
+                    multiEntryLevels: [],
+                    multipleTPEnabled: false,
+                    tpTargets: [],
+                  };
+                  if (!hostOm) return payload;
+                  try {
+                    if (hostOm.isMultiEntryMode && Array.isArray(hostOm.multiEntryLevels)
+                        && hostOm.multiEntryLevels.length > 1) {
+                      payload.isMultiEntryMode = true;
+                      payload.multiEntryLevels = hostOm.multiEntryLevels.map((l, i) => ({
+                        id: l?.id != null ? l.id : i + 1,
+                        price: Number(l?.price) || 0,
+                        amount: Number(l?.amount) || 0,
+                      }));
+                    }
+                  } catch (_) {}
+                  try {
+                    const mtp = !!document.getElementById("multipleTPToggle")?.checked;
+                    const tps = Array.isArray(hostOm.tpTargets) ? hostOm.tpTargets : [];
+                    if (mtp && tps.length > 1) {
+                      payload.multipleTPEnabled = true;
+                      if (hostOm.tpDistributionMode) payload.tpDistributionMode = hostOm.tpDistributionMode;
+                      payload.tpTargets = tps.map((t, i) => ({
+                        id: t?.id != null ? t.id : i + 1,
+                        price: Number(t?.price) || 0,
+                        percentage: Number(t?.percentage) || 0,
+                        distributionMode: t?.distributionMode || hostOm.tpDistributionMode || "percent",
+                        originalValue: t?.originalValue != null
+                          ? Number(t.originalValue)
+                          : (Number(t?.percentage) || 0),
+                      }));
+                    }
+                  } catch (_) {}
+                  return payload;
+                })();
                 grid.runCommand("setDraftPreview", {
                   side:       sideFwd,
                   type:       typeFwd,
@@ -17667,6 +17711,7 @@ const TalariaV8bLive = () => {
                   slPrice:    numFromInput("slPrice"),
                   tpEnabled:  chkOf("enableTP"),
                   tpPrice:    numFromInput("tpPrice"),
+                  ...multiDraft,
                 }, { panelId: fid }).catch(() => {});
                 }
               }
@@ -17766,6 +17811,48 @@ const TalariaV8bLive = () => {
       const sideFwd = (document.getElementById("buyTab")?.classList.contains("active")) ? "BUY" : "SELL";
       const typeBtn = document.querySelector("#orderPanel .order-type-btn.active");
       const typeFwd = (typeBtn && typeBtn.getAttribute("data-type")) || "market";
+      const multiDraft = (() => {
+        if (typeof window !== "undefined" && window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 === true) {
+          return {};
+        }
+        const hostOm = window.chart?.orderManager;
+        const payload = {
+          isMultiEntryMode: false,
+          multiEntryLevels: [],
+          multipleTPEnabled: false,
+          tpTargets: [],
+        };
+        if (!hostOm) return payload;
+        try {
+          if (hostOm.isMultiEntryMode && Array.isArray(hostOm.multiEntryLevels)
+              && hostOm.multiEntryLevels.length > 1) {
+            payload.isMultiEntryMode = true;
+            payload.multiEntryLevels = hostOm.multiEntryLevels.map((l, i) => ({
+              id: l?.id != null ? l.id : i + 1,
+              price: Number(l?.price) || 0,
+              amount: Number(l?.amount) || 0,
+            }));
+          }
+        } catch (_) {}
+        try {
+          const mtp = !!document.getElementById("multipleTPToggle")?.checked;
+          const tps = Array.isArray(hostOm.tpTargets) ? hostOm.tpTargets : [];
+          if (mtp && tps.length > 1) {
+            payload.multipleTPEnabled = true;
+            if (hostOm.tpDistributionMode) payload.tpDistributionMode = hostOm.tpDistributionMode;
+            payload.tpTargets = tps.map((t, i) => ({
+              id: t?.id != null ? t.id : i + 1,
+              price: Number(t?.price) || 0,
+              percentage: Number(t?.percentage) || 0,
+              distributionMode: t?.distributionMode || hostOm.tpDistributionMode || "percent",
+              originalValue: t?.originalValue != null
+                ? Number(t.originalValue)
+                : (Number(t?.percentage) || 0),
+            }));
+          }
+        } catch (_) {}
+        return payload;
+      })();
       return {
         side:       sideFwd,
         type:       typeFwd,
@@ -17774,6 +17861,7 @@ const TalariaV8bLive = () => {
         slPrice:    numFromInput("slPrice"),
         tpEnabled:  chkOf("enableTP"),
         tpPrice:    numFromInput("tpPrice"),
+        ...multiDraft,
       };
     };
     const onMultichartFocusChangedForDraft = (ev) => {

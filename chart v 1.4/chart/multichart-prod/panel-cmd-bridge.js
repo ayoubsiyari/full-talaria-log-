@@ -3872,17 +3872,26 @@
                     try { global.__talariaMultichartDraftActive = false; } catch (_) {}
                     return { ok: true };
                 }
-                // setDraftPreview { side, type, entryPrice, slEnabled, slPrice, tpEnabled, tpPrice }
+                // setDraftPreview {
+                //   side, type, entryPrice, slEnabled, slPrice, tpEnabled, tpPrice,
+                //   isMultiEntryMode, multiEntryLevels[], multipleTPEnabled, tpTargets[]
+                // }
                 //
                 // Parent's React rail forwards every entry/SL/TP/side/type change so
                 // this iframe's orderManager mirrors the draft preview line on its
                 // own chart. Without this, the preview only appeared on the host
                 // chart even when the user had focused panel B (different symbol).
                 //
+                // Multi-entry / multi-TP must travel with the same command: host OM
+                // already has E2/E3 + TP2/TP3 from the React rail, but peers only
+                // saw single-leg fields and drew one Entry/SL/TP.
+                //
                 // We write into the iframe's hidden #orderPanel inputs (so all the
                 // existing read-paths in updatePreviewLines stay unchanged) and flip
                 // __talariaMultichartDraftActive so updatePreviewLines won't bail on
                 // the missing `.visible` class (multichart hides V9 chrome).
+                //
+                // Kill-switch: window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 = true
                 case 'setDraftPreview': {
                     var omSet = ch.orderManager;
                     if (!omSet || typeof omSet.updatePreviewLines !== 'function') {
@@ -3905,6 +3914,8 @@
                             try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
                         }
                     }
+                    var multiDraftOk = true;
+                    try { multiDraftOk = global.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 !== true; } catch (_) {}
                     var sideSet = (args.side === 'SELL') ? 'SELL' : 'BUY';
                     omSet.orderSide = sideSet;
                     var btSet = docSet.getElementById('buyTab');
@@ -3932,6 +3943,56 @@
                     var tpPxSet = parseFloat(docSet.getElementById('tpPrice')?.value || 0);
                     if (!(slPxSet > 0)) omSet.slManuallyPositioned = false;
                     if (!(tpPxSet > 0)) omSet.tpManuallyPositioned = false;
+
+                    // Hydrate multi-entry / multi-TP before the final preview paint.
+                    if (multiDraftOk && (args.isMultiEntryMode != null || Array.isArray(args.multiEntryLevels))) {
+                        var levelsIn = Array.isArray(args.multiEntryLevels) ? args.multiEntryLevels : [];
+                        var wantMultiEntry = !!args.isMultiEntryMode && levelsIn.length > 1;
+                        if (wantMultiEntry) {
+                            omSet.multiEntryLevels = levelsIn.map(function (l, i) {
+                                return {
+                                    id: (l && l.id != null) ? l.id : (i + 1),
+                                    price: Number(l && l.price) || 0,
+                                    amount: Number(l && l.amount) || 0,
+                                };
+                            });
+                            if (!omSet.isMultiEntryMode && typeof omSet.setEntryMode === 'function') {
+                                try { omSet.setEntryMode(true); } catch (_) {}
+                            } else {
+                                try { if (typeof omSet.renderMultiEntryRows === 'function') omSet.renderMultiEntryRows(); } catch (_) {}
+                                try { if (typeof omSet.updateMultiEntrySummary === 'function') omSet.updateMultiEntrySummary(); } catch (_) {}
+                                try { if (typeof omSet.syncMultiEntryToSplitEntries === 'function') omSet.syncMultiEntryToSplitEntries(); } catch (_) {}
+                            }
+                        } else if (omSet.isMultiEntryMode && typeof omSet.setEntryMode === 'function') {
+                            try { omSet.setEntryMode(false); } catch (_) {}
+                        }
+                    }
+                    if (multiDraftOk && (args.multipleTPEnabled != null || Array.isArray(args.tpTargets))) {
+                        var tpsIn = Array.isArray(args.tpTargets) ? args.tpTargets : [];
+                        var wantMultiTp = !!args.multipleTPEnabled && tpsIn.length > 1;
+                        if (wantMultiTp) {
+                            // Toggle may call initializeTPTargets via change — overwrite after.
+                            setChkSet('multipleTPToggle', true);
+                            if (args.tpDistributionMode) omSet.tpDistributionMode = args.tpDistributionMode;
+                            omSet.tpTargets = tpsIn.map(function (t, i) {
+                                return {
+                                    id: (t && t.id != null) ? t.id : (i + 1),
+                                    price: Number(t && t.price) || 0,
+                                    percentage: Number(t && t.percentage) || 0,
+                                    distributionMode: (t && t.distributionMode) || omSet.tpDistributionMode || 'percent',
+                                    originalValue: (t && t.originalValue != null)
+                                        ? Number(t.originalValue)
+                                        : (Number(t && t.percentage) || 0),
+                                };
+                            });
+                            try { if (typeof omSet.renderTPTargets === 'function') omSet.renderTPTargets(); } catch (_) {}
+                        } else {
+                            setChkSet('multipleTPToggle', false);
+                            omSet.tpTargets = [];
+                            try { if (typeof omSet.renderTPTargets === 'function') omSet.renderTPTargets(); } catch (_) {}
+                        }
+                    }
+
                     try { global.__talariaMultichartDraftActive = true; } catch (_) {}
                     try { omSet.updatePreviewLines(); } catch (e) {
                         warn('setDraftPreview: updatePreviewLines threw', e && e.message);

@@ -4846,6 +4846,8 @@ export default function MultichartGrid({
                                 try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
                             }
                         };
+                        const multiDraftOk = !(typeof window !== "undefined"
+                            && window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 === true);
                         const sideSet = (args.side === "SELL") ? "SELL" : "BUY";
                         omSet.orderSide = sideSet;
                         const bt = document.getElementById("buyTab");
@@ -4862,6 +4864,49 @@ export default function MultichartGrid({
                         if (args.slPrice != null)   setVal("slPrice", args.slPrice);
                         setChk("enableTP", !!args.tpEnabled);
                         if (args.tpPrice != null)   setVal("tpPrice", args.tpPrice);
+                        // Mirror panel-cmd-bridge multi-entry / multi-TP hydration.
+                        if (multiDraftOk && (args.isMultiEntryMode != null || Array.isArray(args.multiEntryLevels))) {
+                            const levelsIn = Array.isArray(args.multiEntryLevels) ? args.multiEntryLevels : [];
+                            const wantMultiEntry = !!args.isMultiEntryMode && levelsIn.length > 1;
+                            if (wantMultiEntry) {
+                                omSet.multiEntryLevels = levelsIn.map((l, i) => ({
+                                    id: (l && l.id != null) ? l.id : (i + 1),
+                                    price: Number(l && l.price) || 0,
+                                    amount: Number(l && l.amount) || 0,
+                                }));
+                                if (!omSet.isMultiEntryMode && typeof omSet.setEntryMode === "function") {
+                                    try { omSet.setEntryMode(true); } catch (_) {}
+                                } else {
+                                    try { omSet.renderMultiEntryRows?.(); } catch (_) {}
+                                    try { omSet.updateMultiEntrySummary?.(); } catch (_) {}
+                                    try { omSet.syncMultiEntryToSplitEntries?.(); } catch (_) {}
+                                }
+                            } else if (omSet.isMultiEntryMode && typeof omSet.setEntryMode === "function") {
+                                try { omSet.setEntryMode(false); } catch (_) {}
+                            }
+                        }
+                        if (multiDraftOk && (args.multipleTPEnabled != null || Array.isArray(args.tpTargets))) {
+                            const tpsIn = Array.isArray(args.tpTargets) ? args.tpTargets : [];
+                            const wantMultiTp = !!args.multipleTPEnabled && tpsIn.length > 1;
+                            if (wantMultiTp) {
+                                setChk("multipleTPToggle", true);
+                                if (args.tpDistributionMode) omSet.tpDistributionMode = args.tpDistributionMode;
+                                omSet.tpTargets = tpsIn.map((t, i) => ({
+                                    id: (t && t.id != null) ? t.id : (i + 1),
+                                    price: Number(t && t.price) || 0,
+                                    percentage: Number(t && t.percentage) || 0,
+                                    distributionMode: (t && t.distributionMode) || omSet.tpDistributionMode || "percent",
+                                    originalValue: (t && t.originalValue != null)
+                                        ? Number(t.originalValue)
+                                        : (Number(t && t.percentage) || 0),
+                                }));
+                                try { omSet.renderTPTargets?.(); } catch (_) {}
+                            } else {
+                                setChk("multipleTPToggle", false);
+                                omSet.tpTargets = [];
+                                try { omSet.renderTPTargets?.(); } catch (_) {}
+                            }
+                        }
                         try {
                             omSet.updatePreviewLines();
                         } catch (e) {
@@ -7216,6 +7261,49 @@ export default function MultichartGrid({
             return poll();
         }
 
+        function collectDraftMultiPayload() {
+            // Kill-switch: window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 = true
+            if (typeof window !== "undefined" && window.__TALARIA_DISABLE_MC_MULTI_DRAFT_V1 === true) {
+                return {};
+            }
+            const om = window.chart && window.chart.orderManager;
+            const out = {
+                isMultiEntryMode: false,
+                multiEntryLevels: [],
+                multipleTPEnabled: false,
+                tpTargets: [],
+            };
+            if (!om) return out;
+            try {
+                if (om.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 1) {
+                    out.isMultiEntryMode = true;
+                    out.multiEntryLevels = om.multiEntryLevels.map((l, i) => ({
+                        id: (l && l.id != null) ? l.id : (i + 1),
+                        price: Number(l && l.price) || 0,
+                        amount: Number(l && l.amount) || 0,
+                    }));
+                }
+            } catch (_) {}
+            try {
+                const mtp = !!(document.getElementById("multipleTPToggle") && document.getElementById("multipleTPToggle").checked);
+                const tps = Array.isArray(om.tpTargets) ? om.tpTargets : [];
+                if (mtp && tps.length > 1) {
+                    out.multipleTPEnabled = true;
+                    if (om.tpDistributionMode) out.tpDistributionMode = om.tpDistributionMode;
+                    out.tpTargets = tps.map((t, i) => ({
+                        id: (t && t.id != null) ? t.id : (i + 1),
+                        price: Number(t && t.price) || 0,
+                        percentage: Number(t && t.percentage) || 0,
+                        distributionMode: (t && t.distributionMode) || om.tpDistributionMode || "percent",
+                        originalValue: (t && t.originalValue != null)
+                            ? Number(t.originalValue)
+                            : (Number(t && t.percentage) || 0),
+                    }));
+                }
+            } catch (_) {}
+            return out;
+        }
+
         function forwardDraftPreviewToFocusedPanel(panelId) {
             const grid = window.__multichartGrid;
             if (!grid || typeof grid.runCommand !== "function") return;
@@ -7245,6 +7333,7 @@ export default function MultichartGrid({
                     slPrice: args.slPrice,
                     tpEnabled: chk("enableTP"),
                     tpPrice: args.tpPrice,
+                    ...collectDraftMultiPayload(),
                 }, { panelId: pid }).catch(() => {});
             } catch (_) {}
         }
