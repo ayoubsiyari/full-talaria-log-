@@ -512,33 +512,55 @@
                 ctx.font = '600 ' + fontSize + 'px Roboto, system-ui, sans-serif';
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
-                // Anchor labels just to the RIGHT of where the lines stop (the last
-                // bar) — like TradingView — so text never sits on top of a line.
-                var lastBarX = Math.min(this.dataIndexToPixel(n - 1), plotR);
-                var anchorX = lastBarX + 8;
                 var placed = [];
                 data.labels.forEach(function (lb) {
                     var y = this.yScale(lb.price);
                     if (y < plotTop + 1 || y > plotBottom - 1) return;
-                    placed.push({ text: lb.text, color: lb.color, y: y });
+                    placed.push({ text: lb.text, color: lb.color, y: y, tw: ctx.measureText(lb.text).width });
                 }, this);
-                // Sort top→bottom; width-aware stagger to the RIGHT so vertically
-                // close labels sit side by side instead of on top of each other.
                 placed.sort(function (a, b) { return a.y - b.y; });
+                // Anchor labels just to the RIGHT of where the lines stop (the last
+                // bar), like TradingView. Ensure the first column always fits before
+                // the price axis so the widest label is never clipped.
+                var lastBarX = Math.min(this.dataIndexToPixel(n - 1), plotR);
+                var maxTw = 0;
+                for (var mi = 0; mi < placed.length; mi++) maxTw = Math.max(maxTw, placed[mi].tw);
+                var anchorX = Math.min(lastBarX + 8, plotR - 2 - maxTw);
+                if (anchorX < plotL + 2) anchorX = plotL + 2;
                 var gap = 8;
-                var vThresh = fontSize + 3;
-                var groupLeft = anchorX;
-                var prevY = -Infinity;
+                var lineH = fontSize + 4;
+                // Greedy 2-D placement: stagger to the RIGHT while there is room,
+                // then WRAP down to a new row instead of stacking on the axis edge.
+                var rects = [];
+                function findConflict(x, y, tw) {
+                    for (var r = 0; r < rects.length; r++) {
+                        var q = rects[r];
+                        var vOverlap = !(y + lineH / 2 <= q.top || y - lineH / 2 >= q.bottom);
+                        var hOverlap = !(x >= q.right || x + tw <= q.left);
+                        if (vOverlap && hOverlap) return q;
+                    }
+                    return null;
+                }
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
-                    var tw = ctx.measureText(it.text).width;
-                    if ((it.y - prevY) >= vThresh) groupLeft = anchorX;
-                    var x = groupLeft;
-                    if (x + tw > plotR - 2) x = Math.max(plotL + 2, plotR - 2 - tw);
+                    var tw = it.tw;
+                    var x = anchorX;
+                    var y = it.y;
+                    var guard = 0;
+                    while (guard++ < 60) {
+                        var c = findConflict(x, y, tw);
+                        if (!c) {
+                            if (x + tw <= plotR - 2) break;
+                            y += lineH; x = anchorX;
+                        } else {
+                            x = c.right + gap;
+                            if (x + tw > plotR - 2) { y += lineH; x = anchorX; }
+                        }
+                    }
+                    if (y > plotBottom - 2) y = plotBottom - 2;
                     ctx.fillStyle = it.color || '#ffffff';
-                    ctx.fillText(it.text, x, it.y);
-                    groupLeft = x + tw + gap;
-                    prevY = it.y;
+                    ctx.fillText(it.text, x, y);
+                    rects.push({ left: x, right: x + tw, top: y - lineH / 2, bottom: y + lineH / 2 });
                 }
             }
 
