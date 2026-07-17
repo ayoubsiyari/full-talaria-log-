@@ -164,7 +164,7 @@ Node guard tests GREEN; mechanism complete; PO must confirm on real multichart e
 | `0415cabe` | Engine interims: dedupe, persist scope, embed mark, focus cancel (I8) |
 | `cf32a86d` | React interims: duration norm, PnL host agg, replay gate |
 | `94a494b2` | dist **`20260717b14`** rebuild |
-| *(pending)* | This report |
+| `110d5a6d` | This report |
 
 ---
 
