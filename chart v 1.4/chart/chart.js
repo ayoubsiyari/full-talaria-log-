@@ -428,7 +428,24 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260717b44';
+const CHART_ENGINE_BUILD = '20260717b62';
+
+/**
+ * TradingView-style nice wall-clock steps (ms). Prefer values that divide a day
+ * (or are whole-day multiples) so midnight alignment stays clean.
+ * Kill-switch: window.__TALARIA_DISABLE_NICE_TIME_AXIS_V1 = true
+ */
+const NICE_TIME_AXIS_MS = [
+    60e3, 2 * 60e3, 3 * 60e3, 5 * 60e3, 10 * 60e3, 15 * 60e3, 30 * 60e3,
+    60 * 60e3, 2 * 3600e3, 3 * 3600e3, 4 * 3600e3, 6 * 3600e3, 8 * 3600e3, 12 * 3600e3,
+    86400e3, 2 * 86400e3, 3 * 86400e3, 7 * 86400e3, 14 * 86400e3, 30 * 86400e3,
+];
+
+/** Denser candle-width bounds (continuous zoom still used; ladder is for index/min bookkeeping). */
+const DENSE_ALLOWED_CANDLE_WIDTHS = [
+    0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.75, 0.9,
+    1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 10, 13, 16, 21, 26, 34, 42, 55, 68, 89,
+];
 
 const MC_DIAG_COUNTER_FIELDS = [
     'fetches',
@@ -657,10 +674,10 @@ class Chart {
             lastLockTime: 0              // Timestamp of last lock to prevent immediate unlock
         };
         
-        // Zoom level with quantized candle widths (Fibonacci-like)
+        // Zoom bounds + index bookkeeping (wheel/drag zoom is continuous within range).
         this.zoomLevel = {
-            candleWidthIndex: 9,         // Index into allowedWidths (default width 6)
-            allowedWidths: [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89]
+            candleWidthIndex: 19,        // Index into allowedWidths (default width 6)
+            allowedWidths: DENSE_ALLOWED_CANDLE_WIDTHS.slice()
         };
         
         // Cursor tracking state
@@ -4324,7 +4341,29 @@ class Chart {
             if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
 
             const pm = this.margin || { l: 60, r: 60 };
-            const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
+            const rawW = Number(this.w) || 0;
+            const plotW = Math.max(1, rawW - pm.l - pm.r);
+            // Refuse to lock boot viewport while the iframe canvas is still
+            // pre-final width (F5 → garbled time axis until click). Kill-switch:
+            // window.__TALARIA_DISABLE_MC_VIEWPORT_W_GUARD_V1 = true
+            const wGuardOff = typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_MC_VIEWPORT_W_GUARD_V1 === true;
+            if (!wGuardOff && (rawW < 50 || plotW < 40)) {
+                if (!this._mcViewportWGuardRetry) {
+                    this._mcViewportWGuardRetry = true;
+                    requestAnimationFrame(() => {
+                        this._mcViewportWGuardRetry = false;
+                        try {
+                            if (typeof this.resize === 'function') this.resize();
+                        } catch (_r) { /* ignore */ }
+                        try { this._multichartMirrorViewportFromHost(); } catch (_m) { /* ignore */ }
+                        try {
+                            if (typeof this.render === 'function') this.render();
+                        } catch (_p) { /* ignore */ }
+                    });
+                }
+                return false;
+            }
             const spacing = (typeof parent.getCandleSpacing === 'function')
                 ? parent.getCandleSpacing()
                 : parent.candleWidth;
@@ -23782,6 +23821,17 @@ class Chart {
                 lo = mid;
             }
         }
+        // Default ON: keep continuous zoom-out floor (TV-like). Old path snapped
+        // `best` up to the next allowedWidths step, which made zoom-out stutter at
+        // ladder edges. Kill-switch: window.__TALARIA_DISABLE_CONTINUOUS_ZOOM_MIN_V1 = true
+        let ladderSnap = false;
+        try {
+            ladderSnap = typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_CONTINUOUS_ZOOM_MIN_V1 === true;
+        } catch (_) { ladderSnap = false; }
+        if (!ladderSnap) {
+            return Math.max(listMin, Math.min(listMax, best));
+        }
         for (let j = 0; j < widths.length; j++) {
             if (widths[j] >= best - 1e-6) return widths[j];
         }
@@ -24295,6 +24345,50 @@ class Chart {
             this.renderPending = false;
             this.render();
         });
+    }
+
+    /**
+     * Snap a bars-between-labels cadence onto TradingView-style wall-clock steps
+     * (5m / 15m / 1h / 1d …) so minSpacing px floors never invent odd steps like
+     * 7-minute ticks that refuse midnight alignment.
+     * Kill-switch: window.__TALARIA_DISABLE_NICE_TIME_AXIS_V1 = true
+     * @param {number} labelIntervalBars Candidate interval in bars.
+     * @param {number} timeframeMs Bar duration in ms.
+     * @returns {number} Nice interval in bars (>= 1).
+     */
+    _snapToNiceTimeLabelInterval(labelIntervalBars, timeframeMs) {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_NICE_TIME_AXIS_V1 === true) {
+                return Math.max(1, Math.floor(Number(labelIntervalBars) || 1));
+            }
+        } catch (_) { /* ignore */ }
+        const tfMs = Number(timeframeMs);
+        let bars = Math.max(1, Math.ceil(Number(labelIntervalBars) || 1));
+        if (!Number.isFinite(tfMs) || tfMs <= 0) return bars;
+        const minMs = bars * tfMs;
+        let chosenMs = null;
+        for (let i = 0; i < NICE_TIME_AXIS_MS.length; i++) {
+            const niceMs = NICE_TIME_AXIS_MS[i];
+            if (niceMs + 1e-6 < minMs) continue;
+            // Must land on an integer number of bars of this timeframe.
+            const barsExact = niceMs / tfMs;
+            if (!Number.isFinite(barsExact) || Math.abs(barsExact - Math.round(barsExact)) > 1e-6) {
+                continue;
+            }
+            chosenMs = niceMs;
+            bars = Math.max(1, Math.round(barsExact));
+            break;
+        }
+        if (chosenMs == null) {
+            // Beyond the ladder: round up to whole days (or whole weeks when huge).
+            const dayBars = Math.max(1, Math.round(86400e3 / tfMs));
+            if (Math.abs((dayBars * tfMs) - 86400e3) < 1) {
+                bars = Math.max(bars, dayBars);
+                bars = Math.ceil(bars / dayBars) * dayBars;
+            }
+        }
+        return Math.max(1, bars);
     }
 
     /**
@@ -25031,6 +25125,22 @@ class Chart {
         return !!(e && typeof e.buttons === 'number' && e.buttons === 0);
     }
 
+    /**
+     * Multichart iframe B: first pan races deferred panel-focus. Parent never saw
+     * the mousedown, so parent `mousemove` with buttons===0 false-ends the drag
+     * (stuck / snap-back). Default ON = skip parent mousemove end heuristic.
+     * Kill-switch: window.__TALARIA_DISABLE_MULTICHART_IFRAME_FIRST_PAN_FOCUS_RACE_V1 = true
+     */
+    _skipParentMousemoveDragEndGuard() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_MULTICHART_IFRAME_FIRST_PAN_FOCUS_RACE_V1 === true) {
+                return false;
+            }
+        } catch (_e) { /* ignore */ }
+        return typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel();
+    }
+
     _installDragEndGuard() {
         if (this._dragEndGuardInstalled) return;
         this._dragEndGuardInstalled = true;
@@ -25058,7 +25168,11 @@ class Chart {
                 window.parent.addEventListener('mouseup', end, cap);
                 window.parent.addEventListener('pointerup', end, cap);
                 window.parent.addEventListener('pointercancel', end, cap);
-                window.parent.addEventListener('mousemove', end, cap);
+                const skipParentMove = this._skipParentMousemoveDragEndGuard();
+                this._dragEndGuardSkipParentMove = skipParentMove;
+                if (!skipParentMove) {
+                    window.parent.addEventListener('mousemove', end, cap);
+                }
                 this._dragEndGuardOnParent = true;
             }
         } catch (_guardParent) { /* cross-origin */ }
@@ -25077,11 +25191,14 @@ class Chart {
                 window.parent.removeEventListener('mouseup', end, cap);
                 window.parent.removeEventListener('pointerup', end, cap);
                 window.parent.removeEventListener('pointercancel', end, cap);
-                window.parent.removeEventListener('mousemove', end, cap);
+                if (!this._dragEndGuardSkipParentMove) {
+                    window.parent.removeEventListener('mousemove', end, cap);
+                }
             }
         } catch (_guardParent) { /* cross-origin */ }
         this._dragEndGuardInstalled = false;
         this._dragEndGuardOnParent = false;
+        this._dragEndGuardSkipParentMove = false;
         this._dragEndGuardHandler = null;
     }
 
@@ -26760,6 +26877,7 @@ class Chart {
             const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
             labelInterval = dayStep * barsPerDay;
         }
+        labelInterval = this._snapToNiceTimeLabelInterval(labelInterval, tfMs);
         return this._stabilizeTimeLabelInterval(labelInterval);
     }
 
@@ -27168,7 +27286,12 @@ class Chart {
             } else {
                 labelInterval = Math.max(labelInterval, minBarsPerTick);
             }
+        } else {
+            labelInterval = Math.max(labelInterval, minBarsPerTick);
         }
+
+        // Snap odd px-floor cadences (e.g. 7 bars → 7m) onto nice clock steps.
+        labelInterval = this._snapToNiceTimeLabelInterval(labelInterval, timeframeMs);
 
         // Freeze density during a wheel-zoom burst (see _stabilizeTimeLabelInterval)
         // so the date axis scales smoothly instead of drifting at each tick.
@@ -27186,6 +27309,7 @@ class Chart {
         } else {
             labelInterval = Math.max(labelInterval, minBarsPerTick);
         }
+        labelInterval = this._snapToNiceTimeLabelInterval(labelInterval, timeframeMs);
 
         const labelIntervalMs   = labelInterval * timeframeMs;
         // Anchor tick alignment to the LAST loaded bar (not the first). Dragging

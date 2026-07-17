@@ -1264,6 +1264,66 @@ function isMultichartBootSettling() {
 }
 
 /**
+ * After F5, iframe panels can lock offsetX + time-axis ticks while cell width is
+ * still pre-final; ResizeObserver is skipped during boot settle, so the axis stays
+ * garbled until a click forces resize. Default ON: flush resize/re-anchor after
+ * reveal. Kill-switch: window.__TALARIA_DISABLE_MC_POST_BOOT_RESIZE_FLUSH_V1 = true
+ */
+function mcPostBootResizeFlushEnabled() {
+    try {
+        return !(typeof window !== "undefined"
+            && window.__TALARIA_DISABLE_MC_POST_BOOT_RESIZE_FLUSH_V1 === true);
+    } catch (_) {
+        return true;
+    }
+}
+
+function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
+    if (!mcPostBootResizeFlushEnabled() || !cellRefs || !panelIds || !panelIds.length) return;
+    // forceRecenter only on first multichart boot (F5); later tile joins must not
+    // yank an already-stable peer (B) when C appears.
+    const forceRecenter = opts.forceRecenter === true;
+    const run = () => {
+        for (const id of panelIds) {
+            if (id === HOST_PANEL_ID) continue;
+            const cell = cellRefs[id];
+            if (!cell) continue;
+            try { resizeIframeInCell(cell); } catch (_) {}
+            try {
+                const ifr = cell.querySelector("iframe");
+                const ch = ifr && ifr.contentWindow && ifr.contentWindow.chart;
+                if (!ch) continue;
+                // Unlock settle so post-reveal correction is not ignored.
+                try { ch._multichartViewportSettleUntil = 0; } catch (_) {}
+                if (typeof ch._invalidateTimeAxisTickCaches === "function") {
+                    try { ch._invalidateTimeAxisTickCaches(); } catch (_) {}
+                }
+                const rs = ch.replaySystem;
+                if (forceRecenter
+                    && rs && rs.isActive
+                    && typeof rs.syncReplayViewportToPlayhead === "function") {
+                    try {
+                        rs.syncReplayViewportToPlayhead(ch, {
+                            forceRecenter: true,
+                            render: false,
+                        });
+                    } catch (_) {}
+                }
+                if (typeof ch.render === "function") ch.render();
+            } catch (_) {}
+        }
+    };
+    try {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(run);
+        });
+    } catch (_) {
+        run();
+    }
+    setTimeout(run, 150);
+}
+
+/**
  * §6ct BOOT SINGLE-COMMIT guard (MultichartGrid side, mirrors chart.js
  * `_mcBootSingleCommitActive`). True while the multichart boot viewport is still
  * SETTLING and the kill-switch is unset. While active the ONE authoritative boot
@@ -2706,16 +2766,17 @@ export default function MultichartGrid({
         if (!allDataReady) return;
         const mgr = managerRef.current;
         const cellA = cellRefs.current[HOST_PANEL_ID];
-        const revealAll = () => {
+        const revealAll = (flushOpts) => {
             if (!mgr || typeof mgr.showPanelFrame !== "function") return;
             for (const id of expected) {
                 try { mgr.showPanelFrame(id); } catch (_) {}
             }
+            flushIframeChartsAfterBootReveal(cellRefs.current, expected, flushOpts);
         };
         // Second+ panel joining: reveal newcomers only — do not re-align host
         // or re-sync every iframe (that made panel B disappear while C loaded).
         if (bootAlignDoneRef.current) {
-            revealAll();
+            revealAll({ forceRecenter: false });
             return;
         }
         bootAlignDoneRef.current = true;
@@ -2736,7 +2797,7 @@ export default function MultichartGrid({
         const BOOT_REVEAL_AFTER_ALIGN_MS = 350;
         let revealTimer = 0;
         const t = setTimeout(() => {
-            if (isDraggingRef.current) { revealAll(); return; }
+            if (isDraggingRef.current) { revealAll({ forceRecenter: true }); return; }
             // Same-pair cache boot: host viewport was correct before split — only
             // resize canvas to cell A once and sync iframes; never re-seek playhead.
             if (samePairCacheBootRef.current) {
@@ -2800,7 +2861,7 @@ export default function MultichartGrid({
                         window.__multichartBootRevealAfter = 0;
                     }
                 } catch (_) {}
-                revealAll();
+                revealAll({ forceRecenter: true });
             }, BOOT_REVEAL_AFTER_ALIGN_MS);
         }, BOOT_ALIGN_DELAY_MS);
         const safetyReveal = setTimeout(() => {
@@ -2809,7 +2870,7 @@ export default function MultichartGrid({
                     window.__multichartBootRevealAfter = 0;
                 }
             } catch (_) {}
-            revealAll();
+            revealAll({ forceRecenter: true });
         }, 1800);
         return () => {
             clearTimeout(t);
@@ -4213,6 +4274,20 @@ export default function MultichartGrid({
                 clearTimeout(_focusViewportSyncTimer);
                 _focusViewportSyncTimer = setTimeout(() => {
                     try {
+                        // Skip host-led viewport fan-out while the newly focused
+                        // iframe is mid-pan (first-click focus races the gesture).
+                        let iframePanning = false;
+                        try {
+                            if (focusedPanelId && focusedPanelId !== "A" && mgr.charts) {
+                                const entry = mgr.charts.get
+                                    ? mgr.charts.get(focusedPanelId)
+                                    : null;
+                                const iw = entry && entry.iframe && entry.iframe.contentWindow;
+                                const ich = iw && iw.chart;
+                                iframePanning = !!(ich && ich.drag && ich.drag.active);
+                            }
+                        } catch (_ePan) { /* cross-origin / teardown */ }
+                        if (iframePanning) return;
                         const ch = window.chart;
                         if (ch && typeof ch.dispatchScrollSync === "function") {
                             ch.dispatchScrollSync(true);
