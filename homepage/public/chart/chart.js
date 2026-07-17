@@ -5800,6 +5800,51 @@ class Chart {
     }
 
     /**
+     * Kill-switch: window.__TALARIA_DISABLE_MC_INDEP_COVER_BRIDGE_V1 = true
+     * Default ON — bridge-fetch independent masters so long PLAY cannot leave
+     * non-overlapping bar islands (big vertical gap + X-axis stuck on old date).
+     */
+    _mcIndepCoverBridgeV1Enabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_MC_INDEP_COVER_BRIDGE_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * Interior hole near playhead (two fetch islands merged by t). Weekend FX
+     * gaps (~48–72h) are allowed; multi-day islands after catch-up are not.
+     * @returns {{ fromMs: number, toMs: number }|null}
+     */
+    _independentMasterInteriorHoleNearPlayhead(master, ts) {
+        if (!this._mcIndepCoverBridgeV1Enabled()) return null;
+        if (!Array.isArray(master) || master.length < 2 || !Number.isFinite(ts)) return null;
+        const masterTf = this._nativeRawFetchTf || '1m';
+        const tfMs = this.parseTimeframe(masterTf) || 60_000;
+        // > ~3.5 days between consecutive bars ⇒ island (weekends are ~2 days).
+        const holeThresholdMs = Math.max(tfMs * 200, 3.5 * 24 * 3600 * 1000);
+        const replay = this.replaySystem;
+        let idx = master.length - 1;
+        if (replay && typeof replay._findLastRawIndexAtOrBefore === 'function') {
+            idx = replay._findLastRawIndexAtOrBefore(master, ts);
+        }
+        if (idx < 1) return null;
+        const scanFrom = Math.max(1, idx - 4000);
+        for (let i = idx; i >= scanFrom; i--) {
+            const t1 = Number(master[i]?.t);
+            const t0 = Number(master[i - 1]?.t);
+            if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
+            const gap = t1 - t0;
+            if (gap > holeThresholdMs) {
+                return { fromMs: t0, toMs: Math.max(ts, t1) };
+            }
+        }
+        return null;
+    }
+
+    /**
      * True when independent panel master already has enough history + forward room
      * for replay at ts — skip refetch that would wipe the chart and show loading.
      * @param {number} ts
@@ -5817,6 +5862,14 @@ class Chart {
         const firstT = Number(master[0]?.t);
         const lastT = Number(master[master.length - 1]?.t);
         if (!Number.isFinite(firstT) || !Number.isFinite(lastT)) return false;
+
+        // Master ends before playhead → need bridge (not a centered island fetch).
+        if (this._mcIndepCoverBridgeV1Enabled() && lastT < targetTs - Math.max(tfMs * 40, 60_000)) {
+            return false;
+        }
+        if (this._independentMasterInteriorHoleNearPlayhead(master, targetTs)) {
+            return false;
+        }
 
         const replay = this.replaySystem;
         let idx = master.length - 1;
@@ -5841,6 +5894,76 @@ class Chart {
             }
         }
         return true;
+    }
+
+    /**
+     * Chunked /bars fetch from lastMaster → playhead+runway so independent tiles
+     * never merge non-overlapping islands during long PLAY.
+     */
+    async _fetchIndependentReplayBridge(fileId, session, replayRawTf, fromMs, targetTs) {
+        const sessionStartMs = (() => {
+            const raw = session?.startDate || session?.start_date;
+            if (!raw) return null;
+            const t = new Date(raw).getTime();
+            return Number.isFinite(t) ? t : null;
+        })();
+        const sessionEndMs = (() => {
+            const raw = session?.endDate || session?.end_date;
+            if (!raw) return null;
+            const t = this._sessionEndToInclusiveUtcMs(raw);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+        const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
+        const forwardMs = 6000 * tfMs;
+        let cursor = Number(fromMs);
+        if (!Number.isFinite(cursor)) return null;
+        cursor = Math.max(cursor - tfMs, sessionStartMs != null ? sessionStartMs : cursor - tfMs);
+        let endMs = Number(targetTs) + forwardMs;
+        if (!Number.isFinite(endMs)) return null;
+        if (sessionEndMs != null) endMs = Math.min(endMs, sessionEndMs);
+        if (endMs <= cursor) return null;
+
+        const resolution = String(replayRawTf).toLowerCase() === '1m' ? '1m' : 'auto';
+        const chunkMs = 2000 * tfMs;
+        const byT = new Map();
+        let guard = 0;
+        while (cursor < endMs && guard < 24) {
+            guard += 1;
+            const chunkTo = Math.min(endMs, cursor + chunkMs);
+            let payload = null;
+            try {
+                payload = await this._fetchBarsWindow(fileId, cursor, chunkTo, resolution, 2000);
+            } catch (e) {
+                console.warn('_fetchIndependentReplayBridge chunk failed', e);
+                break;
+            }
+            const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+            for (let i = 0; i < bars.length; i++) {
+                const b = bars[i];
+                if (b && Number.isFinite(b.t)) byT.set(b.t, b);
+            }
+            if (!bars.length) {
+                cursor = chunkTo + tfMs;
+                continue;
+            }
+            const lastT = Number(bars[bars.length - 1]?.t);
+            if (!Number.isFinite(lastT) || lastT <= cursor) {
+                cursor = chunkTo + tfMs;
+                continue;
+            }
+            cursor = lastT + tfMs;
+            if (bars.length < 5 && chunkTo < endMs) {
+                cursor = Math.max(cursor, chunkTo + tfMs);
+            }
+        }
+        if (!byT.size) return null;
+        const merged = Array.from(byT.values()).sort((a, b) => a.t - b.t);
+        return this._smartPayloadFromBars({
+            bars: merged,
+            resolution: replayRawTf,
+            has_more_left: true,
+            source: 'bars-bridge',
+        });
     }
 
     /**
@@ -6437,7 +6560,35 @@ class Chart {
                 const samePairCatchUp = this._multichartSamePairAsHost(fileId);
                 if (!samePairCatchUp && String(replayRawTf).toLowerCase() === '1m') {
                     try {
-                        result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf, ts);
+                        // Independent pair long PLAY: bridge from last master bar (or
+                        // hole start) to playhead — centered seek buffers leave islands
+                        // that paint as a huge vertical gap + old X-axis date.
+                        const bridgeOn = typeof this._mcIndepCoverBridgeV1Enabled === 'function'
+                            && this._mcIndepCoverBridgeV1Enabled();
+                        const master = Array.isArray(this._panelFullRawData)
+                            ? this._panelFullRawData : null;
+                        const lastMasterT = master && master.length
+                            ? Number(master[master.length - 1]?.t) : NaN;
+                        const hole = (bridgeOn && master)
+                            ? this._independentMasterInteriorHoleNearPlayhead(master, ts)
+                            : null;
+                        const needBridge = bridgeOn && (
+                            (Number.isFinite(lastMasterT) && lastMasterT < ts - margin)
+                            || !!hole
+                        );
+                        if (needBridge) {
+                            const fromMs = hole
+                                ? hole.fromMs
+                                : (Number.isFinite(lastMasterT) ? lastMasterT : (ts - margin));
+                            result = await this._fetchIndependentReplayBridge(
+                                fileId, session, replayRawTf, fromMs, ts
+                            );
+                        }
+                        if (!result) {
+                            result = await this._fetchReplaySeekBuffer(
+                                fileId, session, replayRawTf, ts
+                            );
+                        }
                     } catch (e) {
                         console.warn('ensureReplayDataCoversTimestamp: /bars fetch failed', e);
                     }

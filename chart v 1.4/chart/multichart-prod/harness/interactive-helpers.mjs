@@ -1020,4 +1020,60 @@ export async function readPanelEngineTf(page, panelId = 'B') {
   }).catch(() => null);
 }
 
+/** MC-PEER-DESELECT-SCOPE: probe grid export for cancelScheduledPeerDeselect. */
+export async function readGridPeerDeselectScope(page) {
+  return page.evaluate(() => {
+    const grid = window.__multichartGrid;
+    return {
+      hasGrid: !!grid,
+      hasCancel: !!(grid && typeof grid.cancelScheduledPeerDeselect === 'function'),
+      peerDeselectOff: !!(typeof window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === 'boolean'
+        && window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === true),
+    };
+  });
+}
+
+/** Fire parent-shell multichart message (panel-select / drawing-selected paths). */
+export async function fireMultichartParentMessage(page, type, panelId = 'B', extra = {}) {
+  return page.evaluate(({ msgType, pid, payload }) => {
+    window.postMessage({
+      type: msgType,
+      source: pid,
+      drawingId: payload.drawingId || 'harness-probe-drawing',
+      drawingType: payload.drawingType || 'trendline',
+    }, '*');
+    return { ok: true, type: msgType, panelId: pid };
+  }, { msgType: type, pid: panelId, payload: extra });
+}
+
+/** Scope-break probe: delete export, fire handler, restore — must not throw ReferenceError. */
+export async function probePeerDeselectScopeGuard(page, panelId = 'B') {
+  return page.evaluate((pid) => {
+    const grid = window.__multichartGrid;
+    if (!grid) return { ok: false, reason: 'no-grid' };
+    const saved = grid.cancelScheduledPeerDeselect;
+    try {
+      delete grid.cancelScheduledPeerDeselect;
+      window.postMessage({
+        type: 'multichart-drawing-selected',
+        source: pid,
+        drawingId: 'scope-break-probe',
+        drawingType: 'trendline',
+      }, '*');
+      return { ok: true, hadExport: typeof saved === 'function' };
+    } catch (err) {
+      return { ok: false, reason: String(err && err.message || err) };
+    } finally {
+      if (typeof saved === 'function') {
+        grid.cancelScheduledPeerDeselect = saved;
+      }
+    }
+  }, panelId);
+}
+
+export function filterPeerDeselectScopeErrors(pageErrors) {
+  const list = Array.isArray(pageErrors) ? pageErrors : [];
+  return list.filter((e) => /ReferenceError|cancelScheduledPeerDeselect/i.test(String(e)));
+}
+
 export { resolveDrawing };

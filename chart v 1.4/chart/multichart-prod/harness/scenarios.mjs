@@ -89,6 +89,10 @@ import {
   readHarnessFocusedPanelId,
   readParentTopbarActiveTf,
   readPanelEngineTf,
+  readGridPeerDeselectScope,
+  fireMultichartParentMessage,
+  probePeerDeselectScopeGuard,
+  filterPeerDeselectScopeErrors,
 } from './interactive-helpers.mjs';
 
 const HOST_FILE = '25';
@@ -260,6 +264,7 @@ async function runWith(ctx, bootOpts, body) {
     bugSwitches: ctx.bugSwitches,
     orderMcStateConvergeOff: !!ctx.orderMcStateConvergeOff,
     armedDrawFocusForwardOff: !!ctx.armedDrawFocusForwardOff,
+    peerDeselectOff: !!ctx.peerDeselectOff,
   });
   const notes = [];
   let checks;
@@ -5613,6 +5618,56 @@ async function mcDrawFirstclick(ctx) {
   });
 }
 
+// ── MC-PEER-DESELECT-SCOPE ───────────────────────────────────────────────
+// Pin MultichartGrid cancelScheduledPeerDeselect crash: panel-select /
+// multichart-drawing-selected must not throw ReferenceError when export is
+// missing (typeof guard) or present (happy path).
+async function mcPeerDeselectScope(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot) => {
+    const { page, pageErrors } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(300);
+
+    const scope = await readGridPeerDeselectScope(page);
+    checks.check('MC-PEER-DESELECT-SCOPE probe: __multichartGrid present', scope && scope.hasGrid,
+      JSON.stringify(scope || null));
+    checks.check('MC-PEER-DESELECT-SCOPE probe: cancelScheduledPeerDeselect exported (scope guard)',
+      scope && scope.hasCancel === true, JSON.stringify(scope || null));
+    checks.check('MC-PEER-DESELECT-SCOPE probe: peer-deselect switch state recorded',
+      scope && typeof scope.peerDeselectOff === 'boolean',
+      `peerDeselectOff=${scope?.peerDeselectOff}`);
+
+    const drawn = await drawTrendlineViaMouse(page, 'B');
+    checks.check('MC-PEER-DESELECT-SCOPE setup: trendline on panel B', drawn && drawn.ok,
+      JSON.stringify(drawn || null));
+    await sleep(300);
+
+    const focusB = await focusPanelByClick(page, 'B');
+    checks.check('MC-PEER-DESELECT-SCOPE probe: focus panel B via click', focusB && focusB.ok,
+      JSON.stringify(focusB || null));
+    await sleep(200);
+
+    await fireMultichartParentMessage(page, 'multichart-drawing-selected', 'B');
+    await fireMultichartParentMessage(page, 'multichart-clear-drawing-ui', 'B');
+    await sleep(100);
+
+    const scopeErrs = filterPeerDeselectScopeErrors(pageErrors);
+    checks.check('MC-PEER-DESELECT-SCOPE CORE: panel-select path — no ReferenceError (cancelScheduledPeerDeselect)',
+      scopeErrs.length === 0, scopeErrs.slice(0, 2).join(' | '));
+
+    const guardProbe = await probePeerDeselectScopeGuard(page, 'B');
+    checks.check('MC-PEER-DESELECT-SCOPE scope-break: missing export does not throw',
+      guardProbe && guardProbe.ok === true, JSON.stringify(guardProbe || null));
+    const scopeErrsAfter = filterPeerDeselectScopeErrors(pageErrors);
+    checks.check('MC-PEER-DESELECT-SCOPE scope-break: still no ReferenceError after probe',
+      scopeErrsAfter.length === scopeErrs.length,
+      scopeErrsAfter.slice(0, 2).join(' | '));
+
+    return checks;
+  });
+}
+
 // ── H-S46 ────────────────────────────────────────────────────────────────
 // TAL-01498: Ctrl-select inside panel B with locally drawn tools — both stay
 // selected once; handle centers remain separated (no stacked blob).
@@ -8583,6 +8638,7 @@ export function scenarioList() {
     { id: 'H-S44', title: 'panel single-click settings flow: select, open settings, Esc closes settings (T1 step 5)', run: hS44 },
     { id: 'H-S45', title: 'drawing-target-focused-panel: focused B draw lands on B only (TAL-01495)', run: hS45 },
     { id: 'MC-DRAW-FIRSTCLICK', title: 'multichart-armed-draw-firstclick: unfocused B draw on click 1', run: mcDrawFirstclick },
+    { id: 'MC-PEER-DESELECT-SCOPE', title: 'multichart grid peer-deselect scope: panel-select no ReferenceError', run: mcPeerDeselectScope },
     { id: 'H-S46', title: 'panel-ctrl-select-local: panel-B local Ctrl-select stays separated (TAL-01498)', run: hS46 },
     { id: 'H-S47', title: 'panel-quick-menu: panel-B draw shows Quick Menu immediately (TAL-01499)', run: hS47 },
     { id: 'H-S48', title: 'indicator-isolation: panel-B indicators do not leak to host (TAL-01500/01501)', run: hS48 },

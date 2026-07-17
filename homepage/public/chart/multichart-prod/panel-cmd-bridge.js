@@ -2284,6 +2284,8 @@
 
         // Independent ticker: while /bars catch-up is in flight, paint the furthest
         // loaded bar immediately so the fine panel does not hard-freeze mid-play.
+        // Do NOT pin host wall-clock ts onto replayTimestamp until cover succeeds —
+        // that made the X-axis claim Jul 31 while candles were still Jul 24.
         if (!isEnter && !isSameSymbolAsHost(ch)) {
             try {
                 renderFurthestLoadedMirrorFrame(ch, rs, {
@@ -2292,7 +2294,6 @@
                     tickProgress: 0,
                     tickElapsedMs: 0,
                 });
-                rs.replayTimestamp = ts;
             } catch (_) {}
         }
 
@@ -2300,11 +2301,13 @@
             ch.ensureReplayDataCoversTimestamp(ts).then(function () {
                 doSeek();
                 if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 finish();
             }).catch(function (e) {
                 warn('forceReplaySeek: ensureReplayDataCoversTimestamp failed', e && e.message);
                 doSeek();
                 if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 finish();
             });
             return;
