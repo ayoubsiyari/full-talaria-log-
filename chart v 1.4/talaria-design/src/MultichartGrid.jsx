@@ -272,6 +272,14 @@ function symbolSyncConvergeV2Enabled() {
     }
 }
 
+function intervalSyncConvergeV2Enabled() {
+    try {
+        return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_INTERVAL_SYNC_CONVERGE_V2);
+    } catch (_) {
+        return true;
+    }
+}
+
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
 // /chart/ does NOT load the bridge by default (it's only loaded inside
@@ -1474,8 +1482,7 @@ function applyHostSlot(cellEl, opts) {
     try {
         const ch = window.chart;
         if (ch && typeof ch.resize === "function") {
-            ch._lastResizeDpr = 0;
-            ch.resize();
+            forceResyncChartSurface(ch);
             if (typeof ch.render === "function") ch.render();
             if (reanchor) alignHostChartForMultichart(ch, null);
         }
@@ -1483,27 +1490,42 @@ function applyHostSlot(cellEl, opts) {
 }
 
 /**
- * CSS-only surface stretch (no chart.resize). Canvas bitmap scales via CSS;
- * drawings need an explicit viewBox locked to the last logical ch.w/ch.h so
- * SVG paths scale with the same non-uniform stretch (otherwise shapes stay
- * stuck in old absolute pixels while candles move).
+ * Force canvas bitmap + CSS size to match the container (undo any stale
+ * CSS-only stretch from an older mid-drag preview path).
  */
-function cssStretchChartSurface(ch, displayW, displayH) {
-    if (!ch || !ch.canvas) return;
-    const w = Math.max(1, Math.round(displayW));
-    const h = Math.max(1, Math.round(displayH));
-    ch.canvas.style.width = w + "px";
-    ch.canvas.style.height = h + "px";
-    const svgNode = ch.svg && typeof ch.svg.node === "function" ? ch.svg.node() : null;
-    if (!svgNode) return;
-    const logicalW = Math.max(1, Math.round(Number(ch.w) || w));
-    const logicalH = Math.max(1, Math.round(Number(ch.h) || h));
-    svgNode.setAttribute("width", String(logicalW));
-    svgNode.setAttribute("height", String(logicalH));
-    svgNode.setAttribute("viewBox", `0 0 ${logicalW} ${logicalH}`);
-    svgNode.setAttribute("preserveAspectRatio", "none");
-    svgNode.style.width = w + "px";
-    svgNode.style.height = h + "px";
+function forceResyncChartSurface(ch) {
+    if (!ch || !ch.canvas || typeof ch.resize !== "function") return;
+    try {
+        const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+        const parent = ch.canvas.parentElement;
+        if (parent) {
+            const rect = parent.getBoundingClientRect();
+            const nextW = Math.max(1, Math.floor(rect.width));
+            const nextH = Math.max(1, Math.floor(rect.height));
+            const bufW = ch.canvas.width / dpr;
+            const bufH = ch.canvas.height / dpr;
+            // resize() early-outs on this.w/this.h only — force a pass when the
+            // backing store still mismatches the cell (stretched labels).
+            if (
+                Math.abs(bufW - nextW) > 0.5
+                || Math.abs(bufH - nextH) > 0.5
+                || ch.w !== nextW
+                || ch.h !== nextH
+            ) {
+                ch.w = 0;
+                ch.h = 0;
+            }
+        }
+        ch._lastResizeDpr = 0;
+        ch.resize();
+        if (Number.isFinite(ch.w) && Number.isFinite(ch.h) && ch.w > 0 && ch.h > 0) {
+            ch.canvas.style.width = ch.w + "px";
+            ch.canvas.style.height = ch.h + "px";
+            if (typeof ch._syncDrawingSvgSurfaceSize === "function") {
+                ch._syncDrawingSvgSurfaceSize(ch.w, ch.h);
+            }
+        }
+    } catch (_) {}
 }
 
 // Lightweight position update — moves #chartWrapper to match cellEl's
@@ -1512,8 +1534,8 @@ function cssStretchChartSurface(ch, displayW, displayH) {
 // afford the cost of resize() + render() on every mousemove (each
 // resize is 5–20ms; at 60Hz that's a budget blowout).
 //
-// Canvas + drawing SVG are CSS-stretched together (viewBox-locked) so
-// shapes track candles mid-drag. On mouseup, settlePanelChartsAfterLayoutDrag
+// Do NOT CSS-stretch the canvas bitmap here — non-uniform scale fattens
+// axis labels. Clip via overflow:hidden on the wrapper; mouseup settle
 // runs one real resize()+redraw at the final size.
 function applyHostSlotPositionOnly(cellEl) {
     if (!cellEl) return;
@@ -1534,27 +1556,19 @@ function applyHostSlotPositionOnly(cellEl) {
     wrapper.style.right  = "auto";
     wrapper.style.bottom = "auto";
     wrapper.style.zIndex = "13";
+    wrapper.style.overflow = "hidden";
     wrapper.dataset.multichartHost = "1";
-    try {
-        cssStretchChartSurface(window.chart, width, height);
-    } catch (_) {}
 }
 
-/** CSS-only stretch for iframe charts during splitter drag (no resize()). */
+/** Keep iframe cells clipped during splitter drag (no canvas CSS stretch). */
 function previewIframeChartsInContainer(container) {
     if (!container) return;
     container.querySelectorAll("iframe").forEach((ifr) => {
         try {
-            const ch = ifr.contentWindow && ifr.contentWindow.chart;
-            if (!ch || !ch.canvas) return;
-            const parent = ch.canvas.parentElement;
-            if (!parent) return;
-            const rect = parent.getBoundingClientRect();
-            cssStretchChartSurface(
-                ch,
-                Math.max(1, Math.round(rect.width)),
-                Math.max(1, Math.round(rect.height))
-            );
+            ifr.style.overflow = "hidden";
+            const doc = ifr.contentDocument;
+            const wrap = doc && (doc.getElementById("chartWrapper") || doc.querySelector(".chart-wrapper"));
+            if (wrap) wrap.style.overflow = "hidden";
         } catch (_) {}
     });
 }
@@ -1636,9 +1650,11 @@ function settlePanelChartsAfterLayoutDrag(container, cellA) {
         const host = typeof window !== "undefined" ? window.chart : null;
         invalidateChartTimeAxisCaches(host);
     } catch (_) {}
-    if (cellA) applyHostSlot(cellA, { reanchor: false });
+    if (cellA) applyHostSlotPositionOnly(cellA);
     try {
         const host = typeof window !== "undefined" ? window.chart : null;
+        invalidateChartTimeAxisCaches(host);
+        forceResyncChartSurface(host);
         healChartViewportAfterLayoutDrag(host);
         if (host && typeof host.render === "function") host.render();
         forceRedrawDrawingsOnChart(host);
@@ -1649,9 +1665,8 @@ function settlePanelChartsAfterLayoutDrag(container, cellA) {
         try {
             const ch = ifr.contentWindow && ifr.contentWindow.chart;
             if (!ch || typeof ch.resize !== "function") return;
-            ch._lastResizeDpr = 0;
             invalidateChartTimeAxisCaches(ch);
-            ch.resize();
+            forceResyncChartSurface(ch);
             healChartViewportAfterLayoutDrag(ch);
             if (typeof ch.render === "function") ch.render();
             forceRedrawDrawingsOnChart(ch);
@@ -1760,9 +1775,8 @@ function thawPanelSurfaces(locked, cellA, container) {
             try {
                 const ch = el.contentWindow && el.contentWindow.chart;
                 if (ch && typeof ch.resize === "function") {
-                    ch._lastResizeDpr = 0;
                     invalidateChartTimeAxisCaches(ch);
-                    ch.resize();
+                    forceResyncChartSurface(ch);
                     if (typeof ch.render === "function") ch.render();
                     forceRedrawDrawingsOnChart(ch);
                 }
@@ -1968,6 +1982,7 @@ export default function MultichartGrid({
     const containerRef = useRef(null);
     const layoutSyncRef = useRef(layoutSync);
     const symbolSyncWasRef = useRef(false);
+    const intervalSyncWasRef = useRef(false);
     useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
     const cellRefs = useRef({});             // panelId -> cell <div>
     const managerRef = useRef(null);
@@ -3123,7 +3138,8 @@ export default function MultichartGrid({
         if (!mgr || typeof mgr.setSyncMode !== "function") return;
         const symWas = symbolSyncWasRef.current;
         const symNow = !!(layoutSync && layoutSync.symbol);
-        symbolSyncWasRef.current = symNow;
+        const intWas = intervalSyncWasRef.current;
+        const intNow = !!(layoutSync && layoutSync.interval);
         try {
             // Only these four map into MultichartManager / sync-bridge postMessage
             // fan-out. `layoutSync.interval`, `indicators`, and `chartType` are
@@ -3144,29 +3160,113 @@ export default function MultichartGrid({
             if (hostBridge && typeof hostBridge.refreshSyncFlags === "function") {
                 try { hostBridge.refreshSyncFlags(); } catch (_) {}
             }
-            // Row 15 (D-008): symbol-sync false→true converges all tiles to focused panel fileId.
+            const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+            const focusId = (grid && typeof grid.getFocusedPanelId === "function")
+                ? (grid.getFocusedPanelId() || HOST_PANEL_ID)
+                : (focusedPanelIdRef.current || HOST_PANEL_ID);
+            const ch = grid && typeof grid.getChartForPanel === "function"
+                ? grid.getChartForPanel(focusId)
+                : null;
+            // Symbol-sync false→true: all tiles adopt the focused panel's pair.
+            // Leave was=false if fileId is not ready yet so a later managerReady /
+            // layoutSync tick can retry converge.
             if (symbolSyncConvergeV2Enabled() && symNow && !symWas) {
-                const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-                const focusId = (grid && typeof grid.getFocusedPanelId === "function")
-                    ? (grid.getFocusedPanelId() || HOST_PANEL_ID)
-                    : (focusedPanelIdRef.current || HOST_PANEL_ID);
-                const ch = grid && typeof grid.getChartForPanel === "function"
-                    ? grid.getChartForPanel(focusId)
+                let fileId = ch && ch.currentFileId != null && String(ch.currentFileId).trim() !== ""
+                    ? String(ch.currentFileId)
                     : null;
-                const fileId = ch && ch.currentFileId != null ? String(ch.currentFileId) : null;
+                if (!fileId && focusId !== HOST_PANEL_ID) {
+                    try {
+                        const ent = mgr.charts && mgr.charts.get(focusId);
+                        if (ent && ent.state && ent.state.fileId != null
+                            && String(ent.state.fileId).trim() !== "") {
+                            fileId = String(ent.state.fileId);
+                        }
+                    } catch (_) { /* ignore */ }
+                }
+                if (!fileId && window.chart && window.chart.currentFileId != null
+                    && String(window.chart.currentFileId).trim() !== "") {
+                    fileId = String(window.chart.currentFileId);
+                }
                 if (fileId && grid && typeof grid.runCommandOnAllPanels === "function") {
-                    grid.runCommandOnAllPanels("loadFile", { fileId, force: true }).catch(() => {});
+                    grid.runCommandOnAllPanels("loadFile", {
+                        fileId,
+                        force: true,
+                        __fromHostFanout: true,
+                    }).catch(() => {});
+                    symbolSyncWasRef.current = true;
                 } else if (fileId && grid && typeof grid.loadFileOnPanel === "function") {
                     const ids = typeof grid.getPanelIds === "function" ? grid.getPanelIds() : [HOST_PANEL_ID];
-                    ids.forEach((pid) => {
-                        if (pid !== focusId) {
-                            grid.loadFileOnPanel(pid, fileId, { force: true }).catch(() => {});
+                    // Host first so onState pull-back cannot revert peers to the old pair.
+                    const hostId = grid.hostPanelId != null ? grid.hostPanelId : HOST_PANEL_ID;
+                    const ordered = [hostId, ...ids.filter((pid) => pid !== hostId)];
+                    let chain = Promise.resolve();
+                    ordered.forEach((pid) => {
+                        chain = chain.then(() => grid.loadFileOnPanel(pid, fileId, { force: true }).catch(() => {}));
+                    });
+                    symbolSyncWasRef.current = true;
+                } else if (fileId) {
+                    const hostCh = window.chart;
+                    const loadHost = () => {
+                        try {
+                            if (hostCh && String(hostCh.currentFileId || "") !== fileId) {
+                                const useMc = !!(hostCh.isBacktestMode || hostCh.backtestingSession)
+                                    && typeof hostCh.loadMultichartPanelFile === "function";
+                                if (useMc) return hostCh.loadMultichartPanelFile(fileId, { force: true });
+                                if (typeof hostCh.loadFileData === "function") return hostCh.loadFileData(fileId);
+                            }
+                        } catch (_) {}
+                        return null;
+                    };
+                    Promise.resolve(loadHost()).catch(() => {}).then(() => {
+                        for (const c of mgr.charts.values()) {
+                            if (!c || c.host) continue;
+                            try { mgr.sendCommand(c.id, "loadFile", { fileId, force: true }); } catch (_) {}
                         }
                     });
+                    symbolSyncWasRef.current = true;
                 }
+                // else: keep was=false and retry when fileId becomes available
+            } else {
+                symbolSyncWasRef.current = symNow;
+            }
+            // Interval-sync false→true: all tiles adopt the focused panel's timeframe.
+            if (intervalSyncConvergeV2Enabled() && intNow && !intWas) {
+                let tf = ch && ch.currentTimeframe ? String(ch.currentTimeframe) : null;
+                if (!tf && focusId !== HOST_PANEL_ID) {
+                    try {
+                        const ent = mgr.charts && mgr.charts.get(focusId);
+                        tf = ent && ent.state && ent.state.timeframe
+                            ? String(ent.state.timeframe)
+                            : null;
+                    } catch (_) { tf = null; }
+                }
+                if (!tf && window.chart && window.chart.currentTimeframe) {
+                    tf = String(window.chart.currentTimeframe);
+                }
+                if (tf && grid && typeof grid.runCommandOnAllPanels === "function") {
+                    grid.runCommandOnAllPanels("setTimeframe", {
+                        tf,
+                        __fromHostFanout: true,
+                    }).catch(() => {});
+                    intervalSyncWasRef.current = true;
+                } else if (tf) {
+                    try {
+                        if (window.chart && typeof window.chart.setTimeframe === "function"
+                            && window.chart.currentTimeframe !== tf) {
+                            window.chart.setTimeframe(tf);
+                        }
+                    } catch (_) {}
+                    for (const c of mgr.charts.values()) {
+                        if (!c || c.host) continue;
+                        sendPanelCmd(mgr, c.id, "setTimeframe", { tf, __fromHostFanout: true });
+                    }
+                    intervalSyncWasRef.current = true;
+                }
+            } else {
+                intervalSyncWasRef.current = intNow;
             }
         } catch (_) {}
-    }, [layoutSync, managerReady]);
+    }, [layoutSync, managerReady, dataReadyPanels]);
 
     // ─── Interval (timeframe) sync ──────────────────────────────────────
     //
@@ -3237,14 +3337,18 @@ export default function MultichartGrid({
             if (!mgr || typeof mgr.sendCommand !== "function") return;
             const fileId = (window.chart && window.chart.currentFileId) || null;
             if (!fileId) return;
-            // Coalesce: chartDataLoaded can fire many times for a single
-            // file (resamples, refetches). Broadcast only when the file
-            // id actually changes.
-            if (String(fileId) === String(lastBroadcastFileId)) return;
-            lastBroadcastFileId = String(fileId);
+            const fid = String(fileId);
+            // Always push to peers that still show a different pair. Coalesce
+            // only skips peers that already match (resamples/refetches).
+            let anySent = false;
             for (const c of mgr.charts.values()) {
                 if (!c || c.host) continue;
-                try { mgr.sendCommand(c.id, "loadFile", { fileId }); } catch (_) {}
+                const peerFid = c.state && c.state.fileId != null ? String(c.state.fileId) : "";
+                if (peerFid === fid && fid === String(lastBroadcastFileId || "")) continue;
+                try { mgr.sendCommand(c.id, "loadFile", { fileId: fid, force: true }); anySent = true; } catch (_) {}
+            }
+            if (anySent || fid !== String(lastBroadcastFileId || "")) {
+                lastBroadcastFileId = fid;
             }
         };
         window.addEventListener("chartDataLoaded", onDataLoaded);
@@ -5283,6 +5387,36 @@ export default function MultichartGrid({
             const target = (opts && opts.panelId)
                 ? opts.panelId
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
+            // Interval sync ON: timeframe from the selected/focused tile (or
+            // topbar) must apply to every layout panel, not only the target.
+            // Skip when already an explicit all-panels fan-out / host broadcast.
+            if (
+                cmd === "setTimeframe"
+                && args && args.tf
+                && layoutSyncRef.current && layoutSyncRef.current.interval
+                && !(opts && opts.skipIntervalFanout)
+                && !args.__fromHostFanout
+            ) {
+                return runCommandOnAllPanels("setTimeframe", {
+                    tf: String(args.tf),
+                    __fromHostFanout: true,
+                });
+            }
+            // Symbol sync ON: pair/file from the selected tile or topbar
+            // consolidates every layout panel onto that one fileId.
+            if (
+                cmd === "loadFile"
+                && args && args.fileId != null && args.fileId !== ""
+                && layoutSyncRef.current && layoutSyncRef.current.symbol
+                && !(opts && opts.skipSymbolFanout)
+                && !args.__fromHostFanout
+            ) {
+                return runCommandOnAllPanels("loadFile", {
+                    fileId: String(args.fileId),
+                    force: args.force !== false,
+                    __fromHostFanout: true,
+                });
+            }
             // Phase 6: an in-window panel instance handles commands in-process,
             // identical to the host path (no iframe / postMessage round-trip).
             const inProcChart = inProcPanelChartsRef.current.get(target);
@@ -5840,6 +5974,27 @@ export default function MultichartGrid({
         function runCommandOnAllPanels(cmd, args) {
             args = args || {};
             const mgr = managerRef.current;
+            // loadFile: host first, then peers. Parallel loads race the symbol-sync
+            // pull-back (peers finish on the new pair while host still has the old
+            // fileId → peers get reverted).
+            if (cmd === "loadFile") {
+                return applyHostCommand(cmd, args).catch((e) => {
+                    console.warn("[MultichartGrid] runCommandOnAllPanels host", cmd, e && e.message || e);
+                }).then(() => {
+                    const peerProms = [];
+                    if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                        for (const c of mgr.charts.values()) {
+                            if (!c || c.host) continue;
+                            peerProms.push(
+                                mgr.sendCommand(c.id, cmd, args).catch((e) => {
+                                    console.warn("[MultichartGrid] runCommandOnAllPanels", c.id, cmd, e && e.message || e);
+                                })
+                            );
+                        }
+                    }
+                    return Promise.all(peerProms);
+                }).then(() => undefined);
+            }
             const proms = [
                 applyHostCommand(cmd, args).catch((e) => {
                     console.warn("[MultichartGrid] runCommandOnAllPanels host", cmd, e && e.message || e);

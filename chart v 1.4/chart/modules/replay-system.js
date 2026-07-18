@@ -1750,7 +1750,10 @@ class ReplaySystem {
                 this.hideAllGoBackVisualsMulti();
                 return;
             }
-            this.applyGoBackVisualsForTimestamp(snapped.timestamp, { candleIndex: snapped.candleIndex });
+            this.applyGoBackVisualsForTimestamp(snapped.timestamp, {
+                candleIndex: snapped.candleIndex,
+                sourceChart: chart,
+            });
             return;
         }
 
@@ -2002,6 +2005,7 @@ class ReplaySystem {
     applyGoBackVisualsForTimestamp(ts, options = {}) {
         if (!this._goBackEntries) return;
         const candleIndexOpt = options.candleIndex;
+        const sourceChart = options.sourceChart || null;
         this._goBackEntries.forEach((entry) => {
             const { chart, pickModeOverlay, cutLine, cutLineLabel } = entry;
             if (!chart.data || chart.data.length === 0) {
@@ -2010,9 +2014,18 @@ class ReplaySystem {
                 this._updateCutLineLabel(cutLineLabel, null, false);
                 return;
             }
-            let idx = Number.isInteger(candleIndexOpt) && candleIndexOpt >= 0
-                ? candleIndexOpt
-                : this.findLastDataIndexAtOrBefore(chart, ts);
+            // Resolve index per chart (panels can differ in data / aggregation).
+            // Only reuse the hover panel's candleIndex on that same chart instance.
+            let idx;
+            if (
+                sourceChart && chart === sourceChart
+                && Number.isInteger(candleIndexOpt) && candleIndexOpt >= 0
+                && chart.data[candleIndexOpt]
+            ) {
+                idx = candleIndexOpt;
+            } else {
+                idx = this.findLastDataIndexAtOrBefore(chart, ts);
+            }
             if (idx < 0) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
@@ -2025,19 +2038,33 @@ class ReplaySystem {
             } else {
                 return;
             }
-            const plotW = this._chartPlotWidth(chart);
-            if (x < chart.margin.l || x > plotW - chart.margin.r) {
+            if (!Number.isFinite(x)) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
                 this._updateCutLineLabel(cutLineLabel, null, false);
                 return;
             }
+            const plotW = this._chartPlotWidth(chart);
+            const left = (chart.margin && chart.margin.l) || 0;
+            const right = plotW - ((chart.margin && chart.margin.r) || 0);
+            // Zoomed panels often leave the cut timestamp off-screen. Clamp to the
+            // plot edge so the cut line still shows (instead of opacity 0).
+            const drawX = right > left ? Math.max(left, Math.min(right, x)) : x;
             if (cutLine) {
-                cutLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
+                const top = (chart.margin && chart.margin.t) || 0;
+                const bottom = (Number(chart.h) || 0) - ((chart.margin && chart.margin.b) || 0);
+                cutLine
+                    .attr('x1', drawX)
+                    .attr('x2', drawX)
+                    .attr('y1', top)
+                    .attr('y2', bottom > top ? bottom : top)
+                    .attr('opacity', 1);
             }
             if (pickModeOverlay) {
-                const shadeFromX = this._goBackShadeStartX(chart, idx, x);
-                const rightWidth = chart.w - shadeFromX;
+                // Shade from the clamped edge: full shade when cut is left of view,
+                // none when cut is right of view.
+                const shadeFromX = this._goBackShadeStartX(chart, idx, drawX);
+                const rightWidth = Math.max(0, (Number(chart.w) || plotW) - shadeFromX);
                 pickModeOverlay.style.left = 'auto';
                 pickModeOverlay.style.right = '0';
                 pickModeOverlay.style.width = `${rightWidth}px`;

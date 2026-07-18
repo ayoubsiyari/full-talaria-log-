@@ -17383,7 +17383,13 @@ class Chart {
 	        }
 	        this._resizeLayoutRetries = 0;
 
-	        if (!sizeChanged && !dprChanged) {
+	        // Also rebuild when CSS stretch left the backing store mismatched
+	        // (multichart splitter preview) even if this.w/this.h already match.
+	        const bufMismatch = !this.canvas ? false : (
+	            Math.abs(this.canvas.width - Math.floor(nextW * dpr)) > 1
+	            || Math.abs(this.canvas.height - Math.floor(nextH * dpr)) > 1
+	        );
+	        if (!sizeChanged && !dprChanged && !bufMismatch) {
 	            return;
 	        }
 
