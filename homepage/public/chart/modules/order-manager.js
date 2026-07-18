@@ -14657,6 +14657,13 @@ class OrderManager {
             this._previewEntryDecoupledFromRR = false;
             this._previewEntryLinkedToRiskReward = false;
 
+            // Discard unplaced draft levels so the next "+ Place Order" does not
+            // reopen with the previous stop/target (V9 React rail kept them in
+            // React state + hidden #slPrice/#tpPrice across close → reopen).
+            // Always discard here: editingPendingOrderId was already cleared above;
+            // reopening a pending order reloads from the order, not this draft.
+            this._discardUnplacedOrderDraftLevels({ notifyReactRail: true });
+
             (this._collectLayoutCharts() || []).forEach((c) => {
                 if (c && typeof c.updateSVGPointerEvents === 'function') {
                     try { c.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
@@ -21094,6 +21101,39 @@ class OrderManager {
     _resetMultiEntryStateForNewOrder() {
         this.multiEntryLevels = [];
         this.setEntryMode(false);
+    }
+
+    /**
+     * Zero stop/target draft inputs (and multi-TP / multi-entry) when the Place Order
+     * panel closes so the next open starts clean. Optionally notifies the V9 React
+     * rail (`talaria:order-rail-reset-draft`) which owns visible SL/TP rows.
+     */
+    _discardUnplacedOrderDraftLevels({ notifyReactRail = false } = {}) {
+        this.tpTargets = [];
+        const tpIn = document.getElementById('tpPrice');
+        const slIn = document.getElementById('slPrice');
+        if (tpIn) tpIn.value = '0';
+        if (slIn) slIn.value = '0';
+
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        const multipleTPSettings = document.getElementById('multipleTPSettings');
+        const tpSingleView = document.getElementById('tpSingleView');
+        if (multipleTPToggle) multipleTPToggle.checked = false;
+        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        if (tpSingleView) tpSingleView.classList.remove('is-hidden');
+        try {
+            if (typeof this._syncMultiTPButtonState === 'function') this._syncMultiTPButtonState();
+        } catch (_e) { /* ignore */ }
+
+        try {
+            this._resetMultiEntryStateForNewOrder();
+        } catch (_e) { /* ignore */ }
+
+        if (notifyReactRail) {
+            try {
+                window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
+            } catch (_e) { /* ignore */ }
+        }
     }
 
     /**

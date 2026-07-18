@@ -38297,7 +38297,7 @@ const TalariaV8bLive = () => {
                                 const ot = v9PushEntryPriceAndDetectOrderType(norm, buySell, omBlur);
                                 setOrderType((prev) => (prev === ot ? prev : ot));
                               }}
-                              style={{ width:46, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                              style={{ width:62, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
                               {arw(()=>stepRow(row.id,"price",-1), false, `ep-${row.id}-dn`)}
