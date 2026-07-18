@@ -21,6 +21,8 @@ extract_func3.ps1
 extract_panel_cb.ps1
 
 # Planning & documentation (local reference only)
+docs/
+tickets/
 DESIGN_SYSTEM.md
 IMPROVEMENTS.md
 LOCALSTORAGE_AUDIT.md

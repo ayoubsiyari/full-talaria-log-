@@ -44,6 +44,8 @@ Sources Handoff/**
 journal-backend/**
 
 # Docs / IDE / env secrets
+docs/
+tickets/
 **/*.md
 !README.md
 .idea
