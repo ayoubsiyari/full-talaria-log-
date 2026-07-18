@@ -468,23 +468,56 @@ export async function readDrawingManagerLiveState(page, panelId = 'A') {
  * Arm tool on host A and mirror production sync: host dm armed, peer iframes cleared.
  */
 export async function armHostDrawToolForMultichartSync(page, tool = 'rectangle') {
-  const focusRes = await focusPanelByClick(page, 'A');
-  if (!focusRes || !focusRes.ok) return focusRes || { ok: false, reason: 'focus A failed' };
+  return armPanelDrawToolForMultichartSync(page, 'A', tool);
+}
+
+/**
+ * Arm tool on a panel and mirror production sync: focused panel dm armed, peers cleared.
+ */
+export async function armPanelDrawToolForMultichartSync(page, panelId, tool = 'rectangle') {
+  const focusRes = await focusPanelByClick(page, panelId);
+  if (!focusRes || !focusRes.ok) return focusRes || { ok: false, reason: `focus ${panelId} failed` };
   await sleep(150);
-  const res = await page.evaluate(async (toolName) => {
-    const dm = window.chart && window.chart.drawingManager;
-    if (!dm || typeof dm.setTool !== 'function') return { ok: false, reason: 'no host setTool' };
-    dm.setTool(toolName);
-    const grid = window.__multichartGrid;
-    if (grid && typeof grid.syncDrawingToolAcrossPanels === 'function') {
-      await grid.syncDrawingToolAcrossPanels(toolName);
+
+  let res;
+  if (panelId === 'A') {
+    res = await page.evaluate(async (toolName) => {
+      const dm = window.chart && window.chart.drawingManager;
+      if (!dm || typeof dm.setTool !== 'function') return { ok: false, reason: 'no host setTool' };
+      dm.setTool(toolName);
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.syncDrawingToolAcrossPanels === 'function') {
+        await grid.syncDrawingToolAcrossPanels(toolName);
+      }
+      return { ok: true, hostTool: dm.currentTool || null };
+    }, tool);
+    await sleep(200);
+    const frameB = chartTarget(page, 'B');
+    if (frameB) {
+      await frameB.evaluate(() => {
+        const dm = window.chart && window.chart.drawingManager;
+        if (!dm) return;
+        if (typeof dm.clearTool === 'function') dm.clearTool(true);
+        else dm.currentTool = null;
+      }).catch(() => {});
     }
-    return { ok: true, hostTool: dm.currentTool || null };
-  }, tool);
-  await sleep(200);
-  const frameB = chartTarget(page, 'B');
-  if (frameB) {
-    await frameB.evaluate(() => {
+  } else {
+    const frame = chartTarget(page, panelId);
+    if (!frame) return { ok: false, reason: `no frame for panel ${panelId}` };
+    res = await frame.evaluate(async (toolName) => {
+      const dm = window.chart && window.chart.drawingManager;
+      if (!dm || typeof dm.setTool !== 'function') return { ok: false, reason: 'no setTool' };
+      dm.setTool(toolName);
+      try {
+        const grid = window.parent && window.parent.__multichartGrid;
+        if (grid && typeof grid.syncDrawingToolAcrossPanels === 'function') {
+          await grid.syncDrawingToolAcrossPanels(toolName);
+        }
+      } catch (_) { /* ignore */ }
+      return { ok: true, tool: dm.currentTool || null };
+    }, tool);
+    await sleep(200);
+    await page.evaluate(() => {
       const dm = window.chart && window.chart.drawingManager;
       if (!dm) return;
       if (typeof dm.clearTool === 'function') dm.clearTool(true);
@@ -1074,6 +1107,163 @@ export async function probePeerDeselectScopeGuard(page, panelId = 'B') {
 export function filterPeerDeselectScopeErrors(pageErrors) {
   const list = Array.isArray(pageErrors) ? pageErrors : [];
   return list.filter((e) => /ReferenceError|cancelScheduledPeerDeselect/i.test(String(e)));
+}
+
+/** Linear puppeteer mouse path (A8-* I15 actuation). */
+export async function dragPointerPath(page, x0, y0, x1, y1, { steps = 10 } = {}) {
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    await page.mouse.move(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    await sleep(20);
+  }
+}
+
+export async function resolveResizeHandlePagePoint(page, panelId, drawId, role = 'corner-br') {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  const local = await frame.evaluate((id, handleRole) => {
+    const dm = window.chart && window.chart.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d || !d.group) return { ok: false, reason: 'no group' };
+    const sel = d.group.select(`.resize-handle-group[data-handle-role="${handleRole}"]`);
+    const node = sel.empty() ? null : sel.node();
+    if (!node || !node.getBoundingClientRect) {
+      return { ok: false, reason: `handle ${handleRole} not found` };
+    }
+    const r = node.getBoundingClientRect();
+    return { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2, role: handleRole };
+  }, drawId, role);
+  if (!local || !local.ok) return local;
+  if (panelId === 'A') return local;
+  const fr = await frameRectForPanel(page, panelId);
+  if (!fr) return { ok: false, reason: 'no frame rect' };
+  return { ok: true, x: fr.left + local.x, y: fr.top + local.y, role };
+}
+
+export async function resolveBodyHitPagePoint(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  const local = await frame.evaluate((id) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d || !d.group) return { ok: false, reason: 'no group' };
+    const node = d.group.node();
+    if (!node || !node.getBBox) return { ok: false, reason: 'no bbox' };
+    const bb = node.getBBox();
+    const svg = dm.svg && dm.svg.node();
+    if (!svg) return { ok: false, reason: 'no svg' };
+    const sr = svg.getBoundingClientRect();
+    return {
+      ok: true,
+      x: sr.left + bb.x + bb.width / 2,
+      y: sr.top + bb.y + bb.height / 2,
+    };
+  }, drawId);
+  if (!local || !local.ok) return local;
+  if (panelId === 'A') return local;
+  const fr = await frameRectForPanel(page, panelId);
+  if (!fr) return { ok: false, reason: 'no frame rect' };
+  return { ok: true, x: fr.left + local.x, y: fr.top + local.y };
+}
+
+export async function lockDrawingViaManager(page, panelId, drawId, locked = true) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id, flag) => {
+    const dm = window.chart && window.chart.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d) return { ok: false, reason: 'not found' };
+    d.locked = !!flag;
+    if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
+    if (typeof dm.setupDrawingInteraction === 'function') dm.setupDrawingInteraction(d);
+    if (typeof dm._broadcastDrawingStateSync === 'function') dm._broadcastDrawingStateSync(d);
+    if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+    return { ok: true, locked: !!d.locked };
+  }, drawId, locked);
+}
+
+export async function readDrawingShiftSquareProbe(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id) => {
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d || !Array.isArray(d.points) || d.points.length < 2 || !ch.yScale) {
+      return { ok: false, reason: 'missing drawing/scales' };
+    }
+    const y0 = Number(d.points[0].y);
+    const y1 = Number(d.points[1].y);
+    const priceSpan = Math.abs(y0 - y1);
+    const yDom = ch.yScale.domain();
+    const visibleSpan = Math.abs(Number(yDom[1]) - Number(yDom[0]));
+    const ratio = visibleSpan > 0 ? priceSpan / visibleSpan : 0;
+    const xL = Math.min(d.points[0].x, d.points[1].x);
+    const xR = Math.max(d.points[0].x, d.points[1].x);
+    const pxW = Math.abs(ch.dataIndexToPixel(xR) - ch.dataIndexToPixel(xL));
+    const pxH = Math.abs(ch.yScale(y0) - ch.yScale(y1));
+    const aspect = pxW > 1 ? pxH / pxW : null;
+    const aspectOk = aspect != null && aspect > 0.65 && aspect < 1.35;
+    const jump = ratio > 0.42;
+    return { ok: true, priceSpan, visibleSpan, ratio, aspect, aspectOk, jump };
+  }, drawId);
+}
+
+export async function readDrawingGhostMidDragProbe(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id) => {
+    const start = window.__hA82Start;
+    const START_POINTS = start && String(start.id) === String(id) ? start.points : null;
+    const ch = window.chart;
+    const dm = ch && ch.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d || !d.group || !START_POINTS || !ch.yScale) return { ok: false, reason: 'missing' };
+    const transform = d.group.attr('transform') || '';
+    const hasTransform = transform && transform !== 'null' && !/^translate\(0[, ]0\)/.test(transform);
+    const p0s = START_POINTS[0];
+    const p0c = d.points && d.points[0];
+    if (!p0s || !p0c) return { ok: false, reason: 'no points' };
+    const dataMoved = Math.hypot(p0c.x - p0s.x, p0c.y - p0s.y) > 0.0005;
+    const node = d.group.node();
+    const bb = node.getBBox();
+    const svg = dm.svg.node();
+    const sr = svg.getBoundingClientRect();
+    const bboxCx = sr.left + bb.x + bb.width / 2;
+    const bboxCy = sr.top + bb.y + bb.height / 2;
+    const startCx = sr.left + ch.dataIndexToPixel((START_POINTS[0].x + START_POINTS[1].x) / 2);
+    const startCy = sr.top + ch.yScale((START_POINTS[0].y + START_POINTS[1].y) / 2);
+    const curCx = sr.left + ch.dataIndexToPixel((d.points[0].x + d.points[1].x) / 2);
+    const curCy = sr.top + ch.yScale((d.points[0].y + d.points[1].y) / 2);
+    const bboxNearOrigin = Math.hypot(bboxCx - startCx, bboxCy - startCy) < 12;
+    const dataNearCurrent = Math.hypot(bboxCx - curCx, bboxCy - curCy) < 20;
+    const ghost = dataMoved && bboxNearOrigin && !dataNearCurrent;
+    const staleTransform = dataMoved && hasTransform;
+    return { ok: true, dataMoved, hasTransform, ghost, staleTransform, transform };
+  }, drawId);
+}
+
+export async function readDrawingTimestampAnchors(page, panelId, drawId) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate((id) => {
+    const dm = window.chart && window.chart.drawingManager;
+    const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+    if (!d) return { ok: false, reason: 'no drawing' };
+    const pts = Array.isArray(d.timestampPoints) && d.timestampPoints.length ? d.timestampPoints : null;
+    const barPts = Array.isArray(d.points) ? d.points : [];
+    const tf = window.chart.currentTimeframe || null;
+    return {
+      ok: true,
+      tf,
+      timestampPoints: pts,
+      barPoints: barPts,
+      p0ts: pts && pts[0] ? Number(pts[0].timestamp) : null,
+      p0price: pts && pts[0] ? Number(pts[0].price) : null,
+      p0bar: barPts[0] ? Number(barPts[0].x) : null,
+    };
+  }, drawId);
 }
 
 export { resolveDrawing };

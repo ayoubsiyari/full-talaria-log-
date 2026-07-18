@@ -494,7 +494,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260718b04';
+  const buildId = '20260718b05';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -896,8 +896,24 @@ function hostPageHtml(query) {
           }
         } catch (_) {}
       });
+      function getChartForPanelId(panelId) {
+        var pid = panelId != null ? String(panelId) : (window.__harnessFocusedPanelId || 'A');
+        if (pid === 'A') return window.chart || null;
+        var ent = mgr.charts && mgr.charts.get(pid);
+        if (!ent || ent.host || !ent.frame) return null;
+        try {
+          var cw = ent.frame.contentWindow;
+          return (cw && cw.chart) || null;
+        } catch (_) {
+          return null;
+        }
+      }
       window.__multichartGrid = {
+        hostPanelId: 'A',
         getPanelIds: function () { return ['A'].concat(iframeIds); },
+        getFocusedPanelId: function () { return window.__harnessFocusedPanelId || 'A'; },
+        getChartForPanelId: getChartForPanelId,
+        getChartForPanel: getChartForPanelId,
         getFinestReplayCadenceMs: finestReplayCadenceMs,
         refreshFinestReplayCadence: refreshFinestReplayCadence,
         cancelScheduledPeerDeselect: cancelScheduledPeerDeselect,

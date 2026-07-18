@@ -52,11 +52,13 @@ import {
   readAvVpAnchorGeometryProbe,
   editAvCoordFieldViaSpinner,
   resolveAnchoredVpAnchorHandlePagePoint,
+  actuateAnchoredVpHandleDragInPanel,
   dragPointerPath,
   reactPanelLoadFile,
   readReactPanelFileIds,
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
+  ensureDrawingAnchorInPlotView,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -695,6 +697,94 @@ async function hA7bR2(ctx) {
   });
 }
 
+// ── H-A7b-R2b — D-029 R2b: VP anchor handle resize survives axis-margin floor ─
+async function hA7bR2b(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const switchOff = !!ctx.vpHandleCanvasRoutingOff;
+    checks.check('H-A7b-R2b L1: build id on host + panel B iframe', boot.buildIds.ok,
+      JSON.stringify(boot.buildIds));
+
+    await reactPanelLoadFile(page, 'B', '27');
+    await waitForPanelData(page, 'B', 60_000);
+    await focusReactPanel(page, 'B');
+    await waitForPanelSettle(page, 'B');
+    await page.setViewport({ width: 1280, height: 720 });
+    await waitForPanelSettle(page, 'B', 2000);
+    await page.setViewport({ width: 1440, height: 960 });
+    await waitForPanelSettle(page, 'B', 2000);
+
+    let pts;
+    try {
+      pts = await defaultVolumeAnchorPoints(page, 1, 'B');
+    } catch (err) {
+      checks.check('H-A7b-R2b setup: anchor points resolved', false, String(err && err.message || err));
+      return checks;
+    }
+    const placed = await placeTool(page, 'B', 'anchored-volume-profile', pts);
+    checks.check('H-A7b-R2b setup: anchored VP placed on panel B', placed && placed.id,
+      placed ? placed.id : 'null');
+    await waitForVpDrawingSettle(page, 'B', placed.id, 3000);
+    await waitForPanelSettle(page, 'B', 1500);
+    await disarmDrawTool(page, 'B');
+    await singleClickDrawing(page, 'B', placed.id);
+    await waitForReactSelection(page, 'B', [placed.id]);
+    await waitForPanelSettle(page, 'B', 800);
+
+    const axisProbe = await readAxisMarginCrushProbe(page, 'B');
+    checks.check('H-A7b-R2b guard: axes not crushed (R2 floor intact)',
+      axisProbe && axisProbe.ok && axisProbe.floorOk, JSON.stringify(axisProbe));
+
+    const geoBefore = await readAvVpAnchorGeometryProbe(page, 'B', placed.id);
+    checks.check('H-A7b-R2b setup: anchor geometry probe', geoBefore.ok, JSON.stringify(geoBefore));
+
+    await ensureDrawingAnchorInPlotView(page, 'B', placed.id);
+    await waitForPanelSettle(page, 'B', 400);
+
+    const drag = await actuateAnchoredVpHandleDragInPanel(page, 'B', placed.id, -160, 24);
+    checks.check('H-A7b-R2b probe: routing fix starts handle drag when ON',
+      switchOff ? !(drag && drag.ok) : !!(drag && drag.ok), JSON.stringify(drag || null));
+    await sleep(300);
+
+    const geoAfter = await readAvVpAnchorGeometryProbe(page, 'B', placed.id);
+    const moved = !!(drag && drag.moved) || (geoAfter.ok && geoBefore.ok
+      && (Math.abs(geoAfter.barIndex - geoBefore.barIndex) >= 0.5
+        || Math.abs(geoAfter.price - geoBefore.price) >= 1e-5));
+    checks.check('H-A7b-R2b CORE: anchor handle drag re-anchors VP',
+      switchOff ? !moved : moved, JSON.stringify({ geoBefore, geoAfter, drag, switchOff }));
+
+    const axisAfter = await readAxisMarginCrushProbe(page, 'B');
+    checks.check('H-A7b-R2b guard: axes still intact after handle drag',
+      axisAfter && axisAfter.ok && axisAfter.floorOk, JSON.stringify(axisAfter));
+
+    const frameB = panelFrameMap(page).B;
+    const i13 = frameB ? await frameB.evaluate((off) => {
+      const ch = window.chart;
+      if (!ch || typeof ch._enforceAxisMarginFloor !== 'function') {
+        return { ok: false, reason: 'no _enforceAxisMarginFloor' };
+      }
+      ch.margin.r = 5;
+      ch._enforceAxisMarginFloor();
+      const after = Number(ch.margin.r);
+      if (off) {
+        return {
+          ok: after <= 10,
+          after,
+          switchOff: window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX === true,
+        };
+      }
+      return { ok: after >= 60, after };
+    }, !!ctx.axisMarginFloorOff) : { ok: false, reason: 'no frame B' };
+    if (!ctx.axisMarginFloorOff) {
+      checks.check('H-A7b-R2b I13: R2 floor still enforced after resize',
+        i13 && i13.ok, JSON.stringify(i13));
+    }
+
+    return checks;
+  });
+}
+
 // ── H-S80 — PLAN2-FOUND#6: panel TF label sync after refresh (built V9) ───
 const H_S80_LABEL_SYNC_SWITCH = '__TALARIA_MC_PANEL_TF_LABEL_SYNC';
 
@@ -906,6 +996,7 @@ export function reactScenarioList() {
     { id: 'H-R09', title: 'parity row 9: single→double-click chain + Esc (host + panel B)', run: hR09 },
     { id: 'H-R09-LR', title: 'H-R09 live-resolve lag pin (panel B single-click + parent bar)', run: hR09Lr },
     { id: 'H-A7b-R2', title: 'D-029 R2: multichart anchored VP must not crush price/time axes', run: hA7bR2 },
+    { id: 'H-A7b-R2b', title: 'D-029 R2b: VP anchor handle resize survives axis-margin floor', run: hA7bR2b },
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label sync after refresh (built V9)', run: hS80React },
     { id: 'H-A8-VP-1', title: 'A8-VP-1: anchored VP V9 label bridge (Price/Time toggles → engine + axis highlights)', run: hA8Vp1 },
     { id: 'H-A8-VP-2', title: 'A8-VP-2: anchored VP coord tab ↔ canvas anchor sync', run: hA8Vp2 },

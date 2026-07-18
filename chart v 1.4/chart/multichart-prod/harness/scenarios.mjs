@@ -71,6 +71,7 @@ import {
   drawRectangleViaMouse,
   drawTrendlineViaMouse,
   armHostDrawToolForMultichartSync,
+  armPanelDrawToolForMultichartSync,
   twoClickRectangleOnPanel,
   readDrawingManagerLiveState,
   readIndicatorState,
@@ -94,6 +95,13 @@ import {
   probePeerDeselectScopeGuard,
   filterPeerDeselectScopeErrors,
   chartTarget,
+  dragPointerPath,
+  resolveResizeHandlePagePoint,
+  resolveBodyHitPagePoint,
+  lockDrawingViaManager,
+  readDrawingShiftSquareProbe,
+  readDrawingGhostMidDragProbe,
+  readDrawingTimestampAnchors,
 } from './interactive-helpers.mjs';
 
 const A1_TRANCHE_G_SWITCH = '__TALARIA_DISABLE_INDICATOR_AXIS_LABEL_ANCHOR_FIX';
@@ -5622,6 +5630,246 @@ async function mcDrawFirstclick(ctx) {
   });
 }
 
+// ── MC-DRAW-FIRSTCLICK-2 — reverse: arm on B, draw on A click 1 ─────────
+async function mcDrawFirstclickReverse(ctx) {
+  return runWith(ctx, { pair: 'independent', panels: 2, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await sleep(400);
+
+    const armRes = await armPanelDrawToolForMultichartSync(page, 'B', 'rectangle');
+    checks.check('MC-DRAW-FIRSTCLICK-2 setup: panel B armed rectangle', armRes && armRes.ok,
+      JSON.stringify(armRes || null));
+
+    const preA = await readInteractiveState(page, 'A');
+    const preB = await readInteractiveState(page, 'B');
+    const focused = await readHarnessFocusedPanelId(page);
+    checks.check('MC-DRAW-FIRSTCLICK-2 setup: panel B has armed tool', preB && preB.currentTool === 'rectangle',
+      `B.tool=${preB?.currentTool}`);
+    checks.check('MC-DRAW-FIRSTCLICK-2 setup: host A has no local tool', preA && !preA.currentTool,
+      `A.tool=${preA?.currentTool}`);
+    checks.check('MC-DRAW-FIRSTCLICK-2 setup: focus remains on B before A draw', focused === 'B',
+      `focused=${focused}`);
+
+    const drawRes = await twoClickRectangleOnPanel(page, 'A');
+    checks.check('MC-DRAW-FIRSTCLICK-2 probe: two-click rectangle dispatched on A',
+      drawRes && drawRes.ok, JSON.stringify(drawRes || null));
+    checks.check('MC-DRAW-FIRSTCLICK-2 probe: click-1 entered draw on A (mid-gesture)',
+      drawRes && drawRes.midIsDrawing === true && drawRes.midCurrentTool === 'rectangle',
+      `mid=${JSON.stringify({ isDrawing: drawRes?.midIsDrawing, tool: drawRes?.midCurrentTool })}`);
+
+    const afterA = await readInteractiveState(page, 'A');
+    const afterB = await readInteractiveState(page, 'B');
+    checks.check(
+      'MC-DRAW-FIRSTCLICK-2 CORE: rectangle lands on A after first A session (not 2-click focus-then-draw)',
+      afterA && afterA.drawingCount >= 1,
+      `A.count=${afterA?.drawingCount} B.count=${afterB?.drawingCount}`,
+    );
+    return checks;
+  });
+}
+
+// ── H-A8-1 … H-A8-4 — A8 freeze-safe tranches (host harness) ───────────
+async function hA8_1(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, boot.getInFlightDataRequests);
+    const pts = await defaultRectanglePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'rectangle', pts);
+    checks.check('H-A8-1 setup: rectangle placed', placed && placed.id, placed ? placed.id : 'null');
+    await selectTool(page, 'A', placed, { click: true });
+    await sleep(200);
+    const handle = await resolveResizeHandlePagePoint(page, 'A', placed.id, 'corner-br');
+    checks.check('H-A8-1 setup: corner handle resolved', handle && handle.ok, JSON.stringify(handle || null));
+    if (!handle || !handle.ok) return checks;
+    await page.keyboard.down('Shift');
+    try {
+      await page.mouse.move(handle.x, handle.y);
+      await page.mouse.down();
+      await dragPointerPath(page, handle.x, handle.y, handle.x + 90, handle.y + 6, { steps: 12 });
+      await page.mouse.up();
+    } finally {
+      await page.keyboard.up('Shift');
+    }
+    await sleep(200);
+    const probe = await readDrawingShiftSquareProbe(page, 'A', placed.id);
+    checks.check(
+      'H-A8-1 CORE: Shift+corner horizontal drag stays square (no Y-domain jump)',
+      probe && probe.ok && !probe.jump && probe.aspectOk,
+      JSON.stringify(probe || null),
+    );
+    return checks;
+  });
+}
+
+async function hA8_2(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, boot.getInFlightDataRequests);
+    const placed = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    checks.check('H-A8-2 setup: trendline placed', placed && placed.id, placed ? placed.id : 'null');
+    const hit = await selectTool(page, 'A', placed, { click: true });
+    checks.check('H-A8-2 setup: body hit resolved', hit && hit.ok, hit?.reason || '');
+    if (!hit || !hit.ok) return checks;
+    await page.evaluate((id) => {
+      const dm = window.chart && window.chart.drawingManager;
+      const d = dm && dm.drawings.find((x) => String(x.id) === String(id));
+      if (!d || !Array.isArray(d.points)) return;
+      window.__hA82Start = {
+        id: String(id),
+        points: d.points.map((p) => ({ x: Number(p.x), y: Number(p.y) })),
+      };
+    }, placed.id);
+    const startX = hit.clicked.x;
+    const startY = hit.clicked.y;
+    await page.keyboard.down('Shift');
+    let midProbe = null;
+    try {
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      await dragPointerPath(page, startX, startY, startX + 80, startY + 12, { steps: 10 });
+      midProbe = await readDrawingGhostMidDragProbe(page, 'A', placed.id);
+      await page.mouse.up();
+    } finally {
+      await page.keyboard.up('Shift');
+    }
+    checks.check(
+      'H-A8-2 CORE: no origin ghost / stale transform during Shift+body drag',
+      midProbe && midProbe.ok && !midProbe.ghost && !midProbe.staleTransform,
+      JSON.stringify(midProbe || null),
+    );
+    return checks;
+  });
+}
+
+async function hA8_3InvariantCheck(page, ctx) {
+  const checks = makeChecks();
+  const panels = await readPanels(page);
+  for (const [id, p] of Object.entries(panels)) {
+    if (!p) { checks.check(`INV ${id} snapshot`, false, 'null snapshot'); continue; }
+    checks.check(`INV ${id} seams=0`, p.seams === 0, `seams=${p.seams}`);
+    // Mixed-TF peer B loads an independent 5m window — cursor↔rawData edge parity is not
+    // meaningful for the A8-3 drawing-sync leg (see A8-FREEZE-SAFE-IMPL-SPEC §A8-3).
+    if (id === 'B') continue;
+    if (p.hasCursors && p.loadedFirstT != null && p.cursorFirst != null && p.cursorLast != null) {
+      checks.check(
+        `INV ${id} _serverCursors.firstTs==loaded[0].t`,
+        p.cursorFirst === p.loadedFirstT,
+        `cursorFirst=${p.cursorFirst} loadedFirstT=${p.loadedFirstT}`,
+      );
+      checks.check(
+        `INV ${id} _serverCursors.lastTs==loaded[last].t`,
+        p.cursorLast === p.loadedLastT,
+        `cursorLast=${p.cursorLast} loadedLastT=${p.loadedLastT}`,
+      );
+    }
+  }
+  const ce = (ctx && ctx.consoleErrors) || [];
+  const pe = ((ctx && ctx.pageErrors) || []).filter(
+    (e) => !/Cannot read properties of null \(reading 'document'\)/.test(String(e)),
+  );
+  checks.check('INV no console errors', ce.length === 0, ce.slice(0, 3).join(' | '));
+  checks.check('INV no page errors', pe.length === 0, pe.slice(0, 3).join(' | '));
+  return checks;
+}
+
+async function hA8_3(ctx) {
+  const boot = await bootLayout(ctx.browser, ctx.srv, {
+    pair: 'same',
+    panels: 2,
+    tf: '1m',
+    bug: ctx.bug,
+    bugSwitches: ctx.bugSwitches,
+    orderMcStateConvergeOff: !!ctx.orderMcStateConvergeOff,
+    armedDrawFocusForwardOff: !!ctx.armedDrawFocusForwardOff,
+    peerDeselectOff: !!ctx.peerDeselectOff,
+  });
+  let checks;
+  try {
+    const { page } = boot;
+    checks = makeChecks();
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+    await setSync(page, true);
+    await sleep(400);
+    checks.check('H-A8-3 setup: drawing sync requested', true, 'setSync invoked');
+    const placed = await placeTool(page, 'A', 'trendline', await defaultTrendlinePoints(page, 'A'));
+    checks.check('H-A8-3 setup: trendline on A', placed && placed.id, placed ? placed.id : 'null');
+    await sleep(600);
+    const geoB = await readPanelDrawingGeometry(page, 'B');
+    checks.check('H-A8-3 setup: peer B received drawing', geoB?.drawings?.length >= 1,
+      `B.count=${geoB?.drawings?.length || 0}`);
+    await panelCmd(page, 'B', 'setTimeframe', { tf: '5m' });
+    await sleep(800);
+    const hit = await selectTool(page, 'A', placed, { click: true });
+    if (!hit || !hit.ok) {
+      checks.check('H-A8-3 setup: body hit on A', false, hit?.reason || '');
+      return { checks, inv: await hA8_3InvariantCheck(page, boot), notes: [] };
+    }
+    const sx = hit.clicked.x;
+    const sy = hit.clicked.y;
+    await page.keyboard.down('Shift');
+    try {
+      await page.mouse.move(sx, sy);
+      await page.mouse.down();
+      await dragPointerPath(page, sx, sy, sx + 80, sy, { steps: 10 });
+      await page.mouse.up();
+    } finally {
+      await page.keyboard.up('Shift');
+    }
+    await sleep(800);
+    const a = await readDrawingTimestampAnchors(page, 'A', placed.id);
+    const b = await readDrawingTimestampAnchors(page, 'B', placed.id);
+    const tsDelta = (a?.p0ts != null && b?.p0ts != null) ? Math.abs(a.p0ts - b.p0ts) : Infinity;
+    const priceBase = Math.abs(a?.p0price) || 1;
+    const priceDeltaPct = (a?.p0price != null && b?.p0price != null)
+      ? (Math.abs(a.p0price - b.p0price) / priceBase) * 100
+      : Infinity;
+    checks.check(
+      'H-A8-3 CORE: mixed-TF peer B matches A timestamp anchor after Shift+move',
+      a?.ok && b?.ok && tsDelta <= 60000 && priceDeltaPct <= 0.05,
+      `tsDelta=${tsDelta} priceDeltaPct=${priceDeltaPct} A=${JSON.stringify(a)} B=${JSON.stringify(b)}`,
+    );
+    return { checks, inv: await hA8_3InvariantCheck(page, boot), notes: [] };
+  } finally {
+    await boot.close();
+  }
+}
+
+async function hA8_4(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 1, tf: '1m' }, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitBootSettled(page, ['A'], 20_000, boot.getInFlightDataRequests);
+    const placed = await placeTool(page, 'A', 'rectangle', await defaultRectanglePoints(page, 'A'));
+    await selectTool(page, 'A', placed, { click: true });
+    const lockRes = await lockDrawingViaManager(page, 'A', placed.id, true);
+    checks.check('H-A8-4 setup: drawing locked', lockRes && lockRes.ok && lockRes.locked, JSON.stringify(lockRes || null));
+    const bodyHit = await resolveBodyHitPagePoint(page, 'A', placed.id);
+    checks.check('H-A8-4 setup: locked body hit resolved', bodyHit && bodyHit.ok, JSON.stringify(bodyHit || null));
+    if (!bodyHit || !bodyHit.ok) return checks;
+    const offsetX0 = await page.evaluate(() => Number(window.chart && window.chart.offsetX));
+    await page.mouse.move(bodyHit.x, bodyHit.y);
+    await page.mouse.down();
+    await dragPointerPath(page, bodyHit.x, bodyHit.y, bodyHit.x - 100, bodyHit.y, { steps: 10 });
+    const offsetXMid = await page.evaluate(() => Number(window.chart && window.chart.offsetX));
+    await page.mouse.up();
+    const spacing = await page.evaluate(() => {
+      const ch = window.chart;
+      return ch && typeof ch.getCandleSpacing === 'function' ? ch.getCandleSpacing() : 8;
+    });
+    const delta = Math.abs(offsetXMid - offsetX0);
+    checks.check(
+      'H-A8-4 CORE: drag on locked body pans chart (offsetX moves)',
+      delta >= spacing * 0.35,
+      `offsetX0=${offsetX0} offsetXMid=${offsetXMid} delta=${delta} spacing=${spacing}`,
+    );
+    return checks;
+  });
+}
+
 // ── MC-PEER-DESELECT-SCOPE ───────────────────────────────────────────────
 // Pin MultichartGrid cancelScheduledPeerDeselect crash: panel-select /
 // multichart-drawing-selected must not throw ReferenceError when export is
@@ -9003,6 +9251,11 @@ export function scenarioList() {
     { id: 'H-S44', title: 'panel single-click settings flow: select, open settings, Esc closes settings (T1 step 5)', run: hS44 },
     { id: 'H-S45', title: 'drawing-target-focused-panel: focused B draw lands on B only (TAL-01495)', run: hS45 },
     { id: 'MC-DRAW-FIRSTCLICK', title: 'multichart-armed-draw-firstclick: unfocused B draw on click 1', run: mcDrawFirstclick },
+    { id: 'MC-DRAW-FIRSTCLICK-2', title: 'multichart-armed-draw-firstclick: unfocused A draw on click 1 (B armed)', run: mcDrawFirstclickReverse },
+    { id: 'H-A8-1', title: 'A8-1: Shift+rectangle corner square constraint (pixel space)', run: hA8_1 },
+    { id: 'H-A8-2', title: 'A8-2: Shift+body drag no origin ghost / stale transform', run: hA8_2 },
+    { id: 'H-A8-3', title: 'A8-3: Shift+move syncs timestamp anchors to mixed-TF peer', run: hA8_3 },
+    { id: 'H-A8-4', title: 'A8-4: locked rectangle body drag pans chart', run: hA8_4 },
     { id: 'MC-PEER-DESELECT-SCOPE', title: 'multichart grid peer-deselect scope: panel-select no ReferenceError', run: mcPeerDeselectScope },
     { id: 'H-S46', title: 'panel-ctrl-select-local: panel-B local Ctrl-select stays separated (TAL-01498)', run: hS46 },
     { id: 'H-S47', title: 'panel-quick-menu: panel-B draw shows Quick Menu immediately (TAL-01499)', run: hS47 },

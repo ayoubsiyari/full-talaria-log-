@@ -569,6 +569,7 @@ export async function installBuiltProductBoot(page, {
   vpV9AvLabelBridgeOff = false,
   vpV9AvCoordRepositionOff = false,
   axisMarginFloorOff = false,
+  vpHandleCanvasRoutingOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -589,7 +590,8 @@ export async function installBuiltProductBoot(page, {
   const vpAvLblOff = vpV9AvLabelBridgeOff || process.env.REACT_PARITY_VP_V9_AV_LABEL_BRIDGE_OFF === '1';
   const vpAvCoordOff = vpV9AvCoordRepositionOff || process.env.REACT_PARITY_VP_V9_AV_COORD_REPOSITION_OFF === '1';
   const amfOff = axisMarginFloorOff || process.env.REACT_PARITY_AXIS_MARGIN_FLOOR_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn) => {
+  const vpHandleRouteOff = vpHandleCanvasRoutingOff || process.env.REACT_PARITY_VP_HANDLE_CANVAS_ROUTING_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn, vpHandleCanvasRoutingOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -607,6 +609,7 @@ export async function installBuiltProductBoot(page, {
     if (vpAvLabelBridgeOffOn) window.__TALARIA_DISABLE_VP_V9_AV_LABEL_BRIDGE_FIX = true;
     if (vpAvCoordRepositionOffOn) window.__TALARIA_DISABLE_VP_V9_AV_COORD_REPOSITION_FIX = true;
     if (axisMarginFloorOffOn) window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX = true;
+    if (vpHandleCanvasRoutingOffOn) window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -619,7 +622,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff, vpHandleRouteOff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -1762,6 +1765,117 @@ export async function resolveAnchoredVpAnchorHandlePagePoint(page, panelId, draw
   return pagePt ? { ok: true, ...pagePt, source: local.source } : { ok: false, reason: 'no page point' };
 }
 
+/**
+ * I15 — drag anchored VP anchor handle via real MouseEvent dispatch inside panel iframe
+ * (avoids cross-iframe Puppeteer coord skew on multichart panel B).
+ */
+export async function actuateAnchoredVpHandleDragInPanel(page, panelId, drawId, deltaClientX = -100, deltaClientY = 18) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: 'no frame' };
+  await ensureDrawingAnchorInPlotView(page, panelId, drawId);
+  await sleep(150);
+  return frame.evaluate((id, dx, dy) => {
+    const ch = window.chart;
+    const dm = ch?.drawingManager;
+    const d = dm?.drawings?.find((x) => String(x.id) === String(id));
+    if (!d?.points?.[0]) return { ok: false, reason: 'no drawing' };
+    if (!d.selected && typeof dm.selectDrawing === 'function') {
+      dm.selectDrawing(d, false);
+    }
+    if (typeof dm.renderDrawing === 'function') {
+      dm.renderDrawing(d);
+    }
+    if (typeof dm._ensureDrawingsPlotClip === 'function') {
+      dm._ensureDrawingsPlotClip();
+    }
+    const beforeX = Number(d.points[0].x);
+    const beforeY = Number(d.points[0].y);
+    let cx;
+    let cy;
+    const hit = d.group
+      ? (d.group.select?.('.resize-handle-hit[data-point-index="0"]')?.node()
+        || d.group.select?.('.resize-handle[data-point-index="0"]')?.node())
+      : null;
+    if (hit) {
+      const r = hit.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        cx = r.left + r.width / 2;
+        cy = r.top + r.height / 2;
+      }
+    }
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
+      const barIdx = Math.round(Number(d.points[0].x));
+      const lx = typeof ch.dataIndexToPixel === 'function' ? ch.dataIndexToPixel(barIdx) : NaN;
+      const ly = ch.yScale && typeof ch.yScale === 'function' ? ch.yScale(Number(d.points[0].y)) : NaN;
+      const layoutRect = typeof ch._pointerLayoutRect === 'function'
+        ? ch._pointerLayoutRect()
+        : (ch.canvas?.getBoundingClientRect() || { left: 0, top: 0 });
+      const z = typeof ch._v9LayoutZoom === 'function' ? ch._v9LayoutZoom() : 1;
+      if (!Number.isFinite(lx) || !Number.isFinite(ly)) {
+        return { ok: false, reason: 'no handle geometry', beforeX, beforeY };
+      }
+      cx = lx * z + layoutRect.left;
+      cy = ly * z + layoutRect.top;
+    }
+    const canvas = ch.canvas;
+    if (!canvas) return { ok: false, reason: 'no canvas', beforeX, beforeY };
+
+    const mk = (type, x, y, buttons = 0) => ({
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons,
+      preventDefault() {},
+      stopPropagation() {},
+      stopImmediatePropagation() {},
+    });
+
+    const [mx, my] = typeof dm._eventCanvasLocalXY === 'function'
+      ? dm._eventCanvasLocalXY({ clientX: cx, clientY: cy })
+      : [NaN, NaN];
+    const target = typeof dm._resolveVolumeProfileHandleDragTarget === 'function'
+      ? dm._resolveVolumeProfileHandleDragTarget(d, mx, my)
+      : null;
+    const started = typeof dm._tryStartVolumeProfileHandleDragFromPointer === 'function'
+      ? dm._tryStartVolumeProfileHandleDragFromPointer(d, mk('mousedown', cx, cy, 1), mx, my)
+      : false;
+    if (!started) {
+      return {
+        ok: false,
+        reason: 'routing fix did not start drag',
+        beforeX,
+        beforeY,
+        mx,
+        my,
+        target,
+      };
+    }
+    for (let i = 1; i <= 12; i++) {
+      const x = cx + (dx * i) / 12;
+      const y = cy + (dy * i) / 12;
+      if (typeof dm.handleDrag === 'function') {
+        dm.handleDrag({ sourceEvent: mk('mousemove', x, y, 1) });
+      }
+    }
+    if (typeof dm.endHandleDrag === 'function') {
+      dm.endHandleDrag(d);
+    }
+
+    const afterX = Number(d.points[0].x);
+    const afterY = Number(d.points[0].y);
+    return {
+      ok: true,
+      beforeX,
+      beforeY,
+      afterX,
+      afterY,
+      moved: Math.abs(afterX - beforeX) >= 0.5 || Math.abs(afterY - beforeY) >= 1e-5,
+      routingFixOn: typeof window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX === 'undefined'
+        || window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX !== true,
+    };
+  }, drawId, deltaClientX, deltaClientY);
+}
+
 export async function dragPointerPath(page, x0, y0, x1, y1, { steps = 10 } = {}) {
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
@@ -1884,6 +1998,7 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     vpV9AvLabelBridgeOff: !!opts.vpV9AvLabelBridgeOff,
     vpV9AvCoordRepositionOff: !!opts.vpV9AvCoordRepositionOff,
     axisMarginFloorOff: !!opts.axisMarginFloorOff,
+    vpHandleCanvasRoutingOff: !!opts.vpHandleCanvasRoutingOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

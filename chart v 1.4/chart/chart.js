@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260718b04';
+const CHART_ENGINE_BUILD = '20260718b05';
 /** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
 const PRICE_AXIS_MIN_R = 60;
 const PRICE_AXIS_MIN_L = 60;
@@ -38388,6 +38388,16 @@ class Chart {
             if (typeof dm._syncDrawingLockVisual === 'function') {
                 dm._syncDrawingLockVisual(existingDrawing);
             }
+        }
+
+        // A8-3 live sync: source panel sends explicit timestamp anchors — keep peer
+        // timestampPoints aligned across mixed timeframes (do not derive from local bar index).
+        if (Array.isArray(drawingData.timestampPoints) && drawingData.timestampPoints.length > 0) {
+            existingDrawing.timestampPoints = drawingData.timestampPoints.map((p) => ({
+                timestamp: Number(p.timestamp),
+                price: Number(p.price != null ? p.price : p.y),
+            }));
+            existingDrawing.coordinateSystem = 'timestamp';
         }
 
         dm.renderDrawing(existingDrawing);

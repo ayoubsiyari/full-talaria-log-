@@ -753,6 +753,11 @@ function _isA8LockedDrawingPanPassthroughFixEnabled() {
     return typeof window === 'undefined' || window.__TALARIA_DISABLE_A8_LOCKED_DRAWING_PAN_PASSTHROUGH_FIX !== true;
 }
 
+/** D-029 R2b: canvas capture routes VP boundary/handle hits to document resize (unset = fix ON). */
+function _isVpHandleCanvasRoutingFixEnabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX !== true;
+}
+
 function _getEffectiveCandleIndexClampTypes() {
     const out = new Set(CANDLE_INDEX_CLAMPED_TYPES);
     if (_isRc3ClampPolicyEnabled()) {

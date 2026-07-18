@@ -63,6 +63,10 @@ function parseArgs(argv) {
     else if (a === '--order-mc-state-converge-off') args.orderMcStateConvergeOff = true;
     else if (a === '--multichart-armed-draw-focus-forward-off') args.armedDrawFocusForwardOff = true;
     else if (a === '--peer-deselect-off') args.peerDeselectOff = true;
+    else if (a === '--a8-box-shift-off') { args.bug = true; args.bugSwitches = ['__TALARIA_DISABLE_A8_BOX_SHIFT_SQUARE_PIXEL_FIX']; }
+    else if (a === '--a8-stale-transform-off') { args.bug = true; args.bugSwitches = ['__TALARIA_DISABLE_A8_SHIFT_DRAG_STALE_TRANSFORM_FIX']; }
+    else if (a === '--a8-live-sync-off') { args.bug = true; args.bugSwitches = ['__TALARIA_DISABLE_A8_SHIFT_LIVE_CROSSPANEL_SYNC_FIX']; }
+    else if (a === '--a8-locked-pan-off') { args.bug = true; args.bugSwitches = ['__TALARIA_DISABLE_A8_LOCKED_DRAWING_PAN_PASSTHROUGH_FIX']; }
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
     else if (a.startsWith('--bugswitch=')) {

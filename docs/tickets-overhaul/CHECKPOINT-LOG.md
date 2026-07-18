@@ -43,3 +43,14 @@ Each entry is the ≤10-line manager report per deploy: build id · contents · 
 - **Re-verify (PO):** 2v multichart → panel B different symbol → place anchored VP → price + time scales remain visible; build id `20260718b01`.
 - **Watch:** H-R05 acceptance row still NOT green (CHROME-STAB-01) — D-026 re-run PASS does not promote H-R05 PO row.
 - **Rollback:** `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX`.
+
+---
+
+## CKPT-005 — 20260718b05 (A8 + A8-VP unified drawing checkpoint) — 2026-07-18
+- **Build:** `20260718b05` (A8-1…4 + A8-VP-1/2 merged; host + iframe + dist-v9; not b44)
+- **Contents:** Unified `drawing-tools-manager.js` (Worker 5 A8 tranches + Worker 1 A8-VP-1/2 on single base); A8-3 live cross-panel sync gate (`__harnessHostBridge` / harness mgr); commit `timestampPoints` on wire; receive applies explicit `timestampPoints` in `chart.js`; scope-integrity clean (388 methods, 0 dup defs).
+- **Proof:** `H-A8-1…4` ×10 PASS; `H-A8-VP-1/VP-2` ×10 PASS; D-026 `H-R04`/`H-R05` ×10 PASS on b05.
+- **Re-verify (PO):** `__TALARIA_CHART_BUILD_ID === 20260718b05`; 2-panel drawing sync ON → Shift+body drag on 1m host → 5m peer timestamp anchors match; anchored VP label/coord toggles in V9 settings.
+- **Watch:** H-R05 PO acceptance row still CHROME-STAB-01 (harness 10/10 on b05 does not promote PO row); A8-VP iframe-detach flake class on isolate-session reruns.
+- **Deploy (tester):** push + `./scripts/vps-deploy-after-pull.sh homepage`; hard-refresh host + panel-B iframe.
+- **Rollback:** `__TALARIA_DISABLE_A8_*` per tranche; `__TALARIA_DISABLE_VP_V9_AV_LABEL_BRIDGE_FIX`; `__TALARIA_DISABLE_VP_V9_AV_COORD_REPOSITION_FIX`.

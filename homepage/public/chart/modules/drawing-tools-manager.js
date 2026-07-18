@@ -2249,10 +2249,23 @@ class DrawingToolsManager {
     /** Keep drawings clipped to the plot (excludes price/time axis margins). */
     _ensureDrawingsPlotClip() {
         if (!this.svg || this.svg.empty()) return;
-        if (this.chart && typeof this.chart._syncAdaptivePriceAxisMargin === 'function') {
+        const vpClipFix = typeof _isVpHandleCanvasRoutingFixEnabled === 'function'
+            && _isVpHandleCanvasRoutingFixEnabled();
+        const vpResizeActive = vpClipFix
+            && this.isResizing
+            && this.resizingDrawing
+            && this.isVolumeProfileToolType(this.resizingDrawing.type);
+        const vpSelectedForHandleEdit = vpClipFix
+            && !vpResizeActive
+            && this.selectedDrawings.length === 1
+            && this.isVolumeProfileToolType(this.selectedDrawings[0].type);
+        if (!vpResizeActive && this.chart && typeof this.chart._syncAdaptivePriceAxisMargin === 'function') {
             try { this.chart._syncAdaptivePriceAxisMargin(); } catch (_) { /* ignore */ }
         }
-        this.updateClipPath();
+        const clipPad = (vpResizeActive || vpSelectedForHandleEdit)
+            ? { left: 18, right: 18, top: 8, bottom: 8 }
+            : null;
+        this.updateClipPath(clipPad);
         this.svg.style('overflow', 'hidden');
         const clipUrl = this._clipUrl();
         if (!clipUrl) return;
@@ -2850,6 +2863,11 @@ class DrawingToolsManager {
 
                 if (isVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
+                    if (best && !best.locked
+                        && this._tryStartVolumeProfileHandleDragFromPointer(best, event, mouseX, mouseY)) {
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
                     if (best && this.isVolumeProfileInteractiveHit(best, mouseX, mouseY) && !best.locked) {
                         this.selectDrawing(best, false);
                         this._volumeProfileValueLabelClickState = {
@@ -2895,6 +2913,14 @@ class DrawingToolsManager {
                 );
 
                 if (selectedAtPoint.length > 0 && toMove.length > 0) {
+                    for (let vi = 0; vi < toMove.length; vi++) {
+                        const vpDragDrawing = toMove[vi];
+                        if (this.isVolumeProfileToolType(vpDragDrawing.type)
+                            && this._tryStartVolumeProfileHandleDragFromPointer(vpDragDrawing, event, mouseX, mouseY)) {
+                            suppressNextCanvasClick = true;
+                            return;
+                        }
+                    }
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -2906,6 +2932,11 @@ class DrawingToolsManager {
                 }
 
                 if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)) {
+                    if (this.isVolumeProfileToolType(best.type)
+                        && this._tryStartVolumeProfileHandleDragFromPointer(best, event, mouseX, mouseY)) {
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -3315,7 +3346,18 @@ class DrawingToolsManager {
             return window.panelManager.currentLayout !== '1';
         }
         if (typeof window !== 'undefined') {
-            if (window.__multichartHostBridge || window.__multichartBridge) return true;
+            if (window.__multichartHostBridge || window.__multichartBridge || window.__harnessHostBridge) {
+                return true;
+            }
+            const harnessMgr = window.__harnessManager;
+            if (harnessMgr && harnessMgr.syncMode && harnessMgr.syncMode.drawings !== false) {
+                const panelCount = (typeof harnessMgr.charts === 'object' && harnessMgr.charts.size > 0)
+                    ? harnessMgr.charts.size + 1
+                    : (window.__multichartGrid && typeof window.__multichartGrid.getPanelIds === 'function'
+                        ? window.__multichartGrid.getPanelIds().length
+                        : 0);
+                if (panelCount > 1) return true;
+            }
             const grid = window.__multichartGrid;
             if (grid && grid.syncMode && grid.syncMode.drawings !== false) return true;
             if (document.documentElement && document.documentElement.classList.contains('multichart-embed')) {
@@ -3642,37 +3684,60 @@ class DrawingToolsManager {
 
         // Throttle: max ~60 fps for live edit broadcasts to keep UI responsive
         const now = performance.now();
-        if (this._lastLiveEditBroadcast && (now - this._lastLiveEditBroadcast) < 16) return;
+        const commitFromDrawingPoints = !Array.isArray(pointsOverride)
+            && typeof _isA8ShiftLiveCrosspanelSyncFixEnabled === 'function'
+            && _isA8ShiftLiveCrosspanelSyncFixEnabled()
+            && Array.isArray(drawing.points) && drawing.points.length > 0;
+        // Throttle live preview only — commit/end broadcasts must not be dropped.
+        if (!commitFromDrawingPoints
+            && this._lastLiveEditBroadcast
+            && (now - this._lastLiveEditBroadcast) < 16) return;
         this._lastLiveEditBroadcast = now;
+
+        let effectivePoints = pointsOverride;
+        if (commitFromDrawingPoints) {
+            effectivePoints = drawing.points.map((p) => ({ x: p.x, y: p.y }));
+        }
 
         const ensuredId = this._ensureDrawingId(drawing);
         const payload = this._serializeDrawingForStorage(drawing);
         payload.id = drawing.id || payload.id || ensuredId;
         if (!payload.id) return;
-        if (Array.isArray(pointsOverride)) {
-            payload.points = pointsOverride.map((p) => ({ ...p }));
+        if (Array.isArray(effectivePoints)) {
+            payload.points = effectivePoints.map((p) => ({ ...p }));
             // A8-3 checkpoint: __TALARIA_DISABLE_A8_SHIFT_LIVE_CROSSPANEL_SYNC_FIX
-            if (typeof _isA8ShiftLiveCrosspanelSyncFixEnabled === 'function'
-                && _isA8ShiftLiveCrosspanelSyncFixEnabled()
-                && typeof CoordinateUtils !== 'undefined'
-                && typeof CoordinateUtils.pointsToTimestamps === 'function'
-                && this.chart
-                && Array.isArray(this.chart.data)
-                && this.chart.data.length > 0) {
-                try {
-                    const previewTs = CoordinateUtils.pointsToTimestamps(
-                        pointsOverride,
-                        this.chart.data,
-                        this.chart.currentTimeframe || null
-                    );
-                    if (previewTs.length === pointsOverride.length) {
-                        payload.timestampPoints = previewTs;
-                        payload.coordinateSystem = 'timestamp';
-                    } else {
-                        payload.coordinateSystem = 'index';
-                        delete payload.timestampPoints;
-                    }
-                } catch (_) {
+            const a8LiveSyncOn = typeof _isA8ShiftLiveCrosspanelSyncFixEnabled === 'function'
+                && _isA8ShiftLiveCrosspanelSyncFixEnabled();
+            if (a8LiveSyncOn) {
+                let attachedTs = null;
+                // Mouseup commit: prefer anchors refreshed on source panel (post recalculateTimestamps).
+                if (commitFromDrawingPoints
+                    && Array.isArray(drawing.timestampPoints)
+                    && drawing.timestampPoints.length === effectivePoints.length) {
+                    attachedTs = drawing.timestampPoints.map((p) => ({
+                        timestamp: p.timestamp,
+                        price: p.price != null ? p.price : p.y,
+                    }));
+                } else if (typeof CoordinateUtils !== 'undefined'
+                    && typeof CoordinateUtils.pointsToTimestamps === 'function'
+                    && this.chart
+                    && Array.isArray(this.chart.data)
+                    && this.chart.data.length > 0) {
+                    try {
+                        const previewTs = CoordinateUtils.pointsToTimestamps(
+                            effectivePoints,
+                            this.chart.data,
+                            this.chart.currentTimeframe || null
+                        );
+                        if (previewTs.length === effectivePoints.length) {
+                            attachedTs = previewTs;
+                        }
+                    } catch (_) { /* fall through */ }
+                }
+                if (attachedTs) {
+                    payload.timestampPoints = attachedTs;
+                    payload.coordinateSystem = 'timestamp';
+                } else {
                     payload.coordinateSystem = 'index';
                     delete payload.timestampPoints;
                 }
@@ -3927,50 +3992,68 @@ class DrawingToolsManager {
     }
 
     /**
-     * Resolve an armed draw tool from the multichart parent shell (host dm or focused tile).
-     * Used when this embed iframe has no local tool but V9 still shows a shape tool armed elsewhere.
+     * Resolve an armed draw tool from the multichart focused tile only (directional:
+     * inherit outward from the panel that holds focus, never from the click target).
+     */
+    _resolveMultichartFocusedPanelArmedDrawTool() {
+        if (typeof window === 'undefined') return null;
+        const pick = (dm) => {
+            const t = dm && dm.currentTool;
+            return _isMultichartInheritableDrawTool(t) ? t : null;
+        };
+        const grid = isMultichartIframeEmbed()
+            ? (() => {
+                try {
+                    const parent = window.parent;
+                    return (parent && parent !== window) ? parent.__multichartGrid : null;
+                } catch (_) {
+                    return null;
+                }
+            })()
+            : (window.__multichartGrid || null);
+        if (!grid || typeof grid.getFocusedPanelId !== 'function'
+            || typeof grid.getChartForPanelId !== 'function') {
+            return null;
+        }
+        let selfPanelId = null;
+        try {
+            if (this.chart && typeof this.chart._getMultichartPanelId === 'function') {
+                selfPanelId = this.chart._getMultichartPanelId();
+            }
+        } catch (_) { /* ignore */ }
+        const focusedId = grid.getFocusedPanelId();
+        if (!focusedId) return null;
+        if (selfPanelId != null && String(focusedId) === String(selfPanelId)) {
+            return null;
+        }
+        try {
+            const ch = grid.getChartForPanelId(focusedId);
+            return pick(ch && ch.drawingManager);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve an armed draw tool from the multichart parent shell (iframe embed path).
+     * @deprecated inline — use _resolveMultichartFocusedPanelArmedDrawTool
      */
     _resolveMultichartParentArmedDrawTool() {
         if (!multichartArmedDrawFocusForwardV1Enabled() || !isMultichartIframeEmbed()) {
             return null;
         }
-        let parent = null;
-        try {
-            parent = window.parent;
-            if (!parent || parent === window) return null;
-        } catch (_) {
-            return null;
-        }
-        const pick = (dm) => {
-            const t = dm && dm.currentTool;
-            return _isMultichartInheritableDrawTool(t) ? t : null;
-        };
-        try {
-            const fromHost = pick(parent.chart && parent.chart.drawingManager);
-            if (fromHost) return fromHost;
-        } catch (_) { /* ignore */ }
-        try {
-            const grid = parent.__multichartGrid;
-            if (grid && typeof grid.getFocusedPanelId === 'function'
-                && typeof grid.getChartForPanelId === 'function') {
-                const fid = grid.getFocusedPanelId();
-                if (fid) {
-                    const ch = grid.getChartForPanelId(fid);
-                    const fromFocused = pick(ch && ch.drawingManager);
-                    if (fromFocused) return fromFocused;
-                }
-            }
-        } catch (_) { /* ignore */ }
-        return null;
+        return this._resolveMultichartFocusedPanelArmedDrawTool();
     }
 
-    /** Synchronously adopt parent armed shape tool on embed iframes (MC-DRAW-FIRSTCLICK). */
+    /** Synchronously adopt focused peer armed shape tool (MC-DRAW-FIRSTCLICK). */
     _tryInheritMultichartParentArmedDrawTool() {
         if (this.currentTool) return false;
-        if (!multichartArmedDrawFocusForwardV1Enabled() || !isMultichartIframeEmbed()) {
-            return false;
-        }
-        const inheritedMc = this._resolveMultichartParentArmedDrawTool();
+        if (!multichartArmedDrawFocusForwardV1Enabled()) return false;
+        const isHost = !!(this.chart && typeof this.chart._isMultichartHostPanel === 'function'
+            && this.chart._isMultichartHostPanel());
+        const isEmbed = isMultichartIframeEmbed();
+        if (!isHost && !isEmbed) return false;
+        const inheritedMc = this._resolveMultichartFocusedPanelArmedDrawTool();
         if (!inheritedMc || typeof this.setTool !== 'function') return false;
         this.setTool(inheritedMc, true);
         return true;
@@ -4370,6 +4453,13 @@ class DrawingToolsManager {
                 );
                 if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !this._isCtrlPointerModifier(event)
                     && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                    for (let vi = 0; vi < toMove.length; vi++) {
+                        const vpDragDrawing = toMove[vi];
+                        if (this.isVolumeProfileToolType(vpDragDrawing.type)
+                            && this._tryStartVolumeProfileHandleDragFromPointer(vpDragDrawing, event, mouseX, mouseY)) {
+                            return;
+                        }
+                    }
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(toMove, event);
@@ -6611,8 +6701,10 @@ class DrawingToolsManager {
         }
         if (!applied) {
             drawing.points[pointIndex] = this._snapPointXForDrawingType(point, drawing.type);
-            this._syncHorizontalAnchorToolPointY(drawing);
             applied = true;
+        }
+        if (this._isHorizontalAnchorToolType(drawing.type)) {
+            this._syncHorizontalAnchorToolPointY(drawing);
         }
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         if (drawing.type === 'anchored-vwap' && drawing._cache) {
@@ -9550,6 +9642,127 @@ class DrawingToolsManager {
         return false;
     }
 
+    _stopDirectResizeDragListeners() {
+        if (this._directResizeDragCleanup) {
+            this._directResizeDragCleanup();
+            this._directResizeDragCleanup = null;
+        }
+        if (this._directResizeMoveHandler) {
+            document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
+        }
+        if (this._directResizeUpHandler) {
+            document.removeEventListener('mouseup', this._directResizeUpHandler, true);
+        }
+        this._directResizeMoveHandler = null;
+        this._directResizeUpHandler = null;
+    }
+
+    /** Resolve VP boundary / corner handle under (mouseX, mouseY) for document-level resize routing. */
+    _resolveVolumeProfileHandleDragTarget(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return null;
+        }
+        if (drawing.type === 'anchored-volume-profile') {
+            if (this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)) {
+                return { pointIndex: 0 };
+            }
+            return null;
+        }
+
+        const circleNodes = drawing.group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').nodes();
+        for (let i = 0; i < circleNodes.length; i++) {
+            const node = circleNodes[i];
+            if (!node) continue;
+            const pe = node.style && node.style.pointerEvents;
+            if (pe === 'none') continue;
+            const cx = parseFloat(node.getAttribute('cx'));
+            const cy = parseFloat(node.getAttribute('cy'));
+            const r = parseFloat(node.getAttribute('r')) || 14;
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+            const dx = mouseX - cx;
+            const dy = mouseY - cy;
+            if ((dx * dx) + (dy * dy) > r * r) continue;
+            const idx = parseInt(node.getAttribute('data-point-index'), 10);
+            if (Number.isFinite(idx)) return { pointIndex: idx };
+        }
+
+        if (!this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return null;
+
+        let bestIndex = null;
+        let bestDistance = Infinity;
+        const boundaryHits = drawing.group.selectAll('.volume-profile-boundary-hit').nodes();
+        for (let j = 0; j < boundaryHits.length; j++) {
+            const el = boundaryHits[j];
+            if (!el) continue;
+            const pe = el.style && el.style.pointerEvents;
+            if (pe === 'none') continue;
+            const x1 = parseFloat(el.getAttribute('x1'));
+            const y1 = parseFloat(el.getAttribute('y1'));
+            const x2 = parseFloat(el.getAttribute('x2'));
+            const y2 = parseFloat(el.getAttribute('y2'));
+            if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+            const elSel = d3.select(el);
+            const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+            const tolerance = Math.max(14, (strokeWidth / 2) + 0.5);
+            const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+            if (distance > tolerance) continue;
+            const idx = parseInt(el.getAttribute('data-point-index'), 10);
+            if (!Number.isFinite(idx) || distance >= bestDistance) continue;
+            bestDistance = distance;
+            bestIndex = idx;
+        }
+        if (Number.isFinite(bestIndex)) return { pointIndex: bestIndex };
+        return null;
+    }
+
+    /**
+     * D-029 R2b — canvas capture must start VP handle/boundary resize instead of direct-move no-op
+     * (anchored VP filtered from _startDirectMoveDrag) or select-only early return (clipped handles).
+     */
+    _tryStartVolumeProfileHandleDragFromPointer(drawing, event, mouseX, mouseY) {
+        if (typeof _isVpHandleCanvasRoutingFixEnabled === 'function'
+            && !_isVpHandleCanvasRoutingFixEnabled()) {
+            return false;
+        }
+        if (!drawing || drawing.locked || !this.isVolumeProfileToolType(drawing.type)) return false;
+        const target = this._resolveVolumeProfileHandleDragTarget(drawing, mouseX, mouseY);
+        if (!target || !Number.isFinite(target.pointIndex)) return false;
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+
+        this._stopDirectResizeDragListeners();
+
+        if (!drawing.selected
+            || this.selectedDrawings.length !== 1
+            || this.selectedDrawings[0] !== drawing) {
+            this.deselectAll({ forSelectionChange: true });
+            drawing.select({ skipAxisHighlights: true });
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];
+        }
+
+        this._prepareDrawingForHandleDrag(drawing, event);
+        this._resizePointerSource = 'document';
+        this.startHandleDrag(drawing, target.pointIndex, { sourceEvent: event });
+        this._directResizeMoveHandler = (e) => {
+            if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
+            this.handleDrag({ sourceEvent: e });
+        };
+        this._directResizeUpHandler = () => {
+            this._stopDirectResizeDragListeners();
+            this.endHandleDrag(drawing);
+        };
+        this._directResizeDragCleanup = this._addDocumentDragListeners(
+            this._directResizeMoveHandler,
+            this._directResizeUpHandler
+        );
+        return true;
+    }
+
     _prepareDrawingForHandleDrag(drawing, event) {
         if (!drawing) return;
         if (!drawing.selected
@@ -9862,6 +10075,7 @@ class DrawingToolsManager {
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
         this._syncResizeHandleChrome(drawing);
+        this._broadcastLiveEditUpdate(drawing);
         if (!this._skipHandleSetup && !drawing.locked) {
             this.setupHandleDrag(drawing);
         }
