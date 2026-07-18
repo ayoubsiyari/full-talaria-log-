@@ -2048,8 +2048,11 @@ export default function MultichartGrid({
     const samePairCacheBootRef = useRef(false);
     /** Freeze host viewport re-anchor until every iframe has bars (no shake mid-boot). */
     const hostViewportFrozenRef = useRef(false);
-    const OVERLAY_SETTLE_HOLD_CACHE_MS = 0;
-    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 0;
+    // Keep iframe opacity:0 long enough for embed OHLC legend CSS + first
+    // candle paint to land — revealing at 0ms flashed a broken/overlapping
+    // legend for a frame when adding a layout.
+    const OVERLAY_SETTLE_HOLD_CACHE_MS = 120;
+    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 180;
     const OVERLAY_FALLBACK_MS = 0;
     useEffect(() => {
         return () => {
@@ -2247,6 +2250,19 @@ export default function MultichartGrid({
         }
     }, [layoutId, layout.cols, layout.rows]);
 
+    // Layout swap (2v→4 etc.): pin #chartWrapper to cell A before paint so the
+    // host OHLC/legend never briefly stretches across the new empty tiles.
+    useLayoutEffect(() => {
+        const container = containerRef.current;
+        const cellA = cellRefs.current[HOST_PANEL_ID];
+        if (!container || !cellA) return;
+        const cols = parseFrTemplate(layout.cols);
+        const rows = parseFrTemplate(layout.rows);
+        container.style.gridTemplateColumns = cols.map((f) => f.toFixed(4) + "fr").join(" ");
+        container.style.gridTemplateRows = rows.map((f) => f.toFixed(4) + "fr").join(" ");
+        applyHostSlotPositionOnly(cellA);
+    }, [layoutId, layout.cols, layout.rows]);
+
     // Live container size (in CSS px). Declared HERE — high in the
     // component body — so any later useEffect / useLayoutEffect /
     // useMemo can list `containerSize` in its deps without hitting
@@ -2354,7 +2370,10 @@ export default function MultichartGrid({
 
             const manager = new window.MultichartManager({
                 container: containerRef.current,
-                silentPanelBoot: false,
+                // Keep new iframes opacity:0 (no "Loading panel / iframe: pending"
+                // diagnostic) until data-ready → showPanelFrame. Avoids the brief
+                // broken OHLC legend flash when adding a layout.
+                silentPanelBoot: true,
                 deferInitialRangeSync: true,
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
@@ -2395,13 +2414,12 @@ export default function MultichartGrid({
                     });
                 },
                 onPanelCacheReady: function (id) {
+                    // markPanelDataReady → showPanelFrame once settle hold elapses.
+                    // Do not reveal here — bridge-ready / cache-ready can fire before
+                    // the embed OHLC legend CSS + first candle paint are ready.
                     const fn = markPanelDataReadyRef.current;
                     if (typeof fn === "function") {
                         try { fn(id, { immediate: true }); } catch (_) {}
-                    }
-                    const mgr = managerRef.current;
-                    if (mgr && typeof mgr.showPanelFrame === "function") {
-                        try { mgr.showPanelFrame(id); } catch (_) {}
                     }
                 },
                 onChartReady: function (id) {

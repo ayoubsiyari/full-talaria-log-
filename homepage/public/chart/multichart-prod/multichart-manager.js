@@ -980,7 +980,12 @@
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }
-                    try { this.showPanelFrame(sourceId); } catch (_) {}
+                    // Silent boot: parent reveals via showPanelFrame only after
+                    // bars/OHLC are ready. Revealing at bridge-ready flashes the
+                    // half-built legend (overlapping OHLC) for a frame.
+                    if (!this.silentPanelBoot) {
+                        try { this.showPanelFrame(sourceId); } catch (_) {}
+                    }
                     // Phase 7.2.5: bring the new iframe in line with the
                     // host's current visible range so the user's split
                     // shows the SAME data window across every panel

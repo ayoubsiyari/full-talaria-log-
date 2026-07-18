@@ -19,8 +19,9 @@
  * caching strategy (sw.js install/activate/fetch) is UNCHANGED — this is purely
  * the client-side button handler.
  *
- * KILL SWITCH: window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT === true fully
- * disables the feature (no polling, no fetch, no toast). Default = feature ON.
+ * RETIRED (default OFF): the prompt is no longer shown. Opt back in only for
+ * harness/tests via window.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT === true.
+ * Legacy kill switch __TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT still forces OFF.
  *
  * MECHANISM: the loaded build id is window.__TALARIA_CHART_BUILD_ID (embedded in
  * the host HTML head — the existing source of truth). The deployed build id is
@@ -57,7 +58,9 @@
     var POLL_MS = 15 * 60 * 1000;
 
     function killed() {
-        return !!root.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT;
+        if (root.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT === true) return true;
+        // Default OFF — product no longer shows "A new version is available".
+        return root.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT !== true;
     }
 
     // HOST-only: never run inside a multichart panel iframe.
@@ -413,8 +416,9 @@
         _dismissStorageKey: DISMISS_STORAGE_KEY,
     };
 
-    // Auto-start unless disabled. Wait for the DOM so document.body + the shared
-    // toast stack exist.
+    // Tear down any leftover toast from an older build, then only auto-start
+    // when explicitly re-enabled (harness/tests).
+    try { clearToast(); } catch (_) { /* ignore */ }
     if (!killed()) {
         if (doc.readyState === 'loading') {
             doc.addEventListener('DOMContentLoaded', start);

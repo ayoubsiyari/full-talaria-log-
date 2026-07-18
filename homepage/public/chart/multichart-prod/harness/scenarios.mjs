@@ -2772,11 +2772,11 @@ async function hS21(ctx) {
 }
 
 // ── H-S22 ──────────────────────────────────────────────────────────────────
-// Host-only "new version available — Reload" prompt (UX hygiene; kill switch
-// __TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT, default ON). Deterministic: no
-// timers asserted. The module (talaria-version-reload.js) fetches the current
-// host document fresh and extracts its __TALARIA_CHART_BUILD_ID (the deployed
-// id), comparing it to window.__TALARIA_CHART_BUILD_ID (the loaded id).
+// Host-only "new version available — Reload" prompt (retired in product; opt-in
+// via __TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT). Deterministic: no timers
+// asserted. The module (talaria-version-reload.js) fetches the current host
+// document fresh and extracts its __TALARIA_CHART_BUILD_ID (the deployed id),
+// comparing it to window.__TALARIA_CHART_BUILD_ID (the loaded id).
 //   • loaded === deployed  → NO prompt.
 //   • loaded !== deployed  → prompt shown (dismissible, Reload = hard reload).
 //   • kill switch set       → NO prompt even on mismatch.
@@ -2791,6 +2791,13 @@ async function hS22(ctx) {
 
     // Load the REAL host-only module from the canonical tree, then disable its
     // auto focus/interval poller so every assertion below is state-driven only.
+    // Product default is OFF — opt in for this scenario's mismatch assertions.
+    await page.evaluate(() => {
+      window.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT = true;
+      try { delete window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT; } catch (_) {
+        window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = false;
+      }
+    });
     await page.addScriptTag({ url: '/chart/modules/talaria-version-reload.js' });
     await page.waitForFunction(() => !!window.__TalariaVersionReload, { timeout: 10_000 });
     await page.evaluate(() => { try { window.__TalariaVersionReload.stop(); } catch (_) {} });
@@ -2806,7 +2813,11 @@ async function hS22(ctx) {
     const killFlag = await page.evaluate(() => !!window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT);
 
     // (1) MATCH: loaded === deployed → no prompt.
-    await page.evaluate((d) => { window.__TalariaVersionReload.clear(); window.__TALARIA_CHART_BUILD_ID = d; }, deployed);
+    await page.evaluate((d) => {
+      window.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT = true;
+      window.__TalariaVersionReload.clear();
+      window.__TALARIA_CHART_BUILD_ID = d;
+    }, deployed);
     const matchShown = await page.evaluate(() => window.__TalariaVersionReload.check());
     const matchDom = await toastShown();
     checks.check('H-S22 build-id MATCH => no reload prompt',
@@ -2816,7 +2827,11 @@ async function hS22(ctx) {
     // (2) MISMATCH: loaded !== deployed → prompt shown. Asserted UNCONDITIONALLY
     // (the feature contract), so a globally-injected kill switch turns this RED —
     // that is the harness's RED proof for the kill switch.
-    await page.evaluate((d) => { window.__TalariaVersionReload.clear(); window.__TALARIA_CHART_BUILD_ID = d + '-OLD'; }, deployed);
+    await page.evaluate((d) => {
+      window.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT = true;
+      window.__TalariaVersionReload.clear();
+      window.__TALARIA_CHART_BUILD_ID = d + '-OLD';
+    }, deployed);
     const mismatchShown = await page.evaluate(() => window.__TalariaVersionReload.check());
     const mismatchDom = await toastShown();
     checks.check('H-S22 build-id MISMATCH => reload prompt shown (feature ON)',
@@ -2838,6 +2853,7 @@ async function hS22(ctx) {
     // (4) TAL-01564: dismiss suppresses immediate re-nag + persists in sessionStorage.
     await page.evaluate((d) => {
       window.__TalariaVersionReload.clear();
+      window.__TALARIA_MC_ENABLE_VERSION_RELOAD_PROMPT = true;
       try { delete window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT; } catch (_) { window.__TALARIA_MC_DISABLE_VERSION_RELOAD_PROMPT = false; }
       try { sessionStorage.removeItem(window.__TalariaVersionReload._dismissStorageKey); } catch (_) {}
       window.__TALARIA_CHART_BUILD_ID = d + '-OLD';

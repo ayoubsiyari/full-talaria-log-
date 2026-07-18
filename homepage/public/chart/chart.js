@@ -2342,6 +2342,9 @@ class Chart {
             ohlc.style.opacity = '1';
             ohlc.style.zIndex = '25';
             ohlc.style.pointerEvents = 'none';
+            // chart-embed starts .ohlc-info as visibility:hidden; flip ready
+            // only after markup + injected layout CSS are in place.
+            try { ohlc.classList.add('ohlc-legend-ready'); } catch (_) {}
 
             if (!this._embedOhlcCollapseWired) {
                 this._embedOhlcCollapseWired = true;
@@ -31568,17 +31571,11 @@ class Chart {
         const axisLineY = this.h - m.b - indPanelH;
         const halfBadgeW = badgeW / 2;
         const halfBadgeH = badgeH / 2;
-        // Sit in the bottom margin BELOW the time-axis line so flags clear the
-        // price-scale column (they used to sit above the line and paint into m.r).
-        const gapBelowLine = 3;
-        const cyBelow = axisLineY + gapBelowLine + halfBadgeH;
-        const bottomLimit = this.h - indPanelH - halfBadgeH - 1;
-        let cy = Math.min(cyBelow, bottomLimit);
-        if (cy - halfBadgeH < axisLineY + 1) {
-            // Bottom margin too tight — keep above the line but still clip out of price scale.
-            cy = axisLineY - halfBadgeH - 4;
-            cy = Math.max(m.t + halfBadgeH + 6, cy);
-        }
+        // Sit just ABOVE the time-axis line (plot area) — never inside the
+        // label strip. Price-scale overlap is handled by X cull/clip below,
+        // not by dropping flags into m.b.
+        let cy = axisLineY - halfBadgeH - 4;
+        cy = Math.max(m.t + halfBadgeH + 6, cy);
 
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
         const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
@@ -31672,13 +31669,13 @@ class Chart {
             }
         };
 
-        // Hard clip: never paint into the price-scale (right) or left gutter.
+        // Hard clip: plot band only — never into price-scale (right) or time-label strip.
         this.ctx.beginPath();
         this.ctx.rect(
             plotClipL,
-            Math.min(axisLineY, cy - halfBadgeH - 4),
+            Math.max(0, cy - halfBadgeH - 6),
             Math.max(0, plotClipR - plotClipL),
-            Math.max(badgeH + 12, this.h - indPanelH - Math.min(axisLineY, cy - halfBadgeH - 4))
+            Math.max(badgeH + 12, axisLineY - (cy - halfBadgeH - 6))
         );
         this.ctx.clip();
 
@@ -31711,12 +31708,18 @@ class Chart {
                 }
 
                 if (!panFast && _badgeInPlotX(clusterCenterX)) {
+                    const stackTop = stackDown
+                        ? cy - halfBadgeH - 4
+                        : cy - halfBadgeH - stackOffset * (showCount - 1) - 4;
+                    const stackBottom = stackDown
+                        ? cy + halfBadgeH + stackOffset * (showCount - 1) + 2
+                        : cy + halfBadgeH + 2;
                     for (let k = 0; k < n; k++) {
                         this._economicCalendarHitRegions.push({
                             left: clusterCenterX - halfBadgeW - 4,
                             right: clusterCenterX + halfBadgeW + 4,
-                            top: cy - halfBadgeH - 4,
-                            bottom: cy + halfBadgeH + stackOffset * (showCount - 1) + 2,
+                            top: stackTop,
+                            bottom: stackBottom,
                             event: cluster[k].e
                         });
                     }
