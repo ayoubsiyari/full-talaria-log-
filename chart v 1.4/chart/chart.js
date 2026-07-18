@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260718b05';
+const CHART_ENGINE_BUILD = '20260718b07';
 /** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
 const PRICE_AXIS_MIN_R = 60;
 const PRICE_AXIS_MIN_L = 60;
