@@ -5433,14 +5433,30 @@ export default function MultichartGrid({
 
             const finish = () => {
                 try {
-                    if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
+                    const coalesceOn = ch && typeof ch._mcMountViewportCoalesceFixActive === "function"
+                        && ch._mcMountViewportCoalesceFixActive();
+                    if (!coalesceOn && typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
-                // Let pair-load seek + fitToView paint the full prefix before 60x catch-up.
-                setTimeout(() => {
+                const runReplaySync = () => {
                     try { syncIframeReplayPlaybackOnce(pid); } catch (_) {}
-                }, 500);
+                };
+                const coalesceOn = ch && typeof ch._mcMountViewportCoalesceFixActive === "function"
+                    && ch._mcMountViewportCoalesceFixActive();
+                if (coalesceOn && ch._mcMountViewportPanelReady) {
+                    setTimeout(runReplaySync, 80);
+                } else if (coalesceOn) {
+                    try {
+                        ch.addEventListener("talariaMcMountViewportReady", () => {
+                            setTimeout(runReplaySync, 80);
+                        }, { once: true });
+                    } catch (_) {
+                        setTimeout(runReplaySync, 600);
+                    }
+                } else {
+                    setTimeout(runReplaySync, 500);
+                }
                 if (focusedPanelIdRef.current === pid) {
                     dispatchFocusChanged(pid);
                 }

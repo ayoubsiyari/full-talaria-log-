@@ -2347,6 +2347,11 @@
      */
     function scheduleMultichartPanelReplayFollow(ch) {
         if (!ch) return;
+        if (typeof ch._mcMountViewportCoalesceFixActive === 'function'
+            && ch._mcMountViewportCoalesceFixActive()
+            && (ch._mcMountViewportCoalescePending || !ch._mcMountViewportPanelReady)) {
+            return;
+        }
         if (typeof ch._isMultichartViewportJustReset === 'function'
             && ch._isMultichartViewportJustReset()) {
             return;

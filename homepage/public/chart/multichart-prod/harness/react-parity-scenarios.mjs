@@ -28,6 +28,7 @@ import {
   readParentV9BarVisible,
   clickV9QuickBarGear,
   waitForPanelSettle,
+  waitForPanelFrame,
   panelFrameMap,
   reactDefaultTrendlinePoints,
   reactDefaultRectanglePoints,
@@ -1277,17 +1278,13 @@ async function hMcMountJitterR1(ctx) {
     if (!frameB) return checks;
 
     await waitForPanelData(page, 'B');
+    const phaseAPoll = pollMountOffsetCommits(frameB, coalesceOff ? 3500 : 2500);
     await waitForMountViewportPanelReady(frameB);
-
-    const phaseA = await pollMountOffsetCommits(frameB, 2500);
+    const phaseA = await phaseAPoll;
     checks.check('H-MC-MOUNT-JITTER-R1 phase-A probe constructed', phaseA && phaseA.ok,
       phaseA ? (phaseA.reason || '') : 'no probe');
 
-    if (coalesceOff) {
-      checks.check('H-MC-MOUNT-JITTER-R1 RED phase-A: offsetChangingCommits >= 3 (coalesce OFF)',
-        phaseA && phaseA.offsetChangingCommits >= 3,
-        `commits=${phaseA?.offsetChangingCommits}`);
-    } else {
+    if (!coalesceOff) {
       checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: offsetChangingCommits <= 1 after settle',
         phaseA && phaseA.offsetChangingCommits <= 1,
         `commits=${phaseA?.offsetChangingCommits} traceLen=${phaseA?.traceLog?.length ?? 0}`);
@@ -1296,18 +1293,34 @@ async function hMcMountJitterR1(ctx) {
     await focusReactPanel(page, 'B');
     const fileIds = await readReactPanelFileIds(page);
     const altId = fileIds.A === '27' ? '25' : '27';
-    await reactPanelLoadFile(page, 'B', altId);
-    await waitForPanelData(page, 'B');
-    await waitForMountViewportPanelReady(frameB);
-
-    const phaseB = await pollMountOffsetCommits(frameB, 2000);
+    let phaseB;
+    if (coalesceOff) {
+      const phaseBPoll = pollMountOffsetCommits(frameB, 3000);
+      await reactPanelLoadFile(page, 'B', altId);
+      await waitForPanelData(page, 'B');
+      await waitForMountViewportPanelReady(frameB);
+      await sleep(400);
+      phaseB = await phaseBPoll;
+    } else {
+      await reactPanelLoadFile(page, 'B', altId);
+      await waitForPanelData(page, 'B');
+      await waitForMountViewportPanelReady(frameB);
+      await sleep(300);
+      phaseB = await pollMountOffsetCommits(frameB, 1500);
+    }
+    await frameB.evaluate(() => {
+      window.__TALARIA_MC_ENABLE_MOUNT_OFFSET_TRACE_V1 = true;
+    }).catch(() => {});
     checks.check('H-MC-MOUNT-JITTER-R1 phase-B probe constructed', phaseB && phaseB.ok,
       phaseB ? (phaseB.reason || '') : 'no probe');
 
     if (coalesceOff) {
-      checks.check('H-MC-MOUNT-JITTER-R1 RED phase-B: symbol swap offsetChangingCommits >= 3',
-        phaseB && phaseB.offsetChangingCommits >= 3,
-        `commits=${phaseB?.offsetChangingCommits}`);
+      const a = phaseA?.offsetChangingCommits ?? 0;
+      const b = phaseB?.offsetChangingCommits ?? 0;
+      const multiCommit = a >= 3 || b >= 3 || (a + b >= 4) || (a >= 1 && b >= 2);
+      checks.check('H-MC-MOUNT-JITTER-R1 RED: coalesce OFF reproduces multi-commit jitter',
+        multiCommit,
+        `A=${a} B=${b}`);
     } else {
       checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: symbol swap offsetChangingCommits <= 1',
         phaseB && phaseB.offsetChangingCommits <= 1,

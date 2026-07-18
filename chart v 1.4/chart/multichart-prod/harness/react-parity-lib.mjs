@@ -2111,6 +2111,14 @@ export async function waitForMountViewportPanelReady(frame, timeoutMs = 15000) {
 /** Poll offsetX each rAF for mount/symbol-change jitter proof. */
 export async function pollMountOffsetCommits(frame, durationMs = 2500) {
   if (!frame) return { ok: false, reason: 'no frame' };
+  try {
+    await frame.waitForFunction(
+      () => window.chart && Array.isArray(window.chart.data),
+      { timeout: 120000 },
+    );
+  } catch (_) {
+    return { ok: false, reason: 'no chart' };
+  }
   return frame.evaluate(async (dur) => {
     const ch = window.chart;
     if (!ch) return { ok: false, reason: 'no chart' };
@@ -2271,6 +2279,23 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     ? reactParityUrlWithLayout(stack.url, opts.mcLayout)
     : stack.url;
   await page.goto(bootUrl, { waitUntil: 'domcontentloaded', timeout: 180000 });
+  const singleBoot = opts.mcLayout === '1' || opts.mcLayout === 1;
+  if (singleBoot) {
+    await page.waitForFunction(
+      () => window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 0,
+      { timeout: 120000 },
+    );
+    await dismissClickBlockers(page, 'A');
+    const buildIds = await assertBuildIds(page);
+    return {
+      page,
+      stack,
+      buildIds,
+      boundary: { ok: true, panelId: 'B', skipped: 'single-boot' },
+      iframeBars: 0,
+      close: () => page.close().catch(() => {}),
+    };
+  }
   await waitForReactMultichartReady(page);
   await clearPanelDrawings(page, 'A');
   await clearPanelDrawings(page, 'B');

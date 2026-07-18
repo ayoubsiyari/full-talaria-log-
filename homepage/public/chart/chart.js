@@ -5137,7 +5137,20 @@ class Chart {
                         switchingPair,
                         independentPair,
                     });
-                    this._mcScheduleMountViewportCoalesce(loadSeq);
+                    await new Promise((resolveCoalesce) => {
+                        let settled = false;
+                        const finishCoalesce = () => {
+                            if (settled) return;
+                            settled = true;
+                            resolveCoalesce();
+                        };
+                        const onReady = () => finishCoalesce();
+                        try {
+                            window.addEventListener('talariaMcMountViewportReady', onReady, { once: true });
+                        } catch (_) { /* ignore */ }
+                        this._mcScheduleMountViewportCoalesce(loadSeq);
+                        setTimeout(finishCoalesce, 5000);
+                    });
                     if (pairLoadUiActive) {
                         try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
                     }
