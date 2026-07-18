@@ -38225,12 +38225,18 @@ class Chart {
         const out = drawingData;
         const readY = (anchor, idx) => {
             if (!anchor) return null;
+            // Prefer the absolute price from the source panel. Remapping each
+            // endpoint to THIS panel's nearest OHLC (open/high/low/close) makes
+            // Shift-horizontal / equal-price geometry tilt across layouts, and
+            // moves the start off the level the user drew. Keep ohlcKey only as
+            // a fallback when absolute y was not serialized.
+            if (Number.isFinite(anchor.y)) return anchor.y;
             const i = Math.max(0, Math.min(this.data.length - 1, Math.round(idx)));
             const c = this.data[i];
-            if (!c) return (Number.isFinite(anchor.y) ? anchor.y : null);
+            if (!c) return null;
             const key = anchor.ohlcKey;
             if (key && Number.isFinite(c[key])) return c[key];
-            return (Number.isFinite(anchor.y) ? anchor.y : null);
+            return null;
         };
         const applyAnchor = (keyX, keyY) => {
             const a = out.__syncAnchors && out.__syncAnchors[keyX];

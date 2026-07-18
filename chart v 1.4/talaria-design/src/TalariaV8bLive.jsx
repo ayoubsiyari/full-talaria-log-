@@ -13027,6 +13027,11 @@ const TalariaV8bLive = () => {
           const sym = normalizeSymbol(String(raw).trim());
           if (sym) setSymbol(sym);
         }
+        const engCt = ci.chartSettings?.chartType;
+        if (engCt) {
+          const mappedCt = v9ChartTypeLabelFromEngine(engCt);
+          if (mappedCt) setChartType(mappedCt);
+        }
       }
       const cTf = (ci && ci.currentTimeframe) || panel?.timeframe || d.timeframe;
       const mapped = chartTfToV9(cTf);
@@ -13042,13 +13047,12 @@ const TalariaV8bLive = () => {
     // Phase 7.2.4: MultichartGrid (the new in-page panel split) fires
     // `multichartFocusChanged` when the user clicks a different panel
     // OR when the focused panel's chart-state updates (file change,
-    // tf change). Reflect into the toolbar's `tf` + `symbol` so the
-    // user always sees the focused panel's current settings.
+    // tf change). Reflect into the toolbar's `tf` + `symbol` + chart
+    // type so the user always sees the focused panel's current settings.
     //
-    // Round-trip safety: setting tf here triggers the topbar's
-    // useEffect([tf]) which calls runCommand("setTimeframe", ...) on
-    // the focused panel. The bridge sees `currentTimeframe === target`
-    // and short-circuits — no infinite loop.
+    // Round-trip safety: setting tf / chartType here triggers the topbar
+    // useEffects which call runCommand on the focused panel. The bridge
+    // sees the engine already at the target and short-circuits — no loop.
     const onMultichartFocusChanged = (e) => {
       const d = e?.detail || {};
       if (d.symbol) {
@@ -13059,6 +13063,10 @@ const TalariaV8bLive = () => {
       if (d.timeframe) {
         const mapped = chartTfToV9(d.timeframe);
         if (mapped) setTf(mapped);
+      }
+      if (d.chartType) {
+        const mappedCt = v9ChartTypeLabelFromEngine(d.chartType);
+        if (mappedCt) setChartType(mappedCt);
       }
     };
 

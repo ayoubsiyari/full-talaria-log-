@@ -4342,6 +4342,9 @@
             if (!keepSelection && typeof dm.deselectAll === 'function') {
                 dm.deselectAll({ fromCanvasBackground: true });
             }
+            if (typeof dm._stripMultichartStaleSelectionChromeDom === 'function') {
+                dm._stripMultichartStaleSelectionChromeDom();
+            }
             return false;
         }
         if (dm.isRectSelecting) {

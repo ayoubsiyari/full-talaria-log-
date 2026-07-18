@@ -202,6 +202,35 @@ function _multichartArmedInheritDrawGuardActive() {
     return !!(until && performance.now() < until);
 }
 
+/** Remove orphaned selection-handle DOM from non-selected drawings (b07 peer-outline regression). */
+function _stripMultichartStaleSelectionChromeDom(dm) {
+    if (!multichartArmedDrawFocusForwardV1Enabled() || !dm) return;
+    const selectedIds = new Set();
+    (dm.selectedDrawings || []).forEach((d) => {
+        if (d && d.id != null) selectedIds.add(String(d.id));
+    });
+    if (dm.selectedDrawing && dm.selectedDrawing.id != null) {
+        selectedIds.add(String(dm.selectedDrawing.id));
+    }
+    (dm.drawings || []).forEach((d) => {
+        if (!d || (d.id != null && selectedIds.has(String(d.id)))) return;
+        d.selected = false;
+        if (typeof d.deselect === 'function') d.deselect();
+        const g = d.group;
+        if (g && !g.empty()) {
+            g.selectAll('.resize-handle-group').remove();
+            g.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-glow, .custom-handle').remove();
+        }
+        if (typeof d.hideAxisHighlights === 'function') d.hideAxisHighlights();
+        if (typeof dm.renderDrawing === 'function') {
+            dm.renderDrawing(d, {
+                skipInteraction: true,
+                drawingRenderOpts: { skipHandles: true, reuseGroup: false },
+            });
+        }
+    });
+}
+
 /** Suppress window for iframe ctrl-select toggle dedupe (ms). Matches __v9DrawingSelectionGuardUntil span when fix ON. */
 function _iframeCtrlSelectSuppressMs() {
     return _isIframeCtrlSelectDedupeV1Enabled() ? 250 : 80;
@@ -1218,7 +1247,9 @@ class DrawingToolsManager {
         this._ensureDrawingsPlotClip();
         drawing.points = previewPoints.map((p) => ({ ...p }));
         this._syncRRToolExtrasDuringLiveDrag(drawing, startPoints, previewPoints);
-        if (drawing.group) drawing.group.attr('transform', null);
+        // Clear group + labels translate so a stale CSS offset cannot leave a
+        // second copy parked at the pre-drag origin while points re-render.
+        this._clearDrawingDragTransform(drawing);
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         this.scheduleRenderDrawing(drawing);
     }
@@ -4097,6 +4128,11 @@ class DrawingToolsManager {
         return this._resolveMultichartFocusedPanelArmedDrawTool();
     }
 
+    /** Strip orphaned handle DOM from non-selected drawings (MC-DRAW-FIRSTCLICK b07). */
+    _stripMultichartStaleSelectionChromeDom() {
+        _stripMultichartStaleSelectionChromeDom(this);
+    }
+
     /** Synchronously adopt focused peer armed shape tool (MC-DRAW-FIRSTCLICK). */
     _tryInheritMultichartParentArmedDrawTool() {
         if (this.currentTool) return false;
@@ -4112,6 +4148,7 @@ class DrawingToolsManager {
             this.deselectAll({ forSelectionChange: true });
         }
         this.setTool(inheritedMc, true);
+        _stripMultichartStaleSelectionChromeDom(this);
         _publishMultichartArmedInheritDrawGuard();
         return true;
     }
@@ -4190,6 +4227,11 @@ class DrawingToolsManager {
         // V9 multichart embed: inherit parent armed shape tool synchronously so the
         // first click on an unfocused tile starts drawing (focus postMessage is async).
         this._tryInheritMultichartParentArmedDrawTool();
+
+        // MC-DRAW-FIRSTCLICK b07: same-gesture inherit must not leave stale peer selection chrome.
+        if (multichartArmedDrawFocusForwardV1Enabled() && _multichartArmedInheritDrawGuardActive()) {
+            _stripMultichartStaleSelectionChromeDom(this);
+        }
 
         // Multi-panel UX: if user clicks another panel while a tool is active,
         // switch selection first, but continue this same click as draw-start.
@@ -5020,9 +5062,17 @@ class DrawingToolsManager {
             const angle = Math.atan2(dy, dx);
             const distance = Math.sqrt(dx * dx + dy * dy);
             const snapAngle = this._resolveShiftSnapAngle(angle);
+            const cosA = Math.cos(snapAngle);
+            const sinA = Math.sin(snapAngle);
+            if (Math.abs(sinA) < 1e-8) {
+                return { x: referencePoint.x + distance * Math.sign(cosA || 1), y: referencePoint.y };
+            }
+            if (Math.abs(cosA) < 1e-8) {
+                return { x: referencePoint.x, y: referencePoint.y + distance * Math.sign(sinA || 1) };
+            }
             return {
-                x: referencePoint.x + distance * Math.cos(snapAngle),
-                y: referencePoint.y + distance * Math.sin(snapAngle)
+                x: referencePoint.x + distance * cosA,
+                y: referencePoint.y + distance * sinA
             };
         };
 
@@ -5078,6 +5128,18 @@ class DrawingToolsManager {
 
         if (!Number.isFinite(snappedX) || !Number.isFinite(snappedY)) {
             return fallbackSnap();
+        }
+
+        // Exact axis locks in data space so Shift-horizontal/vertical lines
+        // share one price (or one bar index) before multichart sync — avoids
+        // float invert drift that peers would amplify into a visible tilt.
+        const cosA = Math.cos(snapAngle);
+        const sinA = Math.sin(snapAngle);
+        if (Math.abs(sinA) < 1e-8) {
+            return { x: snappedX, y: referencePoint.y };
+        }
+        if (Math.abs(cosA) < 1e-8) {
+            return { x: referencePoint.x, y: snappedY };
         }
 
         return {
@@ -5267,6 +5329,10 @@ class DrawingToolsManager {
     /**
      * Commit a leftover CSS translate on the drawing group into data points before resize.
      * Prevents handles staying at the pre-move origin while the stroke was visually offset.
+     * Re-renders immediately so clearing the transform does not flash a ghost at the
+     * pre-translate geometry (Shift+body-drag duplicate-at-origin). Also refreshes
+     * timestamp anchors — otherwise the next non-live render resolves from the old
+     * timestamps and snaps/duplicates the tool back to its original position.
      */
     _commitStaleDrawingGroupTransform(drawing) {
         if (!drawing?.group) return;
@@ -5276,7 +5342,24 @@ class DrawingToolsManager {
             ? drawing.points.map((p) => ({ ...p }))
             : null;
         if (!startPts || !startPts.length) return;
-        this._commitDrawingPixelDragDelta(drawing, startPts, { x: 0, y: 0 });
+        const committed = this._commitDrawingPixelDragDelta(drawing, startPts, { x: 0, y: 0 });
+        this._clearDrawingDragTransform(drawing);
+        if (committed) {
+            this._refreshDrawingTimestampAnchors(drawing);
+        }
+        if (committed && this.chart && this.chart.xScale && this.chart.yScale) {
+            try {
+                this.renderDrawing(drawing, {
+                    skipInteraction: true,
+                    liveRender: true,
+                    skipTimestampSync: true,
+                    drawingRenderOpts: {
+                        reuseGroup: !!(drawing.group && !drawing.group.empty()),
+                        skipHandles: true,
+                    },
+                });
+            } catch (_) { /* ignore */ }
+        }
     }
 
     /**
@@ -7140,7 +7223,9 @@ class DrawingToolsManager {
         const shouldKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
 
         if (!shouldKeepTool) {
+            _stripMultichartStaleSelectionChromeDom(this);
             this.clearTool();
+            _stripMultichartStaleSelectionChromeDom(this);
             // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
@@ -7154,6 +7239,10 @@ class DrawingToolsManager {
             // path in clearTool() does not cover iframe peers).
             if (this.chart && typeof this.chart._broadcastMultichartClearDrawingTool === 'function') {
                 this.chart._broadcastMultichartClearDrawingTool();
+            }
+            if (multichartArmedDrawFocusForwardV1Enabled()) {
+                const self = this;
+                requestAnimationFrame(() => _stripMultichartStaleSelectionChromeDom(self));
             }
             // Don't set cursor tool as active - let user click it to reactivate the last tool
         } else {
@@ -8744,8 +8833,22 @@ class DrawingToolsManager {
                     if (!drawing.selected) {
                         self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                     }
-                    
-                    // Store original points and start position
+
+                    // Commit leftover CSS translate BEFORE freezing start points.
+                    // Capturing first then committing leaves data at the moved
+                    // position while SVG paths still sit at the origin (ghost /
+                    // "duplicated back" when Shift+body-dragging).
+                    if (a8StaleTransformFix) {
+                        if (self.selectedDrawings.length > 1 && self.selectedDrawings.includes(drawing)) {
+                            self.selectedDrawings.forEach((d) => {
+                                if (d && !d.locked) self._commitStaleDrawingGroupTransform(d);
+                            });
+                        } else {
+                            self._commitStaleDrawingGroupTransform(drawing);
+                        }
+                    }
+
+                    // Store original points and start position (post stale-commit).
                     dragStartPoints = drawing.points.map(p => ({...p}));
                     self._beginRRToolWholeDragSnapshot(drawing);
                     startDataPoint = getDragDataPoint(event);
@@ -8766,17 +8869,9 @@ class DrawingToolsManager {
                         }));
                         multiDragStartPoints.forEach((item) => self._beginRRToolWholeDragSnapshot(item.drawing));
                         self._bodyDragActiveDrawings = multiDragStartPoints.map((item) => item.drawing);
-                        if (a8StaleTransformFix) {
-                            multiDragStartPoints.forEach((item) => {
-                                if (item?.drawing) self._commitStaleDrawingGroupTransform(item.drawing);
-                            });
-                        }
                     } else {
                         multiDragStartPoints = null;
                         self._bodyDragActiveDrawings = [drawing];
-                        if (a8StaleTransformFix) {
-                            self._commitStaleDrawingGroupTransform(drawing);
-                        }
                         // Capture state for undo (single drawing)
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);

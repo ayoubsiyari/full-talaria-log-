@@ -4176,12 +4176,12 @@ export default function MultichartGrid({
 
     // ─── Focused-panel state → topbar reflection ────────────────────────
     //
-    // When the user clicks panel B (which is on 5m showing GOLD), the
-    // topbar's TF button row and symbol badge should switch to "5m" /
-    // "GOLD" so they know which panel they're driving. We broadcast a
-    // `multichartFocusChanged` window event with the focused panel's
-    // current symbol + timeframe; TalariaV8bLive listens and updates its
-    // local `tf` / `symbol` state.
+    // When the user clicks panel B (which is on 5m showing GOLD / Line),
+    // the topbar's TF button row, symbol badge, and Chart Type control
+    // should switch so they know which panel they're driving. We broadcast
+    // a `multichartFocusChanged` window event with the focused panel's
+    // current symbol + timeframe + chartType; TalariaV8bLive listens and
+    // updates its local `tf` / `symbol` / `chartType` state.
     //
     // Dispatched whenever:
     //   • focusedPanelId changes (user clicked a different panel)
@@ -4202,6 +4202,7 @@ export default function MultichartGrid({
                 symbol:    ch.currentSymbol    || null,
                 timeframe: ch.currentTimeframe || null,
                 fileId:    ch.currentFileId    || null,
+                chartType: (ch.chartSettings && ch.chartSettings.chartType) || null,
             };
         }
         const mgr = managerRef.current;
@@ -4210,24 +4211,28 @@ export default function MultichartGrid({
         let symbol = (c.state && c.state.symbol) || null;
         let timeframe = (c.state && c.state.timeframe) || null;
         let fileId = (c.state && c.state.fileId != null) ? c.state.fileId : null;
+        let chartType = (c.state && c.state.chartType) || null;
         // chart-state can lag with placeholder "—" after ticker change; fall back
         // to the live iframe chart so OMS/topbar mirror the focused tile.
-        if (isPlaceholderMultichartSymbol(symbol) || !timeframe || fileId == null || fileId === "") {
-            try {
-                const cw = c.frame && c.frame.contentWindow;
-                const ch = cw && cw.chart;
-                if (ch) {
-                    if (isPlaceholderMultichartSymbol(symbol) && ch.currentSymbol) {
-                        symbol = ch.currentSymbol;
-                    }
-                    if (!timeframe && ch.currentTimeframe) timeframe = ch.currentTimeframe;
-                    if ((fileId == null || fileId === "") && ch.currentFileId != null) {
-                        fileId = ch.currentFileId;
-                    }
+        // Chart type is not on every chart-state payload — always prefer the live
+        // engine setting so the topbar Chart Type control tracks the focused tile.
+        try {
+            const cw = c.frame && c.frame.contentWindow;
+            const ch = cw && cw.chart;
+            if (ch) {
+                if (isPlaceholderMultichartSymbol(symbol) && ch.currentSymbol) {
+                    symbol = ch.currentSymbol;
                 }
-            } catch (_) { /* ignore */ }
-        }
-        return { symbol, timeframe, fileId };
+                if (!timeframe && ch.currentTimeframe) timeframe = ch.currentTimeframe;
+                if ((fileId == null || fileId === "") && ch.currentFileId != null) {
+                    fileId = ch.currentFileId;
+                }
+                if (ch.chartSettings && ch.chartSettings.chartType) {
+                    chartType = ch.chartSettings.chartType;
+                }
+            }
+        } catch (_) { /* ignore */ }
+        return { symbol, timeframe, fileId, chartType };
     }
 
     /** Dedupe mirror broadcasts — replay chart-state ticks must not re-fire tool sync every bar. */
@@ -4240,6 +4245,7 @@ export default function MultichartGrid({
             String(state && state.symbol != null ? state.symbol : ""),
             String(state && state.timeframe != null ? state.timeframe : ""),
             String(state && state.fileId != null ? state.fileId : ""),
+            String(state && state.chartType != null ? state.chartType : ""),
         ].join("|");
     }
 
@@ -4256,6 +4262,7 @@ export default function MultichartGrid({
                     symbol:    state ? state.symbol    : null,
                     timeframe: state ? state.timeframe : null,
                     fileId:    state ? state.fileId    : null,
+                    chartType: state ? state.chartType : null,
                 },
             }));
         } catch (_) {}

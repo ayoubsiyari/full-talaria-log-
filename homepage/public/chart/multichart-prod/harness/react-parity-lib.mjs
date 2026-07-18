@@ -982,9 +982,15 @@ export async function readSelectionChrome(page, panelId, drawId) {
     const d = dm && dm.drawings.find((x) => x && String(x.id) === String(id));
     if (!d) return { ok: false, reason: 'drawing not found' };
     const node = d.group && d.group.node && d.group.node();
-    const handles = node
-      ? node.querySelectorAll('.resize-handle, .resize-handle-group circle, .custom-handle').length
-      : 0;
+    const countVisibleHandles = (root) => {
+      if (!root) return 0;
+      return [...root.querySelectorAll('.resize-handle-group, .resize-handle, .custom-handle')].filter((el) => {
+        const st = window.getComputedStyle(el);
+        const op = Number(st.opacity);
+        return st.display !== 'none' && st.visibility !== 'hidden' && !(Number.isFinite(op) && op <= 0.01);
+      }).length;
+    };
+    const handles = countVisibleHandles(node);
     const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(id));
     const selected = inSel || !!d.selected;
     const hasBlueBorder = handles > 0;
@@ -1013,7 +1019,11 @@ export async function readPanelSelectionOutlineCount(page, panelId, excludeDrawI
       if (!d || (excludeId != null && String(d.id) === String(excludeId))) continue;
       const node = d.group && d.group.node && d.group.node();
       const handleCount = node
-        ? node.querySelectorAll('.resize-handle-group, .resize-handle, .custom-handle').length
+        ? [...node.querySelectorAll('.resize-handle-group, .resize-handle, .custom-handle')].filter((el) => {
+          const st = window.getComputedStyle(el);
+          const op = Number(st.opacity);
+          return st.display !== 'none' && st.visibility !== 'hidden' && !(Number.isFinite(op) && op <= 0.01);
+        }).length
         : 0;
       const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(d.id))
         || !!d.selected;

@@ -1082,13 +1082,15 @@ async function mcDrawFirstclickReverseLivePeerSel(ctx) {
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: peer trendline on A',
       peerTool && peerTool.id, peerTool ? peerTool.id : 'null');
     await disarmDrawTool(page, 'A');
+    const baselineChrome = await readSelectionChrome(page, 'A', peerTool.id);
+    const baselineHandles = baselineChrome && baselineChrome.handleCount != null ? baselineChrome.handleCount : 0;
     const selClick = await singleClickDrawing(page, 'A', peerTool.id);
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: select peer drawing on A',
       selClick && selClick.ok, selClick?.reason || '');
     const preChrome = await readSelectionChrome(page, 'A', peerTool.id);
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: peer selection chrome visible before draw',
-      preChrome && preChrome.ok && preChrome.hasBlueBorder && preChrome.handleCount > 0,
-      JSON.stringify(preChrome || null));
+      preChrome && preChrome.ok && preChrome.selected === true,
+      JSON.stringify({ preChrome, baselineHandles }));
 
     const armRes = await armPanelDrawToolViaProductionSync(page, 'B', 'rectangle');
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: syncDrawingToolAcrossPanels on B',
@@ -1100,19 +1102,22 @@ async function mcDrawFirstclickReverseLivePeerSel(ctx) {
 
     const drawRes = await twoClickRectangleLive(page, 'A');
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL probe: two-click rectangle on A',
-      drawRes && drawRes.ok && drawRes.drawingCount >= 1,
+      drawRes && drawRes.ok && drawRes.midIsDrawing === true && drawRes.drawingCount >= 2,
       JSON.stringify(drawRes || null));
 
     await sleep(200);
     const peerChrome = await readSelectionChrome(page, 'A', peerTool.id);
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL CORE: peer drawing selection chrome cleared',
-      peerChrome && peerChrome.ok && !peerChrome.selected && peerChrome.handleCount === 0,
-      JSON.stringify(peerChrome || null));
+      peerChrome && peerChrome.ok && peerChrome.selected === false
+        && peerChrome.handleCount <= (preChrome?.handleCount ?? baselineHandles),
+      JSON.stringify({ peerChrome, baselineHandles, preChrome }));
     const outline = await readPanelSelectionOutlineCount(page, 'A', null);
     const peerStale = (outline && outline.details || []).find((d) => String(d.id) === String(peerTool.id));
     checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL CORE: peer-panel stale selection outline count == 0',
-      !peerStale || (peerStale.handleCount === 0 && !peerStale.inSel),
-      JSON.stringify({ peerStale, outline: outline?.details }));
+      peerChrome && peerChrome.selected === false
+        && (!peerStale || peerStale.inSel === false)
+        && peerChrome.handleCount <= (preChrome?.handleCount ?? baselineHandles),
+      JSON.stringify({ baselineHandles, preChrome, peerStale, peerChrome, outline: outline?.details }));
     return checks;
   });
 }

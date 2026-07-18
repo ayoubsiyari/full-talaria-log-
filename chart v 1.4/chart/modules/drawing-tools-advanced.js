@@ -3716,7 +3716,13 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         if (index === 1) {
-            this.setStopPrice(point.y);
+            const om = window.chart?.orderManager;
+            if (om && typeof om.riskRewardSyncPrimaryStopDragFromTool === 'function') {
+                om.riskRewardSyncPrimaryStopDragFromTool(this, point.y);
+                this._afterRiskRewardOrderManagerSync();
+            } else {
+                this.setStopPrice(point.y);
+            }
             return true;
         }
 
@@ -3754,11 +3760,15 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         if (handleRole === 'rr-primary-stop') {
             const py = context.point?.y ?? context.dataPoint?.y;
-            if (Number.isFinite(py)) {
+            if (!Number.isFinite(py)) return false;
+            const om = window.chart?.orderManager;
+            if (om && typeof om.riskRewardSyncPrimaryStopDragFromTool === 'function') {
+                om.riskRewardSyncPrimaryStopDragFromTool(this, py);
+                this._afterRiskRewardOrderManagerSync();
+            } else {
                 this.setStopPrice(py);
-                return true;
             }
-            return false;
+            return true;
         }
 
         if (handleRole === 'rr-primary-tp') {

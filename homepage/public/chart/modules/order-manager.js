@@ -24641,6 +24641,32 @@ class OrderManager {
     }
 
     /**
+     * Primary stop line drag: move only stop price (entry/target stay fixed). Mirrors the
+     * entry/TP sync rhythm (push → edit → push input → recompute → pull) so the order panel
+     * (SL distance + risk amount) and the tool's SL label/pts/RR refresh live during the drag.
+     */
+    riskRewardSyncPrimaryStopDragFromTool(drawing, newY) {
+        if (!drawing || !drawing.points || drawing.points.length < 2) return;
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        const prec = this.getPricePrecision();
+        const raw = parseFloat(parseFloat(newY).toFixed(prec));
+        const sanitized = typeof drawing.sanitizeStopPrice === 'function'
+            ? drawing.sanitizeStopPrice(raw)
+            : raw;
+        if (!Number.isFinite(sanitized)) {
+            this.pullRiskRewardToolFromManager(drawing);
+            return;
+        }
+        drawing.points[1] = { ...drawing.points[1], y: sanitized };
+        if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
+        const slp = document.getElementById('slPrice');
+        if (slp) slp.value = this.formatPrice(sanitized);
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /**
      * Extra entry leg drag — same as preview Entry# line drag (multiEntryLevels price).
      */
     riskRewardSyncEntryDragFromTool(drawing, extraIndex, newY) {
