@@ -570,6 +570,7 @@ export async function installBuiltProductBoot(page, {
   vpV9AvCoordRepositionOff = false,
   axisMarginFloorOff = false,
   vpHandleCanvasRoutingOff = false,
+  armedDrawFocusForwardOff = false,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -591,7 +592,8 @@ export async function installBuiltProductBoot(page, {
   const vpAvCoordOff = vpV9AvCoordRepositionOff || process.env.REACT_PARITY_VP_V9_AV_COORD_REPOSITION_OFF === '1';
   const amfOff = axisMarginFloorOff || process.env.REACT_PARITY_AXIS_MARGIN_FLOOR_OFF === '1';
   const vpHandleRouteOff = vpHandleCanvasRoutingOff || process.env.REACT_PARITY_VP_HANDLE_CANVAS_ROUTING_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn, vpHandleCanvasRoutingOffOn) => {
+  const armedDrawFwdOff = armedDrawFocusForwardOff || process.env.HARNESS_MC_ARMED_DRAW_FOCUS_FORWARD_OFF === '1';
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn, vpHandleCanvasRoutingOffOn, armedDrawFocusForwardOffOn) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -610,6 +612,7 @@ export async function installBuiltProductBoot(page, {
     if (vpAvCoordRepositionOffOn) window.__TALARIA_DISABLE_VP_V9_AV_COORD_REPOSITION_FIX = true;
     if (axisMarginFloorOffOn) window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX = true;
     if (vpHandleCanvasRoutingOffOn) window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX = true;
+    if (armedDrawFocusForwardOffOn) window.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1 = true;
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -622,7 +625,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff, vpHandleRouteOff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff, vpHandleRouteOff, armedDrawFwdOff);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -784,6 +787,103 @@ export async function focusReactPanelSoft(page, panelId) {
   }, panelId);
   await waitForPanelSettle(page, panelId);
   return { ok: true, panelId };
+}
+
+export async function readProductionFocusedPanelId(page) {
+  return page.evaluate(() => {
+    try {
+      const grid = window.__multichartGrid;
+      return grid && typeof grid.getFocusedPanelId === 'function'
+        ? String(grid.getFocusedPanelId() || '')
+        : '';
+    } catch (_) {
+      return '';
+    }
+  });
+}
+
+export async function probeMultichartGridChartResolver(page) {
+  return page.evaluate(() => {
+    const g = window.__multichartGrid;
+    return {
+      hasGrid: !!g,
+      hasGetFocusedPanelId: !!(g && typeof g.getFocusedPanelId === 'function'),
+      hasGetChartForPanelId: !!(g && typeof g.getChartForPanelId === 'function'),
+      hasGetChartForPanel: !!(g && typeof g.getChartForPanel === 'function'),
+      hostPanelId: g && g.hostPanelId != null ? String(g.hostPanelId) : null,
+    };
+  });
+}
+
+/** Arm on focused panel via production syncDrawingToolAcrossPanels (I15 live-faithful). */
+export async function armPanelDrawToolViaProductionSync(page, panelId, tool = 'rectangle') {
+  await dismissClickBlockers(page, panelId);
+  const pt = await reactChartCanvasPagePoint(page, panelId, 0.42, 0.48);
+  if (!pt) return { ok: false, reason: 'no canvas point' };
+  await page.mouse.click(pt.x, pt.y, { delay: 25 });
+  await sleep(350);
+  const focused = await readProductionFocusedPanelId(page);
+  if (focused !== String(panelId)) {
+    return { ok: false, reason: `focus mismatch want=${panelId} got=${focused}` };
+  }
+  const armRes = await page.evaluate(async (toolName) => {
+    const grid = window.__multichartGrid;
+    if (!grid || typeof grid.syncDrawingToolAcrossPanels !== 'function') {
+      return { ok: false, reason: 'no syncDrawingToolAcrossPanels' };
+    }
+    await grid.syncDrawingToolAcrossPanels(toolName);
+    const fid = typeof grid.getFocusedPanelId === 'function' ? grid.getFocusedPanelId() : null;
+    const getCh = typeof grid.getChartForPanelId === 'function'
+      ? grid.getChartForPanelId.bind(grid)
+      : (typeof grid.getChartForPanel === 'function' ? grid.getChartForPanel.bind(grid) : null);
+    let focusedTool = null;
+    let hostTool = null;
+    try {
+      if (getCh && fid) {
+        const ch = getCh(fid);
+        focusedTool = ch && ch.drawingManager ? ch.drawingManager.currentTool : null;
+      }
+      hostTool = window.chart && window.chart.drawingManager
+        ? window.chart.drawingManager.currentTool : null;
+    } catch (_) { /* ignore */ }
+    return { ok: true, focused: fid, focusedTool, hostTool };
+  }, tool);
+  await sleep(200);
+  return armRes;
+}
+
+/** Two-click rectangle on a panel without pre-focus (live topology). */
+export async function twoClickRectangleLive(page, panelId) {
+  const p1 = await reactChartCanvasPagePoint(page, panelId, 0.32, 0.38);
+  const p2 = await reactChartCanvasPagePoint(page, panelId, 0.58, 0.62);
+  if (!p1 || !p2) return { ok: false, reason: 'no canvas points' };
+  const frame = chartTarget(page, panelId);
+  await page.mouse.move(p1.x, p1.y);
+  await page.mouse.click(p1.x, p1.y, { delay: 35 });
+  await sleep(120);
+  const mid = frame
+    ? await frame.evaluate(() => {
+        const dm = window.chart && window.chart.drawingManager;
+        return {
+          isDrawing: !!(dm && dm.drawingState && dm.drawingState.isDrawing),
+          currentTool: dm && dm.currentTool,
+        };
+      }).catch(() => null)
+    : null;
+  await page.mouse.click(p2.x, p2.y, { delay: 35 });
+  await sleep(350);
+  const st = frame
+    ? await frame.evaluate(() => {
+        const dm = window.chart && window.chart.drawingManager;
+        return { drawingCount: dm && dm.drawings ? dm.drawings.length : 0 };
+      }).catch(() => null)
+    : null;
+  return {
+    ok: true,
+    midIsDrawing: !!(mid && mid.isDrawing),
+    midCurrentTool: mid && mid.currentTool,
+    drawingCount: st && st.drawingCount,
+  };
 }
 
 /** Wait until panel render counter is stable for one animation frame pair. */
@@ -1999,6 +2099,7 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     vpV9AvCoordRepositionOff: !!opts.vpV9AvCoordRepositionOff,
     axisMarginFloorOff: !!opts.axisMarginFloorOff,
     vpHandleCanvasRoutingOff: !!opts.vpHandleCanvasRoutingOff,
+    armedDrawFocusForwardOff: !!opts.armedDrawFocusForwardOff,
   });
   await installParentSettingsProbe(page);
   await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });

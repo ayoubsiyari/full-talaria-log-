@@ -4011,10 +4011,15 @@ class DrawingToolsManager {
                 }
             })()
             : (window.__multichartGrid || null);
-        if (!grid || typeof grid.getFocusedPanelId !== 'function'
-            || typeof grid.getChartForPanelId !== 'function') {
+        if (!grid || typeof grid.getFocusedPanelId !== 'function') {
             return null;
         }
+        const getChartForPanel = (typeof grid.getChartForPanelId === 'function')
+            ? grid.getChartForPanelId.bind(grid)
+            : (typeof grid.getChartForPanel === 'function')
+                ? grid.getChartForPanel.bind(grid)
+                : null;
+        if (!getChartForPanel) return null;
         let selfPanelId = null;
         try {
             if (this.chart && typeof this.chart._getMultichartPanelId === 'function') {
@@ -4027,7 +4032,7 @@ class DrawingToolsManager {
             return null;
         }
         try {
-            const ch = grid.getChartForPanelId(focusedId);
+            const ch = getChartForPanel(focusedId);
             return pick(ch && ch.drawingManager);
         } catch (_) {
             return null;

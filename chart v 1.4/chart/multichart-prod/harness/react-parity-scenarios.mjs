@@ -59,6 +59,11 @@ import {
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
   ensureDrawingAnchorInPlotView,
+  readProductionFocusedPanelId,
+  probeMultichartGridChartResolver,
+  armPanelDrawToolViaProductionSync,
+  twoClickRectangleLive,
+  currentReactBuildId,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -979,6 +984,89 @@ async function hA8Vp2(ctx) {
   });
 }
 
+// ── MC-DRAW-FIRSTCLICK-R — dist-v9 live topology: A armed → draw B click 1 ─
+async function mcDrawFirstclickLive(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitForReactMultichartReady(page);
+    await waitForPanelData(page, 'B');
+    await sleep(400);
+
+    const gridApi = await probeMultichartGridChartResolver(page);
+    checks.check('MC-DRAW-FIRSTCLICK-R probe: production grid resolver API',
+      gridApi && gridApi.hasGetFocusedPanelId && gridApi.hasGetChartForPanel,
+      JSON.stringify(gridApi || null));
+    const buildId = await page.evaluate(() => window.__TALARIA_CHART_BUILD_ID || null);
+    checks.check('MC-DRAW-FIRSTCLICK-R probe: build id stamped',
+      !!buildId, `build=${buildId} dist=${currentReactBuildId()}`);
+
+    const armRes = await armPanelDrawToolViaProductionSync(page, 'A', 'rectangle');
+    checks.check('MC-DRAW-FIRSTCLICK-R setup: syncDrawingToolAcrossPanels on A',
+      armRes && armRes.ok, JSON.stringify(armRes || null));
+
+    const preB = await readReactParityState(page, 'B');
+    const focused = await readProductionFocusedPanelId(page);
+    checks.check('MC-DRAW-FIRSTCLICK-R setup: focus remains A before B draw',
+      focused === 'A', `focused=${focused}`);
+    checks.check('MC-DRAW-FIRSTCLICK-R setup: B has no local tool before draw',
+      preB && !preB.currentTool, `B.tool=${preB?.currentTool}`);
+
+    const drawRes = await twoClickRectangleLive(page, 'B');
+    checks.check('MC-DRAW-FIRSTCLICK-R probe: two-click rectangle on B',
+      drawRes && drawRes.ok, JSON.stringify(drawRes || null));
+    checks.check('MC-DRAW-FIRSTCLICK-R probe: click-1 entered draw on B',
+      drawRes && drawRes.midIsDrawing === true && drawRes.midCurrentTool === 'rectangle',
+      `mid=${JSON.stringify({ isDrawing: drawRes?.midIsDrawing, tool: drawRes?.midCurrentTool })}`);
+
+    const afterB = await readReactParityState(page, 'B');
+    checks.check(
+      'MC-DRAW-FIRSTCLICK-R CORE: rectangle lands on B after first session',
+      afterB && afterB.drawingCount >= 1,
+      `B.count=${afterB?.drawingCount}`,
+    );
+    return checks;
+  });
+}
+
+// ── MC-DRAW-FIRSTCLICK-2-R — reverse live: B armed → draw A click 1 ───────
+async function mcDrawFirstclickReverseLive(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitForReactMultichartReady(page);
+    await waitForPanelData(page, 'B');
+    await sleep(400);
+
+    const armRes = await armPanelDrawToolViaProductionSync(page, 'B', 'rectangle');
+    checks.check('MC-DRAW-FIRSTCLICK-2-R setup: syncDrawingToolAcrossPanels on B',
+      armRes && armRes.ok && armRes.focusedTool === 'rectangle',
+      JSON.stringify(armRes || null));
+
+    const preA = await readReactParityState(page, 'A');
+    const focused = await readProductionFocusedPanelId(page);
+    checks.check('MC-DRAW-FIRSTCLICK-2-R setup: focus remains B before A draw',
+      focused === 'B', `focused=${focused}`);
+    checks.check('MC-DRAW-FIRSTCLICK-2-R setup: host A has no local tool',
+      preA && !preA.currentTool, `A.tool=${preA?.currentTool}`);
+
+    const drawRes = await twoClickRectangleLive(page, 'A');
+    checks.check('MC-DRAW-FIRSTCLICK-2-R probe: two-click rectangle on A',
+      drawRes && drawRes.ok, JSON.stringify(drawRes || null));
+    checks.check('MC-DRAW-FIRSTCLICK-2-R probe: click-1 entered draw on A (mid-gesture)',
+      drawRes && drawRes.midIsDrawing === true && drawRes.midCurrentTool === 'rectangle',
+      `mid=${JSON.stringify({ isDrawing: drawRes?.midIsDrawing, tool: drawRes?.midCurrentTool })}`);
+
+    const afterA = await readReactParityState(page, 'A');
+    checks.check(
+      'MC-DRAW-FIRSTCLICK-2-R CORE: rectangle lands on A after first session (not focus-then-draw)',
+      afterA && afterA.drawingCount >= 1,
+      `A.count=${afterA?.drawingCount}`,
+    );
+    return checks;
+  });
+}
+
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -1000,5 +1088,7 @@ export function reactScenarioList() {
     { id: 'H-S80', title: 'PLAN2-FOUND#6: panel TF label sync after refresh (built V9)', run: hS80React },
     { id: 'H-A8-VP-1', title: 'A8-VP-1: anchored VP V9 label bridge (Price/Time toggles → engine + axis highlights)', run: hA8Vp1 },
     { id: 'H-A8-VP-2', title: 'A8-VP-2: anchored VP coord tab ↔ canvas anchor sync', run: hA8Vp2 },
+    { id: 'MC-DRAW-FIRSTCLICK-R', title: 'live dist-v9: A armed → unfocused B draw click 1', run: mcDrawFirstclickLive },
+    { id: 'MC-DRAW-FIRSTCLICK-2-R', title: 'live dist-v9: B armed → unfocused A draw click 1', run: mcDrawFirstclickReverseLive },
   ];
 }

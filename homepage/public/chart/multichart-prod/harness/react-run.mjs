@@ -23,6 +23,7 @@ function parseArgs(argv) {
     vpV9AvCoordRepositionOff: false,
     axisMarginFloorOff: false,
     vpHandleCanvasRoutingOff: false,
+    armedDrawFocusForwardOff: false,
   };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     else if (a === '--vp-v9-av-coord-reposition-off') args.vpV9AvCoordRepositionOff = true;
     else if (a === '--axis-margin-floor-off') args.axisMarginFloorOff = true;
     else if (a === '--vp-handle-canvas-routing-off') args.vpHandleCanvasRoutingOff = true;
+    else if (a === '--multichart-armed-draw-focus-forward-off') args.armedDrawFocusForwardOff = true;
     else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
     else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
@@ -84,6 +86,7 @@ function buildScenarioCtx(args, browser, stack) {
     vpV9AvCoordRepositionOff: args.vpV9AvCoordRepositionOff,
     axisMarginFloorOff: args.axisMarginFloorOff,
     vpHandleCanvasRoutingOff: args.vpHandleCanvasRoutingOff,
+    armedDrawFocusForwardOff: args.armedDrawFocusForwardOff,
   };
 }
 

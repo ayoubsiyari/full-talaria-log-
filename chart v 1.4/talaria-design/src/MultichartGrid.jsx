@@ -3055,10 +3055,12 @@ export default function MultichartGrid({
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
             } catch (_) {}
             const prev = focusedPanelIdRef.current;
-            focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
-            if (!grid) return;
+            // Defer focus (match iframe panel-focus defer): inherit armed tool from
+            // the still-focused peer tile on this same pointerdown before focus moves.
             setTimeout(() => {
+                focusPanelById(HOST_PANEL_ID);
+                if (!grid) return;
                 try {
                     if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
                         if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
@@ -6319,6 +6321,7 @@ export default function MultichartGrid({
             getFinestReplayCadenceMs: () => computeFinestReplayCadenceMs(),
             refreshFinestReplayCadence,
             getChartForPanel: getChartForPanelId,
+            getChartForPanelId: getChartForPanelId,
             resolveChartAtClientPoint,
             loadFileOnPanel,
             getActiveChart: getActiveChartForMultichart,

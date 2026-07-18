@@ -3213,6 +3213,13 @@ class DrawingToolsManager {
      * Clear current tool (cursor mode)
      */
     clearTool(_mirrored = false) {
+        if (multichartArmedDrawFocusForwardV1Enabled() && typeof window !== 'undefined') {
+            const until = window.__multichartArmedInheritDrawGuardUntil;
+            if (until && performance.now() < until) {
+                if (this.drawingState && this.drawingState.isDrawing) return;
+                if (this.currentTool && _isMultichartInheritableDrawTool(this.currentTool)) return;
+            }
+        }
         if (this.isRectSelecting) {
             this.cancelRectangularSelection();
         }
@@ -4011,10 +4018,15 @@ class DrawingToolsManager {
                 }
             })()
             : (window.__multichartGrid || null);
-        if (!grid || typeof grid.getFocusedPanelId !== 'function'
-            || typeof grid.getChartForPanelId !== 'function') {
+        if (!grid || typeof grid.getFocusedPanelId !== 'function') {
             return null;
         }
+        const getChartForPanel = (typeof grid.getChartForPanelId === 'function')
+            ? grid.getChartForPanelId.bind(grid)
+            : (typeof grid.getChartForPanel === 'function')
+                ? grid.getChartForPanel.bind(grid)
+                : null;
+        if (!getChartForPanel) return null;
         let selfPanelId = null;
         try {
             if (this.chart && typeof this.chart._getMultichartPanelId === 'function') {
@@ -4027,7 +4039,7 @@ class DrawingToolsManager {
             return null;
         }
         try {
-            const ch = grid.getChartForPanelId(focusedId);
+            const ch = getChartForPanel(focusedId);
             return pick(ch && ch.drawingManager);
         } catch (_) {
             return null;
@@ -4056,6 +4068,9 @@ class DrawingToolsManager {
         const inheritedMc = this._resolveMultichartFocusedPanelArmedDrawTool();
         if (!inheritedMc || typeof this.setTool !== 'function') return false;
         this.setTool(inheritedMc, true);
+        if (typeof window !== 'undefined') {
+            window.__multichartArmedInheritDrawGuardUntil = performance.now() + 450;
+        }
         return true;
     }
 
