@@ -19610,7 +19610,27 @@ const TalariaV8bLive = () => {
 
     const rebuildNow = () => {
       try {
-        const managers = enumerateV9DrawingManagersFromWindow();
+        const allManagers = enumerateV9DrawingManagersFromWindow();
+        // Multichart: each tile's drawingManager holds a synced copy of the
+        // same shapes. Listing every manager duplicates rows in Objects Tree
+        // (e.g. two "Trend Line 3") — especially while a live_ preview id is
+        // still being promoted to dr_* on peers. Mirror TradingView: show the
+        // focused panel's drawings only. Kill-switch restores the old all-panel
+        // scan (+ dedupe) if needed.
+        const managers = (() => {
+          try {
+            if (typeof window !== "undefined"
+              && window.__TALARIA_OBJECTS_TREE_ALL_PANELS_V1 === true) {
+              return allManagers;
+            }
+          } catch (_) { /* ignore */ }
+          if (allManagers.length <= 1) return allManagers;
+          try {
+            const focusedFirst = enumerateV9DrawingManagersActiveFirst();
+            if (focusedFirst && focusedFirst[0]) return [focusedFirst[0]];
+          } catch (_) { /* ignore */ }
+          return [allManagers[0]];
+        })();
         if (!managers.length) {
           if (layersItemsSigRef.current !== '') {
             layersItemsSigRef.current = '';
@@ -19623,18 +19643,15 @@ const TalariaV8bLive = () => {
           try {
             if (typeof window === "undefined") return false;
             if (window.__TALARIA_DISABLE_OBJECTS_TREE_MULTICHART_DEDUPE_V1) return false;
-            return managers.length > 1;
+            return allManagers.length > 1;
           } catch (_) {
-            return managers.length > 1;
+            return allManagers.length > 1;
           }
         })();
 
         const items = [];
-        // Multichart: every panel's drawingManager holds a synced copy of the
-        // same drawing, so enumerating all managers lists each drawing once per
-        // tile (e.g. 4 brushes × 4 tiles = 16). Synced copies keep the same
-        // stable `id` (chart.js receiveDrawingChange line ~37545) but panel-local
-        // index `points` differ — dedupe on id first, then timestamp geometry.
+        // Safety-net dedupe when scanning more than one manager (kill-switch /
+        // fallback). Prefer __syncId (survives live_ → dr_ promote), then id.
         const seenDrawingKeys = new Set();
         const drawingDedupeKey = (d) => {
           try {

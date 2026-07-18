@@ -7515,6 +7515,9 @@ class DrawingToolsManager {
         const hadLivePreview = this._liveSyncBroadcasted && this._isLiveSyncId(drawing && drawing.id);
         const livePreviewId = hadLivePreview ? drawing.id : null;
         if (hadLivePreview) {
+            // Keep live preview id as __syncId so Objects Tree / peers can
+            // still match this shape while the stable dr_* id is settling.
+            if (!drawing.__syncId) drawing.__syncId = livePreviewId;
             // Promote temporary live preview ID to a stable persisted drawing ID.
             drawing.id = `dr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         } else {

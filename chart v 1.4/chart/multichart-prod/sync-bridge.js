@@ -1147,6 +1147,11 @@
                 } else if (drawing != null) {
                     drawingData = JSON.parse(JSON.stringify(drawing));
                 }
+                // toJSON() omits __syncId — copy it so live_ → dr_ promote still
+                // matches across panels / Objects Tree dedupe.
+                if (drawingData && drawing && drawing.__syncId != null && drawing.__syncId !== '') {
+                    drawingData.__syncId = drawing.__syncId;
+                }
                 if (drawingData && typeof chart._buildDrawingSyncAnchors === 'function') {
                     drawingData = chart._buildDrawingSyncAnchors(drawingData);
                 }

@@ -38569,6 +38569,9 @@ class Chart {
                     const drawingObj = toolInfo.class.fromJSON(drawingData, this);
                     drawingObj.chart = this;
                     drawingObj.id = drawingData.id; // Keep same ID for sync
+                    if (drawingData.__syncId != null && drawingData.__syncId !== '') {
+                        drawingObj.__syncId = drawingData.__syncId;
+                    }
                     
                     // Restore timestamp points for proper multi-timeframe support
                     if (!isLiveId && drawingData._originalTimestampPoints) {
