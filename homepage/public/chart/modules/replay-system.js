@@ -6872,19 +6872,35 @@ class ReplaySystem {
                 if (rangeSyncOn && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
                     chart.candleWidth = parent.candleWidth;
                 }
-                let followOffset = null;
-                if (typeof this.getReplayAutoScrollState === 'function') {
-                    const st = this.getReplayAutoScrollState(chart);
-                    if (st && Number.isFinite(st.offsetX)) followOffset = st.offsetX;
-                }
-                if (followOffset == null && rangeSyncOn) {
-                    if (Number.isFinite(detail && detail.hostOffsetX)) {
-                        followOffset = Number(detail.hostOffsetX);
-                    } else if (Number.isFinite(parent.offsetX)) {
-                        followOffset = parent.offsetX;
+                // PLAY X authority: during host play, same-TF peers get continuous
+                // eased follow from forceSamePairParentDataMirror
+                // (_panelPlayFollowContinuousOffsetX). Writing bar-quantized
+                // getReplayAutoScrollState here then re-writing eased X the same
+                // frame is what made B/C/D stick/shake on Play while TF sync
+                // (one-shot, no dual writer) stayed fine.
+                // Kill-switch __TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW
+                // restores the old quantized write in this mirror path.
+                const hostPlaying = !!(detail && detail.isPlaying)
+                    || chart._multichartPassivePlayActive === true;
+                const deferPlayXToEased = hostPlaying
+                    && !rangeSyncOn
+                    && !(typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW);
+                if (!deferPlayXToEased) {
+                    let followOffset = null;
+                    if (typeof this.getReplayAutoScrollState === 'function') {
+                        const st = this.getReplayAutoScrollState(chart);
+                        if (st && Number.isFinite(st.offsetX)) followOffset = st.offsetX;
                     }
+                    if (followOffset == null && rangeSyncOn) {
+                        if (Number.isFinite(detail && detail.hostOffsetX)) {
+                            followOffset = Number(detail.hostOffsetX);
+                        } else if (Number.isFinite(parent.offsetX)) {
+                            followOffset = parent.offsetX;
+                        }
+                    }
+                    if (followOffset != null) chart.offsetX = followOffset;
                 }
-                if (followOffset != null) chart.offsetX = followOffset;
                 chart._chartViewRestored = true;
             }
 
