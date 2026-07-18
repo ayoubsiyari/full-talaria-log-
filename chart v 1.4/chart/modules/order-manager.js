@@ -13897,6 +13897,38 @@ class OrderManager {
     }
 
     /**
+     * Preview TP green + (enable multi-TP / split): only after the user has dragged
+     * TP off the entry-anchored park position. Splitting while TP == entry is a no-op
+     * and the + sitting on the entry row looked broken.
+     */
+    _canSplitPreviewTpAfterDragFromEntry() {
+        if (!this.tpManuallyPositioned) return false;
+        try {
+            const ep = typeof this._getReferenceEntryForOrderMath === 'function'
+                ? this._getReferenceEntryForOrderMath()
+                : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            let tp = NaN;
+            if (this.previewLines?.tp && Number(this.previewLines.tp.price) > 0) {
+                tp = Number(this.previewLines.tp.price);
+            } else if (Array.isArray(this.tpTargets) && this.tpTargets.length) {
+                const hit = this.tpTargets
+                    .map((t) => Number(t && t.price))
+                    .find((p) => Number.isFinite(p) && p > 0);
+                if (hit != null) tp = hit;
+            }
+            if (!Number.isFinite(tp) || tp <= 0) {
+                tp = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            }
+            if (!(Number.isFinite(ep) && ep > 0 && Number.isFinite(tp) && tp > 0)) return false;
+            const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0;
+            const minDist = Math.max(pip * 0.25, Math.abs(ep) * 1e-8, 1e-12);
+            return Math.abs(tp - ep) > minDist;
+        } catch (_e) {
+            return !!this.tpManuallyPositioned;
+        }
+    }
+
+    /**
      * Green + on preview: enable only the mode that matches where the button was placed
      * (entry row → multi-entry only; TP row / TP badge → multi-TP only). Never both at once.
      * @param {'entry'|'tp'} kind
@@ -13932,6 +13964,10 @@ class OrderManager {
             return;
         }
         if (kind === 'tp') {
+            if (!this._canSplitPreviewTpAfterDragFromEntry()) {
+                this.showNotification('Drag TP away from entry before splitting take-profits.', 'info', 2400);
+                return;
+            }
             const multipleTPToggle = document.getElementById('multipleTPToggle');
             const multipleTPSettings = document.getElementById('multipleTPSettings');
             const multiTPBtn = document.getElementById('multiTPBtn');
@@ -14036,7 +14072,8 @@ class OrderManager {
 
             if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()
                 && this._orderQtyAllowsEntryTpSplitAffordances()
-                && this._canAddMoreTpTargets(this.tpTargets?.length || 0)) {
+                && this._canAddMoreTpTargets(this.tpTargets?.length || 0)
+                && this._canSplitPreviewTpAfterDragFromEntry()) {
                 const self = this;
                 const splitBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
                     className: 'preview-tp-split-add-btn',
@@ -14167,7 +14204,8 @@ class OrderManager {
             if (isMainEntryPreviewLine && !this.isMultiEntryMode) {
                 showActivator = true;
                 activatorKind = 'entry';
-            } else if ((isSingleTpPreviewLine || isTpBadgeActivator) && !multiTpOn) {
+            } else if ((isSingleTpPreviewLine || isTpBadgeActivator) && !multiTpOn
+                && this._canSplitPreviewTpAfterDragFromEntry()) {
                 showActivator = true;
                 activatorKind = 'tp';
             }
@@ -23148,6 +23186,7 @@ class OrderManager {
      * Keeps the outer (farthest) TP unchanged so risk/reward reward zone height does not grow.
      */
     _splitPreviewTPFromLine(linePrice) {
+        if (!this._canSplitPreviewTpAfterDragFromEntry()) return;
         const ep = typeof this._getReferenceEntryForOrderMath === 'function'
             ? this._getReferenceEntryForOrderMath()
             : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
