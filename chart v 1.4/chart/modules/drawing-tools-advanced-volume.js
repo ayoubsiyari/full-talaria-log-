@@ -1447,13 +1447,10 @@ class VolumeProfileTool extends BaseDrawing {
         const left = Math.min(x1, x2);
         const right = Math.max(x1, x2);
         const width = Math.max(1, right - left);
-        // Data-clamped span (volume bins still use loaded candles only).
         const effectiveProfileLeft = Math.min(x1, x2Data);
         const effectiveProfileRight = Math.max(x1, x2Data);
-        // Visual box span — bar column width follows the drawn range (zoom + drag),
-        // including when the right edge extends past the last loaded candle.
-        const visualProfileWidth = width;
-        const effectiveProfileWidth = Math.max(1, visualProfileWidth);
+        const rawEffectiveProfileWidth = Math.max(0, effectiveProfileRight - effectiveProfileLeft);
+        const effectiveProfileWidth = Math.max(1, rawEffectiveProfileWidth);
 
         const yDomain = scales.yScale.domain();
         const domainFirst = Array.isArray(yDomain) && yDomain.length > 0 ? yDomain[0] : this.points[0].y;
@@ -1514,36 +1511,26 @@ class VolumeProfileTool extends BaseDrawing {
         const backgroundOpacity = Number.isFinite(backgroundOpacityRaw)
             ? Math.max(0, Math.min(1, backgroundOpacityRaw))
             : 0.85;
-        // Keep bars visible while dragging so width/height resize live (TradingView-like).
-        const shouldRenderProfileBody = !isPreview;
+        const shouldRenderProfileBody = !isPreview && this._isActiveResizing !== true;
         const isAnchoredProxy = this._isAnchoredProxy === true;
         const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const profileWidthRatioEarly = Math.max(0.15, Math.min(1, Number(this.style.profileWidthRatio) || 0.3));
-        const profilePlacementEarly = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         const xScaleRangeEarly = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
         const chartLeftEdgeEarly = Array.isArray(xScaleRangeEarly) && xScaleRangeEarly.length > 0 ? Math.min(...xScaleRangeEarly) : left;
         const chartRightEdgeEarly = Array.isArray(xScaleRangeEarly) && xScaleRangeEarly.length > 0 ? Math.max(...xScaleRangeEarly) : right;
 
-        // Anchored profile: zone = bar column only (so chart pan still works on the
-        // empty span). Place the column on the DATA range edge — not the viewport
-        // edge — so it zooms/resizes with the chart like TradingView.
+        // Anchored profile: zone background covers the bar column only (TradingView-like),
+        // not the full anchor→latest-candle span (which blocked chart pan).
         let zoneLeft = left;
         let zoneWidth = width;
-        if (isAnchoredProxy) {
+        if (isAnchoredProxy && hasFixedProfileSide) {
             const barColumnWidth = Math.max(12, effectiveProfileWidth * profileWidthRatioEarly);
-            if (hasFixedProfileSide && fixedProfileSide === 'right') {
-                zoneLeft = chartRightEdgeEarly - barColumnWidth;
-                zoneWidth = barColumnWidth;
-            } else if (hasFixedProfileSide && fixedProfileSide === 'left') {
-                // Legacy screen-edge pin only when explicitly forced.
+            if (fixedProfileSide === 'left') {
                 zoneLeft = chartLeftEdgeEarly;
                 zoneWidth = barColumnWidth;
-            } else if (profilePlacementEarly === 'right') {
-                zoneLeft = right - barColumnWidth;
-                zoneWidth = barColumnWidth;
             } else {
-                zoneLeft = left;
+                zoneLeft = chartRightEdgeEarly - barColumnWidth;
                 zoneWidth = barColumnWidth;
             }
         }
@@ -1563,19 +1550,23 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        // Capture pointer over the bar column (not the full anchor span) so chart pan works.
+        // Capture pointer over the bar column (not the full anchor span) so chart pan works on zone background.
         // Level lines, boundaries, and labels sit above this layer for their own hit targets.
         let hitboxLeft = zoneLeft;
         let hitboxWidth = zoneWidth;
         let hitboxPointerEvents = isAnchoredProxy ? 'none' : 'all';
         if (_isVpBodyPanBlockFixEnabled()) {
-            if (isAnchoredProxy) {
+            const barColumnWidth = Math.max(12, (isAnchoredProxy && hasFixedProfileSide)
+                ? zoneWidth
+                : effectiveProfileWidth * profileWidthRatioEarly);
+            if (isAnchoredProxy && hasFixedProfileSide) {
                 hitboxLeft = zoneLeft;
                 hitboxWidth = zoneWidth;
             } else {
-                const barColumnWidth = Math.max(12, effectiveProfileWidth * profileWidthRatioEarly);
                 const placement = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
-                hitboxLeft = placement === 'right' ? (right - barColumnWidth) : left;
+                hitboxLeft = placement === 'right'
+                    ? (effectiveProfileRight - barColumnWidth)
+                    : effectiveProfileLeft;
                 hitboxWidth = barColumnWidth;
             }
             hitboxPointerEvents = this.selected ? 'all' : 'none';
@@ -1938,7 +1929,7 @@ class VolumeProfileTool extends BaseDrawing {
         const { valueAreaLow, valueAreaHigh } = resolveValueAreaBounds(totalVolumeBins, pocIndex);
         
         const profileWidthRatio = Math.max(0.15, Math.min(1, Number(this.style.profileWidthRatio) || 0.3));
-        // Scale histogram to the VISUAL box width so zoom + boundary drag resize bars.
+        // Keep profile bar widths frozen once right boundary passes last loaded candle.
         const maxProfileWidth = Math.max(12, effectiveProfileWidth * profileWidthRatio);
         const profilePlacement = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         const buyColor = this.style.buyColor || 'rgba(53, 186, 209, 0.82)';
@@ -1955,11 +1946,10 @@ class VolumeProfileTool extends BaseDrawing {
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
         const fixedProfileLeftEdge = chartLeftEdge;
         const fixedProfileRightEdge = chartRightEdge;
-        // Level lines follow the visual box; POC/VAH/VAL stop at the range edge unless extendRight.
-        const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : right;
+        const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : effectiveProfileRight;
         const levelLineStartX = hasFixedProfileSide ? fixedProfileLeftEdge : left;
         const levelLineEndX = hasFixedProfileSide
-            ? (extendRightLevels ? fixedProfileRightEdge : right)
+            ? (extendRightLevels ? fixedProfileRightEdge : effectiveProfileRight)
             : profileLineEndX;
         const developingPOCColor = this.style.developingPOCColor || '#9ea4ad';
         const developingVAColor = this.style.developingVAColor || '#35bad1';
@@ -2000,8 +1990,7 @@ class VolumeProfileTool extends BaseDrawing {
             } else if (fixedProfileSide === 'right') {
                 rowLeft = fixedProfileRightEdge - totalWidth;
             } else {
-                // Place bars on the visual range edge (resizes with zoom/drag).
-                rowLeft = profilePlacement === 'right' ? right - totalWidth : left;
+                rowLeft = profilePlacement === 'right' ? effectiveProfileRight - totalWidth : effectiveProfileLeft;
             }
 
             if (volumeDisplay === 'total') {
@@ -2047,7 +2036,7 @@ class VolumeProfileTool extends BaseDrawing {
                 const fixedSideLabelPadding = isAnchoredProxy ? 6 : 3;
                 const labelX = fixedProfileSide === 'left'
                     ? fixedProfileLeftEdge + fixedSideLabelPadding
-                    : (fixedProfileSide === 'right' ? fixedProfileRightEdge - fixedSideLabelPadding : (profilePlacement === 'right' ? right - 3 : left + 3));
+                    : (fixedProfileSide === 'right' ? fixedProfileRightEdge - fixedSideLabelPadding : (profilePlacement === 'right' ? effectiveProfileRight - 3 : effectiveProfileLeft + 3));
                 const labelAnchor = fixedProfileSide === 'right'
                     ? 'end'
                     : (profilePlacement === 'right' ? 'end' : 'start');
@@ -2531,10 +2520,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
             : null;
         proxy._isAnchoredProxy = true;
         proxy._anchoredVpBinCacheHost = this;
-        // Do NOT pin to the viewport edge — bars sit on the data range and resize
-        // with zoom (TradingView-like). profilePlacement left/right still applies
-        // within the anchor→latest span via VolumeProfileTool.render.
-        proxy.fixedProfileSide = '';
+        proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
         proxy.render(container, scales, renderOptsArg = {});
 
         this._profileTopY = proxy._profileTopY;

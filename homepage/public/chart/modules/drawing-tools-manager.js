@@ -2281,7 +2281,7 @@ class DrawingToolsManager {
             try { this.chart._syncAdaptivePriceAxisMargin(); } catch (_) { /* ignore */ }
         }
         const clipPad = (vpResizeActive || vpSelectedForHandleEdit)
-            ? { left: 28, right: 28, top: 16, bottom: 16 }
+            ? { left: 18, right: 18, top: 8, bottom: 8 }
             : null;
         this.updateClipPath(clipPad);
         this.svg.style('overflow', 'hidden');
@@ -2862,18 +2862,6 @@ class DrawingToolsManager {
                     return;
                 }
 
-                // Always try VP handle/boundary resize FIRST — selectDrawing re-renders
-                // and destroys handle DOM under the pointer (kills d3.drag).
-                if (isVolumeProfileHit) {
-                    const vpBest = drawingsAtPoint.find((d) => d && !d.locked && this.isVolumeProfileToolType(d.type))
-                        || drawingsAtPoint[0];
-                    if (vpBest && !vpBest.locked
-                        && this._tryStartVolumeProfileHandleDragFromPointer(vpBest, event, mouseX, mouseY)) {
-                        suppressNextCanvasClick = true;
-                        return;
-                    }
-                }
-
                 const isVolumeProfileBackgroundOnly = !!(
                     rawTarget
                     && rawTarget.closest
@@ -2896,6 +2884,11 @@ class DrawingToolsManager {
 
                 if (isVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
+                    if (best && !best.locked
+                        && this._tryStartVolumeProfileHandleDragFromPointer(best, event, mouseX, mouseY)) {
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
                     if (best && this.isVolumeProfileInteractiveHit(best, mouseX, mouseY) && !best.locked) {
                         this.selectDrawing(best, false);
                         this._volumeProfileValueLabelClickState = {
@@ -4249,49 +4242,6 @@ class DrawingToolsManager {
                     const handleDrawingId = d3.select(handleDrawingGroup).attr('data-id');
                     const handleDrawing = this.drawings.find((d) => d && d.id === handleDrawingId);
                     if (handleDrawing && !handleDrawing.locked) {
-                        // VP: selectDrawing re-renders and destroys the handle DOM under the
-                        // pointer, so d3.drag never starts. Route to document-level resize.
-                        if (this.isVolumeProfileToolType(handleDrawing.type)) {
-                            const [vpHx, vpHy] = this._eventCanvasLocalXY(event);
-                            if (this._tryStartVolumeProfileHandleDragFromPointer(handleDrawing, event, vpHx, vpHy)) {
-                                return;
-                            }
-                            // Fallback: start by data-point-index on the clicked handle node.
-                            const idxAttr = handleNode.getAttribute && handleNode.getAttribute('data-point-index');
-                            const idxFromNode = idxAttr != null ? parseInt(idxAttr, 10) : NaN;
-                            if (Number.isFinite(idxFromNode)) {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                if (typeof event.stopImmediatePropagation === 'function') {
-                                    event.stopImmediatePropagation();
-                                }
-                                if (!handleDrawing.selected
-                                    || this.selectedDrawings.length !== 1
-                                    || this.selectedDrawings[0] !== handleDrawing) {
-                                    this.deselectAll({ forSelectionChange: true });
-                                    handleDrawing.select({ skipAxisHighlights: true });
-                                    this.selectedDrawing = handleDrawing;
-                                    this.selectedDrawings = [handleDrawing];
-                                }
-                                this._stopDirectResizeDragListeners();
-                                this._prepareDrawingForHandleDrag(handleDrawing, event);
-                                this._resizePointerSource = 'document';
-                                this.startHandleDrag(handleDrawing, idxFromNode, { sourceEvent: event });
-                                this._directResizeMoveHandler = (e) => {
-                                    if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
-                                    this.handleDrag({ sourceEvent: e });
-                                };
-                                this._directResizeUpHandler = () => {
-                                    this._stopDirectResizeDragListeners();
-                                    this.endHandleDrag(handleDrawing);
-                                };
-                                this._directResizeDragCleanup = this._addDocumentDragListeners(
-                                    this._directResizeMoveHandler,
-                                    this._directResizeUpHandler
-                                );
-                                return;
-                            }
-                        }
                         this.selectDrawing(handleDrawing, false);
                         event.preventDefault();
                         event.stopPropagation();
@@ -9777,31 +9727,22 @@ class DrawingToolsManager {
             return null;
         }
 
-        // Geometric hit only — ignore pointer-events (handles may be clipped / pe:none
-        // while still visible; canvas routing must still find them).
-        const circleNodes = drawing.group.selectAll(
-            '.resize-handle-hit:not(.volume-profile-boundary-hit), .resize-handle:not(.volume-profile-boundary-hit)'
-        ).nodes();
-        let bestCircleIdx = null;
-        let bestCircleDist2 = Infinity;
+        const circleNodes = drawing.group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').nodes();
         for (let i = 0; i < circleNodes.length; i++) {
             const node = circleNodes[i];
             if (!node) continue;
+            const pe = node.style && node.style.pointerEvents;
+            if (pe === 'none') continue;
             const cx = parseFloat(node.getAttribute('cx'));
             const cy = parseFloat(node.getAttribute('cy'));
-            const rAttr = parseFloat(node.getAttribute('r'));
-            const r = (Number.isFinite(rAttr) ? rAttr : 14) + 8;
+            const r = parseFloat(node.getAttribute('r')) || 14;
             if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
             const dx = mouseX - cx;
             const dy = mouseY - cy;
-            const dist2 = (dx * dx) + (dy * dy);
-            if (dist2 > r * r || dist2 >= bestCircleDist2) continue;
+            if ((dx * dx) + (dy * dy) > r * r) continue;
             const idx = parseInt(node.getAttribute('data-point-index'), 10);
-            if (!Number.isFinite(idx)) continue;
-            bestCircleDist2 = dist2;
-            bestCircleIdx = idx;
+            if (Number.isFinite(idx)) return { pointIndex: idx };
         }
-        if (Number.isFinite(bestCircleIdx)) return { pointIndex: bestCircleIdx };
 
         if (!this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return null;
 
@@ -9811,6 +9752,8 @@ class DrawingToolsManager {
         for (let j = 0; j < boundaryHits.length; j++) {
             const el = boundaryHits[j];
             if (!el) continue;
+            const pe = el.style && el.style.pointerEvents;
+            if (pe === 'none') continue;
             const x1 = parseFloat(el.getAttribute('x1'));
             const y1 = parseFloat(el.getAttribute('y1'));
             const x2 = parseFloat(el.getAttribute('x2'));
@@ -9818,7 +9761,7 @@ class DrawingToolsManager {
             if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
             const elSel = d3.select(el);
             const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
-            const tolerance = Math.max(18, (strokeWidth / 2) + 0.5);
+            const tolerance = Math.max(14, (strokeWidth / 2) + 0.5);
             const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
             if (distance > tolerance) continue;
             const idx = parseInt(el.getAttribute('data-point-index'), 10);
