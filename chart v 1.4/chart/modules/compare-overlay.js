@@ -4390,32 +4390,44 @@ class CompareOverlay {
             const isSelected = this.selectedOverlay === overlay.id;
             const pairFlags = buildOverlayPairFlags(overlay.symbol, isSelected);
             
-            // Match the MAIN chart OHLC header style: muted labels + muted
-            // near-white values (rgba(255,255,255,0.82)), NOT the bright
-            // bullish/bearish green/red the compare legend used before. Keeps
-            // the compare symbol info visually consistent with the main symbol.
-            const _ohlcLabelColor = '#787b86';
+            // Match MAIN legend typography from TalariaV8bLive:
+            //   symbol block 13px / OHLC labels+values 9px weight 500.
+            const _ohlcLabelColor = 'rgba(255,255,255,0.82)';
             const _ohlcValueColor = 'rgba(255,255,255,0.82)';
+            const _ohlcSpan = 'font-size:9px;font-weight:500;font-variant-numeric:tabular-nums lining-nums;line-height:1.2;';
             const ohlcStatsHtml = showLoading
                 ? this._compareLegendLoadingDotsHtml()
                 : `
-                <span style="color: ${_ohlcLabelColor};">O</span>
-                <span style="color: ${_ohlcValueColor};">${latestCandle.o.toFixed(decimals)}</span>
-                <span style="color: ${_ohlcLabelColor};">H</span>
-                <span style="color: ${_ohlcValueColor};">${latestCandle.h.toFixed(decimals)}</span>
-                <span style="color: ${_ohlcLabelColor};">L</span>
-                <span style="color: ${_ohlcValueColor};">${latestCandle.l.toFixed(decimals)}</span>
-                <span style="color: ${_ohlcLabelColor};">C</span>
-                <span style="color: ${_ohlcValueColor};">${latestCandle.c.toFixed(decimals)}</span>
+                <span style="display:inline-flex;align-items:center;gap:10px;flex-wrap:nowrap;min-width:0;">
+                  <span style="display:inline-flex;align-items:center;gap:3px;">
+                    <span style="${_ohlcSpan}color:${_ohlcLabelColor};">O</span>
+                    <span style="${_ohlcSpan}color:${_ohlcValueColor};">${latestCandle.o.toFixed(decimals)}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:3px;">
+                    <span style="${_ohlcSpan}color:${_ohlcLabelColor};">H</span>
+                    <span style="${_ohlcSpan}color:${_ohlcValueColor};">${latestCandle.h.toFixed(decimals)}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:3px;">
+                    <span style="${_ohlcSpan}color:${_ohlcLabelColor};">L</span>
+                    <span style="${_ohlcSpan}color:${_ohlcValueColor};">${latestCandle.l.toFixed(decimals)}</span>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:3px;">
+                    <span style="${_ohlcSpan}color:${_ohlcLabelColor};">C</span>
+                    <span style="${_ohlcSpan}color:${_ohlcValueColor};">${latestCandle.c.toFixed(decimals)}</span>
+                  </span>
+                </span>
             `;
             
             const row = document.createElement('div');
             row.style.cssText = `
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                font-family: Roboto, sans-serif;
-                font-size: 12px;
+                flex-wrap: wrap;
+                column-gap: 10px;
+                row-gap: 2px;
+                font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 9px;
+                line-height: 1.2;
             `;
             
             const iconBtnStyle = `
@@ -4423,59 +4435,69 @@ class CompareOverlay {
                 border: none;
                 color: #787b86;
                 cursor:default;
-                padding: 4px;
+                padding: 2px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                border-radius: 4px;
+                border-radius: 3px;
                 transition: all 0.15s;
+                line-height: 0;
             `;
             
-            // Eye icon - different for visible/hidden
+            // Eye icon - different for visible/hidden (sized to match main legend chrome)
             const eyeIcon = isHidden ? `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
                 </svg>
             ` : `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>
                 </svg>
             `;
+
+            // Shrink settings/trash SVGs if they ship at 18px via constants.
+            const settingsSvg = String(COMPARE_SETTINGS_ICON_SVG || '')
+                .replace(/width="18"/g, 'width="14"')
+                .replace(/height="18"/g, 'height="14"');
+            const trashSvg = String(COMPARE_TRASH_ICON_SVG || '')
+                .replace(/width="18"/g, 'width="14"')
+                .replace(/height="18"/g, 'height="14"');
             
             row.innerHTML = `
                 <div class="overlay-legend-row" data-overlay-id="${overlay.id}" style="
                     display: flex;
                     align-items: center;
-                    gap: 6px;
-                    padding: ${isSelected ? '3px 6px' : '2px 0'};
-                    margin-left: ${isSelected ? '-6px' : '0'};
-                    border-radius: 6px;
+                    gap: 4px;
+                    padding: ${isSelected ? '2px 5px' : '0'};
+                    margin-left: ${isSelected ? '-5px' : '0'};
+                    border-radius: 5px;
                     background: ${isSelected ? 'rgba(41,98,255,0.14)' : 'transparent'};
                     outline: ${isSelected ? '1px solid rgba(41,98,255,0.55)' : 'none'};
                     opacity: ${isHidden ? '0.5' : '1'};
                     cursor: default;
+                    flex: 0 0 auto;
                 ">
                     ${pairFlags || `<span style="
-                        width: 12px;
-                        height: 12px;
+                        width: 10px;
+                        height: 10px;
                         background: ${overlay.color};
-                        border-radius: 3px;
+                        border-radius: 2px;
                         flex-shrink: 0;
                         box-shadow: ${isSelected ? selectedBadgeRing : 'none'};
                         border: ${isSelected ? '1px solid #2962ff' : 'none'};
                     "></span>`}
-                    <span style="color: ${overlay.color}; font-weight: ${isSelected ? '700' : '500'};">${overlay.symbol}</span>
-                    ${isSelected ? '<span title="Selected — drag scale to move" style="color: #2962ff; font-size: 11px; font-weight: 700; line-height: 1;">↕</span>' : ''}
+                    <span style="color: ${overlay.color}; font-size: 13px; line-height: 1.25; font-weight: ${isSelected ? '700' : '500'};">${overlay.symbol}</span>
+                    ${isSelected ? '<span title="Selected — drag scale to move" style="color: #2962ff; font-size: 10px; font-weight: 700; line-height: 1;">↕</span>' : ''}
                     <button class="overlay-visibility-btn" data-id="${overlay.id}" title="${isHidden ? 'Show' : 'Hide'}" style="${iconBtnStyle}">
                         ${eyeIcon}
                     </button>
                     <button class="overlay-settings-btn" data-id="${overlay.id}" title="Settings" style="${iconBtnStyle}">
-                        ${COMPARE_SETTINGS_ICON_SVG}
+                        ${settingsSvg}
                     </button>
                     <button class="overlay-delete-btn" data-id="${overlay.id}" title="Delete" style="${iconBtnStyle}">
-                        ${COMPARE_TRASH_ICON_SVG}
+                        ${trashSvg}
                     </button>
                 </div>
                 ${ohlcStatsHtml}
