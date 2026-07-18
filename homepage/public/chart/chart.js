@@ -31566,9 +31566,19 @@ class Chart {
         const badgeW = badgeD * 1.35;
         const indPanelH = this.separateIndicatorPanelHeight || 0;
         const axisLineY = this.h - m.b - indPanelH;
-        const gapAboveLine = 8;
-        let cy = axisLineY - badgeH / 2 - gapAboveLine;
-        cy = Math.max(m.t + badgeH / 2 + 6, cy);
+        const halfBadgeW = badgeW / 2;
+        const halfBadgeH = badgeH / 2;
+        // Sit in the bottom margin BELOW the time-axis line so flags clear the
+        // price-scale column (they used to sit above the line and paint into m.r).
+        const gapBelowLine = 3;
+        const cyBelow = axisLineY + gapBelowLine + halfBadgeH;
+        const bottomLimit = this.h - indPanelH - halfBadgeH - 1;
+        let cy = Math.min(cyBelow, bottomLimit);
+        if (cy - halfBadgeH < axisLineY + 1) {
+            // Bottom margin too tight — keep above the line but still clip out of price scale.
+            cy = axisLineY - halfBadgeH - 4;
+            cy = Math.max(m.t + halfBadgeH + 6, cy);
+        }
 
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
         const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
@@ -31582,12 +31592,10 @@ class Chart {
             return '🌐';
         };
 
-        // Horizontal plot band (axis labels live inside margin); markers clip naturally when panning —
-        // do not clamp x to the edges or stacks “stick” at the border instead of scrolling off-screen.
+        // Horizontal plot band only — never paint into the right price-scale margin.
+        // Cull when a badge would cross the edge (no x-clamp, so stacks scroll off cleanly).
         const plotClipL = m.l;
         const plotClipR = this.w - m.r;
-        const halfBadgeW = badgeW / 2;
-        const halfBadgeH = badgeH / 2;
 
         /** @type {{ e: object, x: number }[]} */
         const placements = [];
@@ -31624,9 +31632,14 @@ class Chart {
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
 
+        const _badgeInPlotX = (xi) => (
+            Number.isFinite(xi)
+            && xi - halfBadgeW >= plotClipL
+            && xi + halfBadgeW <= plotClipR
+        );
+
         const _drawSingleFlag = (e, xi, flagCy) => {
-            if (!Number.isFinite(xi)) return;
-            if (xi + halfBadgeW < plotClipL || xi - halfBadgeW > plotClipR) return;
+            if (!_badgeInPlotX(xi)) return;
             const flagUrl = typeof api.getFlagImageUrl === 'function'
                 ? api.getFlagImageUrl(e.country || e.currency || '') : null;
             let drew = false;
@@ -31659,6 +31672,16 @@ class Chart {
             }
         };
 
+        // Hard clip: never paint into the price-scale (right) or left gutter.
+        this.ctx.beginPath();
+        this.ctx.rect(
+            plotClipL,
+            Math.min(axisLineY, cy - halfBadgeH - 4),
+            Math.max(0, plotClipR - plotClipL),
+            Math.max(badgeH + 12, this.h - indPanelH - Math.min(axisLineY, cy - halfBadgeH - 4))
+        );
+        this.ctx.clip();
+
         let c = 0;
         while (c < placements.length) {
             let d = c + 1;
@@ -31674,20 +31697,26 @@ class Chart {
                 // Collapsed cluster: stack top 2 flags when zoomed out
                 const showCount = Math.min(n, 2);
                 const stackOffset = badgeD * 0.28;
-                const stackBaseY = cy - stackOffset * (showCount - 1);
+                // Stack downward from the baseline when flags sit below the axis.
+                const stackDown = cy >= axisLineY;
+                const stackBaseY = stackDown
+                    ? cy
+                    : cy - stackOffset * (showCount - 1);
 
                 for (let s = showCount - 1; s >= 0; s--) {
-                    const scy = stackBaseY + s * stackOffset;
+                    const scy = stackDown
+                        ? stackBaseY + s * stackOffset
+                        : stackBaseY + s * stackOffset;
                     _drawSingleFlag(cluster[s].e, clusterCenterX, scy);
                 }
 
-                if (!panFast) {
+                if (!panFast && _badgeInPlotX(clusterCenterX)) {
                     for (let k = 0; k < n; k++) {
                         this._economicCalendarHitRegions.push({
                             left: clusterCenterX - halfBadgeW - 4,
                             right: clusterCenterX + halfBadgeW + 4,
-                            top: cy - badgeH - 4,
-                            bottom: cy + halfBadgeH + 2,
+                            top: cy - halfBadgeH - 4,
+                            bottom: cy + halfBadgeH + stackOffset * (showCount - 1) + 2,
                             event: cluster[k].e
                         });
                     }
@@ -31699,7 +31728,7 @@ class Chart {
                     const offset = (k - (n - 1) / 2) * clusterGap;
                     const xi = x + offset;
                     _drawSingleFlag(e, xi, cy);
-                    if (!panFast && Number.isFinite(xi)) {
+                    if (!panFast && _badgeInPlotX(xi)) {
                         this._economicCalendarHitRegions.push({
                             left: xi - halfBadgeW - 2,
                             right: xi + halfBadgeW + 2,

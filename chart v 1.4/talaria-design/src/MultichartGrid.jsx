@@ -1534,9 +1534,9 @@ function forceResyncChartSurface(ch) {
 // afford the cost of resize() + render() on every mousemove (each
 // resize is 5–20ms; at 60Hz that's a budget blowout).
 //
-// Do NOT CSS-stretch the canvas bitmap here — non-uniform scale fattens
-// axis labels. Clip via overflow:hidden on the wrapper; mouseup settle
-// runs one real resize()+redraw at the final size.
+// Pair with liveReflowPanelsDuringDrag (throttled real resize) so the
+// canvas is not left at the old width inside a narrower cell (price axis
+// stuck mid-panel + empty gutter). Mouseup still runs a full settle.
 function applyHostSlotPositionOnly(cellEl) {
     if (!cellEl) return;
     if (typeof document === "undefined") return;
@@ -1560,7 +1560,41 @@ function applyHostSlotPositionOnly(cellEl) {
     wrapper.dataset.multichartHost = "1";
 }
 
-/** Keep iframe cells clipped during splitter drag (no canvas CSS stretch). */
+/** @type {number} */
+let _liveLayoutReflowAt = 0;
+const LIVE_LAYOUT_REFLOW_MS = 72;
+
+/**
+ * Throttled real canvas resize during splitter drag. Clipping alone leaves
+ * the old-width plot in a narrower cell (axis mid-panel + dead space).
+ * Full resize every rAF is too heavy — ~14Hz keeps labels crisp and panels filled.
+ */
+function liveReflowPanelsDuringDrag(container, cellA, force) {
+    const now = (typeof performance !== "undefined" && performance.now)
+        ? performance.now()
+        : Date.now();
+    if (!force && (now - _liveLayoutReflowAt) < LIVE_LAYOUT_REFLOW_MS) return;
+    _liveLayoutReflowAt = now;
+    if (cellA) applyHostSlotPositionOnly(cellA);
+    try {
+        const host = typeof window !== "undefined" ? window.chart : null;
+        if (host) {
+            forceResyncChartSurface(host);
+            if (typeof host.render === "function") host.render();
+        }
+    } catch (_) {}
+    if (!container) return;
+    container.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+            const ch = ifr.contentWindow && ifr.contentWindow.chart;
+            if (!ch || typeof ch.resize !== "function") return;
+            forceResyncChartSurface(ch);
+            if (typeof ch.render === "function") ch.render();
+        } catch (_) {}
+    });
+}
+
+/** Keep iframe wrappers clipped; liveReflow handles canvas size. */
 function previewIframeChartsInContainer(container) {
     if (!container) return;
     container.querySelectorAll("iframe").forEach((ifr) => {
@@ -7825,10 +7859,11 @@ export default function MultichartGrid({
                 container.style[styleProp] = fracsToTemplate(updated);
                 liveDragRef.current = { axis, fracs: updated };
                 const cellA = cellRefs.current[HOST_PANEL_ID];
-                // Mid-drag: CSS-only preview (fluid). Full resize() every frame
-                // corrupts time-axis / grid — settle once on mouseup instead.
+                // Mid-drag: move host slot every frame; throttled real resize so
+                // panels stay filled (no mid-panel price axis / dead gutter).
                 if (cellA) applyHostSlotPositionOnly(cellA);
                 previewIframeChartsInContainer(container);
+                liveReflowPanelsDuringDrag(container, cellA, false);
                 if (focusedPanelId) {
                     updateFocusFrameDom(focusedPanelId, cellRefs.current);
                 }
@@ -7862,6 +7897,9 @@ export default function MultichartGrid({
                 const cellA = cellRefs.current[HOST_PANEL_ID];
                 // Settle after layout commits: invalidate time ticks, resize once,
                 // re-project drawings onto the final candle scale.
+                // Force one live reflow immediately so the last drag frame is not
+                // left clipped, then full settle (+ delayed pass for late reflow).
+                liveReflowPanelsDuringDrag(container, cellA, true);
                 requestAnimationFrame(() => {
                     thawPanelSurfaces(lockedSurfaces, cellA, container);
                     if (focusedPanelId && computeFocusedRectRef.current) {
@@ -7873,6 +7911,13 @@ export default function MultichartGrid({
                         if (focusedPanelId && computeFocusedRectRef.current) {
                             computeFocusedRectRef.current();
                         }
+                        setTimeout(() => {
+                            const cellA3 = cellRefs.current[HOST_PANEL_ID];
+                            settlePanelChartsAfterLayoutDrag(container, cellA3);
+                            if (focusedPanelId && computeFocusedRectRef.current) {
+                                computeFocusedRectRef.current();
+                            }
+                        }, 100);
                     });
                 });
             }
