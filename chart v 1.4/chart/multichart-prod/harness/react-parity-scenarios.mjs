@@ -56,6 +56,9 @@ import {
   dragPointerPath,
   reactPanelLoadFile,
   readReactPanelFileIds,
+  reactSwitchMultichartLayout,
+  waitForMountViewportPanelReady,
+  pollMountOffsetCommits,
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
   ensureDrawingAnchorInPlotView,
@@ -65,6 +68,9 @@ import {
   twoClickRectangleLive,
   readPanelSelectionOutlineCount,
   currentReactBuildId,
+  openV9LayersPanel,
+  countV9LayerSelectedRows,
+  countV9LayerInventoryRows,
 } from './react-parity-lib.mjs';
 import {
   chartTarget,
@@ -1122,6 +1128,199 @@ async function mcDrawFirstclickReverseLivePeerSel(ctx) {
   });
 }
 
+// ── OT-MS-01 — V9 Layers multi-select highlight via Ctrl+click ───────────
+async function otMs01(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const pid = 'B';
+
+    checks.check('OT-MS-01 L1: build ids match',
+      boot.buildIds.ok, JSON.stringify(boot.buildIds));
+
+    // Prime host panel (H-R03 runs host before panel B — matches live multichart focus topology).
+    const hostPts1 = await reactDefaultTrendlinePoints(page, 'A', 0);
+    const hostPts2 = await reactDefaultTrendlinePoints(page, 'A', 55);
+    await placeTool(page, 'A', 'trendline', hostPts1);
+    await placeTool(page, 'A', 'trendline', hostPts2);
+    await focusReactPanel(page, 'A');
+    await disarmDrawTool(page, 'A');
+
+    const pts1 = await reactDefaultTrendlinePoints(page, pid, 0);
+    const pts2 = await reactDefaultTrendlinePoints(page, pid, 55);
+    const first = await placeTool(page, pid, 'trendline', pts1);
+    const second = await placeTool(page, pid, 'trendline', pts2);
+    checks.check('OT-MS-01 setup: two trendlines on panel B',
+      first && first.id && second && second.id, `${first?.id},${second?.id}`);
+
+    await focusReactPanel(page, pid);
+    await disarmDrawTool(page, pid);
+    await singleClickDrawing(page, pid, first.id);
+    await waitForReactSelection(page, pid, [first.id]);
+    const ctrl = await ctrlClickDrawing(page, pid, second.id);
+    checks.check('OT-MS-01 probe: Ctrl+click second trendline', ctrl && ctrl.ok, ctrl?.reason || '');
+    await waitForReactSelection(page, pid, [first.id, second.id]);
+    await waitForPanelSettle(page, pid);
+    const preSel1 = await isDrawingSelected(page, pid, first.id);
+    const preSel2 = await isDrawingSelected(page, pid, second.id);
+    checks.check('OT-MS-01 probe: store has both before Layers open',
+      preSel1 && preSel2, `t1=${preSel1} t2=${preSel2}`);
+
+    const layersOpen = await openV9LayersPanel(page);
+    checks.check('OT-MS-01 probe: Layers panel opened', layersOpen && layersOpen.ok, layersOpen?.reason || '');
+    await sleep(300);
+
+    const domSel = await countV9LayerSelectedRows(page, 2, 5000);
+    checks.check('OT-MS-01 CORE: ≥2 V9 layer rows highlighted (parent DOM)',
+      domSel.ok && domSel.count >= 2, `count=${domSel.count}`);
+    const sel1 = await isDrawingSelected(page, pid, first.id);
+    const sel2 = await isDrawingSelected(page, pid, second.id);
+    checks.check('OT-MS-01 CORE: dm.selectedDrawings has both ids (store)',
+      sel1 && sel2, `t1=${sel1} t2=${sel2}`);
+    return checks;
+  });
+}
+
+// ── OT-MS-02 — V9 Layers multi-select highlight via Ctrl+marquee ───────────
+async function otMs02(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    const pid = 'B';
+
+    const pts1 = await reactDefaultTrendlinePoints(page, pid, 0);
+    const pts2 = [
+      { x: pts1[0].x + 20, y: pts1[0].y - 0.0005 },
+      { x: pts1[1].x + 20, y: pts1[1].y - 0.0003 },
+    ];
+    const first = await placeTool(page, pid, 'trendline', pts1);
+    const second = await placeTool(page, pid, 'trendline', pts2);
+    checks.check('OT-MS-02 setup: two trendlines on panel B',
+      first && first.id && second && second.id, `${first?.id},${second?.id}`);
+
+    await focusReactPanel(page, pid);
+    const drag = await ctrlDragMarquee(page, pid);
+    checks.check('OT-MS-02 probe: Ctrl+marquee dispatched', drag && drag.ok, drag?.reason || '');
+    checks.check('OT-MS-02 probe: marquee border during drag',
+      drag && drag.during && drag.during.active && drag.during.w > 8,
+      JSON.stringify(drag?.during));
+    await waitForReactSelection(page, pid, [first.id, second.id]);
+
+    const layersOpen = await openV9LayersPanel(page);
+    checks.check('OT-MS-02 probe: Layers panel opened', layersOpen && layersOpen.ok, layersOpen?.reason || '');
+    await sleep(300);
+
+    const domSel = await countV9LayerSelectedRows(page, 2, 5000);
+    checks.check('OT-MS-02 CORE: ≥2 V9 layer rows highlighted (parent DOM)',
+      domSel.ok && domSel.count >= 2, `count=${domSel.count}`);
+    const sel1 = await isDrawingSelected(page, pid, first.id);
+    const sel2 = await isDrawingSelected(page, pid, second.id);
+    checks.check('OT-MS-02 CORE: dm.selectedDrawings has both ids (store)',
+      sel1 && sel2, `t1=${sel1} t2=${sel2}`);
+    return checks;
+  });
+}
+
+// ── OT-MS-03 — PLAN2-FOUND#3 dedupe regression fence (4-up) ─────────────
+async function otMs03(ctx) {
+  const localCtx = { ...ctx, mcLayout: '4v' };
+  return runWithReact(localCtx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+
+    await focusReactPanel(page, 'A');
+    const pts = await reactDefaultRectanglePoints(page, 'A');
+    const placed = await placeTool(page, 'A', 'rectangle', pts);
+    checks.check('OT-MS-03 setup: one rectangle on panel A (4-up)',
+      placed && placed.id, placed ? placed.id : 'null');
+    await waitForPanelSettle(page, 'A');
+
+    const layersOpen = await openV9LayersPanel(page);
+    checks.check('OT-MS-03 probe: Layers panel opened', layersOpen && layersOpen.ok, layersOpen?.reason || '');
+    await sleep(400);
+    await page.evaluate(() => {
+      if (typeof window.__rebuildObjectsTree === 'function') window.__rebuildObjectsTree();
+    });
+    await sleep(200);
+    const rowCount = await countV9LayerInventoryRows(page);
+    checks.check('OT-MS-03 CORE: exactly one inventory row for one shape (dedupe ON)',
+      rowCount === 1, `rowCount=${rowCount}`);
+    return checks;
+  });
+}
+
+// ── H-MC-MOUNT-JITTER-R1 — mount + symbol-change offset commit coalesce ───
+async function hMcMountJitterR1(ctx) {
+  const coalesceOff = !!(ctx.bugSwitches && ctx.bugSwitches.length);
+  const localCtx = { ...ctx, mcLayout: '1' };
+  return runWithReact(localCtx, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    checks.check('H-MC-MOUNT-JITTER-R1 L1: build id on host + panel B iframe', boot.buildIds.ok,
+      JSON.stringify(boot.buildIds));
+
+    await page.evaluate(() => {
+      window.__TALARIA_MC_ENABLE_MOUNT_OFFSET_TRACE_V1 = true;
+    });
+
+    await page.waitForFunction(
+      () => window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 0,
+      { timeout: 120000 },
+    );
+
+    const switchRes = await reactSwitchMultichartLayout(page, '2v');
+    checks.check('H-MC-MOUNT-JITTER-R1 setup: single→2v via layout control',
+      switchRes && switchRes.ok, JSON.stringify(switchRes));
+
+    const frameB = await waitForPanelFrame(page, 'B');
+    checks.check('H-MC-MOUNT-JITTER-R1 setup: panel B iframe present', !!frameB, 'missing B');
+    if (!frameB) return checks;
+
+    await waitForPanelData(page, 'B');
+    await waitForMountViewportPanelReady(frameB);
+
+    const phaseA = await pollMountOffsetCommits(frameB, 2500);
+    checks.check('H-MC-MOUNT-JITTER-R1 phase-A probe constructed', phaseA && phaseA.ok,
+      phaseA ? (phaseA.reason || '') : 'no probe');
+
+    if (coalesceOff) {
+      checks.check('H-MC-MOUNT-JITTER-R1 RED phase-A: offsetChangingCommits >= 3 (coalesce OFF)',
+        phaseA && phaseA.offsetChangingCommits >= 3,
+        `commits=${phaseA?.offsetChangingCommits}`);
+    } else {
+      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: offsetChangingCommits <= 1 after settle',
+        phaseA && phaseA.offsetChangingCommits <= 1,
+        `commits=${phaseA?.offsetChangingCommits} traceLen=${phaseA?.traceLog?.length ?? 0}`);
+    }
+
+    await focusReactPanel(page, 'B');
+    const fileIds = await readReactPanelFileIds(page);
+    const altId = fileIds.A === '27' ? '25' : '27';
+    await reactPanelLoadFile(page, 'B', altId);
+    await waitForPanelData(page, 'B');
+    await waitForMountViewportPanelReady(frameB);
+
+    const phaseB = await pollMountOffsetCommits(frameB, 2000);
+    checks.check('H-MC-MOUNT-JITTER-R1 phase-B probe constructed', phaseB && phaseB.ok,
+      phaseB ? (phaseB.reason || '') : 'no probe');
+
+    if (coalesceOff) {
+      checks.check('H-MC-MOUNT-JITTER-R1 RED phase-B: symbol swap offsetChangingCommits >= 3',
+        phaseB && phaseB.offsetChangingCommits >= 3,
+        `commits=${phaseB?.offsetChangingCommits}`);
+    } else {
+      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: symbol swap offsetChangingCommits <= 1',
+        phaseB && phaseB.offsetChangingCommits <= 1,
+        `commits=${phaseB?.offsetChangingCommits} traceLen=${phaseB?.traceLog?.length ?? 0}`);
+    }
+
+    notes.push(`H-MC-MOUNT-JITTER-R1 mount coalesce ${coalesceOff ? 'OFF' : 'ON'}: `
+      + `phaseA commits=${phaseA?.offsetChangingCommits} phaseB commits=${phaseB?.offsetChangingCommits} `
+      + `traceA=${phaseA?.traceLog?.length ?? 0} traceB=${phaseB?.traceLog?.length ?? 0}`);
+    return checks;
+  });
+}
+
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -1146,5 +1345,9 @@ export function reactScenarioList() {
     { id: 'MC-DRAW-FIRSTCLICK-R', title: 'live dist-v9: A armed → unfocused B draw click 1', run: mcDrawFirstclickLive },
     { id: 'MC-DRAW-FIRSTCLICK-2-R', title: 'live dist-v9: B armed → unfocused A draw click 1', run: mcDrawFirstclickReverseLive },
     { id: 'MC-DRAW-FIRSTCLICK-2-R-SEL', title: 'live dist-v9: B armed → draw A clears peer selection chrome', run: mcDrawFirstclickReverseLivePeerSel },
+    { id: 'OT-MS-01', title: 'OT-MS: V9 Layers multi-select highlight via Ctrl+click', run: otMs01 },
+    { id: 'OT-MS-02', title: 'OT-MS: V9 Layers multi-select highlight via Ctrl+marquee', run: otMs02 },
+    { id: 'OT-MS-03', title: 'OT-MS: 4-up dedupe fence — one shape → one inventory row', run: otMs03 },
+    { id: 'H-MC-MOUNT-JITTER-R1', title: 'MC-MOUNT-JITTER: single→multi + symbol swap offset coalesce (react-parity)', run: hMcMountJitterR1 },
   ];
 }

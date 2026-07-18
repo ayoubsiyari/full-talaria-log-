@@ -571,6 +571,9 @@ export async function installBuiltProductBoot(page, {
   axisMarginFloorOff = false,
   vpHandleCanvasRoutingOff = false,
   armedDrawFocusForwardOff = false,
+  ctrlMarqueeOff = false,
+  otMsHighlightOff = false,
+  bugSwitches = null,
 } = {}) {
   const off = switchOffGearFix || process.env.REACT_PARITY_GEAR_FIX_OFF === '1';
   const peerOff = switchOffPeerDeselect || process.env.REACT_PARITY_PEER_DESELECT_OFF === '1';
@@ -593,7 +596,10 @@ export async function installBuiltProductBoot(page, {
   const amfOff = axisMarginFloorOff || process.env.REACT_PARITY_AXIS_MARGIN_FLOOR_OFF === '1';
   const vpHandleRouteOff = vpHandleCanvasRoutingOff || process.env.REACT_PARITY_VP_HANDLE_CANVAS_ROUTING_OFF === '1';
   const armedDrawFwdOff = armedDrawFocusForwardOff || process.env.HARNESS_MC_ARMED_DRAW_FOCUS_FORWARD_OFF === '1';
-  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn, vpHandleCanvasRoutingOffOn, armedDrawFocusForwardOffOn) => {
+  const ctrlMarqueeOffOn = ctrlMarqueeOff || process.env.REACT_PARITY_CTRL_MARQUEE_OFF === '1';
+  const otMsHighlightOffOn = otMsHighlightOff || process.env.REACT_PARITY_OT_MS_HIGHLIGHT_OFF === '1';
+  const bugFlags = Array.isArray(bugSwitches) ? bugSwitches : [];
+  await page.evaluateOnNewDocument((sess, switchOff, peerDeselectOff, panelKbOff, migOn, phase1OffOn, phase5OffOn, iframeDedupeOff, lifecycleOffOn, legacySelOffOn, dliOffOn, chromeRoutingOffOn, chromeDomReadyOffOn, panelBTransportOffOn, panelBTransportAOffOn, orderMcStateConvergeOffOn, v9QuickbarLiveResolveOffOn, vpAvLabelBridgeOffOn, vpAvCoordRepositionOffOn, axisMarginFloorOffOn, vpHandleCanvasRoutingOffOn, armedDrawFocusForwardOffOn, ctrlMarqueeOffOnArg, otMsHighlightOffOnArg, bugFlagList) => {
     if (switchOff) window.__TALARIA_DISABLE_MULTICHART_QUICKBAR_SETTINGS_FIX_V2 = true;
     if (peerDeselectOff) window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 = true;
     if (phase5OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE5_PEER_ISOLATION = true;
@@ -613,6 +619,11 @@ export async function installBuiltProductBoot(page, {
     if (axisMarginFloorOffOn) window.__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX = true;
     if (vpHandleCanvasRoutingOffOn) window.__TALARIA_DISABLE_VP_HANDLE_CANVAS_ROUTING_FIX = true;
     if (armedDrawFocusForwardOffOn) window.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1 = true;
+    if (ctrlMarqueeOffOnArg) window.__TALARIA_DISABLE_CTRL_MARQUEE_FIX = true;
+    if (otMsHighlightOffOnArg) window.__TALARIA_DISABLE_OBJECTS_TREE_MULTISELECT_HIGHLIGHT_V1 = true;
+    if (Array.isArray(bugFlagList)) {
+      for (const f of bugFlagList) window[f] = true;
+    }
     if (phase1OffOn) window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = true;
     if (migOn) {
       window.__TALARIA_DISABLE_MC_REMIGRATION_PHASE1_ENGINE = false;
@@ -625,7 +636,7 @@ export async function installBuiltProductBoot(page, {
       const sid = `harness-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       localStorage.setItem('u1_backtestingSession', JSON.stringify({ ...sess, session_id: sid }));
     } catch (_) { /* ignore */ }
-  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff, vpHandleRouteOff, armedDrawFwdOff);
+  }, HARNESS_BACKTEST_SESSION, off, peerOff, kbOff, mig, p1Off, p5Off, dedupeOff, lcOff, legOff, dliOff, croff, cdroff, pbstOff, pbstAOff, omscOff, v9qlrOff, vpAvLblOff, vpAvCoordOff, amfOff, vpHandleRouteOff, armedDrawFwdOff, ctrlMarqueeOffOn, otMsHighlightOffOn, bugFlags);
 }
 
 /** Assert parent globals are NOT directly visible inside a panel iframe (I14 boundary). */
@@ -1268,6 +1279,39 @@ export async function ctrlClickDrawing(page, panelId, drawId) {
   } finally {
     await page.keyboard.up('Control');
   }
+}
+
+/** Open V9 Objects Tree / Layers right panel (I15 — real click). */
+export async function openV9LayersPanel(page) {
+  const btn = await page.$('[data-v9-utility="layers"]');
+  if (!btn) return { ok: false, reason: 'layers utility button not found' };
+  await btn.click();
+  await sleep(200);
+  return { ok: true, actuation: 'click[data-v9-utility=layers]' };
+}
+
+/** Count parent Layers rows with multi-select highlight probe. */
+export async function countV9LayerSelectedRows(page, minRows = 1, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = 0;
+  while (Date.now() < deadline) {
+    last = await page.evaluate(() => document.querySelectorAll('[data-layer-selected="1"]').length);
+    if (last >= minRows) return { ok: true, count: last };
+    await sleep(80);
+  }
+  return { ok: false, count: last };
+}
+
+/** Count visible layer inventory rows (name spans in layers panel). */
+export async function countV9LayerInventoryRows(page) {
+  return page.evaluate(() => document.querySelectorAll('[data-v9-layer-row="1"]').length);
+}
+
+export function reactParityUrlWithLayout(stackUrl, mcLayout = '2v') {
+  if (!stackUrl) return stackUrl;
+  if (/mcLayout=/.test(stackUrl)) return stackUrl.replace(/mcLayout=[^&]+/, `mcLayout=${encodeURIComponent(mcLayout)}`);
+  const sep = stackUrl.includes('?') ? '&' : '?';
+  return `${stackUrl}${sep}mcLayout=${encodeURIComponent(mcLayout)}`;
 }
 
 /** Ctrl+drag marquee via real page.mouse at iframe-translated coords (I15 — all panels). */
@@ -2032,6 +2076,86 @@ export async function reactPanelLoadFile(page, panelId, fileId) {
   }, panelId, fileId);
 }
 
+/** Real MultichartGrid layout switch (same path as layout picker). */
+export async function reactSwitchMultichartLayout(page, layoutId = '2v') {
+  return page.evaluate((lid) => {
+    if (typeof window.__talariaHarnessSetLayout === 'function') {
+      const ok = window.__talariaHarnessSetLayout(lid);
+      return { ok: !!ok, layoutId: lid };
+    }
+    return { ok: false, reason: '__talariaHarnessSetLayout missing' };
+  }, layoutId);
+}
+
+export async function waitForMountViewportPanelReady(frame, timeoutMs = 15000) {
+  if (!frame) return false;
+  try {
+    await frame.waitForFunction(
+      () => {
+        const ch = window.chart;
+        if (!ch) return false;
+        if (typeof ch._mcMountViewportCoalesceFixActive === 'function'
+          && ch._mcMountViewportCoalesceFixActive()) {
+          return !!(ch._mcMountViewportPanelReady || ch._mcMountViewportCoalesceDone);
+        }
+        return true;
+      },
+      { timeout: timeoutMs },
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Poll offsetX each rAF for mount/symbol-change jitter proof. */
+export async function pollMountOffsetCommits(frame, durationMs = 2500) {
+  if (!frame) return { ok: false, reason: 'no frame' };
+  return frame.evaluate(async (dur) => {
+    const ch = window.chart;
+    if (!ch) return { ok: false, reason: 'no chart' };
+    const pm = ch.margin || { l: 60, r: 60 };
+    const plotWFn = () => Math.max(1, (Number(ch.w) || 0) - pm.l - pm.r);
+    const threshold = 0.5;
+    let lastOx = Number(ch.offsetX);
+    let offsetChangingCommits = 0;
+    const samples = [];
+    const start = performance.now();
+    const end = start + dur;
+    while (performance.now() < end) {
+      const ox = Number(ch.offsetX);
+      if (Math.abs(ox - lastOx) > threshold) {
+        offsetChangingCommits += 1;
+        samples.push({
+          t: performance.now() - start,
+          from: lastOx,
+          to: ox,
+          plotW: plotWFn(),
+        });
+        lastOx = ox;
+      }
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    const traceLog = Array.isArray(ch._mcMountOffsetTraceLog)
+      ? ch._mcMountOffsetTraceLog.slice()
+      : [];
+    return {
+      ok: true,
+      offsetChangingCommits,
+      finalOx: Number(ch.offsetX),
+      firstOx: samples.length ? samples[0].from : lastOx,
+      deltaFirstFinal: samples.length
+        ? Math.abs(Number(samples[samples.length - 1].to) - Number(samples[0].from))
+        : 0,
+      samples,
+      traceLog,
+      plotW: plotWFn(),
+      panelReady: !!ch._mcMountViewportPanelReady,
+      coalesceDone: !!ch._mcMountViewportCoalesceDone,
+    };
+  }, durationMs);
+}
+
 export async function readReactPanelFileIds(page) {
   const host = await page.evaluate(() => {
     const ch = window.chart;
@@ -2138,9 +2262,15 @@ export async function bootReactMultichart(browser, stack, opts = {}) {
     axisMarginFloorOff: !!opts.axisMarginFloorOff,
     vpHandleCanvasRoutingOff: !!opts.vpHandleCanvasRoutingOff,
     armedDrawFocusForwardOff: !!opts.armedDrawFocusForwardOff,
+    ctrlMarqueeOff: !!opts.ctrlMarqueeOff,
+    otMsHighlightOff: !!opts.otMsHighlightOff,
+    bugSwitches: opts.bugSwitches || null,
   });
   await installParentSettingsProbe(page);
-  await page.goto(stack.url, { waitUntil: 'domcontentloaded', timeout: 180000 });
+  const bootUrl = opts.mcLayout
+    ? reactParityUrlWithLayout(stack.url, opts.mcLayout)
+    : stack.url;
+  await page.goto(bootUrl, { waitUntil: 'domcontentloaded', timeout: 180000 });
   await waitForReactMultichartReady(page);
   await clearPanelDrawings(page, 'A');
   await clearPanelDrawings(page, 'B');

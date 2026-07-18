@@ -1286,6 +1286,15 @@ function mcPostBootResizeFlushEnabled() {
     }
 }
 
+function mcMountViewportCoalesceEnabled() {
+    try {
+        return !(typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_MOUNT_VIEWPORT_COALESCE_V1 === true);
+    } catch (_) {
+        return true;
+    }
+}
+
 function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
     if (!mcPostBootResizeFlushEnabled() || !cellRefs || !panelIds || !panelIds.length) return;
     // forceRecenter only on first multichart boot (F5); later tile joins must not
@@ -1301,6 +1310,15 @@ function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
                 const ifr = cell.querySelector("iframe");
                 const ch = ifr && ifr.contentWindow && ifr.contentWindow.chart;
                 if (!ch) continue;
+                if (mcMountViewportCoalesceEnabled()) {
+                    if (typeof ch._invalidateTimeAxisTickCaches === "function") {
+                        try { ch._invalidateTimeAxisTickCaches(); } catch (_) {}
+                    }
+                    if (ch._mcMountViewportPanelReady || ch._mcMountViewportCoalesceDone) {
+                        if (typeof ch.render === "function") ch.render();
+                    }
+                    continue;
+                }
                 // Unlock settle so post-reveal correction is not ignored.
                 try { ch._multichartViewportSettleUntil = 0; } catch (_) {}
                 if (typeof ch._invalidateTimeAxisTickCaches === "function") {

@@ -3968,6 +3968,15 @@ function v9PanelSelectionChromeRoutingV3Enabled() {
   }
 }
 
+function v9ObjectsTreeMultiselectHighlightEnabled() {
+  try {
+    return !(typeof window !== "undefined"
+      && window.__TALARIA_DISABLE_OBJECTS_TREE_MULTISELECT_HIGHLIGHT_V1 === true);
+  } catch (_) {
+    return true;
+  }
+}
+
 function v9DrawingIsPrimarySelection(dm, drawing) {
   if (!dm || !drawing) return false;
   if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
@@ -14199,6 +14208,7 @@ const TalariaV8bLive = () => {
   const [layersItems, setLayersItems] = useState([]);
   const [layersVis, setLayersVis] = useState({});
   const [layersSearch, setLayersSearch] = useState("");
+  const [layersSelectionRevision, setLayersSelectionRevision] = useState(0);
   const [newsOpen, setNewsOpen] = useState(false);
   const [newsPos, setNewsPos] = useState({ x: 0, y: 0 });
   const [newsTab, setNewsTab] = useState("upcoming");
@@ -14661,6 +14671,24 @@ const TalariaV8bLive = () => {
     };
     applyWhenChartReady();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // react-parity / harness: real layout control via the same setLayoutPanels path.
+  useEffect(() => {
+    window.__talariaHarnessSetLayout = (id) => {
+      const normalized = id === "2" ? "2v" : id === "2x2" ? "4" : id;
+      const tuple = layoutTupleFromId(normalized);
+      if (tuple) setLayoutPanels(tuple);
+      return !!tuple;
+    };
+    return () => {
+      try {
+        if (window.__talariaHarnessSetLayout) delete window.__talariaHarnessSetLayout;
+      } catch (_) {
+        window.__talariaHarnessSetLayout = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -19791,6 +19819,12 @@ const TalariaV8bLive = () => {
       window.__rebuildObjectsTree();
     }
   }, [rightPanel]);
+
+  useEffect(() => {
+    const bump = () => setLayersSelectionRevision((n) => n + 1);
+    window.addEventListener("drawingSelectionChanged", bump);
+    return () => window.removeEventListener("drawingSelectionChanged", bump);
+  }, []);
 
   // Resolve current legacy tool from V9 state. Sub-tool selection in
   // groupSelected[tool] wins; otherwise falls back to the group default.
@@ -35338,7 +35372,7 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {/* Phase 7.2.3: Panel layout first (right of Place Order), then objects / news / screenshot / fullscreen. */}
         {[{id:"layout",icon:"layout",label:"Layouts"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button type="button" key={id}
+          <button type="button" key={id} data-v9-utility={id}
             onClick={(e) => {
               if(id==="layout"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} return; }
               if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); setSupportChatOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} }
@@ -37465,17 +37499,21 @@ const TalariaV8bLive = () => {
                 return visItems.length===0?(
                   <div style={{padding:"28px 14px",textAlign:"center",color:c.tm,fontSize:11}}>{layersSearch.trim()?"No matching objects":"No objects on chart"}</div>
                 ):visItems.map(item=>{
+                  void layersSelectionRevision;
                   const isH = swHov===`lyr-${item.id}`;
                   const isJumpH = swHov===`lyrJ-${item.id}`;
                   const isSetH = swHov===`lyrS-${item.id}`;
                   const isVisH = swHov===`lyrV-${item.id}`;
                   const isDelH = swHov===`lyrD-${item.id}`;
                   const isDelDn = swHov===`lyrD-${item.id}_dn`;
+                  const layerCtx = () => findLayerDrawingContext(item);
+                  const { dm: selDm, d: selD } = layerCtx();
+                  const otMsHighlightOn = v9ObjectsTreeMultiselectHighlightEnabled();
+                  const isSelected = otMsHighlightOn && selDm && selD && v9DrawingIsPrimarySelection(selDm, selD);
                   const anyHov = isH||isJumpH||isSetH||isVisH||isDelH||isDelDn;
                   const isGloballyVisible = item._visible !== false;
                   const isTfVisibleOnChart = item._tfVisibleOnChart !== false;
                   const showOnChart = isGloballyVisible && isTfVisibleOnChart;
-                  const layerCtx = () => findLayerDrawingContext(item);
                   const openLayerSettings = (preferVisibilityTab = false) => {
                     const { dm, d } = layerCtx();
                     if (!dm || !d) return;
@@ -37493,7 +37531,9 @@ const TalariaV8bLive = () => {
                     }
                   };
                   return (
-                    <div key={item.id}
+                    <div key={`${item.id}-s${layersSelectionRevision}`}
+                      data-v9-layer-row="1"
+                      {...(isSelected ? { 'data-layer-selected': '1' } : {})}
                       {...modalPointerActivate(() => {
                         const { dm, d } = layerCtx();
                         if (!dm || !d) return;
@@ -37507,13 +37547,14 @@ const TalariaV8bLive = () => {
                       onMouseLeave={()=>setSwHov(null)}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
                         cursor:"default",position:"relative",
-                        background:anyHov?"rgba(255,255,255,0.022)":"transparent",
+                        background:isSelected?c.acD:(anyHov?"rgba(255,255,255,0.022)":"transparent"),
                         transition:"background 0.04s"}}>
-                      {anyHov && <div style={{position:"absolute",left:0,top:"12%",bottom:"12%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                      {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`,pointerEvents:"none"}}/>}
+                      {!isSelected && anyHov && <div style={{position:"absolute",left:0,top:"12%",bottom:"12%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                       {/* drawing type icon */}
-                      <I n={item.icon} s={15} cl={showOnChart?c.ts:"rgba(140,160,255,0.38)"}/>
+                      <I n={item.icon} s={15} cl={isSelected?c.acL:(showOnChart?c.ts:"rgba(140,160,255,0.38)")}/>
                       {/* name */}
-                      <span style={{flex:1,fontSize:13,fontWeight:500,color:showOnChart?c.ts:"rgba(140,160,255,0.38)",
+                      <span style={{flex:1,fontSize:13,fontWeight:isSelected?700:500,color:isSelected?c.acL:(showOnChart?c.ts:"rgba(140,160,255,0.38)"),
                         overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
                         userSelect:"none",cursor:"default",
                         transition:"color 0.04s"}} title={

@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260718b07';
+const CHART_ENGINE_BUILD = '20260718b78';
 /** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
 const PRICE_AXIS_MIN_R = 60;
 const PRICE_AXIS_MIN_L = 60;
@@ -4261,7 +4261,13 @@ class Chart {
      * scroll so bar index N is the same candle on both panels (TradingView parity).
      * @returns {boolean}
      */
-    _multichartMirrorViewportFromHost() {
+    _multichartMirrorViewportFromHost(opts = {}) {
+        const authoritative = !!(opts && opts.authoritative);
+        if (this._mcMountViewportCoalesceSuppressOffsetWrite
+            && this._mcMountViewportCoalesceSuppressOffsetWrite('mirror')
+            && !authoritative) {
+            return false;
+        }
         if (typeof this._isMultichartBootViewportLocked === 'function'
             && this._isMultichartBootViewportLocked()) {
             return true;
@@ -4356,6 +4362,10 @@ class Chart {
             const wGuardOff = typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_MC_VIEWPORT_W_GUARD_V1 === true;
             if (!wGuardOff && (rawW < 50 || plotW < 40)) {
+                if (this._mcMountViewportCoalesceSuppressOffsetWrite
+                    && this._mcMountViewportCoalesceSuppressOffsetWrite('mirror-w-guard')) {
+                    return false;
+                }
                 if (!this._mcViewportWGuardRetry) {
                     this._mcViewportWGuardRetry = true;
                     requestAnimationFrame(() => {
@@ -4383,11 +4393,19 @@ class Chart {
                 // formula; the mirror path did not, leaving a ≤0.5px offsetX
                 // discontinuity between the resize pin and the mirror commit that
                 // reads as a hairline slide. Round here to match (paint-once).
+                const prevOx = this.offsetX;
                 this.offsetX = Math.round(plotW - (rightIdx + 1) * spacing);
+                if (typeof this._mcTraceMountOffsetWrite === 'function') {
+                    this._mcTraceMountOffsetWrite('mirror', prevOx, this.offsetX);
+                }
             } else {
                 const ppm = parent.margin || { l: 60, r: 60 };
                 const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
+                const prevOx = this.offsetX;
                 this.offsetX = parent.offsetX * (plotW / parentPlotW);
+                if (typeof this._mcTraceMountOffsetWrite === 'function') {
+                    this._mcTraceMountOffsetWrite('mirror', prevOx, this.offsetX);
+                }
             }
 
             if (typeof this.constrainOffset === 'function') {
@@ -5106,10 +5124,31 @@ class Chart {
                     }
                 }
 
-                this.resize();
                 const samePairEmbedMc = samePairAsHost && !finerPanelSelfOwner && !independentPair
                     && typeof this._isMultichartEmbedPanel === 'function'
                     && this._isMultichartEmbedPanel();
+                const useMountCoalesce = this._mcMountViewportCoalesceFixActive();
+                if (!useMountCoalesce) {
+                    this.resize();
+                }
+                if (useMountCoalesce) {
+                    this._mcBeginMountViewportCoalesce(loadSeq, {
+                        samePairEmbedMc,
+                        switchingPair,
+                        independentPair,
+                    });
+                    this._mcScheduleMountViewportCoalesce(loadSeq);
+                    if (pairLoadUiActive) {
+                        try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
+                    }
+                    viewportCommitted = true;
+                    try {
+                        global.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                            detail: { fileId, source: 'loadMultichartPanelFromHost' },
+                        }));
+                    } catch (_ev) { /* ignore */ }
+                    this._emitMultichartHostDataCommit();
+                } else {
                 let mirroredHostViewport = false;
                 // VIEWPORT INDEPENDENCE: only snap this panel's boot viewport to the
                 // host when visible-range sync is explicitly ON. With sync OFF we skip
@@ -5183,6 +5222,7 @@ class Chart {
                         selfMc._scheduleBacktestTimeframePrefetch(fidMc, selfMc.backtestingSession);
                     }
                 }, 400);
+                }
             } finally {
                 if (loadSeq === this._multichartPanelLoadSeq) {
                     this._multichartPanelLoadInflight = null;
@@ -5454,10 +5494,24 @@ class Chart {
             this._finalizePairLoadRaf = null;
         }
 
+        if (this._mcMountViewportCoalesceFixActive && this._mcMountViewportCoalesceFixActive()) {
+            if (this._mcMountViewportCoalescePending) {
+                return;
+            }
+        }
+
         const runOnce = () => {
             this._finalizePairLoadTimer = null;
             this._finalizePairLoadRaf = null;
             try {
+                if (this._mcMountViewportCoalesceFixActive && this._mcMountViewportCoalesceFixActive()
+                    && this._mcMountViewportCoalesceDone) {
+                    if (typeof this._invalidateTimeAxisTickCaches === 'function') {
+                        try { this._invalidateTimeAxisTickCaches(); } catch (_) { /* ignore */ }
+                    }
+                    if (typeof this.render === 'function') this.render();
+                    return;
+                }
                 const bootLocked = this._multichartBootViewportPositioned
                     && Number.isFinite(this._multichartViewportSettleUntil)
                     && performance.now() < this._multichartViewportSettleUntil
@@ -18189,6 +18243,166 @@ class Chart {
      * returns false, so live resize, pan, play-follow and single-chart are
      * untouched.
      */
+    _mcMountViewportCoalesceFixActive() {
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_MOUNT_VIEWPORT_COALESCE_V1 === true) {
+            return false;
+        }
+        return typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel();
+    }
+
+    _mcMountOffsetTraceEnabled() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_MC_ENABLE_MOUNT_OFFSET_TRACE_V1 === true;
+    }
+
+    _mcTraceMountOffsetWrite(callsite, beforeOx, afterOx) {
+        if (!this._mcMountOffsetTraceEnabled()) return;
+        const pm = this.margin || { l: 60, r: 60 };
+        const rawW = Number(this.w) || 0;
+        const plotW = Math.max(1, rawW - pm.l - pm.r);
+        const ox = Number.isFinite(afterOx) ? afterOx : Number(this.offsetX);
+        const prev = Number.isFinite(beforeOx) ? beforeOx : null;
+        const entry = {
+            t: (typeof performance !== 'undefined' && performance.now)
+                ? performance.now() : Date.now(),
+            callsite: String(callsite || 'unknown'),
+            offsetX: ox,
+            delta: (prev != null && Number.isFinite(ox)) ? ox - prev : null,
+            plotW,
+            w: rawW,
+            dataLen: Array.isArray(this.data) ? this.data.length : 0,
+            pending: !!this._mcMountViewportCoalescePending,
+            applying: !!this._mcMountViewportCoalesceApplying,
+        };
+        if (!Array.isArray(this._mcMountOffsetTraceLog)) this._mcMountOffsetTraceLog = [];
+        this._mcMountOffsetTraceLog.push(entry);
+        try { console.info('[MC-MOUNT-OFFSET-TRACE]', entry); } catch (_) { /* ignore */ }
+    }
+
+    _mcMountViewportPlotReady() {
+        const pm = this.margin || { l: 60, r: 60 };
+        const rawW = Number(this.w) || 0;
+        const plotW = Math.max(1, rawW - pm.l - pm.r);
+        const wGuardOff = typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_MC_VIEWPORT_W_GUARD_V1 === true;
+        const plotOk = wGuardOff || (rawW >= 50 && plotW >= 40);
+        const dataOk = Array.isArray(this.data) && this.data.length > 0;
+        return plotOk && dataOk;
+    }
+
+    _mcMountViewportCoalesceSuppressOffsetWrite() {
+        return this._mcMountViewportCoalesceFixActive()
+            && this._mcMountViewportCoalescePending
+            && !this._mcMountViewportCoalesceApplying;
+    }
+
+    _mcBeginMountViewportCoalesce(loadSeq, meta = {}) {
+        this._mcMountViewportCoalesceSeq = loadSeq;
+        this._mcMountViewportCoalescePending = true;
+        this._mcMountViewportCoalesceDone = false;
+        this._mcMountViewportPanelReady = false;
+        this._mcMountViewportCoalesceMeta = meta;
+        try {
+            const now = performance.now();
+            const until = now + 3500;
+            if (Number.isFinite(this._multichartViewportSettleUntil)) {
+                this._multichartViewportSettleUntil = Math.max(this._multichartViewportSettleUntil, until);
+            } else {
+                this._multichartViewportSettleUntil = until;
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (window.frameElement) window.frameElement.style.opacity = '0';
+        } catch (_) { /* ignore */ }
+    }
+
+    _mcScheduleMountViewportCoalesce(loadSeq) {
+        if (!this._mcMountViewportCoalescePending) return;
+        if (this._mcMountViewportCoalesceRaf) {
+            cancelAnimationFrame(this._mcMountViewportCoalesceRaf);
+            this._mcMountViewportCoalesceRaf = null;
+        }
+        const self = this;
+        const tryCommit = () => {
+            if (!self._mcMountViewportCoalescePending) return;
+            if (loadSeq !== self._mcMountViewportCoalesceSeq) {
+                self._mcMountViewportCoalescePending = false;
+                return;
+            }
+            if (!self._mcMountViewportPlotReady()) {
+                self._mcMountViewportCoalesceRaf = requestAnimationFrame(tryCommit);
+                return;
+            }
+            self._mcApplyMountViewportAuthoritativeCommit(loadSeq);
+        };
+        self._mcMountViewportCoalesceRaf = requestAnimationFrame(tryCommit);
+    }
+
+    _mcApplyMountViewportAuthoritativeCommit(loadSeq) {
+        if (!this._mcMountViewportCoalescePending) return;
+        if (loadSeq !== this._mcMountViewportCoalesceSeq) return;
+        this._mcMountViewportCoalesceApplying = true;
+        const meta = this._mcMountViewportCoalesceMeta || {};
+        const beforeOx = Number(this.offsetX);
+        try {
+            if (typeof this.resize === 'function') this.resize();
+            let committed = false;
+            const samePairEmbedMc = !!meta.samePairEmbedMc && this._multichartVisibleRangeSyncOn;
+            if (samePairEmbedMc && typeof this._multichartMirrorViewportFromHost === 'function') {
+                try {
+                    committed = !!this._multichartMirrorViewportFromHost({ authoritative: true });
+                } catch (_mirror) { /* ignore */ }
+            }
+            if (samePairEmbedMc && typeof this._tryExtendReplayMasterFromParent === 'function') {
+                try { this._tryExtendReplayMasterFromParent(); } catch (_ext) { /* ignore */ }
+            }
+            const bootHasPinnedViewport = typeof this._mcBootSingleCommitActive === 'function'
+                && this._mcBootSingleCommitActive()
+                && typeof this._countVisiblePlotBars === 'function'
+                && this._countVisiblePlotBars() > 0;
+            if (!committed && !bootHasPinnedViewport
+                && typeof this._resetViewportToDefault === 'function') {
+                this._resetViewportToDefault({
+                    centerPlayhead: false,
+                    forceRecenter: true,
+                    render: false,
+                });
+                committed = true;
+            }
+            if (meta.samePairEmbedMc && typeof this._syncIndicatorsAfterMultichartDataShare === 'function') {
+                try { this._syncIndicatorsAfterMultichartDataShare(); } catch (_) { /* ignore */ }
+            }
+            this._multichartBootViewportPositioned = true;
+            if (typeof this._markMultichartViewportSettled === 'function') {
+                try { this._markMultichartViewportSettled(); } catch (_) { /* ignore */ }
+            }
+            this._mcTraceMountOffsetWrite('coalesce:authoritative', beforeOx, this.offsetX);
+            if (typeof this.render === 'function') this.render();
+            this._mcMountViewportCoalesceDone = true;
+            this._mcMountViewportCoalescePending = false;
+            this._mcMountViewportPanelReady = true;
+            try {
+                window.dispatchEvent(new CustomEvent('talariaMcMountViewportReady', {
+                    detail: { loadSeq, fileId: this.currentFileId },
+                }));
+            } catch (_) { /* ignore */ }
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'talariaMcMountViewportReady',
+                        panelId: this._multichartPanelId || null,
+                        loadSeq,
+                    }, '*');
+                }
+            } catch (_) { /* ignore */ }
+        } finally {
+            this._mcMountViewportCoalesceApplying = false;
+            this._mcMountViewportCoalesceRaf = null;
+        }
+    }
+
     _mcBootSingleCommitActive() {
         if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_BOOT_SINGLE_COMMIT) {
             return false;

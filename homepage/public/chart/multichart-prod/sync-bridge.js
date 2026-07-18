@@ -2022,6 +2022,13 @@
             // mirror failed (parent data not ready yet) the mirrored flag stays false
             // so race-retries still go through.
             if (!panSync && m.forceInitialSync && isEmbedPanelChart()) {
+                if (chart._mcMountViewportCoalesceFixActive
+                    && chart._mcMountViewportCoalesceFixActive()
+                    && chart._mcMountViewportCoalescePending
+                    && !chart._mcMountViewportCoalesceApplying) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
                 const _fiSig = String(m.startTime) + '|' + String(m.endTime) + '|'
                     + (Number.isFinite(m.offsetX) ? m.offsetX.toFixed(1) : 'x') + '|'
                     + (Number.isFinite(m.candleWidth) ? m.candleWidth.toFixed(2) : 'x');

@@ -24,6 +24,9 @@ function parseArgs(argv) {
     axisMarginFloorOff: false,
     vpHandleCanvasRoutingOff: false,
     armedDrawFocusForwardOff: false,
+    ctrlMarqueeOff: false,
+    otMsHighlightOff: false,
+    bugSwitches: null,
   };
   for (const a of argv.slice(2)) {
     if (a === '--headful') args.headful = true;
@@ -47,10 +50,15 @@ function parseArgs(argv) {
     else if (a === '--axis-margin-floor-off') args.axisMarginFloorOff = true;
     else if (a === '--vp-handle-canvas-routing-off') args.vpHandleCanvasRoutingOff = true;
     else if (a === '--multichart-armed-draw-focus-forward-off') args.armedDrawFocusForwardOff = true;
+    else if (a === '--ctrl-marquee-off') args.ctrlMarqueeOff = true;
+    else if (a === '--ot-ms-highlight-off') args.otMsHighlightOff = true;
     else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
     else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
     else if (a.startsWith('--only=')) args.only = a.slice(7).split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a.startsWith('--bugswitch=')) {
+      args.bugSwitches = a.slice(12).split(',').map((s) => s.trim()).filter(Boolean);
+    }
   }
   return args;
 }
@@ -87,6 +95,9 @@ function buildScenarioCtx(args, browser, stack) {
     axisMarginFloorOff: args.axisMarginFloorOff,
     vpHandleCanvasRoutingOff: args.vpHandleCanvasRoutingOff,
     armedDrawFocusForwardOff: args.armedDrawFocusForwardOff,
+    ctrlMarqueeOff: args.ctrlMarqueeOff,
+    otMsHighlightOff: args.otMsHighlightOff,
+    bugSwitches: args.bugSwitches,
   };
 }
 

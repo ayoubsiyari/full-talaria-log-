@@ -514,14 +514,17 @@
     }
 
     function afterLoadFile(ch, usedMultichartLoader) {
+        const coalesceOn = ch
+            && typeof ch._mcMountViewportCoalesceFixActive === 'function'
+            && ch._mcMountViewportCoalesceFixActive();
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now() + 1200;
+                ch._multichartViewportSettleUntil = performance.now()
+                    + (coalesceOn ? 3500 : 1200);
             } catch (_) {}
         }
-        if (usedMultichartLoader) {
-            // Loader already synced replay viewport; parent in-process path runs one
-            // coalesced finalize — avoid stacked passes that flash candles on/off.
+        if (usedMultichartLoader || coalesceOn) {
+            // Loader / coalesce path owns replay viewport + single authoritative commit.
             return;
         }
         try { drainPendingReplay(); } catch (_d) {}
