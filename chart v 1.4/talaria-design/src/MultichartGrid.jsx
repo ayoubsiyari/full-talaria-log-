@@ -1311,12 +1311,13 @@ function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
                 const ch = ifr && ifr.contentWindow && ifr.contentWindow.chart;
                 if (!ch) continue;
                 if (mcMountViewportCoalesceEnabled()) {
+                    if (ch._mcMountViewportPanelReady || ch._mcMountViewportCoalesceDone) {
+                        continue;
+                    }
                     if (typeof ch._invalidateTimeAxisTickCaches === "function") {
                         try { ch._invalidateTimeAxisTickCaches(); } catch (_) {}
                     }
-                    if (ch._mcMountViewportPanelReady || ch._mcMountViewportCoalesceDone) {
-                        if (typeof ch.render === "function") ch.render();
-                    }
+                    if (typeof ch.render === "function") ch.render();
                     continue;
                 }
                 // Unlock settle so post-reveal correction is not ignored.

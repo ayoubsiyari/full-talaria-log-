@@ -60,6 +60,7 @@ import {
   reactSwitchMultichartLayout,
   waitForMountViewportPanelReady,
   pollMountOffsetCommits,
+  readPanelVisibleRenderProbe,
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
   ensureDrawingAnchorInPlotView,
@@ -1288,6 +1289,10 @@ async function hMcMountJitterR1(ctx) {
       checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: offsetChangingCommits <= 1 after settle',
         phaseA && phaseA.offsetChangingCommits <= 1,
         `commits=${phaseA?.offsetChangingCommits} traceLen=${phaseA?.traceLog?.length ?? 0}`);
+      const phaseARender = await readPanelVisibleRenderProbe(frameB);
+      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: panel visibly rendered (I15)',
+        phaseARender && phaseARender.rendered,
+        JSON.stringify(phaseARender));
     }
 
     await focusReactPanel(page, 'B');
@@ -1314,6 +1319,19 @@ async function hMcMountJitterR1(ctx) {
     checks.check('H-MC-MOUNT-JITTER-R1 phase-B probe constructed', phaseB && phaseB.ok,
       phaseB ? (phaseB.reason || '') : 'no probe');
 
+    const phaseBRender = await readPanelVisibleRenderProbe(frameB);
+    const legendOk = phaseBRender && phaseBRender.symbolText
+      && phaseBRender.currentFileId === String(altId);
+    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: panel visibly rendered after symbol swap (I15)',
+      !!phaseBRender && phaseBRender.rendered,
+      JSON.stringify(phaseBRender));
+    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: axis labels + gridlines present (I15)',
+      phaseBRender && phaseBRender.timeTickCount > 0 && phaseBRender.yTickCount > 0,
+      `timeTicks=${phaseBRender?.timeTickCount} yTicks=${phaseBRender?.yTickCount}`);
+    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: legend matches swapped fileId',
+      legendOk,
+      `fileId=${phaseBRender?.currentFileId} symbol=${phaseBRender?.symbolText}`);
+
     if (coalesceOff) {
       const a = phaseA?.offsetChangingCommits ?? 0;
       const b = phaseB?.offsetChangingCommits ?? 0;
@@ -1321,6 +1339,9 @@ async function hMcMountJitterR1(ctx) {
       checks.check('H-MC-MOUNT-JITTER-R1 RED: coalesce OFF reproduces multi-commit jitter',
         multiCommit,
         `A=${a} B=${b}`);
+      checks.check('H-MC-MOUNT-JITTER-R1 RED: coalesce OFF still renders panel (no blank)',
+        !!phaseBRender && phaseBRender.rendered,
+        JSON.stringify(phaseBRender));
     } else {
       checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: symbol swap offsetChangingCommits <= 1',
         phaseB && phaseB.offsetChangingCommits <= 1,
@@ -1329,6 +1350,7 @@ async function hMcMountJitterR1(ctx) {
 
     notes.push(`H-MC-MOUNT-JITTER-R1 mount coalesce ${coalesceOff ? 'OFF' : 'ON'}: `
       + `phaseA commits=${phaseA?.offsetChangingCommits} phaseB commits=${phaseB?.offsetChangingCommits} `
+      + `renderB=${phaseBRender?.rendered} visibleBars=${phaseBRender?.visibleBars} `
       + `traceA=${phaseA?.traceLog?.length ?? 0} traceB=${phaseB?.traceLog?.length ?? 0}`);
     return checks;
   });

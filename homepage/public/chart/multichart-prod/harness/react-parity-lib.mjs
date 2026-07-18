@@ -2164,6 +2164,61 @@ export async function pollMountOffsetCommits(frame, durationMs = 2500) {
   }, durationMs);
 }
 
+export async function readPanelVisibleRenderProbe(frame) {
+  if (!frame) return { ok: false, reason: 'no frame' };
+  try {
+    return await frame.evaluate(() => {
+      const ch = window.chart;
+      if (!ch) return { ok: false, reason: 'no chart' };
+      const pm = ch.margin || { l: 60, r: 60, t: 0, b: 24 };
+      const plotW = Math.max(1, (Number(ch.w) || 0) - pm.l - pm.r);
+      const dataLen = Array.isArray(ch.data) ? ch.data.length : 0;
+      const visibleBars = typeof ch._countVisiblePlotBars === 'function'
+        ? ch._countVisiblePlotBars()
+        : 0;
+      const timeTicks = typeof ch._buildTimeTicks === 'function'
+        ? ch._buildTimeTicks({ full: true })
+        : (ch._timeTicks || []);
+      const yTicks = typeof ch._getYPriceTicks === 'function'
+        ? ch._getYPriceTicks(8)
+        : [];
+      const symbolEl = document.getElementById('chartSymbol');
+      const symbolText = symbolEl ? String(symbolEl.textContent || '').trim() : '';
+      let iframeOpacity = '1';
+      try {
+        iframeOpacity = window.frameElement ? String(window.frameElement.style.opacity || '1') : '1';
+      } catch (_) { /* ignore */ }
+      const timeTickCount = Array.isArray(timeTicks) ? timeTicks.length : 0;
+      const yTickCount = Array.isArray(yTicks) ? yTicks.length : 0;
+      const opacityVisible = iframeOpacity === '' || iframeOpacity === '1';
+      const rendered = dataLen > 0
+        && visibleBars > 0
+        && timeTickCount > 0
+        && yTickCount > 0
+        && plotW >= 40
+        && opacityVisible;
+      return {
+        ok: true,
+        rendered,
+        dataLen,
+        visibleBars,
+        plotW,
+        timeTickCount,
+        yTickCount,
+        symbolText,
+        currentSymbol: ch.currentSymbol || '',
+        currentFileId: ch.currentFileId != null ? String(ch.currentFileId) : '',
+        iframeOpacity,
+        panelReady: !!ch._mcMountViewportPanelReady,
+        coalesceDone: !!ch._mcMountViewportCoalesceDone,
+        pairLoading: !!ch._pairSwitchLoading,
+      };
+    });
+  } catch (e) {
+    return { ok: false, reason: String(e && e.message ? e.message : e) };
+  }
+}
+
 export async function readReactPanelFileIds(page) {
   const host = await page.evaluate(() => {
     const ch = window.chart;

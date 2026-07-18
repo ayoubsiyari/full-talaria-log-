@@ -428,7 +428,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260718b78';
+const CHART_ENGINE_BUILD = '20260718b79';
 /** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
 const PRICE_AXIS_MIN_R = 60;
 const PRICE_AXIS_MIN_L = 60;
@@ -5137,6 +5137,7 @@ class Chart {
                         switchingPair,
                         independentPair,
                     });
+                    const selfCoalesce = this;
                     await new Promise((resolveCoalesce) => {
                         let settled = false;
                         const finishCoalesce = () => {
@@ -5148,11 +5149,18 @@ class Chart {
                         try {
                             window.addEventListener('talariaMcMountViewportReady', onReady, { once: true });
                         } catch (_) { /* ignore */ }
-                        this._mcScheduleMountViewportCoalesce(loadSeq);
-                        setTimeout(finishCoalesce, 5000);
+                        selfCoalesce._mcScheduleMountViewportCoalesce(loadSeq);
+                        setTimeout(() => {
+                            if (selfCoalesce._mcMountViewportCoalescePending) {
+                                try {
+                                    selfCoalesce._mcApplyMountViewportAuthoritativeCommit(loadSeq, { force: true });
+                                } catch (_forceCommit) { /* ignore */ }
+                            }
+                            finishCoalesce();
+                        }, 5000);
                     });
-                    if (pairLoadUiActive) {
-                        try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
+                    if (pairLoadUiActive && selfCoalesce._pairSwitchLoading) {
+                        try { selfCoalesce._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
                     }
                     viewportCommitted = true;
                     try {
@@ -5519,10 +5527,6 @@ class Chart {
             try {
                 if (this._mcMountViewportCoalesceFixActive && this._mcMountViewportCoalesceFixActive()
                     && this._mcMountViewportCoalesceDone) {
-                    if (typeof this._invalidateTimeAxisTickCaches === 'function') {
-                        try { this._invalidateTimeAxisTickCaches(); } catch (_) { /* ignore */ }
-                    }
-                    if (typeof this.render === 'function') this.render();
                     return;
                 }
                 const bootLocked = this._multichartBootViewportPositioned
@@ -18331,6 +18335,27 @@ class Chart {
         } catch (_) { /* ignore */ }
     }
 
+    /** C-lite defer-paint release: restore iframe visibility after authoritative commit. */
+    _mcReleaseMountViewportPanelPaint() {
+        try {
+            if (window.frameElement) window.frameElement.style.opacity = '1';
+        } catch (_) { /* ignore */ }
+        try { this._removeFreezeOverlay(); } catch (_) { /* ignore */ }
+        try {
+            if (this.currentSymbol && typeof this.updateChartTitle === 'function') {
+                this.updateChartTitle(this.currentSymbol);
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'talariaMcMountViewportPaintReleased',
+                    panelId: this._multichartPanelId || null,
+                }, '*');
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     _mcScheduleMountViewportCoalesce(loadSeq) {
         if (!this._mcMountViewportCoalescePending) return;
         if (this._mcMountViewportCoalesceRaf) {
@@ -18344,8 +18369,11 @@ class Chart {
                 self._mcMountViewportCoalescePending = false;
                 return;
             }
+            const dataReady = Array.isArray(self.data) && self.data.length > 0;
             if (!self._mcMountViewportPlotReady()) {
-                self._mcMountViewportCoalesceRaf = requestAnimationFrame(tryCommit);
+                if (dataReady) {
+                    self._mcMountViewportCoalesceRaf = requestAnimationFrame(tryCommit);
+                }
                 return;
             }
             self._mcApplyMountViewportAuthoritativeCommit(loadSeq);
@@ -18353,13 +18381,16 @@ class Chart {
         self._mcMountViewportCoalesceRaf = requestAnimationFrame(tryCommit);
     }
 
-    _mcApplyMountViewportAuthoritativeCommit(loadSeq) {
-        if (!this._mcMountViewportCoalescePending) return;
+    _mcApplyMountViewportAuthoritativeCommit(loadSeq, opts = {}) {
+        if (!this._mcMountViewportCoalescePending && !opts.force) return;
         if (loadSeq !== this._mcMountViewportCoalesceSeq) return;
         this._mcMountViewportCoalesceApplying = true;
         const meta = this._mcMountViewportCoalesceMeta || {};
         const beforeOx = Number(this.offsetX);
         try {
+            if (this._pairSwitchLoading && typeof this._endPairSwitchLoading === 'function') {
+                try { this._endPairSwitchLoading(loadSeq); } catch (_pairEnd) { /* ignore */ }
+            }
             if (typeof this.resize === 'function') this.resize();
             let committed = false;
             const samePairEmbedMc = !!meta.samePairEmbedMc && this._multichartVisibleRangeSyncOn;
@@ -18371,7 +18402,8 @@ class Chart {
             if (samePairEmbedMc && typeof this._tryExtendReplayMasterFromParent === 'function') {
                 try { this._tryExtendReplayMasterFromParent(); } catch (_ext) { /* ignore */ }
             }
-            const bootHasPinnedViewport = typeof this._mcBootSingleCommitActive === 'function'
+            const bootHasPinnedViewport = !meta.switchingPair
+                && typeof this._mcBootSingleCommitActive === 'function'
                 && this._mcBootSingleCommitActive()
                 && typeof this._countVisiblePlotBars === 'function'
                 && this._countVisiblePlotBars() > 0;
@@ -18392,10 +18424,17 @@ class Chart {
                 try { this._markMultichartViewportSettled(); } catch (_) { /* ignore */ }
             }
             this._mcTraceMountOffsetWrite('coalesce:authoritative', beforeOx, this.offsetX);
+            if (typeof this._invalidateTimeAxisTickCaches === 'function') {
+                try { this._invalidateTimeAxisTickCaches(); } catch (_) { /* ignore */ }
+            }
+            if (typeof this._syncDomAxisCursorZones === 'function') {
+                try { this._syncDomAxisCursorZones(); } catch (_) { /* ignore */ }
+            }
             if (typeof this.render === 'function') this.render();
             this._mcMountViewportCoalesceDone = true;
             this._mcMountViewportCoalescePending = false;
             this._mcMountViewportPanelReady = true;
+            this._mcReleaseMountViewportPanelPaint();
             try {
                 window.dispatchEvent(new CustomEvent('talariaMcMountViewportReady', {
                     detail: { loadSeq, fileId: this.currentFileId },
