@@ -600,6 +600,55 @@ function v9IsMultiPanelLayoutActive() {
   return !!(g && typeof g.runCommand === "function");
 }
 
+/** MC-DRAW-FIRSTCLICK: parent guard while unfocused tile inherits + starts draw. */
+function v9MultichartArmedInheritDrawGuardActive() {
+  try {
+    if (typeof window === "undefined") return false;
+    if (window.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1) return false;
+    const until = window.__multichartArmedInheritDrawGuardUntil;
+    return !!(until && performance.now() < until);
+  } catch (_) {
+    return false;
+  }
+}
+
+/** When React rail is cursor but a peer tile still has an armed shape tool in the engine. */
+function v9ResolveArmedLegacyFromMultichartEngine(focusPanelId) {
+  try {
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (!grid) return null;
+    const getCh =
+      typeof grid.getChartForPanelId === "function"
+        ? grid.getChartForPanelId.bind(grid)
+        : typeof grid.getChartForPanel === "function"
+          ? grid.getChartForPanel.bind(grid)
+          : null;
+    if (!getCh) return null;
+    const pick = (pid) => {
+      try {
+        const ch = getCh(pid);
+        const t = ch && ch.drawingManager && ch.drawingManager.currentTool;
+        if (!t) return null;
+        const lt = String(t).toLowerCase().trim();
+        if (lt === "crosshair" || lt === "cursor") return null;
+        return t;
+      } catch (_) {
+        return null;
+      }
+    };
+    const hostId = grid.hostPanelId != null ? String(grid.hostPanelId) : "A";
+    const focus = focusPanelId != null ? String(focusPanelId) : null;
+    for (const id of [hostId, "B", "C", "D"]) {
+      if (focus && id === focus) continue;
+      const t = pick(id);
+      if (t) return t;
+    }
+    return focus ? pick(focus) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /** Hide/show drawings, indicators, positions, or all on every multichart tile. */
 function v9ApplyVisibilityMenuAction(action) {
   const ch =
@@ -19916,6 +19965,16 @@ const TalariaV8bLive = () => {
             legacyParam = null;
             window.__v9BlockFocusToolArmOnce = false;
           }
+          if (
+            useFocusedPanelToolSync
+            && !legacyParam
+            && !editingDrawingRef.current
+            && typeof window !== "undefined"
+            && !window.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1
+          ) {
+            const engineTool = v9ResolveArmedLegacyFromMultichartEngine(fid);
+            if (engineTool) legacyParam = engineTool;
+          }
           // Refocusing host (A) after drawing on iframe B/C: multichart sync had cleared
           // the host's drawingManager while React still shows the last tool — do not push
           // that stale selection back onto A (bug: rail shows Trend Line on A but A is cursor).
@@ -20032,6 +20091,7 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
           if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
         }
+        if (v9MultichartArmedInheritDrawGuardActive()) return;
       } catch (_) {}
       n = 0;
       try {

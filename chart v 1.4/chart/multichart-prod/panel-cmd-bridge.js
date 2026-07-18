@@ -4305,8 +4305,36 @@
         } catch (_) {}
     }
 
+    function multichartArmedDrawFocusForwardV1Enabled() {
+        try {
+            return !global.__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function multichartArmedInheritDrawGuardActive() {
+        if (!multichartArmedDrawFocusForwardV1Enabled()) return false;
+        try {
+            var until = global.__multichartArmedInheritDrawGuardUntil;
+            return !!(until && performance.now() < until);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function isMultichartInheritableDrawTool(toolName) {
+        if (!toolName) return false;
+        var lt = String(toolName).toLowerCase().trim();
+        return lt !== 'crosshair' && lt !== 'cursor';
+    }
+
     function dismissActiveDrawingTool(dm, mirrored, opts) {
         if (!dm) return false;
+        if (multichartArmedInheritDrawGuardActive()) {
+            if (dm.drawingState && dm.drawingState.isDrawing) return false;
+            if (dm.currentTool && isMultichartInheritableDrawTool(dm.currentTool)) return false;
+        }
         var keepSelection = !!(opts && opts.keepSelection);
         if (dm.isRectSelecting) {
             if (typeof dm.cancelRectangularSelection === 'function') {

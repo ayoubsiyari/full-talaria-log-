@@ -184,6 +184,24 @@ function _isMultichartInheritableDrawTool(toolName) {
     return lt !== 'crosshair' && lt !== 'cursor';
 }
 
+/** Publish MC-DRAW-FIRSTCLICK guard on this window and the multichart parent shell. */
+function _publishMultichartArmedInheritDrawGuard() {
+    if (typeof window === 'undefined') return;
+    const until = performance.now() + 450;
+    window.__multichartArmedInheritDrawGuardUntil = until;
+    try {
+        if (window.parent && window.parent !== window) {
+            window.parent.__multichartArmedInheritDrawGuardUntil = until;
+        }
+    } catch (_) { /* cross-origin */ }
+}
+
+function _multichartArmedInheritDrawGuardActive() {
+    if (!multichartArmedDrawFocusForwardV1Enabled() || typeof window === 'undefined') return false;
+    const until = window.__multichartArmedInheritDrawGuardUntil;
+    return !!(until && performance.now() < until);
+}
+
 /** Suppress window for iframe ctrl-select toggle dedupe (ms). Matches __v9DrawingSelectionGuardUntil span when fix ON. */
 function _iframeCtrlSelectSuppressMs() {
     return _isIframeCtrlSelectDedupeV1Enabled() ? 250 : 80;
@@ -2263,7 +2281,7 @@ class DrawingToolsManager {
             try { this.chart._syncAdaptivePriceAxisMargin(); } catch (_) { /* ignore */ }
         }
         const clipPad = (vpResizeActive || vpSelectedForHandleEdit)
-            ? { left: 18, right: 18, top: 8, bottom: 8 }
+            ? { left: 28, right: 28, top: 16, bottom: 16 }
             : null;
         this.updateClipPath(clipPad);
         this.svg.style('overflow', 'hidden');
@@ -2538,6 +2556,9 @@ class DrawingToolsManager {
             if (existing) {
                 canvas.removeEventListener('mousedown', existing.mousedown, true);
                 canvas.removeEventListener('click', existing.click);
+                if (typeof existing.mouseup === 'function') {
+                    canvas.removeEventListener('mouseup', existing.mouseup, true);
+                }
                 if (typeof existing.mousemove === 'function') {
                     canvas.removeEventListener('mousemove', existing.mousemove);
                 }
@@ -2841,6 +2862,18 @@ class DrawingToolsManager {
                     return;
                 }
 
+                // Always try VP handle/boundary resize FIRST — selectDrawing re-renders
+                // and destroys handle DOM under the pointer (kills d3.drag).
+                if (isVolumeProfileHit) {
+                    const vpBest = drawingsAtPoint.find((d) => d && !d.locked && this.isVolumeProfileToolType(d.type))
+                        || drawingsAtPoint[0];
+                    if (vpBest && !vpBest.locked
+                        && this._tryStartVolumeProfileHandleDragFromPointer(vpBest, event, mouseX, mouseY)) {
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
+                }
+
                 const isVolumeProfileBackgroundOnly = !!(
                     rawTarget
                     && rawTarget.closest
@@ -2863,11 +2896,6 @@ class DrawingToolsManager {
 
                 if (isVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
-                    if (best && !best.locked
-                        && this._tryStartVolumeProfileHandleDragFromPointer(best, event, mouseX, mouseY)) {
-                        suppressNextCanvasClick = true;
-                        return;
-                    }
                     if (best && this.isVolumeProfileInteractiveHit(best, mouseX, mouseY) && !best.locked) {
                         this.selectDrawing(best, false);
                         this._volumeProfileValueLabelClickState = {
@@ -2980,6 +3008,14 @@ class DrawingToolsManager {
             };
             canvas.addEventListener('click', onClick);
 
+            const onMouseUp = (event) => {
+                if (!this.currentTool) return;
+                if (this.drawingState && (this.drawingState.isDrawing || this.isDraggingFirstTwo)) {
+                    this.handleMouseUp(event);
+                }
+            };
+            canvas.addEventListener('mouseup', onMouseUp, true);
+
             const onDblClick = (event) => {
                 if (event.button !== 0) return;
                 const chart = this.chart;
@@ -3017,6 +3053,7 @@ class DrawingToolsManager {
 
             canvas.__drawingToolsCanvasHandlers = {
                 mousedown: onMouseDown,
+                mouseup: onMouseUp,
                 click: onClick,
                 dblclick: onDblClick
             };
@@ -3120,6 +3157,16 @@ class DrawingToolsManager {
             return;
         }
 
+        if (multichartArmedDrawFocusForwardV1Enabled() && typeof window !== 'undefined') {
+            const until = window.__multichartArmedInheritDrawGuardUntil;
+            if (until && performance.now() < until
+                && this.currentTool === toolName
+                && this.drawingState && this.drawingState.isDrawing
+                && _isMultichartInheritableDrawTool(toolName)) {
+                return;
+            }
+        }
+
         // Box-select (Ctrl+drag) hijacks mousemove; cancel it when switching to a drawing tool
         // so magnet (Ctrl) + draw works and previews are not stuck on the selection rectangle.
         if (this.isRectSelecting) {
@@ -3213,6 +3260,13 @@ class DrawingToolsManager {
      * Clear current tool (cursor mode)
      */
     clearTool(_mirrored = false) {
+        if (multichartArmedDrawFocusForwardV1Enabled() && typeof window !== 'undefined') {
+            const until = window.__multichartArmedInheritDrawGuardUntil;
+            if (until && performance.now() < until) {
+                if (this.drawingState && this.drawingState.isDrawing) return;
+                if (this.currentTool && _isMultichartInheritableDrawTool(this.currentTool)) return;
+            }
+        }
         if (this.isRectSelecting) {
             this.cancelRectangularSelection();
         }
@@ -4061,6 +4115,7 @@ class DrawingToolsManager {
         const inheritedMc = this._resolveMultichartFocusedPanelArmedDrawTool();
         if (!inheritedMc || typeof this.setTool !== 'function') return false;
         this.setTool(inheritedMc, true);
+        _publishMultichartArmedInheritDrawGuard();
         return true;
     }
 
@@ -4194,6 +4249,49 @@ class DrawingToolsManager {
                     const handleDrawingId = d3.select(handleDrawingGroup).attr('data-id');
                     const handleDrawing = this.drawings.find((d) => d && d.id === handleDrawingId);
                     if (handleDrawing && !handleDrawing.locked) {
+                        // VP: selectDrawing re-renders and destroys the handle DOM under the
+                        // pointer, so d3.drag never starts. Route to document-level resize.
+                        if (this.isVolumeProfileToolType(handleDrawing.type)) {
+                            const [vpHx, vpHy] = this._eventCanvasLocalXY(event);
+                            if (this._tryStartVolumeProfileHandleDragFromPointer(handleDrawing, event, vpHx, vpHy)) {
+                                return;
+                            }
+                            // Fallback: start by data-point-index on the clicked handle node.
+                            const idxAttr = handleNode.getAttribute && handleNode.getAttribute('data-point-index');
+                            const idxFromNode = idxAttr != null ? parseInt(idxAttr, 10) : NaN;
+                            if (Number.isFinite(idxFromNode)) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                if (typeof event.stopImmediatePropagation === 'function') {
+                                    event.stopImmediatePropagation();
+                                }
+                                if (!handleDrawing.selected
+                                    || this.selectedDrawings.length !== 1
+                                    || this.selectedDrawings[0] !== handleDrawing) {
+                                    this.deselectAll({ forSelectionChange: true });
+                                    handleDrawing.select({ skipAxisHighlights: true });
+                                    this.selectedDrawing = handleDrawing;
+                                    this.selectedDrawings = [handleDrawing];
+                                }
+                                this._stopDirectResizeDragListeners();
+                                this._prepareDrawingForHandleDrag(handleDrawing, event);
+                                this._resizePointerSource = 'document';
+                                this.startHandleDrag(handleDrawing, idxFromNode, { sourceEvent: event });
+                                this._directResizeMoveHandler = (e) => {
+                                    if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
+                                    this.handleDrag({ sourceEvent: e });
+                                };
+                                this._directResizeUpHandler = () => {
+                                    this._stopDirectResizeDragListeners();
+                                    this.endHandleDrag(handleDrawing);
+                                };
+                                this._directResizeDragCleanup = this._addDocumentDragListeners(
+                                    this._directResizeMoveHandler,
+                                    this._directResizeUpHandler
+                                );
+                                return;
+                            }
+                        }
                         this.selectDrawing(handleDrawing, false);
                         event.preventDefault();
                         event.stopPropagation();
@@ -7108,6 +7206,11 @@ class DrawingToolsManager {
      * Cancel current drawing
      */
     cancelDrawing() {
+        if (_multichartArmedInheritDrawGuardActive()
+            && this.drawingState && this.drawingState.isDrawing
+            && this.currentTool && _isMultichartInheritableDrawTool(this.currentTool)) {
+            return;
+        }
         this._clearLiveSyncPreview();
         this.tempGroup.selectAll('*').remove();
         this.drawingState.reset();
@@ -9674,22 +9777,31 @@ class DrawingToolsManager {
             return null;
         }
 
-        const circleNodes = drawing.group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').nodes();
+        // Geometric hit only — ignore pointer-events (handles may be clipped / pe:none
+        // while still visible; canvas routing must still find them).
+        const circleNodes = drawing.group.selectAll(
+            '.resize-handle-hit:not(.volume-profile-boundary-hit), .resize-handle:not(.volume-profile-boundary-hit)'
+        ).nodes();
+        let bestCircleIdx = null;
+        let bestCircleDist2 = Infinity;
         for (let i = 0; i < circleNodes.length; i++) {
             const node = circleNodes[i];
             if (!node) continue;
-            const pe = node.style && node.style.pointerEvents;
-            if (pe === 'none') continue;
             const cx = parseFloat(node.getAttribute('cx'));
             const cy = parseFloat(node.getAttribute('cy'));
-            const r = parseFloat(node.getAttribute('r')) || 14;
+            const rAttr = parseFloat(node.getAttribute('r'));
+            const r = (Number.isFinite(rAttr) ? rAttr : 14) + 8;
             if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
             const dx = mouseX - cx;
             const dy = mouseY - cy;
-            if ((dx * dx) + (dy * dy) > r * r) continue;
+            const dist2 = (dx * dx) + (dy * dy);
+            if (dist2 > r * r || dist2 >= bestCircleDist2) continue;
             const idx = parseInt(node.getAttribute('data-point-index'), 10);
-            if (Number.isFinite(idx)) return { pointIndex: idx };
+            if (!Number.isFinite(idx)) continue;
+            bestCircleDist2 = dist2;
+            bestCircleIdx = idx;
         }
+        if (Number.isFinite(bestCircleIdx)) return { pointIndex: bestCircleIdx };
 
         if (!this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return null;
 
@@ -9699,8 +9811,6 @@ class DrawingToolsManager {
         for (let j = 0; j < boundaryHits.length; j++) {
             const el = boundaryHits[j];
             if (!el) continue;
-            const pe = el.style && el.style.pointerEvents;
-            if (pe === 'none') continue;
             const x1 = parseFloat(el.getAttribute('x1'));
             const y1 = parseFloat(el.getAttribute('y1'));
             const x2 = parseFloat(el.getAttribute('x2'));
@@ -9708,7 +9818,7 @@ class DrawingToolsManager {
             if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
             const elSel = d3.select(el);
             const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
-            const tolerance = Math.max(14, (strokeWidth / 2) + 0.5);
+            const tolerance = Math.max(18, (strokeWidth / 2) + 0.5);
             const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
             if (distance > tolerance) continue;
             const idx = parseInt(el.getAttribute('data-point-index'), 10);
