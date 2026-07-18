@@ -104,6 +104,36 @@ function multichartChromeDomReadyV4Enabled() {
     return true;
 }
 
+/** OT-MS: V9 Layers + legacy tree multi-select highlight. Default ON; I13 kill-switch. */
+function objectsTreeMultiselectHighlightEnabled() {
+    if (typeof window === 'undefined') return true;
+    const flagSet = (w) => {
+        try {
+            return !!(w && w.__TALARIA_DISABLE_OBJECTS_TREE_MULTISELECT_HIGHLIGHT_V1 === true);
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (flagSet(window)) return false;
+        if (window.parent && window.parent !== window && flagSet(window.parent)) return false;
+        if (window.top && window.top !== window && flagSet(window.top)) return false;
+    } catch (_) { /* ignore */ }
+    return true;
+}
+
+function dispatchDrawingSelectionChanged(dm) {
+    if (!objectsTreeMultiselectHighlightEnabled()) return;
+    try {
+        const ids = (dm && dm.selectedDrawings || [])
+            .map((d) => (d && d.id != null ? String(d.id) : null))
+            .filter(Boolean);
+        window.dispatchEvent(new CustomEvent('drawingSelectionChanged', {
+            detail: { ids, count: ids.length },
+        }));
+    } catch (_) { /* ignore */ }
+}
+
 /** D-026: panel-B iframe dbl-click → parent settings transport. Default ON; I13 kill-switch. */
 function multichartPanelBSettingsTransportV1Enabled() {
     if (typeof window === 'undefined') return true;
@@ -10739,6 +10769,7 @@ class DrawingToolsManager {
         if (this.objectTreeManager) {
             this.objectTreeManager.refresh();
         }
+        dispatchDrawingSelectionChanged(this);
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
@@ -10871,6 +10902,7 @@ class DrawingToolsManager {
         if (omDeselect && typeof omDeselect.disarmRiskRewardToolExecute === 'function') {
             omDeselect.disarmRiskRewardToolExecute();
         }
+        dispatchDrawingSelectionChanged(this);
     }
 
     /**

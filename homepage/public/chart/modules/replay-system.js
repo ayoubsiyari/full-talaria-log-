@@ -6541,6 +6541,13 @@ class ReplaySystem {
 
     /**
      * True when this chart tile shows the same dataset as multichart host A.
+     * Same fileId alone is not enough: different display TF means a different
+     * resampled series. The parent-data fast mirror (_tryMirrorFrameFromParentData)
+     * requires same TF; treating mixed-TF same-symbol as "shared" routed peers
+     * into samePairEmbed → _syncReplayMasterFromParentIfCovers → goToReplayTimestamp
+     * every host frame (clear anim + full reslice) while the TF retry still failed
+     * — flash/glitch on Play for 1m host + 15m/1h peers.
+     * Kill-switch __TALARIA_MC_DISABLE_MIXED_TF_DATASET_GATE restores fileId-only.
      */
     _mirrorSharesHostDataset(chart, detail) {
         const hostFid = detail && detail.hostFileId != null ? String(detail.hostFileId) : '';
@@ -6549,6 +6556,22 @@ class ReplaySystem {
         if (typeof chart._isIndependentMultichartPair === 'function'
             && chart._isIndependentMultichartPair()) {
             return false;
+        }
+        if (!(typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_MIXED_TF_DATASET_GATE)) {
+            try {
+                const parent = (typeof window !== 'undefined' && window.parent
+                    && window.parent !== window)
+                    ? window.parent.chart
+                    : null;
+                const parentTf = parent
+                    ? String(parent.currentTimeframe || '').toLowerCase().trim()
+                    : '';
+                const myTf = chart
+                    ? String(chart.currentTimeframe || '').toLowerCase().trim()
+                    : '';
+                if (parentTf && myTf && parentTf !== myTf) return false;
+            } catch (_e) { /* ignore */ }
         }
         if (hostFid && panelFid) return hostFid === panelFid;
         return true;
@@ -6995,8 +7018,11 @@ class ReplaySystem {
             // Independent panels resample 1m master → display TF; in-place last-bar
             // patches are only valid when display TF matches raw granularity (1m).
             chart.data = chart.resampleData(sliced, chart.currentTimeframe);
+            // Skip playhead trim while a forming tick is active — trim runs before
+            // _syncMirrorAnimatingCandleState sets animatingCandle, and collapsing
+            // the partial coarse bar each frame flashed mixed-TF peers on Play.
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
+                && !(tp > 0 || (this.animatingCandle && (this.tickProgress || 0) > 0))) {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
@@ -7020,6 +7046,26 @@ class ReplaySystem {
             if (samePairEmbed) {
                 if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
                     return true;
+                }
+                // Never reseed-from-parent when display TF differs — that seek
+                // clears animatingCandle and full-renders, then the TF-gated
+                // retry still fails (mixed-TF Play flash).
+                let parentTf = '';
+                let myTf = '';
+                try {
+                    const parent = (typeof window !== 'undefined' && window.parent
+                        && window.parent !== window)
+                        ? window.parent.chart
+                        : null;
+                    parentTf = parent
+                        ? String(parent.currentTimeframe || '').toLowerCase().trim()
+                        : '';
+                    myTf = chart
+                        ? String(chart.currentTimeframe || '').toLowerCase().trim()
+                        : '';
+                } catch (_e) { /* ignore */ }
+                if (parentTf && myTf && parentTf !== myTf) {
+                    return false;
                 }
                 if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
                     && chart._syncReplayMasterFromParentIfCovers(ts)
@@ -7109,6 +7155,23 @@ class ReplaySystem {
                     && chart._isIndependentMultichartPair())) {
                 if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
                     return true;
+                }
+                let parentTfStatic = '';
+                let myTfStatic = '';
+                try {
+                    const parent = (typeof window !== 'undefined' && window.parent
+                        && window.parent !== window)
+                        ? window.parent.chart
+                        : null;
+                    parentTfStatic = parent
+                        ? String(parent.currentTimeframe || '').toLowerCase().trim()
+                        : '';
+                    myTfStatic = chart
+                        ? String(chart.currentTimeframe || '').toLowerCase().trim()
+                        : '';
+                } catch (_e) { /* ignore */ }
+                if (parentTfStatic && myTfStatic && parentTfStatic !== myTfStatic) {
+                    return false;
                 }
                 if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
                     && chart._syncReplayMasterFromParentIfCovers(ts)

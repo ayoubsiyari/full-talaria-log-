@@ -7018,8 +7018,11 @@ class ReplaySystem {
             // Independent panels resample 1m master → display TF; in-place last-bar
             // patches are only valid when display TF matches raw granularity (1m).
             chart.data = chart.resampleData(sliced, chart.currentTimeframe);
+            // Skip playhead trim while a forming tick is active — trim runs before
+            // _syncMirrorAnimatingCandleState sets animatingCandle, and collapsing
+            // the partial coarse bar each frame flashed mixed-TF peers on Play.
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
+                && !(tp > 0 || (this.animatingCandle && (this.tickProgress || 0) > 0))) {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();

@@ -873,6 +873,9 @@
                 // BL-10 coarser same-pair: mirror-first coalesced seek (ownMaster=false)
                 // keeps _serverCursors aligned with loaded edges (H-S20). Finer self-
                 // owner + independent/same-TF-miss stay own-master (D-015 edge-park).
+                // Mixed-TF flash fix lives in replay-system _mirrorSharesHostDataset
+                // (same TF required): mirror-first then takes the independent-pair
+                // anim path instead of samePairEmbed → goToReplayTimestamp thrash.
                 var _ownMasterD015 = true;
                 if (isSameSymbolAsHost(ch) && _hTfD015 && _pTfD015 && _hTfD015 !== _pTfD015) {
                     try {
@@ -2130,7 +2133,13 @@
             // false) keeps the full coalesced mirror path so it still tracks the host.
             if (!ownMaster) {
                 // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
-                if (applyParentReplayMirror(ch, seekTs, false)) {
+                // During active Play, pass isPlaying=true so mixed-TF peers take the
+                // independent anim mirror (shared wall-clock ts) instead of a paused
+                // static frame that used to fall into samePairEmbed seek thrash.
+                var _mirrorPlaying = isParentReplayPlaying()
+                    || pendingPlayDesired === true
+                    || (ch && ch._multichartPassivePlayActive === true);
+                if (applyParentReplayMirror(ch, seekTs, _mirrorPlaying ? true : false)) {
                     if (!(typeof window !== 'undefined'
                         && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)
                         && ch.replaySystem && Number.isFinite(seekTs)) {
@@ -2297,23 +2306,35 @@
             } catch (_) {}
         }
 
+        // When the caller supplies onDone, that callback owns play-viewport
+        // follow (scheduleCoalescedSeek / finer-owner path). Calling follow
+        // here AND in onDone double-painted offsetX every frame on mixed-TF
+        // Play (stick/flash). No-onDone callers still get follow below.
+        var followHere = typeof onDone !== 'function';
         if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
             ch.ensureReplayDataCoversTimestamp(ts).then(function () {
                 doSeek();
                 if (isEnter) scheduleMultichartPanelReplayFollow(ch);
-                try { maybePanelPlayViewportFollow(ch); } catch (_) {}
+                if (followHere) {
+                    try { maybePanelPlayViewportFollow(ch); } catch (_) {}
+                }
                 finish();
             }).catch(function (e) {
                 warn('forceReplaySeek: ensureReplayDataCoversTimestamp failed', e && e.message);
                 doSeek();
                 if (isEnter) scheduleMultichartPanelReplayFollow(ch);
-                try { maybePanelPlayViewportFollow(ch); } catch (_) {}
+                if (followHere) {
+                    try { maybePanelPlayViewportFollow(ch); } catch (_) {}
+                }
                 finish();
             });
             return;
         }
         doSeek();
         if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+        if (followHere) {
+            try { maybePanelPlayViewportFollow(ch); } catch (_) {}
+        }
         finish();
     }
 

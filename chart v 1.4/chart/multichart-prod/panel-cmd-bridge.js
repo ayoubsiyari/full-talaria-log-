@@ -2133,7 +2133,13 @@
             // false) keeps the full coalesced mirror path so it still tracks the host.
             if (!ownMaster) {
                 // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
-                if (applyParentReplayMirror(ch, seekTs, false)) {
+                // During active Play, pass isPlaying=true so mixed-TF peers take the
+                // independent anim mirror (shared wall-clock ts) instead of a paused
+                // static frame that used to fall into samePairEmbed seek thrash.
+                var _mirrorPlaying = isParentReplayPlaying()
+                    || pendingPlayDesired === true
+                    || (ch && ch._multichartPassivePlayActive === true);
+                if (applyParentReplayMirror(ch, seekTs, _mirrorPlaying ? true : false)) {
                     if (!(typeof window !== 'undefined'
                         && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE)
                         && ch.replaySystem && Number.isFinite(seekTs)) {

@@ -3,6 +3,15 @@
  * Manages the right sidebar object tree for viewing and managing all drawing objects
  */
 
+function objectsTreeMultiselectHighlightEnabled() {
+    try {
+        return !(typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_OBJECTS_TREE_MULTISELECT_HIGHLIGHT_V1 === true);
+    } catch (_) {
+        return true;
+    }
+}
+
 class ObjectTreeManager {
     constructor(drawingManager) {
         this.drawingManager = drawingManager;
@@ -291,17 +300,40 @@ class ObjectTreeManager {
     /**
      * Create an object tree item
      */
+    _isDrawingSelectedForTreeHighlight(drawing) {
+        const dm = this.drawingManager;
+        if (!dm || !drawing) return false;
+
+        if (!objectsTreeMultiselectHighlightEnabled()) {
+            const storeSelected = dm.lifecycleStore
+                && typeof dm.lifecycleStore.getSelectedDrawing === 'function'
+                ? dm.lifecycleStore.getSelectedDrawing()
+                : null;
+            return (storeSelected && storeSelected === drawing)
+                || (!storeSelected && dm.selectedDrawing === drawing);
+        }
+
+        if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+            for (const d of dm.selectedDrawings) {
+                if (!d) continue;
+                if (d === drawing) return true;
+                if (drawing.id != null && d.id != null && String(d.id) === String(drawing.id)) return true;
+            }
+        }
+        if (dm.selectedDrawing) {
+            if (dm.selectedDrawing === drawing) return true;
+            if (drawing.id != null && dm.selectedDrawing.id != null
+                && String(dm.selectedDrawing.id) === String(drawing.id)) return true;
+        }
+        return false;
+    }
+
     createObjectItem(drawing, index) {
         const item = document.createElement('div');
         item.className = 'object-tree-item';
         item.dataset.drawingId = drawing.id;
         
-        // Check if selected via lifecycle store first; legacy manager state is fallback only.
-        const storeSelected = this.drawingManager.lifecycleStore
-            && typeof this.drawingManager.lifecycleStore.getSelectedDrawing === 'function'
-            ? this.drawingManager.lifecycleStore.getSelectedDrawing()
-            : null;
-        if ((storeSelected && storeSelected === drawing) || (!storeSelected && this.drawingManager.selectedDrawing === drawing)) {
+        if (this._isDrawingSelectedForTreeHighlight(drawing)) {
             item.classList.add('selected');
         }
         
