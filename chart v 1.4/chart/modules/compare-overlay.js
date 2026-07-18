@@ -4281,12 +4281,15 @@ class CompareOverlay {
             } catch (_) { /* fallthrough */ }
             return null;
         };
-        const singleCircle = (inner, gradient) => `
-            <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
-                <span style="position:absolute;left:5px;top:0;width:18px;height:18px;border-radius:50%;background:${gradient};border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:8px;letter-spacing:-0.3px;overflow:hidden">${inner}</span>
+        // Selected compare pair: bright ring so the chip reads as “active”.
+        const selectedBadgeRing = '0 0 0 2px #2962ff, 0 0 0 4px rgba(41,98,255,0.35), 0 2px 6px rgba(0,0,0,0.55)';
+        const defaultBadgeShadow = '0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92)';
+        const singleCircle = (inner, gradient, selected = false) => `
+            <span style="position:relative;display:inline-block;width:30px;height:20px;vertical-align:middle;flex-shrink:0;">
+                <span style="position:absolute;left:5px;top:0;width:20px;height:20px;border-radius:50%;background:${gradient};border:2px solid ${selected ? '#2962ff' : 'rgba(203,213,225,0.92)'};outline:1px solid rgba(5,10,20,0.8);box-shadow:${selected ? selectedBadgeRing : defaultBadgeShadow};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:9px;letter-spacing:-0.3px;overflow:hidden">${inner}</span>
             </span>
         `;
-        const buildOverlayPairFlags = (symbol) => {
+        const buildOverlayPairFlags = (symbol, selected = false) => {
             const raw = String(symbol || '');
             const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
             const cls = detectAssetClass(raw);
@@ -4296,15 +4299,15 @@ class CompareOverlay {
                 const base = clean.replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '') || clean;
                 const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
                 const inner = `<span style="position:relative;z-index:1">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:2" onerror="this.style.display='none'" />`;
-                return singleCircle(inner, 'linear-gradient(135deg,#f7931a,#ffb347)');
+                return singleCircle(inner, 'linear-gradient(135deg,#f7931a,#ffb347)', selected);
             }
             if (cls === 'futures') {
                 const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
-                return singleCircle(root, 'linear-gradient(135deg,#3b82f6,#6366f1)');
+                return singleCircle(root, 'linear-gradient(135deg,#3b82f6,#6366f1)', selected);
             }
             if (cls === 'stock') {
                 const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
-                return singleCircle(sym, 'linear-gradient(135deg,#10b981,#14b8a6)');
+                return singleCircle(sym, 'linear-gradient(135deg,#10b981,#14b8a6)', selected);
             }
 
             // FX pair path (unchanged): two overlapping country flags.
@@ -4316,10 +4319,12 @@ class CompareOverlay {
             if (!baseCC || !quoteCC) return '';
             const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
             const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+            const flagShadow = selected ? selectedBadgeRing : defaultBadgeShadow;
+            const flagBorder = selected ? '#2962ff' : 'rgba(203,213,225,0.92)';
             return `
-                <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
-                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
+                <span style="position:relative;display:inline-block;width:30px;height:20px;vertical-align:middle;flex-shrink:0;">
+                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid ${flagBorder};outline:1px solid rgba(5,10,20,0.8);box-shadow:${flagShadow};" />
+                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid ${flagBorder};outline:1px solid rgba(5,10,20,0.8);box-shadow:${flagShadow};" />
                 </span>
             `;
         };
@@ -4382,7 +4387,8 @@ class CompareOverlay {
                 changeColor = isBullish ? '#26a69a' : '#ef5350';
             }
             const isHidden = !overlay.visible;
-            const pairFlags = buildOverlayPairFlags(overlay.symbol);
+            const isSelected = this.selectedOverlay === overlay.id;
+            const pairFlags = buildOverlayPairFlags(overlay.symbol, isSelected);
             
             // Match the MAIN chart OHLC header style: muted labels + muted
             // near-white values (rgba(255,255,255,0.82)), NOT the bright
@@ -4438,26 +4444,30 @@ class CompareOverlay {
                 </svg>
             `;
             
-            const isSelected = this.selectedOverlay === overlay.id;
-            
             row.innerHTML = `
                 <div class="overlay-legend-row" data-overlay-id="${overlay.id}" style="
                     display: flex;
                     align-items: center;
                     gap: 6px;
-                    padding: 2px 0;
+                    padding: ${isSelected ? '3px 6px' : '2px 0'};
+                    margin-left: ${isSelected ? '-6px' : '0'};
+                    border-radius: 6px;
+                    background: ${isSelected ? 'rgba(41,98,255,0.14)' : 'transparent'};
+                    outline: ${isSelected ? '1px solid rgba(41,98,255,0.55)' : 'none'};
                     opacity: ${isHidden ? '0.5' : '1'};
-                    cursor:default;
+                    cursor: default;
                 ">
                     ${pairFlags || `<span style="
-                        width: 10px;
-                        height: 10px;
+                        width: 12px;
+                        height: 12px;
                         background: ${overlay.color};
-                        border-radius: 2px;
-                        ${isSelected ? 'box-shadow: 0 0 0 2px #2962ff;' : ''}
+                        border-radius: 3px;
+                        flex-shrink: 0;
+                        box-shadow: ${isSelected ? selectedBadgeRing : 'none'};
+                        border: ${isSelected ? '1px solid #2962ff' : 'none'};
                     "></span>`}
-                    <span style="color: ${overlay.color}; font-weight: 500;">${overlay.symbol}</span>
-                    ${isSelected ? '<span style="color: #2962ff; font-size: 10px;">↕</span>' : ''}
+                    <span style="color: ${overlay.color}; font-weight: ${isSelected ? '700' : '500'};">${overlay.symbol}</span>
+                    ${isSelected ? '<span title="Selected — drag scale to move" style="color: #2962ff; font-size: 11px; font-weight: 700; line-height: 1;">↕</span>' : ''}
                     <button class="overlay-visibility-btn" data-id="${overlay.id}" title="${isHidden ? 'Show' : 'Hide'}" style="${iconBtnStyle}">
                         ${eyeIcon}
                     </button>
