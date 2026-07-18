@@ -20091,7 +20091,19 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
           if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
         }
-        if (v9MultichartArmedInheritDrawGuardActive()) return;
+        if (v9MultichartArmedInheritDrawGuardActive()) {
+          // Skip tool re-sync (cancelDrawing race) but still clear peer selection chrome.
+          try {
+            const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+            const fid = grid && typeof grid.getFocusedPanelId === "function"
+              ? grid.getFocusedPanelId()
+              : null;
+            if (grid && fid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+              void grid.clearDrawingUiOnOtherPanels(fid, { ignoreSelectionGuard: true });
+            }
+          } catch (_) {}
+          return;
+        }
       } catch (_) {}
       n = 0;
       try {

@@ -998,6 +998,34 @@ export async function readSelectionChrome(page, panelId, drawId) {
   }, drawId);
 }
 
+/** Drawings on a panel that still show selection chrome (store-selected or visible handles). */
+export async function readPanelSelectionOutlineCount(page, panelId, excludeDrawId = null) {
+  const frame = chartTarget(page, panelId);
+  if (!frame) return { ok: false, reason: `no frame for ${panelId}`, count: null };
+  return frame.evaluate((excludeId) => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm || !Array.isArray(dm.drawings)) {
+      return { ok: true, count: 0, details: [] };
+    }
+    let count = 0;
+    const details = [];
+    for (const d of dm.drawings) {
+      if (!d || (excludeId != null && String(d.id) === String(excludeId))) continue;
+      const node = d.group && d.group.node && d.group.node();
+      const handleCount = node
+        ? node.querySelectorAll('.resize-handle-group, .resize-handle, .custom-handle').length
+        : 0;
+      const inSel = (dm.selectedDrawings || []).some((x) => x && String(x.id) === String(d.id))
+        || !!d.selected;
+      if (inSel || handleCount > 0) {
+        count += 1;
+        details.push({ id: d.id, handleCount, inSel: !!inSel });
+      }
+    }
+    return { ok: true, count, details };
+  }, excludeDrawId);
+}
+
 export async function readCtrlMarqueeState(page, panelId) {
   const frame = chartTarget(page, panelId);
   if (!frame) return null;

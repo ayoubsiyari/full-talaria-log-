@@ -4331,11 +4331,19 @@
 
     function dismissActiveDrawingTool(dm, mirrored, opts) {
         if (!dm) return false;
-        if (multichartArmedInheritDrawGuardActive()) {
-            if (dm.drawingState && dm.drawingState.isDrawing) return false;
-            if (dm.currentTool && isMultichartInheritableDrawTool(dm.currentTool)) return false;
-        }
         var keepSelection = !!(opts && opts.keepSelection);
+        var guardActive = multichartArmedInheritDrawGuardActive();
+        var protectDrawState = guardActive && (
+            (dm.drawingState && dm.drawingState.isDrawing)
+            || (dm.currentTool && isMultichartInheritableDrawTool(dm.currentTool))
+        );
+        if (protectDrawState) {
+            // MC-DRAW-FIRSTCLICK: keep armed draw alive but still strip stale selection chrome.
+            if (!keepSelection && typeof dm.deselectAll === 'function') {
+                dm.deselectAll({ fromCanvasBackground: true });
+            }
+            return false;
+        }
         if (dm.isRectSelecting) {
             if (typeof dm.cancelRectangularSelection === 'function') {
                 dm.cancelRectangularSelection();

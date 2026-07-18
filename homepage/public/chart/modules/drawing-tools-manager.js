@@ -4107,6 +4107,10 @@ class DrawingToolsManager {
         if (!isHost && !isEmbed) return false;
         const inheritedMc = this._resolveMultichartFocusedPanelArmedDrawTool();
         if (!inheritedMc || typeof this.setTool !== 'function') return false;
+        // Strip stale selection chrome before arming inherited tool (b07 peer-outline regression).
+        if (typeof this.deselectAll === 'function') {
+            this.deselectAll({ forSelectionChange: true });
+        }
         this.setTool(inheritedMc, true);
         _publishMultichartArmedInheritDrawGuard();
         return true;
@@ -5494,9 +5498,11 @@ class DrawingToolsManager {
                 event.shiftKey,
                 event
             );
-        }
-        if (typeof window !== 'undefined' && window.__VP_RESIZE_DEBUG && this.isVolumeProfileToolType(resizeDrawing.type)) {
-            console.warn('[VP-RESIZE] applyLiveResize', { type: resizeDrawing.type, ptIdx: this.resizingPointIndex, handledByDrawing, source: this._resizePointerSource, newX: currentPoint && currentPoint.x, points: (resizeDrawing.points || []).map((p) => p && p.x) });
+        } else {
+            // The drawing committed the point itself (e.g. volume profile boundary).
+            // Keep its timestamp anchor in sync with the new x so the end-of-drag
+            // timestamp→index re-resolve does not snap the geometry back (RC-3).
+            this._refreshLiveTimestampForPoint(resizeDrawing, this.resizingPointIndex);
         }
         this._syncHorizontalAnchorToolPointY(resizeDrawing);
 
@@ -9720,27 +9726,17 @@ class DrawingToolsManager {
 
     /** Resolve VP boundary / corner handle under (mouseX, mouseY) for document-level resize routing. */
     _resolveVolumeProfileHandleDragTarget(drawing, mouseX, mouseY) {
-        const _vpDbg = (typeof window !== 'undefined' && window.__VP_RESIZE_DEBUG);
         if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
             return null;
         }
         if (drawing.type === 'anchored-volume-profile') {
-            const anchorHit = this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY);
-            if (_vpDbg) {
-                const hn = drawing.group.selectAll('.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]').nodes()
-                    .map((n) => ({ cx: n.getAttribute('cx'), cy: n.getAttribute('cy'), r: n.getAttribute('r'), pe: n.style && n.style.pointerEvents }));
-                console.warn('[VP-RESIZE] resolve(anchored)', { mouseX, mouseY, anchorHit, handleNodes: hn });
-            }
-            if (anchorHit) {
+            if (this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)) {
                 return { pointIndex: 0 };
             }
             return null;
         }
 
         const circleNodes = drawing.group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').nodes();
-        if (_vpDbg) {
-            console.warn('[VP-RESIZE] resolve(fixed) circles', circleNodes.map((n) => ({ cx: n.getAttribute('cx'), cy: n.getAttribute('cy'), r: n.getAttribute('r'), pe: n.style && n.style.pointerEvents, idx: n.getAttribute('data-point-index') })));
-        }
         for (let i = 0; i < circleNodes.length; i++) {
             const node = circleNodes[i];
             if (!node) continue;
@@ -9757,13 +9753,7 @@ class DrawingToolsManager {
             if (Number.isFinite(idx)) return { pointIndex: idx };
         }
 
-        const boundaryHit = this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY);
-        if (_vpDbg) {
-            const bn = drawing.group.selectAll('.volume-profile-boundary-hit').nodes()
-                .map((n) => ({ x1: n.getAttribute('x1'), pe: n.style && n.style.pointerEvents, idx: n.getAttribute('data-point-index') }));
-            console.warn('[VP-RESIZE] resolve(fixed) boundary', { mouseX, mouseY, boundaryHit, boundaryNodes: bn });
-        }
-        if (!boundaryHit) return null;
+        if (!this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return null;
 
         let bestIndex = null;
         let bestDistance = Infinity;
@@ -9797,22 +9787,13 @@ class DrawingToolsManager {
      * (anchored VP filtered from _startDirectMoveDrag) or select-only early return (clipped handles).
      */
     _tryStartVolumeProfileHandleDragFromPointer(drawing, event, mouseX, mouseY) {
-        const _vpDbg = (typeof window !== 'undefined' && window.__VP_RESIZE_DEBUG);
         if (typeof _isVpHandleCanvasRoutingFixEnabled === 'function'
             && !_isVpHandleCanvasRoutingFixEnabled()) {
-            if (_vpDbg) console.warn('[VP-RESIZE] tryStart BAIL: canvas-routing fix DISABLED');
             return false;
         }
-        if (!drawing || drawing.locked || !this.isVolumeProfileToolType(drawing.type)) {
-            if (_vpDbg) console.warn('[VP-RESIZE] tryStart BAIL: bad drawing', { hasDrawing: !!drawing, locked: drawing && drawing.locked, type: drawing && drawing.type });
-            return false;
-        }
+        if (!drawing || drawing.locked || !this.isVolumeProfileToolType(drawing.type)) return false;
         const target = this._resolveVolumeProfileHandleDragTarget(drawing, mouseX, mouseY);
-        if (_vpDbg) console.warn('[VP-RESIZE] tryStart', { type: drawing.type, selected: drawing.selected, mouseX, mouseY, target });
-        if (!target || !Number.isFinite(target.pointIndex)) {
-            if (_vpDbg) console.warn('[VP-RESIZE] tryStart BAIL: no resolve target (will fall back to select)');
-            return false;
-        }
+        if (!target || !Number.isFinite(target.pointIndex)) return false;
 
         event.preventDefault();
         event.stopPropagation();

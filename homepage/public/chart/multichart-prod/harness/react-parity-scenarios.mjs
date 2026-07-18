@@ -63,6 +63,7 @@ import {
   probeMultichartGridChartResolver,
   armPanelDrawToolViaProductionSync,
   twoClickRectangleLive,
+  readPanelSelectionOutlineCount,
   currentReactBuildId,
 } from './react-parity-lib.mjs';
 import {
@@ -1067,6 +1068,55 @@ async function mcDrawFirstclickReverseLive(ctx) {
   });
 }
 
+// ── MC-DRAW-FIRSTCLICK-2-R-SEL — reverse live + peer stale selection chrome ─
+async function mcDrawFirstclickReverseLivePeerSel(ctx) {
+  return runWithReact(ctx, async (boot) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await waitForReactMultichartReady(page);
+    await waitForPanelData(page, 'A');
+    await waitForPanelData(page, 'B');
+    await sleep(400);
+
+    const peerTool = await placeTool(page, 'A', 'trendline', await reactDefaultTrendlinePoints(page, 'A', 0));
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: peer trendline on A',
+      peerTool && peerTool.id, peerTool ? peerTool.id : 'null');
+    await disarmDrawTool(page, 'A');
+    const selClick = await singleClickDrawing(page, 'A', peerTool.id);
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: select peer drawing on A',
+      selClick && selClick.ok, selClick?.reason || '');
+    const preChrome = await readSelectionChrome(page, 'A', peerTool.id);
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: peer selection chrome visible before draw',
+      preChrome && preChrome.ok && preChrome.hasBlueBorder && preChrome.handleCount > 0,
+      JSON.stringify(preChrome || null));
+
+    const armRes = await armPanelDrawToolViaProductionSync(page, 'B', 'rectangle');
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: syncDrawingToolAcrossPanels on B',
+      armRes && armRes.ok && armRes.focusedTool === 'rectangle',
+      JSON.stringify(armRes || null));
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL setup: focus remains B before A draw',
+      (await readProductionFocusedPanelId(page)) === 'B',
+      `focused=${await readProductionFocusedPanelId(page)}`);
+
+    const drawRes = await twoClickRectangleLive(page, 'A');
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL probe: two-click rectangle on A',
+      drawRes && drawRes.ok && drawRes.drawingCount >= 1,
+      JSON.stringify(drawRes || null));
+
+    await sleep(200);
+    const peerChrome = await readSelectionChrome(page, 'A', peerTool.id);
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL CORE: peer drawing selection chrome cleared',
+      peerChrome && peerChrome.ok && !peerChrome.selected && peerChrome.handleCount === 0,
+      JSON.stringify(peerChrome || null));
+    const outline = await readPanelSelectionOutlineCount(page, 'A', null);
+    const peerStale = (outline && outline.details || []).find((d) => String(d.id) === String(peerTool.id));
+    checks.check('MC-DRAW-FIRSTCLICK-2-R-SEL CORE: peer-panel stale selection outline count == 0',
+      !peerStale || (peerStale.handleCount === 0 && !peerStale.inSel),
+      JSON.stringify({ peerStale, outline: outline?.details }));
+    return checks;
+  });
+}
+
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -1090,5 +1140,6 @@ export function reactScenarioList() {
     { id: 'H-A8-VP-2', title: 'A8-VP-2: anchored VP coord tab ↔ canvas anchor sync', run: hA8Vp2 },
     { id: 'MC-DRAW-FIRSTCLICK-R', title: 'live dist-v9: A armed → unfocused B draw click 1', run: mcDrawFirstclickLive },
     { id: 'MC-DRAW-FIRSTCLICK-2-R', title: 'live dist-v9: B armed → unfocused A draw click 1', run: mcDrawFirstclickReverseLive },
+    { id: 'MC-DRAW-FIRSTCLICK-2-R-SEL', title: 'live dist-v9: B armed → draw A clears peer selection chrome', run: mcDrawFirstclickReverseLivePeerSel },
   ];
 }
