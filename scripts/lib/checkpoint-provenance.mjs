@@ -222,21 +222,29 @@ export function createDeployPlan(manifest, { rollback = false } = {}) {
         chart: manifest.images.chart,
         homepage: manifest.images.homepage,
       };
+  const environment = {
+    TRADING_CHART_IMAGE: source.chart.ref,
+    HOMEPAGE_IMAGE: source.homepage.ref,
+  };
+  const envPrefix = `TRADING_CHART_IMAGE=${environment.TRADING_CHART_IMAGE} `
+    + `HOMEPAGE_IMAGE=${environment.HOMEPAGE_IMAGE}`;
   return {
     mode: rollback ? 'rollback' : 'deploy',
     checkpoint: manifest.checkpoint,
     buildId: source.buildId,
     sourceSha: source.sourceSha,
-    environment: {
-      TRADING_CHART_IMAGE: source.chart.ref,
-      HOMEPAGE_IMAGE: source.homepage.ref,
-    },
+    environment,
     imageDigests: {
       chart: source.chart.digest,
       homepage: source.homepage.digest,
     },
     pullServices: ['trading-chart', 'trading-chart-worker', 'homepage'],
     upServices: ['trading-chart', 'trading-chart-worker', 'homepage'],
+    commands: [
+      `${envPrefix} docker compose pull trading-chart trading-chart-worker homepage`,
+      `${envPrefix} docker compose up -d --no-build --no-deps `
+        + 'trading-chart trading-chart-worker homepage',
+    ],
     buildAllowed: false,
   };
 }

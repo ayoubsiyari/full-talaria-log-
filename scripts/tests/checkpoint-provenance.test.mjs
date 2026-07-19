@@ -136,6 +136,8 @@ test('deployment plan contains exact digests and cannot build', () => {
   assert.match(plan.environment.HOMEPAGE_IMAGE, /@sha256:b{64}$/);
   assert.equal(plan.sourceSha, greenManifest.source.sha);
   assert.equal(JSON.stringify(plan).includes(':latest'), false);
+  assert.match(plan.commands[0], /@sha256:a{64}.*docker compose pull/);
+  assert.match(plan.commands[1], /docker compose up -d --no-build --no-deps/);
 });
 
 test('rollback plan remains pinned to the previously accepted digests', () => {
@@ -270,4 +272,19 @@ test('Docker and deploy wiring preserve separate SHA/build ids and copy generate
   assert.match(deploy, /checkpoint-runtime-probe\.mjs/);
   assert.match(deploy, /docker compose up -d --no-build/);
   assert.doesNotMatch(deploy, /IMAGE_TAG:-latest|docker compose build/);
+
+  const vpsDeploy = fs.readFileSync(
+    path.join(repoRoot, 'scripts/vps-deploy-after-pull.sh'),
+    'utf8',
+  );
+  assert.match(vpsDeploy, /can mutate chart\/homepage without immutable provenance/);
+  assert.doesNotMatch(vpsDeploy, /docker compose build (homepage|trading-chart)/);
+
+  const workflow = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/build-images.yml'),
+    'utf8',
+  );
+  assert.match(workflow, /CHECKPOINT_BUILD=0/);
+  assert.match(workflow, /SOURCE_COMMIT_SHA=\$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(workflow, /GIT_COMMIT=\$\{\{ github\.sha \}\}/);
 });
