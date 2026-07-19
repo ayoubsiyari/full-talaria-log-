@@ -6,6 +6,7 @@
 import {
     orderMcHostPersistOnlyV1Enabled,
     orderMcHostPlaceV1Enabled,
+    orderMcJournalSnapshotV1Enabled,
     orderMcLegacyIframeOrderV1Enabled,
     orderMcOpenPatchV1Enabled,
     orderMcPnlHubV1Enabled,
@@ -20,6 +21,7 @@ import {
 export {
     orderMcHostPersistOnlyV1Enabled,
     orderMcHostPlaceV1Enabled,
+    orderMcJournalSnapshotV1Enabled,
     orderMcLegacyIframeOrderV1Enabled,
     orderMcOpenPatchV1Enabled,
     orderMcPnlHubV1Enabled,
@@ -45,6 +47,7 @@ export function buildHostOrderStoreSnapshot(om, sessionId, version = 0, ctx = {}
             pendingOrders: [],
             openPositions: [],
             closedPositions: [],
+            tradeJournal: [],
             orders: [],
             account: {},
             counters: {},
@@ -53,6 +56,10 @@ export function buildHostOrderStoreSnapshot(om, sessionId, version = 0, ctx = {}
     const pendingOrders = cloneOrderList(om.pendingOrders);
     const openPositions = cloneOrderList(om.openPositions);
     const closedRecent = cloneOrderList(om.closedPositions).slice(-50);
+    // Exit ticks on peers must use host-canonical closePrice + exitMarkerTimeMs.
+    const journalRecent = orderMcJournalSnapshotV1Enabled(ctx.win || ctx.scope || {})
+        ? cloneOrderList(om.tradeJournal).slice(-100)
+        : [];
     const orders = cloneOrderList(om.orders);
     const scope = ctx.scope || ctx.win || (typeof globalThis !== 'undefined' ? globalThis : {});
     const stampCtx = { ...ctx, scope };
@@ -62,6 +69,7 @@ export function buildHostOrderStoreSnapshot(om, sessionId, version = 0, ctx = {}
         pendingOrders: stampPersistedOrderRecords(pendingOrders, stampCtx),
         openPositions: stampPersistedOrderRecords(openPositions, stampCtx),
         closedPositions: stampPersistedOrderRecords(closedRecent, stampCtx),
+        tradeJournal: stampPersistedOrderRecords(journalRecent, stampCtx),
         orders: stampPersistedOrderRecords(orders, stampCtx),
         account: {
             balance: om.balance,
@@ -108,10 +116,12 @@ export function filterSnapshotForPanel(snapshot, panelMeta, normalizeTicker) {
     };
     const openAll = snapshot?.openPositions || [];
     const pendingAll = snapshot?.pendingOrders || [];
+    const journalAll = snapshot?.tradeJournal || [];
     return {
         version: snapshot?.version || 0,
         visibleOpen: expandSplit(openAll.filter(matchRow), openAll),
         visiblePending: expandSplit(pendingAll.filter(matchRow), pendingAll),
+        visibleJournal: journalAll.filter(matchRow),
     };
 }
 

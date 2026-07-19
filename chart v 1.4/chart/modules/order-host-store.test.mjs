@@ -180,11 +180,26 @@ assert(calls.length > 0 && calls.every((c) => c.cmd === 'addOrder'), 'legacy pat
 assert(calls.some((c) => c.panelId === 'B' && c.kind === 'opened'), 'would push opened leg to panel B');
 
 section('buildHostOrderStoreSnapshot — I16 row stamps');
+om.tradeJournal = [{
+    tradeId: 9,
+    ticker: 'EURUSD',
+    symbol: 'EURUSD',
+    sourceFileId: '25',
+    exitPrice: 1.12,
+    exitMarkerTimeMs: 1570000000000,
+}];
 const snap = buildHostOrderStoreSnapshot(om, 'sess-1', 1, { win: WIN_ON, buildId: '20260717b43' });
 assert(snap.openPositions[0].build_id === '20260717b43', 'host snapshot open row stamped');
 assert(snap.pendingOrders[0].schema_version === ORDER_RECORD_SCHEMA_VERSION, 'host snapshot pending schema_version');
+assert(Array.isArray(snap.tradeJournal) && snap.tradeJournal.length === 1, 'snapshot carries host tradeJournal for exit ticks');
+assert(Number(snap.tradeJournal[0].exitMarkerTimeMs) === 1570000000000, 'journal exitMarkerTimeMs preserved');
 const snapOff = buildHostOrderStoreSnapshot(om, 'sess-1', 1, { win: { __TALARIA_DISABLE_ORDER_PERSIST_STAMP_V1: true } });
 assert(!snapOff.openPositions[0].build_id, 'host snapshot unstamped when I16 switch OFF');
+const snapJournalOff = buildHostOrderStoreSnapshot(om, 'sess-1', 1, {
+    win: { __TALARIA_DISABLE_ORDER_MC_JOURNAL_SNAPSHOT_V1: true },
+});
+assert(Array.isArray(snapJournalOff.tradeJournal) && snapJournalOff.tradeJournal.length === 0,
+    'journal omitted when journal-snapshot kill-switch ON');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

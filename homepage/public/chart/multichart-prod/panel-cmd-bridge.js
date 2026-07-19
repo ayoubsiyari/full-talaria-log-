@@ -108,6 +108,11 @@
         return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_SNAPSHOT_PROJECTION_V1;
     }
 
+    function orderMcJournalSnapshotV1EnabledBridge() {
+        return orderMcSnapshotProjectionV1EnabledBridge()
+            && !global.__TALARIA_DISABLE_ORDER_MC_JOURNAL_SNAPSHOT_V1;
+    }
+
     function orderMcLegacyIframeOrderV1EnabledBridge() {
         return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_LEGACY_IFRAME_ORDER_V1;
     }
@@ -170,6 +175,15 @@
         om.orders = cloneOrderList(snapshot.orders || []).filter(function (o) {
             return o && ids.has(o.id);
         });
+        // Same-ticker peers must paint exit ticks from host journal (closePrice +
+        // exitMarkerTimeMs). Without this, B redraws from an empty/stale local
+        // journal and the red exit dash lands on a different price than A.
+        if (orderMcJournalSnapshotV1EnabledBridge()) {
+            var journalAll = snapshot.tradeJournal || [];
+            om.tradeJournal = cloneOrderList(journalAll.filter(matchRow));
+            var closedAll = snapshot.closedPositions || [];
+            om.closedPositions = cloneOrderList(closedAll.filter(matchRow));
+        }
         om._hostSnapshotVersion = snapshot.version;
         // Full strip+redraw so pending→open fills keep every multi-entry leg
         // (and correct aggregate TP/SL lots). Piecemeal drawOrderLine left stale

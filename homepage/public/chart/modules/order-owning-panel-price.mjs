@@ -270,3 +270,9 @@ export function orderMcReadyPanelsSnapshotV1Enabled(win = {}) {
     if (!orderMcSnapshotProjectionV1Enabled(win)) return false;
     return !win.__TALARIA_DISABLE_ORDER_MC_READY_PANELS_SNAPSHOT_V1;
 }
+
+/** Project host tradeJournal onto peers so exit ticks share closePrice / exitMarkerTimeMs. */
+export function orderMcJournalSnapshotV1Enabled(win = {}) {
+    if (!orderMcSnapshotProjectionV1Enabled(win)) return false;
+    return !win.__TALARIA_DISABLE_ORDER_MC_JOURNAL_SNAPSHOT_V1;
+}

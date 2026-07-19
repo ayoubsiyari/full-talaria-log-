@@ -189,17 +189,24 @@ function buildHostOrderStoreSnapshot(om, sessionId, version) {
             pendingOrders: [],
             openPositions: [],
             closedPositions: [],
+            tradeJournal: [],
             orders: [],
             account: {},
             counters: {},
         };
     }
+    const journalOn = orderMcSnapshotProjectionV1Enabled()
+        && !(typeof window !== "undefined"
+            && window.__TALARIA_DISABLE_ORDER_MC_JOURNAL_SNAPSHOT_V1 === true);
     return {
         version: Number(version) || 0,
         sessionId: sessionId != null ? String(sessionId) : null,
         pendingOrders: cloneOrderManagerList(om.pendingOrders),
         openPositions: cloneOrderManagerList(om.openPositions),
         closedPositions: cloneOrderManagerList(om.closedPositions).slice(-50),
+        tradeJournal: journalOn
+            ? cloneOrderManagerList(om.tradeJournal).slice(-100)
+            : [],
         orders: cloneOrderManagerList(om.orders),
         account: {
             balance: om.balance,
