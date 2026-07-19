@@ -39712,8 +39712,9 @@ class OrderManager {
                         ? pctArrowsWidth
                         : (pctStepperBtn ? (tpPctArrowSize + tpPctArrowGap) : 0);
 
+                    const stripeW = 3;
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
-                    const labelBW = labelTW + pad * 2;
+                    const labelBW = labelTW + pad * 2 + stripeW;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
 
@@ -39722,13 +39723,13 @@ class OrderManager {
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
                     const badgesW = pctW + deleteSpace + splitSpace;
 
-                    const rightEdge = this._getOrderOverlayRightEdge(ch);
+                    // Keep the full × / + cluster inside the plot (same seam inset as entry).
+                    const rightEdge = this._getOrderOverlayRightEdge(ch, 6);
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap
                         - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
-                    const stripeW = 3;
 
                     // Label box (leftmost)
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
@@ -40239,7 +40240,7 @@ class OrderManager {
             '.sl-label-box', '.sl-label-accent', '.sl-label-text',
             '.sl-pnl-box', '.sl-pnl-text', '.sl-price-box', '.sl-price-text',
             '.tp-label-box', '.tp-label-accent', '.tp-label-text',
-            '.tp-pnl-box', '.tp-pnl-text', '.tp-split-btn',
+            '.tp-pnl-box', '.tp-pnl-text',
             '.tp-price-box', '.tp-price-text',
             '.be-label-box', '.be-label-accent', '.be-label-text',
             '.be-price-box', '.be-price-text',
@@ -40249,6 +40250,21 @@ class OrderManager {
         ch.svg.selectAll(plotClipSelectors).each(function() {
             const el = d3.select(this);
             el.attr('clip-path', clipUrl);
+            el.style('clip-path', null);
+        });
+        // × / + / − / % controls sit on the plot→axis seam. Never leave them under the
+        // main-plot clip (a prior pass cleared them; this bulk clip must not re-apply).
+        const unclipSelectors = [
+            '.order-level-badge',
+            '.order-close-btn', '.pending-order-close-btn',
+            '.sl-close-btn', '.tp-close-btn', '.tp-split-btn',
+            '.pending-tp-delete', '.pending-tp-split',
+            '.open-tp-pct-control', '.pending-tp-pct-control',
+            '.tp-percentage-control'
+        ].join(',');
+        ch.svg.selectAll(unclipSelectors).each(function() {
+            const el = d3.select(this);
+            el.attr('clip-path', null);
             el.style('clip-path', null);
         });
     }
@@ -45106,7 +45122,8 @@ class OrderManager {
         return this._createOrderLevelBadgeOnChart(svg, cssClass, 'close', { onClick: onClickFn });
     }
 
-    _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 10) {
+    _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 9) {
+        // r=9 matches executed/pending TP row layout (closeBtnR/splitBtnR); r=10 overflowed the axis.
         return this._createOrderLevelBadgeOnChart(svg, cssClass, 'plus', { onClick: onClickFn, r });
     }
 }
