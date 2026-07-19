@@ -48,6 +48,25 @@ function isMultichartEmbedPanel() {
   }
 }
 
+/** CB-01 diagnostic-only bridge into chart.js's default-off ring logger. */
+function cb01MountSigV9SetTrigger(trigger, details) {
+  try {
+    const setTrigger = typeof window !== "undefined"
+      ? window.__talariaCb01MountSigSetTriggerV1
+      : null;
+    if (typeof setTrigger === "function") setTrigger(trigger, details);
+  } catch (_) {}
+}
+
+function cb01MountSigV9Record(ch, source, schedule, extra) {
+  try {
+    const record = typeof window !== "undefined"
+      ? window.__talariaCb01MountSigRecordV1
+      : null;
+    if (typeof record === "function") record(ch || window.chart, source, schedule, extra);
+  } catch (_) {}
+}
+
 /** Bottom-left watermark — one instance for the full chart area in multi-layout. */
 function ChartBrandLink({ multi = false }) {
   if (isMultichartEmbedPanel()) return null;
@@ -12665,6 +12684,12 @@ const TalariaV8bLive = () => {
     try {
       window.__v9ChartSymbol = compact || undefined;
     } catch (_) {}
+    cb01MountSigV9Record(
+      window.chart,
+      "TalariaV8bLive.jsx:symbol-state-publish",
+      "sync",
+      { selectedSymbol: symbol }
+    );
     try {
       if (window.chart && typeof window.chart.scheduleRender === "function") {
         window.chart.scheduleRender();
@@ -12885,6 +12910,24 @@ const TalariaV8bLive = () => {
       return;
     }
     const gen = ++symbolLoadGenRef.current;
+    let panelId = "A";
+    try {
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.getFocusedPanelId === "function") {
+        panelId = grid.getFocusedPanelId() || panelId;
+      }
+    } catch (_) {}
+    cb01MountSigV9SetTrigger("symbol-swap", {
+      panelId,
+      selectedSymbol: symbolId,
+      durationMs: 6000,
+    });
+    cb01MountSigV9Record(
+      v9ActiveChartInstance(),
+      "TalariaV8bLive.jsx:selectSessionSymbol:actuation",
+      "sync",
+      { panelId, trigger: "symbol-swap", selectedSymbol: symbolId }
+    );
     pendingSymbolRef.current = symbolId;
     setSymbol(symbolId);
     setSymbolOpen(false);
@@ -12894,11 +12937,35 @@ const TalariaV8bLive = () => {
       .then(() => {
         if (gen !== symbolLoadGenRef.current) return;
         reconcileToolbarSymbolFromChart(symbolId);
+        cb01MountSigV9Record(
+          v9ActiveChartInstance(),
+          "TalariaV8bLive.jsx:selectSessionSymbol:complete",
+          "microtask",
+          { panelId, trigger: "symbol-swap", selectedSymbol: symbolId }
+        );
       })
       .catch(() => {
         if (gen !== symbolLoadGenRef.current) return;
         reconcileToolbarSymbolFromChart(null);
       });
+  };
+
+  const selectTimeframeWithCb01Signature = (nextTf) => {
+    let panelId = "A";
+    try {
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.getFocusedPanelId === "function") {
+        panelId = grid.getFocusedPanelId() || panelId;
+      }
+    } catch (_) {}
+    cb01MountSigV9SetTrigger("tf", { panelId, durationMs: 6000 });
+    cb01MountSigV9Record(
+      v9ActiveChartInstance(),
+      "TalariaV8bLive.jsx:timeframe:onClick",
+      "sync",
+      { panelId, trigger: "tf" }
+    );
+    setTf(nextTf);
   };
 
   // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
@@ -35101,7 +35168,7 @@ const TalariaV8bLive = () => {
                               background:isAct?c.acD:isRowHov?"rgba(255,255,255,0.025)":"transparent",
                               transition:"background 0.1s"}}>
                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <button type="button" onClick={(e)=>{e.stopPropagation();setTf(t);}}
+                            <button type="button" onClick={(e)=>{e.stopPropagation();selectTimeframeWithCb01Signature(t);}}
                               style={{flex:1,background:"transparent",border:"none",cursor:"default",
                                 color:isAct?c.acL:c.ts,fontSize:13,fontWeight:isAct?700:500,
                                 fontFamily:F,textAlign:"left",padding:0}}>
@@ -35228,7 +35295,7 @@ const TalariaV8bLive = () => {
           </div>
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
-              <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
+              <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); selectTimeframeWithCb01Signature(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
                 style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -37648,7 +37715,24 @@ const TalariaV8bLive = () => {
                           return (
                             <div
                               key={li}
-                              onClick={() => setLayoutPanels({ n, li })}
+                              onClick={() => {
+                                const trigger = layoutPanels.n === 1 && n === 2
+                                  ? "single-to-2v"
+                                  : (layoutPanels.n === 2 && n === 4 ? "2to4" : null);
+                                if (trigger) {
+                                  cb01MountSigV9SetTrigger(trigger, {
+                                    panelId: "A",
+                                    durationMs: 6000,
+                                  });
+                                  cb01MountSigV9Record(
+                                    window.chart,
+                                    "TalariaV8bLive.jsx:layout-tile:onClick",
+                                    "sync",
+                                    { panelId: "A", role: "host", trigger }
+                                  );
+                                }
+                                setLayoutPanels({ n, li });
+                              }}
                               onMouseEnter={() => setSwHov(`ly-${n}-${li}`)}
                               onMouseLeave={() => setSwHov(null)}
                               style={{ width: IW, height: IH, cursor: "default", flexShrink: 0 }}

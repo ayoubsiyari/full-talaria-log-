@@ -55,6 +55,25 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
+/** CB-01 diagnostic-only bridge into chart.js's default-off ring logger. */
+function cb01MountSigGridRecord(ch, source, schedule, extra) {
+    try {
+        const record = typeof window !== "undefined"
+            ? window.__talariaCb01MountSigRecordV1
+            : null;
+        if (typeof record === "function") record(ch || window.chart, source, schedule, extra);
+    } catch (_) { /* instrumentation must never affect product flow */ }
+}
+
+function cb01MountSigGridSetTrigger(trigger, details) {
+    try {
+        const setTrigger = typeof window !== "undefined"
+            ? window.__talariaCb01MountSigSetTriggerV1
+            : null;
+        if (typeof setTrigger === "function") setTrigger(trigger, details);
+    } catch (_) { /* instrumentation must never affect product flow */ }
+}
+
 /** Per-tile fileId across F5 (sessionStorage). Unset = ON. */
 function mcPanelFilePersistV1Enabled() {
     try {
@@ -1355,6 +1374,12 @@ function mcPostBootResizeFlushEnabled() {
 
 function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
     if (!mcPostBootResizeFlushEnabled() || !cellRefs || !panelIds || !panelIds.length) return;
+    cb01MountSigGridRecord(
+        window.chart,
+        "MultichartGrid.jsx:flushIframeChartsAfterBootReveal:schedule",
+        "sync",
+        { role: "host" }
+    );
     // forceRecenter only on first multichart boot (F5); later tile joins must not
     // yank an already-stable peer (B) when C appears.
     const forceRecenter = opts.forceRecenter === true;
@@ -1385,6 +1410,12 @@ function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
                     } catch (_) {}
                 }
                 if (typeof ch.render === "function") ch.render();
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:flushIframeChartsAfterBootReveal:panel-flush",
+                    "raf",
+                    { panelId: id }
+                );
             } catch (_) {}
         }
     };
@@ -1435,6 +1466,12 @@ function mcBootSingleCommitActive(ch) {
 
 function syncAllIframesToHost(mgr) {
     if (!mgr || typeof mgr._initialSyncToHost !== "function") return;
+    cb01MountSigGridRecord(
+        window.chart,
+        "MultichartGrid.jsx:syncAllIframesToHost:begin",
+        "sync",
+        { role: "host" }
+    );
     let hostFid = "";
     try {
         if (window.chart && window.chart.currentFileId != null) {
@@ -1452,6 +1489,13 @@ function syncAllIframesToHost(mgr) {
                 if (panelFid && panelFid !== hostFid) continue;
             }
             mgr._initialSyncToHost(c);
+            const ch = c.frame && c.frame.contentWindow ? c.frame.contentWindow.chart : null;
+            cb01MountSigGridRecord(
+                ch,
+                "MultichartGrid.jsx:syncAllIframesToHost:initial-sync",
+                "message",
+                { panelId: c.id }
+            );
         }
     } catch (_) {}
 }
@@ -1494,10 +1538,22 @@ function syncHostViewportFrozenFlag(frozen) {
             ch._multichartHostViewportFrozen = !!frozen;
             if (frozen) ch._multichartSkipResizeOffsetAdjust = true;
             else delete ch._multichartSkipResizeOffsetAdjust;
+            cb01MountSigGridRecord(
+                ch,
+                "MultichartGrid.jsx:syncHostViewportFrozenFlag",
+                "sync",
+                { role: "host" }
+            );
         }
     } catch (_) {}
 }
 function scheduleHostBootResize(cellEl) {
+    cb01MountSigGridRecord(
+        window.chart,
+        "MultichartGrid.jsx:scheduleHostBootResize:schedule",
+        "sync",
+        { role: "host" }
+    );
     applyHostSlotPositionOnly(cellEl);
     if (_hostBootResizeTimer) clearTimeout(_hostBootResizeTimer);
     _hostBootResizeTimer = setTimeout(() => {
@@ -1512,6 +1568,12 @@ function scheduleHostBootResize(cellEl) {
                 ch.resize();
                 if (typeof ch.constrainOffset === "function") ch.constrainOffset();
                 if (typeof ch.render === "function") ch.render();
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:scheduleHostBootResize:run",
+                    "timeout",
+                    { role: "host" }
+                );
             }
         } catch (_) {}
     }, 320);
@@ -1520,10 +1582,22 @@ function scheduleAlignHostOnly(mgr, delayMs) {
     if (_hostViewportFrozenCheck()) return;
     if (_alignHostSyncTimer) clearTimeout(_alignHostSyncTimer);
     const wait = Number.isFinite(delayMs) ? delayMs : 220;
+    cb01MountSigGridRecord(
+        window.chart,
+        "MultichartGrid.jsx:scheduleAlignHostOnly:schedule",
+        "sync",
+        { role: "host" }
+    );
     _alignHostSyncTimer = setTimeout(function () {
         _alignHostSyncTimer = 0;
         try {
             alignHostChartForMultichart(window.chart, mgr);
+            cb01MountSigGridRecord(
+                window.chart,
+                "MultichartGrid.jsx:scheduleAlignHostOnly:run",
+                "timeout",
+                { role: "host" }
+            );
         } catch (_) {}
     }, wait);
 }
@@ -1531,6 +1605,12 @@ function scheduleAlignHostOnly(mgr, delayMs) {
 function applyHostSlot(cellEl, opts) {
     if (!cellEl) return;
     if (typeof document === "undefined") return;
+    cb01MountSigGridRecord(
+        window.chart,
+        "MultichartGrid.jsx:applyHostSlot:enter",
+        "sync",
+        { role: "host" }
+    );
     // `reanchor` (default true) controls whether we re-center the host
     // viewport on the replay playhead / refit AFTER the resize. During the
     // multichart boot and on plain resize/scroll ticks we pass false so the
@@ -1552,6 +1632,12 @@ function applyHostSlot(cellEl, opts) {
             forceResyncChartSurface(ch);
             if (typeof ch.render === "function") ch.render();
             if (reanchor) alignHostChartForMultichart(ch, null);
+            cb01MountSigGridRecord(
+                ch,
+                "MultichartGrid.jsx:applyHostSlot:complete",
+                "sync",
+                { role: "host" }
+            );
         }
     } catch (_) {}
 }
@@ -2222,6 +2308,16 @@ export default function MultichartGrid({
             const mgr = managerRef.current;
             if (mgr && typeof mgr.showPanelFrame === "function") {
                 try { mgr.showPanelFrame(id); } catch (_) {}
+                const entry = mgr.charts && mgr.charts.get ? mgr.charts.get(id) : null;
+                const ch = entry && entry.frame && entry.frame.contentWindow
+                    ? entry.frame.contentWindow.chart
+                    : null;
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:markPanelDataReady:reveal-request",
+                    "sync",
+                    { panelId: id, role: "new iframe" }
+                );
             }
         };
         if (holdMs <= 0) {
@@ -2268,6 +2364,34 @@ export default function MultichartGrid({
         () => resolveLayout(layoutId, panelCount),
         [layoutId, panelCount]
     );
+
+    useLayoutEffect(() => {
+        let trigger = null;
+        try {
+            const active = window.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
+            if (active && active.trigger) trigger = String(active.trigger);
+        } catch (_) {}
+        if (!trigger) {
+            let navType = "";
+            try {
+                const nav = performance.getEntriesByType("navigation")[0];
+                navType = nav && nav.type ? String(nav.type) : "";
+            } catch (_) {}
+            trigger = navType === "reload"
+                ? "refresh"
+                : (Number(panelCount) >= 4 ? "2to4" : "single-to-2v");
+            cb01MountSigGridSetTrigger(trigger, {
+                panelId: HOST_PANEL_ID,
+                durationMs: 6000,
+            });
+        }
+        cb01MountSigGridRecord(
+            window.chart,
+            "MultichartGrid.jsx:layout-actuation",
+            "sync",
+            { panelId: HOST_PANEL_ID, role: "host", trigger }
+        );
+    }, [layoutId, panelCount]);
 
     // ─── Resizable column / row fractions ──────────────────────────────
     //
@@ -2903,7 +3027,23 @@ export default function MultichartGrid({
         const revealAll = (flushOpts) => {
             if (!mgr || typeof mgr.showPanelFrame !== "function") return;
             for (const id of expected) {
+                const entry = mgr.charts && mgr.charts.get ? mgr.charts.get(id) : null;
+                const ch = entry && entry.frame && entry.frame.contentWindow
+                    ? entry.frame.contentWindow.chart
+                    : null;
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:revealAll:before",
+                    "timeout",
+                    { panelId: id }
+                );
                 try { mgr.showPanelFrame(id); } catch (_) {}
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:revealAll:after",
+                    "timeout",
+                    { panelId: id }
+                );
             }
             flushIframeChartsAfterBootReveal(cellRefs.current, expected, flushOpts);
         };
@@ -3029,10 +3169,25 @@ export default function MultichartGrid({
             const ro = new ResizeObserver(() => {
                 if (isDraggingRef.current) return;
                 if (isMultichartBootSettling()) return;
+                const ifr = cellRefs.current[panelId]
+                    && cellRefs.current[panelId].querySelector("iframe");
+                const ch = ifr && ifr.contentWindow ? ifr.contentWindow.chart : null;
+                cb01MountSigGridRecord(
+                    ch,
+                    "MultichartGrid.jsx:iframe-ResizeObserver",
+                    "ro",
+                    { panelId }
+                );
                 clearTimeout(timers.get(panelId));
                 timers.set(panelId, setTimeout(() => {
                     if (isDraggingRef.current) return;
                     resizeIframeInCell(cellRefs.current[panelId]);
+                    cb01MountSigGridRecord(
+                        ch,
+                        "MultichartGrid.jsx:iframe-ResizeObserver:resize",
+                        "timeout",
+                        { panelId }
+                    );
                 }, 100));
             });
             ro.observe(cell);

@@ -57,6 +57,20 @@
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
+    /** CB-01 diagnostic-only hook into an iframe's default-off chart logger. */
+    function cb01MountSigManagerRecord(entry, source, schedule) {
+        try {
+            var frameWindow = entry && entry.frame && entry.frame.contentWindow;
+            var record = frameWindow && frameWindow.__talariaCb01MountSigRecordV1;
+            if (typeof record === 'function') {
+                record(frameWindow.chart, source, schedule, {
+                    panelId: entry.id,
+                    role: 'new iframe',
+                });
+            }
+        } catch (_) { /* instrumentation must not affect reveal */ }
+    }
+
     function uuid() {
         return Date.now().toString(16) + '-' + (Math.random() * 1e9 | 0).toString(16);
     }
@@ -512,6 +526,11 @@
     MultichartManager.prototype.showPanelFrame = function (id) {
         const c = this.charts.get(id);
         if (!c || c.host || !c.frame) return;
+        cb01MountSigManagerRecord(
+            c,
+            'multichart-manager.js:MultichartManager.showPanelFrame:before',
+            'sync'
+        );
         let alreadyVisible = false;
         try { alreadyVisible = c.frame.style.opacity === '1'; } catch (_) {}
         let revealAfter = 0;
@@ -532,6 +551,11 @@
             return;
         }
         try { c.frame.style.opacity = '1'; } catch (_) {}
+        cb01MountSigManagerRecord(
+            c,
+            'multichart-manager.js:MultichartManager.showPanelFrame:after',
+            'sync'
+        );
     };
 
     MultichartManager.prototype._markBootRevealHold = function (holdMs) {

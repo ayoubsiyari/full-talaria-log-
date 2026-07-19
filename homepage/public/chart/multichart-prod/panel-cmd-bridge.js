@@ -47,6 +47,25 @@
     var params  = new URLSearchParams(global.location.search);
     var panelId = params.get('panelId') || params.get('id') || ('panel-' + Math.random().toString(36).slice(2, 6));
 
+    function cb01MountSigBridgeSetTrigger(trigger, details) {
+        try {
+            var setTrigger = global.__talariaCb01MountSigSetTriggerV1;
+            if (typeof setTrigger === 'function') setTrigger(trigger, details || {});
+        } catch (_) {}
+    }
+
+    function cb01MountSigBridgeRecord(source, schedule, extra) {
+        try {
+            var record = global.__talariaCb01MountSigRecordV1;
+            if (typeof record === 'function') {
+                record(global.chart, source, schedule, extra || {
+                    panelId: panelId,
+                    role: 'new iframe',
+                });
+            }
+        } catch (_) {}
+    }
+
     function log() {
         if (params.get('verbose') !== '1') return;
         try {
@@ -4146,10 +4165,47 @@
             }
         }
 
+        var cb01Trigger = msg.cmd === 'loadFile'
+            ? 'symbol-swap'
+            : (msg.cmd === 'setTimeframe' ? 'tf' : null);
+        if (cb01Trigger) {
+            cb01MountSigBridgeSetTrigger(cb01Trigger, {
+                panelId: panelId,
+                selectedSymbol: global.chart && global.chart.currentSymbol,
+                durationMs: 6000,
+            });
+            cb01MountSigBridgeRecord(
+                'panel-cmd-bridge.js:onMessage:' + msg.cmd + ':received',
+                'message',
+                { panelId: panelId, role: 'new iframe', trigger: cb01Trigger }
+            );
+        }
+
         log('apply', msg.cmd, msg.args);
         applyCommand(msg.cmd, msg.args).then(
-            function (data) { reportResult(msg.requestId, true,  null, data); },
+            function (data) {
+                if (cb01Trigger) {
+                    cb01MountSigBridgeRecord(
+                        'panel-cmd-bridge.js:onMessage:' + msg.cmd + ':complete',
+                        'microtask',
+                        {
+                            panelId: panelId,
+                            role: 'new iframe',
+                            trigger: cb01Trigger,
+                            selectedSymbol: global.chart && global.chart.currentSymbol,
+                        }
+                    );
+                }
+                reportResult(msg.requestId, true,  null, data);
+            },
             function (err) {
+                if (cb01Trigger) {
+                    cb01MountSigBridgeRecord(
+                        'panel-cmd-bridge.js:onMessage:' + msg.cmd + ':error',
+                        'microtask',
+                        { panelId: panelId, role: 'new iframe', trigger: cb01Trigger }
+                    );
+                }
                 warn('cmd failed:', msg.cmd, err && err.message || err);
                 reportResult(msg.requestId, false, String(err && err.message || err));
             }

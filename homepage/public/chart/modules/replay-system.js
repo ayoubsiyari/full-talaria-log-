@@ -3895,6 +3895,14 @@ class ReplaySystem {
             this._viewportLockForPlayback = null;
         }
 
+        // Seed a fresh pan-style time-axis cache for PLAY (reproject only — full
+        // rebuild each step re-anchors to the playhead and drifts labels at max zoom).
+        try {
+            if (this.chart && typeof this.chart._invalidateTimeAxisTickCaches === 'function') {
+                this.chart._invalidateTimeAxisTickCaches();
+            }
+        } catch (_tax) { /* ignore */ }
+
         this._capturePlaybackViewportLock();
 
         // Multichart: after per-panel TF changes the host may sit on the last loaded 1m bar

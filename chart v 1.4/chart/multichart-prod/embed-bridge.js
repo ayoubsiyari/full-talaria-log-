@@ -35,6 +35,18 @@
     var chartId = params.get('panelId') || params.get('id') || ('chart-' + Math.random().toString(36).slice(2, 6));
     var verbose = params.get('verbose') === '1';
 
+    function cb01MountSigEmbedRecord(source, schedule) {
+        try {
+            var record = window.__talariaCb01MountSigRecordV1;
+            if (typeof record === 'function') {
+                record(window.chart, source, schedule, {
+                    panelId: chartId,
+                    role: 'new iframe',
+                });
+            }
+        } catch (_) {}
+    }
+
     function reportToShell(level, text) {
         try {
             window.parent.postMessage({
@@ -329,6 +341,10 @@
     // React app picks (usually empty, "No data to display"), even though the
     // user just picked a layout from a /chart/ that already had data.
     function applyInitialContext() {
+        cb01MountSigEmbedRecord(
+            'embed-bridge.js:applyInitialContext:begin',
+            'sync'
+        );
         var fileId    = params.get('fileId');
         var tf        = params.get('tf');
         var sessionId = params.get('sessionId');
@@ -1062,6 +1078,10 @@
                             notifyPanelCacheReady();
                         }
                         markViewportBootSettle(ch, 3200);
+                        cb01MountSigEmbedRecord(
+                            'embed-bridge.js:applyInitialContext:backtest-load-complete',
+                            'microtask'
+                        );
                         if (useMcBoot) {
                             // loadMultichartPanelFromHost already rendered; extra paint here
                             // made tiles jump during the first few seconds of boot.
@@ -1142,6 +1162,10 @@
                             detail: { fileId: loadFid, source: 'parent-mirror-viewport' },
                         }));
                     } catch (_) {}
+                    cb01MountSigEmbedRecord(
+                        'embed-bridge.js:applyInitialContext:live-mirror-complete',
+                        'sync'
+                    );
                     afterLoad();
                     return;
                 }
@@ -1149,6 +1173,10 @@
                 if (p && typeof p.then === 'function') {
                     p.then(function () {
                         if (samePairBoot) notifyPanelCacheReady();
+                        cb01MountSigEmbedRecord(
+                            'embed-bridge.js:applyInitialContext:live-load-complete',
+                            'microtask'
+                        );
                         afterLoad();
                     }, function (err) {
                         reportToShell('error', 'loadFileData failed: '

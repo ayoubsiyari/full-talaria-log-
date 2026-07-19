@@ -5761,6 +5761,11 @@ class Chart {
      * chart.w=0 on first paint). Repeated calls within the settle window merge.
      */
     _finalizeMultichartPanelAfterPairLoad() {
+        cb01MountSigV1Record(
+            this,
+            'chart.js:Chart._finalizeMultichartPanelAfterPairLoad:schedule',
+            'sync'
+        );
         const settleMs = this._isMultichartEmbedPanel?.() ? 3200 : 300;
         try {
             const now = performance.now();
@@ -5784,6 +5789,11 @@ class Chart {
         const runOnce = () => {
             this._finalizePairLoadTimer = null;
             this._finalizePairLoadRaf = null;
+            cb01MountSigV1Record(
+                this,
+                'chart.js:Chart._finalizeMultichartPanelAfterPairLoad:run',
+                'raf'
+            );
             try {
                 const bootLocked = this._multichartBootViewportPositioned
                     && Number.isFinite(this._multichartViewportSettleUntil)
@@ -9521,6 +9531,8 @@ class Chart {
         let pairLoadUiActive = false;
         let pairSwitchEndDeferred = false;
 
+        cb01MountSigV1Record(this, 'chart.js:Chart.loadFileData:begin', 'sync');
+
         try {
             // Preserve wall-clock replay time when switching pairs. Multichart iframe panels
             // must anchor fetches to parent tile A's playhead even if local replay is not active yet.
@@ -9549,6 +9561,14 @@ class Chart {
 
             const session = this.backtestingSession || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
             const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
+            if (this.currentFileId != null
+                && String(this.currentFileId) !== ''
+                && String(this.currentFileId) !== targetFileId) {
+                cb01MountSigV1SetTrigger('symbol-swap', {
+                    selectedSymbol: targetTicker,
+                    panelId: cb01MountSigV1PanelId(this, window, null),
+                });
+            }
             if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
                 const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
                 if (!canSwitch) {
@@ -9938,8 +9958,13 @@ class Chart {
             });
             if (pairLoadUiActive) pairSwitchEndDeferred = true;
 
+            cb01MountSigV1Record(this, 'chart.js:Chart.loadFileData:complete', 'microtask', {
+                selectedSymbol: targetTicker,
+            });
+
             return true;
         } catch (error) {
+            cb01MountSigV1Record(this, 'chart.js:Chart.loadFileData:error', 'microtask');
             console.error('❌ Failed to switch symbol:', error);
             if (typeof this.showNotification === 'function') {
                 this.showNotification('Failed to load symbol: ' + error.message);
@@ -17684,6 +17709,7 @@ class Chart {
     }
 
 	    resize() {
+	        cb01MountSigV1Record(this, 'chart.js:Chart.resize:enter', 'sync');
 	        const oldW = this.w;
 	        const oldH = this.h;
 	        
@@ -17947,6 +17973,8 @@ class Chart {
 	        } else {
 	            this.fitToView();
 	        }
+
+	        cb01MountSigV1Record(this, 'chart.js:Chart.resize:viewport-committed', 'sync');
 
 	        if (sizeChanged && oldW && oldH) {
 	            requestAnimationFrame(() => {
@@ -18358,6 +18386,7 @@ class Chart {
      * @param {boolean|null} [opts.centerPlayhead] Replay only; true = center, false = right-edge follow.
      */
     _resetViewportToDefault(opts = {}) {
+        cb01MountSigV1Record(this, 'chart.js:Chart._resetViewportToDefault:enter', 'sync');
         const render = opts.render !== false;
         const forceRecenter = opts.forceRecenter !== false;
         const centerPlayhead = opts.centerPlayhead;
@@ -18407,6 +18436,7 @@ class Chart {
         }
 
         this.fitToView();
+        cb01MountSigV1Record(this, 'chart.js:Chart._resetViewportToDefault:fit-complete', 'sync');
         if (render) {
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
             else if (typeof this.render === 'function') this.render();
@@ -18948,6 +18978,11 @@ class Chart {
             };
             chartTimeframe.textContent = timeframeMap[this.currentTimeframe] || this.currentTimeframe;
         }
+
+        cb01MountSigV1Record(this, 'chart.js:Chart.updateChartOHLCSymbol:publish', 'sync', {
+            selectedSymbol: symbol,
+            legendSymbol: chartSymbol && chartSymbol.textContent,
+        });
 
         const dotEl = document.getElementById('ohlcSymbolDot' + idSuffix);
         if (dotEl && symbol) {
@@ -26016,6 +26051,7 @@ class Chart {
     _invalidateTimeAxisTickCaches() {
         this._cachedInteractionTimeTicks = null;
         this._idleTimeAxisKeyCached = null;
+        this._timeTicks = null;
         if (typeof this._clearPanTimeTickCache === 'function') {
             this._clearPanTimeTickCache();
         }
@@ -26180,17 +26216,26 @@ class Chart {
         mapped = mapped.filter((t) => t.x >= lo && t.x <= hi);
 
         // Refresh labels: every candle only when very wide; else thin by pixels.
+        // Also drop consecutive identical text (duplicate "May"/"May" from month
+        // boundary + calendar formatter landing on nearby bars).
         let lastLabelX = -Infinity;
+        let lastLabelText = '';
         for (let i = 0; i < mapped.length; i++) {
             const t = mapped[i];
             if (labelEvery) {
                 t.label = labelFor(t.idx);
+                if (t.label && t.label === lastLabelText) t.label = '';
+                if (t.label) lastLabelText = t.label;
                 continue;
             }
             if (maxZoomGrid) {
                 if (lastLabelX === -Infinity || (t.x - lastLabelX) >= minLabelPx * 0.9) {
                     t.label = labelFor(t.idx);
-                    if (t.label) lastLabelX = t.x;
+                    if (t.label && t.label === lastLabelText) t.label = '';
+                    if (t.label) {
+                        lastLabelX = t.x;
+                        lastLabelText = t.label;
+                    }
                 } else {
                     t.label = '';
                 }
@@ -26201,10 +26246,15 @@ class Chart {
                 t.label = labelFor(t.idx);
             }
             if (!t.label) continue;
+            if (t.label === lastLabelText) {
+                t.label = '';
+                continue;
+            }
             if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
                 t.label = '';
             } else {
                 lastLabelX = t.x;
+                lastLabelText = t.label;
             }
         }
 
@@ -26933,11 +26983,22 @@ class Chart {
 
         // Build time-axis ticks (TradingView):
         // clock-aligned majors normally; per-candle grid only at max zoom.
-        // Pan: reproject + edge-extend only (no drift rebuild).
+        // Pan + replay PLAY: reproject + edge-extend only (no drift rebuild).
+        // PLAY auto-scroll moves offsetX like a pan; a full `_buildTimeTicks` each
+        // step re-anchors to the moving playhead and makes labels slide / duplicate
+        // (e.g. two "May"). Kill-switch:
+        //   window.__TALARIA_DISABLE_REPLAY_PLAY_PAN_TIME_AXIS_V1 = true
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
-        if (chartViewPanning) {
+        const replayPlayback = typeof this._isReplayPlaybackRendering === 'function'
+            && this._isReplayPlaybackRendering();
+        let usePanTimeAxisForPlay = true;
+        try {
+            usePanTimeAxisForPlay = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_REPLAY_PLAY_PAN_TIME_AXIS_V1 === true);
+        } catch (_) { usePanTimeAxisForPlay = true; }
+        if (chartViewPanning || (replayPlayback && usePanTimeAxisForPlay)) {
             this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (skipHeavyChrome || wheelBurstLight || timeAxisZoomDragging) {
@@ -27227,6 +27288,7 @@ class Chart {
         if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
             this.syncOverlayIndicatorSelectionOverlay();
         }
+        cb01MountSigV1Record(this, 'chart.js:Chart.render:visible-boundary', 'raf');
     }
     
     /**
@@ -27657,7 +27719,9 @@ class Chart {
                 || this._barIndexIsWallClockAligned(idx, labelStep, timeframeMs);
             if (alignedOk && x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
                 const label = this._formatTimeLabelForBarIndex(idx);
-                if (label) {
+                const prevLabel = merged.length ? merged[merged.length - 1].label : '';
+                // Skip duplicate month/day text glued to the previous filler tick.
+                if (label && label !== prevLabel) {
                     merged.push({ idx, x, label, isBoundary: false });
                     lastX = x;
                     rightMost = x;

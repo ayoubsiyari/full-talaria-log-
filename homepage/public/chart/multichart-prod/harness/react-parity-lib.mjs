@@ -28,7 +28,10 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HARNESS_DIR = __dirname;
 const CHART_ROOT = path.resolve(__dirname, '../..');
-const DIST_INDEX = path.resolve(CHART_ROOT, 'dist-v9/index.html');
+const DIST_ROOT = process.env.REACT_PARITY_DIST_DIR
+  ? path.resolve(process.env.REACT_PARITY_DIST_DIR)
+  : path.resolve(CHART_ROOT, 'dist-v9');
+const DIST_INDEX = path.resolve(DIST_ROOT, 'index.html');
 
 /** Minimal backtest session so mode=backtest loads harness stub bars (file 25). */
 export const HARNESS_BACKTEST_SESSION = {

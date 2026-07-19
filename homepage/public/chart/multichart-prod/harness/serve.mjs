@@ -40,6 +40,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // harness/ -> multichart-prod/ (..) -> chart/ (../..): the canonical tree root.
 const CHART_ROOT = path.resolve(__dirname, '..', '..');
+// Diagnostic builds may be emitted outside the repo so validation never stamps
+// or overwrites canonical dist-v9. Default serving remains byte-for-byte unchanged.
+const DIST_V9_OVERRIDE_ROOT = process.env.REACT_PARITY_DIST_DIR
+  ? path.resolve(process.env.REACT_PARITY_DIST_DIR)
+  : null;
 
 const MIN_MS = 60_000;
 const SYNTH_DAYS = 90;
@@ -368,9 +373,15 @@ function handleApi(req, res, url) {
 
 // ── Static file serving ────────────────────────────────────────────────────
 function serveStatic(res, relPath) {
-  const safe = path.normalize(relPath).replace(/^(\.\.[/\\])+/, '');
-  const filePath = path.join(CHART_ROOT, safe);
-  if (!filePath.startsWith(CHART_ROOT)) {
+  let safe = path.normalize(relPath).replace(/^(\.\.[/\\])+/, '');
+  let root = CHART_ROOT;
+  if (DIST_V9_OVERRIDE_ROOT
+      && (safe === 'dist-v9' || safe.startsWith('dist-v9' + path.sep))) {
+    root = DIST_V9_OVERRIDE_ROOT;
+    safe = safe === 'dist-v9' ? 'index.html' : safe.slice(('dist-v9' + path.sep).length);
+  }
+  const filePath = path.resolve(root, safe);
+  if (filePath !== root && !filePath.startsWith(root + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   fs.stat(filePath, (err, stat) => {
@@ -494,7 +505,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260717b81';
+  const buildId = '20260717b82';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
