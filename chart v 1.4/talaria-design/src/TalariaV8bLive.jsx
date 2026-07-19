@@ -1340,7 +1340,10 @@ function getV9ChartBarTimeMs(chart) {
   if (!chart) return Date.now();
   try {
     const rs = chart.replaySystem;
-    if (rs && Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
+    // Prefer active replay playhead (INTERVAL-stepped virtual time).
+    if (rs && rs.isActive && Number.isFinite(rs.replayTimestamp)) {
+      return rs.replayTimestamp;
+    }
   } catch (_) {}
   try {
     const data = Array.isArray(chart.data) && chart.data.length ? chart.data : chart.rawData;
@@ -14993,11 +14996,12 @@ const TalariaV8bLive = () => {
   }, []);
 
   useEffect(() => {
-    const tick = () => {
+    const tick = (overrideMs) => {
       const chart = v9ActiveChartInstance();
       const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
       const ledger = syncOrderManagerBalanceFromLedger(om);
-      const ms = getV9ChartBarTimeMs(chart);
+      const fromEvent = Number(overrideMs);
+      const ms = Number.isFinite(fromEvent) ? fromEvent : getV9ChartBarTimeMs(chart);
       const s = settingsRef.current;
       const use12 = s?.timeFormat === "12h";
       const startBal = ledger?.startingBalance ?? Number(om?.initialBalance);
@@ -15021,15 +15025,25 @@ const TalariaV8bLive = () => {
       setAccountEquity((prev) => (Number.isFinite(eqNum) ? eqNum : prev));
     };
     tick();
-    const id = window.setInterval(tick, 500);
+    const id = window.setInterval(() => tick(), 500);
     const onTz = () => tick();
+    const onReplayVirtualTime = (ev) => {
+      const ts = Number(ev?.detail?.timestamp);
+      tick(Number.isFinite(ts) ? ts : undefined);
+    };
     try {
       window.timezoneManager?.addListener?.(onTz);
+    } catch (_) {}
+    try {
+      window.addEventListener("replayVirtualTimeChanged", onReplayVirtualTime);
     } catch (_) {}
     return () => {
       window.clearInterval(id);
       try {
         window.timezoneManager?.removeListener?.(onTz);
+      } catch (_) {}
+      try {
+        window.removeEventListener("replayVirtualTimeChanged", onReplayVirtualTime);
       } catch (_) {}
     };
   }, []);

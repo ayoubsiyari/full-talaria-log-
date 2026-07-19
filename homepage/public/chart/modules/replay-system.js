@@ -4112,9 +4112,12 @@ class ReplaySystem {
     }
 
     /**
-     * Step interval for calculateNextIndex — when explicit INTERVAL is finer than the
-     * host display TF (coarse-main multichart), bucket steps use the display TF so
-     * candle legacy mode does not advance 1m while the host panel shows 4h.
+     * Step interval for calculateNextIndex.
+     * Explicit INTERVAL (1m/5m/…) always wins — coercing a finer INTERVAL up to the
+     * host display TF made the corner calendar jump day-to-day while INTERVAL=1m
+     * on a Daily/4H chart. Auto/sync still follows the chart TF.
+     * Coarse-legacy finest-cadence path still anchors to host display TF.
+     * Kill-switch (restore old coerce): window.__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1 = true
      */
     _resolveReplayStepTimeframeForStep() {
         const chartTf = this.chart && this.chart.currentTimeframe;
@@ -4123,6 +4126,16 @@ class ReplaySystem {
         }
         const tf = this._resolveReplayStepTimeframe();
         if (!tf || !chartTf) return tf;
+
+        let honorExplicit = true;
+        try {
+            honorExplicit = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_REPLAY_EXPLICIT_INTERVAL_STEP_V1 === true);
+        } catch (_) { honorExplicit = true; }
+        if (honorExplicit && this._hasExplicitReplayStepInterval()) {
+            return tf;
+        }
+
         const tfMs = this.timeframeToMs(tf);
         const chartMs = this.timeframeToMs(chartTf);
         if (Number.isFinite(tfMs) && Number.isFinite(chartMs) && tfMs < chartMs * 0.92) {
