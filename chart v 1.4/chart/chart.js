@@ -501,7 +501,7 @@ function cb01MountSigV1Trigger(root, extra) {
     if (extra && extra.trigger) return String(extra.trigger);
     try {
         const active = root && root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
-        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const now = Date.now();
         if (active && active.trigger && (!Number.isFinite(active.until) || now <= active.until)) {
             return String(active.trigger);
         }
@@ -513,7 +513,7 @@ function cb01MountSigV1SetTrigger(trigger, details = {}) {
     if (!cb01MountSigV1Enabled()) return false;
     const root = cb01MountSigV1RootWindow();
     if (!root || !trigger) return false;
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now = Date.now();
     const prev = root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
     const seq = prev && Number.isFinite(prev.seq) ? prev.seq + 1 : 1;
     root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1 = {
@@ -548,12 +548,11 @@ function cb01MountSigV1Record(ch, source, schedule, extra = null) {
             if (panelId === 'A') {
                 role = 'host';
             } else {
-                const seenKey = String(panelId);
-                const seen = root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1
-                    || (root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1 = Object.create(null));
-                const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-                if (!Number.isFinite(seen[seenKey])) seen[seenKey] = now;
-                role = now - seen[seenKey] <= 6000 ? 'new iframe' : 'existing peer';
+                const steady = root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1
+                    || (root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1 = Object.create(null));
+                role = steady[String(panelId)] === true
+                    ? 'steady-state iframe'
+                    : 'new iframe';
             }
         }
 
@@ -719,6 +718,11 @@ function cb01MountSigV1Record(ch, source, schedule, extra = null) {
         };
         if (extra && extra.note != null) record.note = String(extra.note).slice(0, 160);
         buffer.push(record);
+        if (panelId !== 'A' && visible) {
+            const steady = root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1
+                || (root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1 = Object.create(null));
+            steady[String(panelId)] = true;
+        }
         if (buffer.length > CB01_MOUNT_SIG_V1_MAX_RECORDS) {
             buffer.splice(0, buffer.length - CB01_MOUNT_SIG_V1_MAX_RECORDS);
         }
@@ -752,7 +756,7 @@ if (typeof window !== 'undefined') {
         root.__TALARIA_CB01_MOUNT_SIG_BUFFER_V1 = [];
         root.__TALARIA_CB01_MOUNT_SIG_SEQ_V1 = 0;
         root.__TALARIA_CB01_MOUNT_SIG_FIRST_VISIBLE_V1 = Object.create(null);
-        root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1 = Object.create(null);
+        root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1 = Object.create(null);
         return true;
     };
 }
@@ -26983,22 +26987,15 @@ class Chart {
 
         // Build time-axis ticks (TradingView):
         // clock-aligned majors normally; per-candle grid only at max zoom.
-        // Pan + replay PLAY: reproject + edge-extend only (no drift rebuild).
-        // PLAY auto-scroll moves offsetX like a pan; a full `_buildTimeTicks` each
-        // step re-anchors to the moving playhead and makes labels slide / duplicate
-        // (e.g. two "May"). Kill-switch:
-        //   window.__TALARIA_DISABLE_REPLAY_PLAY_PAN_TIME_AXIS_V1 = true
+        // Pan: reproject + edge-extend only (no drift rebuild).
+        // Replay PLAY uses the SAME full `_buildTimeTicks` as pause (so labels match),
+        // with a stable first-bar anchor inside the builder (not pan-cache ticks).
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         const replayPlayback = typeof this._isReplayPlaybackRendering === 'function'
             && this._isReplayPlaybackRendering();
-        let usePanTimeAxisForPlay = true;
-        try {
-            usePanTimeAxisForPlay = !(typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_REPLAY_PLAY_PAN_TIME_AXIS_V1 === true);
-        } catch (_) { usePanTimeAxisForPlay = true; }
-        if (chartViewPanning || (replayPlayback && usePanTimeAxisForPlay)) {
+        if (chartViewPanning) {
             this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (skipHeavyChrome || wheelBurstLight || timeAxisZoomDragging) {
@@ -27009,7 +27006,10 @@ class Chart {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
             const idleKey = this._idleTimeAxisKey();
-            if (idleKey
+            // During PLAY never reuse frozen tick pixels — offsetX/data can stay
+            // keyed the same across finest-TF sub-steps while the playhead moves.
+            if (!replayPlayback
+                && idleKey
                 && idleKey === this._idleTimeAxisKeyCached
                 && Array.isArray(this._timeTicks)
                 && this._timeTicks.length) {
@@ -28078,16 +28078,24 @@ class Chart {
         labelInterval = this._snapToNiceTimeLabelInterval(labelInterval, timeframeMs);
 
         const labelIntervalMs   = labelInterval * timeframeMs;
-        // Anchor tick alignment to the LAST loaded bar (not the first). Dragging
-        // right loads OLDER history that is PREPENDED, which changes this.data[0]
-        // but never this.data[last] — so a last-bar anchor stays fixed across
-        // backward-pan history loads and the grid/time-axis ticks just scroll
-        // instead of re-aligning ("rebuilding") mid-drag. Midnight-align for BOTH
-        // sub-day intervals (86400000 % iv === 0) AND multi-day intervals
-        // (iv % 86400000 === 0, e.g. zoomed-out 2-/3-day cadence) so ticks land on
-        // round local day boundaries; the previous `86400000 % iv === 0` check was
-        // false for multi-day cadence and fell back to the raw (shifting) anchor.
-        const _tickAnchorBar = this.data.length ? this.data[this.data.length - 1] : null;
+        // Anchor tick alignment:
+        // - Normal / pan history: LAST loaded bar (prepended older bars change
+        //   data[0] but not data[last] — grid scrolls without re-phase).
+        // - Replay active (play OR pause): FIRST bar. Walk-forward replay appends
+        //   at the end, so data[last] is the moving playhead; anchoring there made
+        //   PLAY labels drift / differ from PAUSE. data[0] (session start) is
+        //   stable for both, so PLAY and PAUSE share the same axis. Kill-switch:
+        //   window.__TALARIA_DISABLE_REPLAY_TIME_AXIS_FIRST_BAR_ANCHOR_V1 = true
+        let useReplayFirstBarAnchor = !!isReplayActive;
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_REPLAY_TIME_AXIS_FIRST_BAR_ANCHOR_V1 === true) {
+                useReplayFirstBarAnchor = false;
+            }
+        } catch (_) { /* ignore */ }
+        const _tickAnchorBar = this.data.length
+            ? (useReplayFirstBarAnchor ? this.data[0] : this.data[this.data.length - 1])
+            : null;
         let tickAlignmentBaseTs = _tickAnchorBar && Number.isFinite(_tickAnchorBar.t)
             ? _tickAnchorBar.t
             : 0;
@@ -28322,6 +28330,7 @@ class Chart {
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
+        let lastLabelText = '';
         const panBufferPx = options.panCache ? Math.max(240, cw * 0.4) : 0;
         const viewLeft  = m.l + 20 - panBufferPx;
         const viewRight = this.w - m.r - 20 + panBufferPx;
@@ -28332,8 +28341,14 @@ class Chart {
                 ? minSpacing * 0.7
                 : minSpacing * 0.65;
             if (x - lastX >= gap || lastX === -Infinity) {
+                // Drop consecutive identical label text (e.g. "24"/"24", "May"/"May").
+                if (c.label && c.label === lastLabelText) {
+                    lastX = x;
+                    continue;
+                }
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                    if (c.label) lastLabelText = c.label;
                 }
                 // Advance lastX for off-screen ticks too so spacing stays stable while panning.
                 lastX = x;

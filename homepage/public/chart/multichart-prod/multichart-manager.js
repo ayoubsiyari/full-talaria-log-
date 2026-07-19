@@ -65,7 +65,6 @@
             if (typeof record === 'function') {
                 record(frameWindow.chart, source, schedule, {
                     panelId: entry.id,
-                    role: 'new iframe',
                 });
             }
         } catch (_) { /* instrumentation must not affect reveal */ }

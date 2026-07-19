@@ -60,7 +60,6 @@
             if (typeof record === 'function') {
                 record(global.chart, source, schedule, extra || {
                     panelId: panelId,
-                    role: 'new iframe',
                 });
             }
         } catch (_) {}
@@ -4177,7 +4176,7 @@
             cb01MountSigBridgeRecord(
                 'panel-cmd-bridge.js:onMessage:' + msg.cmd + ':received',
                 'message',
-                { panelId: panelId, role: 'new iframe', trigger: cb01Trigger }
+                { panelId: panelId, trigger: cb01Trigger }
             );
         }
 
@@ -4190,7 +4189,6 @@
                         'microtask',
                         {
                             panelId: panelId,
-                            role: 'new iframe',
                             trigger: cb01Trigger,
                             selectedSymbol: global.chart && global.chart.currentSymbol,
                         }
@@ -4203,7 +4201,7 @@
                     cb01MountSigBridgeRecord(
                         'panel-cmd-bridge.js:onMessage:' + msg.cmd + ':error',
                         'microtask',
-                        { panelId: panelId, role: 'new iframe', trigger: cb01Trigger }
+                        { panelId: panelId, trigger: cb01Trigger }
                     );
                 }
                 warn('cmd failed:', msg.cmd, err && err.message || err);

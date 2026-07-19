@@ -3895,8 +3895,8 @@ class ReplaySystem {
             this._viewportLockForPlayback = null;
         }
 
-        // Seed a fresh pan-style time-axis cache for PLAY (reproject only — full
-        // rebuild each step re-anchors to the playhead and drifts labels at max zoom).
+        // Drop stale pan/idle tick caches so the first PLAY frame builds the same
+        // full clock-aligned axis used while paused (stable first-bar anchor).
         try {
             if (this.chart && typeof this.chart._invalidateTimeAxisTickCaches === 'function') {
                 this.chart._invalidateTimeAxisTickCaches();
