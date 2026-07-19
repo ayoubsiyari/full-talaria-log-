@@ -3895,11 +3895,13 @@ class ReplaySystem {
             this._viewportLockForPlayback = null;
         }
 
-        // Drop stale pan/idle tick caches so the first PLAY frame builds the same
-        // full clock-aligned axis used while paused (stable first-bar anchor).
+        // Keep the replay pan time-axis cache across Pause↔Play. Wiping it on
+        // every Play forced a full reseed and a visible label reshuffle. Zoom /
+        // TF / seek already invalidate when the axis must rebuild.
         try {
-            if (this.chart && typeof this.chart._invalidateTimeAxisTickCaches === 'function') {
-                this.chart._invalidateTimeAxisTickCaches();
+            const cache = this.chart && this.chart._panTimeTickCache;
+            if (cache && Array.isArray(cache.ticks) && cache.ticks.length) {
+                cache.preserveLabels = true;
             }
         } catch (_tax) { /* ignore */ }
 
