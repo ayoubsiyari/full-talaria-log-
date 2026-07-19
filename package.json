@@ -11,7 +11,9 @@
     "build:homepage": "npm run build --prefix homepage",
     "build:web": "npm run build:chart-v9 && npm run build:homepage",
     "docker:build-chart": "docker compose build trading-chart",
-    "docker:up-chart": "docker compose up -d --build trading-chart"
+    "docker:up-chart": "docker compose up -d --build trading-chart",
+    "checkpoint:provenance": "node scripts/checkpoint-provenance.mjs",
+    "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",

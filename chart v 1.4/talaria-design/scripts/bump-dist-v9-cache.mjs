@@ -26,6 +26,7 @@ const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html")
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LEGACY_SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")((?:modules\/|chart\.js|settings-panel)[^"?]+)(?:\?[^"#]*)?(")/g;
+const LEGACY_LINK_HREF_RE = /(<link\b[^>]*\shref=")((?:modules\/|fonts\/)[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
 const INLINE_MULTICHART_V_RE = /var V = '[^']+';/g;
 const WINDOW_BUILD_ID_RE = /window\.__TALARIA_CHART_BUILD_ID\s*=\s*'[^']+'/g;
@@ -98,7 +99,10 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
 function bumpLegacyIndexHtml(filePath, buildId) {
   if (!fs.existsSync(filePath) || !buildId) return 0;
   const before = fs.readFileSync(filePath, "utf8");
-  const after = before.replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  let after = before.replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  if (process.env.CHECKPOINT_BUILD === "1") {
+    after = after.replace(LEGACY_LINK_HREF_RE, `$1$2?v=${buildId}$3`);
+  }
   if (after === before) return 0;
   fs.writeFileSync(filePath, after, "utf8");
   console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on legacy-index scripts in", filePath);

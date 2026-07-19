@@ -5,20 +5,48 @@
 # Chart static (/chart/dist-v9, /chart/modules, chart.js) is built in chart_assets
 # so nginx serves the same versions as trading-chart — not stale committed public/chart.
 
+ARG CHECKPOINT_BUILD=0
+ARG CHART_BUILD_ID=
+ARG SOURCE_COMMIT_SHA=
+
 FROM node:20-alpine AS chart_assets
 WORKDIR /build
-ARG GIT_COMMIT=
-ENV BUILD_ID=${GIT_COMMIT}
+ARG CHECKPOINT_BUILD
+ARG CHART_BUILD_ID
+ARG SOURCE_COMMIT_SHA
+ENV BUILD_ID=${CHART_BUILD_ID} \
+    CHECKPOINT_BUILD=${CHECKPOINT_BUILD}
 COPY ["chart v 1.4/talaria-design/package.json", "chart v 1.4/talaria-design/package-lock.json", "./talaria-design/"]
 WORKDIR /build/talaria-design
 ENV npm_config_foreground_scripts=true
 RUN npm ci
 WORKDIR /build
+COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-build-assert.mjs"]
+COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
-RUN npm run build:live:chart
+RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      node /build/checkpoint-tools/checkpoint-build-assert.mjs inputs \
+        --strict="$CHECKPOINT_BUILD" \
+        --build-id="$CHART_BUILD_ID" \
+        --source-sha="$SOURCE_COMMIT_SHA"; \
+    elif [ -n "$CHART_BUILD_ID" ]; then \
+      echo "CHART_BUILD_ID requires CHECKPOINT_BUILD=1" >&2; exit 1; \
+    fi \
+    && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
+    fi \
+    && npm run build:live:chart \
+    && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
+        --build-id="$CHART_BUILD_ID" \
+        --source-sha="$SOURCE_COMMIT_SHA" \
+        --chart-root=/build/chart \
+        --live-root=/build/talaria-design/live \
+        --homepage-chart-root=/homepage/public/chart; \
+    fi
 
 FROM node:18-alpine AS builder
 
@@ -47,6 +75,10 @@ COPY --from=chart_assets /build/chart/modules ./public/chart/modules
 COPY --from=chart_assets /build/chart/chart.js ./public/chart/chart.js
 COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod
 COPY --from=chart_assets /build/chart/workers ./public/chart/workers
+COPY --from=chart_assets /build/chart/vendor ./public/chart/vendor
+COPY --from=chart_assets /build/chart/fonts ./public/chart/fonts
+COPY --from=chart_assets /build/chart/legacy-index.html ./public/chart/legacy-index.html
+COPY --from=chart_assets /build/chart/sw.js ./public/chart/sw.js
 
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
@@ -86,6 +118,13 @@ RUN npm run build
 
 # Production stage - serve with nginx
 FROM nginx:alpine
+
+ARG CHECKPOINT_BUILD
+ARG CHART_BUILD_ID
+ARG SOURCE_COMMIT_SHA
+LABEL org.opencontainers.image.revision="${SOURCE_COMMIT_SHA}" \
+      io.talaria.checkpoint.build-id="${CHART_BUILD_ID}" \
+      io.talaria.checkpoint.strict="${CHECKPOINT_BUILD}"
 
 # Copy built static files
 COPY --from=builder /app/homepage/out /usr/share/nginx/html

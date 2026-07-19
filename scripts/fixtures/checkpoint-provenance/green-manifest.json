@@ -1,0 +1,39 @@
+{
+  "schema": "talaria.checkpoint-provenance/v1",
+  "checkpoint": "CKPT-999",
+  "buildId": "20991231b99",
+  "source": {
+    "sha": "1111111111111111111111111111111111111111",
+    "remote": "origin",
+    "ref": "refs/tags/ckpt-999"
+  },
+  "images": {
+    "chart": {
+      "ref": "ghcr.io/ayoubsiyari/talaria-trading-chart@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "homepage": {
+      "ref": "ghcr.io/ayoubsiyari/talaria-homepage@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "proof": {
+    "uniformityReport": "uniformity-proof.json",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "rollback": {
+    "buildId": "20991231b98",
+    "sourceSha": "2222222222222222222222222222222222222222",
+    "images": {
+      "chart": {
+        "ref": "ghcr.io/ayoubsiyari/talaria-trading-chart@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "homepage": {
+        "ref": "ghcr.io/ayoubsiyari/talaria-homepage@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    }
+  },
+  "createdAt": "2099-12-31T23:59:59.000Z"
+}

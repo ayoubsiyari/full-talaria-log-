@@ -27027,10 +27027,9 @@ class Chart {
 
         // Build time-axis ticks (TradingView):
         // clock-aligned majors normally; per-candle grid only at max zoom.
-        // Pan + replay PLAY/pause-with-cache: reproject + edge-extend only.
-        // Full rebuild every PLAY candle re-picks which days get labels (axis text
-        // "re-adjusts" while grid lines stay denser). Seed once from full ticks at
-        // Play, then scroll like a pan so on-plot grid + bottom labels stay locked.
+        // Pan + replay PLAY (no zoom): reproject + edge-extend only.
+        // Zoom MUST full-rebuild and drop the replay pan cache — otherwise stale
+        // day/clock labels from the previous density mix (e.g. "06:00" next to "19").
         // Kill-switch: window.__TALARIA_DISABLE_REPLAY_PAN_TIME_AXIS_V1 = true
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
@@ -27046,11 +27045,14 @@ class Chart {
             useReplayPanTimeAxis = !(typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_REPLAY_PAN_TIME_AXIS_V1 === true);
         } catch (_) { useReplayPanTimeAxis = true; }
-        if (chartViewPanning
-            || (useReplayPanTimeAxis && (replayPlayback || (replayActive && hasReplayPanCache)))) {
+        const zoomingTimeAxis = !!(wheelBurstLight || timeAxisZoomDragging || skipHeavyChrome);
+        const preferReplayPanAxis = useReplayPanTimeAxis
+            && !zoomingTimeAxis
+            && (replayPlayback || (replayActive && hasReplayPanCache));
+        if (chartViewPanning || preferReplayPanAxis) {
             this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
-        } else if (skipHeavyChrome || wheelBurstLight || timeAxisZoomDragging) {
+        } else if (zoomingTimeAxis) {
             try { this._clearPanTimeTickCache(); } catch (_) { /* ignore */ }
             this._timeTicks = this._buildTimeTicks({ full: true });
             this._cachedInteractionTimeTicks = this._timeTicks;

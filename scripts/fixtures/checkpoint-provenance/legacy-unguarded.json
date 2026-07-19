@@ -1,0 +1,25 @@
+{
+  "name": "legacy-empty-id-triple-increment",
+  "checkpoint": "CKPT-010",
+  "explicitBuildId": "",
+  "sourceSha": "",
+  "sourceShellBuildId": "20260717b86",
+  "buildPasses": [
+    "20260717b87",
+    "20260717b88",
+    "20260717b89"
+  ],
+  "artifacts": {
+    "shellBuildId": "20260717b89",
+    "moduleQueryBuildId": "20260717b89",
+    "embedBuildId": "20260717b89",
+    "engineBuildId": "20260719b01",
+    "serviceWorkerBuildId": "20260717b86"
+  },
+  "images": {
+    "chart": "ghcr.io/ayoubsiyari/talaria-trading-chart:latest",
+    "homepage": "ghcr.io/ayoubsiyari/talaria-homepage:latest"
+  },
+  "uniformityProof": null,
+  "expectedLegacyOutcome": "unsafe-path-would-deploy"
+}

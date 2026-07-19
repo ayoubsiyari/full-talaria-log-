@@ -3,13 +3,20 @@
 #
 # Build from repository root (chart v 1.4/chart + homepage/.../dashboard/analytics/backend):
 #   docker compose build trading-chart
-# Optional stable cache-bust id:
-#   docker compose build --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) trading-chart
+# Strict checkpoint build (ordinary local builds intentionally keep auto-increment):
+#   CHECKPOINT_BUILD=1 CHART_BUILD_ID=YYYYMMDDbN SOURCE_COMMIT_SHA=<40hex> docker compose build trading-chart
+
+ARG CHECKPOINT_BUILD=0
+ARG CHART_BUILD_ID=
+ARG SOURCE_COMMIT_SHA=
 
 FROM node:20-alpine AS v9_react
 WORKDIR /build
-ARG GIT_COMMIT=
-ENV BUILD_ID=${GIT_COMMIT}
+ARG CHECKPOINT_BUILD
+ARG CHART_BUILD_ID
+ARG SOURCE_COMMIT_SHA
+ENV BUILD_ID=${CHART_BUILD_ID} \
+    CHECKPOINT_BUILD=${CHECKPOINT_BUILD}
 
 COPY ["chart v 1.4/talaria-design/package.json", "chart v 1.4/talaria-design/package-lock.json", "./talaria-design/"]
 WORKDIR /build/talaria-design
@@ -17,13 +24,41 @@ WORKDIR /build/talaria-design
 ENV npm_config_foreground_scripts=true
 RUN npm ci
 WORKDIR /build
+COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-build-assert.mjs"]
+COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
-RUN npm run build:live:chart
+RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      node /build/checkpoint-tools/checkpoint-build-assert.mjs inputs \
+        --strict="$CHECKPOINT_BUILD" \
+        --build-id="$CHART_BUILD_ID" \
+        --source-sha="$SOURCE_COMMIT_SHA"; \
+    elif [ -n "$CHART_BUILD_ID" ]; then \
+      echo "CHART_BUILD_ID requires CHECKPOINT_BUILD=1" >&2; exit 1; \
+    fi \
+    && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
+    fi \
+    && npm run build:live:chart \
+    && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
+        --build-id="$CHART_BUILD_ID" \
+        --source-sha="$SOURCE_COMMIT_SHA" \
+        --chart-root=/build/chart \
+        --live-root=/build/talaria-design/live \
+        --homepage-chart-root=/homepage/public/chart; \
+    fi
 
 FROM python:3.11-slim
+
+ARG CHECKPOINT_BUILD
+ARG CHART_BUILD_ID
+ARG SOURCE_COMMIT_SHA
+LABEL org.opencontainers.image.revision="${SOURCE_COMMIT_SHA}" \
+      io.talaria.checkpoint.build-id="${CHART_BUILD_ID}" \
+      io.talaria.checkpoint.strict="${CHECKPOINT_BUILD}"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -64,6 +99,10 @@ COPY --from=v9_react /build/chart/modules ./modules
 COPY --from=v9_react /build/chart/chart.js ./chart.js
 COPY --from=v9_react /build/chart/multichart-prod ./multichart-prod
 COPY --from=v9_react /build/chart/workers ./workers
+COPY --from=v9_react /build/chart/vendor ./vendor
+COPY --from=v9_react /build/chart/fonts ./fonts
+COPY --from=v9_react /build/chart/legacy-index.html ./legacy-index.html
+COPY --from=v9_react /build/chart/sw.js ./sw.js
 
 # The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when
 # dist-v9 is absent (see api_server.py). dist-v9 is always built above and is the

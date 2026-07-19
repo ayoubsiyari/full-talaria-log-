@@ -191,7 +191,9 @@ services:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
       args:
-        GIT_COMMIT: ${GIT_COMMIT:-}
+        CHECKPOINT_BUILD: ${CHECKPOINT_BUILD:-0}
+        CHART_BUILD_ID: ${CHART_BUILD_ID:-}
+        SOURCE_COMMIT_SHA: ${SOURCE_COMMIT_SHA:-}
     volumes:
       - chart_uploads:/app/uploads
       - chart_data:/app/data
@@ -308,7 +310,9 @@ services:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
       args:
-        GIT_COMMIT: ${GIT_COMMIT:-}
+        CHECKPOINT_BUILD: ${CHECKPOINT_BUILD:-0}
+        CHART_BUILD_ID: ${CHART_BUILD_ID:-}
+        SOURCE_COMMIT_SHA: ${SOURCE_COMMIT_SHA:-}
     command:
       [
         "gunicorn",
@@ -383,6 +387,9 @@ services:
       context: .
       dockerfile: homepage/Dockerfile
       args:
+        CHECKPOINT_BUILD: ${CHECKPOINT_BUILD:-0}
+        CHART_BUILD_ID: ${CHART_BUILD_ID:-}
+        SOURCE_COMMIT_SHA: ${SOURCE_COMMIT_SHA:-}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:-http://localhost:3000}
         NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}

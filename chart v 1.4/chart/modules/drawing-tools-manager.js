@@ -12552,12 +12552,91 @@ class DrawingToolsManager {
         return this.chart.data;
     }
 
+    /**
+     * Full-session display series (current TF) for replay extrabar resolve.
+     * chart.data is only the playhead prefix — resolving future timestamps against
+     * that prefix extrapolates from lastT and collapses/glues corners to the playhead
+     * as Play advances. fullRawData resampled to the chart TF shares the same index
+     * space as the prefix, so future corners keep a stable wall-clock bar index.
+     * Kill-switch: window.__TALARIA_DISABLE_DRAWING_EXTRABAR_FULL_SERIES_V1 = true
+     */
+    _getReplayFullDisplaySeriesForDrawings() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_DRAWING_EXTRABAR_FULL_SERIES_V1 === true) {
+                return null;
+            }
+        } catch (_) { /* ignore */ }
+        const chart = this.chart;
+        const rs = chart && chart.replaySystem;
+        if (!rs || !rs.isActive) return null;
+        const raw = rs.fullRawData;
+        if (!Array.isArray(raw) || raw.length === 0) return null;
+        if (typeof chart.resampleData !== 'function') return null;
+        const tf = chart.currentTimeframe || '';
+        const key = `${tf}|${raw.length}|${raw[0] && raw[0].t}|${raw[raw.length - 1] && raw[raw.length - 1].t}`;
+        const cache = this._replayFullDisplayCache;
+        if (cache && cache.key === key && Array.isArray(cache.data) && cache.data.length) {
+            return cache.data;
+        }
+        let data = null;
+        try {
+            data = chart.resampleData(raw, tf);
+        } catch (_) {
+            return null;
+        }
+        if (!Array.isArray(data) || data.length === 0) return null;
+        this._replayFullDisplayCache = { key, data };
+        return data;
+    }
+
+    /** True when any timestamp anchor sits past the live playhead bar open time. */
+    _drawingHasFutureTimestampAnchor(drawing) {
+        if (!drawing || !Array.isArray(drawing.timestampPoints) || !drawing.timestampPoints.length) {
+            return false;
+        }
+        const data = this.chart && this.chart.data;
+        if (!Array.isArray(data) || !data.length) return false;
+        const lastT = Number(data[data.length - 1] && data[data.length - 1].t);
+        if (!Number.isFinite(lastT)) return false;
+        return drawing.timestampPoints.some((p) => {
+            const ts = Number(p && p.timestamp);
+            return Number.isFinite(ts) && ts > lastT + 1;
+        });
+    }
+
     _getTimestampConversionOptions(drawing) {
         if (typeof CoordinateUtils === 'undefined'
             || typeof CoordinateUtils.buildTimestampResolveOptions !== 'function') {
             return null;
         }
         return CoordinateUtils.buildTimestampResolveOptions(drawing, this.chart);
+    }
+
+    /** Apply resolved {x,y} points onto a drawing (shared by chart.data / full-series paths). */
+    _applyResolvedDrawingPoints(drawing, resolved) {
+        if (!drawing || !Array.isArray(resolved) || resolved.length === 0) return;
+        if (drawing.type === 'anchored-volume-profile') {
+            const anchorResolved = resolved[0];
+            if (Array.isArray(drawing.points) && drawing.points.length > 0 && anchorResolved) {
+                drawing.points[0] = { ...drawing.points[0], ...anchorResolved };
+            } else if (anchorResolved) {
+                drawing.points = [{ ...anchorResolved }];
+            }
+        } else {
+            drawing.points = resolved;
+        }
+        if (
+            typeof drawing.finalizeDrawing === 'function' &&
+            (drawing.type === 'arc' || drawing.type === 'curve') &&
+            drawing.points.length === 2
+        ) {
+            drawing._controlPointGenerated = false;
+            drawing._needsScreenOffset = true;
+            drawing.finalizeDrawing();
+        } else if (drawing.type === 'curve' && drawing.points.length >= 3) {
+            drawing._controlPointGenerated = true;
+        }
     }
 
     /** Re-resolve bar indices from stored timestamps using the live replay slice. */
@@ -12598,25 +12677,56 @@ class DrawingToolsManager {
         const hasExtrabarPoint = allowsExtrabar
             && Array.isArray(drawing.points)
             && drawing.points.some((p) => p && Number.isFinite(p.x) && p.x > lastIdx + 0.001);
+        const hasFutureTimestamp = allowsExtrabar && this._drawingHasFutureTimestampAnchor(drawing);
         // After viewing a finer TF (e.g. 1m), bar indices are larger than the coarser
         // series length (e.g. 15m). Do not treat that as intentional extrabar placement —
         // always re-resolve from stored timestamps when anchors exist.
         if (!hasTimestampAnchors && hasExtrabarPoint) {
             return;
         }
-        // PLAY + future (extrabar) corners: freeze bar indices. Re-resolving every
-        // tick from lastBar.t + k*tf drifts when the playhead bar / weekend gaps
-        // change lastT (small crawl). Do NOT shift indices with data growth either
-        // (that glued edges to the playhead). Pause / TF refresh still re-sync.
+        // Replay extrabar: future timestamps resolve against the full-session series
+        // (same TF index space as the playhead prefix). Prefix + lastT extrapolation
+        // glued those corners to the moving playhead on Play. In-range corners still
+        // use chart.data so they stay pixel-aligned with the live slice.
+        // Kill-switch: window.__TALARIA_DISABLE_DRAWING_EXTRABAR_FULL_SERIES_V1 = true
+        if (allowsExtrabar && hasFutureTimestamp
+            && drawing.type !== 'anchored-volume-profile'
+            && typeof CoordinateUtils.timestampToIndex === 'function') {
+            const fullSeries = this._getReplayFullDisplaySeriesForDrawings();
+            const liveData = this.chart.data;
+            if (fullSeries && fullSeries.length && Array.isArray(liveData) && liveData.length) {
+                try {
+                    const lastT = Number(liveData[liveData.length - 1].t);
+                    const tf = this.chart.currentTimeframe;
+                    const resolved = drawing.timestampPoints.map((p) => {
+                        const ts = Number(p && p.timestamp);
+                        const price = (p && Number.isFinite(Number(p.price)))
+                            ? Number(p.price)
+                            : (p && p.y);
+                        const useFull = Number.isFinite(ts) && Number.isFinite(lastT) && ts > lastT + 1;
+                        const series = useFull ? fullSeries : liveData;
+                        const x = CoordinateUtils.timestampToIndex(ts || 0, series, tf, null);
+                        return { x, y: price };
+                    });
+                    this._applyResolvedDrawingPoints(drawing, resolved);
+                } catch (_) { /* ignore */ }
+                return;
+            }
+        }
+        // PLAY + future corners (fallback when full series unavailable): freeze bar
+        // indices so lastT re-resolve cannot crawl/glue. Prefer timestamp detection
+        // so collapsed points still re-sync when full series is missing.
         // Kill-switch: window.__TALARIA_DISABLE_DRAWING_EXTRABAR_PLAY_FREEZE_V1 = true
-        if (!options.tfRefresh && hasExtrabarPoint) {
+        if (!options.tfRefresh && (hasExtrabarPoint || hasFutureTimestamp)) {
             let freezeExtrabar = true;
             try {
                 freezeExtrabar = !(typeof window !== 'undefined'
                     && window.__TALARIA_DISABLE_DRAWING_EXTRABAR_PLAY_FREEZE_V1 === true);
             } catch (_) { freezeExtrabar = true; }
             const rs = this.chart.replaySystem;
-            if (freezeExtrabar && rs && rs.isActive && rs.isPlaying) {
+            // Only freeze when geometry still sits past the playhead — if points
+            // were collapsed, fall through so timestamps can restore them.
+            if (freezeExtrabar && hasExtrabarPoint && rs && rs.isActive && rs.isPlaying) {
                 return;
             }
         }
@@ -12626,29 +12736,7 @@ class DrawingToolsManager {
                 ? null
                 : this._getTimestampConversionOptions(drawing);
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart, tsOpts);
-            if (Array.isArray(resolved) && resolved.length > 0) {
-                if (drawing.type === 'anchored-volume-profile') {
-                    const anchorResolved = resolved[0];
-                    if (Array.isArray(drawing.points) && drawing.points.length > 0 && anchorResolved) {
-                        drawing.points[0] = { ...drawing.points[0], ...anchorResolved };
-                    } else if (anchorResolved) {
-                        drawing.points = [{ ...anchorResolved }];
-                    }
-                } else {
-                    drawing.points = resolved;
-                }
-                if (
-                    typeof drawing.finalizeDrawing === 'function' &&
-                    (drawing.type === 'arc' || drawing.type === 'curve') &&
-                    drawing.points.length === 2
-                ) {
-                    drawing._controlPointGenerated = false;
-                    drawing._needsScreenOffset = true;
-                    drawing.finalizeDrawing();
-                } else if (drawing.type === 'curve' && drawing.points.length >= 3) {
-                    drawing._controlPointGenerated = true;
-                }
-            }
+            this._applyResolvedDrawingPoints(drawing, resolved);
         } catch (_) { /* ignore */ }
     }
 

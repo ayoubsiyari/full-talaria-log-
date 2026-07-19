@@ -7,6 +7,9 @@
 # `docker compose pull && docker compose up -d` (no compile on the box).
 #
 # GitHub Actions cache (type=gha) keeps unchanged layers warm so most pushes are fast.
+# These automatic images are development/CI artifacts (strict=0). Production
+# deploy.sh accepts only separately published strict checkpoint images recorded
+# by immutable digest in a validated provenance manifest.
 name: Build & push images
 
 on:
@@ -77,7 +80,8 @@ jobs:
           build-contexts: ${{ matrix.build_contexts }}
           push: true
           build-args: |
-            GIT_COMMIT=${{ github.sha }}
+            CHECKPOINT_BUILD=0
+            SOURCE_COMMIT_SHA=${{ github.sha }}
           tags: |
             ghcr.io/${{ steps.owner.outputs.owner }}/${{ matrix.image }}:latest
             ghcr.io/${{ steps.owner.outputs.owner }}/${{ matrix.image }}:${{ github.sha }}
