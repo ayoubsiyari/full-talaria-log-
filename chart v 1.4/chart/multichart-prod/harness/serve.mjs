@@ -505,7 +505,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260717b86';
+  const buildId = '20260717b87';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 

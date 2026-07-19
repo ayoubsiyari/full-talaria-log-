@@ -18116,6 +18116,12 @@ class Chart {
         if (this.priceScale) {
             this.priceScale.autoScale = true;
         }
+        try {
+            if (this.replaySystem
+                && typeof this.replaySystem.clearUserPriceScaleOwnership === 'function') {
+                this.replaySystem.clearUserPriceScaleOwnership();
+            }
+        } catch (_) { /* ignore */ }
         if (this.compareOverlay && typeof this.compareOverlay.resetViewState === 'function') {
             try { this.compareOverlay.resetViewState(); } catch (_coReset) { /* ignore */ }
         }
@@ -18137,6 +18143,12 @@ class Chart {
         }
         this.priceZoom = 1;
         this.priceOffset = 0;
+        try {
+            if (this.replaySystem
+                && typeof this.replaySystem.clearUserPriceScaleOwnership === 'function') {
+                this.replaySystem.clearUserPriceScaleOwnership();
+            }
+        } catch (_) { /* ignore */ }
         if (this.drag?.active) {
             this.drag.active = false;
             this.drag.type = null;
@@ -24658,7 +24670,10 @@ class Chart {
         // Apply price zoom and offset with improved calculations
         let domainMin, domainMax;
 
-        if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
+        const priceAxisDragging = typeof this._isPriceAxisZoomDragging === 'function'
+            && this._isPriceAxisZoomDragging();
+        if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0
+            && !priceAxisDragging) {
             // Auto-scale mode: fit all visible data with symmetric padding
             domainMin = minPrice - padding;
             domainMax = maxPrice + padding;
@@ -33069,6 +33084,19 @@ class Chart {
                     this.priceOffset = 0;
                     this.priceZoom = 1;
                 }
+                // Claim Y ownership during replay PLAY without disabling time follow
+                // (onUserPan would stop auto-scroll). Kill-switch:
+                //   window.__TALARIA_DISABLE_REPLAY_PRICE_AXIS_DRAG_V1 = true
+                try {
+                    const disable = typeof window !== 'undefined'
+                        && window.__TALARIA_DISABLE_REPLAY_PRICE_AXIS_DRAG_V1 === true;
+                    if (!disable
+                        && this.replaySystem
+                        && this.replaySystem.isActive
+                        && typeof this.replaySystem.onUserPriceScaleAdjust === 'function') {
+                        this.replaySystem.onUserPriceScaleAdjust();
+                    }
+                } catch (_) { /* ignore */ }
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this._lockDragCursor('ns-resize');
                 this._beginChartDragPointerTracking(e);

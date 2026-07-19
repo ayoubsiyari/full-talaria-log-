@@ -17,6 +17,8 @@ class ReplaySystem {
         this._fullRawDataMatchesTF = false;
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+        /** Manual Y scale during PLAY — do not wipe priceZoom/autoScale on sync. */
+        this._userOwnsPriceScale = false;
         /** True while play is stalled at the loaded forward edge waiting for more bars. */
         this._replayForwardEdgeWait = false;
         /** Bumped to invalidate stale tick timeout chains (prefetch must not stack loops). */
@@ -3136,6 +3138,38 @@ class ReplaySystem {
     }
 
     /**
+     * True when the user manually adjusted the price axis (drag/zoom Y).
+     * Independent of X follow — PLAY can keep scrolling time while keeping manual Y.
+     */
+    _replayUserOwnsPriceScale(chartInstance = this.chart) {
+        if (!this.isActive) return false;
+        if (this._userOwnsPriceScale) return true;
+        if (typeof this._isUserInteractingWithChart === 'function'
+            && this._isUserInteractingWithChart(chartInstance)) {
+            const drag = chartInstance && chartInstance.drag;
+            if (drag && drag.active && drag.type === 'priceAxis') return true;
+            if (typeof chartInstance._isPriceAxisZoomDragging === 'function'
+                && chartInstance._isPriceAxisZoomDragging()) {
+                return true;
+            }
+        }
+        return !!(chartInstance && chartInstance.autoScale === false);
+    }
+
+    /**
+     * Price-axis drag/zoom during replay — claim Y ownership without disabling
+     * time follow (unlike onUserPan).
+     */
+    onUserPriceScaleAdjust() {
+        if (!this.isActive) return;
+        this._userOwnsPriceScale = true;
+    }
+
+    clearUserPriceScaleOwnership() {
+        this._userOwnsPriceScale = false;
+    }
+
+    /**
      * Whether updateChartData should sync the viewport to the playhead.
      * Must NOT require currentIndex to change — finest-TF / sub-bar advances often
      * keep the same raw index while replayTimestamp (and the time axis) move, which
@@ -6193,6 +6227,7 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
         this._viewportLockForPlayback = null;
+        this._userOwnsPriceScale = false;
 
         const chart = this.chart;
         if (chart && typeof chart._isMultichartViewportJustReset === 'function'
@@ -7842,8 +7877,10 @@ class ReplaySystem {
         const mainChart = this.chart;
         if (!mainChart || !Array.isArray(slicedRawData) || slicedRawData.length === 0) return;
         const preserveViewport = this._viewportLockForPlayback
-            || this._replayUserOwnsViewport(mainChart);
+            || this._replayUserOwnsViewport(mainChart)
+            || this._replayUserOwnsPriceScale(mainChart);
         try {
+            // Only resets Y — X follow uses syncReplayViewportToPlayhead separately.
             if (!preserveViewport) {
                 mainChart.priceZoom = 1;
                 mainChart.priceOffset = 0;
