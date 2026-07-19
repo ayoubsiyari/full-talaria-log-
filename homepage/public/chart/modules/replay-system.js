@@ -3498,6 +3498,12 @@ class ReplaySystem {
                 this.chart.bumpDataVersion();
             }
             this._syncCompareOverlaysForReplay();
+            try {
+                const dm = this.chart.drawingManager;
+                if (dm && typeof dm.onReplayChartDataResampled === 'function') {
+                    dm.onReplayChartDataResampled();
+                }
+            } catch (_drGrow) { /* ignore */ }
         } catch (error) {
             console.error('❌ Error resampling data:', error);
             return;
@@ -5068,6 +5074,12 @@ class ReplaySystem {
             this.chart.bumpDataVersion();
         }
         this._syncCompareOverlaysForReplay();
+        try {
+            const dm = this.chart.drawingManager;
+            if (dm && typeof dm.onReplayChartDataResampled === 'function') {
+                dm.onReplayChartDataResampled();
+            }
+        } catch (_drGrow) { /* ignore */ }
         
         // Recalculate indicators
         try {
