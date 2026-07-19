@@ -29186,6 +29186,76 @@ class Chart {
     }
 
     /**
+     * Pick a 1-2-5×tickSize Y step from the *price span*, not from the aligned tick
+     * count in the current window. Vertical pan keeps span fixed but slides lo/hi, so
+     * count-based picking flickers ±1 at the maxTicks cliff (0.5↔1↔2 pips). Sticky
+     * hysteresis keeps the last step while span/density stay in band.
+     */
+    _pickPipAlignedYTicks(lo, hi, numYTicks, tickSize, stickyKey = 'main') {
+        const loN = Math.min(lo, hi);
+        const hiN = Math.max(lo, hi);
+        const span = hiN - loN;
+        const want = Math.max(6, Math.min(18, Number(numYTicks) > 0 ? Math.floor(numYTicks) : 10));
+        const maxTicks = want + 5;
+        const minTicks = Math.max(4, want - 5);
+
+        if (!(span > 0) || !Number.isFinite(span)
+            || !Number.isFinite(tickSize) || tickSize <= 0 || tickSize > span * 0.999) {
+            return null;
+        }
+
+        const multCandidates = [];
+        for (let exp = -12; exp <= 18; exp++) {
+            const b = Math.pow(10, exp);
+            multCandidates.push(1 * b, 2 * b, 5 * b);
+        }
+        multCandidates.sort((a, b) => a - b);
+
+        const targetStep = span / Math.max(1, want);
+        let chosenIdx = multCandidates.length - 1;
+        for (let i = 0; i < multCandidates.length; i++) {
+            if (multCandidates[i] * tickSize >= targetStep * 0.999) {
+                chosenIdx = i;
+                break;
+            }
+        }
+
+        // Soft density guard (slack so alignment ±1 doesn't force a coarsen).
+        while (chosenIdx < multCandidates.length - 1) {
+            const n = this._buildAlignedPriceTicks(loN, hiN, multCandidates[chosenIdx] * tickSize).length;
+            if (n <= maxTicks + 2) break;
+            chosenIdx++;
+        }
+        while (chosenIdx > 0) {
+            const n = this._buildAlignedPriceTicks(loN, hiN, multCandidates[chosenIdx] * tickSize).length;
+            if (n >= minTicks - 1) break;
+            chosenIdx--;
+        }
+
+        let step = multCandidates[chosenIdx] * tickSize;
+
+        // Sticky previous step during slow vertical pan / tiny span changes.
+        if (!this._yAxisStepSticky) this._yAxisStepSticky = Object.create(null);
+        const sticky = this._yAxisStepSticky[stickyKey];
+        if (sticky && Number.isFinite(sticky.step) && sticky.step > 0
+            && Number.isFinite(sticky.span) && sticky.span > 0
+            && sticky.want === want) {
+            const spanRatio = span / sticky.span;
+            if (spanRatio > 0.90 && spanRatio < 1.12) {
+                const nSticky = this._buildAlignedPriceTicks(loN, hiN, sticky.step).length;
+                if (nSticky >= Math.max(3, minTicks - 2) && nSticky <= maxTicks + 4) {
+                    step = sticky.step;
+                }
+            }
+        }
+
+        const ticks = this._buildAlignedPriceTicks(loN, hiN, step);
+        if (ticks.length < 2) return null;
+        this._yAxisStepSticky[stickyKey] = { step, span, want };
+        return ticks;
+    }
+
+    /**
      * Y-axis / horizontal grid price ticks aligned to the instrument pip/tick size.
      * D3's `linear.ticks()` picks "nice" decimals (e.g. …30, …40 on FX) that are not
      * multiples of the real pip — this matches futures-style tick alignment for forex too.
@@ -29197,53 +29267,15 @@ class Chart {
         const lo = Math.min(d0, d1);
         const hi = Math.max(d0, d1);
         const span = hi - lo;
-        const want = Math.max(6, Math.min(18, Number(numYTicks) > 0 ? Math.floor(numYTicks) : 10));
-        const maxTicks = want + 5;
-        const minTicks = Math.max(4, want - 5);
 
         if (!(span > 0) || !Number.isFinite(span)) {
             return this.yScale.ticks(numYTicks);
         }
 
         const tickSize = (typeof this.getTickSize === 'function') ? Number(this.getTickSize()) : 0;
-        if (!Number.isFinite(tickSize) || tickSize <= 0 || tickSize > span * 0.999) {
-            return this.yScale.ticks(numYTicks);
-        }
-
-        const multCandidates = [];
-        for (let exp = -12; exp <= 18; exp++) {
-            const b = Math.pow(10, exp);
-            multCandidates.push(1 * b, 2 * b, 5 * b);
-        }
-        multCandidates.sort((a, b) => a - b);
-
-        let chosenIdx = -1;
-        for (let i = 0; i < multCandidates.length; i++) {
-            const step = multCandidates[i] * tickSize;
-            const n = this._buildAlignedPriceTicks(lo, hi, step).length;
-            if (n <= maxTicks) {
-                chosenIdx = i;
-                break;
-            }
-        }
-        if (chosenIdx < 0) {
-            return this.yScale.ticks(numYTicks);
-        }
-
-        while (chosenIdx > 0) {
-            const stepFiner = multCandidates[chosenIdx - 1] * tickSize;
-            const ticksFiner = this._buildAlignedPriceTicks(lo, hi, stepFiner);
-            if (ticksFiner.length > maxTicks) break;
-            chosenIdx--;
-            if (ticksFiner.length >= minTicks) break;
-        }
-
-        const step = multCandidates[chosenIdx] * tickSize;
-        const ticks = this._buildAlignedPriceTicks(lo, hi, step);
-        if (ticks.length < 2) {
-            return this.yScale.ticks(numYTicks);
-        }
-        return ticks;
+        const aligned = this._pickPipAlignedYTicks(lo, hi, numYTicks, tickSize, 'main');
+        if (aligned) return aligned;
+        return this.yScale.ticks(numYTicks);
     }
 
     /**
@@ -29305,64 +29337,24 @@ class Chart {
         const hiN = Math.max(lo, hi);
         const span = hiN - loN;
         const want = Math.max(6, Math.min(18, Number(numYTicks) > 0 ? Math.floor(numYTicks) : 10));
-        const maxTicks = want + 5;
-        const minTicks = Math.max(4, want - 5);
+
+        const linearFallback = () => {
+            const n = Math.max(2, want);
+            const step = span / (n - 1);
+            const ticks = [];
+            for (let i = 0; i < n; i++) ticks.push(loN + step * i);
+            return ticks;
+        };
 
         if (!(span > 0) || !Number.isFinite(span)) {
             return [loN, hiN];
         }
 
         const tickSize = this.getTickSizeForSymbol(symbol, { ...options, priceRange: span });
-        if (!Number.isFinite(tickSize) || tickSize <= 0 || tickSize > span * 0.999) {
-            const n = Math.max(2, want);
-            const step = span / (n - 1);
-            const ticks = [];
-            for (let i = 0; i < n; i++) ticks.push(loN + step * i);
-            return ticks;
-        }
-
-        const multCandidates = [];
-        for (let exp = -12; exp <= 18; exp++) {
-            const b = Math.pow(10, exp);
-            multCandidates.push(1 * b, 2 * b, 5 * b);
-        }
-        multCandidates.sort((a, b) => a - b);
-
-        let chosenIdx = -1;
-        for (let i = 0; i < multCandidates.length; i++) {
-            const step = multCandidates[i] * tickSize;
-            const n = this._buildAlignedPriceTicks(loN, hiN, step).length;
-            if (n <= maxTicks) {
-                chosenIdx = i;
-                break;
-            }
-        }
-        if (chosenIdx < 0) {
-            const n = Math.max(2, want);
-            const step = span / (n - 1);
-            const ticks = [];
-            for (let i = 0; i < n; i++) ticks.push(loN + step * i);
-            return ticks;
-        }
-
-        while (chosenIdx > 0) {
-            const stepFiner = multCandidates[chosenIdx - 1] * tickSize;
-            const ticksFiner = this._buildAlignedPriceTicks(loN, hiN, stepFiner);
-            if (ticksFiner.length > maxTicks) break;
-            chosenIdx--;
-            if (ticksFiner.length >= minTicks) break;
-        }
-
-        const step = multCandidates[chosenIdx] * tickSize;
-        const ticks = this._buildAlignedPriceTicks(loN, hiN, step);
-        if (ticks.length < 2) {
-            const n = Math.max(2, want);
-            const linearStep = span / (n - 1);
-            const out = [];
-            for (let i = 0; i < n; i++) out.push(loN + linearStep * i);
-            return out;
-        }
-        return ticks;
+        const stickyKey = `domain:${String(symbol || '').replace(/\s+/g, '') || 'alt'}`;
+        const aligned = this._pickPipAlignedYTicks(loN, hiN, numYTicks, tickSize, stickyKey);
+        if (aligned) return aligned;
+        return linearFallback();
     }
 
     /**
