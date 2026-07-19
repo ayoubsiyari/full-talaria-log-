@@ -9959,6 +9959,7 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
       "middleLineColor", "middleLineDash", "middleLineWidth", "showMiddleLine",
       "startStyle", "endStyle", "extendLeft", "extendRight",
       "showPriceLabel", "showTimeLabel",
+      "infoSettings", "showLabel",
       "showZones", "backgroundOpacity", "levelsLineWidth", "levelsLineDasharray",
       "priceLevels", "timeLevels", "gridLevels", "fanLevels", "arcLevels",
     ]);
@@ -9966,6 +9967,12 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
       if (resetKeys.has(k)) delete live.style[k];
     }
     Object.assign(live.style, stylePatch);
+    if (!live.style.infoSettings) {
+      live.style.infoSettings = v9ChartInfoSettingsFromTlStyle(defaults);
+    }
+    if (live.style.showLabel === undefined) {
+      live.style.showLabel = !!defaults.showInfo;
+    }
     if (typeof dm.resetDrawingVisibilityToDefaults === "function") {
       dm.resetDrawingVisibilityToDefaults(live);
     } else {
@@ -18832,7 +18839,13 @@ const TalariaV8bLive = () => {
           avStyleBridgeFlushRef.current?.();
         })
       : opts?.immediate
-      ? modalPointerActivate(toggle)
+      ? modalPointerActivate(() => {
+          const now = Date.now();
+          const last = tlChkLastActRef.current[hKey] || 0;
+          if (now - last < 100) return;
+          tlChkLastActRef.current[hKey] = now;
+          flushSync(() => toggle());
+        })
       : modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle));
     return (
       <div
@@ -20636,6 +20649,11 @@ const TalariaV8bLive = () => {
           if (builtinDefault && dm) {
             try {
               v9ApplyVisibilityFromTlStyle(d, full);
+              // Style bridge is suppressed during Apply default — push Show Info off now
+              // so the trend-line stats bubble does not stay stuck until OK.
+              if (!d.style) d.style = {};
+              d.style.infoSettings = v9ChartInfoSettingsFromTlStyle(full);
+              d.style.showLabel = !!full.showInfo;
               if (typeof dm.saveDrawings === "function") dm.saveDrawings();
               v9SyncDrawingAxisHighlights(d);
               if (typeof dm.redrawAll === "function") dm.redrawAll();
@@ -20708,6 +20726,10 @@ const TalariaV8bLive = () => {
       flushSync(() => setTlStyle(full));
       try {
         v9ApplyVisibilityFromTlStyle(drawing, full);
+        if (!drawing.style) drawing.style = {};
+        drawing.style.infoSettings = v9ChartInfoSettingsFromTlStyle(full);
+        drawing.style.showLabel = !!full.showInfo;
+        dm?.renderDrawing?.(drawing);
         dm?.saveDrawings?.();
       } catch (_) {}
       requestAnimationFrame(() => {
@@ -23568,10 +23590,11 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
-    if (suppressCoordBridge.current) {
-      suppressCoordBridge.current = false;
-      return;
-    }
+    // Canvas→React readback sets this so we don't push stale *points* back during drag.
+    // Visibility must still apply — otherwise a hide→show toggle after Apply default /
+    // drawingsChanged is swallowed and the checkbox needs many clicks to stick.
+    const skipPoints = suppressCoordBridge.current;
+    if (skipPoints) suppressCoordBridge.current = false;
     const editSess = editingDrawingRef.current;
     const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
     try {
@@ -23587,7 +23610,7 @@ const TalariaV8bLive = () => {
         let pointsMoved = false;
         let visibilityChanged = false;
         // VP range geometry lives in vpStyle — never push stale tlStyle pt* onto volume profiles.
-        if (!v9IsVolumeProfileDrawingType(d.type)) {
+        if (!skipPoints && !v9IsVolumeProfileDrawingType(d.type)) {
           try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
         }
         try { visibilityChanged = v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
@@ -23595,7 +23618,9 @@ const TalariaV8bLive = () => {
         if (!geometryChanged) return;
         if (visibilityChanged) {
           try { dm2.redrawAll?.(); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
-          try { window.dispatchEvent(new CustomEvent("drawingsChanged")); } catch (_) {}
+          try { dm2.saveDrawings?.(); } catch (_) {}
+          // Do not dispatch drawingsChanged here: that readback sets suppressCoordBridge and
+          // used to eat the next Visibility checkbox toggle (hide works, show needs many clicks).
         } else if (tb && typeof tb.onUpdate === "function") {
           try { tb.onUpdate(d); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
         } else {
@@ -23749,14 +23774,9 @@ const TalariaV8bLive = () => {
   ]);
 
   useLayoutEffect(() => {
-    if (suppressCoordBridge.current) {
-      suppressCoordBridge.current = false;
-      return;
-    }
-    if (suppressTxtCoordBridge.current) {
-      suppressTxtCoordBridge.current = false;
-      return;
-    }
+    const skipPoints = suppressCoordBridge.current || suppressTxtCoordBridge.current;
+    if (suppressCoordBridge.current) suppressCoordBridge.current = false;
+    if (suppressTxtCoordBridge.current) suppressTxtCoordBridge.current = false;
     if (suppressTxtForwardBridge.current) {
       suppressTxtForwardBridge.current = false;
       return;
@@ -23774,7 +23794,9 @@ const TalariaV8bLive = () => {
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         let txtPointsMoved = false;
-        try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
+        if (!skipPoints) {
+          try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
+        }
         try { v9ApplyVisibilityFromTlStyle(d, txtStyle); } catch (_) {}
         if (txtPointsMoved) {
           try { dm.renderDrawing?.(d); } catch (_) {}
@@ -26519,7 +26541,7 @@ const TalariaV8bLive = () => {
                              background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(74,106,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
                              cursor:tlStyle.showInfo?"default":"not-allowed",
                              opacity:tlStyle.showInfo?1:0.38, transition:"background 0.12s, opacity 0.15s" }}>
-                    <span style={{ fontSize:12, color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts }}>{tlStyle.showInfoTypes.length===0?"None":tlStyle.showInfoTypes.length===1?tlStyle.showInfoTypes[0]:`${tlStyle.showInfoTypes.length} selected`}</span>
+                    <span style={{ fontSize:12, color:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts }}>{(() => { const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : []; return types.length===0?"None":types.length===1?types[0]:`${types.length} selected`; })()}</span>
                     <I n="chevDown" s={8} cl={(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?c.acL:c.ts}/>
                     {(tlStyleDrop==="info"||closing.has("tlInfoDrop"))&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                     {!(tlStyleDrop==="info"||closing.has("tlInfoDrop"))&&hov==="tlInfoBtn"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
@@ -26533,7 +26555,8 @@ const TalariaV8bLive = () => {
                       animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease" }}>
                       <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
                       {["Price range","Percent change","Change in pips","Bars range","Date/time range","Distance","Angle"].map(v=>{
-                        const isA=tlStyle.showInfoTypes.includes(v); const isH=hov===`tli-${v}`;
+                        const types = Array.isArray(tlStyle.showInfoTypes) ? tlStyle.showInfoTypes : [];
+                        const isA=types.includes(v); const isH=hov===`tli-${v}`;
                         return (
                           <div key={v} {...tlStyleDropPickKeepOpen(() => applyTlShowInfoTypeToggle(v))}
                             onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
@@ -27916,8 +27939,14 @@ const TalariaV8bLive = () => {
             {tlSettTab==="visibility" && (
               <V9VisTimeframesPanel
                 getRow={(k) => v9NormalizeTlVisRow(k, tlStyle[k])}
-                onPatchRange={(k, min, max) => setTlStyle((s) => ({ ...s, [k]: { ...s[k], min, max } }))}
-                onToggleChecked={(k) => setTlStyle((s) => ({ ...s, [k]: { ...s[k], checked: !s[k].checked } }))}
+                onPatchRange={(k, min, max) => setTlStyle((s) => {
+                  const cur = v9NormalizeTlVisRow(k, s[k]);
+                  return { ...s, [k]: { ...cur, min, max } };
+                })}
+                onToggleChecked={(k) => setTlStyle((s) => {
+                  const cur = v9NormalizeTlVisRow(k, s[k]);
+                  return { ...s, [k]: { ...cur, checked: !cur.checked } };
+                })}
                 handlePrefix="tl-vis"
                 chkPrefix="tlchk"
                 c={c}
@@ -28815,7 +28844,10 @@ const TalariaV8bLive = () => {
               <V9VisTimeframesPanel
                 getRow={(k) => v9NormalizeTlVisRow(k, txtStyle[k])}
                 onPatchRange={(k, min, max) => setTxtStyle((s) => ({ ...s, [k]: { ...s[k], min, max } }))}
-                onToggleChecked={(k) => setTxtStyle((s) => ({ ...s, [k]: { ...s[k], checked: !s[k].checked } }))}
+                onToggleChecked={(k) => setTxtStyle((s) => {
+                  const cur = v9NormalizeTlVisRow(k, s[k]);
+                  return { ...s, [k]: { ...cur, checked: !cur.checked } };
+                })}
                 handlePrefix="txt-vis"
                 chkPrefix="txtchk"
                 c={c}

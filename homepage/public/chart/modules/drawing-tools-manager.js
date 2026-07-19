@@ -3160,7 +3160,13 @@ class DrawingToolsManager {
         this._placementCrosshairClient = { clientX: event.clientX, clientY: event.clientY };
     }
 
-    /** TradingView-style: show crosshair when a draw tool is armed (center on touch if no prior pointer). */
+    /**
+     * Show placement crosshair when a draw tool is armed.
+     * Desktop: only if the pointer is already over the plot — never invent a
+     * centered crosshair (toolbar/rail tool pick left it stuck in the middle).
+     * Touch/coarse: TradingView-style center pin when there is no prior pointer.
+     * Kill-switch: window.__TALARIA_DISABLE_DESKTOP_TOOL_CROSSHAIR_HIDE_V1 = true
+     */
     _showInitialPlacementCrosshair(retry = false) {
         const c = this.chart;
         if (!c || typeof c.updateCrosshair !== 'function') return;
@@ -3170,6 +3176,21 @@ class DrawingToolsManager {
         const inPlot = Number.isFinite(c.mouseX) && Number.isFinite(c.mouseY)
             && c.mouseX >= m.l && c.mouseX <= (c.w || 0) - m.r
             && c.mouseY >= m.t && c.mouseY <= (c.h || 0) - m.b;
+        const keepTouch = this._shouldKeepPlacementCrosshair();
+        let hideWhenOffPlot = true;
+        try {
+            hideWhenOffPlot = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_DESKTOP_TOOL_CROSSHAIR_HIDE_V1 === true);
+        } catch (_) { hideWhenOffPlot = true; }
+        // Mouse is on the left rail / toolbar — do not pin a fake center crosshair.
+        if (!inPlot && !keepTouch && hideWhenOffPlot) {
+            this._placementCrosshairPinned = false;
+            this._placementCrosshairClient = null;
+            if (typeof c.hideCrosshair === 'function') {
+                try { c.hideCrosshair(); } catch (_) { /* ignore */ }
+            }
+            return;
+        }
         const rect = typeof c._pointerLayoutRect === 'function' ? c._pointerLayoutRect() : null;
         const z = typeof c._v9LayoutZoom === 'function' ? c._v9LayoutZoom() : 1;
         if (!rect) return;
@@ -3184,7 +3205,7 @@ class DrawingToolsManager {
         }
         const ev = { clientX, clientY };
         this._rememberPlacementCrosshair(ev);
-        if (this._shouldKeepPlacementCrosshair()) {
+        if (keepTouch) {
             this._placementCrosshairPinned = true;
         }
         c.updateCrosshair(ev);
@@ -16935,6 +16956,9 @@ class DrawingToolsManager {
             'middleLineColor', 'middleLineDash', 'middleLineWidth', 'showMiddleLine',
             'startStyle', 'endStyle', 'extendLeft', 'extendRight',
             'showPriceLabel', 'showTimeLabel',
+            // Show Info / stats bubble — default is off; must clear or the panel toggles
+            // off while the trend-line info box stays stuck until OK.
+            'infoSettings', 'showLabel',
             'showZones', 'backgroundOpacity', 'levelsLineWidth', 'levelsLineDasharray',
             'priceLevels', 'timeLevels', 'gridLevels', 'fanLevels', 'arcLevels',
         ]);
@@ -16943,6 +16967,14 @@ class DrawingToolsManager {
         }
         Object.assign(drawing.style, patch);
         this.resetDrawingVisibilityToDefaults(drawing);
+
+        // Built-in default: Show Info off (panel + canvas stay in sync immediately).
+        if (patch.infoSettings === undefined) {
+            drawing.style.infoSettings = { showInfo: false };
+        }
+        if (patch.showLabel === undefined) {
+            drawing.style.showLabel = false;
+        }
 
         // Restore the preserved axis-label toggles unless the default patch itself set them
         // (brush/highlighter force these off intentionally).
