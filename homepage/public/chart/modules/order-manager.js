@@ -14242,6 +14242,27 @@ class OrderManager {
             if (!pending?.lineData?.labelGroup) return;
             this.renderPreviewLabel(pending.lineData, pending.overrideY);
             this.adjustPreviewLineForLabel(pending.lineData);
+            // Entry toast rebuild changes width/X — re-seat SL/TP beside it immediately so
+            // badges do not stay parked on the price-axis cluster until drag end.
+            if (this.isDraggingPreviewLine && this._useEntryAnchoredTpSlBadges()) {
+                const entry = this.previewLines?.entry;
+                const entryPrice = Number(entry?.price);
+                const entryY = Number.isFinite(pending.overrideY)
+                    ? pending.overrideY
+                    : (pending.chart?.scales?.yScale && Number.isFinite(entryPrice)
+                        ? pending.chart.scales.yScale(entryPrice)
+                        : null);
+                if (Number.isFinite(entryPrice) && entryPrice > 0 && Number.isFinite(entryY)) {
+                    // Temporarily allow full X reflow for the re-anchor pass.
+                    const wasDragging = this.isDraggingPreviewLine;
+                    this.isDraggingPreviewLine = false;
+                    try {
+                        this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryY);
+                    } finally {
+                        this.isDraggingPreviewLine = wasDragging;
+                    }
+                }
+            }
             if (typeof this._syncPendingLimitStopConnector === 'function') {
                 this._syncPendingLimitStopConnector();
             }
@@ -14422,9 +14443,10 @@ class OrderManager {
         const bbox = lineData.labelGroup.node().getBBox();
         lineData.labelDimensions = { width: bbox.width, height: bbox.height };
 
-        // While dragging, keep label X stable. Otherwise renderPreviewLabel uses chart.w - maxW - pad
-        // but alignPreviewLabels uses sharedBaseX — they disagree → horizontal snap every move.
-        if (this.isDraggingPreviewLine && !lineData.isBadge) {
+        // While dragging, keep label X stable (entry toast AND SL/TP badges).
+        // Otherwise renderPreviewLabel / entry-right-edge lookup can briefly fail mid-rebuild
+        // and badges fall back to tpBaseX on the price axis — "suspended" then snap on release.
+        if (this.isDraggingPreviewLine) {
             const tr = lineData.labelGroup.attr('transform') || '';
             const m = /translate\(([^,]+)/.exec(tr);
             const curX = m ? parseFloat(m[1]) : NaN;
@@ -20209,45 +20231,33 @@ class OrderManager {
                     }
                     self._refreshOrderTypePreviewLabelLive(lineData, clampedY, ch);
                     
-                    // Entry-anchored badges: full X+Y reflow beside entry tag (replay ticks won't snap back).
-                    if (self._useEntryAnchoredTpSlBadges()) {
-                        self._syncEntryAnchoredPreviewBadgesWithEntry(newPrice, clampedY);
-                    } else {
-                        // Multi-entry / axis-anchored: Y-only follow during drag
-                        if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
-                            const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
-                            if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
-                                self.previewLines.tp.price = newPrice;
-                                const tpBbox = self.previewLines.tp.labelDimensions;
-                                const tpHeight = tpBbox?.height || 0;
-                                const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
-                                const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                                const tpY = clampedY - tpHeight / 2;
-                                self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
+                    // During entry drag: Y-only for SL/TP badges (keep X). Full X reflow
+                    // via positionPreviewLabel can briefly fall back to the price axis while
+                    // the entry toast is mid-rebuild — looks like the SL label is suspended.
+                    const moveBadgeYOnly = (badge, yPx) => {
+                        if (!badge?.isBadge || !badge.labelGroup) return;
+                        badge.price = newPrice;
+                        const h = badge.labelDimensions?.height || 0;
+                        const tr = badge.labelGroup.attr('transform') || '';
+                        const bx = parseFloat(tr.match(/translate\(([\d.-]+)/)?.[1] || '0');
+                        if (!Number.isFinite(bx)) return;
+                        badge.labelGroup.attr('transform', `translate(${bx}, ${yPx - h / 2})`);
+                    };
+                    if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
+                        const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
+                        if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
+                            moveBadgeYOnly(self.previewLines.tp, clampedY);
+                        }
+                    }
+                    if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
+                        moveBadgeYOnly(self.previewLines.sl, clampedY);
+                    }
+                    if (self.previewLines.multiTPBadges?.length) {
+                        self.previewLines.multiTPBadges.forEach((bd) => {
+                            if (bd?.labelGroup) {
+                                moveBadgeYOnly(bd, clampedY + (bd._stackOffsetY || 0));
                             }
-                        }
-                        if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
-                            self.previewLines.sl.price = newPrice;
-                            const slBbox = self.previewLines.sl.labelDimensions;
-                            const slHeight = slBbox?.height || 0;
-                            const slTransform = self.previewLines.sl.labelGroup.attr('transform');
-                            const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                            const slY = clampedY - slHeight / 2;
-                            self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
-                        }
-                        if (self.previewLines.multiTPBadges?.length) {
-                            self.previewLines.multiTPBadges.forEach(bd => {
-                                if (bd?.labelGroup) {
-                                    bd.price = newPrice;
-                                    const bdBbox = bd.labelDimensions;
-                                    const bdHeight = bdBbox?.height || 0;
-                                    const bdTransform = bd.labelGroup.attr('transform');
-                                    const bdX = parseFloat(bdTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                                    const bdY = clampedY + (bd._stackOffsetY || 0) - bdHeight / 2;
-                                    bd.labelGroup.attr('transform', `translate(${bdX}, ${bdY})`);
-                                }
-                            });
-                        }
+                        });
                     }
                     
                     // Recalculate risk/reward since TP/SL are synced to entry
@@ -20386,6 +20396,18 @@ class OrderManager {
                         } else if (self.previewLines.entry) {
                             const entryY = ch.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
+                            if (self._useEntryAnchoredTpSlBadges()) {
+                                const ep = Number(self.previewLines.entry.price);
+                                if (Number.isFinite(ep) && ep > 0 && Number.isFinite(entryY)) {
+                                    const wasDraggingEntry = self.isDraggingPreviewLine;
+                                    self.isDraggingPreviewLine = false;
+                                    try {
+                                        self._syncEntryAnchoredPreviewBadgesWithEntry(ep, entryY);
+                                    } finally {
+                                        self.isDraggingPreviewLine = wasDraggingEntry;
+                                    }
+                                }
+                            }
                         }
                         
                         // Update SL pips display
@@ -40086,6 +40108,7 @@ class OrderManager {
             }
             .order-level-badge .order-level-badge-glyph {
                 fill: var(--olb-muted);
+                stroke: var(--olb-muted);
             }
             .order-level-badge:hover .order-level-badge-bg,
             .order-level-badge.om-ctrl-hover .order-level-badge-bg {
@@ -40095,6 +40118,7 @@ class OrderManager {
             .order-level-badge:hover .order-level-badge-glyph,
             .order-level-badge.om-ctrl-hover .order-level-badge-glyph {
                 fill: #ffffff;
+                stroke: #ffffff;
             }
         `;
         (document.head || document.documentElement).appendChild(st);
@@ -44520,7 +44544,7 @@ class OrderManager {
         const th = this._tradeMarkerToastTheme();
         const green = th.light ? '#059669' : '#22c55e';
         const map = {
-            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
+            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444', drawPath: true },
             plus: { glyph: '+', accent: green, hoverAccent: green },
             minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
             check: { glyph: '✓', accent: green, hoverAccent: green },
@@ -44528,7 +44552,39 @@ class OrderManager {
         return map[kind] || map.close;
     }
 
-    _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
+    /**
+     * Draw badge glyph centered at (cx, cy). Close uses an SVG path so the X is never
+     * clipped by font metrics (Exo 2 × was showing as a tiny corner inside the red box).
+     */
+    _appendOrderLevelBadgeGlyph(parent, kind, cx, cy, r, extraClass = '') {
+        const spec = this._orderLevelBadgeKindSpec(kind);
+        const cls = `order-level-badge-glyph ${extraClass}`.trim();
+        if (kind === 'close' || spec.drawPath) {
+            const arm = Math.max(3.2, r * 0.42);
+            const sw = Math.max(1.6, r * 0.22);
+            return parent.append('path')
+                .attr('class', cls)
+                .attr('d', `M ${cx - arm} ${cy - arm} L ${cx + arm} ${cy + arm} M ${cx + arm} ${cy - arm} L ${cx - arm} ${cy + arm}`)
+                .attr('fill', 'none')
+                .attr('stroke-width', sw)
+                .attr('stroke-linecap', 'round')
+                .style('pointer-events', 'none');
+        }
+        return parent.append('text')
+            .attr('class', cls)
+            .attr('x', cx)
+            .attr('y', cy)
+            .attr('dy', '0')
+            .attr('dominant-baseline', 'central')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', kind === 'check' ? '12px' : '13px')
+            .attr('font-weight', '700')
+            .attr('font-family', this._orderLevelLabelFontFamily())
+            .style('pointer-events', 'none')
+            .text(spec.glyph);
+    }
+
+    _wireOrderLevelBadgeHover(host, bg, glyph, th, spec) {
         const accent = spec.hoverAccent || spec.accent;
         // Color is driven by native CSS :hover (see _ensureLevelCtrlHoverStyles), NOT
         // JS mouseenter/mouseleave. A live preview recreates and moves these badges on
@@ -44541,7 +44597,14 @@ class OrderManager {
             .style('--olb-accent', accent)
             .style('--olb-muted', th.muted);
         bg.attr('fill', th.bg).attr('stroke', th.border);
-        txt.attr('fill', th.muted);
+        if (glyph) {
+            const tag = glyph.node?.()?.tagName?.toLowerCase?.() || '';
+            if (tag === 'path' || tag === 'line') {
+                glyph.attr('stroke', th.muted).attr('fill', 'none');
+            } else {
+                glyph.attr('fill', th.muted);
+            }
+        }
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
@@ -44712,17 +44775,8 @@ class OrderManager {
             .attr('height', size)
             .attr('rx', 2)
             .attr('stroke-width', 1);
-        const txt = g.append('text')
-            .attr('class', 'order-level-badge-glyph')
-            .attr('x', r)
-            .attr('y', r)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', 'middle')
-            .attr('font-size', spec.fontSize || (kind === 'check' ? '12px' : '13px'))
-            .attr('font-weight', '700')
-            .attr('font-family', this._orderLevelLabelFontFamily())
-            .text(spec.glyph);
-        this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
+        const glyph = this._appendOrderLevelBadgeGlyph(g, kind, r, r, r);
+        this._wireOrderLevelBadgeHover(g, bg, glyph, th, spec);
         if (_orderEntryCloseHitTargetFixEnabled() && kind === 'close') {
             const pad = 5;
             g.insert('rect', ':first-child')
@@ -44790,16 +44844,8 @@ class OrderManager {
             .attr('height', r * 2)
             .attr('rx', 2)
             .attr('stroke-width', 1);
-        const txt = btn.append('text')
-            .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
-            .attr('font-size', kind === 'check' ? '12px' : '13px')
-            .attr('font-weight', '700')
-            .attr('font-family', this._orderLevelLabelFontFamily())
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text(spec.glyph);
-        this._wireOrderLevelBadgeHover(btn, bg, txt, th, spec);
+        const glyph = this._appendOrderLevelBadgeGlyph(btn, kind, 0, 0, r, 'order-overlay-sublayer');
+        this._wireOrderLevelBadgeHover(btn, bg, glyph, th, spec);
         if (o.onClick) {
             // Fire on pointerdown — see _appendOrderLevelBadgeToGroup: badges recreated on
             // every re-render make plain `click` (mousedown+mouseup on the same element)
