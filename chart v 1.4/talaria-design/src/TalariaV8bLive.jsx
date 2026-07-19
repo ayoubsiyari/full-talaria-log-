@@ -16992,8 +16992,10 @@ const TalariaV8bLive = () => {
     }
   }, [rightPanel, orderPanelOpen]);
 
-  // Shrink chart canvas when the right rail opens so strokes/labels are not laid out under it.
-  useEffect(() => {
+  // Shrink/expand chart when the right rail opens/closes so strokes/labels
+  // are not laid out under it. useLayoutEffect + sync bump kills the 1-frame
+  // multichart gutter flash when Layouts closes (host slot lagged CSS reflow).
+  useLayoutEffect(() => {
     const bump = () => {
       try {
         window.dispatchEvent(new Event("resize"));
@@ -17004,6 +17006,7 @@ const TalariaV8bLive = () => {
         }
       } catch (_) {}
     };
+    bump();
     const t = requestAnimationFrame(bump);
     const t2 = setTimeout(bump, 220);
     return () => {

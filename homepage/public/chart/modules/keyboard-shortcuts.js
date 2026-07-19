@@ -521,6 +521,11 @@ class KeyboardShortcutsManager {
         const shortcut = this.shortcuts[shortcutKey];
         if (shortcut) {
             e.preventDefault();
+            // Key-repeat stacked "Chart Reset" toasts and fought the viewport.
+            if (e.repeat && (shortcut.id === 'resetChart' || shortcutKey === 'Alt+r'
+                || shortcutKey === 'Ctrl+r' || shortcutKey === 'Meta+r')) {
+                return;
+            }
             shortcut.action();
             return;
         }
@@ -828,6 +833,7 @@ class KeyboardShortcutsManager {
     }
     
     resetChart() {
+        // During replay, jumpToLatest re-engages follow (see _resetViewportToDefault).
         if (this.chart.jumpToLatest) {
             this.chart.jumpToLatest();
         } else {
@@ -838,7 +844,12 @@ class KeyboardShortcutsManager {
             this.chart.autoScale = true;
             this.chart.needsRender = true;
         }
-        this.showNotification('Chart Reset', 'mdi-refresh');
+        // Debounce toast — OS key-repeat was stacking "Chart Reset" labels.
+        const now = Date.now();
+        if (!this._lastChartResetToastAt || now - this._lastChartResetToastAt > 600) {
+            this._lastChartResetToastAt = now;
+            this.showNotification('Chart Reset', 'mdi-refresh');
+        }
     }
     
     // ===== REPLAY CONTROL METHODS =====

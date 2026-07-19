@@ -18447,6 +18447,17 @@ class Chart {
         const forceRecenter = opts.forceRecenter !== false;
         const centerPlayhead = opts.centerPlayhead;
 
+        // Kill-switch: window.__TALARIA_FIX_REPLAY_RESET_FOLLOW = false
+        const replayResetFollowFix = typeof window === 'undefined'
+            || window.__TALARIA_FIX_REPLAY_RESET_FOLLOW !== false;
+
+        // Pan inertia / rubber-band must not fight a programmatic reset.
+        if (this.inertia) {
+            this.inertia.active = false;
+            this.inertia.velocityX = 0;
+            this.inertia.velocityY = 0;
+        }
+
         this._chartViewRestored = false;
         this._tfSwitchViewport = null;
         this.candleWidth = DEFAULT_CANDLE_WIDTH;
@@ -18457,6 +18468,16 @@ class Chart {
         const replay = this.replaySystem;
         const isEmbed = typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel();
         if (replay && replay.isActive && isEmbed) {
+            if (forceRecenter && replayResetFollowFix) {
+                replay.userHasPanned = false;
+                replay.autoScrollEnabled = true;
+                replay._viewportLockForPlayback = null;
+                if (typeof replay.clearUserPriceScaleOwnership === 'function') {
+                    replay.clearUserPriceScaleOwnership();
+                }
+            } else if (forceRecenter) {
+                replay.userHasPanned = false;
+            }
             const ok = this._ensureMultichartViewportVisible({
                 centerPlayhead: centerPlayhead != null ? centerPlayhead : true,
                 forceRecenter,
@@ -18473,10 +18494,26 @@ class Chart {
                     });
                 });
             }
+            if (forceRecenter && replayResetFollowFix
+                && typeof replay.updateAutoScrollIndicator === 'function') {
+                try { replay.updateAutoScrollIndicator(); } catch (_) { /* ignore */ }
+            }
             return;
         }
         if (replay && replay.isActive) {
-            if (forceRecenter) replay.userHasPanned = false;
+            // Ctrl/Alt+R / jumpToLatest must re-engage playhead follow — clearing
+            // userHasPanned alone left autoScroll off and kept _viewportLockForPlayback,
+            // so the next play frame snapped back to the panned window.
+            if (forceRecenter && replayResetFollowFix) {
+                replay.userHasPanned = false;
+                replay.autoScrollEnabled = true;
+                replay._viewportLockForPlayback = null;
+                if (typeof replay.clearUserPriceScaleOwnership === 'function') {
+                    replay.clearUserPriceScaleOwnership();
+                }
+            } else if (forceRecenter) {
+                replay.userHasPanned = false;
+            }
             const useCenter = centerPlayhead != null ? centerPlayhead : true;
             if (typeof replay.syncReplayViewportToPlayhead === 'function') {
                 const synced = replay.syncReplayViewportToPlayhead(this, {
@@ -18486,6 +18523,10 @@ class Chart {
                     render,
                 });
                 if (synced && this._countVisiblePlotBars() > 0) {
+                    if (forceRecenter && replayResetFollowFix
+                        && typeof replay.updateAutoScrollIndicator === 'function') {
+                        try { replay.updateAutoScrollIndicator(); } catch (_) { /* ignore */ }
+                    }
                     return;
                 }
             }

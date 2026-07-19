@@ -1715,7 +1715,9 @@ function applyHostSlotPositionOnly(cellEl) {
 
 /** @type {number} */
 let _liveLayoutReflowAt = 0;
-const LIVE_LAYOUT_REFLOW_MS = 72;
+// ~30Hz real canvas resize during splitter drag — keeps panels filled
+// without blowing the frame budget (was 72ms → visible dead gutter).
+const LIVE_LAYOUT_REFLOW_MS = 32;
 
 /**
  * Throttled real canvas resize during splitter drag. Clipping alone leaves
@@ -3291,6 +3293,15 @@ export default function MultichartGrid({
         };
         const schedule = () => {
             if (isDraggingRef.current) return;
+            // Kill-switch: window.__TALARIA_FIX_MULTICHART_LAYOUT_GAP_FLASH = false
+            const gapFlashFix = typeof window === "undefined"
+                || window.__TALARIA_FIX_MULTICHART_LAYOUT_GAP_FLASH !== false;
+            // Sync CSS slot BEFORE paint. Deferring only to rAF left #chartWrapper
+            // one frame behind the grid cells → grey #2a2e3a gutter flash when
+            // closing Layouts or resizing the shell.
+            if (gapFlashFix) {
+                positionHostOnly();
+            }
             if (!raf) {
                 raf = window.requestAnimationFrame(() => {
                     raf = 0;
@@ -8386,11 +8397,11 @@ export default function MultichartGrid({
                 gridTemplateColumns: colsTemplate,
                 gridTemplateRows:    rowsTemplate,
                 // Wider gap (was 1px, now 4px) so the divider line
-                // between panels is unmistakable. Combined with the
-                // lighter background color below the splitter reads
-                // as a clean TradingView-style separator.
+                // between panels is unmistakable. Use chart black for the
+                // gutter — a lighter #2a2e3a flashed as a grey column whenever
+                // host/iframe bitmaps lagged one frame behind CSS reflow.
                 gap: `${MULTICHART_GRID_GAP_PX}px`,
-                background: "#2a2e3a",
+                background: "#000000",
                 zIndex: 12,
             }}
         >
@@ -8449,12 +8460,10 @@ export default function MultichartGrid({
                             gridColumn: tile.gridColumn || "auto",
                             gridRow:    tile.gridRow    || "auto",
                             position: "relative",
-                            // Host cell is the slot for the parent's
-                            // #chartWrapper — keep it transparent so the
-                            // wrapper paints cleanly over it (the wrapper
-                            // is at z-index:13, this cell is z-index auto,
-                            // so the wrapper covers the cell exactly).
-                            background: isHost ? "transparent" : "#000000",
+                            // Host cell sits under #chartWrapper (z-index 13).
+                            // Fill black (not transparent) so a 1-frame host
+                            // lag never reveals the grid gutter as a grey strip.
+                            background: "#000000",
                             // Static border only — focused border is painted
                             // by the overlay <div> below because CSS outline
                             // is painted by the parent element and gets
