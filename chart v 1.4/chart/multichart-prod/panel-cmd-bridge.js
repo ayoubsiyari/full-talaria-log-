@@ -514,17 +514,14 @@
     }
 
     function afterLoadFile(ch, usedMultichartLoader) {
-        const coalesceOn = ch
-            && typeof ch._mcMountViewportCoalesceFixActive === 'function'
-            && ch._mcMountViewportCoalesceFixActive();
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now()
-                    + (coalesceOn ? 3500 : 1200);
+                ch._multichartViewportSettleUntil = performance.now() + 1200;
             } catch (_) {}
         }
-        if (usedMultichartLoader || coalesceOn) {
-            // Loader / coalesce path owns replay viewport + single authoritative commit.
+        if (usedMultichartLoader) {
+            // Loader already synced replay viewport; parent in-process path runs one
+            // coalesced finalize — avoid stacked passes that flash candles on/off.
             return;
         }
         try { drainPendingReplay(); } catch (_d) {}
@@ -2347,11 +2344,6 @@
      */
     function scheduleMultichartPanelReplayFollow(ch) {
         if (!ch) return;
-        if (typeof ch._mcMountViewportCoalesceFixActive === 'function'
-            && ch._mcMountViewportCoalesceFixActive()
-            && (ch._mcMountViewportCoalescePending || !ch._mcMountViewportPanelReady)) {
-            return;
-        }
         if (typeof ch._isMultichartViewportJustReset === 'function'
             && ch._isMultichartViewportJustReset()) {
             return;

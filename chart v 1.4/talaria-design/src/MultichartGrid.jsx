@@ -1286,15 +1286,6 @@ function mcPostBootResizeFlushEnabled() {
     }
 }
 
-function mcMountViewportCoalesceEnabled() {
-    try {
-        return !(typeof window !== 'undefined'
-            && window.__TALARIA_MC_DISABLE_MOUNT_VIEWPORT_COALESCE_V1 === true);
-    } catch (_) {
-        return true;
-    }
-}
-
 function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
     if (!mcPostBootResizeFlushEnabled() || !cellRefs || !panelIds || !panelIds.length) return;
     // forceRecenter only on first multichart boot (F5); later tile joins must not
@@ -1310,16 +1301,6 @@ function flushIframeChartsAfterBootReveal(cellRefs, panelIds, opts = {}) {
                 const ifr = cell.querySelector("iframe");
                 const ch = ifr && ifr.contentWindow && ifr.contentWindow.chart;
                 if (!ch) continue;
-                if (mcMountViewportCoalesceEnabled()) {
-                    if (ch._mcMountViewportPanelReady || ch._mcMountViewportCoalesceDone) {
-                        continue;
-                    }
-                    if (typeof ch._invalidateTimeAxisTickCaches === "function") {
-                        try { ch._invalidateTimeAxisTickCaches(); } catch (_) {}
-                    }
-                    if (typeof ch.render === "function") ch.render();
-                    continue;
-                }
                 // Unlock settle so post-reveal correction is not ignored.
                 try { ch._multichartViewportSettleUntil = 0; } catch (_) {}
                 if (typeof ch._invalidateTimeAxisTickCaches === "function") {
@@ -5434,30 +5415,14 @@ export default function MultichartGrid({
 
             const finish = () => {
                 try {
-                    const coalesceOn = ch && typeof ch._mcMountViewportCoalesceFixActive === "function"
-                        && ch._mcMountViewportCoalesceFixActive();
-                    if (!coalesceOn && typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
+                    if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
-                const runReplaySync = () => {
+                // Let pair-load seek + fitToView paint the full prefix before 60x catch-up.
+                setTimeout(() => {
                     try { syncIframeReplayPlaybackOnce(pid); } catch (_) {}
-                };
-                const coalesceOn = ch && typeof ch._mcMountViewportCoalesceFixActive === "function"
-                    && ch._mcMountViewportCoalesceFixActive();
-                if (coalesceOn && ch._mcMountViewportPanelReady) {
-                    setTimeout(runReplaySync, 80);
-                } else if (coalesceOn) {
-                    try {
-                        ch.addEventListener("talariaMcMountViewportReady", () => {
-                            setTimeout(runReplaySync, 80);
-                        }, { once: true });
-                    } catch (_) {
-                        setTimeout(runReplaySync, 600);
-                    }
-                } else {
-                    setTimeout(runReplaySync, 500);
-                }
+                }, 500);
                 if (focusedPanelIdRef.current === pid) {
                     dispatchFocusChanged(pid);
                 }

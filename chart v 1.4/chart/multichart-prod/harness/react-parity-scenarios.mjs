@@ -28,7 +28,6 @@ import {
   readParentV9BarVisible,
   clickV9QuickBarGear,
   waitForPanelSettle,
-  waitForPanelFrame,
   panelFrameMap,
   reactDefaultTrendlinePoints,
   reactDefaultRectanglePoints,
@@ -57,10 +56,6 @@ import {
   dragPointerPath,
   reactPanelLoadFile,
   readReactPanelFileIds,
-  reactSwitchMultichartLayout,
-  waitForMountViewportPanelReady,
-  pollMountOffsetCommits,
-  readPanelVisibleRenderProbe,
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
   ensureDrawingAnchorInPlotView,
@@ -1251,111 +1246,6 @@ async function otMs03(ctx) {
   });
 }
 
-// ── H-MC-MOUNT-JITTER-R1 — mount + symbol-change offset commit coalesce ───
-async function hMcMountJitterR1(ctx) {
-  const coalesceOff = !!(ctx.bugSwitches && ctx.bugSwitches.length);
-  const localCtx = { ...ctx, mcLayout: '1' };
-  return runWithReact(localCtx, async (boot, notes) => {
-    const { page } = boot;
-    const checks = makeChecks();
-    checks.check('H-MC-MOUNT-JITTER-R1 L1: build id on host + panel B iframe', boot.buildIds.ok,
-      JSON.stringify(boot.buildIds));
-
-    await page.evaluate(() => {
-      window.__TALARIA_MC_ENABLE_MOUNT_OFFSET_TRACE_V1 = true;
-    });
-
-    await page.waitForFunction(
-      () => window.chart && Array.isArray(window.chart.data) && window.chart.data.length > 0,
-      { timeout: 120000 },
-    );
-
-    const switchRes = await reactSwitchMultichartLayout(page, '2v');
-    checks.check('H-MC-MOUNT-JITTER-R1 setup: single→2v via layout control',
-      switchRes && switchRes.ok, JSON.stringify(switchRes));
-
-    const frameB = await waitForPanelFrame(page, 'B');
-    checks.check('H-MC-MOUNT-JITTER-R1 setup: panel B iframe present', !!frameB, 'missing B');
-    if (!frameB) return checks;
-
-    await waitForPanelData(page, 'B');
-    const phaseAPoll = pollMountOffsetCommits(frameB, coalesceOff ? 3500 : 2500);
-    await waitForMountViewportPanelReady(frameB);
-    const phaseA = await phaseAPoll;
-    checks.check('H-MC-MOUNT-JITTER-R1 phase-A probe constructed', phaseA && phaseA.ok,
-      phaseA ? (phaseA.reason || '') : 'no probe');
-
-    if (!coalesceOff) {
-      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: offsetChangingCommits <= 1 after settle',
-        phaseA && phaseA.offsetChangingCommits <= 1,
-        `commits=${phaseA?.offsetChangingCommits} traceLen=${phaseA?.traceLog?.length ?? 0}`);
-      const phaseARender = await readPanelVisibleRenderProbe(frameB);
-      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-A: panel visibly rendered (I15)',
-        phaseARender && phaseARender.rendered,
-        JSON.stringify(phaseARender));
-    }
-
-    await focusReactPanel(page, 'B');
-    const fileIds = await readReactPanelFileIds(page);
-    const altId = fileIds.A === '27' ? '25' : '27';
-    let phaseB;
-    if (coalesceOff) {
-      const phaseBPoll = pollMountOffsetCommits(frameB, 3000);
-      await reactPanelLoadFile(page, 'B', altId);
-      await waitForPanelData(page, 'B');
-      await waitForMountViewportPanelReady(frameB);
-      await sleep(400);
-      phaseB = await phaseBPoll;
-    } else {
-      await reactPanelLoadFile(page, 'B', altId);
-      await waitForPanelData(page, 'B');
-      await waitForMountViewportPanelReady(frameB);
-      await sleep(300);
-      phaseB = await pollMountOffsetCommits(frameB, 1500);
-    }
-    await frameB.evaluate(() => {
-      window.__TALARIA_MC_ENABLE_MOUNT_OFFSET_TRACE_V1 = true;
-    }).catch(() => {});
-    checks.check('H-MC-MOUNT-JITTER-R1 phase-B probe constructed', phaseB && phaseB.ok,
-      phaseB ? (phaseB.reason || '') : 'no probe');
-
-    const phaseBRender = await readPanelVisibleRenderProbe(frameB);
-    const legendOk = phaseBRender && phaseBRender.symbolText
-      && phaseBRender.currentFileId === String(altId);
-    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: panel visibly rendered after symbol swap (I15)',
-      !!phaseBRender && phaseBRender.rendered,
-      JSON.stringify(phaseBRender));
-    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: axis labels + gridlines present (I15)',
-      phaseBRender && phaseBRender.timeTickCount > 0 && phaseBRender.yTickCount > 0,
-      `timeTicks=${phaseBRender?.timeTickCount} yTicks=${phaseBRender?.yTickCount}`);
-    checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: legend matches swapped fileId',
-      legendOk,
-      `fileId=${phaseBRender?.currentFileId} symbol=${phaseBRender?.symbolText}`);
-
-    if (coalesceOff) {
-      const a = phaseA?.offsetChangingCommits ?? 0;
-      const b = phaseB?.offsetChangingCommits ?? 0;
-      const multiCommit = a >= 3 || b >= 3 || (a + b >= 4) || (a >= 1 && b >= 2);
-      checks.check('H-MC-MOUNT-JITTER-R1 RED: coalesce OFF reproduces multi-commit jitter',
-        multiCommit,
-        `A=${a} B=${b}`);
-      checks.check('H-MC-MOUNT-JITTER-R1 RED: coalesce OFF still renders panel (no blank)',
-        !!phaseBRender && phaseBRender.rendered,
-        JSON.stringify(phaseBRender));
-    } else {
-      checks.check('H-MC-MOUNT-JITTER-R1 CORE phase-B: symbol swap offsetChangingCommits <= 1',
-        phaseB && phaseB.offsetChangingCommits <= 1,
-        `commits=${phaseB?.offsetChangingCommits} traceLen=${phaseB?.traceLog?.length ?? 0}`);
-    }
-
-    notes.push(`H-MC-MOUNT-JITTER-R1 mount coalesce ${coalesceOff ? 'OFF' : 'ON'}: `
-      + `phaseA commits=${phaseA?.offsetChangingCommits} phaseB commits=${phaseB?.offsetChangingCommits} `
-      + `renderB=${phaseBRender?.rendered} visibleBars=${phaseBRender?.visibleBars} `
-      + `traceA=${phaseA?.traceLog?.length ?? 0} traceB=${phaseB?.traceLog?.length ?? 0}`);
-    return checks;
-  });
-}
-
 export function reactScenarioList() {
   return [
     { id: 'H-R13', title: 'burned-fix: panel-B settings stays open (no flash)', run: hR13 },
@@ -1383,6 +1273,5 @@ export function reactScenarioList() {
     { id: 'OT-MS-01', title: 'OT-MS: V9 Layers multi-select highlight via Ctrl+click', run: otMs01 },
     { id: 'OT-MS-02', title: 'OT-MS: V9 Layers multi-select highlight via Ctrl+marquee', run: otMs02 },
     { id: 'OT-MS-03', title: 'OT-MS: 4-up dedupe fence — one shape → one inventory row', run: otMs03 },
-    { id: 'H-MC-MOUNT-JITTER-R1', title: 'MC-MOUNT-JITTER: single→multi + symbol swap offset coalesce (react-parity)', run: hMcMountJitterR1 },
   ];
 }

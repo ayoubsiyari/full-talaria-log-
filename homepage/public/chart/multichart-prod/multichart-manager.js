@@ -531,17 +531,6 @@
             setTimeout(function () { self.showPanelFrame(id); }, waitMs);
             return;
         }
-        try {
-            const ch = c.frame.contentWindow && c.frame.contentWindow.chart;
-            if (ch && typeof ch._mcMountViewportCoalesceFixActive === 'function'
-                && ch._mcMountViewportCoalesceFixActive()
-                && ch._mcMountViewportCoalescePending
-                && !ch._mcMountViewportPanelReady) {
-                const self = this;
-                setTimeout(function () { self.showPanelFrame(id); }, 40);
-                return;
-            }
-        } catch (_) {}
         try { c.frame.style.opacity = '1'; } catch (_) {}
     };
 
@@ -692,16 +681,6 @@
      */
     MultichartManager.prototype._initialSyncToHost = function (newChart) {
         if (!newChart || newChart.host) return;
-        try {
-            const fr = newChart.frame;
-            const ch = fr && fr.contentWindow && fr.contentWindow.chart;
-            if (ch && typeof ch._mcMountViewportCoalesceFixActive === 'function'
-                && ch._mcMountViewportCoalesceFixActive()
-                && ch._mcMountViewportCoalescePending
-                && !ch._mcMountViewportCoalesceApplying) {
-                return;
-            }
-        } catch (_) {}
         let host = null;
         for (const c of this.charts.values()) {
             if (c.host) { host = c; break; }

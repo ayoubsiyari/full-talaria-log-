@@ -14674,24 +14674,6 @@ const TalariaV8bLive = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // react-parity / harness: real layout control via the same setLayoutPanels path.
-  useEffect(() => {
-    window.__talariaHarnessSetLayout = (id) => {
-      const normalized = id === "2" ? "2v" : id === "2x2" ? "4" : id;
-      const tuple = layoutTupleFromId(normalized);
-      if (tuple) setLayoutPanels(tuple);
-      return !!tuple;
-    };
-    return () => {
-      try {
-        if (window.__talariaHarnessSetLayout) delete window.__talariaHarnessSetLayout;
-      } catch (_) {
-        window.__talariaHarnessSetLayout = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Mount: hydrate V9 state from whatever panelManager already has loaded
   // from userStorage so the UI shows the correct active layout/sync toggles.
   useEffect(() => {
