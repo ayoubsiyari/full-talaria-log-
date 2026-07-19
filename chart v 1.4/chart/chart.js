@@ -4663,6 +4663,24 @@ class Chart {
         const _preserveOwnViewport = !this._multichartVisibleRangeSyncOn
             && this._multichartBootViewportPositioned === true;
 
+        // Same-pair same-TF: keep candleWidth in lockstep even when pan/viewport
+        // stay independent (Date Range OFF). Divergent zoom caused different LOD
+        // merges → mismatched candle colors/thickness at the "same" peak.
+        // Kill-switch: window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
+        const _samePairCwSync = !(typeof window !== 'undefined'
+            && window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
+        const _sameTf = String(this.currentTimeframe || '').toLowerCase().trim()
+            === String(parent.currentTimeframe || '').toLowerCase().trim();
+        const _sameFile = String(this.currentFileId || '') === String(parent.currentFileId || '');
+        if (_preserveOwnViewport && _samePairCwSync && _sameTf && _sameFile
+            && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
+            this.candleWidth = parent.candleWidth;
+            if (this.zoomLevel && parent.zoomLevel) {
+                this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
+            }
+            if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+        }
+
         if (!_preserveOwnViewport) {
             this.rawData = parent.rawData;
             this.data = parent.data;
@@ -29659,7 +29677,22 @@ class Chart {
     }
 
     /**
+     * Gutter (px) reserved on the price axis for the bid/ask spread bracket so it
+     * does not paint over the last-price badge text.
+     * Kill-switch: window.__TALARIA_FIX_SPREAD_PRICE_LABEL_OVERLAP = false
+     */
+    _spreadAxisGutterPx() {
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_FIX_SPREAD_PRICE_LABEL_OVERLAP === false) {
+            return 0;
+        }
+        if (this.chartSettings && this.chartSettings.showSpreadMarker === false) return 0;
+        return 8;
+    }
+
+    /**
      * MT5-style bid/ask spread bracket on the price axis (vertical line + colored ticks).
+     * Drawn in a left gutter beside the last-price badge — never inside the badge.
      */
     drawSpreadAxisMark(visible, midPrice) {
         if (this.chartSettings.showSpreadMarker === false) return;
@@ -29688,8 +29721,16 @@ class Chart {
         const axisLeft = !!this.priceAxisLeft;
         const axisW = axisLeft ? m.l : m.r;
         const axisX = axisLeft ? 0 : this.w - m.r;
-        const bracketX = axisLeft ? axisX + axisW - 4 : axisX + 4;
-        const tickLen = Math.min(14, Math.max(6, axisW * 0.35));
+        const gutter = typeof this._spreadAxisGutterPx === 'function'
+            ? this._spreadAxisGutterPx()
+            : 0;
+        // Keep the bracket in the axis gutter to the plot-side of the price badge.
+        const tickLen = gutter > 0
+            ? Math.max(4, Math.min(6, gutter - 2))
+            : Math.min(14, Math.max(6, axisW * 0.35));
+        const bracketX = axisLeft
+            ? (gutter > 0 ? axisX + axisW - gutter + 2 : axisX + axisW - 4)
+            : (gutter > 0 ? axisX + 2 : axisX + 4);
         const bidColor = this.chartSettings.spreadBidColor || '#2196F3';
         const askColor = this.chartSettings.spreadAskColor || '#EF5350';
 
@@ -29707,6 +29748,7 @@ class Chart {
             this.ctx.strokeStyle = color;
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
+            // Ticks stay inside the gutter (toward the badge edge, not into the digits).
             const x0 = axisLeft ? bracketX - tickLen : bracketX;
             const x1 = axisLeft ? bracketX : bracketX + tickLen;
             this.ctx.moveTo(x0, y);
@@ -29724,7 +29766,7 @@ class Chart {
                     ? ba.spreadUnits.toFixed(1)
                     : ba.spreadUnits.toFixed(2)
                 : '';
-        if (spreadLabel && gapPx < 10) {
+        if (spreadLabel && gapPx < 10 && gutter <= 0) {
             const labelX = axisLeft ? bracketX - tickLen - 2 : bracketX + tickLen + 2;
             this.ctx.font = `600 ${Math.max(9, (this.chartSettings.scaleTextSize || 11) - 1)}px Roboto`;
             this.ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
@@ -29766,8 +29808,15 @@ class Chart {
         
         const axisLeft = !!this.priceAxisLeft;
         const axisW = axisLeft ? m.l : m.r;
-        const labelWidth = axisW - 4;
-        const labelX = axisLeft ? 2 : this.w - m.r;
+        // Leave a plot-side gutter for the bid/ask spread bracket so ticks
+        // never paint over the price / countdown digits.
+        const hasSpread = this.chartSettings.showSpreadMarker !== false
+            && !!this.resolveSessionBidAsk(currentPrice);
+        const spreadGutter = hasSpread && typeof this._spreadAxisGutterPx === 'function'
+            ? this._spreadAxisGutterPx()
+            : 0;
+        const labelWidth = Math.max(28, axisW - 4 - spreadGutter);
+        const labelX = axisLeft ? 2 : (this.w - m.r + spreadGutter);
         const radius = 2;
         
         const countdownText = this._getBarCloseCountdownText();
@@ -29778,6 +29827,9 @@ class Chart {
         const countdownHeight = showCountdown ? 18 : 0;
         const totalHeight = priceHeight + countdownHeight;
         const labelY = y - totalHeight / 2;
+
+        // Spread first (under), then badge — badge wins any edge contact.
+        this.drawSpreadAxisMark(visible, currentPrice);
 
         // Draw single background rectangle with rounded corners
         this.ctx.fillStyle = bgColor;
@@ -29809,8 +29861,6 @@ class Chart {
             this.ctx.font = `600 ${this.chartSettings.scaleTextSize - 1}px Roboto`;
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
-
-        this.drawSpreadAxisMark(visible, currentPrice);
 
     }
     

@@ -1269,7 +1269,10 @@
         if (t === 'crosshair' || t === 'crosshair-clear') {
             if (!this.syncMode.crosshair) { return; }
         } else if (t === 'visibleRange') {
-            if (!this.syncMode.visibleRange && !this.syncMode.timeSync) { return; }
+            // Date Range / Time sync OFF: still allow zoomOnly envelopes so
+            // same-pair same-TF peers keep matching candleWidth (LOD/colors).
+            if (!this.syncMode.visibleRange && !this.syncMode.timeSync
+                && !msg.zoomOnly) { return; }
         } else if (t === 'symbol') {
             if (!this.syncMode.symbol) { return; }
         } else if (t === 'drawing-add' || t === 'drawing-update'

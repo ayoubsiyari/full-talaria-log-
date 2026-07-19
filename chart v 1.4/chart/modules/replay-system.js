@@ -7163,16 +7163,25 @@ class ReplaySystem {
             if (mirrorPrependCompensation) {
                 chart._chartViewRestored = true;
             } else if (passiveFollow) {
-                // VIEWPORT INDEPENDENCE (single-chart parity): follow the playhead with
-                // THIS panel's own viewport math. Adopt the host zoom (candleWidth) ONLY
-                // when visible-range sync is explicitly ON; otherwise keep our own zoom.
-                // Right-anchor with our OWN getReplayAutoScrollState so the newest bar
-                // keeps the same right-side gap as a single chart. Copying the host's raw
-                // pixel offsetX pins/drifts the panel against a differently-sized axis, so
-                // only fall back to it when sync is ON.
+                // VIEWPORT INDEPENDENCE: follow the playhead with THIS panel's own
+                // offset math. Same-pair same-TF must still share host candleWidth
+                // (and zoom index) even when Date Range sync is OFF — otherwise LOD
+                // merges diverge and candles show different colors/thickness.
+                // Kill-switch: window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
+                // Right-anchor with our OWN getReplayAutoScrollState. Copying the host's
+                // raw pixel offsetX pins/drifts the panel against a differently-sized
+                // axis, so only fall back to it when sync is ON.
                 const rangeSyncOn = !!chart._multichartVisibleRangeSyncOn;
-                if (rangeSyncOn && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
+                const samePairCwSync = !(typeof window !== 'undefined'
+                    && window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
+                if ((rangeSyncOn || samePairCwSync)
+                    && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
                     chart.candleWidth = parent.candleWidth;
+                    if (chart.zoomLevel && parent.zoomLevel
+                        && typeof parent.zoomLevel.candleWidthIndex === 'number') {
+                        chart.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
+                    }
+                    if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
                 }
                 // PLAY X authority: during host play, same-TF peers get continuous
                 // eased follow from forceSamePairParentDataMirror

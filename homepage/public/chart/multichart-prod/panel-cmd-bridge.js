@@ -1628,18 +1628,24 @@
             if (mirrorPrependCompensation) {
                 if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
             } else if (followPlayhead) {
-                // VIEWPORT INDEPENDENCE (single-chart parity): the panel follows the
-                // host PLAYHEAD during replay, but it must do so with its OWN viewport
-                // math, not by copying host pixels. Adopt the host zoom (candleWidth)
-                // ONLY when visible-range sync is explicitly ON; otherwise keep this
-                // panel's own zoom. Right-anchor to the playhead via this panel's OWN
-                // getReplayAutoScrollState (identical to how a single chart auto-scrolls
-                // in replay). Falling back to the host's raw pixel offsetX is what made
-                // panels drift/shake/zoom-jump, so only do that when sync is ON; with
-                // sync OFF and our own state unavailable (width lag), keep our offset.
+                // VIEWPORT INDEPENDENCE: follow the host PLAYHEAD with THIS panel's
+                // own offset math. Same-pair same-TF still adopts host candleWidth
+                // (zoom) even when Date Range sync is OFF so LOD/candle geometry
+                // matches the host. Kill-switch:
+                //   window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
+                // Falling back to the host's raw pixel offsetX is what made panels
+                // drift/shake/zoom-jump, so only do that when sync is ON.
                 var rangeSyncOn = !!ch._multichartVisibleRangeSyncOn;
-                if (rangeSyncOn && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                var samePairCwSync = !(typeof window !== 'undefined'
+                    && window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
+                if ((rangeSyncOn || samePairCwSync)
+                    && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
                     ch.candleWidth = pc.candleWidth;
+                    if (ch.zoomLevel && pc.zoomLevel
+                        && typeof pc.zoomLevel.candleWidthIndex === 'number') {
+                        ch.zoomLevel.candleWidthIndex = pc.zoomLevel.candleWidthIndex;
+                    }
+                    if (ch._candleWidthAtCache !== undefined) ch._candleWidthAtCache = null;
                 }
                 // FIX A (A7/A8/A11 same-TF eased follow, X-jump): a same-pair SAME-TF
                 // panel followed the playhead here with the BAR-QUANTIZED offset from

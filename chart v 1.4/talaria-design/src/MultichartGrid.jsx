@@ -1645,20 +1645,25 @@ function applyHostSlot(cellEl, opts) {
 /**
  * Force canvas bitmap + CSS size to match the container (undo any stale
  * CSS-only stretch from an older mid-drag preview path).
+ *
+ * IMPORTANT: never zero ch.w/ch.h to "force" resize. resize() treats a
+ * falsy oldW/oldH as first layout and calls fitToView(), which snaps every
+ * panel to the right on splitter settle / live reflow.
+ * Kill-switch: window.__TALARIA_FIX_LAYOUT_RESIZE_PRESERVE_VIEWPORT = false
  */
 function forceResyncChartSurface(ch) {
     if (!ch || !ch.canvas || typeof ch.resize !== "function") return;
     try {
+        const preserveViewport = typeof window === "undefined"
+            || window.__TALARIA_FIX_LAYOUT_RESIZE_PRESERVE_VIEWPORT !== false;
         const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
         const parent = ch.canvas.parentElement;
-        if (parent) {
+        if (parent && !preserveViewport) {
             const rect = parent.getBoundingClientRect();
             const nextW = Math.max(1, Math.floor(rect.width));
             const nextH = Math.max(1, Math.floor(rect.height));
             const bufW = ch.canvas.width / dpr;
             const bufH = ch.canvas.height / dpr;
-            // resize() early-outs on this.w/this.h only — force a pass when the
-            // backing store still mismatches the cell (stretched labels).
             if (
                 Math.abs(bufW - nextW) > 0.5
                 || Math.abs(bufH - nextH) > 0.5
@@ -1669,6 +1674,7 @@ function forceResyncChartSurface(ch) {
                 ch.h = 0;
             }
         }
+        // Bust the early-out without destroying oldW/oldH for offset preserve.
         ch._lastResizeDpr = 0;
         ch.resize();
         if (Number.isFinite(ch.w) && Number.isFinite(ch.h) && ch.w > 0 && ch.h > 0) {
@@ -1792,6 +1798,8 @@ function forceRedrawDrawingsOnChart(ch) {
 function healChartViewportAfterLayoutDrag(ch) {
     if (!ch || !Array.isArray(ch.data) || !ch.data.length) return;
     try {
+        const preserveViewport = typeof window === "undefined"
+            || window.__TALARIA_FIX_LAYOUT_RESIZE_PRESERVE_VIEWPORT !== false;
         let spacing = typeof ch.getCandleSpacing === "function"
             ? ch.getCandleSpacing()
             : Number(ch.candleWidth) || 0;
@@ -1812,13 +1820,20 @@ function healChartViewportAfterLayoutDrag(ch) {
         }
         const m = ch.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (ch.w || 0) - (m.l || 0) - (m.r || 0));
+        const barsVisible = spacing > 0 ? plotW / spacing : Infinity;
+        // Healthy viewport: only clamp. Always rewriting offsetX to the right
+        // edge made every splitter settle jump charts rightward.
+        if (preserveViewport
+            && Number.isFinite(barsVisible)
+            && barsVisible >= 0.5
+            && barsVisible <= 2500) {
+            if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+            return;
+        }
         let rightIdx = typeof ch.getVisibleEndIndex === "function"
             ? ch.getVisibleEndIndex()
             : ch.data.length - 1;
-        if (!Number.isFinite(rightIdx)) rightIdx = ch.data.length - 1;
-        // If the view shows an absurd bar count, jump to latest.
-        const barsVisible = spacing > 0 ? plotW / spacing : Infinity;
-        if (!Number.isFinite(barsVisible) || barsVisible > 2500) {
+        if (!Number.isFinite(rightIdx) || barsVisible > 2500) {
             rightIdx = ch.data.length - 1;
         }
         rightIdx = Math.max(0, Math.min(rightIdx, ch.data.length - 1));
