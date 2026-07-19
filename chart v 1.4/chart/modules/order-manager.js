@@ -30952,7 +30952,6 @@ class OrderManager {
                     const boxY = newY - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 9;
                     const closeBtnGap = 6;
                     const lt = extraElements.labelText;
@@ -30963,7 +30962,7 @@ class OrderManager {
                         const lBW = ltW + pad * 2;
                         const ptW = pt?.node()?.getBBox()?.width || 0;
                         const pBW = ptW > 0 ? ptW + pad * 2 : 0;
-                        const rE = ctx.w - yAxisWidth - 10;
+                        const rE = self._getOrderOverlayRightEdge(ctx);
                         let sX;
                         if (lineType === 'be') {
                             sX = rE - lBW;
@@ -33554,7 +33553,7 @@ class OrderManager {
             g.pnlText.style('display', 'none');
 
             const totalW = lotsBW;
-            const rightEdge = ch.w - yAxisWidth - 10;
+            const rightEdge = this._getOrderOverlayRightEdge(ch);
 
             // Find leftmost x of sibling TP labels so we align with them
             let alignX = rightEdge - totalW;
@@ -33752,7 +33751,7 @@ class OrderManager {
                 if (rowW > maxRowW) maxRowW = rowW;
             }
 
-            const rightEdge = ch.w - yAxisWidth - 10;
+            const rightEdge = this._getOrderOverlayRightEdge(ch);
             const alignX = rightEdge - maxRowW;
 
             // --- Position Avg Entry label ---
@@ -39404,7 +39403,6 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 9;
                     const closeBtnGap = 6;
                     
@@ -39414,7 +39412,7 @@ class OrderManager {
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
                     
-                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const rightEdge = this._getOrderOverlayRightEdge(ch);
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
@@ -39429,6 +39427,7 @@ class OrderManager {
                     }
                     
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    closeBtn?.attr('clip-path', null);
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
                 }
 
@@ -39703,7 +39702,6 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 9;
                     const splitBtnR = splitBtn ? 9 : 0;
                     const closeBtnGap = 6;
@@ -39724,7 +39722,7 @@ class OrderManager {
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
                     const badgesW = pctW + deleteSpace + splitSpace;
 
-                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const rightEdge = this._getOrderOverlayRightEdge(ch);
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap
                         - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
@@ -39799,6 +39797,7 @@ class OrderManager {
                     }
 
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${boxY + boxH / 2})`);
+                    closeBtn?.attr('clip-path', null);
                 }
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
@@ -39872,7 +39871,6 @@ class OrderManager {
             const boxY = y - boxHeight / 2;
             const gap = 4;
             const pad = 8;
-            const yAxisWidth = 70;
             
             line
                 .attr('x1', 0)
@@ -39891,7 +39889,7 @@ class OrderManager {
             // Position label on the RIGHT side (same as SL/TP)
             const labelTW = labelText.node()?.getBBox()?.width || 0;
             const labelBW = labelTW + pad * 2;
-            const rightEdge = ch.w - yAxisWidth - 10;
+            const rightEdge = this._getOrderOverlayRightEdge(ch);
             const startX = rightEdge - labelBW;
             
             labelBox
@@ -40108,7 +40106,6 @@ class OrderManager {
             }
             .order-level-badge .order-level-badge-glyph {
                 fill: var(--olb-muted);
-                stroke: var(--olb-muted);
             }
             .order-level-badge:hover .order-level-badge-bg,
             .order-level-badge.om-ctrl-hover .order-level-badge-bg {
@@ -40118,7 +40115,6 @@ class OrderManager {
             .order-level-badge:hover .order-level-badge-glyph,
             .order-level-badge.om-ctrl-hover .order-level-badge-glyph {
                 fill: #ffffff;
-                stroke: #ffffff;
             }
         `;
         (document.head || document.documentElement).appendChild(st);
@@ -40204,10 +40200,14 @@ class OrderManager {
                 return;
             }
             sel.style('display', null);
+            // Close / control badges sit on the plot→axis seam; plot clip was cutting the ×.
+            // Keep lines/labels clipped; leave interactive badges unclipped.
+            const skipClip = key === 'closeBtn' || key === 'deleteBtn'
+                || key === 'splitBtn' || key === 'pctStepperBtn';
             if (key === 'line' || key === 'hitLine') {
                 if (clip) sel.attr('clip-path', clip);
                 else sel.attr('clip-path', null);
-            } else if (clip) {
+            } else if (clip && !skipClip) {
                 sel.attr('clip-path', clip);
             } else {
                 sel.attr('clip-path', null);
@@ -40230,14 +40230,14 @@ class OrderManager {
             '.entry-marker', '.exit-marker', '.partial-close-marker',
             '.mfe-mae-marker-root',
             '.order-label-box', '.order-label-accent', '.order-label-text',
-            '.order-arrow', '.order-close-btn', '.order-pnl-box', '.order-pnl-text',
+            '.order-arrow', '.order-pnl-box', '.order-pnl-text',
             '.order-price-box', '.order-price-text',
             '.pending-order-label-box', '.pending-order-label-accent', '.pending-order-label-text',
-            '.pending-order-close-btn', '.pending-order-price-box', '.pending-order-price-text',
+            '.pending-order-price-box', '.pending-order-price-text',
             '.sl-label-box', '.sl-label-accent', '.sl-label-text',
-            '.sl-pnl-box', '.sl-pnl-text', '.sl-close-btn', '.sl-price-box', '.sl-price-text',
+            '.sl-pnl-box', '.sl-pnl-text', '.sl-price-box', '.sl-price-text',
             '.tp-label-box', '.tp-label-accent', '.tp-label-text',
-            '.tp-pnl-box', '.tp-pnl-text', '.tp-close-btn', '.tp-split-btn',
+            '.tp-pnl-box', '.tp-pnl-text', '.tp-split-btn',
             '.tp-price-box', '.tp-price-text',
             '.be-label-box', '.be-label-accent', '.be-label-text',
             '.be-price-box', '.be-price-text',
@@ -40393,7 +40393,6 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 9;
                     const closeBtnGap = 6;
 
@@ -40441,7 +40440,7 @@ class OrderManager {
                     if (!tpSlotW && !isPending && !hasMultiTP) tpSlotW = singleTPBadgeW;
                     let totalBadgesW = slBadgeW + tpSlotW + entryPlusBadgeW;
 
-                    const rightEdge = ch.w - yAxisWidth - 10;
+                    const rightEdge = this._getOrderOverlayRightEdge(ch);
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
@@ -40538,6 +40537,7 @@ class OrderManager {
                     }
 
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    closeBtn.attr('clip-path', null);
                 }
 
                 if (!skipPendingEntryGeom) {
@@ -40786,8 +40786,7 @@ class OrderManager {
 
     _orderConnectorAnchorX(ch) {
         if (!ch) return 0;
-        const yAxisWidth = ch.margin?.r || 70;
-        return ch.w - yAxisWidth - 6;
+        return this._getOrderOverlayRightEdge(ch, 6);
     }
 
     /**
@@ -44544,7 +44543,7 @@ class OrderManager {
         const th = this._tradeMarkerToastTheme();
         const green = th.light ? '#059669' : '#22c55e';
         const map = {
-            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444', drawPath: true },
+            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
             plus: { glyph: '+', accent: green, hoverAccent: green },
             minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
             check: { glyph: '✓', accent: green, hoverAccent: green },
@@ -44553,28 +44552,32 @@ class OrderManager {
     }
 
     /**
-     * Draw badge glyph centered at (cx, cy). Close uses an SVG path so the X is never
-     * clipped by font metrics (Exo 2 × was showing as a tiny corner inside the red box).
+     * Price-axis reserve (px) for order overlay layout. Must match the live canvas
+     * margin — a hardcoded 70px leaves executed × buttons past the plot clip.
      */
+    _getOrderOverlayAxisReserve(ch) {
+        const m = ch && ch.margin;
+        if (m) {
+            const axisW = ch.priceAxisLeft ? m.l : m.r;
+            if (Number.isFinite(axisW) && axisW > 0) return axisW;
+        }
+        return 70;
+    }
+
+    /** Rightmost X still inside the main-plot clip (for executed/pending toast rows). */
+    _getOrderOverlayRightEdge(ch, insetPx = 4) {
+        const w = Number(ch && ch.w) || 0;
+        return w - this._getOrderOverlayAxisReserve(ch) - Math.max(0, insetPx);
+    }
+
     _appendOrderLevelBadgeGlyph(parent, kind, cx, cy, r, extraClass = '') {
         const spec = this._orderLevelBadgeKindSpec(kind);
         const cls = `order-level-badge-glyph ${extraClass}`.trim();
-        if (kind === 'close' || spec.drawPath) {
-            const arm = Math.max(3.2, r * 0.42);
-            const sw = Math.max(1.6, r * 0.22);
-            return parent.append('path')
-                .attr('class', cls)
-                .attr('d', `M ${cx - arm} ${cy - arm} L ${cx + arm} ${cy + arm} M ${cx + arm} ${cy - arm} L ${cx - arm} ${cy + arm}`)
-                .attr('fill', 'none')
-                .attr('stroke-width', sw)
-                .attr('stroke-linecap', 'round')
-                .style('pointer-events', 'none');
-        }
         return parent.append('text')
             .attr('class', cls)
             .attr('x', cx)
             .attr('y', cy)
-            .attr('dy', '0')
+            .attr('dy', '0.35em')
             .attr('dominant-baseline', 'central')
             .attr('text-anchor', 'middle')
             .attr('font-size', kind === 'check' ? '12px' : '13px')
@@ -44597,14 +44600,7 @@ class OrderManager {
             .style('--olb-accent', accent)
             .style('--olb-muted', th.muted);
         bg.attr('fill', th.bg).attr('stroke', th.border);
-        if (glyph) {
-            const tag = glyph.node?.()?.tagName?.toLowerCase?.() || '';
-            if (tag === 'path' || tag === 'line') {
-                glyph.attr('stroke', th.muted).attr('fill', 'none');
-            } else {
-                glyph.attr('fill', th.muted);
-            }
-        }
+        if (glyph) glyph.attr('fill', th.muted);
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
@@ -44927,7 +44923,6 @@ class OrderManager {
         const boxY = y - boxH / 2;
         const pad = 8;
         const stripeW = 3;
-        const yAxisWidth = 70;
         const closeBtnR = 9;
         const closeBtnGap = 6;
         const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
@@ -44937,7 +44932,7 @@ class OrderManager {
 
         const labelTW = labelText.node()?.getBBox()?.width || 0;
         const labelBW = labelTW + pad * 2 + stripeW;
-        const rightEdge = chart.w - yAxisWidth - 10;
+        const rightEdge = this._getOrderOverlayRightEdge(chart);
         const closeBtnX = rightEdge - closeBtnR;
         const startX = closeBtnX - closeBtnR - closeBtnGap - labelBW;
 
