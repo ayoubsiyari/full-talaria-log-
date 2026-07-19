@@ -2181,19 +2181,47 @@
         return 'Forex';
     }
 
-    function vwapBarPartsInTimezone(bar, tzId) {
-        const t = bar && bar.t != null ? Number(bar.t) : NaN;
-        if (!Number.isFinite(t)) return null;
-        try {
-            const parts = new Intl.DateTimeFormat('en-GB', {
-                timeZone: tzId || 'Etc/UTC',
+    // Replay was allocating a new Intl.DateTimeFormat per bar (×2 passes) → heap storm.
+    // Kill-switch: window.__TALARIA_FIX_VWAP_REPLAY_PERF = false
+    const _vwapBarPartsFmtCache = Object.create(null);
+
+    function _vwapReplayPerfFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_FIX_VWAP_REPLAY_PERF !== false;
+    }
+
+    function vwapCachedBarPartsFormatter(tzId) {
+        const key = tzId || 'Etc/UTC';
+        if (!_vwapBarPartsFmtCache[key]) {
+            _vwapBarPartsFmtCache[key] = new Intl.DateTimeFormat('en-GB', {
+                timeZone: key,
                 year: 'numeric',
                 month: 'numeric',
                 day: 'numeric',
                 hour: 'numeric',
                 minute: 'numeric',
                 hour12: false
-            }).formatToParts(new Date(t));
+            });
+        }
+        return _vwapBarPartsFmtCache[key];
+    }
+
+    function vwapBarPartsInTimezone(bar, tzId) {
+        const t = bar && bar.t != null ? Number(bar.t) : NaN;
+        if (!Number.isFinite(t)) return null;
+        try {
+            const fmt = _vwapReplayPerfFixEnabled()
+                ? vwapCachedBarPartsFormatter(tzId)
+                : new Intl.DateTimeFormat('en-GB', {
+                    timeZone: tzId || 'Etc/UTC',
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    hour12: false
+                });
+            const parts = fmt.formatToParts(new Date(t));
             const get = function (type) {
                 const p = parts.find(function (x) { return x.type === type; });
                 return p ? parseInt(p.value, 10) : 0;
@@ -2303,14 +2331,62 @@
         return null;
     }
 
-    /** Bar indices where VWAP anchor period resets (session/week/etc.). */
-    function buildVwapAnchorBarIndices(data, anchorPeriod) {
+    // Mid-tick replay mutates OHLCV but keeps bar open `t` + length — reuse keys.
+    let _vwapPeriodKeysCache = {
+        dataRef: null,
+        len: 0,
+        lastT: null,
+        firstT: null,
+        ap: '',
+        keys: null
+    };
+
+    /** One key per bar (session/week/… or corporate). Avoids a second Intl pass. */
+    function buildVwapPeriodKeys(data, anchorPeriod) {
         if (!Array.isArray(data) || !data.length) return [];
-        const anchorKeys = buildVwapAnchorKeys(data, anchorPeriod);
+        const ap = normalizeVwapAnchorPeriod(anchorPeriod);
+        if (_vwapReplayPerfFixEnabled()) {
+            const firstT = data[0] && data[0].t != null ? Number(data[0].t) : null;
+            const lastT = data[data.length - 1] && data[data.length - 1].t != null
+                ? Number(data[data.length - 1].t) : null;
+            const c = _vwapPeriodKeysCache;
+            if (c.keys && c.dataRef === data && c.len === data.length
+                && c.lastT === lastT && c.firstT === firstT && c.ap === ap) {
+                return c.keys;
+            }
+        }
+        const corp = buildVwapAnchorKeys(data, ap);
+        let keys;
+        if (corp) {
+            keys = corp;
+        } else {
+            keys = new Array(data.length);
+            for (let i = 0; i < data.length; i++) {
+                keys[i] = vwapAnchorPeriodKey(data[i], ap);
+            }
+        }
+        if (_vwapReplayPerfFixEnabled()) {
+            _vwapPeriodKeysCache = {
+                dataRef: data,
+                len: data.length,
+                lastT: data[data.length - 1] && data[data.length - 1].t != null
+                    ? Number(data[data.length - 1].t) : null,
+                firstT: data[0] && data[0].t != null ? Number(data[0].t) : null,
+                ap: ap,
+                keys: keys
+            };
+        }
+        return keys;
+    }
+
+    /** Bar indices where VWAP anchor period resets (session/week/etc.). */
+    function buildVwapAnchorBarIndices(data, anchorPeriod, precomputedKeys) {
+        if (!Array.isArray(data) || !data.length) return [];
+        const anchorKeys = precomputedKeys || buildVwapPeriodKeys(data, anchorPeriod);
         const bars = [];
         let prevKey = null;
         for (let i = 0; i < data.length; i++) {
-            const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], anchorPeriod);
+            const key = anchorKeys[i];
             if (i === 0 || key !== prevKey) bars.push(i);
             prevKey = key;
         }
@@ -2329,21 +2405,29 @@
         const offset = vwapParseNum(params.offset, 0) | 0;
         const bandsMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
         const n = data.length;
-        const vwap = data.map(function() { return null; });
-        const upper1 = data.map(function() { return null; });
-        const lower1 = data.map(function() { return null; });
-        const upper2 = data.map(function() { return null; });
-        const lower2 = data.map(function() { return null; });
-        const upper3 = data.map(function() { return null; });
-        const lower3 = data.map(function() { return null; });
-        const anchorKeys = buildVwapAnchorKeys(data, params.anchorPeriod);
+        const empty = function () {
+            const a = new Array(n);
+            for (let i = 0; i < n; i++) a[i] = null;
+            return a;
+        };
+        const vwap = empty();
+        // Only allocate enabled band series (defaults: band1 on → 3 lines, not 7).
+        const upper1 = mults[0].on ? empty() : null;
+        const lower1 = mults[0].on ? empty() : null;
+        const upper2 = mults[1].on ? empty() : null;
+        const lower2 = mults[1].on ? empty() : null;
+        const upper3 = mults[2].on ? empty() : null;
+        const lower3 = mults[2].on ? empty() : null;
+        const periodKeys = buildVwapPeriodKeys(data, params.anchorPeriod);
         let cumPV = 0;
         let cumP2V = 0;
         let cumVol = 0;
         let prevKey = null;
-        const anchorBars = buildVwapAnchorBarIndices(data, params.anchorPeriod);
+        const anchorBars = buildVwapAnchorBarIndices(data, params.anchorPeriod, periodKeys);
+        const needStdev = bandsMode !== 'percentage'
+            && (mults[0].on || mults[1].on || mults[2].on);
         for (let i = 0; i < n; i++) {
-            const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], params.anchorPeriod);
+            const key = periodKeys[i];
             if (prevKey !== null && key !== prevKey) {
                 cumPV = 0;
                 cumP2V = 0;
@@ -2355,21 +2439,24 @@
             const vol = Number.isFinite(volRaw) ? Math.max(volRaw, 0) : 0;
             if (Number.isFinite(src) && vol > 0) {
                 cumPV += src * vol;
-                cumP2V += src * src * vol;
+                if (needStdev) cumP2V += src * src * vol;
                 cumVol += vol;
             }
             if (cumVol > 0) {
                 const v = cumPV / cumVol;
-                const variance = Math.max(cumP2V / cumVol - v * v, 0);
-                const stdev = Math.sqrt(variance);
                 vwap[i] = v;
+                let stdev = 0;
+                if (needStdev) {
+                    const variance = Math.max(cumP2V / cumVol - v * v, 0);
+                    stdev = Math.sqrt(variance);
+                }
                 const bands = [
                     { u: upper1, l: lower1, on: mults[0].on, m: mults[0].v },
                     { u: upper2, l: lower2, on: mults[1].on, m: mults[1].v },
                     { u: upper3, l: lower3, on: mults[2].on, m: mults[2].v }
                 ];
                 for (let bi = 0; bi < bands.length; bi++) {
-                    if (!bands[bi].on) continue;
+                    if (!bands[bi].on || !bands[bi].u || !bands[bi].l) continue;
                     const mult = bands[bi].m;
                     if (bandsMode === 'percentage') {
                         bands[bi].u[i] = v * (1 + mult / 100);
@@ -2381,14 +2468,18 @@
                 }
             }
         }
+        // Disabled bands share one null series (read-only; shiftLineSeries is identity).
+        const off = (upper1 && lower1 && upper2 && lower2 && upper3 && lower3)
+            ? null
+            : empty();
         return {
             vwap: shiftLineSeries(vwap, offset),
-            upper1: shiftLineSeries(upper1, offset),
-            lower1: shiftLineSeries(lower1, offset),
-            upper2: shiftLineSeries(upper2, offset),
-            lower2: shiftLineSeries(lower2, offset),
-            upper3: shiftLineSeries(upper3, offset),
-            lower3: shiftLineSeries(lower3, offset),
+            upper1: shiftLineSeries(upper1 || off, offset),
+            lower1: shiftLineSeries(lower1 || off, offset),
+            upper2: shiftLineSeries(upper2 || off, offset),
+            lower2: shiftLineSeries(lower2 || off, offset),
+            upper3: shiftLineSeries(upper3 || off, offset),
+            lower3: shiftLineSeries(lower3 || off, offset),
             anchorBars: anchorBars
         };
     }

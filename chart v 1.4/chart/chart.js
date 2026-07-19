@@ -7047,6 +7047,21 @@ class Chart {
                         }
                         replay.sessionStartIndex = floorIdx;
                     }
+                    // Rematch playhead after master replace — otherwise currentIndex stays
+                    // at the old array position / clamps to session floor (Dec jump on 3m).
+                    const rematchTs = Number.isFinite(this._ensureReplayDataTargetTs)
+                        ? this._ensureReplayDataTargetTs
+                        : ts;
+                    if (Number.isFinite(rematchTs)
+                        && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        try { replay.syncCurrentIndexFromReplayTimestamp(rematchTs); } catch (_rm) { /* ignore */ }
+                    }
+                    if (typeof replay.updateChartData === 'function') {
+                        try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+                    }
+                    if (wasPlaying && typeof replay.play === 'function') {
+                        try { replay.play(); } catch (_rp) { /* ignore */ }
+                    }
                 }
                 if (forceLazyFineMaster
                     && typeof this._isMultichartHostPanel === 'function'
@@ -8028,7 +8043,23 @@ class Chart {
         }
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         if (!this.replaySystem?.isActive) return displayTf;
-        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
+        const rawTf = String(this.replaySystem.rawTimeframe || this._nativeRawFetchTf || displayTf)
+            .toLowerCase().trim();
+        // Custom TFs (3m→1m store) keep a fine master with `_fullRawDataMatchesTF=false`.
+        // Fetching the display TF then resampling into that master hybrids 3m into 1m,
+        // under-covers the window, and Play mid-load can snap the playhead to session start.
+        // Kill-switch: window.__TALARIA_FIX_CUSTOM_TF_REPLAY_PAN_MASTER = false
+        const customPanFix = (typeof window === 'undefined'
+            || window.__TALARIA_FIX_CUSTOM_TF_REPLAY_PAN_MASTER !== false);
+        if (customPanFix && !this.replaySystem._fullRawDataMatchesTF) {
+            const storeOfDisplay = typeof this._questdbStoreResolution === 'function'
+                ? String(this._questdbStoreResolution(displayTf) || '').toLowerCase().trim()
+                : '';
+            if (storeOfDisplay && storeOfDisplay !== 'auto' && storeOfDisplay === rawTf
+                && displayTf !== rawTf) {
+                return rawTf;
+            }
+        }
         const displayMs = this.parseTimeframe(displayTf) || 60_000;
         const rawMs = this.parseTimeframe(rawTf) || 60_000;
         return displayMs >= rawMs ? displayTf : rawTf;
@@ -23888,6 +23919,11 @@ class Chart {
                     }
 
                     if (direction === 'backward' && uniqueNew.length > 0) {
+                        // Keep session floor aligned with the prepended master bars.
+                        const floor = Number(this.replaySystem.sessionStartIndex);
+                        if (Number.isFinite(floor) && floor >= 0) {
+                            this.replaySystem.sessionStartIndex = floor + uniqueNew.length;
+                        }
                         const spacing = typeof this.getCandleSpacing === 'function'
                             ? this.getCandleSpacing()
                             : 0;
