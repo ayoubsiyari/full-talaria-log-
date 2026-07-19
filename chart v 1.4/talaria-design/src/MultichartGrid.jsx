@@ -55,6 +55,66 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
+/** Per-tile fileId across F5 (sessionStorage). Unset = ON. */
+function mcPanelFilePersistV1Enabled() {
+    try {
+        return !(typeof window !== "undefined"
+            && window.__TALARIA_DISABLE_MC_PANEL_FILE_PERSIST_V1 === true);
+    } catch (_) {
+        return true;
+    }
+}
+
+function mcPanelFilePersistStorageKey() {
+    try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        const sid = ch && typeof ch.getActiveTradingSessionId === "function"
+            ? ch.getActiveTradingSessionId()
+            : null;
+        if (sid != null && String(sid).trim() !== "") {
+            return `talaria_mc_panel_files_v1:s${sid}`;
+        }
+    } catch (_) { /* ignore */ }
+    return "talaria_mc_panel_files_v1";
+}
+
+function readPersistedPanelFileMap() {
+    if (!mcPanelFilePersistV1Enabled()) return {};
+    try {
+        const raw = sessionStorage.getItem(mcPanelFilePersistStorageKey());
+        if (!raw) return {};
+        const obj = JSON.parse(raw);
+        return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function persistPanelFileId(panelId, fileId) {
+    if (!mcPanelFilePersistV1Enabled()) return;
+    const pid = panelId != null ? String(panelId) : "";
+    const fid = fileId != null ? String(fileId).trim() : "";
+    if (!pid || pid === HOST_PANEL_ID || !fid) return;
+    try {
+        const map = readPersistedPanelFileMap();
+        if (String(map[pid] || "") === fid) return;
+        map[pid] = fid;
+        sessionStorage.setItem(mcPanelFilePersistStorageKey(), JSON.stringify(map));
+    } catch (_) { /* ignore */ }
+}
+
+/** Boot iframe tiles on their last independent pair (else host/fallback fileId). */
+function resolveBootFileIdForPanel(panelId, fallbackFileId) {
+    const fb = fallbackFileId != null ? String(fallbackFileId).trim() : "";
+    if (!mcPanelFilePersistV1Enabled()) return fb || null;
+    try {
+        const map = readPersistedPanelFileMap();
+        const saved = map[panelId] != null ? String(map[panelId]).trim() : "";
+        if (saved) return saved;
+    } catch (_) { /* ignore */ }
+    return fb || null;
+}
+
 function orderMcRestoreDedupeV1Enabled() {
     try {
         return !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_RESTORE_DEDUPE_V1);
@@ -2378,7 +2438,7 @@ export default function MultichartGrid({
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
                         panelId:   cfg.id,
-                        fileId:    cfg.fileId,
+                        fileId:    resolveBootFileIdForPanel(cfg.id, cfg.fileId),
                         tf:        cfg.tf,
                         sessionId: cfg.sessionId || initialSessionIdRef.current || null,
                         mode:      cfg.mode || initialModeRef.current || readUrlChartMode(),
@@ -2715,7 +2775,7 @@ export default function MultichartGrid({
             const cfg = {
                 id:        tile.id,
                 tf:        effTf,
-                fileId:    effFile,
+                fileId:    resolveBootFileIdForPanel(tile.id, effFile),
                 sessionId: sessId,
                 mode:      effMode,
             };
@@ -4109,6 +4169,28 @@ export default function MultichartGrid({
             win: typeof window !== "undefined" ? window : {},
         });
     }, []);
+    // Peer pair switch: iframe OM only holds the last filtered snapshot. After
+    // B changes GBP→EUR, re-project host open/pending so EUR lines appear.
+    const scheduleFanOutHostOrdersAfterPairLoad = useCallback(() => {
+        try {
+            if (typeof window !== "undefined"
+                && window.__TALARIA_DISABLE_ORDER_MC_PAIR_LOAD_FANOUT_V1 === true) {
+                return;
+            }
+        } catch (_) { /* ignore */ }
+        if (!orderMcSnapshotProjectionV1Enabled()) return;
+        const delays = [0, 80, 250, 700];
+        delays.forEach((ms) => {
+            setTimeout(() => {
+                try {
+                    const om = window.chart && window.chart.orderManager;
+                    const live = ((om && om.openPositions) || []).length
+                        + ((om && om.pendingOrders) || []).length;
+                    if (live > 0) fanOutHostOrderSnapshotImpl();
+                } catch (_) { /* ignore */ }
+            }, ms);
+        });
+    }, [fanOutHostOrderSnapshotImpl]);
     useEffect(() => {
         // Defer to next microtask so the manager's `c.ready` flag has
         // been set (onChartReady runs synchronously before this state
@@ -4591,6 +4673,10 @@ export default function MultichartGrid({
         const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
             ? String(hostCh.currentFileId)
             : "";
+        // Persist independent tile fileIds so F5 boots B/C/D on the same pairs.
+        if (state && state.fileId != null && String(state.fileId).trim() !== "") {
+            persistPanelFileId(id, state.fileId);
+        }
         // When Symbol sync is on, pull a lagging iframe back to the host file.
         // Skip pull-back while userPairLoadGuard is active — that tile is
         // mid user-initiated load and should fan out (below), not revert.
@@ -4602,6 +4688,17 @@ export default function MultichartGrid({
                 try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
                 lastBroadcastFileRef.current[id] = hostFid;
                 return;
+            }
+        }
+        // Independent pair (symbol sync OFF): fileId change → re-project host
+        // orders for the new ticker (journal can show EUR while B still holds
+        // a stale GBP-filtered snapshot).
+        if (!sync.symbol && state && state.fileId != null
+            && String(state.fileId).trim() !== "") {
+            const fidNow = String(state.fileId);
+            if (lastBroadcastFileRef.current[id] !== fidNow) {
+                lastBroadcastFileRef.current[id] = fidNow;
+                try { scheduleFanOutHostOrdersAfterPairLoad(); } catch (_) {}
             }
         }
 
@@ -5367,6 +5464,10 @@ export default function MultichartGrid({
                     if (typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
                     }
+                    try { persistPanelFileId(HOST_PANEL_ID, fid); } catch (_) {}
+                    // Host switched pair: peers still need a fresh filtered snapshot
+                    // when they already show (or will show) that instrument.
+                    try { scheduleFanOutHostOrdersAfterPairLoad(); } catch (_) {}
                     return data;
                 });
             }
@@ -5382,6 +5483,8 @@ export default function MultichartGrid({
                     if (ch2 && typeof ch2._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { ch2._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
                     }
+                    try { persistPanelFileId(pid, fid); } catch (_) {}
+                    try { scheduleFanOutHostOrdersAfterPairLoad(); } catch (_) {}
                     return data;
                 });
             }
@@ -5419,6 +5522,8 @@ export default function MultichartGrid({
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
+                try { persistPanelFileId(pid, fid); } catch (_) {}
+                try { scheduleFanOutHostOrdersAfterPairLoad(); } catch (_) {}
                 // Let pair-load seek + fitToView paint the full prefix before 60x catch-up.
                 setTimeout(() => {
                     try { syncIframeReplayPlaybackOnce(pid); } catch (_) {}
@@ -8245,7 +8350,10 @@ export default function MultichartGrid({
                                                     mgr.addChart({
                                                         id:        tile.id,
                                                         tf:        (initialTimeframeRef.current || hostNt.tf || "1m"),
-                                                        fileId:    (initialFileIdRef.current || hostNt.fileId || null),
+                                                        fileId:    resolveBootFileIdForPanel(
+                                                            tile.id,
+                                                            initialFileIdRef.current || hostNt.fileId || null
+                                                        ),
                                                         sessionId: initialSessionIdRef.current || null,
                                                         mode:      initialModeRef.current || readUrlChartMode(),
                                                     }, cellEl);
