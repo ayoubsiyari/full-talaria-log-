@@ -40106,6 +40106,7 @@ class OrderManager {
             }
             .order-level-badge .order-level-badge-glyph {
                 fill: var(--olb-muted);
+                stroke: var(--olb-muted);
             }
             .order-level-badge:hover .order-level-badge-bg,
             .order-level-badge.om-ctrl-hover .order-level-badge-bg {
@@ -40115,6 +40116,7 @@ class OrderManager {
             .order-level-badge:hover .order-level-badge-glyph,
             .order-level-badge.om-ctrl-hover .order-level-badge-glyph {
                 fill: #ffffff;
+                stroke: #ffffff;
             }
         `;
         (document.head || document.documentElement).appendChild(st);
@@ -44573,12 +44575,26 @@ class OrderManager {
     _appendOrderLevelBadgeGlyph(parent, kind, cx, cy, r, extraClass = '') {
         const spec = this._orderLevelBadgeKindSpec(kind);
         const cls = `order-level-badge-glyph ${extraClass}`.trim();
+        // Close × as a path: Exo 2 text + dy/baseline mismatches clip the glyph inside
+        // the 18px executed-order badge (bottom or top cut off). Path keeps the same look.
+        if (kind === 'close') {
+            const arm = Math.max(3.4, r * 0.40);
+            const sw = Math.max(1.7, r * 0.20);
+            return parent.append('path')
+                .attr('class', cls)
+                .attr('d', `M ${cx - arm} ${cy - arm} L ${cx + arm} ${cy + arm} M ${cx + arm} ${cy - arm} L ${cx - arm} ${cy + arm}`)
+                .attr('fill', 'none')
+                .attr('stroke-width', sw)
+                .attr('stroke-linecap', 'round')
+                .style('pointer-events', 'none');
+        }
         return parent.append('text')
             .attr('class', cls)
             .attr('x', cx)
             .attr('y', cy)
-            .attr('dy', '0.35em')
+            .attr('dy', '0')
             .attr('dominant-baseline', 'central')
+            .attr('alignment-baseline', 'middle')
             .attr('text-anchor', 'middle')
             .attr('font-size', kind === 'check' ? '12px' : '13px')
             .attr('font-weight', '700')
@@ -44600,7 +44616,14 @@ class OrderManager {
             .style('--olb-accent', accent)
             .style('--olb-muted', th.muted);
         bg.attr('fill', th.bg).attr('stroke', th.border);
-        if (glyph) glyph.attr('fill', th.muted);
+        if (glyph) {
+            const tag = String(glyph.node?.()?.tagName || '').toLowerCase();
+            if (tag === 'path') {
+                glyph.attr('stroke', th.muted).attr('fill', 'none');
+            } else {
+                glyph.attr('fill', th.muted);
+            }
+        }
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
