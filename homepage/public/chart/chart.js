@@ -25313,6 +25313,69 @@ class Chart {
         return !!(this.drag && this.drag.active && this.drag.type === 'priceAxis');
     }
 
+    /**
+     * Price-axis drag/wheel zoom step. Keeps the price under the cursor fixed and uses
+     * exponential zoom so equal up/down strokes cancel (the old linear factor + rangeChange
+     * offset drifted priceOffset when the cursor was off-center — spam drag walked candles
+     * off the bottom of the plot).
+     * Kill-switch: window.__TALARIA_DISABLE_PRICE_AXIS_CURSOR_ANCHOR_V1 = true
+     * @param {number} dy - pointer delta in canvas Y (positive = drag down / zoom out)
+     * @param {number} localY - cursor Y in canvas coordinates
+     * @param {number} [sensitivity=0.002]
+     * @returns {boolean} true when zoom/offset changed
+     */
+    _applyPriceAxisDragZoomStep(dy, localY, sensitivity = 0.002) {
+        if (!this.yScale || !Number.isFinite(dy) || dy === 0) return false;
+        if (this.priceScale && this.priceScale.locked) return false;
+
+        let useAnchor = true;
+        try {
+            useAnchor = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_PRICE_AXIS_CURSOR_ANCHOR_V1 === true);
+        } catch (_) { useAnchor = true; }
+
+        if (this.manualCenterPrice == null || this.manualRange == null
+            || !Number.isFinite(this.manualCenterPrice) || !Number.isFinite(this.manualRange)
+            || this.manualRange <= 0) {
+            const dInit = this.yScale.domain();
+            this.manualCenterPrice = (dInit[0] + dInit[1]) / 2;
+            this.manualRange = Math.max(Number.EPSILON, dInit[1] - dInit[0]);
+            this.priceOffset = 0;
+            if (!Number.isFinite(this.priceZoom) || this.priceZoom <= 0) this.priceZoom = 1;
+        }
+
+        const m = this.margin || { t: 0, b: 0 };
+        const priceAreaHeight = Math.max(1, this.h - (m.t || 0) - (m.b || 0));
+        const cursorRatio = Math.max(0, Math.min(1,
+            (Number(localY) - (m.t || 0)) / priceAreaHeight));
+
+        const sens = Number.isFinite(sensitivity) ? sensitivity : 0.002;
+        const oldZoom = Number.isFinite(this.priceZoom) && this.priceZoom > 0 ? this.priceZoom : 1;
+        // exp(-dy*s): equal +dy/-dy round-trips exactly (unlike 1-dy*s).
+        const newZoom = Math.max(this.minPriceZoom || 1e-9, oldZoom * Math.exp(-dy * sens));
+        if (newZoom === oldZoom) return false;
+
+        if (!useAnchor) {
+            const oldRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            const newRange = oldRange * (oldZoom / newZoom);
+            const rangeChange = newRange - oldRange;
+            this.priceOffset -= rangeChange * (0.5 - cursorRatio);
+            this.priceZoom = newZoom;
+            return true;
+        }
+
+        const domain = this.yScale.domain();
+        const d0 = domain[0];
+        const d1 = domain[1];
+        // yScale range is [bottom, top] → domain[0] at bottom, domain[1] at top.
+        const priceAtCursor = d1 - cursorRatio * (d1 - d0);
+
+        this.priceZoom = newZoom;
+        const half = this.manualRange / (2 * this.priceZoom);
+        this.priceOffset = priceAtCursor - this.manualCenterPrice - half * (1 - 2 * cursorRatio);
+        return true;
+    }
+
     _isTimeAxisZoomDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'timeAxis');
     }
@@ -32650,20 +32713,12 @@ class Chart {
                 this.priceScale.autoScale = false;
 
                 if (this.yScale) {
-                    const oldZoom = this.priceZoom;
-                    const newZoom = Math.max(this.minPriceZoom, oldZoom * priceZoomFactor);
-
-                    if (newZoom !== oldZoom) {
-                        const priceAreaHeight = this.h - m.t - m.b;
-                        const cursorRatio = priceAreaHeight > 0 ? (my - m.t) / priceAreaHeight : 0.5;
-                        const domain = this.yScale.domain();
-                        const currentRange = domain[1] - domain[0];
-                        const zoomRatio = oldZoom / newZoom;
-                        const newRange = currentRange * zoomRatio;
-                        const rangeChange = newRange - currentRange;
-
-                        this.priceZoom = newZoom;
-                        this.priceOffset -= rangeChange * (0.5 - cursorRatio);
+                    // Map wheel factor → equivalent dy for the shared anchor helper.
+                    // priceZoomFactor > 1 → zoom in → negative dy.
+                    const factor = Number(priceZoomFactor);
+                    if (Number.isFinite(factor) && factor > 0 && factor !== 1) {
+                        const equivDy = -Math.log(factor) / 0.002;
+                        this._applyPriceAxisDragZoomStep(equivDy, my);
                     }
                 }
 
@@ -33233,23 +33288,9 @@ class Chart {
                     this._scheduleAxisZoomRender();
                 }
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
-                    const sensitivity = 0.002;
-                    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
-                    const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
-                    
-                    // Anchor at cursor Y
-                    const m = this.margin;
-                    const priceAreaHeight = this.h - m.t - m.b;
-                    const cursorRatio = (my - m.t) / priceAreaHeight;
-                    
-                    const oldRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                    const newRange = oldRange * (this.priceZoom / newZoom);
-                    const rangeChange = newRange - oldRange;
-                    
-                    this.priceOffset -= rangeChange * (0.5 - cursorRatio);
-                    this.priceZoom = newZoom;
-                    
-                    this._scheduleAxisZoomRender();
+                    if (this._applyPriceAxisDragZoomStep(dy, my)) {
+                        this._scheduleAxisZoomRender();
+                    }
                 }
                 // ─── STEP 8: Box Zoom drag ───
                 else if (this.drag.type === 'boxZoom') {
@@ -33771,18 +33812,9 @@ class Chart {
                         this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
                         this._scheduleAxisZoomRender();
                     } else if (this.drag.type === 'priceAxis' && this.yScale) {
-                        const sensitivity = 0.002;
-                        const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
-                        const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
-                        const m = this.margin;
-                        const priceAreaHeight = this.h - m.t - m.b;
-                        const cursorRatio = Math.max(0, Math.min(1, (my - m.t) / priceAreaHeight));
-                        const oldRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                        const newRange = oldRange * (this.priceZoom / newZoom);
-                        const rangeChange = newRange - oldRange;
-                        this.priceOffset -= rangeChange * (0.5 - cursorRatio);
-                        this.priceZoom = newZoom;
-                        this._scheduleAxisZoomRender();
+                        if (this._applyPriceAxisDragZoomStep(dy, my)) {
+                            this._scheduleAxisZoomRender();
+                        }
                     } else if (this.drag.type === 'timeAxis') {
                         if (this._applyTimeAxisDragZoom(dx, mx)) {
                             this.dispatchScrollSync();
