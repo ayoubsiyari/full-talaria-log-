@@ -446,6 +446,8 @@
 
         /**
          * Evict replay fullRawData bars before session floor / far left of playhead.
+         * Playhead is timestamp-anchored when `replayTimestamp` is available so a stale
+         * `currentIndex` cannot shift the window and teleport the next seek.
          */
         capReplayFullRawData(fullRawData, replaySystem) {
             if (!Array.isArray(fullRawData) || fullRawData.length === 0) return fullRawData;
@@ -454,9 +456,31 @@
             if (fullRawData.length <= cap) return fullRawData;
 
             const floorIdx = Math.max(0, replaySystem?.sessionStartIndex || 0);
-            const playhead = typeof replaySystem?.currentIndex === 'number'
+            let playhead = typeof replaySystem?.currentIndex === 'number'
                 ? replaySystem.currentIndex
                 : fullRawData.length - 1;
+            const ts = Number(replaySystem?.replayTimestamp);
+            if (Number.isFinite(ts)) {
+                let lo = 0;
+                let hi = fullRawData.length - 1;
+                let hit = -1;
+                while (lo <= hi) {
+                    const mid = (lo + hi) >> 1;
+                    const t = Number(fullRawData[mid]?.t);
+                    if (!Number.isFinite(t)) {
+                        lo = mid + 1;
+                        continue;
+                    }
+                    if (t <= ts) {
+                        hit = mid;
+                        lo = mid + 1;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+                if (hit >= 0) playhead = hit;
+            }
+            playhead = Math.max(0, Math.min(playhead, fullRawData.length - 1));
             const contextBars = REPLAY_CONTEXT_BARS;
             const minStart = Math.max(0, Math.min(floorIdx, playhead - contextBars));
             let start = Math.max(minStart, fullRawData.length - cap);

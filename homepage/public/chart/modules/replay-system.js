@@ -4299,6 +4299,22 @@ class ReplaySystem {
             this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
             this.chart.checkViewportLoadMore('forward');
         }
+
+        // After mid-play master trim/replace, currentIndex can briefly disagree with
+        // replayTimestamp. Rematch before advancing so calculateNextIndex cannot
+        // leap from a stale high index and teleport the HUD date.
+        if (Number.isFinite(this.replayTimestamp)
+            && Array.isArray(this.fullRawData)
+            && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            const curBarT = Number(this.fullRawData[this.currentIndex]?.t);
+            const nextBarT = Number(this.fullRawData[this.currentIndex + 1]?.t);
+            const playheadOk = Number.isFinite(curBarT)
+                && this.replayTimestamp >= curBarT
+                && (!Number.isFinite(nextBarT) || this.replayTimestamp < nextBarT);
+            if (!playheadOk) {
+                try { this.syncCurrentIndexFromReplayTimestamp(this.replayTimestamp); } catch (_e) { /* ignore */ }
+            }
+        }
         
         // Interval / display-TF bucket step (legacy when finest cadence inactive).
         const oldIndex = this.currentIndex;

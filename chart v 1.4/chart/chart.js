@@ -5541,6 +5541,7 @@ class Chart {
             ? this._panelFullRawData
             : this.rawData;
         if (!Array.isArray(seedSource) || seedSource.length === 0) return false;
+        const keepTs = Number(replay.replayTimestamp);
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
@@ -5550,6 +5551,14 @@ class Chart {
         replay._fullRawDataMatchesTF = false;
         replay.tickPathCache = {};
         replay.tickPathCacheBuilt = false;
+        // Window replace must not leave a stale currentIndex into the new array —
+        // that clamps/snaps the next seek to the wrong date (esp. independent pairs).
+        if (Number.isFinite(keepTs)
+            && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+            try { replay.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+        } else if (replay.currentIndex >= replay.fullRawData.length) {
+            replay.currentIndex = Math.max(0, replay.fullRawData.length - 1);
+        }
         return true;
     }
 
@@ -21426,6 +21435,9 @@ class Chart {
 
             if (usingReplay && this.replaySystem && this.replaySystem.isActive) {
                 const rs = this.replaySystem;
+                const keepTs = Number.isFinite(Number(targetTimestamp))
+                    ? Number(targetTimestamp)
+                    : Number(rs.replayTimestamp);
                 rs.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
                 rs.rawTimeframe = requestTimeframe;
                 rs._fullRawDataMatchesTF = false;
@@ -21433,10 +21445,15 @@ class Chart {
                 if (rs.fullRawData.length > 0) {
                     rs.replayStartTimestamp = rs.fullRawData[0].t;
                     rs.replayEndTimestamp = rs.fullRawData[rs.fullRawData.length - 1].t;
-                    // Do not reset currentIndex / replayTimestamp to the start of the new window — that
-                    // leaves the chart in an inconsistent state until jumpToTimestamp runs; seek will set them.
-                    const n = rs.fullRawData.length;
-                    if (rs.currentIndex >= n) rs.currentIndex = Math.max(0, n - 1);
+                    // Rematch playhead by timestamp inside the new window. Bare clamp of
+                    // currentIndex after a full replace snaps seek to whatever remains.
+                    if (Number.isFinite(keepTs)
+                        && typeof rs.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        try { rs.syncCurrentIndexFromReplayTimestamp(keepTs); } catch (_e) { /* ignore */ }
+                    } else {
+                        const n = rs.fullRawData.length;
+                        if (rs.currentIndex >= n) rs.currentIndex = Math.max(0, n - 1);
+                    }
                     rs.tickElapsedMs = 0;
                     rs.animatingCandle = null;
                     rs.tickProgress = 0;
@@ -23718,12 +23735,20 @@ class Chart {
                 // Keep incoming candles sorted (API is usually ordered, but enforce defensively)
                 const incoming = boundedCandles.slice().sort((a, b) => a.t - b.t);
 
-                // Save replay position before modifying data
+                // Save replay position before modifying data.
+                // Prefer virtual playhead time — currentIndex alone can be briefly wrong
+                // vs timestamp during concurrent steps / prior trims.
                 let replayTs = null;
                 let replayIndex = null;
                 if (isReplay) {
                     replayIndex = Number(this.replaySystem.currentIndex);
-                    replayTs = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.t;
+                    const virtualTs = Number(this.replaySystem.replayTimestamp);
+                    const barTs = Number(
+                        this.replaySystem.fullRawData?.[this.replaySystem.currentIndex]?.t
+                    );
+                    replayTs = Number.isFinite(virtualTs)
+                        ? virtualTs
+                        : (Number.isFinite(barTs) ? barTs : null);
                 }
 
                 // Fast-path merge based on direction to avoid expensive full-array sort/set
@@ -23802,9 +23827,26 @@ class Chart {
                         target: 'replaySystem.fullRawData',
                     });
 
-                    // Keep replay index stable without scanning entire array when possible
+                    // Keep replay playhead on the same wall-clock time after merge/trim.
+                    // Forward prefetch + capReplayFullRawData used to restore the pre-trim
+                    // index, which points at a later bar once left bars are dropped; while
+                    // playing, updateChartData is skipped so the next step overwrites
+                    // replayTimestamp from that bad index → HUD date teleport.
                     const prevReplayIndex = Number.isFinite(replayIndex) ? replayIndex : (masterData.length - 1);
-                    if (Number.isFinite(replayIndex)) {
+                    const liveTs = Number(this.replaySystem.replayTimestamp);
+                    const anchorTs = Number.isFinite(liveTs)
+                        ? liveTs
+                        : (Number.isFinite(Number(replayTs)) ? Number(replayTs) : null);
+                    let rematched = false;
+                    if (Number.isFinite(anchorTs)
+                        && typeof this.replaySystem.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        try {
+                            rematched = !!this.replaySystem.syncCurrentIndexFromReplayTimestamp(anchorTs);
+                        } catch (_syncPh) {
+                            rematched = false;
+                        }
+                    }
+                    if (!rematched && Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
                             // §6cs stale-index hardening: `replayIndex` was captured
                             // at fetch START. Under step-forward spam, manual steps
@@ -23825,16 +23867,23 @@ class Chart {
                                 merged.length - 1
                             );
                         } else if (direction === 'forward') {
-                            this.replaySystem.currentIndex = Math.min(
-                                Math.max(replayIndex, 0),
-                                merged.length - 1
-                            );
-                        } else if (replayTs != null) {
-                            const newIdx = merged.findIndex(c => c.t >= replayTs);
+                            // After trim, index arithmetic is unsafe — stay put only if
+                            // no timestamp was available to rematch.
+                            const curNow = Number(this.replaySystem.currentIndex);
+                            if (Number.isFinite(curNow) && curNow >= 0 && curNow < merged.length) {
+                                this.replaySystem.currentIndex = curNow;
+                            } else {
+                                this.replaySystem.currentIndex = Math.min(
+                                    Math.max(replayIndex, 0),
+                                    merged.length - 1
+                                );
+                            }
+                        } else if (Number.isFinite(anchorTs)) {
+                            const newIdx = merged.findIndex(c => c.t >= anchorTs);
                             if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                         }
-                    } else if (replayTs != null) {
-                        const newIdx = merged.findIndex(c => c.t >= replayTs);
+                    } else if (!rematched && Number.isFinite(anchorTs)) {
+                        const newIdx = merged.findIndex(c => c.t >= anchorTs);
                         if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                     }
 
