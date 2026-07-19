@@ -551,7 +551,7 @@ function cb01MountSigV1Record(ch, source, schedule, extra = null) {
                 const steady = root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1
                     || (root.__TALARIA_CB01_MOUNT_SIG_PANEL_VISIBLE_V1 = Object.create(null));
                 role = steady[String(panelId)] === true
-                    ? 'steady-state iframe'
+                    ? 'existing peer'
                     : 'new iframe';
             }
         }
@@ -26134,6 +26134,9 @@ class Chart {
             anchor,
             labelPhaseIdx,
             maxZoomGrid: !!this._isMaxZoomPerCandleGrid(),
+            // Replay: keep seeded label text glued to bar indices while PLAY
+            // scrolls — do not re-thin/re-pick labels every candle.
+            preserveLabels: !!(this.replaySystem && this.replaySystem.isActive),
         };
         return ticks;
     }
@@ -26219,46 +26222,68 @@ class Chart {
         const hi = plotRight + spacing * (step + 2);
         mapped = mapped.filter((t) => t.x >= lo && t.x <= hi);
 
-        // Refresh labels: every candle only when very wide; else thin by pixels.
-        // Also drop consecutive identical text (duplicate "May"/"May" from month
-        // boundary + calendar formatter landing on nearby bars).
+        // Replay scroll: keep seeded labels on their bar indices — only fill blanks
+        // on newly edge-extended ticks. Re-thinning every frame made bottom-axis
+        // text "re-adjust" while vertical grid lines stayed denser (looked like
+        // on-chart vs off-chart labels disagreeing).
+        const preserveReplayLabels = !!(cache.preserveLabels
+            && this.replaySystem
+            && this.replaySystem.isActive);
         let lastLabelX = -Infinity;
         let lastLabelText = '';
-        for (let i = 0; i < mapped.length; i++) {
-            const t = mapped[i];
-            if (labelEvery) {
-                t.label = labelFor(t.idx);
-                if (t.label && t.label === lastLabelText) t.label = '';
-                if (t.label) lastLabelText = t.label;
-                continue;
-            }
-            if (maxZoomGrid) {
-                if (lastLabelX === -Infinity || (t.x - lastLabelX) >= minLabelPx * 0.9) {
+        if (preserveReplayLabels) {
+            for (let i = 0; i < mapped.length; i++) {
+                const t = mapped[i];
+                if (!t.label && (labelEvery || isMajorLabelIdx(t.idx) || maxZoomGrid)) {
                     t.label = labelFor(t.idx);
-                    if (t.label && t.label === lastLabelText) t.label = '';
-                    if (t.label) {
-                        lastLabelX = t.x;
-                        lastLabelText = t.label;
-                    }
-                } else {
+                }
+                if (t.label && t.label === lastLabelText) {
                     t.label = '';
                 }
-                continue;
+                if (t.label) {
+                    lastLabelText = t.label;
+                    lastLabelX = t.x;
+                }
             }
-            // Refill majors that lost text when they left the viewport (cache trim).
-            if (!t.label && isMajorLabelIdx(t.idx)) {
-                t.label = labelFor(t.idx);
-            }
-            if (!t.label) continue;
-            if (t.label === lastLabelText) {
-                t.label = '';
-                continue;
-            }
-            if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
-                t.label = '';
-            } else {
-                lastLabelX = t.x;
-                lastLabelText = t.label;
+        } else {
+            // Refresh labels: every candle only when very wide; else thin by pixels.
+            // Also drop consecutive identical text (duplicate "May"/"May").
+            for (let i = 0; i < mapped.length; i++) {
+                const t = mapped[i];
+                if (labelEvery) {
+                    t.label = labelFor(t.idx);
+                    if (t.label && t.label === lastLabelText) t.label = '';
+                    if (t.label) lastLabelText = t.label;
+                    continue;
+                }
+                if (maxZoomGrid) {
+                    if (lastLabelX === -Infinity || (t.x - lastLabelX) >= minLabelPx * 0.9) {
+                        t.label = labelFor(t.idx);
+                        if (t.label && t.label === lastLabelText) t.label = '';
+                        if (t.label) {
+                            lastLabelX = t.x;
+                            lastLabelText = t.label;
+                        }
+                    } else {
+                        t.label = '';
+                    }
+                    continue;
+                }
+                // Refill majors that lost text when they left the viewport (cache trim).
+                if (!t.label && isMajorLabelIdx(t.idx)) {
+                    t.label = labelFor(t.idx);
+                }
+                if (!t.label) continue;
+                if (t.label === lastLabelText) {
+                    t.label = '';
+                    continue;
+                }
+                if (lastLabelX !== -Infinity && t.x - lastLabelX < minLabelPx * 0.65) {
+                    t.label = '';
+                } else {
+                    lastLabelX = t.x;
+                    lastLabelText = t.label;
+                }
             }
         }
 
@@ -26987,18 +27012,31 @@ class Chart {
 
         // Build time-axis ticks (TradingView):
         // clock-aligned majors normally; per-candle grid only at max zoom.
-        // Pan: reproject + edge-extend only (no drift rebuild).
-        // Replay PLAY uses the SAME full `_buildTimeTicks` as pause (so labels match),
-        // with a stable first-bar anchor inside the builder (not pan-cache ticks).
+        // Pan + replay PLAY/pause-with-cache: reproject + edge-extend only.
+        // Full rebuild every PLAY candle re-picks which days get labels (axis text
+        // "re-adjusts" while grid lines stay denser). Seed once from full ticks at
+        // Play, then scroll like a pan so on-plot grid + bottom labels stay locked.
+        // Kill-switch: window.__TALARIA_DISABLE_REPLAY_PAN_TIME_AXIS_V1 = true
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         const replayPlayback = typeof this._isReplayPlaybackRendering === 'function'
             && this._isReplayPlaybackRendering();
-        if (chartViewPanning) {
+        const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
+        const hasReplayPanCache = !!(this._panTimeTickCache
+            && Array.isArray(this._panTimeTickCache.ticks)
+            && this._panTimeTickCache.ticks.length);
+        let useReplayPanTimeAxis = true;
+        try {
+            useReplayPanTimeAxis = !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_REPLAY_PAN_TIME_AXIS_V1 === true);
+        } catch (_) { useReplayPanTimeAxis = true; }
+        if (chartViewPanning
+            || (useReplayPanTimeAxis && (replayPlayback || (replayActive && hasReplayPanCache)))) {
             this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (skipHeavyChrome || wheelBurstLight || timeAxisZoomDragging) {
+            try { this._clearPanTimeTickCache(); } catch (_) { /* ignore */ }
             this._timeTicks = this._buildTimeTicks({ full: true });
             this._cachedInteractionTimeTicks = this._timeTicks;
             this._idleTimeAxisKeyCached = null;
@@ -27006,15 +27044,13 @@ class Chart {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
             const idleKey = this._idleTimeAxisKey();
-            // During PLAY never reuse frozen tick pixels — offsetX/data can stay
-            // keyed the same across finest-TF sub-steps while the playhead moves.
-            if (!replayPlayback
-                && idleKey
+            if (idleKey
                 && idleKey === this._idleTimeAxisKeyCached
                 && Array.isArray(this._timeTicks)
                 && this._timeTicks.length) {
                 // keep this._timeTicks
             } else {
+                try { this._clearPanTimeTickCache(); } catch (_) { /* ignore */ }
                 this._timeTicks = this._buildTimeTicks({ full: true });
                 this._idleTimeAxisKeyCached = idleKey;
             }

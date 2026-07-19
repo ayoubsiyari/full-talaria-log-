@@ -2365,34 +2365,6 @@ export default function MultichartGrid({
         [layoutId, panelCount]
     );
 
-    useLayoutEffect(() => {
-        let trigger = null;
-        try {
-            const active = window.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
-            if (active && active.trigger) trigger = String(active.trigger);
-        } catch (_) {}
-        if (!trigger) {
-            let navType = "";
-            try {
-                const nav = performance.getEntriesByType("navigation")[0];
-                navType = nav && nav.type ? String(nav.type) : "";
-            } catch (_) {}
-            trigger = navType === "reload"
-                ? "refresh"
-                : (Number(panelCount) >= 4 ? "2to4" : "single-to-2v");
-            cb01MountSigGridSetTrigger(trigger, {
-                panelId: HOST_PANEL_ID,
-                durationMs: 6000,
-            });
-        }
-        cb01MountSigGridRecord(
-            window.chart,
-            "MultichartGrid.jsx:layout-actuation",
-            "sync",
-            { panelId: HOST_PANEL_ID, role: "host", trigger }
-        );
-    }, [layoutId, panelCount]);
-
     // ─── Resizable column / row fractions ──────────────────────────────
     //
     // Layout templates declare grid tracks like "1fr 1fr" which means
@@ -2452,6 +2424,37 @@ export default function MultichartGrid({
         container.style.gridTemplateColumns = cols.map((f) => f.toFixed(4) + "fr").join(" ");
         container.style.gridTemplateRows = rows.map((f) => f.toFixed(4) + "fr").join(" ");
         applyHostSlotPositionOnly(cellA);
+        try {
+            const enabled = window.__talariaCb01MountSigEnabledV1;
+            if (typeof enabled !== "function" || enabled() !== true) return;
+        } catch (_) {
+            return;
+        }
+        let trigger = null;
+        try {
+            const active = window.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
+            if (active && active.trigger) trigger = String(active.trigger);
+        } catch (_) {}
+        if (!trigger) {
+            let navType = "";
+            try {
+                const nav = performance.getEntriesByType("navigation")[0];
+                navType = nav && nav.type ? String(nav.type) : "";
+            } catch (_) {}
+            trigger = navType === "reload"
+                ? "refresh"
+                : (String(layoutId).startsWith("4") ? "2to4" : "single-to-2v");
+            cb01MountSigGridSetTrigger(trigger, {
+                panelId: HOST_PANEL_ID,
+                durationMs: 6000,
+            });
+        }
+        cb01MountSigGridRecord(
+            window.chart,
+            "MultichartGrid.jsx:layout-actuation",
+            "sync",
+            { panelId: HOST_PANEL_ID, role: "host", trigger }
+        );
     }, [layoutId, layout.cols, layout.rows]);
 
     // Live container size (in CSS px). Declared HERE — high in the
