@@ -12560,58 +12560,6 @@ class DrawingToolsManager {
         return CoordinateUtils.buildTimestampResolveOptions(drawing, this.chart);
     }
 
-    /**
-     * When replay walk-forward grows chart.data, keep shape corners that sit past
-     * the playhead the same distance beyond it (otherwise absolute indices stay
-     * put and the handle appears to jump inward on Play / each step).
-     * Kill-switch: window.__TALARIA_DISABLE_DRAWING_EXTRABAR_REPLAY_SHIFT_V1 = true
-     */
-    _shiftExtrabarDrawingsForReplayGrowth(prevDataLen, newDataLen) {
-        try {
-            if (typeof window !== 'undefined'
-                && window.__TALARIA_DISABLE_DRAWING_EXTRABAR_REPLAY_SHIFT_V1 === true) {
-                return;
-            }
-        } catch (_) { /* ignore */ }
-        const prevLen = Math.floor(Number(prevDataLen) || 0);
-        const newLen = Math.floor(Number(newDataLen) || 0);
-        const delta = newLen - prevLen;
-        if (!(delta > 0) || prevLen <= 0 || !Array.isArray(this.drawings) || !this.drawings.length) {
-            return;
-        }
-        if (typeof CoordinateUtils === 'undefined'
-            || typeof CoordinateUtils.allowsExtrabarBarIndex !== 'function') {
-            return;
-        }
-        const prevLast = prevLen - 1;
-        for (let i = 0; i < this.drawings.length; i++) {
-            const drawing = this.drawings[i];
-            if (!drawing || !CoordinateUtils.allowsExtrabarBarIndex(drawing.type)) continue;
-            if (!Array.isArray(drawing.points) || !drawing.points.length) continue;
-            let shifted = false;
-            for (let j = 0; j < drawing.points.length; j++) {
-                const p = drawing.points[j];
-                if (p && Number.isFinite(p.x) && p.x > prevLast + 0.001) {
-                    p.x += delta;
-                    shifted = true;
-                }
-            }
-            if (shifted && typeof drawing.recalculateTimestamps === 'function') {
-                try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
-            }
-        }
-    }
-
-    /** Notify drawings after replay resamples chart.data (call every walk-forward step). */
-    onReplayChartDataResampled() {
-        const newLen = (this.chart && Array.isArray(this.chart.data)) ? this.chart.data.length : 0;
-        const prevLen = Number.isFinite(this._replayDrawingDataLen)
-            ? this._replayDrawingDataLen
-            : newLen;
-        this._shiftExtrabarDrawingsForReplayGrowth(prevLen, newLen);
-        this._replayDrawingDataLen = newLen;
-    }
-
     /** Re-resolve bar indices from stored timestamps using the live replay slice. */
     _syncDrawingPointsFromTimestamps(drawing, options = {}) {
         if (!drawing || !this.chart) return;
@@ -12656,17 +12604,10 @@ class DrawingToolsManager {
         if (!hasTimestampAnchors && hasExtrabarPoint) {
             return;
         }
-        // PLAY + extrabar: timestamp→index collapses "one bar past playhead" onto the
-        // new last bar after each step (and on first Play after a paused resize).
-        // Keep absolute geometry; growth shifts are handled by onReplayChartDataResampled.
-        if (!options.tfRefresh && hasExtrabarPoint) {
-            const rs = this.chart.replaySystem;
-            if (rs && rs.isActive && rs.isPlaying) {
-                return;
-            }
-        }
         try {
-            // TF refresh / extrabar: skip replay clamp so multi-point tools keep geometry.
+            // Extrabar / TF refresh: never playhead-clamp — future corners stay on their
+            // wall-clock timestamps so they scroll with the chart like in-range shapes
+            // (do NOT shift indices with playhead growth — that made future edges slide).
             const tsOpts = (options.tfRefresh || allowsExtrabar)
                 ? null
                 : this._getTimestampConversionOptions(drawing);
