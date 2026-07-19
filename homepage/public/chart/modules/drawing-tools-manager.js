@@ -12604,10 +12604,24 @@ class DrawingToolsManager {
         if (!hasTimestampAnchors && hasExtrabarPoint) {
             return;
         }
+        // PLAY + future (extrabar) corners: freeze bar indices. Re-resolving every
+        // tick from lastBar.t + k*tf drifts when the playhead bar / weekend gaps
+        // change lastT (small crawl). Do NOT shift indices with data growth either
+        // (that glued edges to the playhead). Pause / TF refresh still re-sync.
+        // Kill-switch: window.__TALARIA_DISABLE_DRAWING_EXTRABAR_PLAY_FREEZE_V1 = true
+        if (!options.tfRefresh && hasExtrabarPoint) {
+            let freezeExtrabar = true;
+            try {
+                freezeExtrabar = !(typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_DRAWING_EXTRABAR_PLAY_FREEZE_V1 === true);
+            } catch (_) { freezeExtrabar = true; }
+            const rs = this.chart.replaySystem;
+            if (freezeExtrabar && rs && rs.isActive && rs.isPlaying) {
+                return;
+            }
+        }
         try {
-            // Extrabar / TF refresh: never playhead-clamp — future corners stay on their
-            // wall-clock timestamps so they scroll with the chart like in-range shapes
-            // (do NOT shift indices with playhead growth — that made future edges slide).
+            // Extrabar / TF refresh: never playhead-clamp — future corners keep geometry.
             const tsOpts = (options.tfRefresh || allowsExtrabar)
                 ? null
                 : this._getTimestampConversionOptions(drawing);
