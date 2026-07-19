@@ -7757,7 +7757,13 @@ class DrawingToolsManager {
             const hasDragTransform = !!(drawing.group && drawing.group.attr('transform'));
             const skipSyncDuringCssMove = hasDragTransform && this._isDrawingGeometryMoveActive();
             if (!skipSyncDuringCssMove) {
-                this._syncDrawingPointsFromTimestamps(drawing);
+                // After a PLAY-time TF switch, prefer tfRefresh (no playhead clamp) until
+                // resync clears the pending flag — otherwise clamp can stack future anchors.
+                if (this._drawingsTfResyncPending) {
+                    this._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                } else {
+                    this._syncDrawingPointsFromTimestamps(drawing);
+                }
             }
         }
 
@@ -13602,6 +13608,8 @@ class DrawingToolsManager {
     /**
      * Force timestamp→index resync after a replay TF switch (PLAY or pause).
      * Safe to call mid-play — uses tfRefresh so shapes are not playhead-clamped.
+     * Sets `_drawingsTfResyncPending` so the next PLAY paint also refreshes indices
+     * (PLAY uses panFast redraw and may race before chart.data settles).
      */
     resyncDrawingsAfterReplayTimeframeChange() {
         try {
@@ -13611,11 +13619,13 @@ class DrawingToolsManager {
             }
         } catch (_) { /* ignore */ }
         if (!this.chart || !Array.isArray(this.drawings) || this.drawings.length === 0) return;
+        this._drawingsTfResyncPending = true;
         try {
             this.refreshDrawingsForTimeframe();
             if (this.chart.xScale && this.chart.yScale) {
                 this.redrawAll({ forceFull: true });
             }
+            this._drawingsTfResyncPending = false;
         } catch (_) { /* ignore */ }
         // Also schedule the debounced path in case data/scales settle a frame later.
         try {

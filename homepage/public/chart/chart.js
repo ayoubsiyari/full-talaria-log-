@@ -429,6 +429,333 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
 const CHART_ENGINE_BUILD = '20260718b80';
+
+/**
+ * CB-01 mount/symbol diagnostic signature logger.
+ *
+ * Instrumentation only: default OFF, bounded in-memory records, no persistence
+ * or network writes. Enable with window.__TALARIA_CB01_MOUNT_SIG_V1=true or
+ * ?cb01Sig=1 on the parent/iframe URL.
+ */
+const CB01_MOUNT_SIG_V1 = 'CB01_MOUNT_SIG_V1';
+const CB01_MOUNT_SIG_V1_MAX_RECORDS = 800;
+const CB01_MOUNT_SIG_V1_QUERY_ENABLED = (() => {
+    const queryEnabled = (w) => {
+        try {
+            const value = new URLSearchParams(w.location.search || '').get('cb01Sig');
+            return value === '1' || value === 'true';
+        } catch (_) {
+            return false;
+        }
+    };
+    try {
+        if (typeof window === 'undefined') return false;
+        if (queryEnabled(window)) return true;
+        if (window.parent && window.parent !== window && queryEnabled(window.parent)) return true;
+        if (window.top && window.top !== window && queryEnabled(window.top)) return true;
+    } catch (_) { /* cross-origin */ }
+    return false;
+})();
+
+function cb01MountSigV1Enabled() {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (window.__TALARIA_CB01_MOUNT_SIG_V1 === true) return true;
+        if (CB01_MOUNT_SIG_V1_QUERY_ENABLED) return true;
+        if (window.parent && window.parent !== window
+            && window.parent.__TALARIA_CB01_MOUNT_SIG_V1 === true) return true;
+        if (window.top && window.top !== window
+            && window.top.__TALARIA_CB01_MOUNT_SIG_V1 === true) return true;
+    } catch (_) { /* cross-origin */ }
+    return false;
+}
+
+function cb01MountSigV1RootWindow() {
+    if (typeof window === 'undefined') return null;
+    try {
+        if (window.top && window.top.location.origin === window.location.origin) return window.top;
+    } catch (_) { /* cross-origin */ }
+    try {
+        if (window.parent && window.parent.location.origin === window.location.origin) return window.parent;
+    } catch (_) { /* cross-origin */ }
+    return window;
+}
+
+function cb01MountSigV1PanelId(ch, ownerWindow, extra) {
+    if (extra && extra.panelId != null) return String(extra.panelId);
+    try {
+        if (ch && typeof ch._getMultichartPanelId === 'function') {
+            const id = ch._getMultichartPanelId();
+            if (id != null && id !== '') return String(id);
+        }
+    } catch (_) {}
+    try {
+        const params = new URLSearchParams(ownerWindow.location.search || '');
+        const id = params.get('panelId') || params.get('id');
+        if (id) return String(id);
+    } catch (_) {}
+    return 'A';
+}
+
+function cb01MountSigV1Trigger(root, extra) {
+    if (extra && extra.trigger) return String(extra.trigger);
+    try {
+        const active = root && root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (active && active.trigger && (!Number.isFinite(active.until) || now <= active.until)) {
+            return String(active.trigger);
+        }
+    } catch (_) {}
+    return 'unclassified';
+}
+
+function cb01MountSigV1SetTrigger(trigger, details = {}) {
+    if (!cb01MountSigV1Enabled()) return false;
+    const root = cb01MountSigV1RootWindow();
+    if (!root || !trigger) return false;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const prev = root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1;
+    const seq = prev && Number.isFinite(prev.seq) ? prev.seq + 1 : 1;
+    root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1 = {
+        trigger: String(trigger),
+        seq,
+        at: now,
+        until: now + (Number.isFinite(details.durationMs) ? details.durationMs : 6000),
+        selectedSymbol: details.selectedSymbol != null ? String(details.selectedSymbol) : null,
+        panelId: details.panelId != null ? String(details.panelId) : null,
+    };
+    return true;
+}
+
+function cb01MountSigV1Record(ch, source, schedule, extra = null) {
+    if (!cb01MountSigV1Enabled()) return false;
+    try {
+        const root = cb01MountSigV1RootWindow();
+        if (!root) return false;
+        const chart = ch || window.chart || null;
+        const ownerDocument = chart && chart.canvas && chart.canvas.ownerDocument
+            ? chart.canvas.ownerDocument
+            : document;
+        const ownerWindow = ownerDocument && ownerDocument.defaultView
+            ? ownerDocument.defaultView
+            : window;
+        const panelId = cb01MountSigV1PanelId(chart, ownerWindow, extra);
+        const trigger = cb01MountSigV1Trigger(root, extra);
+        const activeTrigger = root.__TALARIA_CB01_MOUNT_SIG_ACTIVE_TRIGGER_V1 || null;
+
+        let role = extra && extra.role ? String(extra.role) : null;
+        if (!role) {
+            if (panelId === 'A') {
+                role = 'host';
+            } else {
+                const seenKey = String(panelId);
+                const seen = root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1
+                    || (root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1 = Object.create(null));
+                const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                if (!Number.isFinite(seen[seenKey])) seen[seenKey] = now;
+                role = now - seen[seenKey] <= 6000 ? 'new iframe' : 'existing peer';
+            }
+        }
+
+        const m = chart && chart.margin ? chart.margin : { l: 0, r: 0, t: 0, b: 0 };
+        const width = chart && Number.isFinite(Number(chart.w)) ? Number(chart.w) : 0;
+        const height = chart && Number.isFinite(Number(chart.h)) ? Number(chart.h) : 0;
+        const candleWidth = chart && Number.isFinite(Number(chart.candleWidth))
+            ? Number(chart.candleWidth)
+            : null;
+        let spacing = null;
+        try {
+            spacing = chart && typeof chart.getCandleSpacing === 'function'
+                ? Number(chart.getCandleSpacing())
+                : Number(candleWidth) + Number(chart && chart.candleGap || 0);
+        } catch (_) {}
+        if (!Number.isFinite(spacing)) spacing = null;
+        const offsetX = chart && Number.isFinite(Number(chart.offsetX))
+            ? Number(chart.offsetX)
+            : null;
+        const dataLen = chart && Array.isArray(chart.data) ? chart.data.length : 0;
+        const plotW = Math.max(0, width - Number(m.l || 0) - Number(m.r || 0));
+        let visibleStart = null;
+        let visibleEnd = null;
+        try {
+            if (chart && typeof chart.getVisibleStartIndex === 'function') {
+                visibleStart = Number(chart.getVisibleStartIndex());
+            }
+            if (chart && typeof chart.getVisibleEndIndex === 'function') {
+                visibleEnd = Number(chart.getVisibleEndIndex());
+            }
+        } catch (_) {}
+        if (!Number.isFinite(visibleStart)) visibleStart = null;
+        if (!Number.isFinite(visibleEnd)) visibleEnd = null;
+        const lastIndex = Math.max(0, dataLen - 1);
+        const lastCandleX = offsetX != null && spacing != null
+            ? Number(m.l || 0) + offsetX + lastIndex * spacing
+            : null;
+
+        const timeTicks = chart && Array.isArray(chart._timeTicks) ? chart._timeTicks : [];
+        let gridTimeAxisX = null;
+        for (let i = 0; i < timeTicks.length; i++) {
+            const x = Number(timeTicks[i] && timeTicks[i].x);
+            if (Number.isFinite(x) && x >= Number(m.l || 0) && x <= width - Number(m.r || 0)) {
+                gridTimeAxisX = x;
+                break;
+            }
+        }
+        let priceTickCount = 0;
+        try {
+            if (chart && chart.yScale && typeof chart._getYPriceTicks === 'function') {
+                const wanted = Math.max(8, Math.min(15, Math.floor(
+                    Math.max(0, height - Number(m.t || 0) - Number(m.b || 0)) / 60
+                )));
+                const ticks = chart._getYPriceTicks(wanted);
+                priceTickCount = Array.isArray(ticks) ? ticks.length : 0;
+            }
+        } catch (_) {}
+
+        let frameOpacity = panelId === 'A' ? 1 : null;
+        try {
+            const frame = ownerWindow.frameElement;
+            if (frame && frame.ownerDocument && frame.ownerDocument.defaultView) {
+                frameOpacity = Number(frame.ownerDocument.defaultView.getComputedStyle(frame).opacity);
+            }
+        } catch (_) {}
+        let wrapperOpacity = 1;
+        let canvasVisible = false;
+        try {
+            const canvas = chart && chart.canvas;
+            const wrapper = canvas && canvas.parentElement;
+            const rect = canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+            if (wrapper) wrapperOpacity = Number(ownerWindow.getComputedStyle(wrapper).opacity);
+            canvasVisible = !!(rect && rect.width > 0 && rect.height > 0
+                && ownerWindow.getComputedStyle(canvas).display !== 'none'
+                && ownerWindow.getComputedStyle(canvas).visibility !== 'hidden');
+        } catch (_) {}
+        const effectiveOpacity = (Number.isFinite(frameOpacity) ? frameOpacity : 1)
+            * (Number.isFinite(wrapperOpacity) ? wrapperOpacity : 1);
+        const visible = !!(canvasVisible && dataLen > 0 && effectiveOpacity > 0);
+
+        const idSuffix = chart && chart.panelIndex !== undefined && chart.panelIndex !== 0
+            ? chart.panelIndex
+            : '';
+        let legendSymbol = null;
+        try {
+            const legend = ownerDocument.getElementById('chartSymbol' + idSuffix);
+            if (legend && legend.textContent != null) legendSymbol = String(legend.textContent).trim();
+        } catch (_) {}
+        const loadedSymbol = extra && extra.loadedSymbol != null
+            ? String(extra.loadedSymbol)
+            : (chart && chart.currentSymbol != null ? String(chart.currentSymbol) : null);
+        const selectedSymbol = extra && extra.selectedSymbol != null
+            ? String(extra.selectedSymbol)
+            : (activeTrigger && activeTrigger.selectedSymbol != null
+                ? String(activeTrigger.selectedSymbol)
+                : null);
+
+        let replayActive = false;
+        let replayPaused = null;
+        try {
+            const replay = chart && chart.replaySystem;
+            replayActive = !!(replay && replay.isActive);
+            if (replay) {
+                if (typeof replay.isPlaying === 'boolean') replayPaused = !replay.isPlaying;
+                else if (typeof replay.playing === 'boolean') replayPaused = !replay.playing;
+                else if (typeof replay.isPaused === 'boolean') replayPaused = replay.isPaused;
+            }
+        } catch (_) {}
+
+        const buffer = root.__TALARIA_CB01_MOUNT_SIG_BUFFER_V1
+            || (root.__TALARIA_CB01_MOUNT_SIG_BUFFER_V1 = []);
+        const seq = (Number(root.__TALARIA_CB01_MOUNT_SIG_SEQ_V1) || 0) + 1;
+        root.__TALARIA_CB01_MOUNT_SIG_SEQ_V1 = seq;
+        const firstKey = [trigger, activeTrigger && activeTrigger.seq || 0, panelId].join('|');
+        const firstVisibleMap = root.__TALARIA_CB01_MOUNT_SIG_FIRST_VISIBLE_V1
+            || (root.__TALARIA_CB01_MOUNT_SIG_FIRST_VISIBLE_V1 = Object.create(null));
+        const firstVisible = visible && firstVisibleMap[firstKey] !== true;
+        if (firstVisible) firstVisibleMap[firstKey] = true;
+
+        const record = {
+            signature: CB01_MOUNT_SIG_V1,
+            version: 1,
+            sequence: seq,
+            htmlBuildId: ownerWindow.__TALARIA_CHART_BUILD_ID || null,
+            engineBuildId: CHART_ENGINE_BUILD,
+            panelId,
+            panelRole: role,
+            trigger,
+            triggerSequence: activeTrigger && Number.isFinite(activeTrigger.seq)
+                ? activeTrigger.seq
+                : null,
+            timestamp: Date.now(),
+            performanceTime: typeof performance !== 'undefined' ? performance.now() : null,
+            schedule: schedule || 'sync',
+            source: String(source || 'unknown'),
+            visible,
+            firstVisible,
+            iframeOpacity: Number.isFinite(frameOpacity) ? frameOpacity : null,
+            wrapperOpacity: Number.isFinite(wrapperOpacity) ? wrapperOpacity : null,
+            offsetX,
+            candleWidth,
+            candleSpacing: spacing,
+            width,
+            height,
+            plotW,
+            visibleStart,
+            visibleEnd,
+            lastCandleX,
+            gridTimeAxisX,
+            priceTickCount,
+            timeTickCount: timeTicks.length,
+            dataLen,
+            selectedSymbol,
+            loadedSymbol,
+            legendSymbol: extra && extra.legendSymbol != null
+                ? String(extra.legendSymbol)
+                : legendSymbol,
+            timeframe: chart && chart.currentTimeframe != null
+                ? String(chart.currentTimeframe)
+                : null,
+            replayActive,
+            replayPaused,
+        };
+        if (extra && extra.note != null) record.note = String(extra.note).slice(0, 160);
+        buffer.push(record);
+        if (buffer.length > CB01_MOUNT_SIG_V1_MAX_RECORDS) {
+            buffer.splice(0, buffer.length - CB01_MOUNT_SIG_V1_MAX_RECORDS);
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.__talariaCb01MountSigEnabledV1 = cb01MountSigV1Enabled;
+    window.__talariaCb01MountSigRecordV1 = cb01MountSigV1Record;
+    window.__talariaCb01MountSigSetTriggerV1 = cb01MountSigV1SetTrigger;
+    window.__talariaCb01MountSigGetV1 = function () {
+        if (!cb01MountSigV1Enabled()) return [];
+        const root = cb01MountSigV1RootWindow();
+        const buffer = root && root.__TALARIA_CB01_MOUNT_SIG_BUFFER_V1;
+        return Array.isArray(buffer) ? buffer.slice() : [];
+    };
+    window.__talariaCb01MountSigExportV1 = function (format) {
+        const rows = window.__talariaCb01MountSigGetV1();
+        if (String(format || '').toLowerCase() === 'jsonl') {
+            return rows.map((row) => JSON.stringify(row)).join('\n');
+        }
+        return JSON.stringify(rows, null, 2);
+    };
+    window.__talariaCb01MountSigClearV1 = function () {
+        if (!cb01MountSigV1Enabled()) return false;
+        const root = cb01MountSigV1RootWindow();
+        if (!root) return false;
+        root.__TALARIA_CB01_MOUNT_SIG_BUFFER_V1 = [];
+        root.__TALARIA_CB01_MOUNT_SIG_SEQ_V1 = 0;
+        root.__TALARIA_CB01_MOUNT_SIG_FIRST_VISIBLE_V1 = Object.create(null);
+        root.__TALARIA_CB01_MOUNT_SIG_PANEL_FIRST_SEEN_V1 = Object.create(null);
+        return true;
+    };
+}
 /** D-029 R2 — axis-margin floor (dev-proven); kill-switch __TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX */
 const PRICE_AXIS_MIN_R = 60;
 const PRICE_AXIS_MIN_L = 60;
@@ -26729,8 +27056,22 @@ class Chart {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
-            // Drawings must track candles during pan, wheel zoom, and axis zoom (including lite path).
-            const syncDrawingsNow = chartViewPanning || wheelBurstLight || axisZoomDragging || !interactionLite;
+            // Drawings must track candles during pan, wheel zoom, axis zoom, AND replay PLAY.
+            // PLAY always uses the interactionFast path; when interactionLite is also on
+            // (dense/zoomed-out after a TF switch), skipping redraw left SVG shapes at
+            // stale pixels while offsetX/candles kept moving — freeze/drift until pause.
+            // Kill-switch: window.__TALARIA_DISABLE_REPLAY_PLAY_DRAWING_SYNC_V1 = true
+            const replayPlayback = this._isReplayPlaybackRendering();
+            let alwaysReplayDrawingSync = true;
+            try {
+                alwaysReplayDrawingSync = !(typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_REPLAY_PLAY_DRAWING_SYNC_V1 === true);
+            } catch (_) { alwaysReplayDrawingSync = true; }
+            const syncDrawingsNow = chartViewPanning
+                || wheelBurstLight
+                || axisZoomDragging
+                || !interactionLite
+                || (alwaysReplayDrawingSync && replayPlayback);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
@@ -34401,6 +34742,20 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
+            // PLAY ticks are as hot as pan — use panFast (skip interaction setup) but
+            // still rebuild SVG from current scales so shapes track auto-scroll/TF.
+            if (typeof this._isReplayPlaybackRendering === 'function'
+                && this._isReplayPlaybackRendering()) {
+                const forceTf = !!(this.drawingManager && this.drawingManager._drawingsTfResyncPending);
+                if (forceTf && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
+                    try {
+                        this.drawingManager.refreshDrawingsForTimeframe();
+                        this.drawingManager._drawingsTfResyncPending = false;
+                    } catch (_) { /* ignore */ }
+                }
+                this.drawingManager.redrawAll({ panFast: true });
+                return;
+            }
             if (this._isChartViewPanning()) {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
