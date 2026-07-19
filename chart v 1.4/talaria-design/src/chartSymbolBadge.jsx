@@ -29,9 +29,37 @@ export const currencyCountry = {
 /** Alternate country tokens the calendar can emit → canonical 2-letter code we draw. */
 const countryAlias = { EZ: "EU", EA: "EU", EMU: "EU", UK: "GB", USA: "US", UAE: "AE" };
 
+/** CDN flag when we have no hand-drawn SVG (SI, AM, …). Text fallback if image 404s. */
+function FlagCdnImg({ code, w, h }) {
+  const [failed, setFailed] = useState(false);
+  const iso = String(code || "").trim().toUpperCase();
+  if (!iso || iso.length !== 2 || failed) {
+    return (
+      <svg width={w} height={h} viewBox="0 0 22 14" style={{ display: "block", flexShrink: 0 }}>
+        <rect width={22} height={14} fill="#1a2030" />
+        <text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">
+          {iso.slice(0, 2) || "??"}
+        </text>
+      </svg>
+    );
+  }
+  return (
+    <img
+      src={`https://flagcdn.com/w40/${iso.toLowerCase()}.png`}
+      width={w}
+      height={h}
+      alt={iso}
+      draggable={false}
+      onError={() => setFailed(true)}
+      style={{ display: "block", flexShrink: 0, objectFit: "cover", borderRadius: 1 }}
+    />
+  );
+}
+
 export function FlagSvg({ code, w = 22, h = 14 }) {
   const sw = { width: w, height: h, viewBox: "0 0 22 14", style: { display: "block", flexShrink: 0 } };
-  const cc = currencyCountry[code] || countryAlias[code] || code;
+  const raw = String(code || "").trim().toUpperCase();
+  const cc = currencyCountry[raw] || countryAlias[raw] || raw;
   const f = {
     EU: (
       <svg {...sw}>
@@ -333,16 +361,7 @@ export function FlagSvg({ code, w = 22, h = 14 }) {
       </svg>
     ),
   };
-  return (
-    f[cc] || (
-      <svg {...sw}>
-        <rect width={22} height={14} fill="#1a2030" />
-        <text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">
-          {cc}
-        </text>
-      </svg>
-    )
-  );
+  return f[cc] || <FlagCdnImg code={cc} w={w} h={h} />;
 }
 
 const QUOTE_TAIL = /(USDT|USDC|USD|PERP|SWAP)$/i;

@@ -1670,18 +1670,19 @@
                     var appliedSt = Number(ch._mcPlayFollowAppliedOffsetX);
                     if (Number.isFinite(appliedSt)
                         && Math.round(easedOffsetX * dprSt) === Math.round(appliedSt * dprSt)) {
-                        // Same device-pixel column as the last applied eased offset —
-                        // sub-pixel/stationary/paused advance. Re-pin without repaint
-                        // (the mirror already rendered this frame) so the coalesce is a
-                        // clean 1-render-per-device-pixel-column.
+                        // Same device-pixel column — keep X stable, but still paint once.
+                        // Mirror may have skipped its render (defer-to-eased) so tick
+                        // candle morph must happen here; a second X paint is what shook B.
                         ch.offsetX = appliedSt;
                         if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                        ch.renderPending = false;
+                        if (typeof ch.render === 'function') ch.render();
                     } else {
                         ch.offsetX = easedOffsetX;
                         if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
                         ch._mcPlayFollowAppliedOffsetX = Number(ch.offsetX);
                         ch._mcPlayFollowRenders = (ch._mcPlayFollowRenders | 0) + 1;
-                        ch.renderPending = true;
+                        ch.renderPending = false;
                         if (typeof ch.render === 'function') ch.render();
                     }
                 } else {
@@ -1698,6 +1699,9 @@
                         ch.offsetX = prevOffsetX;
                     }
                     if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                    // Mirror skipped paint when deferring to eased — ensure one draw.
+                    ch.renderPending = false;
+                    if (typeof ch.render === 'function') ch.render();
                 }
             } else {
                 var passiveFollow = !rs.userHasPanned
@@ -2300,10 +2304,14 @@
         function doSeek() {
             if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
+            // Enter: keep each tile's visible window (avoid 1→2 jump / jumpToLatest).
+            // Unset = ON. Set window.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT = false to revert.
+            var preserveEnter = isEnter
+                && !(global && global.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT === false);
             try {
                 rs.goToReplayTimestamp(ts, {
-                    preserveVisibleWindow: false,
-                    centerOnCandle: !!isEnter,
+                    preserveVisibleWindow: !!preserveEnter,
+                    centerOnCandle: !!(isEnter && !preserveEnter),
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
@@ -2316,7 +2324,7 @@
             if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({
-                        resetPriceScale: !!isEnter,
+                        resetPriceScale: !!(isEnter && !preserveEnter),
                         render: false,
                     });
                 } catch (_) {}
@@ -2343,10 +2351,29 @@
         // here AND in onDone double-painted offsetX every frame on mixed-TF
         // Play (stick/flash). No-onDone callers still get follow below.
         var followHere = typeof onDone !== 'function';
+        function maybeFollowAfterEnter() {
+            if (!isEnter) return;
+            // Only hard-follow (jumpToLatest) when the tile is blank / playhead off-screen.
+            var preserveEnter = !(global && global.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT === false);
+            if (preserveEnter) {
+                var needs = false;
+                try {
+                    if (typeof ch._multichartViewportNeedsRecovery === 'function') {
+                        needs = !!ch._multichartViewportNeedsRecovery();
+                    }
+                    if (!needs && rs && typeof rs._isReplayPlayheadOnScreen === 'function') {
+                        needs = !rs._isReplayPlayheadOnScreen(ch);
+                    }
+                } catch (_) { needs = true; }
+                if (!needs) return;
+            }
+            scheduleMultichartPanelReplayFollow(ch);
+        }
+
         if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
             ch.ensureReplayDataCoversTimestamp(ts).then(function () {
                 doSeek();
-                if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                maybeFollowAfterEnter();
                 if (followHere) {
                     try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 }
@@ -2354,7 +2381,7 @@
             }).catch(function (e) {
                 warn('forceReplaySeek: ensureReplayDataCoversTimestamp failed', e && e.message);
                 doSeek();
-                if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                maybeFollowAfterEnter();
                 if (followHere) {
                     try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 }
@@ -2363,7 +2390,7 @@
             return;
         }
         doSeek();
-        if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+        maybeFollowAfterEnter();
         if (followHere) {
             try { maybePanelPlayViewportFollow(ch); } catch (_) {}
         }
@@ -2399,6 +2426,38 @@
                 }
             });
         });
+    }
+
+    /**
+     * After TF switch: only hard-follow (enableAutoScroll → jumpToLatest) when the
+     * tile is blank / playhead off-screen. Always following re-renders "from the
+     * beginning" and wipes the preserved TF viewport.
+     * Kill-switch: window.__TALARIA_FIX_TF_SWITCH_PRESERVE_VIEWPORT = false
+     */
+    function scheduleTfSwitchReplayFollowIfNeeded(ch) {
+        if (!ch) return;
+        if (global && global.__TALARIA_FIX_TF_SWITCH_PRESERVE_VIEWPORT === false) {
+            scheduleMultichartPanelReplayFollow(ch);
+            return;
+        }
+        var rs = ch.replaySystem;
+        if (!rs || !rs.isActive) return;
+        var needs = false;
+        try {
+            if (typeof ch._multichartViewportNeedsRecovery === 'function') {
+                needs = !!ch._multichartViewportNeedsRecovery();
+            }
+            if (!needs && typeof rs._isReplayPlayheadOnScreen === 'function') {
+                needs = !rs._isReplayPlayheadOnScreen(ch);
+            }
+            if (!needs && (!Array.isArray(ch.data) || ch.data.length === 0)) {
+                needs = true;
+            }
+        } catch (_) {
+            needs = true;
+        }
+        if (!needs) return;
+        scheduleMultichartPanelReplayFollow(ch);
     }
 
     function applyReplayEnter(ch, ts) {
@@ -2440,6 +2499,10 @@
                 var enterOpts = { startAtBeginning: true };
                 if (Number.isFinite(ts)) {
                     enterOpts.suppressInitialUpdateChartData = true;
+                    // Avoid realignAfterLayout rewriting offsetX before preserve seek finishes.
+                    if (!(global && global.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT === false)) {
+                        enterOpts.skipRealignAfterLayout = true;
+                    }
                 }
                 rs.enterReplayMode(enterOpts);
             } catch (e) {
@@ -2736,7 +2799,7 @@
                             try {
                                 if (ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: true })) {
                                     setTimeout(function () {
-                                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                        try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                                     }, 0);
                                     return;
                                 }
@@ -2763,7 +2826,7 @@
                         if (typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
                             && ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: args.__fromHostFanout === true })) {
                             setTimeout(function () {
-                                try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                             }, 0);
                             return;
                         }
@@ -2788,7 +2851,7 @@
                                 }
                                 if (ch._multichartMirrorHostTfSwitchIfReady(tf, { fromHostFanout: true })) {
                                     setTimeout(function () {
-                                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                        try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                                     }, 0);
                                     return;
                                 }
@@ -2808,13 +2871,13 @@
                             var delayedSw = ch.setTimeframe(tf);
                             if (delayedSw && typeof delayedSw.then === 'function') {
                                 delayedSw.then(function () {
-                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                    try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                                 }).catch(function (e) {
                                     warn('setTimeframe async failed', e && e.message);
                                 });
                             } else {
                                 setTimeout(function () {
-                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                                    try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                                 }, 0);
                             }
                         };
@@ -2824,14 +2887,14 @@
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
                         sw.then(function () {
-                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                            try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                         }).catch(function (e) {
                             warn('setTimeframe async failed', e && e.message);
                         });
                         return;
                     }
                     setTimeout(function () {
-                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                        try { scheduleTfSwitchReplayFollowIfNeeded(ch); } catch (_) {}
                     }, 0);
                     return;
                 }

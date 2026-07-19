@@ -31598,26 +31598,83 @@ class Chart {
             return false;
         }
 
-        // Replay: ALWAYS re-frame the new timeframe on the current replay candle
-        // (playhead) at the same on-screen slot as the previous timeframe, keeping
-        // the existing candle width. Preserving an old-TF *bar count* (the default
-        // restore below) shrinks candleWidth to fill a phantom window the coarse TF
-        // cannot fill early in a session, squashing the few bars to one side with a
-        // huge empty future region (the "TF switch drifts left" bug). Right-edge
-        // replay follow keeps the playhead at a consistent position on every TF, so
-        // switching timeframe always shows the same play position as the one before.
-        // If the user manually panned away from follow we fall through and keep their
-        // position (forceRecenter:false → syncReplayViewportToPlayhead returns false).
+        // Replay TF restore. Default (fix ON): pin the captured playhead / left-edge
+        // at the same screen X so the chart updates smoothly instead of right-anchoring
+        // a short new-TF prefix (empty left) or resetting via jumpToLatest.
+        // Kill-switch: window.__TALARIA_FIX_TF_SWITCH_PRESERVE_VIEWPORT = false
+        // restores the old force-recenter path.
         const _replay = this.replaySystem;
         if (_replay && _replay.isActive
             && typeof _replay.syncReplayViewportToPlayhead === 'function') {
             const _keepPriceScale = !!(vp && (vp.autoScale === false || vp.priceScaleLocked));
+            const preserveTf = (typeof window === 'undefined'
+                || window.__TALARIA_FIX_TF_SWITCH_PRESERVE_VIEWPORT !== false);
+
+            if (preserveTf
+                && Number.isFinite(vp.anchorTs)
+                && Number.isFinite(vp.anchorScreenX)) {
+                this._clearTfSwitchAnchorLock();
+                if (_keepPriceScale) {
+                    if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
+                    if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
+                    if (Number.isFinite(vp.manualCenterPrice)) this.manualCenterPrice = vp.manualCenterPrice;
+                    if (Number.isFinite(vp.manualRange)) this.manualRange = vp.manualRange;
+                    this.autoScale = false;
+                    if (this.priceScale) this.priceScale.autoScale = false;
+                } else {
+                    this.autoScale = true;
+                    if (this.priceScale) this.priceScale.autoScale = true;
+                }
+
+                // Prefer wall-clock span for zoom; otherwise keep prior candleWidth
+                // (bar-count alone can squash early-session coarse TFs).
+                const vpForLock = { ...vp };
+                if (!(Number.isFinite(vp.spanMs) && vp.spanMs > 0)
+                    && Number.isFinite(vp.candleWidth) && vp.candleWidth > 0) {
+                    vpForLock.visibleBarCount = null;
+                }
+
+                let committed = false;
+                if (vp.anchorMode === 'viewportLeft'
+                    && Number.isFinite(vp.leftTs)
+                    && Number.isFinite(vp.leftScreenX)) {
+                    committed = this._commitTfSwitchAnchorLock({
+                        ...vpForLock,
+                        anchorTs: vp.leftTs,
+                        anchorScreenX: vp.leftScreenX,
+                    });
+                } else {
+                    committed = this._commitTfSwitchAnchorLock(vpForLock);
+                }
+
+                if (committed) {
+                    if (vp.userHasPanned) {
+                        _replay.userHasPanned = true;
+                        _replay.autoScrollEnabled = false;
+                    } else {
+                        _replay.userHasPanned = false;
+                        _replay.autoScrollEnabled = vp.autoScrollEnabled !== false;
+                    }
+                    const onScreen = typeof _replay._isReplayPlayheadOnScreen === 'function'
+                        ? _replay._isReplayPlayheadOnScreen(this)
+                        : true;
+                    if (!onScreen) {
+                        _replay.userHasPanned = false;
+                        _replay.autoScrollEnabled = true;
+                        _replay.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: false,
+                            resetPriceScale: !_keepPriceScale,
+                            forceRecenter: true,
+                            render: false,
+                        });
+                    }
+                    this._chartViewRestored = true;
+                    return true;
+                }
+            }
+
+            // Legacy: force right-edge reframe on the playhead.
             this._clearTfSwitchAnchorLock();
-            // A TF switch always re-frames on the playhead (right-edge follow), even
-            // when the user had dragged/panned the previous timeframe. Without this,
-            // the panned "viewportLeft + bar-count" restore below drifts on the new TF
-            // (the drag-then-switch bug). Clearing userHasPanned makes drag+switch
-            // behave exactly like the no-drag switch, which already works perfectly.
             _replay.userHasPanned = false;
             const _synced = _replay.syncReplayViewportToPlayhead(this, {
                 centerPlayhead: false,

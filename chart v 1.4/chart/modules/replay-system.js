@@ -546,6 +546,151 @@ class ReplaySystem {
         return typeof window === 'undefined' || window.__TALARIA_FIX_REPLAY_MODE_PLAY_ROUTING !== false;
     }
 
+    /**
+     * Keep the visible chart window when entering / seeking replay (pick start,
+     * multichart enter). Unset = ON. Set window.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT = false to revert.
+     */
+    _isReplayEnterPreserveViewportFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT !== false;
+    }
+
+    _getReplayCandleSpacing(chartInstance = this.chart) {
+        if (!chartInstance) return NaN;
+        if (typeof chartInstance.getCandleSpacing === 'function') {
+            const s = chartInstance.getCandleSpacing();
+            if (Number.isFinite(s) && s > 0) return s;
+        }
+        const w = Number(chartInstance.candleWidth);
+        const g = Number(chartInstance.candleGap);
+        const spacing = (Number.isFinite(w) ? w : 0) + (Number.isFinite(g) ? g : 2);
+        return spacing > 0 ? spacing : NaN;
+    }
+
+    /**
+     * Snapshot so a post-slice viewport can keep the same on-screen candle position.
+     * Raw offsetX alone is wrong after replay cuts data (indices change).
+     * @param {number} [anchorDisplayIndex] display-data index of the candle to pin (pick start)
+     */
+    _captureReplayEnterViewportAnchor(chartInstance = this.chart, anchorDisplayIndex = null) {
+        const chart = chartInstance;
+        if (!chart || !Array.isArray(chart.data) || !chart.data.length) return null;
+        const spacing = this._getReplayCandleSpacing(chart);
+        if (!(Number.isFinite(spacing) && spacing > 0)) return null;
+        const m = chart.margin || { l: 0, r: 70 };
+        const plotLeft = Number(m.l) || 0;
+        let anchorIdx = Number(anchorDisplayIndex);
+        if (!Number.isFinite(anchorIdx) || anchorIdx < 0 || anchorIdx >= chart.data.length) {
+            // Pin left-edge bar when no explicit pick index (seek / peer enter).
+            anchorIdx = Math.max(0, Math.min(
+                chart.data.length - 1,
+                Math.floor(-(Number(chart.offsetX) || 0) / spacing)
+            ));
+        }
+        const anchorTs = Number(chart.data[anchorIdx]?.t);
+        const screenX = plotLeft + anchorIdx * spacing + (Number(chart.offsetX) || 0);
+        const explicitPick = Number.isFinite(Number(anchorDisplayIndex));
+        return {
+            anchorTs: Number.isFinite(anchorTs) ? anchorTs : null,
+            screenX: Number.isFinite(screenX) ? screenX : null,
+            // Pick-start: after slice that candle is the playhead (last bar).
+            pinPlayhead: explicitPick,
+            candleWidth: chart.candleWidth,
+            candleGap: chart.candleGap,
+            priceZoom: chart.priceZoom,
+            priceOffset: chart.priceOffset,
+            autoScale: chart.autoScale,
+            manualCenterPrice: chart.manualCenterPrice,
+            manualRange: chart.manualRange,
+        };
+    }
+
+    /** True when the last loaded bar (replay playhead) is inside the plot horizontally. */
+    _isReplayPlayheadOnScreen(chartInstance = this.chart) {
+        const chart = chartInstance;
+        if (!chart || !Array.isArray(chart.data) || !chart.data.length) return false;
+        const spacing = this._getReplayCandleSpacing(chart);
+        if (!(Number.isFinite(spacing) && spacing > 0)) return false;
+        const m = chart.margin || { l: 0, r: 70 };
+        let effectiveW = Number(chart.w) || 0;
+        if (effectiveW < 80) {
+            try {
+                const el = chart.canvas && chart.canvas.parentElement;
+                const rw = el ? el.getBoundingClientRect().width : 0;
+                if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+            } catch (_) { /* ignore */ }
+        }
+        if (effectiveW < 80) effectiveW = 320;
+        const plotLeft = Number(m.l) || 0;
+        const plotRight = effectiveW - (Number(m.r) || 0);
+        const lastIdx = chart.data.length - 1;
+        const x = plotLeft + lastIdx * spacing + (Number(chart.offsetX) || 0) + spacing * 0.5;
+        return x >= plotLeft - spacing && x <= plotRight + spacing;
+    }
+
+    /**
+     * Re-apply a pre-slice viewport anchor after replay data is cut to the playhead.
+     * @returns {boolean} true when a usable offset was applied
+     */
+    _restoreReplayEnterViewportAnchor(chartInstance, snap) {
+        const chart = chartInstance;
+        if (!chart || !snap || !Array.isArray(chart.data) || !chart.data.length) return false;
+        if (Number.isFinite(snap.candleWidth) && snap.candleWidth > 0) {
+            chart.candleWidth = snap.candleWidth;
+        }
+        if (Number.isFinite(snap.candleGap)) chart.candleGap = snap.candleGap;
+        if (snap.autoScale === false) {
+            chart.autoScale = false;
+            if (Number.isFinite(snap.priceZoom)) chart.priceZoom = snap.priceZoom;
+            if (Number.isFinite(snap.priceOffset)) chart.priceOffset = snap.priceOffset;
+            chart.manualCenterPrice = snap.manualCenterPrice;
+            chart.manualRange = snap.manualRange;
+        }
+
+        const spacing = this._getReplayCandleSpacing(chart);
+        if (!(Number.isFinite(spacing) && spacing > 0)) return false;
+        const m = chart.margin || { l: 0 };
+        const plotLeft = Number(m.l) || 0;
+
+        let anchorIdx = -1;
+        if (snap.pinPlayhead) {
+            anchorIdx = chart.data.length - 1;
+        } else if (Number.isFinite(snap.anchorTs)) {
+            for (let i = chart.data.length - 1; i >= 0; i--) {
+                const t = Number(chart.data[i]?.t);
+                if (Number.isFinite(t) && t <= snap.anchorTs) {
+                    anchorIdx = i;
+                    break;
+                }
+            }
+            if (anchorIdx < 0) {
+                for (let i = 0; i < chart.data.length; i++) {
+                    const t = Number(chart.data[i]?.t);
+                    if (Number.isFinite(t) && t >= snap.anchorTs) {
+                        anchorIdx = i;
+                        break;
+                    }
+                }
+            }
+        }
+        // Fallback: pin the cut bar (playhead) at the saved screen X.
+        if (anchorIdx < 0 && Number.isFinite(snap.screenX)) {
+            anchorIdx = chart.data.length - 1;
+        }
+        if (anchorIdx < 0) return false;
+
+        if (Number.isFinite(snap.screenX)) {
+            chart.offsetX = snap.screenX - plotLeft - anchorIdx * spacing;
+        } else {
+            // Left-edge pin when only a timestamp was captured.
+            chart.offsetX = -anchorIdx * spacing;
+        }
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) { /* ignore */ }
+        }
+        return true;
+    }
+
     /** TAL-01612 residual: Auto/sync interval owner = chart TF only (ignore stale #replayTimeframe). */
     _isReplayIntervalOwnerFixEnabled() {
         return typeof window === 'undefined' || window.__TALARIA_DISABLE_REPLAY_INTERVAL_OWNER_V1 !== true;
@@ -2177,7 +2322,11 @@ class ReplaySystem {
         const targetTime = candle.t;
         let rawIndex = this.chart.rawData.findIndex(c => c.t >= targetTime);
         if (rawIndex < 0) rawIndex = this.chart.rawData.length - 1;
-        
+
+        const preserveView = this._isReplayEnterPreserveViewportFixEnabled();
+        const viewportAnchor = preserveView
+            ? this._captureReplayEnterViewportAnchor(this.chart, candleIndex)
+            : null;
         
         this.isActive = true;
         this.autoScrollEnabled = true;
@@ -2214,9 +2363,35 @@ class ReplaySystem {
         this.showToolbar();
         this.updateSliderRange();
         
-        // Filter data and render
-        this.updateChartData();
-        
+        // Slice + render. When preserving, skip force-recenter (that was the 1→2 jump).
+        this.updateChartData(preserveView ? false : true);
+
+        if (preserveView && viewportAnchor) {
+            const restored = this._restoreReplayEnterViewportAnchor(this.chart, viewportAnchor);
+            const onScreen = this._isReplayPlayheadOnScreen(this.chart);
+            if (restored && onScreen) {
+                // Keep the user's window; Follow button re-engages right-anchor later.
+                this.userHasPanned = true;
+                this.autoScrollEnabled = false;
+                if (typeof this.updateAutoScrollIndicator === 'function') {
+                    this.updateAutoScrollIndicator();
+                }
+            } else {
+                this.userHasPanned = false;
+                this.autoScrollEnabled = true;
+                this.syncReplayViewportToPlayhead(this.chart, {
+                    resetPriceScale: false,
+                    render: false,
+                    forceRecenter: true,
+                });
+            }
+            if (typeof this.chart.constrainOffset === 'function'
+                && !this.chart._tfSwitchAnchorLock) {
+                this.chart.constrainOffset();
+            }
+            this._applyPlaybackViewportLock(this.chart);
+            this._renderReplayChartUpdate();
+        }
     }
     
     /**
@@ -6142,6 +6317,11 @@ class ReplaySystem {
             return false;
         }
 
+        const preserveFix = preserveVisibleWindow && this._isReplayEnterPreserveViewportFixEnabled();
+        const viewportAnchor = preserveFix
+            ? this._captureReplayEnterViewportAnchor(chart)
+            : null;
+
         // Replay display is a prefix through the last bar at/before wall-clock playhead.
         // findGoToTargetIndex returns the first bar on/after ts — when ts predates the
         // series that collapses to index 0 → one stretched candle on multichart pair switch.
@@ -6181,7 +6361,29 @@ class ReplaySystem {
             om2._refreshAllGuardsToCurrentCandle();
         }
 
-        if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
+        if (preserveFix && viewportAnchor) {
+            const restored = this._restoreReplayEnterViewportAnchor(chart, viewportAnchor);
+            const needsRecovery = (typeof chart._multichartViewportNeedsRecovery === 'function'
+                && chart._multichartViewportNeedsRecovery())
+                || !this._isReplayPlayheadOnScreen(chart);
+            if (restored && !needsRecovery) {
+                this.userHasPanned = true;
+                this.autoScrollEnabled = false;
+                if (typeof this.updateAutoScrollIndicator === 'function') {
+                    this.updateAutoScrollIndicator();
+                }
+                if (typeof chart.render === 'function') chart.render();
+            } else {
+                // Blank / playhead off-screen — soft recenter (not jumpToLatest zoom reset).
+                this.userHasPanned = false;
+                this.autoScrollEnabled = true;
+                this.syncReplayViewportToPlayhead(chart, {
+                    resetPriceScale: false,
+                    render: true,
+                    forceRecenter: true,
+                });
+            }
+        } else if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
             const candleSpacing = typeof chart.getCandleSpacing === 'function'
                 ? chart.getCandleSpacing()
                 : (chart.candleWidth + (chart.candleGap || 2));
@@ -6779,6 +6981,9 @@ class ReplaySystem {
 
         const options = opts && typeof opts === 'object' ? opts : {};
         const lightPass = options.lightPass === true;
+        // Same-TF tick play: eased follow in panel-cmd-bridge owns the single paint.
+        // Rendering here first (stale/quantized X) then again at eased X is the shake.
+        const skipRender = options.skipRender === true;
         const passivePlay = chart._multichartPassivePlayActive === true;
         const preserveUntil = chart._multichartPreserveViewportUntil;
         const nowPv = (typeof performance !== 'undefined' && performance.now)
@@ -6859,7 +7064,7 @@ class ReplaySystem {
         try {
             this._scheduleReplayIndicatorRecalc();
         } catch (_indErr) { /* ignore */ }
-        if (typeof chart.render === 'function') {
+        if (!skipRender && typeof chart.render === 'function') {
             if (passivePlay || lightPass) {
                 chart.renderPending = false;
                 chart.render();
@@ -6979,8 +7184,11 @@ class ReplaySystem {
                 // restores the old quantized write in this mirror path.
                 const hostPlaying = !!(detail && detail.isPlaying)
                     || chart._multichartPassivePlayActive === true;
+                // Only defer the mirror paint when eased follow will own X+render.
+                // If the user panned this tile, follow is off — keep the mirror paint.
                 const deferPlayXToEased = hostPlaying
                     && !rangeSyncOn
+                    && !this.userHasPanned
                     && !(typeof window !== 'undefined'
                         && window.__TALARIA_MC_DISABLE_SAMETF_PANEL_PLAY_EASED_FOLLOW);
                 if (!deferPlayXToEased) {
@@ -6998,6 +7206,8 @@ class ReplaySystem {
                     }
                     if (followOffset != null) chart.offsetX = followOffset;
                 }
+                // Stash so finish can skip the mid-frame paint; eased follow owns X+render.
+                chart._mcDeferPlayRenderToEased = !!deferPlayXToEased;
                 chart._chartViewRestored = true;
             }
 
@@ -7028,7 +7238,12 @@ class ReplaySystem {
             }
 
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            this._finishMultichartMirrorRender(chart, { lightPass: true });
+            const skipRenderForEased = !!chart._mcDeferPlayRenderToEased;
+            chart._mcDeferPlayRenderToEased = false;
+            this._finishMultichartMirrorRender(chart, {
+                lightPass: true,
+                skipRender: skipRenderForEased,
+            });
             return true;
         } catch (_) {
             return false;

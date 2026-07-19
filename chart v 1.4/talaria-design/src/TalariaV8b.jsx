@@ -347,7 +347,8 @@ const SymBadge = ({ sym, w=18, h=12 }) => {
 };
 const FlagSvg = ({ code, w = 22, h = 14 }) => {
   const sw = { width: w, height: h, viewBox: "0 0 22 14", style: { display: "block", flexShrink: 0 } };
-  const cc = currencyCountry[code] || code;
+  const raw = String(code || "").trim().toUpperCase();
+  const cc = currencyCountry[raw] || raw;
   const f = {
     EU: <svg {...sw}><rect width={22} height={14} fill="#003399"/>{Array.from({length:12},(_,i)=>{const a=(i/12)*Math.PI*2-Math.PI/2;return<circle key={i} cx={11+4.8*Math.cos(a)} cy={7+4.8*Math.sin(a)} r={0.85} fill="#FFCC00"/>})}</svg>,
     JP: <svg {...sw}><rect width={22} height={14} fill="#fff"/><circle cx={11} cy={7} r={4} fill="#BC002D"/></svg>,
@@ -394,7 +395,21 @@ const FlagSvg = ({ code, w = 22, h = 14 }) => {
       <circle cx={13.5} cy={7.5} r={0.8} fill="#CC142B" stroke="#fff" strokeWidth={0.3}/>
     </svg>,
   };
-  return f[cc] || <svg {...sw}><rect width={22} height={14} fill="#1a2030"/><text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">{cc}</text></svg>;
+  if (f[cc]) return f[cc];
+  // Unknown ISO (SI, AM, …): use flag CDN instead of two-letter text stub.
+  if (cc && String(cc).length === 2) {
+    return (
+      <img
+        src={`https://flagcdn.com/w40/${String(cc).toLowerCase()}.png`}
+        width={w}
+        height={h}
+        alt={cc}
+        draggable={false}
+        style={{ display: "block", flexShrink: 0, objectFit: "cover", borderRadius: 1 }}
+      />
+    );
+  }
+  return <svg {...sw}><rect width={22} height={14} fill="#1a2030"/><text x={11} y={10} textAnchor="middle" fontSize={6} fontWeight="bold" fill="#8CA0FF" fontFamily="sans-serif">{cc}</text></svg>;
 };
 
 const EMOJI_CATS = [
