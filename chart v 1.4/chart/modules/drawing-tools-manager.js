@@ -13521,12 +13521,23 @@ class DrawingToolsManager {
     /**
      * Debounced post-TF-switch refresh (called from chart._endTimeframeSwitching).
      * Waits until chart.data is ready, re-resolves timestamp anchors, then full redraw.
+     *
+     * During replay PLAY a TF switch can keep `_timeframeSwitching` / `_timeframeChanging`
+     * true longer than the old ~1s retry budget. Giving up left shapes at stale bar
+     * indices ("frozen on screen") until pause/click triggered another full redraw.
      */
     scheduleRefreshAfterTimeframe(options = {}) {
         const force = !!options.force;
         if (this._tfRefreshScheduled && !force) return;
         this._tfRefreshScheduled = true;
         const token = (this._tfRefreshToken = (this._tfRefreshToken || 0) + 1);
+        const startedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        // ~8s cover slow backtest TF fetch while PLAY is paused mid-switch.
+        const maxWaitMs = Number.isFinite(Number(options.maxWaitMs))
+            ? Number(options.maxWaitMs)
+            : 8000;
 
         const attempt = (retriesLeft) => {
             const run = () => {
@@ -13541,13 +13552,24 @@ class DrawingToolsManager {
                     && chart.data.length > 0
                     && chart.xScale
                     && chart.yScale;
+                const now = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                const waitedMs = now - startedAt;
 
                 if (switching || !dataReady) {
-                    if (retriesLeft > 0) {
-                        attempt(retriesLeft - 1);
+                    // Keep waiting while the switch flag is up (don't burn the budget
+                    // and abort mid-switch). Only stop after maxWaitMs.
+                    if (waitedMs < maxWaitMs) {
+                        attempt(Math.max(retriesLeft, 1));
                         return;
                     }
                     this._tfRefreshScheduled = false;
+                    // Last-chance apply even if a flag stuck — better than frozen shapes.
+                    if (dataReady) {
+                        try { this.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
+                        try { this.redrawAll({ forceFull: true }); } catch (_) { /* ignore */ }
+                    }
                     return;
                 }
 
@@ -13574,7 +13596,31 @@ class DrawingToolsManager {
             }
         };
 
-        attempt(24);
+        attempt(48);
+    }
+
+    /**
+     * Force timestamp→index resync after a replay TF switch (PLAY or pause).
+     * Safe to call mid-play — uses tfRefresh so shapes are not playhead-clamped.
+     */
+    resyncDrawingsAfterReplayTimeframeChange() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_DRAWING_TF_PLAY_RESYNC_V1 === true) {
+                return;
+            }
+        } catch (_) { /* ignore */ }
+        if (!this.chart || !Array.isArray(this.drawings) || this.drawings.length === 0) return;
+        try {
+            this.refreshDrawingsForTimeframe();
+            if (this.chart.xScale && this.chart.yScale) {
+                this.redrawAll({ forceFull: true });
+            }
+        } catch (_) { /* ignore */ }
+        // Also schedule the debounced path in case data/scales settle a frame later.
+        try {
+            this.scheduleRefreshAfterTimeframe({ force: true });
+        } catch (_) { /* ignore */ }
     }
 
     /**

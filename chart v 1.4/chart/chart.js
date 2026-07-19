@@ -21989,8 +21989,16 @@ class Chart {
             if (!held) {
                 try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
             }
-            if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
-                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
+            if (this.drawingManager) {
+                try {
+                    if (typeof this.drawingManager.resyncDrawingsAfterReplayTimeframeChange === 'function'
+                        && this.replaySystem
+                        && this.replaySystem.isActive) {
+                        this.drawingManager.resyncDrawingsAfterReplayTimeframeChange();
+                    } else if (typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                        this.drawingManager.scheduleRefreshAfterTimeframe({ force: true });
+                    }
+                } catch (_dr) { /* ignore */ }
             }
             this._scheduleIndicatorsAfterTimeframe();
         });

@@ -7632,6 +7632,16 @@ class ReplaySystem {
             this._tfSwitchSkipHeavyIndicators = false;
             this._timeframeChanging = false;
             signalReady();
+            // Shapes are timestamp-anchored; TF change rebuilds bar indices. Do this
+            // even when PLAY will resume (updateChartData skips redrawAll while playing).
+            try {
+                const dm = this.chart && this.chart.drawingManager;
+                if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
+                    dm.resyncDrawingsAfterReplayTimeframeChange();
+                } else if (dm && typeof dm.scheduleRefreshAfterTimeframe === 'function') {
+                    dm.scheduleRefreshAfterTimeframe({ force: true });
+                }
+            } catch (_dr) { /* ignore */ }
         }
 
         // Order checks only after playhead + walk-forward slice are restored (paused replay).
@@ -7660,6 +7670,15 @@ class ReplaySystem {
             if (changeSeq !== this._tfChangeSeq) return;
             try {
                 restoreSavedPlayhead();
+
+                // One more drawing resync after playhead restore, before PLAY ticks
+                // resume (those ticks intentionally skip redrawAll for perf).
+                try {
+                    const dm = this.chart && this.chart.drawingManager;
+                    if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
+                        dm.resyncDrawingsAfterReplayTimeframeChange();
+                    }
+                } catch (_dr2) { /* ignore */ }
 
                 const nextCandle = this.fullRawData[this.currentIndex + 1];
                 if (nextCandle && savedTickProgress > 0) {
