@@ -3428,6 +3428,33 @@ def _request_requires_journal_for_backtest(path: str, request: Request) -> bool:
     return False
 
 
+def _request_is_propfirm_entry(path: str, request: Request) -> bool:
+    """Legacy prop-firm UI entry points (D-036 GAP-4). Normal backtest is not included."""
+    if path in ("/chart/propfirm-backtest.html", "/propfirm-backtest.html"):
+        return True
+    if path not in ("/chart/index.html", "/index.html"):
+        return False
+    try:
+        qs = parse_qs(urlparse(str(request.url)).query)
+        mode = (qs.get("mode") or [""])[0].strip().lower()
+        return mode == "propfirm"
+    except Exception:
+        return False
+
+
+def _assert_propfirm_session_allowed(user) -> None:
+    """Reject non-admin prop-firm session creation (D-036 GAP-4)."""
+    if (getattr(user, "role", None) or "") == "admin":
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "propfirm_disabled",
+            "message": "Prop-firm sessions are not available for this account",
+        },
+    )
+
+
 def _request_is_backtest_sessions_dashboard(path: str, request: Request) -> bool:
     """Homepage dashboard routes for backtest / sessions (query ?view=sessions|trades)."""
     sec = _request_dashboard_platform_section(path, request)
@@ -3491,7 +3518,7 @@ async def auth_middleware(request: Request, call_next):
         protected = True
     if path.startswith("/dashboard"):
         protected = True
-    if path in {"/index.html", "/backtesting.html"}:
+    if path in {"/index.html", "/backtesting.html", "/propfirm-backtest.html"}:
         protected = True
     if path.startswith("/api/") and not (
         path == "/api/status"
@@ -3528,6 +3555,20 @@ async def auth_middleware(request: Request, call_next):
                     )
             finally:
                 db_gate.close()
+        # D-036 GAP-4: block legacy prop-firm HTML / ?mode=propfirm for non-admins.
+        # Admins retain access for support. mode=backtest is untouched.
+        if _request_is_propfirm_entry(path, request) and (user.role or "") != "admin":
+            if path.startswith("/api/") or path.startswith("/ws/"):
+                return JSONResponse(
+                    {
+                        "detail": {
+                            "code": "propfirm_disabled",
+                            "message": "Prop-firm mode is not available for this account",
+                        }
+                    },
+                    status_code=403,
+                )
+            return JSONResponse({"detail": "Not found"}, status_code=404)
         # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
         if _request_requires_journal_for_backtest(path, request):
             if not _chart_user_has_module(user, "backtest"):
@@ -22994,6 +23035,8 @@ async def create_trading_session(payload: TradingSessionCreateIn, request: Reque
         raise HTTPException(status_code=400, detail="Name is required")
     if session_type not in {"personal", "propfirm"}:
         raise HTTPException(status_code=400, detail="Invalid session_type")
+    if session_type == "propfirm":
+        _assert_propfirm_session_allowed(user)
 
     try:
         cfg_json = json.dumps(payload.config or {}, separators=(",", ":"))
@@ -24965,8 +25008,9 @@ async def get_file_meta(file_id: int):
         db.close()
 
 @app.delete("/api/file/{file_id}")
-async def delete_file(file_id: int):
-    """Delete a CSV file and its pre-aggregated derivatives"""
+async def delete_file(file_id: int, request: Request):
+    """Delete a CSV file and its pre-aggregated derivatives — admin only (D-036 GAP-1)."""
+    _require_admin(request)
     db = next(get_db())
     try:
         db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
@@ -25134,7 +25178,9 @@ async def push_candle_update(file_id: int, request: Request):
     HTTP endpoint to push a candle update to all connected WebSocket clients.
     Used by replay system or external data feeds.
     Body: {"type": "candle_update"|"candle_close", "timeframe": "1m", "candle": {...}}
+    Admin-gated (D-036 sweep): broadcasts mutate shared live chart state for all viewers.
     """
+    _require_admin(request)
     body = await request.json()
     msg_type = body.get("type", "candle_update")
     timeframe = body.get("timeframe", "1m")
