@@ -1227,7 +1227,28 @@ class ScreenshotManager {
             const imageType = format === 'jpg' ? 'image/jpeg' : 'image/png';
             const imageQuality = format === 'jpg' ? quality : undefined;
             
-            if (action === 'download') {
+            if (action === 'blob' || action === 'file') {
+                // Return a Blob/File for callers that attach screenshots (support chat, etc.).
+                const blob = await new Promise((resolve, reject) => {
+                    try {
+                        canvas.toBlob(
+                            (b) => resolve(b),
+                            imageType,
+                            imageQuality
+                        );
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+                if (!blob) throw new Error('Failed to create image');
+                if (action === 'file') {
+                    const ext = format === 'jpg' ? 'jpg' : 'png';
+                    return new File([blob], `Talaria-Chart-${Date.now()}.${ext}`, {
+                        type: blob.type || imageType,
+                    });
+                }
+                return blob;
+            } else if (action === 'download') {
                 const blob = await new Promise((resolve, reject) => {
                     try {
                         canvas.toBlob(

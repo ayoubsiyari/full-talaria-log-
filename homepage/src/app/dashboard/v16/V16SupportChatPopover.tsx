@@ -207,6 +207,15 @@ export function V16SupportChatPopover() {
     } catch {
       /* ignore */
     }
+    try {
+      await supportApi("/api/notifications/read", {
+        method: "PATCH",
+        body: JSON.stringify({ thread_id: threadId }),
+      });
+    } catch {
+      /* ignore */
+    }
+    setToast((cur) => (cur && cur.threadId === threadId ? null : cur));
   }, []);
 
   const connectWs = useCallback(

@@ -13688,10 +13688,31 @@ class SupportCannedReplyPatchIn(BaseModel):
 class NotificationsReadIn(BaseModel):
     ids: list[int] | None = None
     all: bool | None = None
+    thread_id: int | None = None
 
 
 class SupportMarkReadIn(BaseModel):
     last_read_message_id: int | None = None
+
+
+def _support_mark_thread_notifications_read(
+    db,
+    *,
+    user_id: int,
+    thread_id: int,
+    now: datetime | None = None,
+) -> int:
+    """Mark unread notifications for a support thread as read. Returns rows touched."""
+    now = now or datetime.utcnow()
+    return (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == int(user_id),
+            Notification.thread_id == int(thread_id),
+            Notification.read_at.is_(None),
+        )
+        .update({Notification.read_at: now}, synchronize_session=False)
+    )
 
 
 async def _support_consume_upload_attachment(upload) -> tuple[bytes, str, str | None]:
@@ -14563,6 +14584,8 @@ async def support_mark_thread_read(
                     last_read_message_id=target_mid,
                 )
             )
+        # Opening/reading a ticket clears the chat badge for that thread.
+        _support_mark_thread_notifications_read(db, user_id=user.id, thread_id=thread_id)
         db.commit()
         req_upto, stf_upto = _support_read_watermarks(db, t)
         await support_ws_manager.broadcast(
@@ -14574,6 +14597,10 @@ async def support_mark_thread_read(
                 "staff_read_upto": stf_upto,
             },
         )
+        try:
+            await _push_inbox_notification_pings([int(user.id)], thread_id, None)
+        except Exception:
+            pass
         return {"read_state": {"requester_read_upto": req_upto, "staff_read_upto": stf_upto}}
     finally:
         db.close()
@@ -15499,6 +15526,7 @@ async def admin_support_patch_thread(
             raise HTTPException(status_code=404, detail="Thread not found")
         now = datetime.utcnow()
         changes: dict = {}
+        cleared_owner_notifs = False
         if payload.status is not None:
             old = t.status
             st = _support_validate_status(payload.status)
@@ -15506,6 +15534,11 @@ async def admin_support_patch_thread(
             changes["status"] = {"from": old, "to": st}
             if st in ("resolved", "closed"):
                 _support_email_user_on_status(db, t, st)
+                # Resolved/closed tickets should not leave a sticky unread badge.
+                _support_mark_thread_notifications_read(
+                    db, user_id=int(t.user_id), thread_id=int(t.id), now=now
+                )
+                cleared_owner_notifs = True
         if payload.priority is not None:
             old_p = t.priority
             t.priority = _support_validate_priority(payload.priority)
@@ -15572,6 +15605,11 @@ async def admin_support_patch_thread(
                 target_id=t.id,
                 params=changes,
             )
+        if cleared_owner_notifs:
+            try:
+                await _push_inbox_notification_pings([int(t.user_id)], int(t.id), None)
+            except Exception:
+                pass
         return {"thread": _support_thread_dict(db, t, viewer=admin)}
     finally:
         db.close()
@@ -15833,6 +15871,10 @@ async def notifications_mark_read(payload: NotificationsReadIn, request: Request
             db.query(Notification).filter(Notification.user_id == user.id, Notification.read_at.is_(None)).update(
                 {Notification.read_at: now}, synchronize_session=False
             )
+        elif payload.thread_id is not None:
+            _support_mark_thread_notifications_read(
+                db, user_id=user.id, thread_id=int(payload.thread_id), now=now
+            )
         elif payload.ids:
             for nid in payload.ids:
                 n = (
@@ -15843,7 +15885,7 @@ async def notifications_mark_read(payload: NotificationsReadIn, request: Request
                 if n and n.read_at is None:
                     n.read_at = now
         else:
-            raise HTTPException(status_code=400, detail="Specify ids or all: true")
+            raise HTTPException(status_code=400, detail="Specify ids, thread_id, or all: true")
         db.commit()
         return {"success": True}
     finally:

@@ -14403,9 +14403,13 @@ const TalariaV8bLive = () => {
   const supportMsgEndRef = useRef(null);
   const supportReplyFileRef = useRef(null);
   const supportNewFileRef = useRef(null);
+  const supportNewBodyRef = useRef(null);
+  const supportReplyBodyRef = useRef(null);
+  const supportPasteArmRef = useRef(null);
   const [supportReplyFile, setSupportReplyFile] = useState(null);
   const [supportNewFile, setSupportNewFile] = useState(null);
   const [supportCapturing, setSupportCapturing] = useState(false);
+  const [supportPasteHint, setSupportPasteHint] = useState(null); // soft hint, not error
   const [supportToast, setSupportToast] = useState(null); // { id, subject, preview, threadId }
   const supportToastTimerRef = useRef(null);
   const supportSelThreadRef = useRef(null);
@@ -14444,6 +14448,7 @@ const TalariaV8bLive = () => {
     if (supportListScrollRef.current) supportListScrollTopRef.current = supportListScrollRef.current.scrollTop;
     setSupportSelThread(thread);
     setSupportError(null);
+    setSupportToast((cur) => (cur && thread && cur.threadId === thread.id ? null : cur));
   };
   const supportBackToList = () => {
     setSupportSelThread(null);
@@ -14478,9 +14483,22 @@ const TalariaV8bLive = () => {
     else setSupportReplyFile(file);
   };
 
+  const supportDataUrlToFile = (dataUrl, nameBase = "chart-screenshot") => {
+    const str = String(dataUrl || "");
+    const m = str.match(/^data:([^;]+);base64,(.+)$/i);
+    if (!m) return null;
+    const mime = m[1] || "image/jpeg";
+    const b64 = m[2];
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = mime.includes("png") ? "png" : "jpg";
+    return new File([bytes], `${nameBase}-${Date.now()}.${ext}`, { type: mime });
+  };
+
   const supportOnPasteImage = (e, which) => {
     const items = e.clipboardData?.items;
-    if (!items) return;
+    if (!items) return false;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item && String(item.type || "").startsWith("image/")) {
@@ -14488,34 +14506,127 @@ const TalariaV8bLive = () => {
         if (f) {
           e.preventDefault();
           supportPickImageFile(f, which);
+          setSupportPasteHint(null);
+          if (supportPasteArmRef.current) {
+            try { window.removeEventListener("paste", supportPasteArmRef.current, true); } catch (_) {}
+            supportPasteArmRef.current = null;
+          }
+          return true;
         }
-        break;
       }
     }
+    return false;
+  };
+
+  const supportArmPasteOnce = (which) => {
+    if (supportPasteArmRef.current) {
+      try { window.removeEventListener("paste", supportPasteArmRef.current, true); } catch (_) {}
+      supportPasteArmRef.current = null;
+    }
+    const onPaste = (ev) => {
+      const ok = supportOnPasteImage(ev, which);
+      if (ok) {
+        window.removeEventListener("paste", onPaste, true);
+        supportPasteArmRef.current = null;
+      }
+    };
+    supportPasteArmRef.current = onPaste;
+    window.addEventListener("paste", onPaste, true);
+    setTimeout(() => {
+      if (supportPasteArmRef.current === onPaste) {
+        window.removeEventListener("paste", onPaste, true);
+        supportPasteArmRef.current = null;
+        setSupportPasteHint((h) => (h ? null : h));
+      }
+    }, 10000);
+  };
+
+  const supportPasteImageButton = async (which) => {
+    setSupportError(null);
+    setSupportPasteHint(null);
+    // 1) Preferred: Clipboard API (needs permission / secure context).
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.read === "function") {
+      try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const type = (item.types || []).find((t) => String(t).startsWith("image/"));
+          if (!type) continue;
+          const blob = await item.getType(type);
+          supportPickImageFile(
+            new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }),
+            which
+          );
+          return;
+        }
+      } catch (_) {
+        /* blocked — fall through to armed Ctrl/V path */
+      }
+    }
+    // 2) Arm a one-shot paste listener + focus message box (always works with Ctrl/Cmd+V).
+    supportArmPasteOnce(which);
+    const el = which === "new" ? supportNewBodyRef.current : supportReplyBodyRef.current;
+    try { el?.focus?.(); } catch (_) {}
+    setSupportPasteHint("Clipboard ready — press Ctrl+V (Cmd+V on Mac) now to paste the image.");
   };
 
   const supportCaptureChartForAttach = async (which) => {
     if (supportCapturing) return;
     setSupportCapturing(true);
     setSupportError(null);
+    setSupportPasteHint(null);
     try {
       const sm = typeof window !== "undefined" ? window.screenshotManager : null;
-      let dataUrl = null;
-      if (sm && typeof sm.captureChartSnapshot === "function") {
-        dataUrl = await sm.captureChartSnapshot();
+      let file = null;
+
+      // Preferred: full chart capture returned as File (no fetch(dataUrl) — that fails in some browsers).
+      if (sm && typeof sm.takeScreenshotFromOptions === "function") {
+        try {
+          const out = await sm.takeScreenshotFromOptions("file", {
+            flash: true,
+            includeToolbar: true,
+            includeSidebar: false,
+            includeWatermark: true,
+            format: "jpg",
+            quality: 0.85,
+          });
+          if (out instanceof File) file = out;
+          else if (out instanceof Blob) {
+            file = new File([out], `chart-screenshot-${Date.now()}.jpg`, {
+              type: out.type || "image/jpeg",
+            });
+          }
+        } catch (e) {
+          console.warn("[Support] screenshot file capture failed", e);
+        }
       }
-      if (!dataUrl || !String(dataUrl).startsWith("data:image")) {
-        throw new Error("Could not capture chart screenshot.");
+
+      if (!file && sm && typeof sm.captureChartSnapshot === "function") {
+        const dataUrl = await sm.captureChartSnapshot();
+        file = supportDataUrlToFile(dataUrl, "chart-screenshot");
       }
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      const ext = (blob.type || "").includes("png") ? "png" : "jpg";
-      const file = new File([blob], `chart-screenshot-${Date.now()}.${ext}`, {
-        type: blob.type || (ext === "png" ? "image/png" : "image/jpeg"),
-      });
+
+      // Last resort: raw chart canvas pixels.
+      if (!file) {
+        const ch = (typeof window !== "undefined" && (window.getActiveChart?.() || window.chart)) || null;
+        const canvas = ch && ch.canvas;
+        if (canvas && typeof canvas.toBlob === "function") {
+          const blob = await new Promise((resolve) => {
+            try { canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85); }
+            catch (_) { resolve(null); }
+          });
+          if (blob) {
+            file = new File([blob], `chart-screenshot-${Date.now()}.jpg`, {
+              type: blob.type || "image/jpeg",
+            });
+          }
+        }
+      }
+
+      if (!file) throw new Error("Could not capture chart screenshot.");
       supportPickImageFile(file, which);
     } catch (err) {
-      setSupportError(err?.message || "Screenshot failed");
+      const msg = err?.message || "Screenshot failed";
+      setSupportError(msg === "Failed to fetch" ? "Screenshot failed — try Attach image instead." : msg);
     }
     setSupportCapturing(false);
   };
@@ -14553,13 +14664,28 @@ const TalariaV8bLive = () => {
   };
 
   const supportMarkRead = async (threadId) => {
-    try { await supportApi(`/api/support/threads/${threadId}/read`, { method: "PATCH", body: JSON.stringify({}) }); } catch {}
+    if (!threadId) return;
+    try {
+      await supportApi(`/api/support/threads/${threadId}/read`, { method: "PATCH", body: JSON.stringify({}) });
+    } catch {}
+    // Also clear notification rows for this ticket so the chat badge drops.
+    try {
+      await supportApi("/api/notifications/read", {
+        method: "PATCH",
+        body: JSON.stringify({ thread_id: threadId }),
+      });
+    } catch {}
+    await supportLoadNotifications();
+    setSupportToast((cur) => (cur && cur.threadId === threadId ? null : cur));
   };
 
   const supportLoadNotifications = async () => {
     try {
       const data = await supportApi("/api/notifications?limit=50");
-      const unread = (data.notifications || []).filter(n => !n.read_at).length;
+      // Chat badge = unread support ticket pings only (not other app notifications).
+      const unread = (data.notifications || []).filter((n) =>
+        !n.read_at && (n.type === "support_message" || n.thread_id != null)
+      ).length;
       setSupportUnread(unread);
     } catch {}
   };
@@ -35836,7 +35962,7 @@ const TalariaV8bLive = () => {
                     </div>
                     <div>
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Message</label>
-                      <textarea value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue… (Ctrl/Cmd+V to paste an image)" rows={5}
+                      <textarea ref={supportNewBodyRef} value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue… (Ctrl/Cmd+V to paste an image)" rows={5}
                         style={{ ...fieldStyle, resize:"vertical", minHeight:96, lineHeight:1.45 }} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(74,106,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
                     </div>
                     <div>
@@ -35844,23 +35970,14 @@ const TalariaV8bLive = () => {
                       <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
                         {attachChip("Attach image", () => supportNewFileRef.current?.click(), !!supportNewFile, false)}
                         <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "new"); }}/>
-                        {attachChip("Paste", async () => {
-                          try {
-                            const items = await navigator.clipboard.read();
-                            for (const item of items) {
-                              const type = item.types.find((t) => t.startsWith("image/"));
-                              if (!type) continue;
-                              const blob = await item.getType(type);
-                              supportPickImageFile(new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }), "new");
-                              return;
-                            }
-                            setSupportError("No image in clipboard — copy one, or press Ctrl/Cmd+V in the message box.");
-                          } catch (_) {
-                            setSupportError("Paste from clipboard blocked — click the message box and press Ctrl/Cmd+V.");
-                          }
-                        }, false, false)}
+                        {attachChip("Paste", () => { void supportPasteImageButton("new"); }, !!supportPasteHint, false)}
                         {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("new"); }, false, supportCapturing)}
                       </div>
+                      {supportPasteHint && (
+                        <div style={{ fontSize:11, color:c.acL, background:"rgba(74,106,255,0.10)", border:"1px solid rgba(74,106,255,0.28)", borderRadius:6, padding:"7px 10px", marginBottom:8 }}>
+                          {supportPasteHint}
+                        </div>
+                      )}
                       {attachPreview(supportNewFile, supportNewPreviewUrl, () => { setSupportNewFile(null); if (supportNewFileRef.current) supportNewFileRef.current.value = ""; })}
                     </div>
                     <button type="button" disabled={supportSending || (!supportNewSubject.trim() || (!supportNewBody.trim() && !supportNewFile))} onClick={supportCreateThread}
@@ -35900,26 +36017,17 @@ const TalariaV8bLive = () => {
                         <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                           {attachChip("Attach", () => supportReplyFileRef.current?.click(), !!supportReplyFile, false)}
                           <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "reply"); }}/>
-                          {attachChip("Paste", async () => {
-                            try {
-                              const items = await navigator.clipboard.read();
-                              for (const item of items) {
-                                const type = item.types.find((t) => t.startsWith("image/"));
-                                if (!type) continue;
-                                const blob = await item.getType(type);
-                                supportPickImageFile(new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }), "reply");
-                                return;
-                              }
-                              setSupportError("No image in clipboard — copy one, or press Ctrl/Cmd+V here.");
-                            } catch (_) {
-                              setSupportError("Paste blocked — focus the box and press Ctrl/Cmd+V.");
-                            }
-                          }, false, false)}
+                          {attachChip("Paste", () => { void supportPasteImageButton("reply"); }, !!supportPasteHint, false)}
                           {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("reply"); }, false, supportCapturing)}
                         </div>
+                        {supportPasteHint && (
+                          <div style={{ fontSize:11, color:c.acL, background:"rgba(74,106,255,0.10)", border:"1px solid rgba(74,106,255,0.28)", borderRadius:6, padding:"7px 10px" }}>
+                            {supportPasteHint}
+                          </div>
+                        )}
                         {attachPreview(supportReplyFile, supportReplyPreviewUrl, () => { setSupportReplyFile(null); if (supportReplyFileRef.current) supportReplyFileRef.current.value = ""; })}
                         <div style={{ display:"flex", alignItems:"flex-end", gap:6 }}>
-                          <textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message… (paste image with Ctrl/Cmd+V)" rows={2}
+                          <textarea ref={supportReplyBodyRef} value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message… (paste image with Ctrl/Cmd+V)" rows={2}
                             onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
                             style={{ flex:1, boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:8, outline:"none", fontFamily:F, resize:"none", maxHeight:90, lineHeight:1.4 }}
                             onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(74,106,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
