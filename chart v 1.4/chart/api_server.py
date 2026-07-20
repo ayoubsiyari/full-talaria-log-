@@ -3687,8 +3687,9 @@ def _pick_csvfile_by_canonical_ticker(
         if not cand_ticker or cand_ticker != wanted_ticker:
             continue
         if wanted_class:
-            cand_class = _firstrate_classify_ticker(cand_ticker)
-            if cand_class != wanted_class:
+            cand_ui = _firstrate_classify_ticker(cand_ticker)
+            cand_vendor = _firstrate_vendor_instrument_type(cand_ticker)
+            if cand_ui != wanted_class and cand_vendor != wanted_class:
                 continue
         cand_disk = (cand.filename or "").lower()
         if "_firstrate_" in cand_disk:
@@ -4412,10 +4413,23 @@ _FIRSTRATE_CURRENCY_SYMS = frozenset({
 # DXY is 3 letters so the stock heuristic would steal it; metals listed
 # explicitly so a stock-style FirstRate filename still lands under fx.
 _FIRSTRATE_FX_FORCE_SYMS = frozenset({
-    "DXY", "USDX", "DX",
+    "DXY", "USDX", "DX", "DXYUSD",
     "XAUUSD", "XAGUSD", "XPTUSD",
     "GOLD", "SILVER",  # common FirstRate/stock-feed aliases for spot metals
 })
+# FirstRate vendor `type=` for symbols whose *UI* class is fx but the vendor
+# zip lives under another instrument type (DXY is typically stock/index feed).
+_FIRSTRATE_FX_FORCE_VENDOR_TYPE = {
+    "DXY": "stock",
+    "USDX": "stock",
+    "DX": "stock",
+    "DXYUSD": "stock",
+    "GOLD": "stock",
+    "SILVER": "stock",
+    "XAUUSD": "fx",
+    "XAGUSD": "fx",
+    "XPTUSD": "fx",
+}
 # Cash-index / commodity CFD stems (FirstRate `index` type — not 6-letter FX pairs).
 _FIRSTRATE_INDEX_SYMS = frozenset({
     "SPX500","NAS100","US30","US2000","US100","US500",
@@ -4439,7 +4453,37 @@ _FIRSTRATE_FILENAME_META = frozenset({
     "ADJ","UNADJ","CONTIN","CONTINUOUS","SPLIT","DIV","RATIO","ABSOLUTE",
     "1MIN","5MIN","15MIN","30MIN","1HOUR","1DAY","1WEEK","1MONTH",
     "1H","4H","1D","1W","1MO",
+    # Asset-class / pipeline tokens that must not win over the real ticker
+    # (e.g. `stock_DXY_1min.csv` used to extract as STOCK → stock bucket).
+    "STOCK", "STOCKS", "ETF", "ETFS", "FX", "FOREX", "FUTURES", "FUTURE",
+    "CRYPTO", "INDEX", "INDICES", "OPTIONS", "OPTION", "FIRSTRATE",
+    "DATA", "BID", "ASK", "OHLC", "TICK", "BUNDLE",
 })
+
+
+def _firstrate_known_ticker_token(seg: str) -> str | None:
+    """Return a canonical ticker if `seg` is a known/force/pair symbol."""
+    if not seg:
+        return None
+    s = str(seg).strip().upper().replace("/", "").replace("-", "")
+    if not s or s in _FIRSTRATE_FILENAME_META or s.isdigit():
+        return None
+    if s in _FIRSTRATE_FX_FORCE_SYMS:
+        return s
+    if s in _FIRSTRATE_FUTURES_SYMS or s in _FIRSTRATE_INDEX_SYMS:
+        return s
+    if s in _FIRSTRATE_CRYPTO_SYMS:
+        return s
+    if len(s) >= 6:
+        base, quote = s[:3], s[3:6]
+        if base in _FIRSTRATE_CURRENCY_SYMS and quote in _FIRSTRATE_CURRENCY_SYMS:
+            return s
+        if base in _FIRSTRATE_CRYPTO_SYMS or quote in _FIRSTRATE_CRYPTO_SYMS:
+            return s
+    if re.fullmatch(r"[A-Z]{2,5}-[A-Z]{2,5}", str(seg).strip().upper()):
+        a, b = str(seg).strip().upper().split("-")
+        return a + b
+    return None
 
 
 def _firstrate_extract_ticker_from_filename(raw_name: str) -> str:
@@ -4456,10 +4500,23 @@ def _firstrate_extract_ticker_from_filename(raw_name: str) -> str:
     name = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
     name = re.sub(r"^\d{8}_\d{6}_", "", name)
     name = re.sub(r"^b\d{2}_\d{4}_firstrate_", "", name)
-    name = re.sub(r"^firstrate_", "", name)
-    parts = [p for p in name.split("_") if p]
+    name = re.sub(r"^firstrate_", "", name, flags=re.IGNORECASE)
+    parts = [p for p in re.split(r"[\s_-]+", name) if p]
     if not parts:
         return ""
+
+    # Prefer a known symbol anywhere in the name (handles stock_DXY_…, …_XAUUSD_…).
+    for p in parts:
+        known = _firstrate_known_ticker_token(p)
+        if known:
+            return known
+
+    # Whole-string scan for force FX stems (longest first).
+    upper = name.upper().replace("/", "").replace("-", "")
+    for sym in sorted(_FIRSTRATE_FX_FORCE_SYMS, key=len, reverse=True):
+        if re.search(rf"(?:^|[^A-Z0-9]){re.escape(sym)}(?:[^A-Z0-9]|$)", upper):
+            return sym
+
     seg = next(
         (p for p in parts
          if p.upper() not in _FIRSTRATE_FILENAME_META and not p.isdigit()),
@@ -4474,9 +4531,8 @@ def _firstrate_extract_ticker_from_filename(raw_name: str) -> str:
 def _firstrate_classify_ticker(ticker: str) -> str | None:
     """
     Bucket a canonical ticker into one of `futures | crypto | fx | stock`,
-    matching the grouping used in the backtesting dropdown. Returns None for
-    tickers we don't recognize (so they can be safely skipped by the
-    auto-nightly loop rather than sent to the wrong FirstRate endpoint).
+    matching the grouping used in the backtesting dropdown / sync-health UI.
+    Returns None for tickers we don't recognize.
     """
     t = (ticker or "").upper().replace("/", "").replace("-", "")
     if not t:
@@ -4501,6 +4557,20 @@ def _firstrate_classify_ticker(ticker: str) -> str | None:
     if t.isalpha() and 1 <= len(t) <= 5:
         return "stock"
     return None
+
+
+def _firstrate_vendor_instrument_type(ticker: str) -> str | None:
+    """
+    FirstRate download `type=` for a ticker. Usually same as UI class, but
+    dollar-index / stock-feed aliases stay on the vendor stock endpoint while
+    the sync-health UI still buckets them under fx.
+    """
+    t = (ticker or "").upper().replace("/", "").replace("-", "")
+    if not t:
+        return None
+    if t in _FIRSTRATE_FX_FORCE_VENDOR_TYPE:
+        return _FIRSTRATE_FX_FORCE_VENDOR_TYPE[t]
+    return _firstrate_classify_ticker(t)
 
 
 def _guess_ticker_from_csv_filename_fallback(original_name: str) -> str:
@@ -4566,9 +4636,12 @@ def _dataset_file_symbol_fields(original_name: str) -> tuple[str, str]:
 
 def _firstrate_classify_existing_datasets() -> dict[str, list[str]]:
     """
-    Walk the dataset registry and bucket every CSV into the FirstRate instrument
-    type it came from. Used by the nightly auto-sync to decide which
-    `data_file?type=…` calls to make and with which pairs.
+    Walk the dataset registry and bucket every CSV by the FirstRate *vendor*
+    instrument type used to refresh it (nightly auto-sync `data_file?type=…`).
+
+    UI/sync-health still uses `_firstrate_classify_ticker` (so DXY shows under
+    fx); this bucket uses `_firstrate_vendor_instrument_type` so DXY keeps
+    pulling from the stock feed.
 
     Returns `{"fx": ["EURUSD", …], "crypto": ["BTC", …], …}` with sorted,
     deduplicated ticker lists. Instrument types with zero datasets are omitted.
@@ -4583,7 +4656,7 @@ def _firstrate_classify_existing_datasets() -> dict[str, list[str]]:
         ticker = _firstrate_extract_ticker_from_filename(row.original_name or "")
         if not ticker:
             continue
-        cls = _firstrate_classify_ticker(ticker)
+        cls = _firstrate_vendor_instrument_type(ticker)
         if not cls:
             continue
         canon = _FIRSTRATE_INSTRUMENT_TYPE_CANON.get(cls)
@@ -5112,6 +5185,8 @@ def _firstrate_plan_pair_import(
     it = (instrument_type or "fx").strip().lower()
     requested = _normalize_ticker_filter_list(pairs) if pairs else []
     registry = _firstrate_canonical_ticker_status_map(it)
+    # Extra UI-class registries for remapped symbols (e.g. DXY UI=fx, vendor=stock).
+    _ui_registry_cache: dict[str, dict[str, dict]] = {}
 
     skipped_fresh: list[str] = []
     skipped_existing: list[str] = []
@@ -5120,11 +5195,24 @@ def _firstrate_plan_pair_import(
     wrong_class: list[dict] = []
 
     for tok in requested:
-        cls = _firstrate_classify_ticker(tok)
-        if cls and cls != it:
-            wrong_class.append({"ticker": tok, "expected": it, "actual": cls})
+        ui_cls = _firstrate_classify_ticker(tok)
+        vendor_cls = _firstrate_vendor_instrument_type(tok)
+        # Accept UI class (fx for DXY) or vendor download type (stock for DXY).
+        if ui_cls and ui_cls != it and vendor_cls != it:
+            wrong_class.append({
+                "ticker": tok,
+                "expected": it,
+                "actual": ui_cls,
+                "vendor_type": vendor_cls,
+            })
             continue
+        # Registry map is filtered by UI class; for vendor-only matches (DXY on
+        # stock import), look up the UI-class map.
         row = registry.get(tok)
+        if row is None and vendor_cls == it and ui_cls and ui_cls != it:
+            if ui_cls not in _ui_registry_cache:
+                _ui_registry_cache[ui_cls] = _firstrate_canonical_ticker_status_map(ui_cls)
+            row = _ui_registry_cache[ui_cls].get(tok)
         if row is None:
             to_download_new.append(tok)
             continue

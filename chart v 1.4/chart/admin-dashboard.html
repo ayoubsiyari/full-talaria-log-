@@ -3856,6 +3856,7 @@ select { cursor: default; }
                         <button type="button" class="btn sm" onclick="frPairsAdd('EURGBP EURAUD EURNZD EURCAD EURCHF GBPAUD GBPNZD GBPCAD GBPCHF AUDNZD AUDCAD AUDCHF NZDCAD NZDCHF CADCHF')">G10 crosses</button>
                         <button type="button" class="btn sm" onclick="frPairsAdd('USDNOK EURNOK USDSEK EURSEK USDDKK USDPLN EURPLN USDHUF USDCZK EURCZK USDSGD EURSGD SGDJPY USDHKD USDCNH USDTHB USDINR USDKRW USDIDR USDPHP USDMXN EURMXN USDBRL USDCLP USDTRY EURTRY USDZAR EURZAR GBPZAR')">Exotics</button>
                         <button type="button" class="btn sm" onclick="frPairsAdd('XAUUSD XAGUSD XPTUSD')" title="Spot metals">Metals</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('DXY USDX')" title="US Dollar Index (UI: fx; FirstRate feed is usually stock)">Dollar index</button>
                       </div>
                       <div id="fr_quickadd_index" class="fr-quickadd-btns" style="display:none">
                         <button type="button" class="btn sm primary" onclick="frPairsFillAllIndices()">All indices &amp; energy</button>
@@ -11423,8 +11424,9 @@ function buildDefaultForexTickerList() {
     'USDTRY', 'EURTRY', 'USDZAR', 'EURZAR', 'GBPZAR',
   ];
   const metalsFx = ['XAUUSD', 'XAGUSD', 'XPTUSD'];
+  const dollarIndex = ['DXY', 'USDX'];
   const uniq = new Set();
-  [].concat(majorsUsd, g10Crosses, usdExotics, metalsFx).forEach(function (s) {
+  [].concat(majorsUsd, g10Crosses, usdExotics, metalsFx, dollarIndex).forEach(function (s) {
     uniq.add(String(s).toUpperCase().trim());
   });
   return Array.from(uniq).sort();
