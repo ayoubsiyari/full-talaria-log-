@@ -14405,6 +14405,13 @@ const TalariaV8bLive = () => {
   const supportNewFileRef = useRef(null);
   const [supportReplyFile, setSupportReplyFile] = useState(null);
   const [supportNewFile, setSupportNewFile] = useState(null);
+  const [supportCapturing, setSupportCapturing] = useState(false);
+  const [supportToast, setSupportToast] = useState(null); // { id, subject, preview, threadId }
+  const supportToastTimerRef = useRef(null);
+  const supportSelThreadRef = useRef(null);
+  supportSelThreadRef.current = supportSelThread;
+  const supportChatOpenRef = useRef(false);
+  supportChatOpenRef.current = supportChatOpen;
   const [supportStatusFilter, setSupportStatusFilter] = useState(() => {
     try {
       const v = sessionStorage.getItem("v9-support-status-filter");
@@ -14417,6 +14424,16 @@ const TalariaV8bLive = () => {
   const supportPingTimerRef = useRef(null);
   const supportListScrollRef = useRef(null);
   const supportListScrollTopRef = useRef(0);
+  const supportNewPreviewUrl = useMemo(
+    () => (supportNewFile ? URL.createObjectURL(supportNewFile) : null),
+    [supportNewFile]
+  );
+  const supportReplyPreviewUrl = useMemo(
+    () => (supportReplyFile ? URL.createObjectURL(supportReplyFile) : null),
+    [supportReplyFile]
+  );
+  useEffect(() => () => { if (supportNewPreviewUrl) URL.revokeObjectURL(supportNewPreviewUrl); }, [supportNewPreviewUrl]);
+  useEffect(() => () => { if (supportReplyPreviewUrl) URL.revokeObjectURL(supportReplyPreviewUrl); }, [supportReplyPreviewUrl]);
 
   const supportThreadIsOpen = (status) => status === "open" || status === "pending";
   const supportSetStatusFilter = (filter) => {
@@ -14432,6 +14449,75 @@ const TalariaV8bLive = () => {
     setSupportSelThread(null);
     setSupportMessages([]);
     setSupportError(null);
+  };
+
+  const supportShowReplyToast = (payload) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setSupportToast({ id, ...payload });
+    if (supportToastTimerRef.current) clearTimeout(supportToastTimerRef.current);
+    supportToastTimerRef.current = setTimeout(() => {
+      setSupportToast((cur) => (cur && cur.id === id ? null : cur));
+    }, 6500);
+    try {
+      window.__TalariaToastStack?.show?.("New support reply", { type: "info", duration: 3200, replaceKey: "support-reply" });
+    } catch (_) {}
+  };
+
+  const supportPickImageFile = (file, which) => {
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      setSupportError("Please attach an image file.");
+      return;
+    }
+    if (file.size > V9_IMAGE_UPLOAD_MAX_BYTES) {
+      setSupportError(`Image must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller.`);
+      return;
+    }
+    setSupportError(null);
+    if (which === "new") setSupportNewFile(file);
+    else setSupportReplyFile(file);
+  };
+
+  const supportOnPasteImage = (e, which) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && String(item.type || "").startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) {
+          e.preventDefault();
+          supportPickImageFile(f, which);
+        }
+        break;
+      }
+    }
+  };
+
+  const supportCaptureChartForAttach = async (which) => {
+    if (supportCapturing) return;
+    setSupportCapturing(true);
+    setSupportError(null);
+    try {
+      const sm = typeof window !== "undefined" ? window.screenshotManager : null;
+      let dataUrl = null;
+      if (sm && typeof sm.captureChartSnapshot === "function") {
+        dataUrl = await sm.captureChartSnapshot();
+      }
+      if (!dataUrl || !String(dataUrl).startsWith("data:image")) {
+        throw new Error("Could not capture chart screenshot.");
+      }
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const ext = (blob.type || "").includes("png") ? "png" : "jpg";
+      const file = new File([blob], `chart-screenshot-${Date.now()}.${ext}`, {
+        type: blob.type || (ext === "png" ? "image/png" : "image/jpeg"),
+      });
+      supportPickImageFile(file, which);
+    } catch (err) {
+      setSupportError(err?.message || "Screenshot failed");
+    }
+    setSupportCapturing(false);
   };
 
   const supportApi = async (url, opts = {}) => {
@@ -14498,10 +14584,33 @@ const TalariaV8bLive = () => {
       ws.onmessage = (ev) => {
         try {
           const d = JSON.parse(ev.data);
-          if (d.type === "notification_ping") { supportLoadNotifications(); supportLoadThreads(); return; }
-          if (d.type === "message" && d.message && d.thread_id === threadId) {
-            setSupportMessages(prev => prev.some(x => x.id === d.message.id) ? prev : [...prev, d.message]);
+          if (d.type === "notification_ping") {
+            supportLoadNotifications();
             supportLoadThreads();
+            return;
+          }
+          if (d.type === "message" && d.message) {
+            const msg = d.message;
+            const tid = d.thread_id;
+            const sel = supportSelThreadRef.current;
+            const threadMeta = (supportThreadsRef.current || []).find((t) => t.id === tid);
+            const ownerId = sel && sel.id === tid ? sel.user_id : threadMeta?.user_id;
+            const fromSupport = ownerId != null && msg.sender_user_id !== ownerId;
+            if (tid === threadId || (sel && sel.id === tid)) {
+              setSupportMessages((prev) => prev.some((x) => x.id === msg.id) ? prev : [...prev, msg]);
+            }
+            supportLoadThreads();
+            supportLoadNotifications();
+            if (fromSupport) {
+              const viewingThis = !!(supportChatOpenRef.current && sel && sel.id === tid);
+              if (!viewingThis) {
+                supportShowReplyToast({
+                  subject: threadMeta?.subject || sel?.subject || "Support reply",
+                  preview: (msg.body || (msg.attachment ? "Sent an image" : "New message")).slice(0, 90),
+                  threadId: tid,
+                });
+              }
+            }
           }
         } catch {}
       };
@@ -14606,17 +14715,14 @@ const TalariaV8bLive = () => {
     return () => { document.removeEventListener("mousedown", onDocDown, true); document.removeEventListener("keydown", onKey); };
   }, [supportChatOpen]);
 
-  // load threads + notifications when panel opens; connect WS
+  // load threads + notifications when panel opens
   useEffect(() => {
-    if (supportChatOpen) {
-      setSupportLoading(true);
-      Promise.all([supportLoadThreads(), supportLoadNotifications()]).finally(() => setSupportLoading(false));
-      if (!supportWsRef.current) supportConnectWs(supportSelThread?.id);
-    }
-    return () => { if (!supportChatOpen) supportDisconnectWs(); };
+    if (!supportChatOpen) return;
+    setSupportLoading(true);
+    Promise.all([supportLoadThreads(), supportLoadNotifications()]).finally(() => setSupportLoading(false));
   }, [supportChatOpen]);
 
-  // when thread selected, load messages + reconnect WS
+  // when thread selected, load messages + resubscribe WS to that thread
   useEffect(() => {
     if (supportSelThread) {
       supportLoadMessages(supportSelThread.id);
@@ -14640,8 +14746,15 @@ const TalariaV8bLive = () => {
     requestAnimationFrame(() => { el.scrollTop = top; });
   }, [supportSelThread, supportNewThread, supportLoading]);
 
-  // load unread count on mount
-  useEffect(() => { supportLoadNotifications(); }, []);
+  // Keep inbox WS alive so support replies can toast even when the panel is closed.
+  useEffect(() => {
+    supportLoadNotifications();
+    supportConnectWs(supportSelThreadRef.current?.id);
+    return () => {
+      supportDisconnectWs();
+      if (supportToastTimerRef.current) clearTimeout(supportToastTimerRef.current);
+    };
+  }, []);
 
   /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
   const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
@@ -24907,6 +25020,9 @@ const TalariaV8bLive = () => {
         @keyframes tlrDotPulse { 0%,100% { opacity:0.35; transform:scale(0.85); } 50% { opacity:1; transform:scale(1.3); } }
         @keyframes tlrIdPulse { 0%,100% { color:rgba(0,212,161,0.55); } 50% { color:rgba(0,212,161,1); } }
         @keyframes tlrReplayPlaySpin { to { transform: rotate(360deg); } }
+        @keyframes tlrSupportToastIn { from { opacity:0; transform:translateY(-10px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes tlrSupportToastPulse { 0%,100% { box-shadow:0 10px 28px rgba(0,0,0,0.45), 0 0 0 0 rgba(74,106,255,0.35); } 50% { box-shadow:0 10px 28px rgba(0,0,0,0.45), 0 0 0 6px rgba(74,106,255,0); } }
+        @keyframes tlrSupportBadgePop { 0% { transform:scale(0.7); } 60% { transform:scale(1.15); } 100% { transform:scale(1); } }
         .tlr-gloss{position:relative}.tlr-gloss::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.13) 0%,rgba(255,255,255,0.04) 45%,transparent 100%);pointer-events:none;z-index:9999;border-radius:inherit}.tlr-nospinner::-webkit-outer-spin-button,.tlr-nospinner::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
         .tlr-nospinner{-moz-appearance:textfield}
         .tlr-unit-sel{background:transparent;border:1px solid rgba(140,160,255,0.2);color:rgba(255,255,255,0.7);font-size:10px;padding:2px 4px;outline:none;cursor:default;appearance:none;-webkit-appearance:none}
@@ -35548,7 +35664,7 @@ const TalariaV8bLive = () => {
           style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
           <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
-          {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
+          {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none", animation:"tlrSupportBadgePop 0.35s ease" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
           {supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"15%", right:"15%", height:2, background:`linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
           {hov==="u-support" && !supportChatOpen && <div style={{ position:"absolute", bottom:0, left:"25%", right:"25%", height:1, background:`linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }}/>}
         </button>
@@ -35599,8 +35715,28 @@ const TalariaV8bLive = () => {
             const anchorEl = supportBtnRef.current || navAnchor;
             const btnR = anchorEl ? anchorEl.getBoundingClientRect() : null;
             const useLeftSide = !!(navAnchor && anchorEl === navAnchor);
-            const POP_W = 360, POP_H = 500;
-            const maxPopH = Math.min(POP_H, window.innerHeight * 0.75);
+            const POP_W = 380, POP_H = 540;
+            const maxPopH = Math.min(POP_H, window.innerHeight * 0.78);
+            const fieldStyle = { width:"100%", boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:7, outline:"none", fontFamily:F, transition:"border-color 0.12s, box-shadow 0.12s" };
+            const attachChip = (label, onClick, active, disabled) => (
+              <button type="button" disabled={!!disabled} onClick={onClick}
+                onMouseEnter={() => setHov(`sup-chip-${label}`)} onMouseLeave={() => setHov(null)}
+                style={{ cursor: disabled ? "default" : "pointer", display:"inline-flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:6, fontSize:11, fontWeight:650, fontFamily:F,
+                  color: active ? c.acL : c.ts, background: active ? "rgba(74,106,255,0.14)" : (hov === `sup-chip-${label}` ? c.hv : "rgba(255,255,255,0.03)"),
+                  border:`1px solid ${active ? "rgba(74,106,255,0.4)" : c.br}`, opacity: disabled ? 0.55 : 1, transition:"background 0.12s, border-color 0.12s" }}>
+                {label}
+              </button>
+            );
+            const attachPreview = (file, url, onClear) => file ? (
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:8, borderRadius:8, background:"rgba(74,106,255,0.08)", border:"1px solid rgba(74,106,255,0.22)" }}>
+                {url ? <img src={url} alt="" style={{ width:42, height:42, objectFit:"cover", borderRadius:6, flexShrink:0 }}/> : null}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:650, color:c.tx, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
+                  <div style={{ fontSize:10, color:c.tm, marginTop:2 }}>{Math.max(1, Math.round(file.size / 1024))} KB · ready to send</div>
+                </div>
+                <button type="button" onClick={onClear} style={{ border:"none", background:"transparent", color:"#e53935", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>✕</button>
+              </div>
+            ) : null;
             let left = null;
             let right = Math.max(8, window.innerWidth - 76);
             let top = Math.max(8, window.innerHeight - maxPopH - 16);
@@ -35643,23 +35779,29 @@ const TalariaV8bLive = () => {
             };
             return (
               <div ref={supportPopRef} data-v9-chrome="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-                style={{ position:"fixed", top, ...(left != null ? { left } : { right }), width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
+                style={{ position:"fixed", top, ...(left != null ? { left } : { right }), width:POP_W, height:POP_H, maxHeight:"min(78vh,580px)", background:`linear-gradient(180deg, ${c.sf} 0%, #0c101c 100%)`, border:`1px solid rgba(140,160,255,0.34)`, borderRadius:10, boxShadow:"0 16px 48px rgba(0,0,0,0.62), 0 0 0 1px rgba(74,106,255,0.08)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrPopIn 0.18s ease" }}>
+                <div style={{ height:2, background:"linear-gradient(90deg, transparent, rgba(74,106,255,0.85), transparent)", flexShrink:0 }}/>
                 {/* ── Header ── */}
-                <div style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                <div style={{ padding:"12px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0, background:"rgba(74,106,255,0.04)" }}>
                   {supportSelThread && !supportNewThread ? (
                     <>
-                      <div onClick={supportBackToList} style={{ cursor:"default", display:"flex", alignItems:"center", padding:"2px 4px", borderRadius:3, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
+                      <div onClick={supportBackToList} style={{ cursor:"pointer", display:"flex", alignItems:"center", padding:"4px 6px", borderRadius:6, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={c.ts} strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
                       </div>
                       <span style={{ fontSize:13, fontWeight:700, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{supportSelThread.subject}</span>
-                      {supportSelThread.status === "closed" && <span style={{ fontSize:10, color:"#e53935", fontWeight:700, background:"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3 }}>Closed</span>}
+                      {supportSelThread.status === "closed" && <span style={{ fontSize:10, color:"#e53935", fontWeight:700, background:"rgba(229,57,53,0.12)", padding:"2px 7px", borderRadius:999 }}>Closed</span>}
                     </>
                   ) : (
                     <>
-                      <I n="chat" s={16} cl={c.acL}/>
-                      <span style={{ fontSize:14, fontWeight:700, color:c.tx, flex:1 }}>{supportNewThread ? "New Thread" : "Support"}</span>
-                      {!supportNewThread && <div onClick={()=>{setSupportNewThread(true);setSupportError(null);}} style={{ cursor:"default", padding:"3px 10px", borderRadius:4, background:c.acD, color:c.acL, fontSize:11, fontWeight:700 }} onMouseEnter={()=>setHov("sup-new")} onMouseLeave={()=>setHov(null)}>+ New</div>}
-                      {supportNewThread && <div onClick={()=>{setSupportNewThread(false);setSupportError(null);}} style={{ cursor:"default", padding:"3px 8px", borderRadius:4, background:hov==="sup-cancel"?c.hv:"transparent", color:c.ts, fontSize:11, fontWeight:600 }} onMouseEnter={()=>setHov("sup-cancel")} onMouseLeave={()=>setHov(null)}>Cancel</div>}
+                      <div style={{ width:28, height:28, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(74,106,255,0.16)", border:"1px solid rgba(74,106,255,0.28)" }}>
+                        <I n="chat" s={15} cl={c.acL}/>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:14, fontWeight:750, color:c.tx }}>{supportNewThread ? "New Thread" : "Support"}</div>
+                        <div style={{ fontSize:10, color:c.tm, marginTop:1 }}>{supportNewThread ? "We’ll get back to you soon" : "Tickets & live replies"}</div>
+                      </div>
+                      {!supportNewThread && <div onClick={()=>{setSupportNewThread(true);setSupportError(null);}} style={{ cursor:"pointer", padding:"5px 11px", borderRadius:7, background:"linear-gradient(135deg,rgba(74,106,255,0.28),rgba(74,106,255,0.12))", color:c.acL, fontSize:11, fontWeight:750, border:"1px solid rgba(74,106,255,0.35)" }} onMouseEnter={()=>setHov("sup-new")} onMouseLeave={()=>setHov(null)}>+ New</div>}
+                      {supportNewThread && <div onClick={()=>{setSupportNewThread(false);setSupportError(null); setSupportNewFile(null);}} style={{ cursor:"pointer", padding:"5px 10px", borderRadius:7, background:hov==="sup-cancel"?c.hv:"transparent", color:c.ts, fontSize:11, fontWeight:650 }} onMouseEnter={()=>setHov("sup-cancel")} onMouseLeave={()=>setHov(null)}>Cancel</div>}
                     </>
                   )}
                 </div>
@@ -35670,16 +35812,17 @@ const TalariaV8bLive = () => {
                   <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:c.ts, fontSize:13 }}>Loading…</div>
                 ) : supportNewThread ? (
                   /* ── New Thread Form ── */
-                  <div style={{ flex:1, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+                  <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 12px", display:"flex", flexDirection:"column", gap:12 }}
+                    onPaste={(e) => supportOnPasteImage(e, "new")}>
                     <div>
-                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Subject</label>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Subject</label>
                       <input type="text" value={supportNewSubject} onChange={e=>setSupportNewSubject(e.target.value)} placeholder="Brief description…" maxLength={200}
-                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                        style={fieldStyle} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(74,106,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
                     </div>
                     <div>
-                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Category</label>
-                      <select value={supportNewCategory} onChange={e=>setSupportNewCategory(e.target.value)}
-                        style={{ width:"100%", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Category</label>
+                      <select value={supportNewCategory} onChange={e=>setSupportNewCategory(e.target.value)} className="tlr-ind-select"
+                        style={{ ...fieldStyle, appearance:"none", WebkitAppearance:"none" }}>
                         <option value="billing">Billing</option>
                         <option value="account">Account</option>
                         <option value="access">Access</option>
@@ -35692,20 +35835,38 @@ const TalariaV8bLive = () => {
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Message</label>
-                      <textarea value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue…" rows={4}
-                        style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F, resize:"vertical" }} onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                      <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Message</label>
+                      <textarea value={supportNewBody} onChange={e=>setSupportNewBody(e.target.value)} placeholder="Describe your issue… (Ctrl/Cmd+V to paste an image)" rows={5}
+                        style={{ ...fieldStyle, resize:"vertical", minHeight:96, lineHeight:1.45 }} onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(74,106,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
                     </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <label style={{ cursor:"default", display:"flex", alignItems:"center", gap:4, fontSize:11, color:c.ts }}>
-                        <I n="attach" s={13} cl={c.ts}/>
-                        <span>{supportNewFile ? supportNewFile.name.slice(0,20) : "Attach image"}</span>
-                        <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportNewFile(f);}}/>
-                      </label>
-                      {supportNewFile && <span onClick={()=>{setSupportNewFile(null);if(supportNewFileRef.current)supportNewFileRef.current.value="";}} style={{ cursor:"default", fontSize:10, color:"#e53935" }}>✕</span>}
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:700, color:c.tm, marginBottom:6 }}>Attachment</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                        {attachChip("Attach image", () => supportNewFileRef.current?.click(), !!supportNewFile, false)}
+                        <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "new"); }}/>
+                        {attachChip("Paste", async () => {
+                          try {
+                            const items = await navigator.clipboard.read();
+                            for (const item of items) {
+                              const type = item.types.find((t) => t.startsWith("image/"));
+                              if (!type) continue;
+                              const blob = await item.getType(type);
+                              supportPickImageFile(new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }), "new");
+                              return;
+                            }
+                            setSupportError("No image in clipboard — copy one, or press Ctrl/Cmd+V in the message box.");
+                          } catch (_) {
+                            setSupportError("Paste from clipboard blocked — click the message box and press Ctrl/Cmd+V.");
+                          }
+                        }, false, false)}
+                        {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("new"); }, false, supportCapturing)}
+                      </div>
+                      {attachPreview(supportNewFile, supportNewPreviewUrl, () => { setSupportNewFile(null); if (supportNewFileRef.current) supportNewFileRef.current.value = ""; })}
                     </div>
                     <button type="button" disabled={supportSending || (!supportNewSubject.trim() || (!supportNewBody.trim() && !supportNewFile))} onClick={supportCreateThread}
-                      style={{ padding:"8px 0", fontSize:13, fontWeight:700, borderRadius:4, border:"none", cursor:"default", background:c.acL, color:"#fff", opacity:supportSending?0.6:1, marginTop:4 }}>
+                      style={{ padding:"10px 0", fontSize:13, fontWeight:750, borderRadius:8, border:"1px solid rgba(107,140,255,0.45)", cursor: supportSending ? "default" : "pointer",
+                        background:"linear-gradient(135deg,#4A6AFF,#3B5BDB)", color:"#fff", opacity:supportSending?0.6:1, marginTop:2,
+                        boxShadow:"0 6px 18px rgba(74,106,255,0.28)" }}>
                       {supportSending ? "Sending…" : "Create Thread"}
                     </button>
                   </div>
@@ -35734,25 +35895,37 @@ const TalariaV8bLive = () => {
                       <div ref={supportMsgEndRef}/>
                     </div>
                     {supportSelThread.status !== "closed" && (
-                      <div style={{ padding:"8px 10px", borderTop:`1px solid ${c.br}`, display:"flex", alignItems:"flex-end", gap:6, flexShrink:0 }}>
-                        <label style={{ cursor:"default", display:"flex", alignItems:"center", padding:4, borderRadius:4, background:hov==="sup-att"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-att")} onMouseLeave={()=>setHov(null)}>
-                          <I n="attach" s={16} cl={supportReplyFile?c.acL:c.ts}/>
-                          <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{const f=e.target.files?.[0]; if(f) setSupportReplyFile(f);}}/>
-                        </label>
-                        <div style={{ flex:1, display:"flex", flexDirection:"column", gap:2 }}>
-                          {supportReplyFile && (
-                            <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:c.ts }}>
-                              <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:180 }}>{supportReplyFile.name}</span>
-                              <span onClick={()=>{setSupportReplyFile(null);if(supportReplyFileRef.current)supportReplyFileRef.current.value="";}} style={{ cursor:"default", color:"#e53935" }}>✕</span>
-                            </div>
-                          )}
-                          <textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message…" rows={1}
-                            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
-                            style={{ width:"100%", boxSizing:"border-box", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:6, outline:"none", fontFamily:F, resize:"none", maxHeight:80 }}
-                            onFocus={e=>e.target.style.borderColor=c.acL} onBlur={e=>e.target.style.borderColor=c.br}/>
+                      <div style={{ padding:"10px", borderTop:`1px solid ${c.br}`, display:"flex", flexDirection:"column", gap:8, flexShrink:0, background:"rgba(0,0,0,0.12)" }}
+                        onPaste={(e) => supportOnPasteImage(e, "reply")}>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                          {attachChip("Attach", () => supportReplyFileRef.current?.click(), !!supportReplyFile, false)}
+                          <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "reply"); }}/>
+                          {attachChip("Paste", async () => {
+                            try {
+                              const items = await navigator.clipboard.read();
+                              for (const item of items) {
+                                const type = item.types.find((t) => t.startsWith("image/"));
+                                if (!type) continue;
+                                const blob = await item.getType(type);
+                                supportPickImageFile(new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }), "reply");
+                                return;
+                              }
+                              setSupportError("No image in clipboard — copy one, or press Ctrl/Cmd+V here.");
+                            } catch (_) {
+                              setSupportError("Paste blocked — focus the box and press Ctrl/Cmd+V.");
+                            }
+                          }, false, false)}
+                          {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("reply"); }, false, supportCapturing)}
                         </div>
-                        <div onClick={()=>{ if(!supportSending) supportSendReply(); }} style={{ cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", width:30, height:30, borderRadius:6, background:c.acL, opacity:supportSending?0.5:1, flexShrink:0 }} onMouseEnter={()=>setHov("sup-send")} onMouseLeave={()=>setHov(null)}>
-                          <I n="send" s={14} cl="#fff"/>
+                        {attachPreview(supportReplyFile, supportReplyPreviewUrl, () => { setSupportReplyFile(null); if (supportReplyFileRef.current) supportReplyFileRef.current.value = ""; })}
+                        <div style={{ display:"flex", alignItems:"flex-end", gap:6 }}>
+                          <textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message… (paste image with Ctrl/Cmd+V)" rows={2}
+                            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}
+                            style={{ flex:1, boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:8, outline:"none", fontFamily:F, resize:"none", maxHeight:90, lineHeight:1.4 }}
+                            onFocus={e=>{e.target.style.borderColor=c.acL; e.target.style.boxShadow="0 0 0 3px rgba(74,106,255,0.12)";}} onBlur={e=>{e.target.style.borderColor=c.br; e.target.style.boxShadow="none";}}/>
+                          <div onClick={()=>{ if(!supportSending) supportSendReply(); }} style={{ cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", width:34, height:34, borderRadius:8, background:"linear-gradient(135deg,#4A6AFF,#3B5BDB)", opacity:supportSending?0.5:1, flexShrink:0, boxShadow:"0 4px 12px rgba(74,106,255,0.3)" }} onMouseEnter={()=>setHov("sup-send")} onMouseLeave={()=>setHov(null)}>
+                            <I n="send" s={14} cl="#fff"/>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -35793,6 +35966,48 @@ const TalariaV8bLive = () => {
               </div>
             );
           })(),
+          document.body
+        )}
+        {supportToast && createPortal(
+          <div
+            data-v9-chrome="1"
+            onClick={() => {
+              const tid = supportToast.threadId;
+              setSupportToast(null);
+              setSupportChatOpen(true);
+              setSupportNewThread(false);
+              if (tid) {
+                const t = (supportThreadsRef.current || []).find((x) => x.id === tid);
+                if (t) supportSelectThread(t);
+                else {
+                  supportLoadThreads().then(() => {
+                    const t2 = (supportThreadsRef.current || []).find((x) => x.id === tid);
+                    if (t2) supportSelectThread(t2);
+                  });
+                }
+              }
+            }}
+            style={{
+              position: "fixed", top: 56, right: 18, width: 320, zIndex: 100050, cursor: "pointer",
+              background: "linear-gradient(180deg, #141a2c 0%, #0e1320 100%)",
+              border: "1px solid rgba(107,140,255,0.45)", borderRadius: 12, padding: "12px 14px",
+              boxShadow: "0 14px 36px rgba(0,0,0,0.55)", fontFamily: F,
+              animation: "tlrSupportToastIn 0.28s ease, tlrSupportToastPulse 1.8s ease 0.28s 2",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(74,106,255,0.18)", border: "1px solid rgba(74,106,255,0.35)", flexShrink: 0 }}>
+                <I n="chat" s={15} cl={c.acL}/>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 750, color: c.acL, letterSpacing: "0.04em", textTransform: "uppercase" }}>New support reply</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: c.tx, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{supportToast.subject}</div>
+                <div style={{ fontSize: 12, color: c.ts, marginTop: 3, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{supportToast.preview}</div>
+              </div>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setSupportToast(null); }}
+                style={{ border: "none", background: "transparent", color: c.tm, fontSize: 14, cursor: "pointer", padding: 2, lineHeight: 1 }}>✕</button>
+            </div>
+          </div>,
           document.body
         )}
       </div>

@@ -113,6 +113,7 @@ export function V16SupportChatPopover() {
   const [replyFile, setReplyFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed">("all");
+  const [toast, setToast] = useState<{ id: string; subject: string; preview: string; threadId: number | null } | null>(null);
 
   const popRef = useRef<HTMLDivElement | null>(null);
   const msgEndRef = useRef<HTMLDivElement | null>(null);
@@ -120,6 +121,53 @@ export function V16SupportChatPopover() {
   const replyFileRef = useRef<HTMLInputElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openRef = useRef(false);
+  openRef.current = open;
+  const selThreadRef = useRef<Thread | null>(null);
+  selThreadRef.current = selThread;
+  const threadsRef = useRef<Thread[]>([]);
+  threadsRef.current = threads;
+
+  const pickImage = (file: File | null, which: "new" | "reply") => {
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      setError("Please attach an image file.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setError(imageUploadTooLargeError(file.size));
+      return;
+    }
+    setError(null);
+    if (which === "new") setNewFile(file);
+    else setReplyFile(file);
+  };
+
+  const onPasteImage = (e: React.ClipboardEvent, which: "new" | "reply") => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && String(item.type || "").startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) {
+          e.preventDefault();
+          pickImage(f, which);
+        }
+        break;
+      }
+    }
+  };
+
+  const showReplyToast = (payload: { subject: string; preview: string; threadId: number | null }) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToast({ id, ...payload });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToast((cur) => (cur && cur.id === id ? null : cur));
+    }, 6500);
+  };
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
@@ -189,11 +237,29 @@ export function V16SupportChatPopover() {
               void loadThreads();
               return;
             }
-            if (d.type === "message" && d.message && d.thread_id === threadId) {
-              setMessages((prev) =>
-                prev.some((x) => x.id === d.message.id) ? prev : [...prev, d.message]
-              );
+            if (d.type === "message" && d.message) {
+              const msg = d.message as Msg;
+              const tid = d.thread_id as number;
+              const sel = selThreadRef.current;
+              const meta = threadsRef.current.find((t) => t.id === tid);
+              const ownerId = sel && sel.id === tid ? sel.user_id : meta?.user_id;
+              const fromSupport = ownerId != null && msg.sender_user_id !== ownerId;
+              if (tid === threadId || (sel && sel.id === tid)) {
+                setMessages((prev) =>
+                  prev.some((x) => x.id === msg.id) ? prev : [...prev, msg]
+                );
+              }
               void loadThreads();
+              if (fromSupport) {
+                const viewing = !!(openRef.current && sel && sel.id === tid);
+                if (!viewing) {
+                  showReplyToast({
+                    subject: meta?.subject || sel?.subject || "Support reply",
+                    preview: (msg.body || (msg.attachment ? "Sent an image" : "New message")).slice(0, 90),
+                    threadId: tid,
+                  });
+                }
+              }
             }
           } catch {
             /* ignore */
@@ -397,6 +463,7 @@ export function V16SupportChatPopover() {
   };
 
   return createPortal(
+    <>
     <div
       ref={popRef}
       data-v9-chrome="1"
@@ -406,13 +473,13 @@ export function V16SupportChatPopover() {
         position: "fixed",
         top: pos.top,
         left: pos.left,
-        width: pos.width,
-        height: 500,
-        maxHeight: "min(75vh, 560px)",
-        background: C.sf,
-        border: "1px solid rgba(140,160,255,0.32)",
-        borderRadius: 6,
-        boxShadow: "0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)",
+        width: Math.max(pos.width, 380),
+        height: 540,
+        maxHeight: "min(78vh, 580px)",
+        background: "linear-gradient(180deg, #111520 0%, #0c101c 100%)",
+        border: "1px solid rgba(140,160,255,0.34)",
+        borderRadius: 10,
+        boxShadow: "0 16px 48px rgba(0,0,0,0.62)",
         zIndex: 100010,
         display: "flex",
         flexDirection: "column",
@@ -420,6 +487,7 @@ export function V16SupportChatPopover() {
         overflow: "hidden",
       }}
     >
+      <div style={{ height: 2, background: "linear-gradient(90deg, transparent, rgba(74,106,255,0.85), transparent)", flexShrink: 0 }} />
       <div
         style={{
           padding: "10px 14px",
@@ -495,24 +563,27 @@ export function V16SupportChatPopover() {
       {loading ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.ts, fontSize: 13 }}>Loading…</div>
       ) : newThread ? (
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
+          style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: 12 }}
+          onPaste={(e) => onPasteImage(e, "new")}
+        >
           <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 4 }}>Subject</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 5 }}>Subject</label>
             <input
               type="text"
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
               placeholder="Brief description…"
               maxLength={200}
-              style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", fontSize: 12, background: C.bg, color: C.tx, border: `1px solid ${C.br}`, borderRadius: 4, outline: "none", fontFamily: F }}
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 11px", fontSize: 12, background: "rgba(0,0,0,0.28)", color: C.tx, border: `1px solid ${C.br}`, borderRadius: 7, outline: "none", fontFamily: F }}
             />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 4 }}>Category</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 5 }}>Category</label>
             <select
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value)}
-              style={{ width: "100%", padding: "6px 10px", fontSize: 12, background: C.bg, color: C.tx, border: `1px solid ${C.br}`, borderRadius: 4, outline: "none", fontFamily: F }}
+              style={{ width: "100%", padding: "8px 11px", fontSize: 12, background: "rgba(0,0,0,0.28)", color: C.tx, border: `1px solid ${C.br}`, borderRadius: 7, outline: "none", fontFamily: F }}
             >
               {SUPPORT_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -522,27 +593,28 @@ export function V16SupportChatPopover() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 4 }}>Message</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: C.tm, display: "block", marginBottom: 5 }}>Message</label>
             <textarea
               value={newBody}
               onChange={(e) => setNewBody(e.target.value)}
-              placeholder="Describe your issue…"
-              rows={4}
-              style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", fontSize: 12, background: C.bg, color: C.tx, border: `1px solid ${C.br}`, borderRadius: 4, outline: "none", fontFamily: F, resize: "vertical" }}
+              placeholder="Describe your issue… (Ctrl/Cmd+V to paste an image)"
+              rows={5}
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 11px", fontSize: 12, background: "rgba(0,0,0,0.28)", color: C.tx, border: `1px solid ${C.br}`, borderRadius: 7, outline: "none", fontFamily: F, resize: "vertical", minHeight: 96 }}
             />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: C.ts }}>
-            <label style={{ cursor: "default" }}>
-              {newFile ? newFile.name.slice(0, 20) : "Attach image"}
-              <input ref={newFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => setNewFile(e.target.files?.[0] ?? null)} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", fontSize: 11, color: C.ts }}>
+            <label style={{ cursor: "pointer", padding: "5px 9px", borderRadius: 6, border: `1px solid ${C.br}`, background: newFile ? C.acD : "rgba(255,255,255,0.03)", color: newFile ? C.acL : C.ts, fontWeight: 650 }}>
+              {newFile ? newFile.name.slice(0, 18) : "Attach image"}
+              <input ref={newFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickImage(e.target.files?.[0] ?? null, "new")} />
             </label>
+            <span style={{ opacity: 0.7 }}>or paste (Ctrl/Cmd+V)</span>
             {newFile ? (
               <span
                 onClick={() => {
                   setNewFile(null);
                   if (newFileRef.current) newFileRef.current.value = "";
                 }}
-                style={{ cursor: "default", color: "#e53935" }}
+                style={{ cursor: "pointer", color: "#e53935" }}
               >
                 ✕
               </span>
@@ -552,7 +624,7 @@ export function V16SupportChatPopover() {
             type="button"
             disabled={sending || !newSubject.trim() || (!newBody.trim() && !newFile)}
             onClick={() => void createThread()}
-            style={{ padding: "8px 0", fontSize: 13, fontWeight: 700, borderRadius: 4, border: "none", cursor: "default", background: C.acL, color: "#fff", opacity: sending ? 0.6 : 1, marginTop: 4 }}
+            style={{ padding: "10px 0", fontSize: 13, fontWeight: 750, borderRadius: 8, border: "1px solid rgba(107,140,255,0.45)", cursor: "pointer", background: "linear-gradient(135deg,#4A6AFF,#3B5BDB)", color: "#fff", opacity: sending ? 0.6 : 1, marginTop: 2, boxShadow: "0 6px 18px rgba(74,106,255,0.28)" }}
           >
             {sending ? "Sending…" : "Create Thread"}
           </button>
@@ -598,52 +670,55 @@ export function V16SupportChatPopover() {
             <div ref={msgEndRef} />
           </div>
           {selThread.status !== "closed" ? (
-            <div style={{ padding: "8px 10px", borderTop: `1px solid ${C.br}`, display: "flex", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-              <label style={{ cursor: "default", padding: 4 }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={replyFile ? C.acL : C.ts} strokeWidth="1.6">
-                  <path d="M16.5 6v11.5a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V6" />
-                  <path d="M20 6H4" />
-                </svg>
-                <input ref={replyFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => setReplyFile(e.target.files?.[0] ?? null)} />
-              </label>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                {replyFile ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: C.ts }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{replyFile.name}</span>
-                    <span
-                      onClick={() => {
-                        setReplyFile(null);
-                        if (replyFileRef.current) replyFileRef.current.value = "";
-                      }}
-                      style={{ cursor: "default", color: "#e53935" }}
-                    >
-                      ✕
-                    </span>
-                  </div>
-                ) : null}
+            <div
+              style={{ padding: "10px", borderTop: `1px solid ${C.br}`, display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}
+              onPaste={(e) => onPasteImage(e, "reply")}
+            >
+              <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11 }}>
+                <label style={{ cursor: "pointer", padding: "5px 9px", borderRadius: 6, border: `1px solid ${C.br}`, color: replyFile ? C.acL : C.ts, background: replyFile ? C.acD : "rgba(255,255,255,0.03)", fontWeight: 650 }}>
+                  Attach
+                  <input ref={replyFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickImage(e.target.files?.[0] ?? null, "reply")} />
+                </label>
+                <span style={{ color: C.tm }}>Paste image with Ctrl/Cmd+V</span>
+              </div>
+              {replyFile ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: C.ts }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{replyFile.name}</span>
+                  <span
+                    onClick={() => {
+                      setReplyFile(null);
+                      if (replyFileRef.current) replyFileRef.current.value = "";
+                    }}
+                    style={{ cursor: "pointer", color: "#e53935" }}
+                  >
+                    ✕
+                  </span>
+                </div>
+              ) : null}
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
                 <textarea
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
                   placeholder="Type a message…"
-                  rows={1}
+                  rows={2}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       void sendReply();
                     }
                   }}
-                  style={{ width: "100%", boxSizing: "border-box", padding: "6px 10px", fontSize: 12, background: C.bg, color: C.tx, border: `1px solid ${C.br}`, borderRadius: 6, outline: "none", fontFamily: F, resize: "none", maxHeight: 80 }}
+                  style={{ flex: 1, boxSizing: "border-box", padding: "8px 11px", fontSize: 12, background: "rgba(0,0,0,0.28)", color: C.tx, border: `1px solid ${C.br}`, borderRadius: 8, outline: "none", fontFamily: F, resize: "none", maxHeight: 90 }}
                 />
-              </div>
-              <div
-                onClick={() => {
-                  if (!sending) void sendReply();
-                }}
-                style={{ cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 6, background: C.acL, opacity: sending ? 0.5 : 1, flexShrink: 0 }}
-              >
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="#fff">
-                  <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
-                </svg>
+                <div
+                  onClick={() => {
+                    if (!sending) void sendReply();
+                  }}
+                  style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg,#4A6AFF,#3B5BDB)", opacity: sending ? 0.5 : 1, flexShrink: 0 }}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="#fff">
+                    <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+                  </svg>
+                </div>
               </div>
             </div>
           ) : null}
@@ -716,7 +791,43 @@ export function V16SupportChatPopover() {
           </div>
         </>
       )}
-    </div>,
+    </div>
+    {toast ? (
+      <div
+        data-v9-chrome="1"
+        onClick={() => {
+          const tid = toast.threadId;
+          setToast(null);
+          setOpen(true);
+          setNewThread(false);
+          if (tid) {
+            const t = threadsRef.current.find((x) => x.id === tid);
+            if (t) setSelThread(t);
+          }
+        }}
+        style={{
+          position: "fixed",
+          top: 56,
+          right: 18,
+          width: 320,
+          zIndex: 100060,
+          cursor: "pointer",
+          background: "linear-gradient(180deg, #141a2c 0%, #0e1320 100%)",
+          border: "1px solid rgba(107,140,255,0.45)",
+          borderRadius: 12,
+          padding: "12px 14px",
+          boxShadow: "0 14px 36px rgba(0,0,0,0.55)",
+          fontFamily: F,
+          animation: "tlrSupportToastIn 0.28s ease",
+        }}
+      >
+        <style>{`@keyframes tlrSupportToastIn{from{opacity:0;transform:translateY(-10px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
+        <div style={{ fontSize: 11, fontWeight: 750, color: C.acL, letterSpacing: "0.04em", textTransform: "uppercase" }}>New support reply</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.tx, marginTop: 3 }}>{toast.subject}</div>
+        <div style={{ fontSize: 12, color: C.ts, marginTop: 3, lineHeight: 1.4 }}>{toast.preview}</div>
+      </div>
+    ) : null}
+    </>,
     document.body
   );
 }
