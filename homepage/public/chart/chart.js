@@ -26793,7 +26793,9 @@ class Chart {
                 }
             } catch (_) { hasOrderLines = true; }
             if (hasOrderLines && typeof om.updateOrderLines === 'function') {
-                // panLite: reposition without purge/align (full rebuild glitched panel B).
+                // panLite: reposition without purge (full rebuild glitched panel B).
+                // Label column align still runs inside updateOrderLines so TP/SL/entry
+                // toasts do not stagger sideways while panning.
                 om.updateOrderLines(this, { panLite: true });
             } else {
                 // No open/pending lines — still glue closed-trade marks to the candles.
