@@ -539,6 +539,8 @@ class OrderManager {
         this._draggingManagedOpenLineKind = null;
         /** makeLineDraggable only: order id for the line currently dragging (SL/TP skip in updateSLTPLines). */
         this._draggingManagedOpenOrderId = null;
+        /** Frozen toast left-edge X while dragging open SL/TP — updateSLTPLines must not right-align mid-drag. */
+        this._dragFixedOpenLabelX = null;
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
@@ -734,6 +736,7 @@ class OrderManager {
         this._isDraggingOrderLine = false;
         this._draggingManagedOpenLineKind = null;
         this._draggingManagedOpenOrderId = null;
+        this._dragFixedOpenLabelX = null;
         this._multichartPostDraftDragBusy(false);
 
         if (st.phase === 'open' && ctx?.line && ctx.chartCtx?.scales?.yScale && Number.isFinite(revert)) {
@@ -30761,6 +30764,9 @@ class OrderManager {
             } catch (_) {
                 dragFixedLabelX = null;
             }
+            // Shared with updateSLTPLines — that path otherwise re-right-aligns every frame
+            // as P&L text width changes, which shoves SL/TP toasts sideways (usually right).
+            self._dragFixedOpenLabelX = dragFixedLabelX;
             
             // Store starting price and drag start price
             if (lineType === 'entry') {
@@ -31086,6 +31092,7 @@ class OrderManager {
             self._draggingManagedOpenLineKind = null;
             self._draggingManagedOpenOrderId = null;
             dragFixedLabelX = null;
+            self._dragFixedOpenLabelX = null;
 
             if (_orderSltpApplyOnReleaseFixEnabled() && (lineType === 'sl' || lineType === 'tp')) {
                 const committed = self._oiCommitProvisionalEdit();
@@ -39461,7 +39468,17 @@ class OrderManager {
                     
                     const rightEdge = this._getOrderOverlayRightEdge(ch);
                     const closeBtnX = rightEdge - closeBtnR;
-                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                    const layoutStartX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                    // During open SL drag, keep the toast left edge frozen. Otherwise P&L width
+                    // changes (e.g. -96.20 → -77.70) re-right-align and shove SL to the right.
+                    const draggingThisSl = !!(
+                        this._isDraggingOrderLine
+                        && this._draggingManagedOpenLineKind === 'sl'
+                        && this._draggingManagedOpenOrderId != null
+                        && String(this._draggingManagedOpenOrderId) === String(orderId)
+                        && Number.isFinite(this._dragFixedOpenLabelX)
+                    );
+                    const startX = draggingThisSl ? this._dragFixedOpenLabelX : layoutStartX;
                     
                     let cx = startX;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
@@ -39773,8 +39790,16 @@ class OrderManager {
                     // Keep the full × / + cluster inside the plot (same seam inset as entry).
                     const rightEdge = this._getOrderOverlayRightEdge(ch, 6);
                     const closeBtnX = rightEdge - closeBtnR;
-                    const startX = closeBtnX - closeBtnR - closeBtnGap
+                    const layoutStartX = closeBtnX - closeBtnR - closeBtnGap
                         - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                    const draggingThisTp = !!(
+                        this._isDraggingOrderLine
+                        && this._draggingManagedOpenLineKind === 'tp'
+                        && this._draggingManagedOpenOrderId != null
+                        && String(this._draggingManagedOpenOrderId) === String(orderId)
+                        && Number.isFinite(this._dragFixedOpenLabelX)
+                    );
+                    const startX = draggingThisTp ? this._dragFixedOpenLabelX : layoutStartX;
 
                     let cx = startX;
 
