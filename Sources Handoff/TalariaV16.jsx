@@ -15541,11 +15541,19 @@ const TalariaV8b = () => {
           if (isV16Embedded() && !v16SessionsPlatformAllowed()) return;
           setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true);
         };
+        // Journal path from New Session picker — off for now (Source tab Create Journal still works).
+        // Set false to re-enable Backtest vs Journal choice on New Session.
+        const NEW_SESSION_JOURNAL_PICKER_DISABLED = true;
         const closeNewSessionKindPicker = () => setNewSessionKindPickerOpen(false);
         const closeNewSessionJournalKindPicker = () => setNewSessionJournalKindOpen(false);
         const closeNewSessionJournalMethodPicker = () => setNewSessionJournalMethodOpen(false);
         const openNewSessionKindPicker = () => {
           if (!v16SessionsPlatformAllowed()) return;
+          // For now only Backtest is available from New Session — skip the kind picker.
+          if (NEW_SESSION_JOURNAL_PICKER_DISABLED) {
+            goNew();
+            return;
+          }
           setNewSessionKindPickerOpen(true);
         };
         const startNewBacktestFromPicker = () => {
@@ -15553,6 +15561,7 @@ const TalariaV8b = () => {
           goNew();
         };
         const openJournalTypeFromPicker = () => {
+          if (NEW_SESSION_JOURNAL_PICKER_DISABLED) return;
           closeNewSessionKindPicker();
           setNewSessionJournalKindOpen(true);
         };
@@ -15653,6 +15662,8 @@ const TalariaV8b = () => {
                               <div style={{fontSize:12,fontWeight:800,color:disabled?c.ts:c.tx,letterSpacing:"0.04em"}}>{opt.label}</div>
                               {opt.comingSoon ? (
                                 <span style={{fontSize:7.5,fontWeight:900,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:"1px solid rgba(74,106,255,0.35)",background:"rgba(74,106,255,0.10)"}}>Coming soon</span>
+                              ) : opt.disabled && opt.unavailableLabel ? (
+                                <span style={{fontSize:7.5,fontWeight:900,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:`1px solid ${c.brH}`,background:"rgba(255,255,255,0.04)"}}>{opt.unavailableLabel}</span>
                               ) : null}
                             </div>
                             <div style={{fontSize:10,color:c.tm,lineHeight:1.5,marginTop:3}}>{opt.desc}</div>
@@ -16761,7 +16772,9 @@ const TalariaV8b = () => {
 {/* ── New session kind picker (Backtest vs Journal) ── */}
             {newSessionKindPickerOpen && renderNewSessionPickerModal({
               title:"New Session",
-              subtitle:"Choose what you want to create",
+              subtitle:NEW_SESSION_JOURNAL_PICKER_DISABLED
+                ? "Backtest sessions only for now — create journals from the Source tab."
+                : "Choose what you want to create",
               wizardStep:1,
               onClose:closeNewSessionKindPicker,
               options:[
@@ -16777,7 +16790,11 @@ const TalariaV8b = () => {
                 {
                   id:"journal",
                   label:"Journal",
-                  desc:"Track live trades manually on a real account or prop firm journal.",
+                  desc:NEW_SESSION_JOURNAL_PICKER_DISABLED
+                    ? "Not available for now — use Source → Create Journal instead."
+                    : "Track live trades manually on a real account or prop firm journal.",
+                  disabled:NEW_SESSION_JOURNAL_PICKER_DISABLED,
+                  unavailableLabel:NEW_SESSION_JOURNAL_PICKER_DISABLED ? "Not available for now" : undefined,
                   iconBg:"rgba(74,106,255,0.14)",
                   iconColor:c.acL,
                   border:"rgba(74,106,255,0.18)",
