@@ -14527,7 +14527,6 @@ class OrderManager {
                 }
             }
         } else {
-            const pad = 175;
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
             const keysToCheck = ['entry', 'tp', 'sl', 'avgEntry'];
@@ -14548,7 +14547,7 @@ class OrderManager {
                     }
                 }
             }
-            x = ch.w - maxW - pad;
+            x = ch.w - maxW - this._getOrderLevelLabelRightMargin();
         }
         
         let yPixel;
@@ -25209,7 +25208,7 @@ class OrderManager {
             return orderPriority[lab] ?? 99;
         };
         const gap = 28;
-        const marginRight = 175; // margin from right edge for preview labels
+        const marginRight = this._getOrderLevelLabelRightMargin();
 
         // Refresh dimensions for all items first
         buckets.forEach(bucket => {
@@ -30991,24 +30990,43 @@ class OrderManager {
                     }
                     const boxH = 22;
                     const boxY = newY - boxH / 2;
-                    const gap = 4;
-                    const pad = 8;
-                    const closeBtnR = 9;
-                    const closeBtnGap = 6;
                     const lt = extraElements.labelText;
                     const pt = extraElements.pnlText;
                     const pb = extraElements.pnlBox;
-                    if (lt) {
+                    // Match preview drag: vertical-only. Never recompute toast X/widths mid-drag
+                    // (P&L digit changes used to shove executed SL/TP sideways).
+                    if (Number.isFinite(dragFixedLabelX) && lt) {
+                        label.attr('x', dragFixedLabelX).attr('y', boxY);
+                        lt.attr('y', newY + 4);
+                        if (pb) pb.attr('y', boxY);
+                        if (pt) pt.attr('y', newY + 4);
+                        const shiftBtnY = (btn) => {
+                            if (!btn) return;
+                            const ct = btn.attr('transform');
+                            if (!ct) return;
+                            const cm = ct.match(/translate\(\s*([^,\s)]+)\s*,\s*([^)]+?)\s*\)/);
+                            if (cm) btn.attr('transform', `translate(${cm[1]}, ${newY})`);
+                        };
+                        shiftBtnY(extraElements.deleteBtn);
+                        shiftBtnY(extraElements.splitBtn);
+                        shiftBtnY(extraElements.pctStepperBtn);
+                        const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
+                        if (!clBtn.empty()) shiftBtnY(clBtn);
+                        if (extraElements.labelAccent) {
+                            self._positionLegacyOrderLevelToastAccent(extraElements.labelAccent, label);
+                        }
+                    } else if (lt) {
+                        const gap = 4;
+                        const pad = 8;
+                        const closeBtnR = 9;
+                        const closeBtnGap = 6;
                         const ltW = lt.node()?.getBBox()?.width || 0;
                         const lBW = ltW + pad * 2;
                         const ptW = pt?.node()?.getBBox()?.width || 0;
                         const pBW = ptW > 0 ? ptW + pad * 2 : 0;
                         const rE = self._getOrderOverlayRightEdge(ctx);
                         let sX;
-                        if (Number.isFinite(dragFixedLabelX)) {
-                            // Keep left edge fixed during drag; grow/shrink width to the right.
-                            sX = dragFixedLabelX;
-                        } else if (lineType === 'be') {
+                        if (lineType === 'be') {
                             sX = rE - lBW;
                         } else {
                             const cX = rE - closeBtnR;
@@ -31245,6 +31263,7 @@ class OrderManager {
         let frameId = null;
         let pipIndicator = null;
         let dollarIndicator = null;
+        let dragFixedLabelX = null;
         
         // Get native DOM elements
         const lineNode = line.node();
@@ -31260,8 +31279,17 @@ class OrderManager {
             isDragging = true;
             self._isDraggingOrderLine = true;
             self._draggingManagedOpenLineKind = 'tp';
+            self._draggingManagedOpenOrderId = order.id;
             startY = e.clientY;
             dragStartPrice = target.price;
+            try {
+                const lx = parseFloat(labelBox?.attr?.('x'));
+                dragFixedLabelX = Number.isFinite(lx) ? lx : null;
+            } catch (_) {
+                dragFixedLabelX = null;
+            }
+            // Same freeze as makeLineDraggable — stops updateSLTPLines shoving toasts sideways.
+            self._dragFixedOpenLabelX = dragFixedLabelX;
             
             console.log(`🖱️ Multi-TP drag started: TP${targetIndex + 1} @ ${target.price.toFixed(5)}`);
             
@@ -31319,7 +31347,7 @@ class OrderManager {
                 }
                 
                 // Update line position
-                line.attr('y1', newY).attr('y2', newY);
+                line.attr('x1', 0).attr('x2', ctx.w).attr('y1', newY).attr('y2', newY);
                 
                 // Update price text
                 if (priceText) {
@@ -31336,6 +31364,14 @@ class OrderManager {
                     if (m) {
                         labelText.text(curLabel.replace(/^TP\d+/, `TP${tpRank}`));
                     }
+                }
+
+                // Preview-style: Y-only toast move while drag owns X.
+                if (Number.isFinite(dragFixedLabelX) && labelBox) {
+                    const boxH = 22;
+                    const boxY = newY - boxH / 2;
+                    labelBox.attr('x', dragFixedLabelX).attr('y', boxY);
+                    if (labelText) labelText.attr('y', newY + 4);
                 }
                 
                 // TP floating indicators removed — info already on labels
@@ -31357,6 +31393,9 @@ class OrderManager {
             isDragging = false;
             self._isDraggingOrderLine = false;
             self._draggingManagedOpenLineKind = null;
+            self._draggingManagedOpenOrderId = null;
+            dragFixedLabelX = null;
+            self._dragFixedOpenLabelX = null;
             
             // Remove document listeners
             document.removeEventListener('mousemove', onMouseMove);
@@ -32592,7 +32631,15 @@ class OrderManager {
             chart.svg,
             `order-close-btn order-${order.id}`,
             color,
-            () => { if (confirm(`Close ${order.type} position #${order.id} at market price?`)) this.closePosition(order.id); }
+            () => {
+                this._confirmInChart({
+                    title: 'Close position',
+                    message: `Close ${order.type} position #${order.id} at market price?`,
+                    confirmLabel: 'Close',
+                    danger: true,
+                    onConfirm: () => this.closePosition(order.id),
+                });
+            }
         );
 
         const pnlBox = chart.svg.append('rect')
@@ -34104,7 +34151,15 @@ class OrderManager {
             chart.svg,
             `pending-order-close-btn pending-${pendingOrder.id}`,
             lineColor,
-            () => { if (confirm(`Cancel ${orderTypeLabel} ${pendingOrder.direction} order #${pendingOrder.id}?`)) this.cancelPendingOrder(pendingOrder.id); }
+            () => {
+                this._confirmInChart({
+                    title: 'Cancel order',
+                    message: `Cancel ${orderTypeLabel} ${pendingOrder.direction} order #${pendingOrder.id}?`,
+                    confirmLabel: 'Cancel order',
+                    danger: true,
+                    onConfirm: () => this.cancelPendingOrder(pendingOrder.id),
+                });
+            }
         );
         
         // Make entry line draggable
@@ -38261,7 +38316,15 @@ class OrderManager {
                 chart.svg,
                 `sl-close-btn sl-${order.id}`,
                 '#f23645',
-                () => { if (confirm(`Remove Stop Loss from order #${order.id}?`)) this.removeStopLoss(order.id); }
+                () => {
+                    this._confirmInChart({
+                        title: 'Remove stop loss',
+                        message: `Remove Stop Loss from order #${order.id}?`,
+                        confirmLabel: 'Remove',
+                        danger: true,
+                        onConfirm: () => this.removeStopLoss(order.id),
+                    });
+                }
             );
             
             // Right side price box
@@ -38555,7 +38618,15 @@ class OrderManager {
                 chart.svg,
                 `tp-close-btn tp-${order.id}`,
                 '#089981',
-                () => { if (confirm(`Remove Take Profit from order #${order.id}?`)) this.removeTakeProfit(order.id); }
+                () => {
+                    this._confirmInChart({
+                        title: 'Remove take profit',
+                        message: `Remove Take Profit from order #${order.id}?`,
+                        confirmLabel: 'Remove',
+                        danger: true,
+                        onConfirm: () => this.removeTakeProfit(order.id),
+                    });
+                }
             );
 
             // TP+ split button (adds a new TP target)
@@ -39451,48 +39522,55 @@ class OrderManager {
                 }
                 
                 const y = ch.scales.yScale(displaySlPrice);
+                const draggingThisSl = !!(
+                    this._isDraggingOrderLine
+                    && this._draggingManagedOpenLineKind === 'sl'
+                    && this._draggingManagedOpenOrderId != null
+                    && String(this._draggingManagedOpenOrderId) === String(orderId)
+                    && Number.isFinite(this._dragFixedOpenLabelX)
+                );
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
                     const boxY = y - boxH / 2;
-                    const gap = 4;
-                    const pad = 8;
-                    const closeBtnR = 9;
-                    const closeBtnGap = 6;
-                    
-                    const stripeW = 3;
-                    const labelTW = labelText.node()?.getBBox()?.width || 0;
-                    const labelBW = labelTW + pad * 2 + stripeW;
-                    const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
-                    const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
-                    
-                    const rightEdge = this._getOrderOverlayRightEdge(ch);
-                    const closeBtnX = rightEdge - closeBtnR;
-                    const layoutStartX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
-                    // During open SL drag, keep the toast left edge frozen. Otherwise P&L width
-                    // changes (e.g. -96.20 → -77.70) re-right-align and shove SL to the right.
-                    const draggingThisSl = !!(
-                        this._isDraggingOrderLine
-                        && this._draggingManagedOpenLineKind === 'sl'
-                        && this._draggingManagedOpenOrderId != null
-                        && String(this._draggingManagedOpenOrderId) === String(orderId)
-                        && Number.isFinite(this._dragFixedOpenLabelX)
-                    );
-                    const startX = draggingThisSl ? this._dragFixedOpenLabelX : layoutStartX;
-                    
-                    let cx = startX;
-                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
-                    labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
-                    cx += labelBW + gap;
-                    
-                    if (pnlBox && pnlText && pnlBW > 0) {
-                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
-                        pnlText.attr('x', cx + pad).attr('y', y + 4);
+                    if (draggingThisSl) {
+                        // Preview-style: Y only. Drag handler owns X; do not re-layout widths.
+                        labelBox.attr('x', this._dragFixedOpenLabelX).attr('y', boxY);
+                        labelText.attr('y', y + 4);
+                        if (pnlBox) pnlBox.attr('y', boxY);
+                        if (pnlText) pnlText.attr('y', y + 4);
+                        if (closeBtn) {
+                            const ct = closeBtn.attr('transform');
+                            const cm = ct && ct.match(/translate\(\s*([^,\s)]+)\s*,\s*([^)]+?)\s*\)/);
+                            if (cm) closeBtn.attr('transform', `translate(${cm[1]}, ${y})`);
+                        }
+                        closeBtn?.attr('clip-path', null);
+                        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+                    } else {
+                        const gap = 4;
+                        const pad = 8;
+                        const closeBtnR = 9;
+                        const closeBtnGap = 6;
+                        const stripeW = 3;
+                        const labelTW = labelText.node()?.getBBox()?.width || 0;
+                        const labelBW = labelTW + pad * 2 + stripeW;
+                        const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
+                        const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
+                        const rightEdge = this._getOrderOverlayRightEdge(ch);
+                        const closeBtnX = rightEdge - closeBtnR;
+                        const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                        let cx = startX;
+                        labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+                        labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
+                        cx += labelBW + gap;
+                        if (pnlBox && pnlText && pnlBW > 0) {
+                            pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
+                            pnlText.attr('x', cx + pad).attr('y', y + 4);
+                        }
+                        closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                        closeBtn?.attr('clip-path', null);
+                        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
                     }
-                    
-                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
-                    closeBtn?.attr('clip-path', null);
-                    this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
                 }
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
@@ -39799,7 +39877,32 @@ class OrderManager {
                         && String(this._draggingManagedOpenOrderId) === String(orderId)
                         && Number.isFinite(this._dragFixedOpenLabelX)
                     );
-                    const startX = draggingThisTp ? this._dragFixedOpenLabelX : layoutStartX;
+
+                    if (draggingThisTp) {
+                        // Preview-style: Y only while this TP is dragged.
+                        labelBox.attr('x', this._dragFixedOpenLabelX).attr('y', boxY);
+                        labelText.attr('y', y + 4);
+                        if (pnlBox) pnlBox.attr('y', boxY);
+                        if (pnlText) pnlText.attr('y', y + 4);
+                        const shiftBtnY = (btn) => {
+                            if (!btn) return;
+                            const ct = btn.attr('transform');
+                            const cm = ct && ct.match(/translate\(\s*([^,\s)]+)\s*,\s*([^)]+?)\s*\)/);
+                            if (cm) btn.attr('transform', `translate(${cm[1]}, ${y})`);
+                        };
+                        shiftBtnY(pctStepperBtn);
+                        shiftBtnY(deleteBtn);
+                        shiftBtnY(splitBtn);
+                        shiftBtnY(closeBtn);
+                        closeBtn?.attr('clip-path', null);
+                        this._styleLegacyOrderLevelToastChrome(
+                            { labelBox, labelText, pnlBox, pnlText, labelAccent },
+                            this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e',
+                            { isPreview: false }
+                        );
+                        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+                    } else {
+                    const startX = layoutStartX;
 
                     let cx = startX;
 
@@ -39871,6 +39974,7 @@ class OrderManager {
 
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${boxY + boxH / 2})`);
                     closeBtn?.attr('clip-path', null);
+                    } // end !draggingThisTp layout
                 }
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
@@ -40712,6 +40816,8 @@ class OrderManager {
     /**
      * Post-positioning pass: align all visible order label groups to the same
      * left edge so entries, TP, SL, Avg lines form a clean vertical column.
+     * Rows are right-anchored via `_getOrderOverlayRightEdge` (same 175px gutter
+     * as preview), then left-aligned here so widths don't stagger.
      */
     _alignAllOrderLabels(ch) {
         if (!ch?.svg) return;
@@ -44654,6 +44760,15 @@ class OrderManager {
     }
 
     /**
+     * Shared right gutter for draft preview + executed/pending order toasts.
+     * Preview historically used 175px from SVG right; executed must match so the
+     * column does not jump sideways when an order fills.
+     */
+    _getOrderLevelLabelRightMargin() {
+        return 175;
+    }
+
+    /**
      * Price-axis reserve (px) for order overlay layout. Must match the live canvas
      * margin — a hardcoded 70px leaves executed × buttons past the plot clip.
      */
@@ -44666,10 +44781,15 @@ class OrderManager {
         return 70;
     }
 
-    /** Rightmost X still inside the main-plot clip (for executed/pending toast rows). */
+    /**
+     * Rightmost X for executed/pending toast rows (+ close cluster).
+     * Matches preview's right gutter, clamped so we never sit under the price axis.
+     */
     _getOrderOverlayRightEdge(ch, insetPx = 4) {
         const w = Number(ch && ch.w) || 0;
-        return w - this._getOrderOverlayAxisReserve(ch) - Math.max(0, insetPx);
+        const previewGutter = w - this._getOrderLevelLabelRightMargin();
+        const plotSafe = w - this._getOrderOverlayAxisReserve(ch) - Math.max(0, insetPx);
+        return Math.min(previewGutter, plotSafe);
     }
 
     _appendOrderLevelBadgeGlyph(parent, kind, cx, cy, r, extraClass = '') {
@@ -45196,6 +45316,165 @@ class OrderManager {
             d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
         });
     }
+    /**
+     * In-chart confirm dialog (replaces browser window.confirm for order actions).
+     * Matches MFE/MAE / instrument settings modal styling.
+     * @param {{ title?: string, message: string, confirmLabel?: string, cancelLabel?: string, danger?: boolean, onConfirm?: function, onCancel?: function }} opts
+     */
+    _confirmInChart(opts = {}) {
+        const title = opts.title || 'Confirm';
+        const message = opts.message || '';
+        const confirmLabel = opts.confirmLabel || 'OK';
+        const cancelLabel = opts.cancelLabel || 'Cancel';
+        const danger = !!opts.danger;
+        const onConfirm = typeof opts.onConfirm === 'function' ? opts.onConfirm : null;
+        const onCancel = typeof opts.onCancel === 'function' ? opts.onCancel : null;
+
+        if (!document.getElementById('talariaConfirmModalStyles')) {
+            const st = document.createElement('style');
+            st.id = 'talariaConfirmModalStyles';
+            st.textContent = `
+                #talariaConfirmModal.talaria-confirm-modal {
+                    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                    z-index: 1000020; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+                    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+                }
+                body.light-mode #talariaConfirmModal.talaria-confirm-modal {
+                    background: rgba(15, 23, 42, 0.35); backdrop-filter: blur(3px);
+                }
+                .talaria-confirm-modal__box {
+                    background: #1a1e2e; border: 1px solid #2a2e39; border-radius: 12px; padding: 22px 24px;
+                    max-width: 380px; width: min(90%, 380px); box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                    animation: talariaConfirmIn .16s ease;
+                }
+                body.light-mode .talaria-confirm-modal__box {
+                    background: #ffffff; border: 1px solid #e0e3eb; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+                }
+                @keyframes talariaConfirmIn {
+                    from { opacity: 0; transform: scale(.96) translateY(6px); }
+                    to { opacity: 1; transform: scale(1) translateY(0); }
+                }
+                .talaria-confirm-modal__header {
+                    display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+                }
+                .talaria-confirm-modal__title { margin: 0; font-size: 16px; font-weight: 700; color: #fff; }
+                body.light-mode .talaria-confirm-modal__title { color: #131722; }
+                .talaria-confirm-modal__close {
+                    background: transparent; border: none; color: #787b86; font-size: 22px; cursor: pointer;
+                    padding: 0; width: 28px; height: 28px; line-height: 1; border-radius: 6px;
+                }
+                .talaria-confirm-modal__close:hover { color: #d1d4dc; }
+                body.light-mode .talaria-confirm-modal__close:hover { color: #131722; border: 1px solid #e0e3eb; }
+                .talaria-confirm-modal__message {
+                    color: #b2b5be; font-size: 13px; line-height: 1.5; margin: 0 0 20px;
+                }
+                body.light-mode .talaria-confirm-modal__message { color: #4a4e59; }
+                .talaria-confirm-modal__actions { display: flex; gap: 10px; }
+                .talaria-confirm-modal__btn {
+                    flex: 1; padding: 11px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
+                    cursor: pointer; border: none; font-family: inherit;
+                }
+                .talaria-confirm-modal__btn--ghost {
+                    background: transparent; color: #787b86; border: 1px solid #2a2e39;
+                }
+                .talaria-confirm-modal__btn--ghost:hover { border-color: #434651; color: #d1d4dc; }
+                body.light-mode .talaria-confirm-modal__btn--ghost {
+                    background: #ffffff; color: #131722; border: 1px solid #e0e3eb;
+                }
+                body.light-mode .talaria-confirm-modal__btn--ghost:hover {
+                    border-color: #cbd5e1; background: #f8fafc;
+                }
+                .talaria-confirm-modal__btn--primary { background: #7c3aed; color: #fff; }
+                .talaria-confirm-modal__btn--primary:hover { background: #6d28d9; }
+                body.light-mode .talaria-confirm-modal__btn--primary { background: #089981; }
+                body.light-mode .talaria-confirm-modal__btn--primary:hover { background: #07806d; }
+                .talaria-confirm-modal__btn--danger { background: #f23645; color: #fff; }
+                .talaria-confirm-modal__btn--danger:hover { background: #d92d3a; }
+                body.light-mode .talaria-confirm-modal__btn--danger { background: #f23645; }
+                body.light-mode .talaria-confirm-modal__btn--danger:hover { background: #d92d3a; }
+            `;
+            document.head.appendChild(st);
+        }
+
+        const existing = document.getElementById('talariaConfirmModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'talariaConfirmModal';
+        modal.className = 'talaria-confirm-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'talariaConfirmTitle');
+
+        const box = document.createElement('div');
+        box.className = 'talaria-confirm-modal__box';
+        box.innerHTML = `
+            <div class="talaria-confirm-modal__header">
+                <h3 class="talaria-confirm-modal__title" id="talariaConfirmTitle"></h3>
+                <button type="button" class="talaria-confirm-modal__close" data-talaria-confirm-cancel aria-label="Close">&times;</button>
+            </div>
+            <p class="talaria-confirm-modal__message" data-talaria-confirm-message></p>
+            <div class="talaria-confirm-modal__actions">
+                <button type="button" class="talaria-confirm-modal__btn talaria-confirm-modal__btn--ghost" data-talaria-confirm-cancel></button>
+                <button type="button" class="talaria-confirm-modal__btn ${danger ? 'talaria-confirm-modal__btn--danger' : 'talaria-confirm-modal__btn--primary'}" data-talaria-confirm-ok></button>
+            </div>
+        `;
+        box.querySelector('#talariaConfirmTitle').textContent = title;
+        box.querySelector('[data-talaria-confirm-message]').textContent = message;
+        box.querySelector('[data-talaria-confirm-ok]').textContent = confirmLabel;
+        box.querySelectorAll('[data-talaria-confirm-cancel]').forEach((el) => {
+            if (el.tagName === 'BUTTON' && el.getAttribute('aria-label') !== 'Close') {
+                el.textContent = cancelLabel;
+            }
+        });
+
+        const close = (confirmed) => {
+            document.removeEventListener('keydown', onKey, true);
+            modal.remove();
+            if (confirmed) {
+                try { onConfirm && onConfirm(); } catch (err) { console.error(err); }
+            } else {
+                try { onCancel && onCancel(); } catch (err) { console.error(err); }
+            }
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                close(false);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                close(true);
+            }
+        };
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+        document.addEventListener('keydown', onKey, true);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close(false);
+        });
+        box.querySelectorAll('[data-talaria-confirm-cancel]').forEach((el) => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                close(false);
+            });
+        });
+        box.querySelector('[data-talaria-confirm-ok]').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            close(true);
+        });
+
+        // Focus confirm so Enter works immediately after clicking × on a level.
+        requestAnimationFrame(() => {
+            try { box.querySelector('[data-talaria-confirm-ok]')?.focus(); } catch (_) { /* ignore */ }
+        });
+    }
+
     /**
      * Build a standard circular ×-close button and return the <g> element.
      * Replaces the repeated circle+text+hover pattern in every draw method.
