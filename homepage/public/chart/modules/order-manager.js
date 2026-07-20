@@ -40689,8 +40689,13 @@ class OrderManager {
         if (!this._isDraggingPendingTarget) {
             this.positionPendingOrderTargets(ch);
         }
-        if (!panLite) {
+        // Align on pan-lite too: without it each row re-right-aligns by its own width and
+        // TP/SL/entry toasts stagger sideways while panning or after a chart click.
+        // Skip only while the user is actively dragging a level (drag owns that row's X).
+        if (!this._isDraggingOrderLine && !this._isDraggingPendingTarget) {
             this._alignAllOrderLabels(ch);
+        }
+        if (!panLite) {
             if (ch?.svg) {
                 this._purgeOrderOverlayArtifacts(ch);
                 plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
@@ -40793,6 +40798,13 @@ class OrderManager {
                 if (ct) {
                     const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
                     if (cm) tp.splitBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+            if (tp.pctStepperBtn) {
+                const ct = tp.pctStepperBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) tp.pctStepperBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
                 }
             }
             if (tp.closeBtn) {
