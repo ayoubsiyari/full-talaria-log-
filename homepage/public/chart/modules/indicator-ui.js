@@ -1461,6 +1461,7 @@ function __talariaFvgParamList() {
         { id: 'wDayLn', label: 'Line width', type: 'number', default: 1, min: 1, max: 3 },
         { id: 'keepDays', label: 'Keep daily lines (days)', type: 'number', default: 20, min: 1, max: 120 },
         { id: 'atrLen', label: 'ATR length (size filters)', type: 'number', default: 14, min: 1 },
+        { id: 'livePrev', label: 'Draw forming gaps live (provisional)', type: 'checkbox', default: true },
         { id: 'dayEnd', label: 'At daily rollover, live gaps are…', type: 'select', options: [{ value: 'freeze (stop extending)', label: 'Freeze (stop extending)' }, { value: 'remove', label: 'Remove' }], default: 'freeze (stop extending)' },
         { id: 'maxLive', label: 'Max tracked boxes', type: 'number', default: 150, min: 10, max: 400 },
         { id: 'h2', type: 'heading', label: '2 · 5m gaps — the targets map' },
