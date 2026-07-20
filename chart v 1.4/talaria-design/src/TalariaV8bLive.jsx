@@ -19307,6 +19307,7 @@ const TalariaV8bLive = () => {
       bell:       "M160-200v-80h80v-280q0-83 50-147.5T420-792v-88h120v88q80 20 130 84.5T720-560v280h80v80H160Zm320-300Zm0 420q-33 0-56.5-23.5T400-160h160q0 33-23.5 56.5T480-80ZM320-280h320v-280q0-66-47-113t-113-47q-66 0-113 47t-47 113v280Z",
       link:       "M440-280H280q-83 0-141.5-58.5T80-480q0-83 58.5-141.5T280-680h160v80H280q-50 0-85 35t-35 85q0 50 35 85t85 35h160v80ZM320-440v-80h320v80H320Zm200 160v-80h160q50 0 85-35t35-85q0-50-35-85t-85-35H520v-80h160q83 0 141.5 58.5T880-480q0 83-58.5 141.5T680-280H520Z",
       layout:     "M520-600v-240h320v240H520ZM120-440v-400h320v400H120Zm400 320v-400h320v400H520Zm-400 0v-240h320v240H120Zm80-400h160v-240H200v240Zm400 320h160v-240H600v240Zm0-480h160v-80H600v80ZM200-200h160v-80H200v80Z",
+      home:       "M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z",
       screenshot: "M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM80-120v-640h206l74-80h240l74 80h206v640H80Zm80-80h640v-480H638l-73-80H395l-73 80H160v480Zm320-240Z",
       help:       "M513.5-254.5Q528-269 528-290t-14.5-35.5Q499-340 478-340t-35.5 14.5Q428-311 428-290t14.5 35.5Q457-240 478-240t35.5-14.5ZM442-394h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z",
       bars:       "M640-160v-280h160v280H640Zm-240 0v-640h160v640H400Zm-240 0v-440h160v440H160Z",
@@ -34990,6 +34991,32 @@ const TalariaV8bLive = () => {
                 </div>
               );
             })}
+            {/* Home — return to access pages (marketing / entitled landing). Dashboard CTA kept off below. */}
+            <div style={{padding:"6px 10px 4px"}}>
+              {(()=>{
+                const isH = swHov==="lm-home";
+                const isP = swHov==="lm-home_dn";
+                return (
+                  <div onClick={()=>{
+                    setLogoMenu(false);
+                    window.location.href = "/";
+                  }}
+                    onMouseEnter={()=>setSwHov("lm-home")} onMouseLeave={()=>setSwHov(null)}
+                    onMouseDown={()=>setSwHov("lm-home_dn")} onMouseUp={()=>setSwHov("lm-home")}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
+                      background:isP?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,
+                      border:`1px solid ${isH||isP?c.acL:"rgba(74,106,255,0.5)"}`,
+                      boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
+                      transform:isP?"scale(0.96)":"scale(1)",
+                      transition:"background 0.12s ease,border-color 0.12s ease,box-shadow 0.12s ease,transform 0.08s ease"}}>
+                    <I n="home" s={14} cl="#fff"/>
+                    <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Home</span>
+                  </div>
+                );
+              })()}
+            </div>
+            {/* Go to Dashboard — kept in code, turned off (set true to re-enable) */}
+            {false && (
             <div style={{padding:"6px 10px 4px"}}>
               {(()=>{
                 const isH = swHov==="lm-dash";
@@ -34997,9 +35024,6 @@ const TalariaV8bLive = () => {
                 return (
                   <div onClick={()=>{
                     setLogoMenu(false);
-                    // Main performance dashboard at /dashboard/.
-                    // Only honor ?sessionId= from the chart URL (positive server id).
-                    // Do not use chart localStorage — it may point at an empty/ephemeral session.
                     let sid = null;
                     try {
                       const p = new URLSearchParams(window.location.search);
@@ -35024,6 +35048,7 @@ const TalariaV8bLive = () => {
                 );
               })()}
             </div>
+            )}
           </div>
         </div>
       )}
