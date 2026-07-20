@@ -1766,6 +1766,33 @@ class Chart {
     /**
      * Sync session toggles (advanced orders, replay rollback policy) into globals + order-manager DOM state.
      */
+    /**
+     * Apply session-config timezone (set at session create) to the live chart.
+     * Without this, V9 Settings default/persisted "UTC" wins and the HUD stays UTC.
+     */
+    applySessionTimezone(session) {
+        if (!session || typeof session !== 'object') return;
+        const raw = session.timezone || session.timeZone || session.tz || null;
+        if (raw == null || String(raw).trim() === '') return;
+        const tzId = this.mapV9TimezoneLabelToId(String(raw).trim());
+        if (!tzId) return;
+        try {
+            if (this.chartSettings) this.chartSettings.timezone = tzId;
+        } catch (_) { /* ignore */ }
+        try {
+            const tm = window.timezoneManager;
+            if (tm && typeof tm.setTimezone === 'function') {
+                const cur = typeof tm.getTimezone === 'function' ? tm.getTimezone() : null;
+                if (!cur || cur.id !== tzId) tm.setTimezone(tzId);
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            window.dispatchEvent(new CustomEvent('talaria-session-timezone', {
+                detail: { timezone: tzId, source: 'session' },
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
     applySessionTradingPreferences(session) {
         if (!session || typeof session !== 'object') return;
         try {
@@ -2101,6 +2128,7 @@ class Chart {
                 } catch (e) {}
 
                 this.applySessionTradingPreferences(this.backtestingSession);
+                this.applySessionTimezone(this.backtestingSession);
                 if (this.orderManager && this.orderManager.orderService && typeof this.orderManager.orderService.loadSessionState === 'function') {
                     try {
                         this.orderManager.orderService.loadSessionState(this.backtestingSession);
@@ -2274,6 +2302,9 @@ class Chart {
         this.backtestingSession = session;
         try {
             userStorage.setItem('backtestingSession', JSON.stringify(session));
+        } catch (e) { /* ignore */ }
+        try {
+            this.applySessionTimezone(session);
         } catch (e) { /* ignore */ }
         if (this.orderManager && this.orderManager.orderService && typeof this.orderManager.orderService.loadSessionState === 'function') {
             try {
@@ -30121,16 +30152,42 @@ class Chart {
         if (!label || typeof label !== 'string') return null;
         const map = {
             'UTC': 'UTC',
+            'UTC / GMT': 'UTC',
             'UTC+3 (Riyadh)': 'Europe/Moscow',
             'UTC+4 (Dubai)': 'Asia/Dubai',
             'UTC+5:30 (IST)': 'Asia/Kolkata',
             'UTC+8 (Asia)': 'Asia/Singapore',
             'UTC-5 (EST)': 'America/New_York',
-            'UTC-8 (PST)': 'America/Los_Angeles'
+            'UTC-8 (PST)': 'America/Los_Angeles',
+            'New York (ET)': 'America/New_York',
+            'New York (EST)': 'America/New_York',
+            'Chicago (CT)': 'America/Chicago',
+            'Chicago (CST)': 'America/Chicago',
+            'Los Angeles (PT)': 'America/Los_Angeles',
+            'Los Angeles (PST)': 'America/Los_Angeles',
         };
         if (map[label]) return map[label];
         const v = label.trim();
+        if (map[v]) return map[v];
         if (v === 'UTC') return 'UTC';
+        // "(UTC-05:00) New York" / "(UTC+00:00) UTC" style labels from the Settings dropdown
+        const friendly = v.match(/\)\s*(.+)$/);
+        if (friendly) {
+            const name = friendly[1].trim();
+            if (map[name]) return map[name];
+            if (/^UTC$/i.test(name)) return 'UTC';
+            const byCity = {
+                'New York': 'America/New_York',
+                'Chicago': 'America/Chicago',
+                'Los Angeles': 'America/Los_Angeles',
+                'London': 'Europe/London',
+                'Paris': 'Europe/Paris',
+                'Tokyo': 'Asia/Tokyo',
+                'Dubai': 'Asia/Dubai',
+                'Singapore': 'Asia/Singapore',
+            };
+            if (byCity[name]) return byCity[name];
+        }
         if (/^[A-Za-z_]+\/.+$/.test(v)) {
             try {
                 new Intl.DateTimeFormat('en-US', { timeZone: v });

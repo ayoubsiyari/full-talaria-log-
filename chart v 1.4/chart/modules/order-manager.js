@@ -14444,13 +14444,18 @@ class OrderManager {
         lineData.labelDimensions = { width: bbox.width, height: bbox.height };
 
         // While dragging, keep label X stable (entry toast AND SL/TP badges).
-        // Otherwise renderPreviewLabel / entry-right-edge lookup can briefly fail mid-rebuild
-        // and badges fall back to tpBaseX on the price axis — "suspended" then snap on release.
+        // Prefer the X captured at drag-start — reading the live transform can "lock in"
+        // a wrong X after a mid-drag re-render (text width / right-edge recompute) and the
+        // handle drifts left/right even though price movement is vertical-only.
         if (this.isDraggingPreviewLine) {
-            const tr = lineData.labelGroup.attr('transform') || '';
-            const m = /translate\(([^,]+)/.exec(tr);
-            const curX = m ? parseFloat(m[1]) : NaN;
+            let curX = Number(lineData._dragFixedLabelX);
+            if (!Number.isFinite(curX)) {
+                const tr = lineData.labelGroup.attr('transform') || '';
+                const m = /translate\(([^,\s)]+)/.exec(tr);
+                curX = m ? parseFloat(m[1]) : NaN;
+            }
             if (Number.isFinite(curX)) {
+                lineData._dragFixedLabelX = curX;
                 let yPixel;
                 if (overrideY !== null && overrideY !== undefined) {
                     yPixel = overrideY;
@@ -19778,6 +19783,16 @@ class OrderManager {
                 self.isDraggingPreviewLine = true;
                 self._multichartPostDraftDragBusy(true);
 
+                // Freeze label X for the whole drag (same pattern as makePendingTargetDraggable).
+                try {
+                    const tr = lineData.labelGroup?.attr('transform') || '';
+                    const m = /translate\(([^,\s)]+)/.exec(tr);
+                    const x0 = m ? parseFloat(m[1]) : NaN;
+                    lineData._dragFixedLabelX = Number.isFinite(x0) ? x0 : null;
+                } catch (_) {
+                    lineData._dragFixedLabelX = null;
+                }
+
                 if (_orderSltpApplyOnReleaseFixEnabled()) {
                     const lbl = lineData.label;
                     const isSlPreview = lbl === 'SL';
@@ -19979,21 +19994,29 @@ class OrderManager {
                     }
                 }
                 
-                // Update label Y position without recalculating X (prevents horizontal jumping)
+                // Update label Y only — keep the drag-start X so P&L/lot text width
+                // changes cannot shove the handle left/right.
                 const bbox = lineData.labelDimensions;
                 const height = bbox?.height || 0;
-                const currentTransform = lineData.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                let currentX = Number(lineData._dragFixedLabelX);
+                if (!Number.isFinite(currentX)) {
+                    const currentTransform = lineData.labelGroup.attr('transform');
+                    currentX = parseFloat(currentTransform?.match(/translate\(([^,\s)]+)/)?.[1] || 0);
+                    lineData._dragFixedLabelX = currentX;
+                }
                 const translateY = clampedY - height / 2;
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
-                self.adjustPreviewLineForLabel(lineData);
+                self.adjustPreviewLineForLabel(lineData, currentX);
                 
                 // Update Y-axis price highlight for ALL lines (Entry, TP, SL, BE, etc.)
                 if (lineData.yAxisHighlight) {
                     const highlightHeight = 22;
                     const highlightY = clampedY - highlightHeight / 2;
-                    const highlightX = parseFloat(lineData.yAxisHighlight.attr('transform').match(/translate\(([\d.]+)/)?.[1] || 0);
-                    lineData.yAxisHighlight.attr('transform', `translate(${highlightX}, ${highlightY})`);
+                    if (!Number.isFinite(lineData._dragFixedYAxisX)) {
+                        const hx = parseFloat(lineData.yAxisHighlight.attr('transform')?.match(/translate\(([^,\s)]+)/)?.[1] || 0);
+                        lineData._dragFixedYAxisX = Number.isFinite(hx) ? hx : 0;
+                    }
+                    lineData.yAxisHighlight.attr('transform', `translate(${lineData._dragFixedYAxisX}, ${highlightY})`);
                     lineData.yAxisHighlight.select('.y-axis-price-text').text(formattedPrice);
                 }
                 
@@ -20571,6 +20594,10 @@ class OrderManager {
 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
+                try {
+                    delete lineData._dragFixedLabelX;
+                    delete lineData._dragFixedYAxisX;
+                } catch (_) { /* ignore */ }
 
                 self._oiCommitPreviewSltpFromDragEnd(lineData);
                 if (lineData.label === 'SL' && _orderSltpApplyOnReleaseFixEnabled()) {
@@ -30692,6 +30719,8 @@ class OrderManager {
         let pipIndicator = null;
         let dollarIndicator = null;
         let rrIndicator = null;
+        /** Frozen label left-edge X for the drag — prevents P&L text width flicker from shifting the toast sideways. */
+        let dragFixedLabelX = null;
         
         // Throttle helper for calculations
         const throttledUpdate = (fn) => {
@@ -30726,6 +30755,12 @@ class OrderManager {
             self._draggingManagedOpenLineKind = lineType;
             self._draggingManagedOpenOrderId = order.id;
             startY = e.clientY;
+            try {
+                const lx = parseFloat(label.attr('x'));
+                dragFixedLabelX = Number.isFinite(lx) ? lx : null;
+            } catch (_) {
+                dragFixedLabelX = null;
+            }
             
             // Store starting price and drag start price
             if (lineType === 'entry') {
@@ -30964,7 +30999,10 @@ class OrderManager {
                         const pBW = ptW > 0 ? ptW + pad * 2 : 0;
                         const rE = self._getOrderOverlayRightEdge(ctx);
                         let sX;
-                        if (lineType === 'be') {
+                        if (Number.isFinite(dragFixedLabelX)) {
+                            // Keep left edge fixed during drag; grow/shrink width to the right.
+                            sX = dragFixedLabelX;
+                        } else if (lineType === 'be') {
                             sX = rE - lBW;
                         } else {
                             const cX = rE - closeBtnR;
@@ -31047,6 +31085,7 @@ class OrderManager {
             self._isDraggingOrderLine = false;
             self._draggingManagedOpenLineKind = null;
             self._draggingManagedOpenOrderId = null;
+            dragFixedLabelX = null;
 
             if (_orderSltpApplyOnReleaseFixEnabled() && (lineType === 'sl' || lineType === 'tp')) {
                 const committed = self._oiCommitProvisionalEdit();
@@ -34064,6 +34103,7 @@ class OrderManager {
         // Make entry line draggable
         const self = this;
         let isDragging = false;
+        let dragFixedEntryLabelX = null;
         
         let dragStartPrice = pendingOrder.entryPrice;
         let dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
@@ -34080,6 +34120,12 @@ class OrderManager {
                 dragStartPrice = pendingOrder.entryPrice;
                 dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
+                try {
+                    const lx = parseFloat(labelBox.attr('x'));
+                    dragFixedEntryLabelX = Number.isFinite(lx) ? lx : null;
+                } catch (_) {
+                    dragFixedEntryLabelX = null;
+                }
                 // Hide badges during drag to avoid stale positioning
                 if (slBadgeGroup) slBadgeGroup.style('display', 'none');
                 if (tpBadgeGroup) tpBadgeGroup.style('display', 'none');
@@ -34134,19 +34180,7 @@ class OrderManager {
 
                 const finalY = chart.scales.yScale(newPrice);
 
-                self._positionPendingEntryDragVisuals(chart, pendingOrder, {
-                    line,
-                    dragHitLine,
-                    labelBox,
-                    labelAccent,
-                    labelText,
-                    closeBtn
-                }, finalY);
-                
-                if (priceBox) priceBox.style('display', 'none');
-                if (priceText) priceText.style('display', 'none');
-
-                // Live auto-detect order type while dragging
+                // Update type label first so width is known, but keep left X frozen.
                 const curCandle = self.getCurrentCandle();
                 const curPrice = curCandle?.c || curCandle?.close || 0;
                 if (curPrice > 0) {
@@ -34158,15 +34192,28 @@ class OrderManager {
                     }
                     pendingOrder.orderType = newType;
                 }
-
                 const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
                 labelText.text(typeLabel);
+
+                self._positionPendingEntryDragVisuals(chart, pendingOrder, {
+                    line,
+                    dragHitLine,
+                    labelBox,
+                    labelAccent,
+                    labelText,
+                    closeBtn
+                }, finalY, dragFixedEntryLabelX);
+                
+                if (priceBox) priceBox.style('display', 'none');
+                if (priceText) priceText.style('display', 'none');
+
                 self._drawExecutedOrderConnectors(chart);
             })
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
                 self._isDraggingOrderLine = false;
+                dragFixedEntryLabelX = null;
                 if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
                 
                 line.attr('stroke-width', 1);
@@ -44953,7 +45000,7 @@ class OrderManager {
     }
 
     /** Pending entry drag layout — same toast row math as updateOrderLines. */
-    _positionPendingEntryDragVisuals(chart, pendingOrder, els, y) {
+    _positionPendingEntryDragVisuals(chart, pendingOrder, els, y, fixedStartX = null) {
         const {
             line, dragHitLine, labelBox, labelAccent, labelText, closeBtn
         } = els || {};
@@ -44973,7 +45020,10 @@ class OrderManager {
         const labelBW = labelTW + pad * 2 + stripeW;
         const rightEdge = this._getOrderOverlayRightEdge(chart);
         const closeBtnX = rightEdge - closeBtnR;
-        const startX = closeBtnX - closeBtnR - closeBtnGap - labelBW;
+        // During drag, freeze left edge so LIMIT↔STOP label width changes don't shove the toast sideways.
+        const startX = Number.isFinite(fixedStartX)
+            ? fixedStartX
+            : (closeBtnX - closeBtnR - closeBtnGap - labelBW);
 
         labelBox.attr('x', startX).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
         labelText.attr('x', startX + pad + stripeW).attr('y', y + 4);

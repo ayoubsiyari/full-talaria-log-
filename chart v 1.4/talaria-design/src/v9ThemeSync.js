@@ -77,12 +77,19 @@ function resolveV9Precision(settingsPrecision) {
 
 const LEGACY_V9_TIMEZONE_LABELS = {
   UTC: "UTC",
+  "UTC / GMT": "UTC",
   "UTC+3 (Riyadh)": "Europe/Moscow",
   "UTC+4 (Dubai)": "Asia/Dubai",
   "UTC+5:30 (IST)": "Asia/Kolkata",
   "UTC+8 (Asia)": "Asia/Singapore",
   "UTC-5 (EST)": "America/New_York",
   "UTC-8 (PST)": "America/Los_Angeles",
+  "New York (ET)": "America/New_York",
+  "New York (EST)": "America/New_York",
+  "Chicago (CT)": "America/Chicago",
+  "Chicago (CST)": "America/Chicago",
+  "Los Angeles (PT)": "America/Los_Angeles",
+  "Los Angeles (PST)": "America/Los_Angeles",
 };
 
 export function resolveV9TimezoneToId(value) {

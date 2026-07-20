@@ -4583,6 +4583,24 @@ function v9RunDrawingMoreMenuAction(actionLabel) {
 /** Image tool: chart uses `style.imageUrl` + `style.opacity` (0–1). V9 panel uses `imageDataUrl` + opacity % (100 = fully visible). */
 const V9_IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 const V9_IMAGE_UPLOAD_MAX_MB = 5;
+/** Support chat: whitelist only raster images (blocks SVG / polyglot spoofs). Matches api_server SUPPORT_IMAGE_ALLOWED_MIME. */
+const SUPPORT_SAFE_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const SUPPORT_SAFE_IMAGE_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp";
+
+async function sniffSupportImageMime(file) {
+  try {
+    const buf = await file.slice(0, 16).arrayBuffer();
+    const u = new Uint8Array(buf);
+    if (u.length >= 3 && u[0] === 0xff && u[1] === 0xd8 && u[2] === 0xff) return "image/jpeg";
+    if (u.length >= 8 && u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47
+      && u[4] === 0x0d && u[5] === 0x0a && u[6] === 0x1a && u[7] === 0x0a) return "image/png";
+    if (u.length >= 6 && u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46
+      && u[3] === 0x38 && (u[4] === 0x37 || u[4] === 0x39) && u[5] === 0x61) return "image/gif";
+    if (u.length >= 12 && u[0] === 0x52 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x46
+      && u[8] === 0x57 && u[9] === 0x45 && u[10] === 0x42 && u[11] === 0x50) return "image/webp";
+  } catch (_) { /* ignore */ }
+  return null;
+}
 
 function v9ImageOpacityPercentFromStyle(style) {
   const op = style && style.opacity;
@@ -14468,19 +14486,36 @@ const TalariaV8bLive = () => {
     } catch (_) {}
   };
 
-  const supportPickImageFile = (file, which) => {
+  const supportPickImageFile = async (file, which) => {
     if (!file) return;
-    if (!String(file.type || "").startsWith("image/")) {
-      setSupportError("Please attach an image file.");
+    const name = String(file.name || "");
+    const declared = String(file.type || "").toLowerCase();
+    if (/\.svg$/i.test(name) || declared === "image/svg+xml") {
+      setSupportError("SVG files are not allowed.");
+      return;
+    }
+    if (declared && !SUPPORT_SAFE_IMAGE_MIME.has(declared) && !declared.startsWith("image/")) {
+      setSupportError("Only JPEG, PNG, GIF, or WebP images are allowed.");
       return;
     }
     if (file.size > V9_IMAGE_UPLOAD_MAX_BYTES) {
       setSupportError(`Image must be ${V9_IMAGE_UPLOAD_MAX_MB} MB or smaller.`);
       return;
     }
+    const sniffed = await sniffSupportImageMime(file);
+    if (!sniffed || !SUPPORT_SAFE_IMAGE_MIME.has(sniffed)) {
+      setSupportError("Only JPEG, PNG, GIF, or WebP images are allowed.");
+      return;
+    }
+    const ext = sniffed === "image/jpeg" ? "jpg" : sniffed.split("/")[1];
+    const safeName = name && !/\.svg$/i.test(name) ? name : `image-${Date.now()}.${ext}`;
+    const safeFile = sniffed !== declared
+      ? new File([file], safeName, { type: sniffed })
+      : file;
     setSupportError(null);
-    if (which === "new") setSupportNewFile(file);
-    else setSupportReplyFile(file);
+    setSupportPasteHint(null);
+    if (which === "new") setSupportNewFile(safeFile);
+    else setSupportReplyFile(safeFile);
   };
 
   const supportDataUrlToFile = (dataUrl, nameBase = "chart-screenshot") => {
@@ -14501,12 +14536,12 @@ const TalariaV8bLive = () => {
     if (!items) return false;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item && String(item.type || "").startsWith("image/")) {
+      const t = String(item?.type || "").toLowerCase();
+      if (item && t.startsWith("image/") && t !== "image/svg+xml") {
         const f = item.getAsFile();
         if (f) {
           e.preventDefault();
-          supportPickImageFile(f, which);
-          setSupportPasteHint(null);
+          void supportPickImageFile(f, which);
           if (supportPasteArmRef.current) {
             try { window.removeEventListener("paste", supportPasteArmRef.current, true); } catch (_) {}
             supportPasteArmRef.current = null;
@@ -14552,8 +14587,10 @@ const TalariaV8bLive = () => {
           const type = (item.types || []).find((t) => String(t).startsWith("image/"));
           if (!type) continue;
           const blob = await item.getType(type);
-          supportPickImageFile(
-            new File([blob], `paste-${Date.now()}.png`, { type: blob.type || "image/png" }),
+          const mime = String(blob.type || type || "image/png").toLowerCase();
+          if (!SUPPORT_SAFE_IMAGE_MIME.has(mime)) continue;
+          await supportPickImageFile(
+            new File([blob], `paste-${Date.now()}.png`, { type: mime }),
             which
           );
           return;
@@ -14623,7 +14660,7 @@ const TalariaV8bLive = () => {
       }
 
       if (!file) throw new Error("Could not capture chart screenshot.");
-      supportPickImageFile(file, which);
+      await supportPickImageFile(file, which);
     } catch (err) {
       const msg = err?.message || "Screenshot failed";
       setSupportError(msg === "Failed to fetch" ? "Screenshot failed — try Attach image instead." : msg);
@@ -15299,8 +15336,25 @@ const TalariaV8bLive = () => {
   const colorPickerRef = useRef(null);
   const cpPickerDraggingRef = useRef(false);
   colorPickerRef.current = colorPicker;
-  const [settings, setSettings] = useState(() => readV9UiSettingsLocal(DEFAULT_CHART_SETTINGS));
+  const [settings, setSettings] = useState(() => {
+    const base = readV9UiSettingsLocal(DEFAULT_CHART_SETTINGS);
+    // Prefer session timezone at first paint so Settings/HUD don't flash UTC.
+    try {
+      const raw = typeof window !== "undefined"
+        ? (window.userStorage?.getItem?.("backtestingSession") ?? localStorage.getItem("backtestingSession"))
+        : null;
+      if (raw) {
+        const sess = JSON.parse(raw);
+        const tz = resolveV9TimezoneToId(sess?.timezone || sess?.timeZone || sess?.tz);
+        if (tz && String(sess?.timezone || sess?.timeZone || sess?.tz || "").trim()) {
+          return { ...base, timezone: tz };
+        }
+      }
+    } catch (_) { /* ignore */ }
+    return base;
+  });
   const settingsRef = useRef(settings);
+  const appliedSessionTzKeyRef = useRef(null);
   useEffect(() => {
     settingsRef.current = settings;
     if (typeof window !== "undefined") {
@@ -15313,6 +15367,55 @@ const TalariaV8bLive = () => {
       const id = resolveV9TimezoneToId(prev.timezone);
       return id === prev.timezone ? prev : { ...prev, timezone: id };
     });
+  }, []);
+
+  // When a backtest/prop session loads, adopt its timezone into V9 Settings so the
+  // settings→chart sync doesn't keep forcing the persisted/default UTC.
+  useEffect(() => {
+    const adoptSessionTimezone = (rawTz, sessionKey) => {
+      if (rawTz == null || String(rawTz).trim() === "") return;
+      const id = resolveV9TimezoneToId(rawTz);
+      if (!id) return;
+      const key = String(sessionKey || id);
+      if (appliedSessionTzKeyRef.current === key) return;
+      appliedSessionTzKeyRef.current = key;
+      setSettings((prev) => (prev.timezone === id ? prev : { ...prev, timezone: id }));
+    };
+    const readAndAdopt = () => {
+      try {
+        const sess = window.chart?.backtestingSession;
+        if (sess && (sess.timezone || sess.timeZone || sess.tz)) {
+          const key = `${sess.session_id || sess.id || ""}|${sess.timezone || sess.timeZone || sess.tz}`;
+          adoptSessionTimezone(sess.timezone || sess.timeZone || sess.tz, key);
+          return;
+        }
+      } catch (_) { /* ignore */ }
+      try {
+        const raw = window.userStorage?.getItem?.("backtestingSession") ?? localStorage.getItem("backtestingSession");
+        if (!raw) return;
+        const sess = JSON.parse(raw);
+        if (sess && (sess.timezone || sess.timeZone || sess.tz)) {
+          const key = `${sess.session_id || sess.id || ""}|${sess.timezone || sess.timeZone || sess.tz}`;
+          adoptSessionTimezone(sess.timezone || sess.timeZone || sess.tz, key);
+        }
+      } catch (_) { /* ignore */ }
+    };
+    readAndAdopt();
+    const onSessionTz = (ev) => {
+      const tz = ev?.detail?.timezone;
+      if (tz) adoptSessionTimezone(tz, `evt|${tz}`);
+      else readAndAdopt();
+    };
+    window.addEventListener("talaria-session-timezone", onSessionTz);
+    let n = 0;
+    const poll = window.setInterval(() => {
+      readAndAdopt();
+      if (++n > 40) window.clearInterval(poll);
+    }, 150);
+    return () => {
+      window.removeEventListener("talaria-session-timezone", onSessionTz);
+      window.clearInterval(poll);
+    };
   }, []);
 
   useEffect(() => {
@@ -35844,25 +35947,80 @@ const TalariaV8bLive = () => {
             const POP_W = 380, POP_H = 540;
             const maxPopH = Math.min(POP_H, window.innerHeight * 0.78);
             const fieldStyle = { width:"100%", boxSizing:"border-box", padding:"8px 11px", fontSize:12, background:"rgba(0,0,0,0.28)", color:c.tx, border:`1px solid ${c.br}`, borderRadius:7, outline:"none", fontFamily:F, transition:"border-color 0.12s, box-shadow 0.12s" };
-            const attachChip = (label, onClick, active, disabled) => (
-              <button type="button" disabled={!!disabled} onClick={onClick}
-                onMouseEnter={() => setHov(`sup-chip-${label}`)} onMouseLeave={() => setHov(null)}
-                style={{ cursor: disabled ? "default" : "pointer", display:"inline-flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:6, fontSize:11, fontWeight:650, fontFamily:F,
-                  color: active ? c.acL : c.ts, background: active ? "rgba(74,106,255,0.14)" : (hov === `sup-chip-${label}` ? c.hv : "rgba(255,255,255,0.03)"),
-                  border:`1px solid ${active ? "rgba(74,106,255,0.4)" : c.br}`, opacity: disabled ? 0.55 : 1, transition:"background 0.12s, border-color 0.12s" }}>
-                {label}
-              </button>
-            );
-            const attachPreview = (file, url, onClear) => file ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8, padding:8, borderRadius:8, background:"rgba(74,106,255,0.08)", border:"1px solid rgba(74,106,255,0.22)" }}>
-                {url ? <img src={url} alt="" style={{ width:42, height:42, objectFit:"cover", borderRadius:6, flexShrink:0 }}/> : null}
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:11, fontWeight:650, color:c.tx, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
-                  <div style={{ fontSize:10, color:c.tm, marginTop:2 }}>{Math.max(1, Math.round(file.size / 1024))} KB · ready to send</div>
+            const attachField = (which, file, url, fileRef, onClear) => {
+              const hovKey = `sup-attach-${which}`;
+              const camKey = `sup-cam-${which}`;
+              const active = !!file || !!supportPasteHint;
+              const openPicker = () => fileRef.current?.click();
+              return (
+                <div>
+                  <input ref={fileRef} type="file" accept={SUPPORT_SAFE_IMAGE_ACCEPT} style={{ display:"none" }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void supportPickImageFile(f, which); e.target.value = ""; }}/>
+                  <div
+                    tabIndex={0}
+                    role="group"
+                    aria-label="Image attachment"
+                    onPaste={(e) => { void supportOnPasteImage(e, which); }}
+                    onClick={(e) => { if (!file && e.target === e.currentTarget) openPicker(); }}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Enter" || e.key === " ") && !file) { e.preventDefault(); openPicker(); }
+                    }}
+                    onMouseEnter={() => setHov(hovKey)} onMouseLeave={() => setHov(null)}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = c.acL; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(74,106,255,0.12)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = active ? "rgba(74,106,255,0.4)" : c.br; e.currentTarget.style.boxShadow = "none"; }}
+                    style={{
+                      display:"flex", alignItems:"center", gap:8, minHeight:40, padding: file ? "6px 8px" : "0 8px",
+                      borderRadius:8, outline:"none", cursor: file ? "default" : "text",
+                      background: active ? "rgba(74,106,255,0.08)" : (hov === hovKey ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.22)"),
+                      border:`1px solid ${active ? "rgba(74,106,255,0.4)" : c.br}`,
+                      transition:"background 0.12s, border-color 0.12s, box-shadow 0.12s",
+                    }}
+                  >
+                    {file ? (
+                      <>
+                        {url ? <img src={url} alt="" style={{ width:28, height:28, objectFit:"cover", borderRadius:5, flexShrink:0 }}/> : (
+                          <div style={{ width:28, height:28, borderRadius:5, background:"rgba(74,106,255,0.16)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                            <I n="image" s={14} cl={c.acL}/>
+                          </div>
+                        )}
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:11, fontWeight:650, color:c.tx, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
+                          <div style={{ fontSize:9, color:c.tm, marginTop:1 }}>{Math.max(1, Math.round(file.size / 1024))} KB · JPEG/PNG/GIF/WebP</div>
+                        </div>
+                        <button type="button" title="Remove" aria-label="Remove attachment" onClick={(e) => { e.stopPropagation(); onClear(); }}
+                          style={{ border:"none", background:"transparent", color:c.ts, fontSize:14, cursor:"pointer", padding:"2px 6px", lineHeight:1 }}>✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" title="Attach from computer" aria-label="Attach image from computer"
+                          onClick={(e) => { e.stopPropagation(); openPicker(); }}
+                          style={{ width:28, height:28, borderRadius:6, border:"none", cursor:"pointer", flexShrink:0,
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            background: hov === hovKey ? "rgba(74,106,255,0.16)" : "rgba(255,255,255,0.04)", color:c.acL }}>
+                          <I n="image" s={15} cl={c.acL}/>
+                        </button>
+                        <div style={{ flex:1, minWidth:0, fontSize:11, color:c.tm, lineHeight:1.35, pointerEvents:"none" }}>
+                          <span style={{ color:c.ts, fontWeight:600 }}>Add image</span>
+                          <span style={{ color:c.tm }}> · Ctrl+V to paste</span>
+                        </div>
+                        <button type="button" title="Capture chart screenshot" aria-label="Capture chart screenshot"
+                          disabled={supportCapturing}
+                          onClick={(e) => { e.stopPropagation(); void supportCaptureChartForAttach(which); }}
+                          onMouseEnter={() => setHov(camKey)} onMouseLeave={() => setHov(hovKey)}
+                          style={{ width:28, height:28, borderRadius:6, border:"none", cursor: supportCapturing ? "default" : "pointer", flexShrink:0,
+                            display:"flex", alignItems:"center", justifyContent:"center", opacity: supportCapturing ? 0.5 : 1,
+                            background: hov === camKey ? "rgba(74,106,255,0.16)" : "transparent", color:c.ts }}>
+                          <I n="screenshot" s={14} cl={hov === camKey ? c.acL : c.ts}/>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {supportPasteHint && !file ? (
+                    <div style={{ fontSize:10, color:c.acL, marginTop:6, lineHeight:1.35 }}>{supportPasteHint}</div>
+                  ) : null}
                 </div>
-                <button type="button" onClick={onClear} style={{ border:"none", background:"transparent", color:"#e53935", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>✕</button>
-              </div>
-            ) : null;
+              );
+            };
             let left = null;
             let right = Math.max(8, window.innerWidth - 76);
             let top = Math.max(8, window.innerHeight - maxPopH - 16);
@@ -35939,7 +36097,7 @@ const TalariaV8bLive = () => {
                 ) : supportNewThread ? (
                   /* ── New Thread Form ── */
                   <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 12px", display:"flex", flexDirection:"column", gap:12 }}
-                    onPaste={(e) => supportOnPasteImage(e, "new")}>
+                    onPaste={(e) => { void supportOnPasteImage(e, "new"); }}>
                     <div>
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:5, letterSpacing:"0.02em" }}>Subject</label>
                       <input type="text" value={supportNewSubject} onChange={e=>setSupportNewSubject(e.target.value)} placeholder="Brief description…" maxLength={200}
@@ -35967,18 +36125,10 @@ const TalariaV8bLive = () => {
                     </div>
                     <div>
                       <div style={{ fontSize:11, fontWeight:700, color:c.tm, marginBottom:6 }}>Attachment</div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
-                        {attachChip("Attach image", () => supportNewFileRef.current?.click(), !!supportNewFile, false)}
-                        <input ref={supportNewFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "new"); }}/>
-                        {attachChip("Paste", () => { void supportPasteImageButton("new"); }, !!supportPasteHint, false)}
-                        {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("new"); }, false, supportCapturing)}
-                      </div>
-                      {supportPasteHint && (
-                        <div style={{ fontSize:11, color:c.acL, background:"rgba(74,106,255,0.10)", border:"1px solid rgba(74,106,255,0.28)", borderRadius:6, padding:"7px 10px", marginBottom:8 }}>
-                          {supportPasteHint}
-                        </div>
-                      )}
-                      {attachPreview(supportNewFile, supportNewPreviewUrl, () => { setSupportNewFile(null); if (supportNewFileRef.current) supportNewFileRef.current.value = ""; })}
+                      {attachField("new", supportNewFile, supportNewPreviewUrl, supportNewFileRef, () => {
+                        setSupportNewFile(null);
+                        if (supportNewFileRef.current) supportNewFileRef.current.value = "";
+                      })}
                     </div>
                     <button type="button" disabled={supportSending || (!supportNewSubject.trim() || (!supportNewBody.trim() && !supportNewFile))} onClick={supportCreateThread}
                       style={{ padding:"10px 0", fontSize:13, fontWeight:750, borderRadius:8, border:"1px solid rgba(107,140,255,0.45)", cursor: supportSending ? "default" : "pointer",
@@ -36013,19 +36163,11 @@ const TalariaV8bLive = () => {
                     </div>
                     {supportSelThread.status !== "closed" && (
                       <div style={{ padding:"10px", borderTop:`1px solid ${c.br}`, display:"flex", flexDirection:"column", gap:8, flexShrink:0, background:"rgba(0,0,0,0.12)" }}
-                        onPaste={(e) => supportOnPasteImage(e, "reply")}>
-                        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                          {attachChip("Attach", () => supportReplyFileRef.current?.click(), !!supportReplyFile, false)}
-                          <input ref={supportReplyFileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if (f) supportPickImageFile(f, "reply"); }}/>
-                          {attachChip("Paste", () => { void supportPasteImageButton("reply"); }, !!supportPasteHint, false)}
-                          {attachChip(supportCapturing ? "Capturing…" : "Screenshot", () => { void supportCaptureChartForAttach("reply"); }, false, supportCapturing)}
-                        </div>
-                        {supportPasteHint && (
-                          <div style={{ fontSize:11, color:c.acL, background:"rgba(74,106,255,0.10)", border:"1px solid rgba(74,106,255,0.28)", borderRadius:6, padding:"7px 10px" }}>
-                            {supportPasteHint}
-                          </div>
-                        )}
-                        {attachPreview(supportReplyFile, supportReplyPreviewUrl, () => { setSupportReplyFile(null); if (supportReplyFileRef.current) supportReplyFileRef.current.value = ""; })}
+                        onPaste={(e) => { void supportOnPasteImage(e, "reply"); }}>
+                        {attachField("reply", supportReplyFile, supportReplyPreviewUrl, supportReplyFileRef, () => {
+                          setSupportReplyFile(null);
+                          if (supportReplyFileRef.current) supportReplyFileRef.current.value = "";
+                        })}
                         <div style={{ display:"flex", alignItems:"flex-end", gap:6 }}>
                           <textarea ref={supportReplyBodyRef} value={supportReply} onChange={e=>setSupportReply(e.target.value)} placeholder="Type a message… (paste image with Ctrl/Cmd+V)" rows={2}
                             onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();supportSendReply();}}}

@@ -5,8 +5,60 @@ import { createPortal } from "react-dom";
 import { SUPPORT_CATEGORIES, buildSupportContext } from "../support/supportUi";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
+  IMAGE_UPLOAD_FORMAT_HINT,
   imageUploadTooLargeError,
 } from "@/lib/imageUploadLimits";
+
+const SAFE_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const SAFE_IMAGE_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp";
+
+async function sniffImageMime(file: File): Promise<string | null> {
+  try {
+    const buf = await file.slice(0, 16).arrayBuffer();
+    const u = new Uint8Array(buf);
+    if (u.length >= 3 && u[0] === 0xff && u[1] === 0xd8 && u[2] === 0xff) return "image/jpeg";
+    if (
+      u.length >= 8 &&
+      u[0] === 0x89 &&
+      u[1] === 0x50 &&
+      u[2] === 0x4e &&
+      u[3] === 0x47 &&
+      u[4] === 0x0d &&
+      u[5] === 0x0a &&
+      u[6] === 0x1a &&
+      u[7] === 0x0a
+    ) {
+      return "image/png";
+    }
+    if (
+      u.length >= 6 &&
+      u[0] === 0x47 &&
+      u[1] === 0x49 &&
+      u[2] === 0x46 &&
+      u[3] === 0x38 &&
+      (u[4] === 0x37 || u[4] === 0x39) &&
+      u[5] === 0x61
+    ) {
+      return "image/gif";
+    }
+    if (
+      u.length >= 12 &&
+      u[0] === 0x52 &&
+      u[1] === 0x49 &&
+      u[2] === 0x46 &&
+      u[3] === 0x46 &&
+      u[8] === 0x57 &&
+      u[9] === 0x45 &&
+      u[10] === 0x42 &&
+      u[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 const F = "'Exo 2', sans-serif";
 const C = {
@@ -129,19 +181,29 @@ export function V16SupportChatPopover() {
   const threadsRef = useRef<Thread[]>([]);
   threadsRef.current = threads;
 
-  const pickImage = (file: File | null, which: "new" | "reply") => {
+  const pickImage = async (file: File | null, which: "new" | "reply") => {
     if (!file) return;
-    if (!String(file.type || "").startsWith("image/")) {
-      setError("Please attach an image file.");
+    const name = String(file.name || "");
+    const declared = String(file.type || "").toLowerCase();
+    if (/\.svg$/i.test(name) || declared === "image/svg+xml") {
+      setError("SVG files are not allowed.");
       return;
     }
     if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
       setError(imageUploadTooLargeError(file.size));
       return;
     }
+    const sniffed = await sniffImageMime(file);
+    if (!sniffed || !SAFE_IMAGE_MIME.has(sniffed)) {
+      setError(`Only ${IMAGE_UPLOAD_FORMAT_HINT} are allowed.`);
+      return;
+    }
+    const ext = sniffed === "image/jpeg" ? "jpg" : sniffed.split("/")[1];
+    const safeName = name && !/\.svg$/i.test(name) ? name : `image-${Date.now()}.${ext}`;
+    const safeFile = sniffed !== declared ? new File([file], safeName, { type: sniffed }) : file;
     setError(null);
-    if (which === "new") setNewFile(file);
-    else setReplyFile(file);
+    if (which === "new") setNewFile(safeFile);
+    else setReplyFile(safeFile);
   };
 
   const onPasteImage = (e: React.ClipboardEvent, which: "new" | "reply") => {
@@ -149,11 +211,12 @@ export function V16SupportChatPopover() {
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item && String(item.type || "").startsWith("image/")) {
+      const t = String(item?.type || "").toLowerCase();
+      if (item && t.startsWith("image/") && t !== "image/svg+xml") {
         const f = item.getAsFile();
         if (f) {
           e.preventDefault();
-          pickImage(f, which);
+          void pickImage(f, which);
         }
         break;
       }
@@ -611,23 +674,84 @@ export function V16SupportChatPopover() {
               style={{ width: "100%", boxSizing: "border-box", padding: "8px 11px", fontSize: 12, background: "rgba(0,0,0,0.28)", color: C.tx, border: `1px solid ${C.br}`, borderRadius: 7, outline: "none", fontFamily: F, resize: "vertical", minHeight: 96 }}
             />
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", fontSize: 11, color: C.ts }}>
-            <label style={{ cursor: "pointer", padding: "5px 9px", borderRadius: 6, border: `1px solid ${C.br}`, background: newFile ? C.acD : "rgba(255,255,255,0.03)", color: newFile ? C.acL : C.ts, fontWeight: 650 }}>
-              {newFile ? newFile.name.slice(0, 18) : "Attach image"}
-              <input ref={newFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickImage(e.target.files?.[0] ?? null, "new")} />
-            </label>
-            <span style={{ opacity: 0.7 }}>or paste (Ctrl/Cmd+V)</span>
-            {newFile ? (
-              <span
-                onClick={() => {
-                  setNewFile(null);
-                  if (newFileRef.current) newFileRef.current.value = "";
-                }}
-                style={{ cursor: "pointer", color: "#e53935" }}
-              >
-                ✕
-              </span>
-            ) : null}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.tm, marginBottom: 6 }}>Attachment</div>
+            <input
+              ref={newFileRef}
+              type="file"
+              accept={SAFE_IMAGE_ACCEPT}
+              style={{ display: "none" }}
+              onChange={(e) => {
+                void pickImage(e.target.files?.[0] ?? null, "new");
+                e.target.value = "";
+              }}
+            />
+            <div
+              tabIndex={0}
+              role="group"
+              aria-label="Image attachment"
+              onPaste={(e) => onPasteImage(e, "new")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 40,
+                padding: newFile ? "6px 8px" : "0 8px",
+                borderRadius: 8,
+                outline: "none",
+                background: newFile ? C.acD : "rgba(0,0,0,0.22)",
+                border: `1px solid ${newFile ? "rgba(74,106,255,0.4)" : C.br}`,
+              }}
+            >
+              {newFile ? (
+                <>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 650, color: C.tx, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{newFile.name}</div>
+                    <div style={{ fontSize: 9, color: C.tm, marginTop: 1 }}>{IMAGE_UPLOAD_FORMAT_HINT}</div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove attachment"
+                    onClick={() => {
+                      setNewFile(null);
+                      if (newFileRef.current) newFileRef.current.value = "";
+                    }}
+                    style={{ border: "none", background: "transparent", color: C.ts, fontSize: 14, cursor: "pointer", padding: "2px 6px" }}
+                  >
+                    ✕
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    title="Attach from computer"
+                    aria-label="Attach image from computer"
+                    onClick={() => newFileRef.current?.click()}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      border: "none",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(74,106,255,0.14)",
+                      color: C.acL,
+                      fontSize: 14,
+                    }}
+                  >
+                    +
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: C.tm, lineHeight: 1.35 }}>
+                    <span style={{ color: C.ts, fontWeight: 600 }}>Add image</span>
+                    <span> · Ctrl+V to paste</span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -683,27 +807,79 @@ export function V16SupportChatPopover() {
               style={{ padding: "10px", borderTop: `1px solid ${C.br}`, display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}
               onPaste={(e) => onPasteImage(e, "reply")}
             >
-              <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11 }}>
-                <label style={{ cursor: "pointer", padding: "5px 9px", borderRadius: 6, border: `1px solid ${C.br}`, color: replyFile ? C.acL : C.ts, background: replyFile ? C.acD : "rgba(255,255,255,0.03)", fontWeight: 650 }}>
-                  Attach
-                  <input ref={replyFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickImage(e.target.files?.[0] ?? null, "reply")} />
-                </label>
-                <span style={{ color: C.tm }}>Paste image with Ctrl/Cmd+V</span>
+              <input
+                ref={replyFileRef}
+                type="file"
+                accept={SAFE_IMAGE_ACCEPT}
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  void pickImage(e.target.files?.[0] ?? null, "reply");
+                  e.target.value = "";
+                }}
+              />
+              <div
+                tabIndex={0}
+                role="group"
+                aria-label="Image attachment"
+                onPaste={(e) => onPasteImage(e, "reply")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minHeight: 36,
+                  padding: replyFile ? "6px 8px" : "0 8px",
+                  borderRadius: 8,
+                  outline: "none",
+                  background: replyFile ? C.acD : "rgba(0,0,0,0.22)",
+                  border: `1px solid ${replyFile ? "rgba(74,106,255,0.4)" : C.br}`,
+                }}
+              >
+                {replyFile ? (
+                  <>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 650, color: C.tx, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{replyFile.name}</div>
+                    <button
+                      type="button"
+                      aria-label="Remove attachment"
+                      onClick={() => {
+                        setReplyFile(null);
+                        if (replyFileRef.current) replyFileRef.current.value = "";
+                      }}
+                      style={{ border: "none", background: "transparent", color: C.ts, fontSize: 14, cursor: "pointer", padding: "2px 6px" }}
+                    >
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      title="Attach from computer"
+                      aria-label="Attach image from computer"
+                      onClick={() => replyFileRef.current?.click()}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "rgba(74,106,255,0.14)",
+                        color: C.acL,
+                        fontSize: 14,
+                      }}
+                    >
+                      +
+                    </button>
+                    <div style={{ flex: 1, fontSize: 11, color: C.tm }}>
+                      <span style={{ color: C.ts, fontWeight: 600 }}>Add image</span>
+                      <span> · Ctrl+V</span>
+                    </div>
+                  </>
+                )}
               </div>
-              {replyFile ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: C.ts }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{replyFile.name}</span>
-                  <span
-                    onClick={() => {
-                      setReplyFile(null);
-                      if (replyFileRef.current) replyFileRef.current.value = "";
-                    }}
-                    style={{ cursor: "pointer", color: "#e53935" }}
-                  >
-                    ✕
-                  </span>
-                </div>
-              ) : null}
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
                 <textarea
                   value={reply}
