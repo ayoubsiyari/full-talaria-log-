@@ -4120,9 +4120,12 @@ function indicatorUpdateNeedsDataRecalc(indicatorType, merged, previous) {
     if (indicatorType === 'custom' && indicatorPayloadValueChanged(merged.script, prev.script)) return true;
     if (indicatorType === 'cotnet' && (indicatorPayloadValueChanged(merged.cftcCode, prev.cftcCode)
         || indicatorPayloadValueChanged(merged.dataUrl, prev.dataUrl))) return true;
+    // Talaria FVG / Ratio+Gap bake colors, fills, and opacity into calculated geometry —
+    // treat every def field (including opacity/color-style ids) as a recalc input.
+    const talariaBakeAll = indicatorType === 'talariafvg' || indicatorType === 'talariaratiogap';
     return def.params.some(function(param) {
         if (param.type === 'heading' || param.type === 'divider') return false;
-        if (isIndicatorStyleOrThicknessParam(param)) return false;
+        if (!talariaBakeAll && isIndicatorStyleOrThicknessParam(param)) return false;
         if (param.type === 'timeRange') {
             return indicatorPayloadValueChanged(merged[param.startId], prev[param.startId])
                 || indicatorPayloadValueChanged(merged[param.endId], prev[param.endId]);
@@ -4553,7 +4556,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.type = 'number';
             input.className = 'settings-input';
             input.value = currentValue;
-            input.min = param.min || 1;
+            input.min = param.min != null ? param.min : 1;
             if (param.max) input.max = param.max;
             if (param.step) input.step = param.step;
             input.style.cssText = 'width:160px;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg, #131722);color:var(--sp-text, #d1d4dc);border:1px solid var(--sp-input-border, rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';

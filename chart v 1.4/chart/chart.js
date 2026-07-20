@@ -219,6 +219,20 @@ function installChartContextMenuCapture() {
 }
 installChartContextMenuCapture();
 
+/** Product policy: light UI mode is disabled. Remap light panel themes → dark. */
+if (typeof window !== 'undefined' && window.__TALARIA_FORCE_DARK_MODE === undefined) {
+    window.__TALARIA_FORCE_DARK_MODE = true;
+}
+function isTalariaForceDarkMode() {
+    return typeof window === 'undefined' || window.__TALARIA_FORCE_DARK_MODE !== false;
+}
+function coerceForcedDarkPanelTemplate(templateName) {
+    if (!isTalariaForceDarkMode()) return templateName;
+    const id = templateName && typeof templateName === 'string' ? templateName : '';
+    if (id === 'tradingview-light') return 'tradingview-dark';
+    return templateName;
+}
+
 /** V9 shell theme → CSS variables for chart context menu (see TalariaV8bLive). */
 function applyChartContextMenuThemeVars() {
     if (typeof document === 'undefined') return;
@@ -12681,7 +12695,11 @@ class Chart {
             if (_tplSel) {
                 if (_tplSel.full)      { this._lastTemplateSelected   = _tplSel.full;      this.chartSettings.activeFullTemplate       = _tplSel.full; }
                 if (_tplSel.chartOnly) { this._lastChartOnlyTemplate  = _tplSel.chartOnly; this.chartSettings.activeChartOnlyTemplate  = _tplSel.chartOnly; }
-                if (_tplSel.panelOnly) { this._lastPanelOnlyTemplate  = _tplSel.panelOnly; this.chartSettings.activePanelOnlyTemplate  = _tplSel.panelOnly; }
+                if (_tplSel.panelOnly) {
+                    const panelTpl = coerceForcedDarkPanelTemplate(_tplSel.panelOnly);
+                    this._lastPanelOnlyTemplate = panelTpl;
+                    this.chartSettings.activePanelOnlyTemplate = panelTpl;
+                }
             }
         } catch(e) {}
 
@@ -12702,7 +12720,10 @@ class Chart {
                 // Restore persisted template selections so dropdowns show correct state on reload
                 if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
                 if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
-                if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
+                if (this.chartSettings.activePanelOnlyTemplate) {
+                    this.chartSettings.activePanelOnlyTemplate = coerceForcedDarkPanelTemplate(this.chartSettings.activePanelOnlyTemplate);
+                    this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
+                }
             } else {
                 // TradingView-style defaults when no saved settings exist
                 this.chartSettings.backgroundColor = '#131722';
@@ -12730,9 +12751,15 @@ class Chart {
                     this._migrateLegacyTalariaAxisTextColors();
                     this._migrateLegacyTalariaCandleColors();
                     // Restore persisted template selections from cloud settings
-                    if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
+                    if (this.chartSettings.activeFullTemplate) {
+                        this.chartSettings.activeFullTemplate = coerceForcedDarkPanelTemplate(this.chartSettings.activeFullTemplate);
+                        this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
+                    }
                     if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
-                    if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
+                    if (this.chartSettings.activePanelOnlyTemplate) {
+                        this.chartSettings.activePanelOnlyTemplate = coerceForcedDarkPanelTemplate(this.chartSettings.activePanelOnlyTemplate);
+                        this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
+                    }
                     this._applyChartSettingsImmediate(null, null);
                     this._reapplyV9ThemeSettingsIfAvailable();
                 }
@@ -15591,7 +15618,12 @@ class Chart {
                     document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
                     document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
                     document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
-                    document.body.classList.toggle('light-mode', isLightPanel);
+                    // Force dark UI: never leave body in light-mode even if a light panel
+                    // template/colors were restored from storage.
+                    document.body.classList.toggle(
+                        'light-mode',
+                        isTalariaForceDarkMode() ? false : isLightPanel
+                    );
                 }
             }
         }
@@ -15720,11 +15752,14 @@ class Chart {
             customOptions += '</optgroup>';
         }
 
+        const lightOpt = isTalariaForceDarkMode()
+            ? ''
+            : '<option value="tradingview-light">Light</option>';
         return `
             <option value="">Custom</option>
             ${customOptions}
             <option value="tradingview-dark">Dark</option>
-            <option value="tradingview-light">Light</option>
+            ${lightOpt}
         `;
     }
 
@@ -16126,6 +16161,7 @@ class Chart {
     }
     
     applyTemplate(templateName) {
+        templateName = coerceForcedDarkPanelTemplate(templateName);
         let template = null;
         let resolvedName = templateName;
 
@@ -16241,9 +16277,12 @@ class Chart {
     }
 
     applyPanelOnlyTemplate(templateName) {
-        // When embedded in Talaria, non-admins may only use Dark/Light panel themes (toolbar toggle).
+        templateName = coerceForcedDarkPanelTemplate(templateName);
+        // When embedded in Talaria, non-admins may only use Dark panel theme (light disabled).
         // Admin-only templates are UI-hidden; this blocks console bypass. Server also strips on sync.
-        const publicPanelTplIds = new Set(['tradingview-dark', 'tradingview-light']);
+        const publicPanelTplIds = isTalariaForceDarkMode()
+            ? new Set(['tradingview-dark'])
+            : new Set(['tradingview-dark', 'tradingview-light']);
         if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && !window.isTalariaAdmin()) {
             const id = templateName && typeof templateName === 'string' ? templateName : '';
             if (!publicPanelTplIds.has(id)) {
@@ -16413,12 +16452,17 @@ class Chart {
     getPanelTemplateSwatches() {
         const all = this.getUnifiedThemeSwatches() || [];
         // Admins: same full list as chart / unified themes (panel chrome per template).
-        // Non-admins: only Dark & Light (matches applyPanelOnlyTemplate + toolbar policy).
+        // Non-admins: Dark only when light mode is forced off.
         if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && window.isTalariaAdmin()) {
-            return all;
+            if (!isTalariaForceDarkMode()) return all;
+            return all.filter((tpl) => {
+                const id = String((tpl && (tpl.id || tpl.name)) || '').trim().toLowerCase();
+                return id !== 'tradingview-light' && id !== 'light';
+            });
         }
         return all.filter((tpl) => {
             const name = String((tpl && tpl.name) || '').trim().toLowerCase();
+            if (isTalariaForceDarkMode()) return name === 'dark';
             return name === 'dark' || name === 'light';
         });
     }

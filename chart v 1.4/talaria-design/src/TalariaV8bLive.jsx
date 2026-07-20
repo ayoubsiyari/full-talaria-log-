@@ -13650,7 +13650,18 @@ const TalariaV8bLive = () => {
     } catch (_) {}
   }, [profileLang]);
 
-  const [darkMode, setDarkMode] = useState(true);
+  // Light mode disabled product-wide — UI stays dark; toggle is removed.
+  const FORCE_DARK_MODE = true;
+  const [darkModeState, setDarkModeState] = useState(true);
+  const darkMode = FORCE_DARK_MODE ? true : darkModeState;
+  const setDarkMode = FORCE_DARK_MODE ? (() => {}) : setDarkModeState;
+  useEffect(() => {
+    if (!FORCE_DARK_MODE) return;
+    try {
+      if (typeof window !== "undefined") window.__TALARIA_FORCE_DARK_MODE = true;
+      if (document.body) document.body.classList.remove("light-mode");
+    } catch (_) {}
+  }, []);
   const [faqOpen, setFaqOpen] = useState(false);
   const [faqCat, setFaqCat] = useState("faq");
   const [faqPos, setFaqPos] = useState({ x: 0, y: 0 });
@@ -16291,8 +16302,8 @@ const TalariaV8bLive = () => {
     root.style.setProperty("--tlr-cm-acL", c.acL);
     root.style.setProperty("--tlr-cm-acG", c.acG);
     root.style.setProperty("--tlr-cm-hv", window.__talariaV9UiTheme.hv);
-    document.body.classList.toggle("light-mode", !darkMode);
-  }, [darkMode, c.sf, c.brH, c.tx, c.ts, c.tm, c.ac, c.acL, c.acG, c.br]);
+    document.body.classList.toggle("light-mode", FORCE_DARK_MODE ? false : !darkMode);
+  }, [darkMode, FORCE_DARK_MODE, c.sf, c.brH, c.tx, c.ts, c.tm, c.ac, c.acL, c.acG, c.br]);
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
@@ -35798,33 +35809,7 @@ const TalariaV8bLive = () => {
             t.id === "pinbar" && <div key={`sep-${t.id}`} style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>,
           ])}
           <div style={{ flex: 1 }}/>
-          {/* Dark / Light mode toggle */}
-          <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
-            onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
-            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"center",
-              paddingLeft:0, paddingRight:0, boxSizing:"border-box", cursor:"default", position:"relative",
-              background: hov==="sb-theme" ? c.hv : "transparent",
-              transition:"background 0.12s" }}>
-            {darkMode ? (
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round">
-                <circle cx="12" cy="12" r="4.5"/>
-                <line x1="12" y1="2" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22"/>
-                <line x1="2" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22" y2="12"/>
-                <line x1="4.93" y1="4.93" x2="6.64" y2="6.64"/><line x1="17.36" y1="17.36" x2="19.07" y2="19.07"/>
-                <line x1="4.93" y1="19.07" x2="6.64" y2="17.36"/><line x1="17.36" y1="6.64" x2="19.07" y2="4.93"/>
-              </svg>
-            ) : (
-              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={hov==="sb-theme"?c.tx:c.ts} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-            )}
-            {hov==="sb-theme" && <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
-              background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
-              color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
-              borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
-            {hov==="sb-theme" && <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
-              background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
-          </div>
+          {/* Light mode disabled — dark only */}
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0, minWidth: 0, overflow: "hidden", zIndex: 1 }}>
           {/* Match legacy chart/index.html #chart-container: absolutely filled slot — not flex:1 on

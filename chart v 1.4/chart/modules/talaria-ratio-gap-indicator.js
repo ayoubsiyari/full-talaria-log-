@@ -415,6 +415,7 @@
             labels: labels,
             labelMeta: {
                 size: p.lblSizeS,
+                lblOff: Number(p.lblOff) || 0,
                 mergeK: Number(p.mergeK) || 0,
                 stagger: Number(p.lblStagger) || 10,
                 avgR: avgR
@@ -512,6 +513,22 @@
                 ctx.font = '600 ' + fontSize + 'px Roboto, system-ui, sans-serif';
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
+                var candleSp = (typeof this.getCandleSpacing === 'function')
+                    ? Number(this.getCandleSpacing()) : NaN;
+                if (!Number.isFinite(candleSp) || candleSp <= 0) {
+                    candleSp = (Number(this.candleWidth) || 6) + 2;
+                }
+                var offBars = Number(lm.lblOff);
+                if (!Number.isFinite(offBars)) offBars = 2;
+                var staggerBars = Number(lm.stagger);
+                if (!Number.isFinite(staggerBars) || staggerBars < 1) staggerBars = 10;
+                var mergeK = Number(lm.mergeK) || 0;
+                var avgR = Number(lm.avgR) || 0;
+                // Price proximity → pixel band: labels closer than mergeK×avgR stagger.
+                var mergePx = 0;
+                if (mergeK > 0 && avgR > 0) {
+                    mergePx = Math.abs(this.yScale(0) - this.yScale(mergeK * avgR));
+                }
                 var placed = [];
                 data.labels.forEach(function (lb) {
                     var y = this.yScale(lb.price);
@@ -519,23 +536,21 @@
                     placed.push({ text: lb.text, color: lb.color, y: y, tw: ctx.measureText(lb.text).width });
                 }, this);
                 placed.sort(function (a, b) { return a.y - b.y; });
-                // Anchor labels just to the RIGHT of where the lines stop (the last
-                // bar), like TradingView. Ensure the first column always fits before
-                // the price axis so the widest label is never clipped.
+                // Anchor labels to the RIGHT of the last bar + lblOff bars (TradingView-like).
                 var lastBarX = Math.min(this.dataIndexToPixel(n - 1), plotR);
                 var maxTw = 0;
                 for (var mi = 0; mi < placed.length; mi++) maxTw = Math.max(maxTw, placed[mi].tw);
-                var anchorX = Math.min(lastBarX + 8, plotR - 2 - maxTw);
+                var anchorX = Math.min(lastBarX + 8 + offBars * candleSp, plotR - 2 - maxTw);
                 if (anchorX < plotL + 2) anchorX = plotL + 2;
-                var gap = 8;
+                var gap = Math.max(4, staggerBars * candleSp);
                 var lineH = fontSize + 4;
-                // Greedy 2-D placement: stagger to the RIGHT while there is room,
-                // then WRAP down to a new row instead of stacking on the axis edge.
+                var vPad = Math.max(lineH / 2, mergePx / 2);
+                // Greedy 2-D placement: stagger right by lblStagger bars, then wrap down.
                 var rects = [];
                 function findConflict(x, y, tw) {
                     for (var r = 0; r < rects.length; r++) {
                         var q = rects[r];
-                        var vOverlap = !(y + lineH / 2 <= q.top || y - lineH / 2 >= q.bottom);
+                        var vOverlap = Math.abs(y - (q.top + q.bottom) / 2) < (vPad + lineH / 2);
                         var hOverlap = !(x >= q.right || x + tw <= q.left);
                         if (vOverlap && hOverlap) return q;
                     }

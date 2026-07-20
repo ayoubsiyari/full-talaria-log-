@@ -168,7 +168,7 @@
             streams.push(makeStreamState({
                 enabled: true, tfOk: true, tfMs: tfToMs('5m'),
                 mult: Number(p.mult5) || 0, tagFirst: false, tagAll: false, tfTag: '5m',
-                bullFill: p.cB5f, bearFill: p.cR5f, firstFill: p.cF15
+                bullFill: p.cB5f, bearFill: p.cR5f, firstFill: p.cB5f
             }));
         }
         if (p.on15 && ok15) {

@@ -4052,13 +4052,20 @@
         var def = (typeof window !== 'undefined' && window.INDICATOR_DEFINITIONS)
             ? window.INDICATOR_DEFINITIONS[typeKey] : null;
         if (!def || !def.params) return;
+        params = params || {};
+        if (!indicator.params) indicator.params = {};
         def.params.forEach(function (p) {
             if (p.type === 'heading' || p.type === 'divider') return;
-            var raw = params[p.id] !== undefined ? params[p.id] : p.default;
+            // Prefer incoming payload → keep existing → fall back to def default.
+            // (Partial updates must not wipe sibling keys back to defaults.)
+            var raw = params[p.id] !== undefined ? params[p.id]
+                : (indicator.params[p.id] !== undefined ? indicator.params[p.id] : p.default);
             if (p.type === 'checkbox') raw = !!raw;
             else if (p.type === 'number') {
                 raw = parseFloat(raw);
-                if (isNaN(raw)) raw = p.default;
+                if (isNaN(raw)) {
+                    raw = indicator.params[p.id] !== undefined ? indicator.params[p.id] : p.default;
+                }
             }
             indicator.params[p.id] = raw;
         });
@@ -7234,6 +7241,11 @@
                     indicator.params[p.id] = raw;
                 });
             }
+        }
+        // Talaria FVG / Ratio+Gap: bake all UI fields into indicator.params before recalc.
+        // Without this, Apply Changes recalculates against stale add-time defaults.
+        if (indicator.type === 'talariafvg' || indicator.type === 'talariaratiogap') {
+            _applyIndicatorDefParams(indicator, indicator.type, newParams);
         }
 
         if (indicator.type === 'aroon') {
