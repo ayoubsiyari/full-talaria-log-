@@ -25,7 +25,7 @@ const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html")
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
-const LEGACY_SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")((?:modules\/|chart\.js|settings-panel)[^"?]+)(?:\?[^"#]*)?(")/g;
+const LEGACY_SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(modules\/[^"?]+|chart\.js|settings-panel[^"?]*)(?:\?[^"#]*)?(")/g;
 const LEGACY_LINK_HREF_RE = /(<link\b[^>]*\shref=")((?:modules\/|fonts\/)[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
 const INLINE_MULTICHART_V_RE = /var V = '[^']+';/g;
