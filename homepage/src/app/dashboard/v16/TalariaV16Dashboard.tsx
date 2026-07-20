@@ -98,6 +98,7 @@ function TalariaV16DashboardReady({
   }, [isArabic]);
 
   useEffect(() => {
+    window.__TALARIA_V16_IS_ADMIN__ = userIsDashboardAdmin(authUser);
     window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("sessionId", String(sessionId));
@@ -160,6 +161,7 @@ function TalariaV16DashboardReady({
       router.replace(`/dashboard/?${params.toString()}`, { scroll: false });
     };
     return () => {
+      delete window.__TALARIA_V16_IS_ADMIN__;
       delete window.__TALARIA_V16_SYNC_SESSION_URL__;
       delete window.__TALARIA_V16_CLEAR_SESSION_URL__;
       delete window.__TALARIA_V16_SYNC_VIEW_URL__;

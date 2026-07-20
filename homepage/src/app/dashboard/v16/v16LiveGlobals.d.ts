@@ -57,6 +57,8 @@ declare global {
     __TALARIA_V16_SYNC_VIEW_URL__?: (view: string) => void;
     /** Server-backed platform section guard for V16 nav (not spoofable via window globals). */
     __TALARIA_V16_CAN_USE_VIEW__?: (viewId: string) => boolean;
+    /** True when the signed-in dashboard user is an admin (from React shell). */
+    __TALARIA_V16_IS_ADMIN__?: boolean;
     /** Open dashboard BacktestNewSessionModal from embedded V16 chrome. */
     __TALARIA_OPEN_NEW_SESSION__?: (opts?: {
       strategyId?: number;
