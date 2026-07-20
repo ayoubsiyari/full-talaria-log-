@@ -23,6 +23,9 @@ import { type SessionLimitGateData } from "./sessionLimitGate";
 
 const F = "'Exo 2', sans-serif";
 
+/** Prop Firm mode in New Session — turned off for now (set false to re-enable). */
+const PROP_FIRM_SESSION_MODE_DISABLED = true;
+
 const normalizeSearchQuery = (raw: string) => String(raw ?? "").trim().toLowerCase();
 
 const STARTING_BALANCE_MAX_DIGITS = 6;
@@ -660,12 +663,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       } else {
         if (initialState?.sessionName) setNewSessName(sanitizeSessionNameInput(initialState.sessionName));
         if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
-        if (initialState?.tradingMode === "prop") setSessTradingMode("prop");
+        if (initialState?.tradingMode === "prop" && !PROP_FIRM_SESSION_MODE_DISABLED) setSessTradingMode("prop");
         else if (initialState?.tradingMode === "standard") setSessTradingMode("standard");
+        else setSessTradingMode("standard");
       }
     }
     prevOpen.current = open;
   }, [open, resetFormToDefaults, initialState, applySessionToForm, maxTickersCap]);
+
+  // Keep new sessions on Standard while Prop Firm mode is disabled.
+  useEffect(() => {
+    if (!PROP_FIRM_SESSION_MODE_DISABLED) return;
+    if (editSessId != null && editSessOriginalTradingMode === "prop") return;
+    if (sessTradingMode === "prop") setSessTradingMode("standard");
+  }, [sessTradingMode, editSessId, editSessOriginalTradingMode]);
 
   useEffect(() => {
     if (!open) return;
@@ -2232,23 +2243,26 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                       <div style={{border:`1px solid ${sessSettingsDone?c.brH:c.br}`,padding:"12px 14px",transition:"opacity 0.2s,border-color 0.2s",...(sessSettingsDone?activeBox:lockedBox)}}>
                       {secH("Account Settings")}
 
-                      {/* Standard / Prop Firm mode toggle — standard tab style */}
+                      {/* Standard / Prop Firm mode toggle — Prop Firm temporarily off */}
                       {(()=>{
-                        const propUnavailable=newSessAssetClass==="Stocks"||newSessAssetClass==="Crypto";
+                        const propUnavailable=PROP_FIRM_SESSION_MODE_DISABLED||newSessAssetClass==="Stocks"||newSessAssetClass==="Crypto";
                         const modeLocked=editSessId!=null&&editSessOriginalTradingMode!=null;
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
                           <div style={{display:"flex",gap:0,borderBottom:`1px solid ${c.br}`}}>
                             {[["standard","Standard","Free backtest — Trade your personal account",false],["prop","Prop Firm","Trade under prop firm challenge rules",true]].map(([v,l,desc,isPropTab])=>{
                               const disabled=(isPropTab&&propUnavailable)||(modeLocked&&sessTradingMode!==v);
-                              const isA=sessTradingMode===v&&!disabled;const hk="sessMode_"+v;const isH=hov===hk&&!disabled&&!modeLocked;
+                              const isA=sessTradingMode===v&&!disabled;
+                              const hk="sessMode_"+v;
+                              const tipOpen=isPropTab&&PROP_FIRM_SESSION_MODE_DISABLED&&(hov===hk||hov==="propInfoTip");
+                              const isH=hov===hk&&!disabled&&!modeLocked;
                               const acColor=isPropTab?c.gold:c.acL;const acGlow=isPropTab?"rgba(200,150,0,0.4)":c.acG;
                               return(
                                 <div key={v}
                                   onClick={disabled||modeLocked?undefined:()=>{setSessTradingMode(v);if(v==="prop"){setNewSessRollback(false);if(newSessAssetClass==="Futures"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}}
-                                  onMouseEnter={disabled||modeLocked?undefined:()=>setHov(hk)} onMouseLeave={disabled||modeLocked?undefined:()=>setHov(null)}
+                                  onMouseEnter={modeLocked?undefined:()=>setHov(hk)} onMouseLeave={modeLocked?undefined:()=>setHov(null)}
                                   style={{flex:1,padding:"6px 10px 8px",display:"flex",flexDirection:"column",gap:2,
-                                    cursor:modeLocked?"default":"default",transition:"all 0.15s",position:"relative",textAlign:"center",
+                                    cursor:"default",transition:"all 0.15s",position:"relative",textAlign:"center",
                                     opacity:disabled?0.35:1,
                                     background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(74,106,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
                                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
@@ -2257,22 +2271,22 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                       <div style={{position:"relative",flexShrink:0}}
                                         onMouseEnter={e=>{e.stopPropagation();setHov("propInfoTip");}} onMouseLeave={()=>setHov(null)}>
                                         <svg width={11} height={11} viewBox="0 0 24 24" fill="none"
-                                          stroke={hov==="propInfoTip"?c.gold:c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                                          stroke={tipOpen?c.gold:c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                                           style={{display:"block",cursor:"default",transition:"stroke 0.12s"}}>
                                           <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
                                         </svg>
-                                        {hov==="propInfoTip"&&(
-                                          <div style={{position:"absolute",bottom:"calc(100% + 7px)",left:"50%",transform:"translateX(-50%)",width:180,background:c.el,border:`1px solid ${c.brH}`,zIndex:9999,pointerEvents:"none",whiteSpace:"normal"}}>
-                                            <div style={{height:2,background:`linear-gradient(90deg,${c.gold},rgba(232,194,82,0.4),${c.gold})`}}/>
-                                            <div style={{padding:"6px 9px",fontSize:10,fontWeight:600,color:c.ts,fontFamily:F,lineHeight:1.45,textAlign:"left",textTransform:"none",letterSpacing:0}}>
-                                              Available for <b style={{color:c.acL}}>Forex</b> and <b style={{color:c.acL}}>Futures</b> only
-                                            </div>
-                                          </div>
-                                        )}
                                       </div>
                                     )}
                                   </div>
                                   <span style={{fontSize:9,color:isA?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>{desc}</span>
+                                  {tipOpen&&(
+                                    <div style={{position:"absolute",bottom:"calc(100% + 7px)",left:"50%",transform:"translateX(-50%)",width:200,background:c.el,border:`1px solid ${c.brH}`,zIndex:9999,pointerEvents:"none",whiteSpace:"normal",boxShadow:"0 8px 24px rgba(0,0,0,0.55)"}}>
+                                      <div style={{height:2,background:`linear-gradient(90deg,${c.gold},rgba(232,194,82,0.4),${c.gold})`}}/>
+                                      <div style={{padding:"7px 10px",fontSize:10,fontWeight:600,color:c.ts,fontFamily:F,lineHeight:1.45,textAlign:"center",textTransform:"none",letterSpacing:0}}>
+                                        Not available for now
+                                      </div>
+                                    </div>
+                                  )}
                                   {isA&&<div style={{position:"absolute",bottom:-1,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${acColor},transparent)`,boxShadow:`0 0 6px ${acGlow}`,pointerEvents:"none"}}/>}
                                   {!isA&&isH&&<div style={{position:"absolute",bottom:-1,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,rgba(255,255,255,0.12),transparent)`,pointerEvents:"none"}}/>}
                                 </div>
