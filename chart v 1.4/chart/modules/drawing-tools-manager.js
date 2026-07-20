@@ -2628,6 +2628,9 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
+                if (this._isDataSwitchUiBlockingInteraction()) {
+                    return;
+                }
                 this._syncCtrlSelectModeFromEvent(event);
                 if (this._tryStartCtrlSelectionMove(event)) {
                     suppressNextCanvasClick = true;
@@ -4210,6 +4213,11 @@ class DrawingToolsManager {
     handleMouseDown(event) {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
+            return;
+        }
+
+        // Freeze overlay uses pointer-events:none — block shape edits while 3 dots show.
+        if (this._isDataSwitchUiBlockingInteraction()) {
             return;
         }
 
@@ -8633,6 +8641,7 @@ class DrawingToolsManager {
         const bodyDrag = d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
+                    if (self._isDataSwitchUiBlockingInteraction()) return false;
                     if (drawing.locked) return false;
                     const src = event.sourceEvent || event;
                     // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
@@ -9511,6 +9520,9 @@ class DrawingToolsManager {
     }
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
+        if (this._isDataSwitchUiBlockingInteraction()) {
+            return;
+        }
         this._stopDirectMoveDrag();
         this._cancelChartCtrlMarqueeIfActive();
 
@@ -10483,6 +10495,9 @@ class DrawingToolsManager {
      * Start dragging entire drawing (or multiple drawings if multi-selected)
      */
     startDrag(drawing, event) {
+        if (this._isDataSwitchUiBlockingInteraction()) {
+            return;
+        }
         this._ensureDrawingId(drawing);
         this._commitInlineTextEditorBeforeGeometryEdit();
         this._commitStaleDrawingGroupTransform(drawing);
@@ -14396,6 +14411,7 @@ class DrawingToolsManager {
      * @returns {boolean} true when the gesture was consumed
      */
     _tryStartCtrlSelectionMove(event) {
+        if (this._isDataSwitchUiBlockingInteraction()) return false;
         if (!event || event.button !== 0 || !this._isCtrlPointerModifier(event) || this.currentTool || this.isRectSelecting) {
             return false;
         }
@@ -14479,6 +14495,16 @@ class DrawingToolsManager {
         if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
+    }
+
+    /** True while TF/ticker 3-dot loader is showing — block shape move/resize. */
+    _isDataSwitchUiBlockingInteraction() {
+        const chart = this.chart;
+        if (!chart) return false;
+        if (typeof chart._isDataSwitchUiActive === 'function') {
+            try { return !!chart._isDataSwitchUiActive(); } catch (_) { return false; }
+        }
+        return !!(chart._timeframeSwitching || chart._pairSwitchLoading || chart._tfRevealHold);
     }
 
     /** Shift/Ctrl/Cmd held for additive selection (toggle/add). */

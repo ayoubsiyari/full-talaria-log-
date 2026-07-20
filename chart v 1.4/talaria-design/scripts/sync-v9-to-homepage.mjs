@@ -122,6 +122,19 @@ if (fs.existsSync(mcpSrc)) {
   console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
 }
 
+// Required for D-034 layout/I8 checks during CHECKPOINT_BUILD image builds.
+// Homepage Dockerfile also copies this file explicitly; sync must populate the
+// in-build /homepage/public/chart mirror the same way.
+const legacyIndexSrc = path.resolve(__dirname, "../../chart/legacy-index.html");
+const legacyIndexDest = path.resolve(__dirname, "../../../homepage/public/chart/legacy-index.html");
+if (fs.existsSync(legacyIndexSrc)) {
+  fs.mkdirSync(path.dirname(legacyIndexDest), { recursive: true });
+  fs.copyFileSync(legacyIndexSrc, legacyIndexDest);
+  console.log("[sync-v9-to-homepage] Copied legacy-index", legacyIndexSrc, "→", legacyIndexDest);
+} else {
+  console.warn("[sync-v9-to-homepage] legacy-index.html not found, skip:", legacyIndexSrc);
+}
+
 // PWA install assets: served at /chart/* (index.html is dist-v9 content but URL is /chart/index.html).
 const pwaPublic = path.resolve(__dirname, "../live/public");
 const pwaFiles = ["manifest.webmanifest", "sw.js", "pwa-install.js"];

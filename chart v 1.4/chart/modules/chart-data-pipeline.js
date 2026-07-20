@@ -273,14 +273,18 @@
 
         /**
          * Pixel-slot OHLC merge for zoomed-out views (1px body + 1px gap per slot).
-         * Splits segments on price gaps so session gaps stay visible when zoomed out.
+         * Buckets by data index (not screen x) so pan cannot rematerialize OHLC/color;
+         * only draw x (_pixelX) scrolls with offsetX. Splits on price gaps for sessions.
          */
         _pixelSlotAggregateFromRange(source, visStart, visEnd, plotWidth, m, offsetX, spacing, sliceMode = false) {
             const slotPx = ZOOMED_OUT_SLOT_PX;
-            const numSlots = Math.max(1, Math.ceil(plotWidth / slotPx));
-            const slots = new Array(numSlots);
+            const sp = Math.max(1e-9, Number(spacing) || 1e-9);
+            const barsPerSlot = Math.max(1, Math.round(slotPx / sp));
+            const slotMap = new Map();
             const i0 = Math.max(0, visStart | 0);
             const i1 = sliceMode ? Math.min(source.length, visEnd | 0) : Math.min(source.length, visEnd | 0);
+            const plotLeft = m.l;
+            const plotRight = m.l + Math.max(1, plotWidth);
 
             const ohlcGap = (a, b) => {
                 if (!a || !b) return false;
@@ -288,7 +292,7 @@
                 const eps = Math.max(1e-8, ref * 2.5e-5);
                 return b.l > a.h + eps || b.h < a.l - eps;
             };
-            const newBucket = (d, dataIdx, slot) => ({
+            const newBucket = (d, dataIdx, pixelX) => ({
                 t: d.t,
                 o: d.o,
                 h: d.h,
@@ -296,18 +300,18 @@
                 c: d.c,
                 v: Number(d.v) || 0,
                 midIdx: dataIdx,
-                _pixelX: m.l + slot * slotPx,
+                _pixelX: pixelX,
                 _pipelineBucket: true,
             });
-            const mergeBar = (slot, dataIdx, d) => {
-                let segs = slots[slot];
+            const mergeBar = (dataSlot, dataIdx, d, pixelX) => {
+                let segs = slotMap.get(dataSlot);
                 if (!segs) {
-                    slots[slot] = [newBucket(d, dataIdx, slot)];
+                    slotMap.set(dataSlot, [newBucket(d, dataIdx, pixelX)]);
                     return;
                 }
                 const last = segs[segs.length - 1];
                 if (ohlcGap(last, d)) {
-                    segs.push(newBucket(d, dataIdx, slot));
+                    segs.push(newBucket(d, dataIdx, pixelX));
                     return;
                 }
                 if (d.h > last.h) last.h = d.h;
@@ -315,21 +319,24 @@
                 last.c = d.c;
                 last.v += Number(d.v) || 0;
                 last.midIdx = dataIdx;
+                last._pixelX = pixelX;
             };
 
             for (let idx = i0; idx < i1; idx++) {
                 const d = sliceMode ? source[idx - i0] : source[idx];
                 if (!d) continue;
                 const dataIdx = sliceMode ? (visStart + (idx - i0)) : idx;
-                const x = m.l + dataIdx * spacing + offsetX;
-                const slot = Math.floor((x - m.l) / slotPx);
-                if (slot < 0 || slot >= numSlots) continue;
-                mergeBar(slot, dataIdx, d);
+                const dataSlot = Math.floor(dataIdx / barsPerSlot);
+                const anchorIdx = dataSlot * barsPerSlot + (barsPerSlot - 1) / 2;
+                const pixelX = plotLeft + anchorIdx * sp + offsetX;
+                if (pixelX < plotLeft - slotPx || pixelX > plotRight + slotPx) continue;
+                mergeBar(dataSlot, dataIdx, d, pixelX);
             }
 
+            const keys = Array.from(slotMap.keys()).sort((a, b) => a - b);
             const out = [];
-            for (let s = 0; s < numSlots; s++) {
-                const segs = slots[s];
+            for (let k = 0; k < keys.length; k++) {
+                const segs = slotMap.get(keys[k]);
                 if (!segs) continue;
                 for (let j = 0; j < segs.length; j++) {
                     if (segs[j]) out.push(segs[j]);

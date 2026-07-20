@@ -42,6 +42,8 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
+    && mkdir -p /homepage/public/chart \
+    && cp -f /build/chart/legacy-index.html /homepage/public/chart/legacy-index.html \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       node /build/checkpoint-tools/checkpoint-build-assert.mjs layout \
         --build-id="$CHART_BUILD_ID" \

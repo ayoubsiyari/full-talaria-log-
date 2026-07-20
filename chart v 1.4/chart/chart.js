@@ -22141,9 +22141,9 @@ class Chart {
 
         // Keep the same visible bar count across the TF switch (snapshot taken in
         // _beginTimeframeSwitching). Falls back to the latest candle only when the
-        // previous center isn't in the new data.
+        // previous center isn't in the new data. Then backfill empty-left history.
         this.resize();
-        this._restoreOrJumpAfterTfSwitch();
+        this._finishTfSwitchViewportRestore();
         this._endTimeframeSwitching();
         this.scheduleRender();
         this._fireChartDataLoaded();
@@ -22295,6 +22295,36 @@ class Chart {
         return false;
     }
 
+    /** True while TF/ticker 3-dot loader (or reveal hold) is showing. */
+    _isDataSwitchUiActive() {
+        return !!(this._timeframeSwitching || this._pairSwitchLoading || this._tfRevealHold);
+    }
+
+    /** Stop in-flight drawing moves/resizes so shapes cannot drift under the freeze overlay. */
+    _cancelDrawingInteractionForDataSwitch() {
+        const dm = this.drawingManager;
+        if (!dm) return;
+        try {
+            if (typeof dm._stopDirectMoveDrag === 'function') dm._stopDirectMoveDrag();
+        } catch (_) { /* ignore */ }
+        try {
+            if (dm.isDragging && typeof dm.endDrag === 'function') dm.endDrag();
+        } catch (_) { /* ignore */ }
+        try {
+            if ((dm.isCustomHandleDrag || dm.isCustomHandleDragging)
+                && typeof dm.endCustomHandleDrag === 'function') {
+                dm.endCustomHandleDrag();
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (dm.isResizing) {
+                dm.isResizing = false;
+                dm.resizingDrawing = null;
+                dm.resizingPointIndex = null;
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     _beginTimeframeSwitching(fromTf, toTf) {
         // A new switch supersedes any in-flight reveal hold from a prior switch.
         try { this._clearTfRevealHold(); } catch (_e) { /* ignore */ }
@@ -22311,6 +22341,7 @@ class Chart {
                 }
             }
         }
+        this._cancelDrawingInteractionForDataSwitch();
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
@@ -22763,6 +22794,7 @@ class Chart {
                 }
             }
         }
+        this._cancelDrawingInteractionForDataSwitch();
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
@@ -23000,12 +23032,9 @@ class Chart {
                 this.resize();
 
                 // TradingView parity: restore the same visible wall-clock window
-                // captured before the switch. The server /smart window is
-                // end-anchored, so when the user was viewing recent data the
-                // captured center is inside the fetched bars and the view is
-                // preserved; when it isn't (scrolled far back), restore returns
-                // false and we self-heal to the latest candle instead.
-                this._restoreOrJumpAfterTfSwitch();
+                // captured before the switch, then fill empty-left history so a
+                // follow-up max zoom-out does not leave candles jammed on the right.
+                this._finishTfSwitchViewportRestore();
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
@@ -24518,6 +24547,8 @@ class Chart {
 
     /**
      * Minimum candleWidth for zoom-out: static floor + per-TF on-screen bar cap.
+     * When no older history can be loaded, also clamp to loaded data extent so
+     * TF-change + max zoom-out cannot leave a huge empty left / candles jammed right.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
@@ -24525,7 +24556,21 @@ class Chart {
         const listMax = widths[widths.length - 1];
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(1, (this.w || 0) - m.l - m.r);
-        const maxBars = this._getMaxBarsOnScreen();
+        let maxBars = this._getMaxBarsOnScreen();
+        try {
+            const disableClamp = typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_DATA_EXTENT_ZOOM_CLAMP === true;
+            const dataLen = Array.isArray(this.data) ? this.data.length : 0;
+            if (!disableClamp && dataLen > 0
+                && typeof this._moreHistoryLeftAvailable === 'function'
+                && !this._moreHistoryLeftAvailable()) {
+                const rightPad = Number.isFinite(this.timeScale?.rightOffsetCandles)
+                    ? Math.max(0, this.timeScale.rightOffsetCandles)
+                    : 15;
+                const leftPad = 2;
+                maxBars = Math.min(maxBars, dataLen + rightPad + leftPad);
+            }
+        } catch (_) { /* ignore */ }
         if (!Number.isFinite(plotPx) || plotPx <= 0 || maxBars <= 0) return listMin;
 
         const targetSpacing = plotPx / maxBars;
@@ -25421,13 +25466,19 @@ class Chart {
             if (rawCount > maxPreSampleBars) {
                 const stride = Math.max(1, Math.floor(rawCount / maxPreSampleBars));
                 const sampled = [];
-                for (let i = vs; i < ve; i += stride) {
+                // Phase-lock stride to absolute bar indices so a 1-bar pan cannot
+                // rotate the sample set (which rematerializes zoomed-out candle colors).
+                let i = Math.ceil(vs / stride) * stride;
+                if (i < vs) i += stride;
+                for (; i < ve; i += stride) {
                     // Merge H/L across the stride window so wicks stay accurate.
                     const end = Math.min(ve, i + stride);
                     const bar = this.data[i];
+                    if (!bar) continue;
                     let h = bar.h, l = bar.l;
                     for (let j = i + 1; j < end; j++) {
                         const bj = this.data[j];
+                        if (!bj) continue;
                         if (bj.h > h) h = bj.h;
                         if (bj.l < l) l = bj.l;
                     }
@@ -25757,7 +25808,7 @@ class Chart {
         return b.l > a.h + eps || b.h < a.l - eps;
     }
 
-    _newPixelSlotBucket(d, idx, m, slot, slotPx) {
+    _newPixelSlotBucket(d, idx, pixelX) {
         return {
             o: d.o,
             h: d.h,
@@ -25765,20 +25816,20 @@ class Chart {
             c: d.c,
             vSum: Number(d.v) || 0,
             midIdx: idx,
-            _pixelX: m.l + slot * slotPx,
+            _pixelX: pixelX,
         };
     }
 
     /** Merge bar into slot segments — split on price gaps so zoomed-out LOD keeps session gaps visible. */
-    _mergeBarIntoPixelSlot(slots, slot, idx, d, m, slotPx) {
-        let segs = slots[slot];
+    _mergeBarIntoPixelSlot(slotMap, dataSlot, idx, d, pixelX) {
+        let segs = slotMap.get(dataSlot);
         if (!segs) {
-            slots[slot] = [this._newPixelSlotBucket(d, idx, m, slot, slotPx)];
+            slotMap.set(dataSlot, [this._newPixelSlotBucket(d, idx, pixelX)]);
             return;
         }
         const last = segs[segs.length - 1];
         if (this._ohlcRangesHavePriceGap(last, d)) {
-            segs.push(this._newPixelSlotBucket(d, idx, m, slot, slotPx));
+            segs.push(this._newPixelSlotBucket(d, idx, pixelX));
             return;
         }
         if (d.h > last.h) last.h = d.h;
@@ -25786,12 +25837,15 @@ class Chart {
         last.c = d.c;
         last.vSum = (last.vSum || 0) + (Number(d.v) || 0);
         last.midIdx = idx;
+        last._pixelX = pixelX;
     }
 
-    _flattenPixelSlotSegments(slots) {
+    _flattenPixelSlotSegments(slotMap) {
+        if (!slotMap || typeof slotMap.keys !== 'function') return null;
+        const keys = Array.from(slotMap.keys()).sort((a, b) => a - b);
         const out = [];
-        for (let s = 0; s < slots.length; s++) {
-            const segs = slots[s];
+        for (let k = 0; k < keys.length; k++) {
+            const segs = slotMap.get(keys[k]);
             if (!segs) continue;
             for (let j = 0; j < segs.length; j++) {
                 if (segs[j]) out.push(segs[j]);
@@ -25801,29 +25855,34 @@ class Chart {
     }
 
     /**
-     * Merge overlapping sub-pixel bars into fixed pixel slots (1px body + 1px gap).
-     * Prevents zoomed-out candles from stacking into a solid line.
+     * Merge overlapping sub-pixel bars into data-index buckets (1px body + 1px gap).
+     * Buckets are keyed by bar index (not screen x) so a slight pan cannot rematerialize
+     * OHLC/color under fixed columns — only _pixelX scrolls with offsetX.
      */
     _aggregateVisibleOhlcvByPixelColumn(visible, plotPx) {
         const m = this.margin || { l: 60, r: 60 };
         const slotPx = TV_ZOOMED_OUT_SLOT_PX;
-        const numSlots = Math.max(1, Math.ceil(plotPx / slotPx));
-        const slots = new Array(numSlots);
         const base = this.visibleStartIndex || 0;
-        const spacing = this.getCandleSpacing();
+        const spacing = Math.max(1e-9, this.getCandleSpacing());
         const offsetX = this.offsetX || 0;
+        // How many raw bars share one on-screen slot at this spacing.
+        const barsPerSlot = Math.max(1, Math.round(slotPx / spacing));
+        const slotMap = new Map();
+        const plotLeft = m.l;
+        const plotRight = m.l + Math.max(1, plotPx);
 
         for (let i = 0; i < visible.length; i++) {
             const d = visible[i];
             if (!d) continue;
             const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
-            const x = m.l + idx * spacing + offsetX;
-            const slot = Math.floor((x - m.l) / slotPx);
-            if (slot < 0 || slot >= numSlots) continue;
-            this._mergeBarIntoPixelSlot(slots, slot, idx, d, m, slotPx);
+            const dataSlot = Math.floor(idx / barsPerSlot);
+            const anchorIdx = dataSlot * barsPerSlot + (barsPerSlot - 1) / 2;
+            const pixelX = plotLeft + anchorIdx * spacing + offsetX;
+            if (pixelX < plotLeft - slotPx || pixelX > plotRight + slotPx) continue;
+            this._mergeBarIntoPixelSlot(slotMap, dataSlot, idx, d, pixelX);
         }
 
-        return this._flattenPixelSlotSegments(slots);
+        return this._flattenPixelSlotSegments(slotMap);
     }
 
     /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
@@ -31985,7 +32044,11 @@ class Chart {
                     || (host.isBacktestMode
                         && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
                         && host._backtestReplayHasUnloadHistoryLeft());
-                if (!hostHasLeft && !host._panLoading) return; // host has nothing more
+                if (!hostHasLeft && !host._panLoading) {
+                    // No more history — clamp zoom so empty-left gap cannot stick.
+                    try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+                    return;
+                }
                 if (typeof host.checkViewportLoadMore === 'function') {
                     try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
                 }
@@ -32004,14 +32067,20 @@ class Chart {
                 || (this.isBacktestMode
                     && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
                     && this._backtestReplayHasUnloadHistoryLeft());
-            if (!hasMoreLeft && !this._panLoading) return;
+            if (!hasMoreLeft && !this._panLoading) {
+                try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+                return;
+            }
             if (!this._panLoading && typeof this.checkViewportLoadMore === 'function') {
                 this.checkViewportLoadMore('backward', true);
             }
             pollMs = 90;
         } else {
             const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
-            if (!hasMoreLeft) return;
+            if (!hasMoreLeft) {
+                try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+                return;
+            }
             this.checkViewportLoadMore('backward', true);
         }
 
@@ -33403,6 +33472,13 @@ class Chart {
                     return;
                 }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
+                // Block pan while TF/ticker 3-dot loader is up — freeze overlay does not
+                // capture pointers, so pan would move offsetX and re-anchor drawings.
+                if (typeof this._isDataSwitchUiActive === 'function' && this._isDataSwitchUiActive()) {
+                    this.drag.active = false;
+                    this.drag.type = null;
+                    return;
+                }
                 this.drag.type = 'pan';
                 // Click candidate: no snapshot / onUserPan / pan-paint until movement
                 // exceeds the threshold. Those used to rebuild time ticks + grid on
