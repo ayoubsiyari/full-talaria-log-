@@ -9693,18 +9693,33 @@ def _run_firstrate_import_job(job_id: str) -> None:
             _firstrate_write_job(job_id, state)
 
         state = _firstrate_read_job(job_id) or state
+        created_n = len(created)
+        skipped_n = len(skipped)
         state["status"] = "done"
         state["phase"] = "done"
         state["current_bundle"] = None
         state["current_file"] = None
-        state["message"] = (
-            f"Complete — {len(created)} dataset(s), {len(skipped)} skipped across "
-            f"{len(ranges_to_fetch)} bundle(s)"
-        )
+        if created_n == 0:
+            # Still "done" so the UI unblocks, but make empty imports obvious —
+            # usually ticker filter matched nothing (wrong instrument_type) or
+            # every file normalize/merge was skipped.
+            state["empty_import"] = True
+            state["message"] = (
+                f"Complete — 0 dataset(s) registered, {skipped_n} skipped across "
+                f"{len(ranges_to_fetch)} bundle(s). Nothing merged into the registry "
+                f"(check pairs filter / instrument type)."
+            )
+        else:
+            state["empty_import"] = False
+            state["message"] = (
+                f"Complete — {created_n} dataset(s), {skipped_n} skipped across "
+                f"{len(ranges_to_fetch)} bundle(s)"
+            )
         _firstrate_write_job(job_id, state)
         st_done = _firstrate_read_job(job_id) or state
         it_done = str(st_done.get("instrument_type") or "").strip().lower()
-        if it_done:
+        # Only credit the schedule/LAST RUN clock when something actually registered.
+        if it_done and created_n > 0:
             _firstrate_note_import_finished_for_type(
                 it_done,
                 files_done=int(st_done.get("files_done") or 0),
@@ -18074,27 +18089,47 @@ def _sync_1m_aggregate_end_ts_from_csv(file_id: int, csv_path: Path) -> bool:
 
     Chart binaries are queued async (`defer_binary_build`); without this, nightly
     health keeps showing Friday's `end_ts` until the worker finishes (hours).
+    Creates a minimal 1m aggregate row when none exists yet so Sync health can
+    show freshness before the binary worker runs.
     """
     disk_ts = _tail_csv_last_timestamp_ms(csv_path)
     if disk_ts is None:
         return False
     db = SessionLocal()
     try:
+        fid = int(file_id)
         agg = (
             db.query(CSVAggregate)
-            .filter(CSVAggregate.file_id == int(file_id), CSVAggregate.timeframe == "1m")
+            .filter(CSVAggregate.file_id == fid, CSVAggregate.timeframe == "1m")
             .first()
         )
-        if agg is None:
-            return False
-        agg.end_ts = float(disk_ts)
+        row_n = None
         try:
-            agg.row_count = int(count_csv_rows(str(csv_path)))
+            row_n = int(count_csv_rows(str(csv_path)))
         except Exception:
-            pass
+            row_n = None
+        if agg is None:
+            agg = CSVAggregate(
+                file_id=fid,
+                timeframe="1m",
+                agg_filename=f"bin_{fid}_1m.bin",
+                row_count=row_n,
+                start_ts=None,
+                end_ts=float(disk_ts),
+                status="pending",
+            )
+            db.add(agg)
+        else:
+            agg.end_ts = float(disk_ts)
+            if row_n is not None:
+                agg.row_count = row_n
         db.commit()
         return True
     except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         return False
     finally:
         db.close()
@@ -18251,7 +18286,7 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
                 last_ts = None
 
         # Rescan mode: tail the raw CSV to get the authoritative last bar and
-        # opportunistically heal the CSVAggregate if it has drifted.
+        # opportunistically heal (or create) the 1m CSVAggregate.
         if force_rescan and f.filename:
             csv_path = UPLOAD_DIR / f.filename
             disk_ts = _tail_csv_last_timestamp_ms(csv_path)
@@ -18259,20 +18294,15 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
                 last_ts_source = "disk"
                 prev_ts = last_ts
                 last_ts = disk_ts
-                # Only persist if we meaningfully drifted (> 30s) and the
-                # aggregate row exists. We don't create new aggregate rows from
-                # here — that's the import pipeline's job.
-                if agg is not None and (prev_ts is None or abs(disk_ts - (prev_ts or 0)) > 30_000):
+                if agg is None or prev_ts is None or abs(disk_ts - (prev_ts or 0)) > 30_000:
                     try:
-                        db2 = SessionLocal()
-                        try:
-                            live = db2.query(CSVAggregate).filter(CSVAggregate.id == agg.id).first()
-                            if live is not None:
-                                live.end_ts = disk_ts
-                                db2.commit()
-                                rescan_updates += 1
-                        finally:
-                            db2.close()
+                        if _sync_1m_aggregate_end_ts_from_csv(int(f.id), csv_path):
+                            rescan_updates += 1
+                            # Keep local row_count_1m in sync for this response.
+                            try:
+                                row_count_1m = int(count_csv_rows(str(csv_path)))
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 
@@ -18288,8 +18318,10 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
         else:
             freshness = "fresh"
 
-        # Pull merge stats for this dataset out of the latest matching job.
-        job = latest_job_by_type.get(asset_class)
+        # Pull merge stats from the latest job for UI class *or* vendor download
+        # type (DXY is UI=fx but imports under stock).
+        vendor_type = _firstrate_vendor_instrument_type(ticker) or asset_class
+        job = latest_job_by_type.get(vendor_type) or latest_job_by_type.get(asset_class)
         merge_info = None
         if job and isinstance(job.get("merge_summary"), dict):
             # Jobs key merge rows by `<ticker>_<timeframe>.csv`; scan for any
@@ -18304,10 +18336,42 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
                     merge_info = v
                     break
 
+        # If job JSON expired (TTL), fall back to schedule finish times so LAST RUN
+        # does not permanently read "never" after a successful import.
+        last_job_payload = None
+        if job:
+            last_job_payload = {
+                "job_id": job.get("job_id"),
+                "status": job.get("status"),
+                "trigger": job.get("trigger"),
+                "updated_at": job.get("updated_at") or job.get("finished_at"),
+                "period": job.get("period"),
+                "timeframe": job.get("timeframe"),
+                "message": (job.get("message") or "")[:300],
+                "error": (job.get("error") or "")[:300] or None,
+                "instrument_type": job.get("instrument_type") or vendor_type,
+            }
+        else:
+            finished_map = (cfg.get("last_import_finished_at_by_type") or {}) if isinstance(cfg, dict) else {}
+            finished_at = finished_map.get(vendor_type) or finished_map.get(asset_class)
+            if finished_at:
+                last_job_payload = {
+                    "job_id": None,
+                    "status": "done",
+                    "trigger": "schedule",
+                    "updated_at": finished_at,
+                    "period": None,
+                    "timeframe": None,
+                    "message": "Import finish time from schedule (job JSON expired)",
+                    "error": None,
+                    "instrument_type": vendor_type if finished_map.get(vendor_type) else asset_class,
+                }
+
         datasets.append({
             "id": int(f.id),
             "ticker": ticker,
             "asset_class": asset_class,
+            "vendor_type": vendor_type,
             "original_name": f.original_name,
             "row_count": int(f.row_count or 0),
             "row_count_1m": row_count_1m,
@@ -18316,19 +18380,7 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
             "last_bar_source": last_ts_source,
             "staleness_hours": round(staleness_hours, 2) if staleness_hours is not None else None,
             "freshness": freshness,
-            "last_job": (
-                {
-                    "job_id": job.get("job_id"),
-                    "status": job.get("status"),
-                    "trigger": job.get("trigger"),
-                    "updated_at": job.get("updated_at"),
-                    "period": job.get("period"),
-                    "timeframe": job.get("timeframe"),
-                    "message": (job.get("message") or "")[:300],
-                    "error": (job.get("error") or "")[:300] or None,
-                }
-                if job else None
-            ),
+            "last_job": last_job_payload,
             "merge": merge_info,
         })
 

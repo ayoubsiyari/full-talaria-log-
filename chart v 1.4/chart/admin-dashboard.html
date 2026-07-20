@@ -3856,7 +3856,7 @@ select { cursor: default; }
                         <button type="button" class="btn sm" onclick="frPairsAdd('EURGBP EURAUD EURNZD EURCAD EURCHF GBPAUD GBPNZD GBPCAD GBPCHF AUDNZD AUDCAD AUDCHF NZDCAD NZDCHF CADCHF')">G10 crosses</button>
                         <button type="button" class="btn sm" onclick="frPairsAdd('USDNOK EURNOK USDSEK EURSEK USDDKK USDPLN EURPLN USDHUF USDCZK EURCZK USDSGD EURSGD SGDJPY USDHKD USDCNH USDTHB USDINR USDKRW USDIDR USDPHP USDMXN EURMXN USDBRL USDCLP USDTRY EURTRY USDZAR EURZAR GBPZAR')">Exotics</button>
                         <button type="button" class="btn sm" onclick="frPairsAdd('XAUUSD XAGUSD XPTUSD')" title="Spot metals">Metals</button>
-                        <button type="button" class="btn sm" onclick="frPairsAdd('DXY USDX')" title="US Dollar Index (UI: fx; FirstRate feed is usually stock)">Dollar index</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('DXY USDX'); if(typeof toast==='function') toast('DXY downloads via instrument type stock — switch step 1 to stock, or use Sync health Fix (auto-routes).', 'ok');" title="US Dollar Index shows under fx in Sync health, but FirstRate ZIP is stock — use type=stock to import">Dollar index</button>
                       </div>
                       <div id="fr_quickadd_index" class="fr-quickadd-btns" style="display:none">
                         <button type="button" class="btn sm primary" onclick="frPairsFillAllIndices()">All indices &amp; energy</button>
@@ -11034,7 +11034,7 @@ function updateFirstrateInstrumentUi() {
         'Pick continuous adjustment below (<strong>contin_UNadj</strong> is the usual starting point).';
     } else if (v === 'fx') {
       hint.innerHTML =
-        'Empty list = every FX file in the ZIP. Filled list = only those symbols. Spot metals (XAUUSD, XAGUSD) use this <code style="font-size:10px">fx</code> type — switch to <code style="font-size:10px">index</code> or <code style="font-size:10px">crypto</code> in step 1 for other asset classes.';
+        'Empty list = every FX file in the ZIP. Filled list = only those symbols. Spot metals (XAUUSD, XAGUSD) use this <code style="font-size:10px">fx</code> type. <strong>DXY / USDX</strong> are listed under fx in Sync health but must be imported with instrument type <code style="font-size:10px">stock</code> (FirstRate ZIP). After any import finishes, click <strong>Refresh</strong> on Sync health (rescan) — stale counts do not update while a job is still running.';
     } else if (v === 'index') {
       hint.innerHTML =
         'Cash indices (SPX500, NAS100, GER40, JPN225, …) and commodity CFDs (USOIL, NGAS, COPPER, …) use FirstRate <code style="font-size:10px">index</code> bundles — not the FX endpoint. ' +
@@ -13361,56 +13361,73 @@ async function _fixClassHealth(assetClass, btn) {
   var datasets = _firstrateHealthCache.datasets || [];
   var staleTickers = [];
   var missingTickers = [];
+  // Group by FirstRate *vendor* type (DXY UI=fx but downloads as stock).
+  var byVendor = {};
   datasets.forEach(function (d) {
     if (d.asset_class !== assetClass || !d.ticker) return;
+    if (d.freshness !== 'stale' && d.freshness !== 'missing') return;
+    var vt = String(d.vendor_type || assetClass).toLowerCase();
+    if (!byVendor[vt]) byVendor[vt] = { stale: [], missing: [] };
+    if (d.freshness === 'stale' && byVendor[vt].stale.indexOf(d.ticker) === -1) {
+      byVendor[vt].stale.push(d.ticker);
+    }
+    if (d.freshness === 'missing' && byVendor[vt].missing.indexOf(d.ticker) === -1) {
+      byVendor[vt].missing.push(d.ticker);
+    }
     if (d.freshness === 'stale' && staleTickers.indexOf(d.ticker) === -1) staleTickers.push(d.ticker);
     if (d.freshness === 'missing' && missingTickers.indexOf(d.ticker) === -1) missingTickers.push(d.ticker);
   });
-  var tickers = staleTickers.slice();
-  missingTickers.forEach(function (t) {
-    if (tickers.indexOf(t) === -1) tickers.push(t);
-  });
-  if (!tickers.length) {
+  var vendorKeys = Object.keys(byVendor);
+  if (!vendorKeys.length) {
     if (typeof toast === 'function') toast('No stale or missing tickers for ' + assetClass, 'err');
     return;
   }
-  // Match backend: month if missing, else day when data is <7d stale (not week — week duplicates Fri).
-  var period = 'day';
-  if (missingTickers.length > 0) period = 'month';
-  else {
-    var maxH = null;
-    datasets.forEach(function (d) {
-      if (d.asset_class !== assetClass || d.staleness_hours == null) return;
-      if (maxH === null || d.staleness_hours > maxH) maxH = d.staleness_hours;
-    });
-    if (maxH !== null && maxH > 24 * 7) period = 'week';
-  }
+  var maxH = null;
+  datasets.forEach(function (d) {
+    if (d.asset_class !== assetClass || d.staleness_hours == null) return;
+    if (maxH === null || d.staleness_hours > maxH) maxH = d.staleness_hours;
+  });
   var origLabel = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Queueing…'; }
   try {
-    var body = {
-      period: period,
-      timeframe: '1min',
-      instrument_type: assetClass,
-      upsert_existing: true,
-      delete_existing_first: false,
-      pairs: tickers,
-    };
-    var data = await api('/api/admin/datasets/firstrate-fx/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (typeof toast === 'function') {
-      toast(
-        'Repairing ' + tickers.length + ' ' + assetClass + ' ticker(s) (' + period + ' bundle)…',
-        'ok'
-      );
-    }
-    if (btn) btn.textContent = 'Running…';
     try { ensureFirstrateLivePoll(); } catch (_) {}
-    if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
-      await waitForFirstrateJob(data.job_id);
+    for (var vi = 0; vi < vendorKeys.length; vi++) {
+      var vt = vendorKeys[vi];
+      var group = byVendor[vt];
+      var tickers = group.stale.slice();
+      group.missing.forEach(function (t) {
+        if (tickers.indexOf(t) === -1) tickers.push(t);
+      });
+      if (!tickers.length) continue;
+      // Match backend: month if missing, else day when data is <7d stale (not week — week duplicates Fri).
+      var period = 'day';
+      if (group.missing.length > 0) period = 'month';
+      else if (maxH !== null && maxH > 24 * 7) period = 'week';
+      var body = {
+        period: period,
+        timeframe: '1min',
+        instrument_type: vt,
+        upsert_existing: true,
+        delete_existing_first: false,
+        pairs: tickers,
+      };
+      if (typeof toast === 'function') {
+        toast(
+          'Repairing ' + tickers.length + ' ' + assetClass +
+            (vt !== assetClass ? ' via ' + vt : '') +
+            ' ticker(s) (' + period + ' bundle)…',
+          'ok'
+        );
+      }
+      if (btn) btn.textContent = 'Running ' + vt + '…';
+      var data = await api('/api/admin/datasets/firstrate-fx/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (data && data.job_id && typeof waitForFirstrateJob === 'function') {
+        await waitForFirstrateJob(data.job_id);
+      }
     }
     if (typeof toast === 'function') toast(assetClass + ' repair finished', 'ok');
   } catch (e) {
