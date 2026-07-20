@@ -373,7 +373,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const SESSION_SYM_CAT: Record<string, string> = {
     EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex",
     NZDUSD: "Forex", USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex",
-    XAUUSD: "Forex", XAGUSD: "Forex", USDSEK: "Forex", USDNOK: "Forex",
+    XAUUSD: "Forex", XAGUSD: "Forex", DXY: "Forex", USDX: "Forex", USDSEK: "Forex", USDNOK: "Forex",
     NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", CL: "Futures", GC: "Futures",
     SI: "Futures", NG: "Futures", MNQ: "Futures", MES: "Futures", MYM: "Futures", M2K: "Futures",
     MGC: "Futures", MCL: "Futures",
@@ -2088,7 +2088,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             </div>
                           </div>
                           {newSessTradingCostsEnabled&&(()=>{
-                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
+                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",DXY:"Forex",USDX:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
                             const assetOf=cat=>({"Equities":"Stocks"}[cat]||cat);
                             const catOf2=sym=>assetOf(symCat[sym]||"");
                             const pairInfo2=sym=>{if(sym.length===6){const b=sym.slice(0,3),q=sym.slice(3,6);if(currencyCountry[b]&&currencyCountry[q])return{b,q};}return null;};

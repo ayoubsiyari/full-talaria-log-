@@ -26,6 +26,8 @@ const INSTRUMENT_REGISTRY = {
     'NZDUSD': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'usd_quoted', precision:5, label:'NZD/USD' },
     'XAUUSD': { type:'forex', contractSize:100,    pipSize:0.01,   quoteType:'usd_quoted', precision:2, label:'XAU/USD' },
     'XAGUSD': { type:'forex', contractSize:5000,   pipSize:0.001,  quoteType:'usd_quoted', precision:3, label:'XAG/USD' },
+    'DXY':    { type:'forex', contractSize:1000,   pipSize:0.01,   quoteType:'usd_quoted', precision:3, label:'US Dollar Index' },
+    'USDX':   { type:'forex', contractSize:1000,   pipSize:0.01,   quoteType:'usd_quoted', precision:3, label:'US Dollar Index' },
     'XTIUSD': { type:'forex', contractSize:1000,   pipSize:0.01,   quoteType:'usd_quoted', precision:2, label:'XTI/USD (WTI Oil)' },
     'XNGUSD': { type:'forex', contractSize:10000,  pipSize:0.0001, quoteType:'usd_quoted', precision:4, label:'XNG/USD (Natural Gas)' },
 

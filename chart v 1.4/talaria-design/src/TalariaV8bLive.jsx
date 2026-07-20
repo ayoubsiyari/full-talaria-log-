@@ -85,6 +85,69 @@ function ChartBrandLink({ multi = false }) {
   );
 }
 
+/** First dashboard page the signed-in user is entitled to (mirrors homepage defaultDashboardPathForUser). */
+function resolveEntitledDashboardPath(user) {
+  if (!user) return "/login/?next=/dashboard/";
+  const isAdmin = user.role === "admin" || !!user.is_admin;
+  if (isAdmin) return "/dashboard/?view=sessions";
+
+  const mods = user.dashboard_modules || {};
+  const hasFull = !!(
+    user.has_journal_access ||
+    user.has_dashboard_access ||
+    user.has_active_subscription ||
+    user.manual_full_access
+  );
+  const st = String(user.subscription?.status || "").toLowerCase();
+  const subFull = st === "active" || st === "trialing";
+
+  if (hasFull || subFull) return "/dashboard/?view=sessions";
+  if (mods.backtest) return "/dashboard/?view=sessions";
+  if (mods.strategies) return "/dashboard/?view=stratbank";
+  // journal/cot are WIP-admin-only on the homepage; skip for normal users
+  if (mods.chart) return "/dashboard/?view=sessions";
+  if (user.has_dashboard_access) return "/dashboard/?view=sessions";
+  return "/dashboard/?view=profile";
+}
+
+function chartSessionIdQuery() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const sid = p.get("sessionId") || p.get("session_id");
+    const n = sid != null ? Number(sid) : NaN;
+    if (Number.isFinite(n) && n > 0) return "sessionId=" + encodeURIComponent(String(Math.trunc(n)));
+  } catch (_) {}
+  return "";
+}
+
+/** Navigate to the user's entitled dashboard page (keeps chart sessionId when present). */
+async function goToEntitledDashboard() {
+  let user = null;
+  try {
+    user = JSON.parse(localStorage.getItem("talaria_current_user") || "null");
+  } catch (_) {}
+  try {
+    const r = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+    if (r.ok) {
+      const d = await r.json();
+      if (d && d.user) {
+        user = d.user;
+        try { localStorage.setItem("talaria_current_user", JSON.stringify(d.user)); } catch (_) {}
+      }
+    } else if (r.status === 401) {
+      window.location.href = "/login/?next=/dashboard/";
+      return;
+    }
+  } catch (_) {}
+
+  let href = resolveEntitledDashboardPath(user);
+  const sidQ = chartSessionIdQuery();
+  if (sidQ && href.indexOf("/dashboard") === 0) {
+    href += (href.indexOf("?") >= 0 ? "&" : "?") + sidQ;
+  }
+  window.location.href = href;
+}
+
 // ── Multichart layout picker constants ───────────────────────────────────────
 // Lifted to module scope (Phase 7.2.3) so BOTH the existing right-panel
 // "Layout" tab AND the new topbar "Layout" dropdown can share the same
@@ -34991,7 +35054,7 @@ const TalariaV8bLive = () => {
                 </div>
               );
             })}
-            {/* Home — return to access pages (marketing / entitled landing). Dashboard CTA kept off below. */}
+            {/* Dashboard — opens the first dashboard page this user can access (not marketing home). */}
             <div style={{padding:"6px 10px 4px"}}>
               {(()=>{
                 const isH = swHov==="lm-home";
@@ -34999,7 +35062,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div onClick={()=>{
                     setLogoMenu(false);
-                    window.location.href = "/";
+                    goToEntitledDashboard();
                   }}
                     onMouseEnter={()=>setSwHov("lm-home")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-home_dn")} onMouseUp={()=>setSwHov("lm-home")}
@@ -35009,8 +35072,8 @@ const TalariaV8bLive = () => {
                       boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
                       transform:isP?"scale(0.96)":"scale(1)",
                       transition:"background 0.12s ease,border-color 0.12s ease,box-shadow 0.12s ease,transform 0.08s ease"}}>
-                    <I n="home" s={14} cl="#fff"/>
-                    <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Home</span>
+                    <I n="layout" s={14} cl="#fff"/>
+                    <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Dashboard</span>
                   </div>
                 );
               })()}

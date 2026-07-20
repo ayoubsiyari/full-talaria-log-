@@ -4408,6 +4408,14 @@ _FIRSTRATE_CURRENCY_SYMS = frozenset({
     "NOK","DKK","ZAR","TRY","MXN","CNY","PLN","HUF","CZK","THB","INR",
     "KRW","IDR","PHP","BRL","CLP","XAU","XAG","XPT",
 })
+# Non-pair / short stems that must stay in the FX bucket (not stock/index).
+# DXY is 3 letters so the stock heuristic would steal it; metals listed
+# explicitly so a stock-style FirstRate filename still lands under fx.
+_FIRSTRATE_FX_FORCE_SYMS = frozenset({
+    "DXY", "USDX", "DX",
+    "XAUUSD", "XAGUSD", "XPTUSD",
+    "GOLD", "SILVER",  # common FirstRate/stock-feed aliases for spot metals
+})
 # Cash-index / commodity CFD stems (FirstRate `index` type — not 6-letter FX pairs).
 _FIRSTRATE_INDEX_SYMS = frozenset({
     "SPX500","NAS100","US30","US2000","US100","US500",
@@ -4473,6 +4481,9 @@ def _firstrate_classify_ticker(ticker: str) -> str | None:
     t = (ticker or "").upper().replace("/", "").replace("-", "")
     if not t:
         return None
+    # Force before futures/index/stock heuristics (DXY would otherwise be stock).
+    if t in _FIRSTRATE_FX_FORCE_SYMS:
+        return "fx"
     if t in _FIRSTRATE_FUTURES_SYMS:
         return "futures"
     if t in _FIRSTRATE_INDEX_SYMS:

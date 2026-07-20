@@ -24,6 +24,9 @@ export const currencyCountry = {
   PLN: "PL",
   CZK: "CZ",
   HUF: "HU",
+  XAU: "XAU",
+  XAG: "XAG",
+  XPT: "XPT",
 };
 
 /** Alternate country tokens the calendar can emit → canonical 2-letter code we draw. */
@@ -603,6 +606,9 @@ export function inferChartAssetClass(ticker) {
     .replace(/[\s/\-_.]/g, "")
     .toUpperCase();
   if (!u) return "Futures";
+
+  // Dollar index + spot metals — keep in Forex (not stock/futures heuristics).
+  if (/^(DXY|USDX|DX|XAUUSD|XAGUSD|XPTUSD|GOLD|SILVER)$/.test(u)) return "Forex";
 
   if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|DOT|AVAX|LINK|MATIC|UNI|USDT|USDC|PERP|SWAP)/.test(u)) return "Crypto";
 

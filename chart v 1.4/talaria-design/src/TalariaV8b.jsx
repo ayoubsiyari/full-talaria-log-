@@ -8972,13 +8972,13 @@ const TalariaV8b = () => {
                 </div>
               );
             })}
-            {/* Home — return to access pages. Dashboard CTA kept off below. */}
+            {/* Dashboard — first entitled dashboard page (mock: sessions). */}
             <div style={{padding:"6px 10px 4px"}}>
               {(()=>{
                 const isH = swHov==="lm-home";
                 const isP = swHov==="lm-home_dn";
                 return (
-                  <div onClick={()=>{ setLogoMenu(false); window.location.href = "/"; }}
+                  <div onClick={()=>{ setLogoMenu(false); window.location.href = "/dashboard/?view=sessions"; }}
                     onMouseEnter={()=>setSwHov("lm-home")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-home_dn")} onMouseUp={()=>setSwHov("lm-home")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
@@ -8987,8 +8987,8 @@ const TalariaV8b = () => {
                       boxShadow:isH?`0 4px 14px ${c.acG}`:`0 2px 8px ${c.acG}`,
                       transform:isP?"scale(0.96)":"scale(1)",
                       transition:"background 0.12s ease,border-color 0.12s ease,box-shadow 0.12s ease,transform 0.08s ease"}}>
-                    <I n="home" s={14} cl="#fff"/>
-                    <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Home</span>
+                    <I n="layout" s={14} cl="#fff"/>
+                    <span style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.02em",WebkitFontSmoothing:"antialiased"}}>Dashboard</span>
                   </div>
                 );
               })()}
