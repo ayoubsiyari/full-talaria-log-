@@ -2776,6 +2776,17 @@ function talariaSyncOhlcIndicatorLegendValues(chart, div) {
         if (!row && rows[rowIdx]) row = rows[rowIdx];
         rowIdx++;
         if (!row) return;
+        const legendName = isVolume ? talariaVolumeLegendLabel(indicator) : (indicator.name || '');
+        const nameSpan = row.querySelector('.talaria-ind-legend-name')
+            || row.querySelector('.talaria-ind-chip-name')
+            || row.querySelector('span:first-child');
+        if (nameSpan && legendName) {
+            const nextLabel = '- ' + legendName;
+            if (nameSpan.textContent !== nextLabel) {
+                nameSpan.textContent = nextLabel;
+                nameSpan.title = legendName;
+            }
+        }
         const valuesSpan = row.querySelector('[data-talaria-ind-val]') || row.querySelector('span:nth-child(2)');
         if (!valuesSpan) return;
         const loading = talariaIndicatorLegendIsLoading(chart, indicator);
@@ -2825,6 +2836,7 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
 
     const nameSpan = document.createElement('span');
+    nameSpan.className = 'talaria-ind-legend-name';
     const legendName = isVolume ? talariaVolumeLegendLabel(indicator) : indicator.name;
     const shown = talariaIndicatorLegendShown(chart, indicator);
     nameSpan.textContent = '- ' + legendName;
@@ -4967,7 +4979,12 @@ function setupIndicatorUI(chartInstance) {
         const div = document.getElementById('ohlcIndicators' + idSuffix);
 
         if (!div) return;
-        if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) return;
+        // While settings are open, avoid full DOM rebuild (focus/click issues) but
+        // still refresh legend names + values so Opening Range times stay in sync.
+        if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) {
+            talariaSyncOhlcIndicatorLegendValues(this, div);
+            return;
+        }
 
         talariaRebuildOhlcIndicatorLegend(this, div);
     };

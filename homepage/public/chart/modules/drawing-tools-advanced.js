@@ -3599,9 +3599,12 @@ class BaseRiskRewardTool extends BaseDrawing {
             appendExtraDragHit(yy, `rr-extra-entry-${idx}`, extraEntryDragHitW);
         });
 
+        // + buttons (add TP / entry / stop) — hidden for now; ladder legs still
+        // available from the order panel / tool settings. Set true to restore.
+        const RR_PLUS_BUTTONS_VISIBLE = false;
         // + buttons last in paint order so drag hit rects / lines do not sit on top and eat clicks.
         // Large transparent hit circle = full control target (not just the glyph).
-        if (this.selected) {
+        if (RR_PLUS_BUTTONS_VISIBLE && this.selected) {
             const plusR = 9;
             // Keep hit disc smaller than before: a 20px radius reached back to ~zoneX2−3 and sat on top of the
             // right-edge width handle (custom-handle at zoneX2), stealing drags from the small blue ring.

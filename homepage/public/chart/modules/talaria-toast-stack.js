@@ -15,8 +15,37 @@
 
     /** @type {Map<string, { el: HTMLElement }>} */
     const pinned = new Map();
-    /** @type {{ el: HTMLElement, t: ReturnType<typeof setTimeout>|null }[]} */
+    /** @type {{ el: HTMLElement, t: ReturnType<typeof setTimeout>|null, replaceKey?: string }[]} */
     const transient = [];
+
+    function armTransientDismiss(row, duration) {
+        if (!row || !row.el) return;
+        if (row.t) {
+            clearTimeout(row.t);
+            row.t = null;
+        }
+        const el = row.el;
+        row.t = setTimeout(() => {
+            try {
+                el.style.opacity = '0';
+                el.style.transition = 'opacity 0.18s ease';
+            } catch (_) { /* ignore */ }
+            setTimeout(() => removeTransientEl(el), 200);
+        }, duration);
+    }
+
+    function setToastMessage(el, message) {
+        if (!el) return;
+        const text = String(message != null ? message : '');
+        for (let i = 0; i < el.childNodes.length; i++) {
+            const n = el.childNodes[i];
+            if (n && n.nodeType === 3) {
+                n.nodeValue = text;
+                return;
+            }
+        }
+        el.appendChild(doc.createTextNode(text));
+    }
 
     function theme() {
         const light = doc.body && doc.body.classList.contains('light-mode');
@@ -163,16 +192,11 @@
         pushElement(el, opts) {
             const o = opts || {};
             const duration = Number.isFinite(Number(o.duration)) ? Number(o.duration) : 2400;
-            const row = { el: el, t: null };
+            const replaceKey = o.replaceKey != null && o.replaceKey !== '' ? String(o.replaceKey) : '';
+            const row = { el: el, t: null, replaceKey: replaceKey };
             transient.unshift(row);
             attachMount(el);
-            row.t = setTimeout(() => {
-                try {
-                    el.style.opacity = '0';
-                    el.style.transition = 'opacity 0.18s ease';
-                } catch (_) { /* ignore */ }
-                setTimeout(() => removeTransientEl(el), 200);
-            }, duration);
+            armTransientDismiss(row, duration);
             requestAnimationFrame(() => {
                 try {
                     el.style.opacity = '0';
@@ -200,10 +224,35 @@
             const th = theme();
             const type = o.type || 'info';
             const stripeColor = accentForType(type, th);
+            const dur = Number.isFinite(Number(o.duration))
+                ? Number(o.duration)
+                : (Number.isFinite(Number(o.timeoutMs)) ? Number(o.timeoutMs) : 2200);
+            const replaceKey = o.replaceKey != null && o.replaceKey !== '' ? String(o.replaceKey) : '';
+
+            // Holding Shift+Right (etc.) fires many identical toasts — keep one and refresh its timer.
+            if (replaceKey) {
+                const existing = transient.find((x) => x && x.replaceKey === replaceKey && x.el);
+                if (existing) {
+                    setToastMessage(existing.el, message);
+                    try {
+                        existing.el.style.opacity = '1';
+                    } catch (_) { /* ignore */ }
+                    armTransientDismiss(existing, dur);
+                    scheduleRelayout();
+                    return function dismiss() {
+                        if (existing.t) {
+                            clearTimeout(existing.t);
+                            existing.t = null;
+                        }
+                        removeTransientEl(existing.el);
+                    };
+                }
+            }
 
             const wrap = doc.createElement('div');
             wrap.className = 'tlr-toast-stack-msg';
             wrap.setAttribute('role', 'status');
+            if (replaceKey) wrap.setAttribute('data-toast-key', replaceKey);
 
             Object.assign(wrap.style, {
                 background: th.bg,
@@ -221,6 +270,7 @@
                 boxSizing: 'border-box',
                 pointerEvents: typeof o.onClick === 'function' ? 'auto' : 'none',
                 lineHeight: '1.35',
+                position: 'relative',
             });
 
             const stripe = doc.createElement('div');
@@ -248,10 +298,7 @@
                 });
             }
 
-            const dur = Number.isFinite(Number(o.duration))
-                ? Number(o.duration)
-                : (Number.isFinite(Number(o.timeoutMs)) ? Number(o.timeoutMs) : 2200);
-            return this.pushElement(wrap, { duration: dur });
+            return this.pushElement(wrap, { duration: dur, replaceKey: replaceKey });
         },
 
         remove(el) {

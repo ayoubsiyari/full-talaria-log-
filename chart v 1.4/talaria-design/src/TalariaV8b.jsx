@@ -991,7 +991,7 @@ const TalariaV8b = () => {
     bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
     bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: true, unifiedBarColorVal: "#00D4A1",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
-    gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
+    gridLinesOn: false, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed",
     priceLineStyle: "dashed", priceLineThickness: 1,
     chartTemplate: "Dark Classic",
@@ -12788,7 +12788,7 @@ const TalariaV8b = () => {
         <div onClick={()=>setTradeCard(null)}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()}
-            style={{width:560,background:c.sf,border:`1px solid ${c.brH}`,
+            style={{width:560,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,
               boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 32px ${isLong?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"}`,
               display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.18s ease"}}>
             {/* Top accent */}
@@ -12827,8 +12827,8 @@ const TalariaV8b = () => {
                 </div>
               ))}
             </div>
-            {/* Body */}
-            <div style={{flexShrink:0}}>
+            {/* Body — scrolls only when tags/screenshots exceed viewport; footer stays pinned */}
+            <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
 
               {/* ── POSITION — 4 equal columns ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",borderBottom:`1px solid ${c.br}`}}>

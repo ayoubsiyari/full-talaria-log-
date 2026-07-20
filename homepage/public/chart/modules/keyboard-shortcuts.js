@@ -886,7 +886,8 @@ class KeyboardShortcutsManager {
                 this.chart.replaySystem.pause();
             }
             this.chart.replaySystem.stepForward();
-            this.showNotification('⏭ Step Forward');
+            // One toast while holding Shift+Right — refresh timer instead of stacking
+            this.showNotification('⏭ Step Forward', { replaceKey: 'replay-step-forward' });
         } else {
             this.showNotification('Replay not active');
         }
@@ -907,7 +908,7 @@ class KeyboardShortcutsManager {
                 rs.pause();
             }
             if (rs) rs.stepBackward();
-            this.showNotification('⏮ Step Backward');
+            this.showNotification('⏮ Step Backward', { replaceKey: 'replay-step-backward' });
         } else {
             this.showNotification('Replay not active');
         }
@@ -1209,12 +1210,15 @@ class KeyboardShortcutsManager {
         }
     }
     
-    showNotification(message, icon = 'mdi-information') {
+    showNotification(message, iconOrOpts = 'mdi-information') {
+        const opts = (iconOrOpts && typeof iconOrOpts === 'object') ? iconOrOpts : {};
         if (typeof window !== 'undefined' && window.__TalariaToastStack) {
-            window.__TalariaToastStack.show(String(message != null ? message : ''), {
+            const stackOpts = {
                 type: 'info',
                 duration: 1500,
-            });
+            };
+            if (opts.replaceKey) stackOpts.replaceKey = String(opts.replaceKey);
+            window.__TalariaToastStack.show(String(message != null ? message : ''), stackOpts);
             return;
         }
         // Create temporary notification

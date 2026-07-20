@@ -5044,6 +5044,9 @@
         indicator.params.rangeStart = resolved.rangeStart;
         indicator.params.rangeEnd = resolved.rangeEnd;
         indicator.params.rangeTimezone = resolveChartWallTimezoneId();
+        // Keep legend / settings title in sync whenever the session window changes
+        // (not only inside needsDataRecalc recalc branches).
+        indicator.name = 'Opening Range(' + resolved.rangeStart + '-' + resolved.rangeEnd + ')';
         indicator.overlay = true;
         indicator.style.showUpper = params.showUpper !== false;
         indicator.style.upperColor = params.upperColor || '#2962ff';
@@ -16818,11 +16821,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ? this._getMainPricePlotLayout()
             : null;
         const maxY = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
-        const mx = Number(this.mouseX);
-        const my = Number(this.mouseY);
-        const crosshairInPlot = Number.isFinite(mx) && Number.isFinite(my)
-            && mx >= m.l && mx <= this.w - m.r
-            && my >= m.t && my <= maxY;
+        // Price-axis tags always show the last bar value — never follow the crosshair.
+        const lastBarIdx = this.data && this.data.length ? this.data.length - 1 : -1;
         const labels = [];
         let labelOrder = 0;
 
@@ -16861,9 +16861,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (bandData && (Array.isArray(bandData.upper) || Array.isArray(bandData.middle) || Array.isArray(bandData.lower))) {
                 const st = indicator.style || {};
                 const plotOff = this._indicatorPlotOffset(indicator);
-                const barIdx = crosshairInPlot && typeof this._getCrosshairBarIndex === 'function'
-                    ? this._getCrosshairBarIndex()
-                    : (this.data ? this.data.length - 1 : 0);
+                const barIdx = lastBarIdx >= 0 ? lastBarIdx : 0;
                 const bandDefs = [
                     { k: 'upper', arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
                     { k: 'middle', arr: bandData.middle, show: st.showMiddle !== false, color: st.middleColor || '#787b86' },
@@ -16894,9 +16892,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!lineArr) return;
 
             const plotOff = this._indicatorPlotOffset(indicator);
-            const barIdx = crosshairInPlot && typeof this._getCrosshairBarIndex === 'function'
-                ? this._getCrosshairBarIndex()
-                : (this.data ? this.data.length - 1 : lineArr.length - 1);
+            const barIdx = lastBarIdx >= 0 ? lastBarIdx : (lineArr.length - 1);
             const val = seriesValueAtPlotOffset(lineArr, barIdx, plotOff);
             if (!Number.isFinite(val)) return;
 

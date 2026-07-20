@@ -1242,10 +1242,10 @@ class Chart {
             backgroundColor: '#131722',
             backgroundStyle: 'Solid', // 'Solid' or 'Gradient'
             
-            // Grid
+            // Grid — off by default for new sessions / first-time chart open
             gridColor: 'rgba(42, 46, 57, 0.6)',
-            gridStyle: 'Vert and horz', // 'Vert and horz', 'Vertical', 'Horizontal', 'None'
-            showGrid: true,
+            gridStyle: 'None', // 'Vert and horz', 'Vertical', 'Horizontal', 'None'
+            showGrid: false,
             gridPattern: 'solid',
             gridLineWidth: 1,
             
@@ -35097,6 +35097,9 @@ class Chart {
         // Root SVG stays pointer-events:none unless a mode truly needs full-layer capture.
         // Selected shapes use per-element pointer-events (strokes/handles) so empty plot
         // clicks pass through to the canvas for chart pan/zoom.
+        // Order preview (MARKET BUY / SL / TP) must NOT flip the root to 'all' — that
+        // blocks pan for the whole chart while levels are visible. SL/TP/entry elements
+        // already set their own pointer-events (stroke/all) for drag.
         const legacyToolActive = !!this.tool;
         const drawingManagerActive = !!(
             this.drawingManager && (
@@ -35107,20 +35110,7 @@ class Chart {
             )
         );
 
-        const orderPanelEl = document.getElementById('orderPanel');
-        const v9ReactRailOpen = typeof window !== 'undefined'
-            && !!window.__talariaV9ReactOrderUi
-            && !!window.__talariaV9OrderRailOpen;
-        const multichartDraftActive = typeof window !== 'undefined'
-            && !!window.__talariaMultichartDraftActive;
-        const orderPreviewActive = !!(
-            this.orderManager &&
-            this.orderManager.previewLines &&
-            orderPanelEl &&
-            (orderPanelEl.classList.contains('visible') || v9ReactRailOpen || multichartDraftActive)
-        );
-
-        if (legacyToolActive || drawingManagerActive || orderPreviewActive) {
+        if (legacyToolActive || drawingManagerActive) {
             this.svg.style('pointer-events', 'all');
         } else {
             this.svg.style('pointer-events', 'none');
@@ -37562,7 +37552,7 @@ class Chart {
             symbolTextColor: '#ffffff',
             candleUpColor: '#089981',
             candleDownColor: '#f23645',
-            showGrid: true,
+            showGrid: false,
             showVolume: false,
             showCrosshair: true,
             crosshairLocked: false,

@@ -15027,7 +15027,7 @@ const TalariaV8bLive = () => {
     bullBody: "#089981", bullBorder: "#089981", bullWick: "#089981",
     bearBody: "#F23645", bearBorder: "#F23645", bearWick: "#F23645", unifiedBarColor: false, unifiedBarColorVal: "#089981",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
-    gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
+    gridLinesOn: false, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed", crosshairLineThickness: 1,
     priceLineStyle: "dashed", priceLineThickness: 1,
     chartTemplate: "Talaria Dark",
@@ -15096,7 +15096,11 @@ const TalariaV8bLive = () => {
     };
     tick();
     const id = window.setInterval(() => tick(), 500);
-    const onTz = () => tick();
+    const onTz = () => {
+      tick();
+      // Trade table TIME strings are formatted via timezoneManager — refresh rows on TZ change.
+      setOmTradeRev((n) => n + 1);
+    };
     const onReplayVirtualTime = (ev) => {
       const ts = Number(ev?.detail?.timestamp);
       tick(Number.isFinite(ts) ? ts : undefined);
@@ -40648,7 +40652,7 @@ const TalariaV8bLive = () => {
         <div onClick={()=>setTradeCard(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setTradeCard(null); }}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
-            style={{width:560,background:c.sf,border:`1px solid ${c.brH}`,
+            style={{width:560,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,
               boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 32px ${isLong?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"}`,
               display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.18s ease"}}>
             {/* Top accent */}
@@ -40687,8 +40691,8 @@ const TalariaV8bLive = () => {
                 </div>
               ))}
             </div>
-            {/* Body */}
-            <div style={{flexShrink:0}}>
+            {/* Body — scrolls only when tags/screenshots exceed viewport; footer stays pinned */}
+            <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
 
               {/* ── POSITION — 4 equal columns ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",borderBottom:`1px solid ${c.br}`}}>

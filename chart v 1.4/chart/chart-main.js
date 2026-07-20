@@ -122,7 +122,7 @@ class Chart {
             textColor: '#787b86',
             candleUpColor: '#089981',
             candleDownColor: '#f23645',
-            showGrid: true,
+            showGrid: false,
             showVolume: false, // Volume is now controlled as an indicator
             showCrosshair: true,
             crosshairLocked: false,

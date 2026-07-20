@@ -79,7 +79,10 @@ function resolveTradeRowNowMs(om, panelSnapshots) {
 
 function v9FormatTradeTime(ms) {
   if (!ms || !Number.isFinite(ms)) return "— — —";
-  const d = new Date(ms);
+  // Match chart axis / HUD: wall-clock in settings timezone (convertToTimezone → getUTC*).
+  const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+  const d =
+    tm && typeof tm.convertToTimezone === "function" ? tm.convertToTimezone(ms) : new Date(ms);
   const mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
   const day = d.getUTCDate();
   const hh = String(d.getUTCHours()).padStart(2, "0");
