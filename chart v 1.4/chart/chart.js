@@ -4663,23 +4663,11 @@ class Chart {
         const _preserveOwnViewport = !this._multichartVisibleRangeSyncOn
             && this._multichartBootViewportPositioned === true;
 
-        // Same-pair same-TF: keep candleWidth in lockstep even when pan/viewport
-        // stay independent (Date Range OFF). Divergent zoom caused different LOD
-        // merges → mismatched candle colors/thickness at the "same" peak.
-        // Kill-switch: window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
-        const _samePairCwSync = !(typeof window !== 'undefined'
-            && window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
-        const _sameTf = String(this.currentTimeframe || '').toLowerCase().trim()
-            === String(parent.currentTimeframe || '').toLowerCase().trim();
-        const _sameFile = String(this.currentFileId || '') === String(parent.currentFileId || '');
-        if (_preserveOwnViewport && _samePairCwSync && _sameTf && _sameFile
-            && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
-            this.candleWidth = parent.candleWidth;
-            if (this.zoomLevel && parent.zoomLevel) {
-                this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
-            }
-            if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
-        }
+        // Same-pair candleWidth lockstep used to run even with Date Range OFF so
+        // LOD/colors matched — but it made panel B follow A's zoom/time-axis.
+        // With sync OFF, panels stay fully independent (no CW copy here).
+        // Kill-switch still available if a future path re-enables optional CW sync:
+        // window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
 
         if (!_preserveOwnViewport) {
             this.rawData = parent.rawData;

@@ -1238,9 +1238,11 @@
                         plotWidthPx: r.plotWidthPx,
                     });
                 } else if (r.zoomOnly
+                    && isRangeSyncEnabled()
                     && !(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true)
                     && Number.isFinite(r.candleWidth) && r.candleWidth > 0) {
-                    // Date Range OFF: push zoom geometry only (same-pair LOD parity).
+                    // Only when Time / Date Range sync is ON (defense in depth —
+                    // chartScrolled should not enqueue zoomOnly when sync is OFF).
                     send({
                         type: 'visibleRange',
                         zoomOnly: true,
@@ -1332,8 +1334,9 @@
             }
             const d = ev.detail || {};
             if (d.chart !== chart) return;
-            const samePairCwSyncOn = !(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
-            if (!isRangeSyncEnabled() && !samePairCwSyncOn) return;
+            // Time + Date Range OFF → do not broadcast viewport/zoom to peers.
+            // (Previously zoomOnly candleWidth still fanned out and moved panel B.)
+            if (!isRangeSyncEnabled()) return;
 
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
@@ -1356,8 +1359,7 @@
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
                 plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
-                // Date Range OFF: peers only adopt candleWidth (LOD/color parity).
-                zoomOnly: !isRangeSyncEnabled(),
+                zoomOnly: false,
             };
             // Coalesce pan + release into one outbound envelope per frame (TradingView-style).
             pending.visibleRange = rangePayload;
@@ -2075,11 +2077,12 @@
             if (!panSync && typeof chart._releasePanSyncFollowBurst === 'function') {
                 try { chart._releasePanSyncFollowBurst(); } catch (_) {}
             }
-            // zoomOnly: adopt candleWidth/zoom index only (Date Range OFF path).
-            // Does not move offsetX — keeps pan independence while matching LOD.
+            // zoomOnly: adopt candleWidth/zoom index only when range sync is ON.
+            // With Time/Date Range OFF, ignore so peers stay independent.
             if (m && m.zoomOnly) {
                 if (m.causationId) state.applied.add(m.causationId);
-                if (!(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true)
+                if (isRangeSyncEnabled()
+                    && !(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true)
                     && sameTimeframeMessage(chart, m)
                     && (!m.fileId || String(chart.currentFileId || '') === String(m.fileId))
                     && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {

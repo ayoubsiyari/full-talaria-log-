@@ -1269,10 +1269,10 @@
         if (t === 'crosshair' || t === 'crosshair-clear') {
             if (!this.syncMode.crosshair) { return; }
         } else if (t === 'visibleRange') {
-            // Date Range / Time sync OFF: still allow zoomOnly envelopes so
-            // same-pair same-TF peers keep matching candleWidth (LOD/colors).
-            if (!this.syncMode.visibleRange && !this.syncMode.timeSync
-                && !msg.zoomOnly) { return; }
+            // Date Range / Time sync OFF: drop ALL visibleRange traffic, including
+            // zoomOnly candleWidth envelopes. Sync OFF must mean independent zoom
+            // (old zoomOnly bypass made panel B follow A's time-axis / wheel zoom).
+            if (!this.syncMode.visibleRange && !this.syncMode.timeSync) { return; }
         } else if (t === 'symbol') {
             if (!this.syncMode.symbol) { return; }
         } else if (t === 'drawing-add' || t === 'drawing-update'

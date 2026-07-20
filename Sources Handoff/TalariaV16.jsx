@@ -1097,8 +1097,22 @@ const openDashboardNewSession = (opts = {}) => {
   fn(opts);
   return true;
 };
+/** Source / New Session: Create Journal closed for everyone (set false to re-enable). */
+const SOURCE_CREATE_JOURNAL_DISABLED = true;
+/** Prop Firm (backtest Prop Mode + Prop journal accounts) closed for everyone. */
+const PROP_FIRM_FEATURES_DISABLED = true;
+
 const openDashboardNewLiveJournal = (opts = {}) => {
   if (!isV16Embedded()) return false;
+  // Editing an existing account still allowed; new journals are gated.
+  const isEdit = !!(opts && opts.editAccount);
+  if (SOURCE_CREATE_JOURNAL_DISABLED && !isEdit) return false;
+  if (PROP_FIRM_FEATURES_DISABLED && !isEdit
+      && (opts?.accountTypeKey === "prop"
+        || opts?.editAccount?.account_type === "prop"
+        || opts?.editAccount?.accountTypeKey === "prop")) {
+    return false;
+  }
   const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_NEW_LIVE_JOURNAL__ : null;
   if (typeof fn !== "function") return false;
   fn(opts);
@@ -13855,6 +13869,15 @@ const TalariaV8b = () => {
     if (dashLibraryOpen) setDashLibraryGoWarning("");
   }, [dashLibraryOpen, dashLibraryTab, dashLibraryModeCat, dashLibraryJournalCat]);
 
+  // Prop Firm closed — keep Source/Compare trees off Prop Mode / Prop Accounts.
+  useEffect(() => {
+    if (!PROP_FIRM_FEATURES_DISABLED) return;
+    if (dashLibraryModeCat === "prop") setDashLibraryModeCat("standard");
+    if (String(dashLibraryJournalCat || "").includes("prop")) setDashLibraryJournalCat("personal-accounts");
+    if (dashCompareModeCat === "prop") setDashCompareModeCat("standard");
+    if (String(dashCompareJournalCat || "").includes("prop")) setDashCompareJournalCat("personal-accounts");
+  }, [dashLibraryModeCat, dashLibraryJournalCat, dashCompareModeCat, dashCompareJournalCat]);
+
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = allSymbols.find(s => s.id === symbol) || { id:symbol, type:"forex", base:symbol.split("/")[0], quote:symbol.split("/")[1] };
   const chartTypeMap = {
@@ -15549,18 +15572,16 @@ const TalariaV8b = () => {
           if (isV16Embedded() && !v16SessionsPlatformAllowed()) return;
           setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true);
         };
-        // Journal path from New Session picker — off for regular users only.
-        // Admins keep the full Backtest vs Journal wizard. Source → Create Journal stays for everyone.
-        // Set false to re-enable the choice for all users.
-        const NEW_SESSION_JOURNAL_PICKER_DISABLED_FOR_USERS = true;
-        const newSessionJournalPickerDisabled =
-          NEW_SESSION_JOURNAL_PICKER_DISABLED_FOR_USERS && !isV16DashboardAdmin();
+        // Journal path from New Session picker — closed for everyone (matches Source Create Journal).
+        // Set false to re-enable the Backtest vs Journal choice.
+        const NEW_SESSION_JOURNAL_PICKER_DISABLED = true;
+        const newSessionJournalPickerDisabled = NEW_SESSION_JOURNAL_PICKER_DISABLED || SOURCE_CREATE_JOURNAL_DISABLED;
         const closeNewSessionKindPicker = () => setNewSessionKindPickerOpen(false);
         const closeNewSessionJournalKindPicker = () => setNewSessionJournalKindOpen(false);
         const closeNewSessionJournalMethodPicker = () => setNewSessionJournalMethodOpen(false);
         const openNewSessionKindPicker = () => {
           if (!v16SessionsPlatformAllowed()) return;
-          // Regular users: Backtest only. Admins: show Backtest vs Journal picker.
+          // Journal create closed — go straight to Backtest session.
           if (newSessionJournalPickerDisabled) {
             goNew();
             return;
@@ -15577,6 +15598,8 @@ const TalariaV8b = () => {
           setNewSessionJournalKindOpen(true);
         };
         const openJournalMethodFromPicker = (accountTypeKey) => {
+          if (SOURCE_CREATE_JOURNAL_DISABLED) return;
+          if (PROP_FIRM_FEATURES_DISABLED && accountTypeKey === "prop") return;
           closeNewSessionJournalKindPicker();
           setNewSessionJournalAccountType(accountTypeKey === "prop" ? "prop" : "personal");
           setNewSessionJournalMethodOpen(true);
@@ -16784,7 +16807,7 @@ const TalariaV8b = () => {
             {newSessionKindPickerOpen && renderNewSessionPickerModal({
               title:"New Session",
               subtitle:newSessionJournalPickerDisabled
-                ? "Backtest sessions only for now — create journals from the Source tab."
+                ? "Backtest sessions only for now — journal create is closed."
                 : "Choose what you want to create",
               wizardStep:1,
               onClose:closeNewSessionKindPicker,
@@ -16802,7 +16825,7 @@ const TalariaV8b = () => {
                   id:"journal",
                   label:"Journal",
                   desc:newSessionJournalPickerDisabled
-                    ? "Not available for now — use Source → Create Journal instead."
+                    ? "Not available for now."
                     : "Track live trades manually on a real account or prop firm journal.",
                   disabled:newSessionJournalPickerDisabled,
                   unavailableLabel:newSessionJournalPickerDisabled ? "Not available for now" : undefined,
@@ -16838,7 +16861,11 @@ const TalariaV8b = () => {
                 {
                   id:"prop",
                   label:"Prop firm",
-                  desc:"Challenge or funded prop account journal with prop-specific tracking.",
+                  desc:PROP_FIRM_FEATURES_DISABLED
+                    ? "Not available for now."
+                    : "Challenge or funded prop account journal with prop-specific tracking.",
+                  disabled:PROP_FIRM_FEATURES_DISABLED,
+                  unavailableLabel:PROP_FIRM_FEATURES_DISABLED ? "Not available for now" : undefined,
                   iconBg:"rgba(74,106,255,0.14)",
                   iconColor:c.acL,
                   border:"rgba(74,106,255,0.18)",
@@ -21997,7 +22024,7 @@ const TalariaV8b = () => {
           };
           const libraryModeCats = [
             {id:"standard",label:dashTxt("Standard Mode","الوضع العادي"),color:c.acL,count:libraryModeSessions("standard").length},
-            {id:"prop",label:dashTxt("Prop Mode","وضع التمويل"),color:c.gold,count:libraryModeSessions("prop").length},
+            ...(!PROP_FIRM_FEATURES_DISABLED ? [{id:"prop",label:dashTxt("Prop Mode","وضع التمويل"),color:c.gold,count:libraryModeSessions("prop").length}] : []),
           ];
           const activeLibraryMode = libraryModeCats.find(x=>x.id===dashLibraryModeCat) || libraryModeCats[0];
           const activeLibraryStatus = libraryStatusCats.find(x=>x.id===dashLibraryStatusCat) || libraryStatusCats[0];
@@ -22287,7 +22314,7 @@ const TalariaV8b = () => {
               count:libraryAllJournalAccountRows.filter(account=>journalRowAccountTypeKey(account)==="personal").length,
               match:trade=>journalAccountForTrade(trade).accountTypeKey==="personal",
             },
-            {
+            ...(!PROP_FIRM_FEATURES_DISABLED ? [{
               id:"prop-accounts",
               label:dashTxt("Prop Accounts","حسابات التمويل"),
               color:c.gold,
@@ -22295,7 +22322,7 @@ const TalariaV8b = () => {
               rowLabel:libraryJournalAccountGroupLabel("prop"),
               count:libraryAllJournalAccountRows.filter(account=>journalRowAccountTypeKey(account)==="prop").length,
               match:trade=>journalAccountForTrade(trade).accountTypeKey==="prop",
-            },
+            }] : []),
           ];
           const libraryJournalAccountTypeOpenKey = (typeCat) => typeCat.accountTypeKey === "prop" ? "journalProp" : "journalPersonal";
           const libraryJournalConnectionCatsForType = (typeCat) => libraryJournalConnections
@@ -23302,7 +23329,12 @@ const TalariaV8b = () => {
           };
           const renderJournalEmptyState = (typeKey = libraryLiveJournalTypeFromSelection()) => (
             <div style={{minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:`1px solid ${c.br}`,background:c.sf,padding:"18px 14px"}}>
-              <div style={{fontSize:10,fontWeight:800,color:c.tm,fontFamily:F,textAlign:"center"}}>{dashTxt("No live journal accounts yet.","لا توجد حسابات يومية حية بعد.")}</div>
+              <div style={{fontSize:10,fontWeight:800,color:c.tm,fontFamily:F,textAlign:"center"}}>
+                {SOURCE_CREATE_JOURNAL_DISABLED
+                  ? dashTxt("Live journal create is closed for now.","إنشاء اليوميات الحية مغلق حالياً.")
+                  : dashTxt("No live journal accounts yet.","لا توجد حسابات يومية حية بعد.")}
+              </div>
+              {!SOURCE_CREATE_JOURNAL_DISABLED && (
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
                 <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Create Journal","إنشاء يومية")}
@@ -23314,6 +23346,7 @@ const TalariaV8b = () => {
                   {dashTxt("Import trades","استيراد الصفقات")}
                 </div>
               </div>
+              )}
             </div>
           );
           const openLiveJournalImportFlow = (account) => {
@@ -23325,19 +23358,23 @@ const TalariaV8b = () => {
             openDashSubWindow("trade-journal", dashTxt("Live Journal", "اليوميات الحية"));
           };
           const libraryHeaderAction = dashLibraryTab === "journals"
-            ? {
+            ? (SOURCE_CREATE_JOURNAL_DISABLED ? null : {
                 label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
                 onClick:()=>{
                   openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true, goToTradesAfterCreate: true });
                 }
-              }
+              })
             : {
                 label:dashTxt("Create Session","إنشاء جلسة"),
                 color:c.acL,
                 shadow:c.acG,
-                onClick:()=>{ setDashLibraryOpen(false); if(!openDashboardNewSession({ tradingMode: dashLibraryModeCat === "prop" ? "prop" : "standard" })){ setSessView("sessions"); goNew(); } }
+                onClick:()=>{
+                  const mode = (!PROP_FIRM_FEATURES_DISABLED && dashLibraryModeCat === "prop") ? "prop" : "standard";
+                  setDashLibraryOpen(false);
+                  if(!openDashboardNewSession({ tradingMode: mode })){ setSessView("sessions"); goNew(); }
+                }
               };
           const libraryJournalSecondaryAction = dashLibraryTab === "journals"
             ? {
@@ -23349,12 +23386,12 @@ const TalariaV8b = () => {
               }
             : null;
           const compareHeaderAction = dashCompareTab === "journals"
-            ? {
+            ? (SOURCE_CREATE_JOURNAL_DISABLED ? null : {
                 label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
                 onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat), lockAccountType: true, goToTradesAfterCreate: true }); }
-              }
+              })
             : dashCompareTab === "strategies"
               ? {
                   label:dashTxt("Create Strategy","إنشاء استراتيجية"),
@@ -23366,7 +23403,12 @@ const TalariaV8b = () => {
                   label:dashTxt("Create Session","إنشاء جلسة"),
                   color:c.acL,
                   shadow:c.acG,
-                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession({ tradingMode: dashCompareModeCat === "prop" ? "prop" : "standard" })){ setSessView("sessions"); goNew(); } }
+                  onClick:()=>{
+                    const mode = (!PROP_FIRM_FEATURES_DISABLED && dashCompareModeCat === "prop") ? "prop" : "standard";
+                    setDashCompareOpen(false);
+                    setDashLibraryOpen(false);
+                    if(!openDashboardNewSession({ tradingMode: mode })){ setSessView("sessions"); goNew(); }
+                  }
                 };
           const toggleLibraryStrategyBox = (id) => setDashLibraryStrategyExpanded(prev => prev[id] ? {} : {[id]: true});
           const toggleLibraryTree = (id) => setDashLibraryTreeOpen(prev => ({...prev,[id]:!prev[id]}));
@@ -41766,7 +41808,7 @@ const TalariaV8b = () => {
                             {libraryJournalSecondaryAction.label}
                           </div>
                         )}
-                        {!dashCompareOpen && (
+                        {!dashCompareOpen && libraryHeaderAction && (
                           <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} aria-label={libraryHeaderAction.label}
                             onClick={e=>{e.stopPropagation();libraryHeaderAction.onClick();}}
                             onKeyDown={libraryKeyActivate(e=>{e.stopPropagation();libraryHeaderAction.onClick();})}

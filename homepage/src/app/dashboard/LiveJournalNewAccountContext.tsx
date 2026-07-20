@@ -30,6 +30,10 @@ export type LiveJournalNewAccountOpenOptions = {
   editAccount?: ApiLiveJournalAccount | null;
 };
 
+/** Match TalariaV16 Source flags — Create Journal / Prop Firm closed for now. */
+const SOURCE_CREATE_JOURNAL_DISABLED = true;
+const PROP_FIRM_FEATURES_DISABLED = true;
+
 type LiveJournalNewAccountContextValue = {
   openNewLiveJournal: (opts?: LiveJournalNewAccountOpenOptions) => void;
   registerOnSaved: (fn: () => void) => () => void;
@@ -55,8 +59,13 @@ export function LiveJournalNewAccountProvider({
   const pendingOpenOptionsRef = React.useRef<LiveJournalNewAccountOpenOptions | null>(null);
 
   const openNewLiveJournal = React.useCallback((opts?: LiveJournalNewAccountOpenOptions) => {
+    const isEdit = Boolean(opts?.editAccount);
+    if (SOURCE_CREATE_JOURNAL_DISABLED && !isEdit) return;
+    const typeKey: V16AccountTypeKey =
+      opts?.editAccount?.account_type === "prop" || opts?.accountTypeKey === "prop" ? "prop" : "personal";
+    if (PROP_FIRM_FEATURES_DISABLED && typeKey === "prop" && !isEdit) return;
+
     pendingOpenOptionsRef.current = opts || null;
-    const typeKey: V16AccountTypeKey = opts?.editAccount?.account_type === "prop" || opts?.accountTypeKey === "prop" ? "prop" : "personal";
 
     const launch = (limits: LiveJournalLimitsPayload | null) => {
       if (!opts?.editAccount && isLiveJournalTypeAtLimit(limits, typeKey)) {

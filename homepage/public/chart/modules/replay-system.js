@@ -4214,11 +4214,12 @@ class ReplaySystem {
             this._nextCandleTimer = null;
         }
 
-        const interval = this.getCandleStepIntervalMs();
+        const cadence = this.getCandlePlaybackCadence();
+        const interval = cadence.intervalMs;
         
         // Optionally advance immediately (used on first play).
         if (startImmediately) {
-            this.simpleStepForward();
+            this._runCandlePlaybackTick();
         }
         
         this.playInterval = setInterval(() => {
@@ -4243,12 +4244,12 @@ class ReplaySystem {
 
             if (this.currentIndex >= this.fullRawData.length - 1) {
                 const waiting = this._handleForwardEdgeWhilePlaying(() => {
-                    if (this.isPlaying) this.simpleStepForward();
+                    if (this.isPlaying) this._runCandlePlaybackTick();
                 });
                 if (waiting) return;
             }
 
-            this.simpleStepForward();
+            this._runCandlePlaybackTick();
         }, interval);
     }
     
@@ -4334,21 +4335,54 @@ class ReplaySystem {
     }
 
     /**
-     * Wall-clock delay between candle-by-candle steps.
-     * Uses speed as steps-per-second (1000/speed) — snappy jumps with no tick animation.
-     * Stale-interval guards (_activeCandleLoop, prefetch resume) prevent chart interaction
-     * from stacking timers and running faster than this rate.
+     * Candle-mode cadence: slider speed ≈ steps/sec.
+     * Below ~62 steps/sec use a longer interval (1 step/tick).
+     * Above that, keep ~16ms ticks and batch multiple steps so 50x ≠ 100x
+     * (old Math.max(20, 1000/speed) made every speed ≥50 identical).
      */
-    getCandleStepIntervalMs() {
+    getCandlePlaybackCadence() {
         const speed = Math.max(1, Number(this.speed) || 1);
-        let ms = Math.max(20, Math.floor(1000 / speed));
+        const MIN_INTERVAL_MS = 16;
+        let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
+        let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
         if (this.isPlaying
             && this._isFinestTfCandleCadenceFixEnabled()
             && this._isFinestTfCadenceSubStepActive()) {
             const sub = this._finestTfCadenceSubdivisions();
-            if (sub > 1) ms = Math.max(16, Math.floor(ms / sub));
+            if (sub > 1) {
+                // Prefer shorter wall-clock first; then batch remaining subdivisions.
+                const targetMs = Math.max(MIN_INTERVAL_MS, Math.floor(intervalMs / sub));
+                if (targetMs < intervalMs && stepsPerTick <= 1) {
+                    intervalMs = targetMs;
+                    stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
+                } else {
+                    stepsPerTick = Math.max(stepsPerTick, sub);
+                }
+            }
         }
-        return ms;
+        return { intervalMs, stepsPerTick };
+    }
+
+    /**
+     * Wall-clock delay between candle-by-candle timer ticks.
+     * High speeds may advance multiple steps per tick (see getCandlePlaybackCadence).
+     */
+    getCandleStepIntervalMs() {
+        return this.getCandlePlaybackCadence().intervalMs;
+    }
+
+    /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
+    _runCandlePlaybackTick() {
+        const { stepsPerTick } = this.getCandlePlaybackCadence();
+        const n = Math.max(1, stepsPerTick | 0);
+        for (let i = 0; i < n; i++) {
+            if (!this.isPlaying || !this.isActive) break;
+            if (this._nextCandleTimer) break;
+            const skipChartUpdate = i < n - 1;
+            this.simpleStepForward({ skipChartUpdate });
+            // Stop batching if playback ended / waiting on forward edge.
+            if (!this.isPlaying || this._nextCandleTimer) break;
+        }
     }
     
     /**
@@ -4406,8 +4440,13 @@ class ReplaySystem {
         return true;
     }
 
-    simpleStepForward() {
+    simpleStepForward(options = {}) {
         if (this._timeframeChanging) return;
+        const skipChartUpdate = !!(options && options.skipChartUpdate);
+        const paint = (shouldAutoScroll) => {
+            if (skipChartUpdate) return;
+            this.updateChartData(shouldAutoScroll);
+        };
         if (this._isSubBarStepMode()) {
             if (this.currentIndex >= this.fullRawData.length - 1) {
                 const ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : NaN;
@@ -4433,7 +4472,7 @@ class ReplaySystem {
             }
             this.edgeProbeRetryCount = 0;
             this._replayForwardEdgeWait = false;
-            this.updateChartData(this._shouldAutoScrollChartUpdate(prevIdx));
+            paint(this._shouldAutoScrollChartUpdate(prevIdx));
             return;
         }
         // D-016 candle V1: finest sub-step BEFORE coarse legacy / interval bucket.
@@ -4450,11 +4489,11 @@ class ReplaySystem {
             }
             const oldIdxFinest = this.currentIndex;
             this._advanceReplayPlayheadOneStep();
-            this.updateChartData(this._shouldAutoScrollChartUpdate(oldIdxFinest));
+            paint(this._shouldAutoScrollChartUpdate(oldIdxFinest));
             return;
         }
         if (this._advanceCoarseLegacyCandleBucket()) {
-            this.updateChartData(this.autoScrollEnabled);
+            paint(this.autoScrollEnabled);
             return;
         }
         if (this.currentIndex >= this.fullRawData.length - 1) {
@@ -4503,7 +4542,7 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
         }
 
-        this.updateChartData(this._shouldAutoScrollChartUpdate(oldIndex));
+        paint(this._shouldAutoScrollChartUpdate(oldIndex));
     }
     
     /** Milliseconds between consecutive rows in fullRawData (replay master). */
@@ -6194,11 +6233,13 @@ class ReplaySystem {
 
     /**
      * Tick-by-tick playback runs at 2× the slider speed; candle-by-candle uses the slider as-is.
+     * Cap effective tick speed at 200 (not 100) so slider 50 → 100 and 100 → 200 stay distinct
+     * (old min(100, base*2) made every speed ≥50 identical in tick mode).
      */
     getEffectivePlaybackSpeed() {
         const base = this.normalizeSpeed(this.speed);
         if (this.getPlaybackMode() === 'tick') {
-            return Math.min(100, base * 2);
+            return Math.min(200, base * 2);
         }
         return base;
     }

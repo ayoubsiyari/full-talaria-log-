@@ -1629,16 +1629,13 @@
                 if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
             } else if (followPlayhead) {
                 // VIEWPORT INDEPENDENCE: follow the host PLAYHEAD with THIS panel's
-                // own offset math. Same-pair same-TF still adopts host candleWidth
-                // (zoom) even when Date Range sync is OFF so LOD/candle geometry
-                // matches the host. Kill-switch:
-                //   window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC = true
+                // own offset math. CandleWidth follows host only when Date Range /
+                // Time sync is ON — with sync OFF, panels keep independent zoom.
+                // Kill-switch (legacy): window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC
                 // Falling back to the host's raw pixel offsetX is what made panels
                 // drift/shake/zoom-jump, so only do that when sync is ON.
                 var rangeSyncOn = !!ch._multichartVisibleRangeSyncOn;
-                var samePairCwSync = !(typeof window !== 'undefined'
-                    && window.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true);
-                if ((rangeSyncOn || samePairCwSync)
+                if (rangeSyncOn
                     && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
                     ch.candleWidth = pc.candleWidth;
                     if (ch.zoomLevel && pc.zoomLevel
