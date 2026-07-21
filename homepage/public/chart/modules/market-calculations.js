@@ -265,11 +265,39 @@ class ForexCalculator {
     }
 
     /**
-     * Margin required in USD.
-     * margin = (entry × lots × contractSize) / leverage
+     * Margin required in account currency (USD), retail FX-style:
+     *   margin = notional_USD / leverage
+     *
+     * Notional by quote type (same conventions as real CFD/FX desks):
+     *   usd_quoted (EURUSD, XAUUSD): lots × contractSize × entry
+     *   usd_base   (USDJPY, USDCAD): lots × contractSize          (base is USD)
+     *   crosses    (EURJPY, EURGBP): lots × contractSize          (base≈USD when no FX conversion feed)
      */
     calcMargin(entry, lots, leverage = 100) {
-        return (entry * lots * this.specs.contractSize) / leverage;
+        const lev = Number.parseFloat(leverage);
+        const qty = Math.abs(Number.parseFloat(lots) || 0);
+        if (!(qty > 0) || !(Number.isFinite(lev) && lev > 0)) return 0;
+        const cs = Number.parseFloat(this.specs.contractSize) || 0;
+        if (!(cs > 0)) return 0;
+        const px = Math.abs(Number.parseFloat(entry) || 0);
+        let notionalUsd;
+        switch (this.specs.quoteType) {
+            case 'usd_base':
+                notionalUsd = qty * cs;
+                break;
+            case 'cross_jpy':
+            case 'cross_usd':
+                // Without a live conversion pair, treat base notional as USD-equivalent
+                // (EUR≈USD style). Better than multiplying JPY prices into USD notional.
+                notionalUsd = qty * cs;
+                break;
+            case 'usd_quoted':
+            default:
+                if (!(px > 0)) return 0;
+                notionalUsd = qty * cs * px;
+                break;
+        }
+        return notionalUsd / lev;
     }
 
     getSpecs() {

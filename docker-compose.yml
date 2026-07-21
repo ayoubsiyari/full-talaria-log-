@@ -134,12 +134,16 @@ services:
       additional_contexts:
         talaria-security: ./securty/python
     restart: unless-stopped
+    volumes:
+      # Persist journal screenshots / strategy images (entrypoint chowns for `app` user).
+      - journal_uploads:/app/uploads
     environment:
       # DB_HOST defaults to `db` (direct). Set DB_HOST=pgbouncer in .env (with the
       # pgbouncer profile up) to route this service through the connection pooler.
       DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-talaria}
       FLASK_ENV: production
       FLASK_DEBUG: "False"
+      UPLOAD_FOLDER: /app/uploads
       # Must be 32+ chars in production (journal-backend refuses weak defaults)
       SECRET_KEY: ${SECRET_KEY:-local-docker-journal-secret-minimum-32-characters-long}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-docker-journal-jwt-secret-minimum-32-characters}
@@ -440,5 +444,6 @@ volumes:
   postgres_data:
   questdb_data:
   chart_uploads:
+  journal_uploads:
   chart_data:
   uptime_kuma_data:

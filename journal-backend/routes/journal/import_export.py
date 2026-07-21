@@ -14,6 +14,7 @@ import base64
 import uuid
 import io
 import json
+import tempfile
 import pandas as pd
 import math
 from csv_journal import parse_trades_csv_bytes, preview_trades_csv_bytes
@@ -26,11 +27,44 @@ from .filters import (
     serialize_entry
 )
 
-# Make sure uploads folder exists
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'uploads')
+
+def _dir_is_writable(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, f'.write_probe_{os.getpid()}')
+        with open(probe, 'wb') as f:
+            f.write(b'ok')
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_uploads_root() -> str:
+    """Prefer UPLOAD_FOLDER env, then /app/uploads, then a writable temp fallback."""
+    candidates = [
+        os.environ.get('UPLOAD_FOLDER'),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'uploads')),
+        os.path.join(tempfile.gettempdir(), 'talaria-uploads'),
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        root = os.path.abspath(raw)
+        if _dir_is_writable(root):
+            return root
+    # Last resort — should still be writable for the process user
+    root = os.path.join(tempfile.gettempdir(), 'talaria-uploads')
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+UPLOAD_FOLDER = _resolve_uploads_root()
 SCREENSHOTS_FOLDER = os.path.join(UPLOAD_FOLDER, 'screenshots')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(SCREENSHOTS_FOLDER, exist_ok=True)
+try:
+    os.makedirs(SCREENSHOTS_FOLDER, exist_ok=True)
+except OSError as e:
+    print(f' warning: could not create screenshots folder {SCREENSHOTS_FOLDER}: {e}')
 
 # Filenames: <user_id>_<uuid32>.<ext> — used for unguessable public GET URLs
 SCREENSHOT_FILENAME_RE = re.compile(r'^(\d+)_[a-f0-9]{32}\.(png|jpg|jpeg)$')
@@ -78,10 +112,27 @@ def upload_journal_screenshot():
         if not binary or len(binary) > MAX_SCREENSHOT_BYTES:
             return jsonify({'error': 'Image too large or empty'}), 400
 
+        # Re-resolve if the module-level folder is not writable (root-owned volume, etc.).
+        shots_dir = SCREENSHOTS_FOLDER
+        if not _dir_is_writable(shots_dir):
+            shots_dir = os.path.join(_resolve_uploads_root(), 'screenshots')
+            if not _dir_is_writable(shots_dir):
+                return jsonify({
+                    'error': 'Screenshot storage is not writable on the server. '
+                             'Check uploads volume permissions for journal-backend.',
+                }), 500
+
         fname = f'{user_id}_{uuid.uuid4().hex}.{ext}'
-        path = os.path.join(SCREENSHOTS_FOLDER, fname)
-        with open(path, 'wb') as f:
-            f.write(binary)
+        path = os.path.join(shots_dir, fname)
+        try:
+            with open(path, 'wb') as f:
+                f.write(binary)
+        except OSError as e:
+            print(f' upload_journal_screenshot write error ({path}):', e)
+            return jsonify({
+                'error': 'Screenshot storage is not writable on the server. '
+                         'Check uploads volume permissions for journal-backend.',
+            }), 500
 
         url = f'/api/journal/screenshots/{fname}'
         return jsonify({'url': url, 'path': url}), 201
@@ -97,10 +148,16 @@ def serve_journal_screenshot(filename):
     safe = os.path.basename(filename)
     if not SCREENSHOT_FILENAME_RE.match(safe):
         return jsonify({'error': 'Not found'}), 404
-    full = os.path.join(SCREENSHOTS_FOLDER, safe)
-    if not os.path.isfile(full):
-        return jsonify({'error': 'Not found'}), 404
-    return send_from_directory(SCREENSHOTS_FOLDER, safe)
+    # Prefer current folder; also check legacy /app/uploads if we fell back to /tmp.
+    search_dirs = [SCREENSHOTS_FOLDER]
+    legacy = os.path.abspath('/app/uploads/screenshots')
+    if legacy not in search_dirs:
+        search_dirs.append(legacy)
+    for folder in search_dirs:
+        full = os.path.join(folder, safe)
+        if os.path.isfile(full):
+            return send_from_directory(folder, safe)
+    return jsonify({'error': 'Not found'}), 404
 
 
 @journal_bp.route('/export', methods=['GET'])
