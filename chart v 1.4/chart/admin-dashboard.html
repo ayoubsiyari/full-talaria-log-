@@ -7303,6 +7303,10 @@ function supportUpdateTicketControls(th) {
   const deleteBtn = $('supportDeleteBtn');
   if (!th) {
     if (ctrl) ctrl.style.display = 'none';
+    if (addQueueBtn) addQueueBtn.style.display = 'none';
+    if (resolveBtn) resolveBtn.style.display = 'none';
+    if (closeBtn) closeBtn.style.display = 'none';
+    if (reopenBtn) reopenBtn.style.display = 'none';
     if (deleteBtn) deleteBtn.style.display = 'none';
     supportUpdateVerdictButtons(null);
     supportRefreshToolbarQuick(null);
@@ -7490,14 +7494,6 @@ async function supportDeleteSelectedTicket() {
     const msgEl = $('supportMessages');
     if (msgEl) msgEl.innerHTML = '';
     supportUpdateTicketControls(null);
-    const resolveBtn = $('supportResolveBtn');
-    const closeBtn = $('supportCloseBtn');
-    const reopenBtn = $('supportReopenBtn');
-    const addQueueBtn = $('supportAddToQueueBtn');
-    if (resolveBtn) resolveBtn.style.display = 'none';
-    if (closeBtn) closeBtn.style.display = 'none';
-    if (reopenBtn) reopenBtn.style.display = 'none';
-    if (addQueueBtn) addQueueBtn.style.display = 'none';
     toast('Deleted ' + ref, 'ok');
     await loadSupportThreads();
     await loadSupportTicketStats();
