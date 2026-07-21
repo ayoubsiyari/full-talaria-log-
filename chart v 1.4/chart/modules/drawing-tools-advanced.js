@@ -2361,7 +2361,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     ? om.pipSize
                     : (Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : 0.0001);
                 if (cfg.showPips) return `${(distAbs / pip).toFixed(2)} pips`;
-                if (cfg.showTicks) return `${(distAbs / pip).toFixed(2)} pts`;
+                // showTicks: dist/pip is tick count — do not label as "pts" (NQ 78.25 pts
+                // was showing as "313.00 pts" and looking like a broken price distance).
+                if (cfg.showTicks) {
+                    const ticks = distAbs / pip;
+                    const points = distAbs.toFixed(cfg.symbolPrecision ?? 2);
+                    return `${points} pts (${ticks.toFixed(0)} ticks)`;
+                }
                 return `${distAbs.toFixed(cfg.symbolPrecision ?? 5)} pts`;
             };
 

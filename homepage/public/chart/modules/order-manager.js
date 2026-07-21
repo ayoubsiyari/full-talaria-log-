@@ -17388,7 +17388,8 @@ class OrderManager {
                 if (cfgTP.showPips) {
                     distText = `${(dist / pipTP).toFixed(2)} pips`;
                 } else if (cfgTP.showTicks) {
-                    distText = `${(dist / pipTP).toFixed(2)} pts`;
+                    // Price points + tick count (dist/pip is ticks, not "pts").
+                    distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 2)} pts (${(dist / pipTP).toFixed(0)} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
                 }
@@ -17447,7 +17448,8 @@ class OrderManager {
                 if (cfg.showPips) {
                     distText = `${(dist / pip).toFixed(2)} pips`;
                 } else if (cfg.showTicks) {
-                    distText = `${(dist / pip).toFixed(2)} pts`;
+                    // Price points + tick count (dist/pip is ticks, not "pts").
+                    distText = `${dist.toFixed(cfg.symbolPrecision ?? 2)} pts (${(dist / pip).toFixed(0)} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
@@ -26373,16 +26375,26 @@ class OrderManager {
         // Session-level account guardrails (shared margin + risk caps).
         const sessionValidationErrors = [];
 
-        // Risk-$ / risk-% modes must never place with a larger stop $ than the user set
-        // (old futures path forced qty≥1 even when 1 NQ contract risk was e.g. $400 vs $100 budget).
+        // Risk-$ / risk-%: never place more size than the budget can buy at this SL.
+        // Uses the same engine floor-sizing as calculatePositionFromRisk (all futures /
+        // FX / crypto / stocks) — so normal trades where floor(risk/riskPerUnit) ≥ 1
+        // still place; only the old "force min 1 contract above budget" path is blocked.
         if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')
             && Number.isFinite(inputRiskAmount) && inputRiskAmount > 0
-            && Number.isFinite(actualRisk) && actualRisk > 0) {
-            const overBudgetTol = Math.max(1, inputRiskAmount * 0.02); // allow tiny tick/float drift
-            if (actualRisk > inputRiskAmount + overBudgetTol) {
+            && Number.isFinite(quantity) && quantity > 0
+            && slEnabled && Number.isFinite(slPrice) && slPrice > 0
+            && Number.isFinite(entryPrice) && entryPrice > 0) {
+            const maxQtyFromRisk = this._roundQtyToStep(
+                this._enginePositionSize(inputRiskAmount, entryPrice, slPrice, entryPrice)
+            );
+            // Small step epsilon so float/snap cannot false-block a valid size.
+            const step = this._getQtyStep();
+            if (!(maxQtyFromRisk > 0) || quantity > maxQtyFromRisk + step * 1e-6) {
+                const actualStr = Number.isFinite(actualRisk) ? actualRisk.toFixed(2) : '?';
                 sessionValidationErrors.push(
-                    `❌ Stop risk ($${actualRisk.toFixed(2)}) exceeds your risk budget ($${inputRiskAmount.toFixed(2)}). `
-                    + `Tighten SL, raise risk $, or use a micro contract. Order not placed.`
+                    `❌ Size ${this._formatQty(quantity)} needs ~$${actualStr} stop risk, `
+                    + `but your budget is $${inputRiskAmount.toFixed(2)}. `
+                    + `Tighten SL, raise risk $, or use a micro — order not placed.`
                 );
             }
         }

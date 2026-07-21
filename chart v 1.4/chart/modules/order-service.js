@@ -368,23 +368,43 @@ class OrderService {
             }
         }
 
+        // Detect futures even when registry type is missing/wrong — otherwise NQ falls
+        // through to notional÷leverage and reports margin ≈ entry (e.g. $25881) instead
+        // of session day margin (~$1000/ct).
+        let detectedType = '';
+        try {
+            if (mce && typeof mce.constructor?.detectMarketType === 'function') {
+                detectedType = String(mce.constructor.detectMarketType(ticker) || '').toLowerCase();
+            } else if (typeof MarketCalculationEngine !== 'undefined'
+                && typeof MarketCalculationEngine.detectMarketType === 'function') {
+                detectedType = String(MarketCalculationEngine.detectMarketType(ticker) || '').toLowerCase();
+            }
+        } catch (_e) { detectedType = ''; }
+        const defaultDay = this._defaultFuturesDayMarginUsd(ticker);
         const isFutures = assetType === 'futures'
-            || (assetType === '' && this._defaultFuturesDayMarginUsd(ticker) != null);
+            || detectedType === 'futures'
+            || defaultDay != null;
 
-        // Futures: exchange-style initial margin per contract (day margin from session UI).
+        // Futures: ALWAYS use day/overnight margin per contract — never FuturesCalculator.calcMargin
+        // (that is entry×pointValue÷lev, which equals ~entry at 1:20 and is NOT exchange margin).
         if (isFutures) {
             const perContract = this._futuresPerContractMarginUsd(ticker);
             if (perContract != null && Number.isFinite(perContract) && perContract > 0) {
                 return perContract * qty;
             }
+            if (defaultDay != null && Number.isFinite(defaultDay) && defaultDay > 0) {
+                return defaultDay * qty;
+            }
+            // Known futures root but no margin row — refuse the notional fallback.
+            return 0;
         }
 
-        const leverage = this._resolveLeverageForTicker(ticker, assetType || (isFutures ? 'futures' : 'forex'));
+        const leverage = this._resolveLeverageForTicker(ticker, assetType || 'forex');
 
-        // Prefer market-calc engine (quote-type-aware FX, crypto, stocks, futures fallback).
+        // Prefer market-calc engine (quote-type-aware FX, crypto, stocks).
         if (mce && typeof mce.calcMargin === 'function' && registryKey) {
             try {
-                const fallbackType = assetType || (isFutures ? 'futures' : 'forex');
+                const fallbackType = assetType || 'forex';
                 const mm = mce.calcMargin(entry, qty, registryKey, fallbackType, leverage);
                 if (Number.isFinite(mm) && mm > 0) return mm;
             } catch (_e) { /* fall through */ }
