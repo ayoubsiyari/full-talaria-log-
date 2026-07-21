@@ -207,7 +207,7 @@
         return !!(chart._multichartViewportMirroredWithHost && isSamePairDataShareEmbed(chart));
     }
 
-    /** Pin follower right edge to leader endTime while keeping leader candleWidth. */
+    /** Pin follower right edge to leader endTime (keeps local candleWidth). */
     function applyRightEdgeTimeFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
         if (!Number.isFinite(m.endTime)) return false;
@@ -221,6 +221,22 @@
         if (!Number.isFinite(idxAtRight)) return false;
         chart.offsetX = plotW - (idxAtRight + 1) * spacing;
         return true;
+    }
+
+    function paintPanFollow(chart) {
+        chart._chartViewRestored = true;
+        if (typeof chart._armPanSyncFollowBurst === 'function') {
+            try { chart._armPanSyncFollowBurst(); } catch (_) {}
+        } else {
+            chart._panSyncBurstUntil = performance.now() + 140;
+        }
+        if (typeof chart._schedulePanSyncFollowRender === 'function') {
+            chart._schedulePanSyncFollowRender();
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
     }
 
     /**
@@ -252,56 +268,26 @@
             applyLightweightOffsetClamp(chart);
         }
 
-        chart._chartViewRestored = true;
-        if (typeof chart._armPanSyncFollowBurst === 'function') {
-            try { chart._armPanSyncFollowBurst(); } catch (_) {}
-        } else {
-            chart._panSyncBurstUntil = performance.now() + 140;
-        }
-        if (typeof chart._schedulePanSyncFollowRender === 'function') {
-            chart._schedulePanSyncFollowRender();
-        } else if (typeof chart.scheduleRender === 'function') {
-            chart.scheduleRender();
-        } else if (typeof chart.render === 'function') {
-            chart.render();
-        }
         if (m && isPeerLedRangeMessage(m)) {
             markReplayViewportForSyncFollow(chart);
         }
+        paintPanFollow(chart);
         return true;
     }
 
     /**
-     * Active pan drag: mirror leader zoom + right-edge time anchor (not raw
-     * offsetX scaling — that pushed follower panels off-screen when plot
-     * widths or loaded data slices differ).
-     * Full bar realignment runs once on pan release (!panSync).
+     * Active pan / range follow.
+     * - Same bar array → lightweight offset mirror
+     * - Date Range (cross-symbol / cross-TF) → wall-clock start/end window
+     *   so both panels show the same clock time (never copy foreign candleWidth)
      */
     function applyPanDragFollow(chart, m, opts) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
         opts = opts || {};
-        const preferOffsetFirst = !!opts.preferOffsetFirst;
-        const srcCw = Number(m.candleWidth);
-        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
-
-        const plotW = resolvePlotWidthPx(chart);
-        if (plotW <= 0) return false;
-
-        chart.candleWidth = srcCw;
-        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
-            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
-        }
-        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
-
-        const spacing = (typeof chart.getCandleSpacing === 'function')
-            ? chart.getCandleSpacing()
-            : chart.candleWidth;
-        if (!(spacing > 0)) return false;
-
-        let positioned = false;
+        const panSync = !!m.panSync;
         const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime;
-        const panSync = !!m.panSync;
+
         if (panSync && canUseLightweightOffsetFollow(chart, m)) {
             return applyLightweightPanFollow(chart, m);
         }
@@ -309,84 +295,33 @@
             ensureHistoryForVisibleStart(chart, m);
         }
 
-        // Live drag across different symbols/data slices: pin right edge to
-        // leader endTime. Avoid applyWallClockDateRange every frame — it refits
-        // candleWidth from bar-count and causes jump/hide on NQ vs ES.
-        if (panSync) {
-            if (preferOffsetFirst && canUseLightweightOffsetFollow(chart, m) && Number.isFinite(m.offsetX)) {
-                const sw = Number(m.plotWidthPx);
-                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-                positioned = true;
+        // Date Range sync = same wall-clock window on every panel.
+        // (Use chart flag — isRangeSyncEnabled lives inside installBridge.)
+        if (hasWallClock && (chart._multichartVisibleRangeSyncOn || opts.forceWallClock)) {
+            if (applyWallClockDateRange(chart, m, { lite: panSync })) {
+                return true;
             }
-            if (!positioned) {
-                positioned = applyRightEdgeTimeFollow(chart, m);
-            }
-            if (!positioned && Number.isFinite(m.offsetX) && canUseLightweightOffsetFollow(chart, m)) {
-                const sw = Number(m.plotWidthPx);
-                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-                positioned = true;
-            }
-        } else {
-            if (preferOffsetFirst && Number.isFinite(m.offsetX) && canUseLightweightOffsetFollow(chart, m)) {
-                const sw = Number(m.plotWidthPx);
-                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-                positioned = true;
-            }
-            if (!positioned && hasWallClock) {
-                positioned = applyWallClockDateRange(chart, m);
-            }
-            if (!positioned && Number.isFinite(m.endTime)) {
-                positioned = applyRightEdgeTimeFollow(chart, m);
-            }
-            if (!positioned && Number.isFinite(m.offsetX)) {
-                const sw = Number(m.plotWidthPx);
-                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-                positioned = true;
-            }
-        }
-        if (!positioned) return false;
-
-        if (Number.isFinite(m.endTime)) {
-            chart._multichartLastSyncEndTime = m.endTime;
-        }
-        if (Number.isFinite(m.startTime)) {
-            chart._multichartLastSyncStartTime = m.startTime;
         }
 
-        if (typeof chart._constrainOffsetDuringDrag === 'function') {
-            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
-        } else if (typeof chart.constrainOffset === 'function') {
-            try { chart.constrainOffset(); } catch (_) {}
-        } else {
-            applyLightweightOffsetClamp(chart);
-        }
-
-        // If offset clamp / short data left the viewport blank, re-pin to endTime.
-        if (countVisibleBars(chart) <= 0 && Number.isFinite(m.endTime)) {
-            applyRightEdgeTimeFollow(chart, m);
-            applyLightweightOffsetClamp(chart);
-        }
-
-        chart._chartViewRestored = true;
-        if (panSync) {
-            if (typeof chart._armPanSyncFollowBurst === 'function') {
-                try { chart._armPanSyncFollowBurst(); } catch (_) {}
+        // Fallbacks when wall-clock can't map into local data.
+        if (Number.isFinite(m.endTime) && applyRightEdgeTimeFollow(chart, m)) {
+            if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+            if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+            if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                try { chart._constrainOffsetDuringDrag(); } catch (_) {}
             } else {
-                chart._panSyncBurstUntil = performance.now() + 140;
+                applyLightweightOffsetClamp(chart);
             }
-            if (typeof chart._schedulePanSyncFollowRender === 'function') {
-                chart._schedulePanSyncFollowRender();
-            } else if (typeof chart.scheduleRender === 'function') {
-                chart.scheduleRender();
-            } else if (typeof chart.render === 'function') {
-                chart.render();
-            }
-        } else if (typeof chart.scheduleRender === 'function') {
-            chart.scheduleRender();
-        } else if (typeof chart.render === 'function') {
-            chart.render();
+            if (panSync) paintPanFollow(chart);
+            else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            else if (typeof chart.render === 'function') chart.render();
+            return true;
         }
-        return true;
+
+        if (opts.preferOffsetFirst && canUseLightweightOffsetFollow(chart, m)) {
+            return applyLightweightPanFollow(chart, m);
+        }
+        return false;
     }
 
     /** Mirror leader zoom/pan geometry (offsetX + candleWidth) across different plot widths. */
@@ -538,23 +473,46 @@
     }
 
     /**
-     * Same wall-clock window on every TF (1D + 4H show Jan–Oct, not the same bar count).
+     * Same wall-clock window on every TF/symbol (1D + 4H show Jan–Oct, not the
+     * same bar count). Fits local candleWidth from the shared start/end clock
+     * — never copies the leader's pixel candleWidth (that crushes 1m vs 5m axes).
      * @returns {boolean} true if applied
      */
-    function applyWallClockDateRange(chart, m) {
+    function applyWallClockDateRange(chart, m, opts) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
         if (!Number.isFinite(m.startTime) || !Number.isFinite(m.endTime) || m.endTime <= m.startTime) {
             return false;
         }
+        opts = opts || {};
+        const lite = !!(opts.lite || m.panSync);
 
-        const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime), chart);
-        const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
+        const startMs = toMillis(m.startTime);
+        const endMs = toMillis(m.endTime);
+        const firstMs = barTimeMs(chart, chart.data[0] && chart.data[0].t);
+        const lastMs = barTimeMs(chart, chart.data[chart.data.length - 1]
+            && chart.data[chart.data.length - 1].t);
+        if (!Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) {
+            return false;
+        }
+        // No overlap with local data → don't explode zoom; let caller fall back.
+        if (endMs <= firstMs || startMs >= lastMs) {
+            return false;
+        }
+
+        const iL = findLastAtOrBefore(chart.data, startMs, chart);
+        const iR = findLastAtOrBefore(chart.data, endMs - 1, chart);
         const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
         const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
-        const numBars = Math.max(1, iR2 - iL2 + 1);
+
+        // Zoom from wall-clock duration × THIS panel's TF so NQ-5m and ES-1m
+        // show the same clock span (never copy the leader's candleWidth).
+        const localTfSec = Math.max(1, tfSec(chart.currentTimeframe || m.sourceTimeframe || '1m'));
+        const durationSec = Math.max(localTfSec, (endMs - startMs) / 1000);
+        const numBars = Math.max(2, Math.round(durationSec / localTfSec));
 
         const margin = chart.margin || { l: 60, r: 60 };
-        const widthPx = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        const widthPx = resolvePlotWidthPx(chart)
+            || ((chart.w || chart.canvas?.width || 800) - (margin.l + margin.r));
         if (widthPx <= 0) return false;
 
         let desiredSpacing = widthPx / numBars;
@@ -583,15 +541,35 @@
         const spacing = (typeof chart.getCandleSpacing === 'function')
             ? chart.getCandleSpacing()
             : chart.candleWidth;
-        if (spacing > 0) {
-            const newOffsetX = widthPx - (iR2 + 1) * spacing;
-            chart.offsetX = newOffsetX;
-            if (typeof chart.constrainOffset === 'function') {
-                try { chart.constrainOffset(); } catch (_) {}
-            }
+        if (!(spacing > 0)) return false;
+
+        // Anchor the shared right edge (endTime) so pans stay aligned.
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        const rightIdx = Number.isFinite(idxAtRight) ? idxAtRight : iR2;
+        chart.offsetX = widthPx - (rightIdx + 1) * spacing;
+
+        if (typeof chart._constrainOffsetDuringDrag === 'function' && lite) {
+            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+        } else if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
         }
 
-        finishViewportApply(chart, !!m.panSync);
+        chart._multichartLastSyncStartTime = m.startTime;
+        chart._multichartLastSyncEndTime = m.endTime;
+
+        if (lite) {
+            if (countVisibleBars(chart) <= 0) {
+                // Last resort: show the overlapping slice without foreign candleWidth.
+                chart.offsetX = widthPx - (iR2 + 1) * spacing;
+                applyLightweightOffsetClamp(chart);
+            }
+            paintPanFollow(chart);
+            return true;
+        }
+
+        finishViewportApply(chart, false);
         return true;
     }
 
@@ -2281,11 +2259,11 @@
                 }
             }
 
-            // Cross-symbol / mismatched slices: smooth right-edge follow during drag.
+            // Cross-symbol / cross-TF: same wall-clock window (Date Range sync).
             if (panSync && isRangeSyncEnabled()) {
                 if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
                 if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
-                if (applyPanDragFollow(chart, m, null)) {
+                if (applyPanDragFollow(chart, m, { forceWallClock: true })) {
                     var tSilTime = (typeof performance !== 'undefined' && performance.now)
                         ? performance.now()
                         : Date.now();
@@ -2344,13 +2322,12 @@
             const panFollowOpts = peerLed ? { preferOffsetFirst: true } : null;
 
             if (panSync) {
-                // Drag: right-edge time follow (smooth). Full wall-clock fit
-                // only as fallback — per-frame bar-count refit jumps tiles.
+                // Drag: wall-clock Date Range (same clock window on every panel).
                 if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
                 if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
-                applied = applyPanDragFollow(chart, m, panFollowOpts);
+                applied = applyPanDragFollow(chart, m, Object.assign({ forceWallClock: true }, panFollowOpts || {}));
                 if (!applied && hasWallClock) {
-                    applied = applyWallClockDateRange(chart, m);
+                    applied = applyWallClockDateRange(chart, m, { lite: true });
                 }
                 if (!applied) {
                     applied = applyFastPanSync(chart, m);
