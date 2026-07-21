@@ -34235,7 +34235,7 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
             .style('pointer-events', 'none');
-        this._applyOrderLevelLineStyle(line, false);
+        this._applyOrderLevelLineStyle(line, 'pending');
         const dragHitLine = chart.svg.append('line')
             .attr('class', `pending-order-hit-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
@@ -34428,7 +34428,7 @@ class OrderManager {
                 if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
                 
                 line.attr('stroke-width', 1);
-                self._applyOrderLevelLineStyle(line, false);
+                self._applyOrderLevelLineStyle(line, 'pending');
 
                 // Relax guard from Infinity (set during drag) to current tick
                 // so the pending order can fill from the next tick onward.
@@ -34713,7 +34713,7 @@ class OrderManager {
                 .attr('stroke-linecap', 'butt')
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
-            this._applyOrderLevelLineStyle(line, false);
+            this._applyOrderLevelLineStyle(line, 'pending');
 
             const labelGroup = chart.svg.append('g')
                 .attr('class', `pending-${type.toLowerCase()}-label pending-${type.toLowerCase()}-${pendingOrder.id}`)
@@ -34917,7 +34917,7 @@ class OrderManager {
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
-                this._applyOrderLevelLineStyle(target.line, false);
+                this._applyOrderLevelLineStyle(target.line, 'pending');
                 if (target.hitLine) {
                     target.hitLine.attr('y1', y).attr('y2', y);
                 }
@@ -40735,7 +40735,7 @@ class OrderManager {
                         .attr('y1', y)
                         .attr('y2', y)
                         .style('pointer-events', 'none');
-                    this._applyOrderLevelLineStyle(line, false);
+                    this._applyOrderLevelLineStyle(line, isPending ? 'pending' : 'executed');
                     this._applyOrderRowMainPlotVisibility(ch, y, {
                         line: line,
                         hitLine: dragHitLine,
@@ -44767,22 +44767,40 @@ class OrderManager {
             .style('visibility', 'visible');
     }
 
-    /** Active/pending/executed order levels: dashed @ 100%. Preview draft lines: solid @ 60%. */
+    /** Pending (unfilled) levels stay dashed. Executed/open levels are solid 1px. Preview is solid @ 60%. */
+    _ORDER_LEVEL_PENDING_DASH = '6 3';
+    /** @deprecated use _ORDER_LEVEL_PENDING_DASH */
     _ORDER_LEVEL_ACTIVE_DASH = '6 3';
 
-    _orderLevelLineStyle(isPreview) {
-        return isPreview
-            ? { opacity: 0.6, dasharray: null }
-            : { opacity: 1, dasharray: this._ORDER_LEVEL_ACTIVE_DASH };
+    /**
+     * @param {boolean|'preview'|'pending'|'executed'} kind
+     *   true / 'preview' → draft preview (solid @ 60%)
+     *   'pending' → limit/stop waiting to fill (dashed @ 100%)
+     *   false / 'executed' → open filled position (solid 1px @ 100%)
+     */
+    _orderLevelLineStyle(kind) {
+        if (kind === true || kind === 'preview') {
+            return { opacity: 0.6, dasharray: null };
+        }
+        if (kind === 'pending') {
+            return { opacity: 1, dasharray: this._ORDER_LEVEL_PENDING_DASH };
+        }
+        // Executed / open position: solid (create paths already use stroke-width 1)
+        return { opacity: 1, dasharray: null };
     }
 
-    _applyOrderLevelLineStyle(lineSel, isPreview, overrides) {
+    _applyOrderLevelLineStyle(lineSel, kind, overrides) {
         if (!lineSel || (lineSel.empty && lineSel.empty())) return;
-        const s = this._orderLevelLineStyle(isPreview);
+        const s = this._orderLevelLineStyle(kind);
         const o = overrides || {};
+        const dash = o.dasharray !== undefined ? o.dasharray : s.dasharray;
         lineSel
-            .attr('stroke-dasharray', o.dasharray !== undefined ? o.dasharray : s.dasharray)
+            .attr('stroke-dasharray', dash == null ? null : dash)
             .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity);
+        // Optional stroke-width override only — do not force every frame (drag uses 1.6 highlight).
+        if (o.strokeWidth !== undefined) {
+            lineSel.attr('stroke-width', o.strokeWidth);
+        }
     }
 
     _orderLevelLabelFontFamily() {

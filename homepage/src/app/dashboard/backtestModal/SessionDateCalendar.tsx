@@ -79,6 +79,27 @@ export function SessionDateCalendar({
     return false;
   };
 
+  /** True when any day in calendar month (y,m) intersects [minIso, maxIso]. */
+  const monthInRange = (y: number, m: number) => {
+    const first = isoForDay(y, m, 1);
+    const last = isoForDay(y, m, new Date(y, m + 1, 0).getDate());
+    if (maxIso && first > maxIso) return false;
+    if (minIso && last < minIso) return false;
+    return true;
+  };
+
+  const yearInRange = (y: number) => {
+    for (let m = 0; m < 12; m++) {
+      if (monthInRange(y, m)) return true;
+    }
+    return false;
+  };
+
+  const prevMonth = new Date(viewY, viewM - 1, 1);
+  const nextMonth = new Date(viewY, viewM + 1, 1);
+  const canPrevMonth = monthInRange(prevMonth.getFullYear(), prevMonth.getMonth());
+  const canNextMonth = monthInRange(nextMonth.getFullYear(), nextMonth.getMonth());
+
   const sel = valueIso ? new Date(valueIso.split("T")[0] + "T00:00:00") : null;
   const selY = sel?.getFullYear();
   const selMo = sel?.getMonth();
@@ -172,17 +193,20 @@ export function SessionDateCalendar({
         <div style={{ height: 2, background: `linear-gradient(90deg,transparent,${c.acB || "rgba(38,67,247,0.22)"},rgba(74,106,255,0.4),${c.acB || "rgba(38,67,247,0.22)"},transparent)` }} />
 
         <div style={{ display: "flex", alignItems: "center", padding: "5px 4px", borderBottom: `1px solid ${c.br}` }}>
-          {mode === "days" && (
+          {mode === "days" && canPrevMonth && (
             <NavBtn
               label="‹"
               onClick={() => {
                 const d = new Date(viewY, viewM - 1, 1);
+                if (!monthInRange(d.getFullYear(), d.getMonth())) return;
                 onViewY(d.getFullYear());
                 onViewM(d.getMonth());
               }}
             />
           )}
-          {mode === "months" && <NavBtn label="‹" onClick={() => onViewY(viewY - 1)} />}
+          {mode === "days" && !canPrevMonth && <div style={{ width: 26, height: 26 }} />}
+          {mode === "months" && yearInRange(viewY - 1) && <NavBtn label="‹" onClick={() => onViewY(viewY - 1)} />}
+          {mode === "months" && !yearInRange(viewY - 1) && <div style={{ width: 26, height: 26 }} />}
           {mode === "years" && <NavBtn label="‹" onClick={() => onYearBase(yearBase - 12)} />}
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
             {(mode === "days" || mode === "months") && (
@@ -225,17 +249,20 @@ export function SessionDateCalendar({
               {mode === "years" ? `${yearBase} – ${yearBase + 11}` : viewY}
             </span>
           </div>
-          {mode === "days" && (
+          {mode === "days" && canNextMonth && (
             <NavBtn
               label="›"
               onClick={() => {
                 const d = new Date(viewY, viewM + 1, 1);
+                if (!monthInRange(d.getFullYear(), d.getMonth())) return;
                 onViewY(d.getFullYear());
                 onViewM(d.getMonth());
               }}
             />
           )}
-          {mode === "months" && <NavBtn label="›" onClick={() => onViewY(viewY + 1)} />}
+          {mode === "days" && !canNextMonth && <div style={{ width: 26, height: 26 }} />}
+          {mode === "months" && yearInRange(viewY + 1) && <NavBtn label="›" onClick={() => onViewY(viewY + 1)} />}
+          {mode === "months" && !yearInRange(viewY + 1) && <div style={{ width: 26, height: 26 }} />}
           {mode === "years" && <NavBtn label="›" onClick={() => onYearBase(yearBase + 12)} />}
         </div>
 
@@ -280,6 +307,7 @@ export function SessionDateCalendar({
         {mode === "months" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, padding: 8 }}>
             {MON_SHORT.map((m, i) => {
+              const disabled = !monthInRange(viewY, i);
               const isSel = i === viewM && selY === viewY;
               const isH = hov === `cal-m-${i}`;
               return (
@@ -287,12 +315,13 @@ export function SessionDateCalendar({
                   key={m}
                   onClick={e => {
                     e.stopPropagation();
+                    if (disabled) return;
                     onViewM(i);
                     onMode("days");
                   }}
-                  onMouseEnter={() => setHov(`cal-m-${i}`)}
+                  onMouseEnter={() => !disabled && setHov(`cal-m-${i}`)}
                   onMouseLeave={() => setHov(null)}
-                  style={{ ...cellSx(isSel, isH, false), padding: "7px 0", fontSize: 12, fontWeight: isSel ? 700 : 500 }}
+                  style={{ ...cellSx(isSel, isH, disabled), padding: "7px 0", fontSize: 12, fontWeight: isSel ? 700 : 500 }}
                 >
                   {m}
                 </div>
@@ -305,6 +334,7 @@ export function SessionDateCalendar({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 3, padding: 8 }}>
             {Array.from({ length: 12 }).map((_, i) => {
               const yr = yearBase + i;
+              const disabled = !yearInRange(yr);
               const isSel = yr === viewY;
               const isH = hov === `cal-y-${yr}`;
               return (
@@ -312,12 +342,13 @@ export function SessionDateCalendar({
                   key={yr}
                   onClick={e => {
                     e.stopPropagation();
+                    if (disabled) return;
                     onViewY(yr);
                     onMode("months");
                   }}
-                  onMouseEnter={() => setHov(`cal-y-${yr}`)}
+                  onMouseEnter={() => !disabled && setHov(`cal-y-${yr}`)}
                   onMouseLeave={() => setHov(null)}
-                  style={{ ...cellSx(isSel, isH, false), padding: "7px 0", fontSize: 12, fontWeight: isSel ? 700 : 500 }}
+                  style={{ ...cellSx(isSel, isH, disabled), padding: "7px 0", fontSize: 12, fontWeight: isSel ? 700 : 500 }}
                 >
                   {yr}
                 </div>

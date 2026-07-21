@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso, overlapSpanDays, filterPresetsForSpanDays, SESSION_DATE_PRESETS, randomRangeUnitMax, isIsoInRange, isPlausibleMarketIsoDay } from "./backtestModal/dateRangeUtils";
+import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso, overlapSpanDays, filterPresetsForSpanDays, SESSION_DATE_PRESETS, randomRangeUnitMax, isIsoInRange, isPlausibleMarketIsoDay, lastMonthOfDataRange } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import {
   displaySessionSymbol,
@@ -1245,6 +1245,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     return computeOverlapRange(files);
   }, [newSessTickers, newSessSymbol, sessionApiFiles]);
 
+  /** Default calendar focus = last month of data (view only — full overlap stays selectable). */
+  const sessDefaultCalFocus = useMemo(() => {
+    if (!sessDateOverlap.hasOverlap) return { start: "", end: "", hasRange: false as const };
+    return lastMonthOfDataRange(sessDateOverlap.start, sessDateOverlap.end);
+  }, [sessDateOverlap.hasOverlap, sessDateOverlap.start, sessDateOverlap.end]);
+
   const sessAvailDays = useMemo(() => {
     if (!sessDateOverlap.hasOverlap) return 0;
     return overlapSpanDays(sessDateOverlap.start, sessDateOverlap.end);
@@ -1534,7 +1540,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                           if(m3){const y=parseInt(m3[3],10),mo=parseInt(m3[1],10)-1,dy=Math.min(parseInt(m3[2],10),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1900||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                         };
-                        const openCal=(e,target,currentIso)=>{e.stopPropagation();const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):(sessDateOverlap.hasOverlap?new Date(sessDateOverlap.start+"T00:00:00"):new Date(2020,0,1));setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                        const openCal=(e,target,currentIso)=>{e.stopPropagation();const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);/* Default view = last month of data; if a date is already chosen, open on that month. Full data range stays selectable. */const focusIso=currentIso||(sessDefaultCalFocus.hasRange?sessDefaultCalFocus.end:(sessDateOverlap.hasOverlap?sessDateOverlap.end:""));const d=focusIso?new Date(focusIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);

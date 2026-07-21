@@ -70,6 +70,36 @@ export function computeOverlapRange(files: DateRangeFile[]) {
   return { start, end, hasOverlap: true, conflict: false };
 }
 
+/** Shift a YYYY-MM-DD by whole calendar months (UTC), clamping day into the target month. */
+export function shiftIsoMonths(iso: string, deltaMonths: number): string {
+  const ms = isoDayToUtcMs(iso);
+  if (ms == null || !Number.isFinite(deltaMonths)) return "";
+  const d = new Date(ms);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + deltaMonths);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Selectable session window = last calendar month of available data
+ * (dataEnd − 1 month … dataEnd), clamped to dataStart.
+ */
+export function lastMonthOfDataRange(dataStart: string, dataEnd: string) {
+  if (!dataEnd || !isPlausibleMarketIsoDay(dataEnd)) {
+    return { start: "", end: "", hasRange: false as const };
+  }
+  let start = shiftIsoMonths(dataEnd, -1);
+  if (!start) start = dataEnd;
+  if (dataStart && isPlausibleMarketIsoDay(dataStart) && compareIsoDays(start, dataStart) < 0) {
+    start = dataStart;
+  }
+  if (compareIsoDays(start, dataEnd) > 0) start = dataEnd;
+  return { start, end: dataEnd, hasRange: true as const };
+}
+
 export function isoToDisplay(iso: string, monthNames: string[]) {
   if (!iso) return "";
   const d = new Date(iso.split("T")[0] + "T00:00:00");
