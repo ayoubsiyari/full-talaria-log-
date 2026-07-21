@@ -16267,6 +16267,36 @@ async def admin_support_patch_thread(
         db.close()
 
 
+@app.delete("/api/admin/support/threads/{thread_id}")
+async def admin_support_delete_thread(thread_id: int, request: Request):
+    """Permanently delete one support ticket (messages + attachments removed)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        ref = _support_ticket_ref(t.id)
+        subject = (t.subject or "")[:200]
+        deleted_count = _admin_support_delete_threads(db, [t])
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.ticket.delete",
+            target_type="support_thread",
+            target_id=thread_id,
+            params={"ticket_ref": ref, "subject": subject, "deleted_count": deleted_count},
+        )
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "thread_id": thread_id,
+            "ticket_ref": ref,
+        }
+    finally:
+        db.close()
+
+
 @app.post("/api/admin/support/threads/{thread_id}/messages")
 async def admin_support_post_message(
     thread_id: int,

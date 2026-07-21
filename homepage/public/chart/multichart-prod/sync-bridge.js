@@ -264,42 +264,49 @@
 
     /**
      * Live wheel zoom while Date Range sync is ON (TradingView-style).
-     * Same TF + same data → candleWidth + offset. Cross-symbol same TF →
-     * candleWidth + right-edge time. Cross-TF → right-edge only during burst.
-     * Never duration→candleWidth smash; never host data mirror.
+     * Peers must share the same wall-clock start/end window — not only the
+     * right-edge timestamp (that left NQ zoomed-out and ES zoomed-in).
+     * Paint via paintZoomFollow (never pan-burst tick freeze). No host mirror.
      */
     function applyLiveZoomDateRangeFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
         if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
         if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
 
-        const sameTf = sameTimeframeMessage(chart, m);
-        if (sameTf && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
-            if (canUseLightweightOffsetFollow(chart, m)
-                && Number.isFinite(m.offsetX)
-                && applyZoomViewportFromLeader(chart, m)) {
-                paintZoomFollow(chart);
-                return true;
-            }
+        const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+            && m.endTime > m.startTime;
+        const sameTf = sameTimeframeMessage(chart, m)
+            || (Number.isFinite(m.candleWidth) && m.candleWidth > 0
+                && !m.sourceTimeframe && !!chart.currentTimeframe);
+
+        // Same bar array: pixel geometry is exact and implies the same duration.
+        if (sameTf
+            && canUseLightweightOffsetFollow(chart, m)
+            && Number.isFinite(m.offsetX)
+            && Number.isFinite(m.candleWidth)
+            && applyZoomViewportFromLeader(chart, m)) {
+            paintZoomFollow(chart);
+            return true;
+        }
+
+        // Date Range = shared clock window (cross-symbol NQ/ES, cross-TF, etc.).
+        if (hasWallClock && applyWallClockDateRange(chart, m, { lite: true })) {
+            return true;
+        }
+
+        // Fallback when wall-clock cannot map (no overlap): keep zoom density + pin edge.
+        if (Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
             chart.candleWidth = Number(m.candleWidth);
             if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
                 chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
             }
             if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
-            if (applyRightEdgeTimeFollow(chart, m)) {
-                if (typeof chart._constrainOffsetDuringDrag === 'function') {
-                    try { chart._constrainOffsetDuringDrag(); } catch (_) {}
-                } else if (typeof chart.constrainOffset === 'function') {
-                    try { chart.constrainOffset(); } catch (_) {}
-                }
-                paintZoomFollow(chart);
-                return true;
-            }
         }
-
         if (applyRightEdgeTimeFollow(chart, m)) {
             if (typeof chart._constrainOffsetDuringDrag === 'function') {
                 try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+            } else if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
             }
             paintZoomFollow(chart);
             return true;
@@ -606,19 +613,22 @@
         // show the same clock span (never copy the leader's candleWidth).
         const localTfSec = Math.max(1, tfSec(chart.currentTimeframe || m.sourceTimeframe || '1m'));
         let durationSec = Math.max(localTfSec, (endMs - startMs) / 1000);
-        // Guard against absurd windows (bad startIdx=0 broadcasts) that smash
-        // candleWidth to the minimum and pile time-axis labels.
-        const MAX_SYNC_BARS = 2000;
-        const maxDurationSec = localTfSec * MAX_SYNC_BARS;
-        if (durationSec > maxDurationSec) {
-            durationSec = maxDurationSec;
-        }
-        const numBars = Math.max(2, Math.min(MAX_SYNC_BARS, Math.round(durationSec / localTfSec)));
 
         const margin = chart.margin || { l: 60, r: 60 };
         const widthPx = resolvePlotWidthPx(chart)
             || ((chart.w || chart.canvas?.width || 800) - (margin.l + margin.r));
         if (widthPx <= 0) return false;
+
+        // Cap bars by plot width so zoom-out sync cannot smash spacing into a
+        // solid white time-axis (labels stacked on every bar).
+        const MIN_LABEL_SAFE_SPACING_PX = 2.5;
+        const maxBarsByWidth = Math.max(8, Math.floor(widthPx / MIN_LABEL_SAFE_SPACING_PX));
+        const MAX_SYNC_BARS = Math.min(800, maxBarsByWidth);
+        const maxDurationSec = localTfSec * MAX_SYNC_BARS;
+        if (durationSec > maxDurationSec) {
+            durationSec = maxDurationSec;
+        }
+        const numBars = Math.max(2, Math.min(MAX_SYNC_BARS, Math.round(durationSec / localTfSec)));
 
         let desiredSpacing = widthPx / numBars;
         let cw = desiredSpacing;
@@ -2587,7 +2597,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b19';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b20';
 
         return {
             state,

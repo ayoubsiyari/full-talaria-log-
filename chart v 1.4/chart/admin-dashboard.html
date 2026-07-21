@@ -5157,6 +5157,7 @@ select { cursor: default; }
                 <button type="button" class="btn sm" id="supportResolveBtn" style="display:none" onclick="supportSetStatus('resolved')">Resolve</button>
                 <button type="button" class="btn sm" id="supportReopenBtn" style="display:none" onclick="supportSetStatus('open')">Reopen</button>
                 <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportSetStatus('closed')">Close</button>
+                <button type="button" class="btn sm danger" id="supportDeleteBtn" style="display:none" onclick="supportDeleteSelectedTicket()" title="Permanently delete this ticket">Delete</button>
               </div>
               <div class="support-ticket-toolbar is-collapsed" id="supportTicketControls" style="display:none">
                 <button type="button" class="support-toolbar-toggle" onclick="supportToggleTicketToolbar(event)">
@@ -7299,8 +7300,10 @@ function supportUpdateTicketControls(th) {
   const closeBtn = $('supportCloseBtn');
   const reopenBtn = $('supportReopenBtn');
   const addQueueBtn = $('supportAddToQueueBtn');
+  const deleteBtn = $('supportDeleteBtn');
   if (!th) {
     if (ctrl) ctrl.style.display = 'none';
+    if (deleteBtn) deleteBtn.style.display = 'none';
     supportUpdateVerdictButtons(null);
     supportRefreshToolbarQuick(null);
     return;
@@ -7345,6 +7348,7 @@ function supportUpdateTicketControls(th) {
   if (resolveBtn) resolveBtn.style.display = (!closed && !resolved) ? '' : 'none';
   if (closeBtn) closeBtn.style.display = (!closed) ? '' : 'none';
   if (reopenBtn) reopenBtn.style.display = (closed || resolved) ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = '';
   supportUpdateVerdictButtons(th);
   supportRefreshToolbarQuick(th);
 }
@@ -7463,6 +7467,43 @@ async function supportPatchTicketField(field, value) {
 async function supportSetStatus(status) {
   await supportPatchTicketField('status', status);
   await selectSupportThread(selectedSupportId);
+}
+
+async function supportDeleteSelectedTicket() {
+  if (!selectedSupportId) return;
+  const th = supportFindThread(selectedSupportId);
+  const ref = th && th.ticket_ref
+    ? th.ticket_ref
+    : ('TAL-' + String(selectedSupportId).padStart(5, '0'));
+  const subject = th && th.subject ? th.subject : '';
+  const ok = confirm(
+    'Permanently delete ' + ref + (subject ? ' — ' + subject : '') + '?\n\n' +
+    'Messages and attachments will be removed. This cannot be undone.'
+  );
+  if (!ok) return;
+  try {
+    await api('/api/admin/support/threads/' + selectedSupportId, { method: 'DELETE' });
+    selectedSupportId = null;
+    supportMessages = [];
+    const titleEl = $('supportThreadTitle');
+    if (titleEl) titleEl.textContent = 'Select a ticket';
+    const msgEl = $('supportMessages');
+    if (msgEl) msgEl.innerHTML = '';
+    supportUpdateTicketControls(null);
+    const resolveBtn = $('supportResolveBtn');
+    const closeBtn = $('supportCloseBtn');
+    const reopenBtn = $('supportReopenBtn');
+    const addQueueBtn = $('supportAddToQueueBtn');
+    if (resolveBtn) resolveBtn.style.display = 'none';
+    if (closeBtn) closeBtn.style.display = 'none';
+    if (reopenBtn) reopenBtn.style.display = 'none';
+    if (addQueueBtn) addQueueBtn.style.display = 'none';
+    toast('Deleted ' + ref, 'ok');
+    await loadSupportThreads();
+    await loadSupportTicketStats();
+  } catch (e) {
+    toast(e.message || 'Delete failed', 'err');
+  }
 }
 
 const SUPPORT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
