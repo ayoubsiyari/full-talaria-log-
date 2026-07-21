@@ -13023,11 +13023,12 @@ const TalariaV8bLive = () => {
     const fid = typeof fileId === "string" ? fileId : String(fileId);
     try {
       const grid = window.__multichartGrid;
+      const hintSym = pendingSymbolRef.current || symbol || null;
       if (grid && typeof grid.loadFileOnPanel === "function") {
         const panelId = typeof grid.getFocusedPanelId === "function"
           ? grid.getFocusedPanelId()
           : null;
-        return grid.loadFileOnPanel(panelId, fid, { force: true })
+        return grid.loadFileOnPanel(panelId, fid, { force: true, symbol: hintSym })
           .then(() => true)
           .catch((err) => {
             console.warn("[V9 sym] loadFileOnPanel failed", panelId, err);
@@ -13039,7 +13040,7 @@ const TalariaV8bLive = () => {
           ? grid.getFocusedPanelId()
           : null;
         const opts = panelId ? { panelId } : undefined;
-        return grid.runCommand("loadFile", { fileId: fid, force: true }, opts)
+        return grid.runCommand("loadFile", { fileId: fid, force: true, symbol: hintSym }, opts)
           .then(() => true)
           .catch((err) => {
             console.warn("[V9 sym] loadFile on panel failed", panelId, err);
@@ -13061,10 +13062,12 @@ const TalariaV8bLive = () => {
           const replayTs = typeof ch._resolveMultichartReplayPlayheadMs === "function"
             ? ch._resolveMultichartReplayPlayheadMs()
             : undefined;
+          const hintSym = pendingSymbolRef.current || symbol || null;
           return ch.loadMultichartPanelFromHost({
             fileId: fid,
             force: true,
             replayTimestamp: replayTs,
+            symbol: hintSym,
           }).then(finalizePairLoad).then(() => true).catch((err) => {
             console.warn("[V9 sym] loadMultichartPanelFromHost failed", err);
             throw err;
@@ -13103,16 +13106,30 @@ const TalariaV8bLive = () => {
 
   const reconcileToolbarSymbolFromChart = (fallbackId) => {
     const ch = v9ActiveChartInstance();
-    const raw = ch?.currentSymbol;
-    if (raw) {
-      const sym = v9NormalizeToolbarSymbol(String(raw).trim());
+    const prefer = fallbackId || pendingSymbolRef.current;
+    const rawStr = ch?.currentSymbol != null ? String(ch.currentSymbol).trim() : "";
+    const isPlaceholder = !rawStr || rawStr === "—" || /^FILE_/i.test(rawStr);
+    // Prefer user selection when chart label is still placeholder / lagged.
+    const pick = (!isPlaceholder && rawStr) ? rawStr : (prefer || rawStr);
+    pendingSymbolRef.current = null;
+    if (pick) {
+      const sym = v9NormalizeToolbarSymbol(String(pick).trim());
       if (sym) {
-        pendingSymbolRef.current = null;
         setSymbol(sym);
+        try {
+          if (ch) {
+            const chartNorm = v9NormalizeToolbarSymbol(rawStr);
+            if (isPlaceholder || (prefer && chartNorm && chartNorm !== sym)) {
+              ch.currentSymbol = sym;
+            }
+            if (typeof ch.updateChartOHLCSymbol === "function") {
+              ch.updateChartOHLCSymbol(ch.currentSymbol || sym);
+            }
+          }
+        } catch (_) {}
         return;
       }
     }
-    pendingSymbolRef.current = null;
     if (fallbackId) setSymbol(fallbackId);
   };
 
@@ -13377,11 +13394,15 @@ const TalariaV8bLive = () => {
     if (!v9IsMultiPanelLayoutActive()) return;
     const main = window.chart;
     if (!main || typeof main.updateChartOHLCSymbol !== "function") return;
-    const sym = main.currentSymbol;
-    if (!sym) return;
+    // Pair switch: toolbar updates immediately but chart.currentSymbol lags until
+    // load finishes. Capturing the old ticker here and painting it in rAF was
+    // overwriting the correct legend (ES candles + "NQ" label).
+    if (pendingSymbolRef.current) return;
     requestAnimationFrame(() => {
+      if (pendingSymbolRef.current) return;
       try {
-        main.updateChartOHLCSymbol(sym);
+        const live = main.currentSymbol;
+        if (live) main.updateChartOHLCSymbol(live);
       } catch (_) {}
     });
   }, [symbol, tf]);

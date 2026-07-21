@@ -5005,15 +5005,22 @@ export default function MultichartGrid({
                             return Promise.reject(new Error("loadFile: missing fileId"));
                         }
                         const fid = String(args.fileId);
+                        const symHint = args.symbol != null && String(args.symbol).trim()
+                            ? String(args.symbol).trim()
+                            : undefined;
                         const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
                             && typeof ch.loadMultichartPanelFile === "function";
                         const loadFn = useMc
-                            ? () => ch.loadMultichartPanelFile(fid, { force: !!args.force })
+                            ? () => ch.loadMultichartPanelFile(fid, {
+                                force: !!args.force,
+                                symbol: symHint,
+                            })
                             : (typeof ch.loadMultichartPanelFromHost === "function"
                                 && (ch.isBacktestMode || ch.backtestingSession))
                                 ? () => ch.loadMultichartPanelFromHost({
                                     fileId: fid,
                                     force: !!args.force,
+                                    symbol: symHint,
                                     replayTimestamp: typeof ch._resolveMultichartReplayPlayheadMs === "function"
                                         ? ch._resolveMultichartReplayPlayheadMs()
                                         : undefined,
@@ -5653,7 +5660,11 @@ export default function MultichartGrid({
             }
 
             if (pid === HOST_PANEL_ID) {
-                return applyHostCommand("loadFile", { fileId: fid, force: !!o.force }).then((data) => {
+                const hostLoadArgs = { fileId: fid, force: !!o.force };
+                if (o.symbol != null && String(o.symbol).trim()) {
+                    hostLoadArgs.symbol = String(o.symbol).trim();
+                }
+                return applyHostCommand("loadFile", hostLoadArgs).then((data) => {
                     if (typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
                     }
@@ -5688,12 +5699,16 @@ export default function MultichartGrid({
             const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
                 && typeof ch.loadMultichartPanelFile === "function";
 
+            const symHint = o.symbol != null && String(o.symbol).trim()
+                ? String(o.symbol).trim()
+                : undefined;
             let loadPromise;
             if (useMc) {
                 loadPromise = ch.loadMultichartPanelFile(fid, {
                     force: true,
                     replayTimestamp: replayTs,
                     timeframe: tf,
+                    symbol: symHint,
                 });
             } else if (typeof ch.loadMultichartPanelFromHost === "function"
                 && (ch.isBacktestMode || ch.backtestingSession)) {
@@ -5702,6 +5717,7 @@ export default function MultichartGrid({
                     force: true,
                     replayTimestamp: replayTs,
                     timeframe: tf,
+                    symbol: symHint,
                 });
             } else if (typeof ch.loadFileData === "function") {
                 loadPromise = ch.loadFileData(fid);

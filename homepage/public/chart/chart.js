@@ -5443,7 +5443,14 @@ class Chart {
                     }
                 }
 
-                let resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
+                // Prefer explicit symbol from V9 toolbar (opts.symbol) — fileId
+                // resolution can lag or miss session map rows and leave the old
+                // ticker on the OHLC legend while candles already switched.
+                const hintSym = o.symbol != null && String(o.symbol).trim()
+                    ? String(o.symbol).trim()
+                    : '';
+                let resolvedTicker = hintSym
+                    || this.resolveSessionTickerForFileId(session, fileId);
                 if (!resolvedTicker) {
                     // Session instrument map didn't have this fileId (happens for
                     // some pairs/layouts). Fall back to the global file list so the
@@ -5451,13 +5458,17 @@ class Chart {
                     resolvedTicker = this.resolveTickerFromFileSelect(fileId);
                 }
                 if (resolvedTicker) {
-                    this.currentSymbol = resolvedTicker;
+                    this.currentSymbol = this._displaySessionFuturesSymbol(resolvedTicker)
+                        || resolvedTicker;
                 } else if (switchingPair) {
                     // New pair but no resolvable name — never keep the old pair's
                     // label; show a neutral placeholder tied to the fileId.
                     this.currentSymbol = `FILE_${fileId}`;
                 }
                 this.updateChartTitle(this.currentSymbol || `FILE_${fileId}`);
+                if (typeof this.updateChartOHLCSymbol === 'function') {
+                    try { this.updateChartOHLCSymbol(this.currentSymbol); } catch (_ohlc) { /* ignore */ }
+                }
 
                 if (!this.replaySystem) this.initReplaySystem();
                 const replay = this.replaySystem;
@@ -10167,12 +10178,22 @@ class Chart {
             const session = this.backtestingSession
                 || (mainChart && mainChart.backtestingSession)
                 || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
+            const panelSwitchingPair = outgoingPanelFileId != null
+                && String(outgoingPanelFileId) !== String(targetFileId);
 
-            const targetTicker = (mainChart && typeof mainChart.resolveSessionTickerForFileId === 'function')
-                ? mainChart.resolveSessionTickerForFileId(session, targetFileId)
+            const resolveTicker = (mainChart && typeof mainChart.resolveSessionTickerForFileId === 'function')
+                ? mainChart.resolveSessionTickerForFileId.bind(mainChart)
                 : (typeof this.resolveSessionTickerForFileId === 'function'
-                    ? this.resolveSessionTickerForFileId(session, targetFileId)
-                    : this.currentSymbol);
+                    ? this.resolveSessionTickerForFileId.bind(this)
+                    : null);
+            const resolveFileSelect = (mainChart && typeof mainChart.resolveTickerFromFileSelect === 'function')
+                ? mainChart.resolveTickerFromFileSelect.bind(mainChart)
+                : (typeof this.resolveTickerFromFileSelect === 'function'
+                    ? this.resolveTickerFromFileSelect.bind(this)
+                    : null);
+            const targetTicker = (resolveTicker && resolveTicker(session, targetFileId))
+                || (resolveFileSelect && resolveFileSelect(targetFileId))
+                || (panelSwitchingPair ? `FILE_${targetFileId}` : this.currentSymbol);
 
             const replay = this.replaySystem || (mainChart && mainChart.replaySystem);
             const replayActiveBefore = !!(replay && replay.isActive);

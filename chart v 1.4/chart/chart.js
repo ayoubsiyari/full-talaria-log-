@@ -5443,7 +5443,14 @@ class Chart {
                     }
                 }
 
-                let resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
+                // Prefer explicit symbol from V9 toolbar (opts.symbol) — fileId
+                // resolution can lag or miss session map rows and leave the old
+                // ticker on the OHLC legend while candles already switched.
+                const hintSym = o.symbol != null && String(o.symbol).trim()
+                    ? String(o.symbol).trim()
+                    : '';
+                let resolvedTicker = hintSym
+                    || this.resolveSessionTickerForFileId(session, fileId);
                 if (!resolvedTicker) {
                     // Session instrument map didn't have this fileId (happens for
                     // some pairs/layouts). Fall back to the global file list so the
@@ -5451,13 +5458,17 @@ class Chart {
                     resolvedTicker = this.resolveTickerFromFileSelect(fileId);
                 }
                 if (resolvedTicker) {
-                    this.currentSymbol = resolvedTicker;
+                    this.currentSymbol = this._displaySessionFuturesSymbol(resolvedTicker)
+                        || resolvedTicker;
                 } else if (switchingPair) {
                     // New pair but no resolvable name — never keep the old pair's
                     // label; show a neutral placeholder tied to the fileId.
                     this.currentSymbol = `FILE_${fileId}`;
                 }
                 this.updateChartTitle(this.currentSymbol || `FILE_${fileId}`);
+                if (typeof this.updateChartOHLCSymbol === 'function') {
+                    try { this.updateChartOHLCSymbol(this.currentSymbol); } catch (_ohlc) { /* ignore */ }
+                }
 
                 if (!this.replaySystem) this.initReplaySystem();
                 const replay = this.replaySystem;

@@ -74,14 +74,978 @@
     };
     function tfSec(tf) { return TIMEFRAME_SECONDS[tf] || 60; }
 
+    function barTimeMs(chart, rawT) {
+        if (chart && typeof chart.normalizeTimestampMs === 'function') {
+            const n = chart.normalizeTimestampMs(rawT);
+            if (Number.isFinite(n)) return n;
+        }
+        const t = Number(rawT);
+        if (!Number.isFinite(t)) return NaN;
+        return Math.abs(t) < 1e11 ? t * 1000 : t;
+    }
+
+    function findLastAtOrBefore(data, tsMs, chart) {
+        if (!data || data.length === 0) return 0;
+        const target = Number(tsMs);
+        if (!Number.isFinite(target)) return 0;
+        let lo = 0;
+        let hi = data.length - 1;
+        let ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const mt = barTimeMs(chart, data[mid]?.t);
+            if (!Number.isFinite(mt)) {
+                lo = mid + 1;
+                continue;
+            }
+            if (mt <= target) { ans = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return ans;
+    }
+
+    function resolveFractionalRightIndex(chart, endTimeSec) {
+        if (!chart || !chart.data || chart.data.length === 0) return null;
+        const endMs = toMillis(endTimeSec);
+        const probeMs = Math.max(barTimeMs(chart, chart.data[0]?.t) || 0, endMs - 1);
+        let i0 = findLastAtOrBefore(chart.data, probeMs, chart);
+        i0 = Math.max(0, Math.min(i0, chart.data.length - 1));
+        let frac = 0;
+        if (i0 < chart.data.length - 1) {
+            const t0 = barTimeMs(chart, chart.data[i0]?.t);
+            const t1 = barTimeMs(chart, chart.data[i0 + 1]?.t);
+            if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0 && endMs > t0) {
+                frac = Math.max(0, Math.min(1, (endMs - t0) / (t1 - t0)));
+            }
+        }
+        return i0 + frac;
+    }
+
+    function resolvePlotWidthPx(chart) {
+        const margin = chart.margin || { l: 60, r: 60 };
+        let plotW = (chart.w || 0) - margin.l - margin.r;
+        if (plotW > 0) return plotW;
+        try {
+            const canvas = chart.canvas;
+            const el = canvas && canvas.parentElement;
+            const rw = el ? el.getBoundingClientRect().width : 0;
+            if (Number.isFinite(rw) && rw > margin.l + margin.r) {
+                return rw - margin.l - margin.r;
+            }
+        } catch (_e) { /* ignore */ }
+        const fallback = (chart.canvas && chart.canvas.width) ? chart.canvas.width : 800;
+        return Math.max(0, fallback - margin.l - margin.r);
+    }
+
+    /** When leader's visible window starts before our first bar, fetch left history. */
+    function ensureHistoryForVisibleStart(chart, m) {
+        if (!chart || !m || !Number.isFinite(m.startTime)) return;
+        if (!chart.data || !chart.data.length) return;
+        const startMs = toMillis(m.startTime);
+        const firstMs = barTimeMs(chart, chart.data[0]?.t);
+        if (!Number.isFinite(firstMs) || startMs >= firstMs - 60_000) return;
+        if (typeof chart._tryExtendReplayMasterFromParent === 'function') {
+            try {
+                if (chart._tryExtendReplayMasterFromParent({ lite: true })) return;
+            } catch (_) {}
+        }
+        if (isSamePairDataShareEmbed(chart)) {
+            if (typeof chart._delegateSamePairPanLoadToHost === 'function') {
+                try { chart._delegateSamePairPanLoadToHost(true); } catch (_) {}
+            }
+            return;
+        }
+        if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
+            try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+        } else if (typeof chart.checkViewportLoadMore === 'function') {
+            try { chart.checkViewportLoadMore('backward', true); } catch (_) {}
+        }
+    }
+
+    /** Cheap bounds clamp during live pan follow — skips history fetch side effects. */
+    function applyLightweightOffsetClamp(chart) {
+        if (!chart || !chart.data || chart.data.length === 0) return;
+        const plotW = resolvePlotWidthPx(chart);
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return;
+        const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+        const maxOffset = plotW - rightMargin;
+        const minOffset = -Math.max(0, chart.data.length - 1) * spacing;
+        if (chart.offsetX > maxOffset) chart.offsetX = maxOffset;
+        else if (chart.offsetX < minOffset) chart.offsetX = minOffset;
+    }
+
     /**
-     * Apply a sync'd visible time-range to the recipient chart.
+     * True only when follower bar array matches the host closely enough that
+     * copying absolute offsetX is safe. Cross-symbol layouts (NQ+ES) never
+     * match — they must follow wall-clock / right-edge time instead.
+     */
+    function canUseLightweightOffsetFollow(chart, m) {
+        if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) return false;
+        if (!m || !Number.isFinite(m.offsetX) || !Number.isFinite(m.candleWidth)) return false;
+
+        // Verify against parent host array when available (most reliable).
+        try {
+            const parentChart = global.parent && global.parent !== global ? global.parent.chart : null;
+            if (parentChart && Array.isArray(parentChart.data) && parentChart.data.length > 0) {
+                if (parentChart.data.length !== chart.data.length) return false;
+                const pt0 = Number(parentChart.data[0] && parentChart.data[0].t);
+                const lt0 = Number(chart.data[0] && chart.data[0].t);
+                const ptN = Number(parentChart.data[parentChart.data.length - 1]
+                    && parentChart.data[parentChart.data.length - 1].t);
+                const ltN = Number(chart.data[chart.data.length - 1]
+                    && chart.data[chart.data.length - 1].t);
+                if (!(Number.isFinite(pt0) && Number.isFinite(lt0) && pt0 === lt0)) return false;
+                if (!(Number.isFinite(ptN) && Number.isFinite(ltN) && ptN === ltN)) return false;
+                return true;
+            }
+        } catch (_) { /* ignore */ }
+
+        // No host to compare: only allow for verified same-pair data-share embeds.
+        return !!(chart._multichartViewportMirroredWithHost && isSamePairDataShareEmbed(chart));
+    }
+
+    /** Pin follower right edge to leader endTime (keeps local candleWidth). */
+    function applyRightEdgeTimeFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        if (!Number.isFinite(idxAtRight)) return false;
+        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        return true;
+    }
+
+    function paintPanFollow(chart) {
+        chart._chartViewRestored = true;
+        if (typeof chart._armPanSyncFollowBurst === 'function') {
+            try { chart._armPanSyncFollowBurst(); } catch (_) {}
+        } else {
+            chart._panSyncBurstUntil = performance.now() + 140;
+        }
+        if (typeof chart._schedulePanSyncFollowRender === 'function') {
+            chart._schedulePanSyncFollowRender();
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
+    }
+
+    /**
+     * Live Date Range zoom follow paint.
+     * Must NOT arm pan-sync burst: that freezes pan tick density while candleWidth
+     * changes and piles overlapping time-axis labels into a solid white bar.
+     */
+    function paintZoomFollow(chart) {
+        chart._chartViewRestored = true;
+        // Drop pan-follow lite mode without full release side-effects (resample).
+        chart._panSyncBurstUntil = 0;
+        try {
+            if (typeof chart._clearPanTimeTickCache === 'function') {
+                chart._clearPanTimeTickCache();
+            }
+        } catch (_) {}
+        chart._cachedInteractionTimeTicks = null;
+        chart._idleTimeAxisKeyCached = null;
+        chart._timeTicks = null;
+        if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
+    }
+
+    /**
+     * Live wheel zoom while Date Range sync is ON.
+     * Same TF → copy leader candleWidth + geometry (never duration→cw smash).
+     * Cross TF → pin right edge only during the burst; settle applies full wall-clock.
+     */
+    function applyLiveZoomDateRangeFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+        if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+
+        const sameTf = sameTimeframeMessage(chart, m);
+        if (sameTf && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
+            // Same bar array only: offset mirror is safe. Cross-symbol (ES/NQ)
+            // must pin by endTime or panel B jumps to the wrong bars.
+            if (canUseLightweightOffsetFollow(chart, m)
+                && Number.isFinite(m.offsetX)
+                && applyZoomViewportFromLeader(chart, m)) {
+                paintZoomFollow(chart);
+                return true;
+            }
+            const srcCw = Number(m.candleWidth);
+            chart.candleWidth = srcCw;
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+            if (applyRightEdgeTimeFollow(chart, m)) {
+                if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                    try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+                } else if (typeof chart.constrainOffset === 'function') {
+                    try { chart.constrainOffset(); } catch (_) {}
+                }
+                paintZoomFollow(chart);
+                return true;
+            }
+        }
+
+        // Cross-TF / fallback: keep local candleWidth during the burst so the
+        // follower axis density stays healthy; settle path wall-clocks once.
+        if (applyRightEdgeTimeFollow(chart, m)) {
+            if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+            }
+            paintZoomFollow(chart);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Same-pair embed already sharing host data: pan drag only needs offset +
+     * candleWidth — no history fetch, bar refit, or parent array copy per frame.
+     * @returns {boolean}
+     */
+    function applyLightweightPanFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!canUseLightweightOffsetFollow(chart, m)) return false;
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        if (!Number.isFinite(m.offsetX)) return false;
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+
+        if (typeof chart._constrainOffsetDuringDrag === 'function') {
+            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+
+        if (m && isPeerLedRangeMessage(m)) {
+            markReplayViewportForSyncFollow(chart);
+        }
+        paintPanFollow(chart);
+        return true;
+    }
+
+    /**
+     * Active pan / range follow.
+     * - Same bar array → lightweight offset mirror
+     * - Live drag (panSync) → pin right-edge time only; keep/adopt zoom without
+     *   per-frame duration refit (that crushed axes + flashed panels)
+     * - Pan release / settle → one wall-clock start/end fit
+     */
+    function applyPanDragFollow(chart, m, opts) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        opts = opts || {};
+        const panSync = !!m.panSync;
+        const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+            && m.endTime > m.startTime;
+
+        if (panSync && canUseLightweightOffsetFollow(chart, m)) {
+            return applyLightweightPanFollow(chart, m);
+        }
+
+        // LIVE DRAG: move time together, do NOT recalculate candleWidth from
+        // duration every frame (Panel A axis crush + flash when B leads).
+        if (panSync) {
+            const sameTf = sameTimeframeMessage(chart, m);
+            if (sameTf && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
+                const srcCw = Number(m.candleWidth);
+                const allowed = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths)
+                    && chart.zoomLevel.allowedWidths.length)
+                    ? chart.zoomLevel.allowedWidths
+                    : null;
+                if (allowed) {
+                    chart.candleWidth = Math.max(allowed[0], Math.min(allowed[allowed.length - 1], srcCw));
+                } else {
+                    chart.candleWidth = srcCw;
+                }
+                if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                    chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+                }
+                if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+            }
+            if (!Number.isFinite(m.endTime) || !applyRightEdgeTimeFollow(chart, m)) {
+                return false;
+            }
+            if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+            if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+            if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+            } else {
+                applyLightweightOffsetClamp(chart);
+            }
+            paintPanFollow(chart);
+            return true;
+        }
+
+        // SETTLE: one wall-clock fit so both panels share the same clock window.
+        ensureHistoryForVisibleStart(chart, m);
+        if (hasWallClock && (chart._multichartVisibleRangeSyncOn || opts.forceWallClock)) {
+            if (applyWallClockDateRange(chart, m, { lite: false })) {
+                return true;
+            }
+        }
+
+        if (Number.isFinite(m.endTime) && applyRightEdgeTimeFollow(chart, m)) {
+            if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+            if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            } else {
+                applyLightweightOffsetClamp(chart);
+            }
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            else if (typeof chart.render === 'function') chart.render();
+            return true;
+        }
+
+        if (opts.preferOffsetFirst && canUseLightweightOffsetFollow(chart, m)) {
+            return applyLightweightPanFollow(chart, m);
+        }
+        return false;
+    }
+
+    /** Mirror leader zoom/pan geometry (offsetX + candleWidth) across different plot widths. */
+    function applyZoomViewportFromLeader(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.offsetX) || !Number.isFinite(m.candleWidth)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const srcCw = Number(m.candleWidth);
+        if (!(srcCw > 0)) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+        chart._chartViewRestored = countVisibleBars(chart) > 0;
+        return chart._chartViewRestored;
+    }
+
+    /**
+     * count + right-edge time so pan/zoom feel like one chart (TradingView).
+     * @returns {boolean}
+     */
+    function applyMatchedViewport(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
+
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        ensureHistoryForVisibleStart(chart, m);
+
+        let barCount = Number.isFinite(m.visibleBarCount)
+            ? Math.max(1, Math.floor(m.visibleBarCount))
+            : null;
+        if (!barCount && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+            && m.endTime > m.startTime) {
+            const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime), chart);
+            const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
+            barCount = Math.max(1, iR - iL + 1);
+        }
+        if (!barCount) return false;
+
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        if (!Number.isFinite(idxAtRight)) return false;
+
+        if (Number.isFinite(m.offsetX) && Number.isFinite(m.plotWidthPx)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+        } else {
+            chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        }
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+
+        // If time anchor left no bars visible (data slice mismatch), recover
+        // to the panel's own data window instead of mirroring a stale offsetX.
+        const visStart = Math.max(0, -Math.floor(chart.offsetX / spacing));
+        const visEnd = Math.min(chart.data.length, visStart + Math.ceil(plotW / spacing));
+        if (visEnd <= visStart) {
+            if (!recoverViewportIfEmpty(chart) && Number.isFinite(m.offsetX)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+                if (typeof chart.constrainOffset === 'function') {
+                    try { chart.constrainOffset(); } catch (_) {}
+                }
+                recoverViewportIfEmpty(chart);
+            }
+        }
+
+        if (!m.panSync && Number.isFinite(m.startTime)) {
+            ensureHistoryForVisibleStart(chart, m);
+        }
+
+        finishViewportApply(chart, !!m.panSync);
+        return true;
+    }
+
+    /**
+     * Mirror solo-chart pan/zoom: same candleWidth + same right-edge bar anchor as chart.js wheel.
+     * @returns {boolean} true if applied
+     */
+    function applyNativeChartViewport(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        const srcCw = Number(m.candleWidth);
+        if (Number.isFinite(srcCw) && srcCw > 0) {
+            chart.candleWidth = srcCw;
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+        }
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        let idxAtRight = null;
+        if (Number.isFinite(m.endTime)) {
+            idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        } else if (Number.isFinite(m.endIndex)) {
+            idxAtRight = Math.max(0, Math.min(Math.floor(m.endIndex), chart.data.length - 1));
+        } else if (Number.isFinite(m.rightEdgeBarIndex)) {
+            idxAtRight = Math.max(0, Math.min(Math.floor(m.rightEdgeBarIndex), chart.data.length - 1));
+        }
+        if (idxAtRight == null || !Number.isFinite(idxAtRight)) return false;
+
+        if (Number.isFinite(m.offsetX) && Number.isFinite(m.plotWidthPx)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+        } else {
+            chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        }
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+        finishViewportApply(chart, !!m.panSync);
+        return true;
+    }
+
+    /**
+     * Same wall-clock window on every TF/symbol (1D + 4H show Jan–Oct, not the
+     * same bar count). Fits local candleWidth from the shared start/end clock
+     * — never copies the leader's pixel candleWidth (that crushes 1m vs 5m axes).
+     * @returns {boolean} true if applied
+     */
+    function applyWallClockDateRange(chart, m, opts) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.startTime) || !Number.isFinite(m.endTime) || m.endTime <= m.startTime) {
+            return false;
+        }
+        opts = opts || {};
+        const lite = !!(opts.lite || m.panSync);
+
+        const startMs = toMillis(m.startTime);
+        const endMs = toMillis(m.endTime);
+        const firstMs = barTimeMs(chart, chart.data[0] && chart.data[0].t);
+        const lastMs = barTimeMs(chart, chart.data[chart.data.length - 1]
+            && chart.data[chart.data.length - 1].t);
+        if (!Number.isFinite(firstMs) || !Number.isFinite(lastMs) || lastMs < firstMs) {
+            return false;
+        }
+        // No overlap with local data → don't explode zoom; let caller fall back.
+        if (endMs <= firstMs || startMs >= lastMs) {
+            return false;
+        }
+
+        const iL = findLastAtOrBefore(chart.data, startMs, chart);
+        const iR = findLastAtOrBefore(chart.data, endMs - 1, chart);
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+
+        // Zoom from wall-clock duration × THIS panel's TF so NQ-5m and ES-1m
+        // show the same clock span (never copy the leader's candleWidth).
+        const localTfSec = Math.max(1, tfSec(chart.currentTimeframe || m.sourceTimeframe || '1m'));
+        let durationSec = Math.max(localTfSec, (endMs - startMs) / 1000);
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const widthPx = resolvePlotWidthPx(chart)
+            || ((chart.w || chart.canvas?.width || 800) - (margin.l + margin.r));
+        if (widthPx <= 0) return false;
+
+        // Cap bars by plot width so spacing never collapses into a solid white
+        // time-axis (echo / bad duration used to smash cw → min and densify ticks).
+        const MIN_LABEL_SAFE_SPACING_PX = 2.5;
+        const maxBarsByWidth = Math.max(8, Math.floor(widthPx / MIN_LABEL_SAFE_SPACING_PX));
+        const MAX_SYNC_BARS = Math.min(800, maxBarsByWidth);
+        const maxDurationSec = localTfSec * MAX_SYNC_BARS;
+        if (durationSec > maxDurationSec) {
+            durationSec = maxDurationSec;
+        }
+        const numBars = Math.max(2, Math.min(MAX_SYNC_BARS, Math.round(durationSec / localTfSec)));
+
+        let desiredSpacing = widthPx / numBars;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
+        }
+
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        chart.candleWidth = Math.max(allowedWidths[0], Math.min(allowedWidths[allowedWidths.length - 1], cw));
+
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        // Anchor the shared right edge (endTime) so pans stay aligned.
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        const rightIdx = Number.isFinite(idxAtRight) ? idxAtRight : iR2;
+        chart.offsetX = widthPx - (rightIdx + 1) * spacing;
+
+        if (typeof chart._constrainOffsetDuringDrag === 'function' && lite) {
+            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+        } else if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+
+        chart._multichartLastSyncStartTime = m.startTime;
+        chart._multichartLastSyncEndTime = m.endTime;
+
+        if (lite) {
+            if (countVisibleBars(chart) <= 0) {
+                // Last resort: show the overlapping slice without foreign candleWidth.
+                chart.offsetX = widthPx - (iR2 + 1) * spacing;
+                applyLightweightOffsetClamp(chart);
+            }
+            // Zoom sync must rebuild time ticks; pan-burst paint freezes old density.
+            if (m.zoomSync) paintZoomFollow(chart);
+            else paintPanFollow(chart);
+            return true;
+        }
+
+        finishViewportApply(chart, false);
+        return true;
+    }
+
+    function sameTimeframeMessage(chart, m) {
+        const src = m.sourceTimeframe != null ? String(m.sourceTimeframe) : '';
+        const mine = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
+        return src.length > 0 && mine.length > 0 && src === mine;
+    }
+
+    /** Visible-range message from iframe B/C/D (not tile A). */
+    function isPeerLedRangeMessage(m) {
+        if (!m) return false;
+        if (m.forceInitialSync) return false;
+        const src = m.source != null ? String(m.source).trim().toUpperCase() : '';
+        return src.length > 0 && src !== 'A';
+    }
+
+    /** Replay auto-scroll on tile A must not fight peer-led synced pans. */
+    function markReplayViewportForSyncFollow(chart) {
+        const rs = chart && chart.replaySystem;
+        if (!rs || !rs.isActive || rs.userHasPanned) return;
+        if (typeof rs.onUserPan === 'function') {
+            try { rs.onUserPan(); } catch (_) {}
+        } else {
+            rs.autoScrollEnabled = false;
+            rs.userHasPanned = true;
+        }
+    }
+
+    /** Same-pair iframe sharing host replay master — lite offset pan only. */
+    function isSamePairDataShareEmbed(chart) {
+        if (!chart) return false;
+        if (typeof chart._isMultichartEmbedPanel !== 'function' || !chart._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (typeof chart._multichartSamePairDataShareActive === 'function') {
+            return chart._multichartSamePairDataShareActive();
+        }
+        return false;
+    }
+
+    /** Same-pair iframe with date/time range sync — lite offset pan only. */
+    function isSamePairSyncedEmbed(chart) {
+        if (!chart || !chart._multichartVisibleRangeSyncOn) return false;
+        if (typeof chart._isMultichartEmbedPanel !== 'function' || !chart._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (typeof chart._multichartSamePairAsHost !== 'function') return false;
+        if (!chart._multichartSamePairAsHost(chart.currentFileId)) return false;
+        if (typeof chart._isIndependentMultichartPair === 'function'
+            && chart._isIndependentMultichartPair()) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */
+    function applyFastPanSync(chart, m) {
+        return applyPanDragFollow(chart, m);
+    }
+
+    /**
+     * Time sync only (not Date Range): align follower right-edge to leader time
+     * using each panel's own zoom — 5m jumps every 5m, 1m every 1m (TradingView).
+     * @returns {boolean}
+     */
+    function applyDiscreteTimeSync(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+        const endMs = toMillis(m.endTime);
+        let targetIdx = -1;
+        if (typeof chart.findGoToTargetIndex === 'function') {
+            try { targetIdx = chart.findGoToTargetIndex(chart.data, endMs); } catch (_) {}
+        }
+        if (!Number.isFinite(targetIdx) || targetIdx < 0) {
+            targetIdx = findLastAtOrBefore(chart.data, endMs, chart);
+        }
+        if (!Number.isFinite(targetIdx) || targetIdx < 0) return false;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const visibleCandles = Math.max(1, Math.floor(plotW / spacing));
+
+        chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+        chart._chartViewRestored = true;
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        else if (typeof chart.render === 'function') chart.render();
+        return true;
+    }
+
+    function countVisibleBars(chart) {
+        if (!chart || !chart.data || !chart.data.length) return 0;
+        const m = chart.margin || { l: 60, r: 60 };
+        const plotW = (chart.w || chart.canvas?.width || 0) - (m.l + m.r);
+        if (plotW <= 0) return chart.data.length;
+        const cs = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(cs > 0)) return chart.data.length;
+        const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
+        const i1 = Math.min(chart.data.length, i0 + Math.ceil(plotW / cs));
+        return Math.max(0, i1 - i0);
+    }
+
+    function isViewportBootSettling(chart) {
+        if (!chart) return false;
+        const until = chart._multichartViewportSettleUntil;
+        if (!Number.isFinite(until)) return false;
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        return now < until;
+    }
+
+    /** When sync leaves zero bars on screen, recover without resetting zoom on iframe tiles. */
+    function recoverViewportIfEmpty(chart) {
+        if (!chart) return false;
+        const rsRec = chart.replaySystem;
+
+        // Rebuild display from replay master when the slice exists but resampled data is empty.
+        if (rsRec && rsRec.isActive && Array.isArray(rsRec.fullRawData) && rsRec.fullRawData.length > 0
+            && (!chart.data || !chart.data.length)
+            && typeof rsRec.updateChartData === 'function') {
+            try { rsRec.updateChartData(false); } catch (_) {}
+        }
+
+        if (!chart.data || !chart.data.length) {
+            if (rsRec && rsRec.isActive
+                && typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
+        }
+        if (countVisibleBars(chart) > 0) return false;
+        // Don't recover/recenter a tile the user deliberately panned during
+        // replay, OR one that host-driven visible-range/date-range sync is
+        // positioning — recentering is the snap-back. Stream history instead.
+        const userOwned = (rsRec && rsRec.isActive
+                && (rsRec.userHasPanned || !rsRec.autoScrollEnabled))
+            || !!chart._multichartVisibleRangeSyncOn;
+        if (userOwned) {
+            // Sync-safe recovery: re-pin to last synced right edge instead of
+            // leaving a blank (jump/hide) tile while Date Range sync is ON.
+            if (chart._multichartVisibleRangeSyncOn
+                && Number.isFinite(chart._multichartLastSyncEndTime)) {
+                const rescued = applyRightEdgeTimeFollow(chart, {
+                    endTime: chart._multichartLastSyncEndTime,
+                });
+                if (rescued) {
+                    applyLightweightOffsetClamp(chart);
+                    if (countVisibleBars(chart) > 0) {
+                        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                        else if (typeof chart.render === 'function') chart.render();
+                        return true;
+                    }
+                }
+            }
+            if (rsRec && rsRec.isActive
+                && typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
+        }
+        // During iframe boot, transient zero-bar frames are normal — skip
+        // recovery so we don't fight incoming visibleRange sync (causes shake).
+        // Unless the panel is still blank — then recover immediately.
+        if (isViewportBootSettling(chart) && countVisibleBars(chart) > 0) return false;
+
+        chart._chartViewRestored = false;
+
+        const replay = chart.replaySystem;
+        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            try {
+                const st = replay.getReplayAutoScrollState(chart);
+                if (st && Number.isFinite(st.offsetX)) {
+                    chart.offsetX = st.offsetX;
+                    if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+                    if (countVisibleBars(chart) > 0) {
+                        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                        return true;
+                    }
+                }
+            } catch (_) {}
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                try {
+                    replay.syncReplayViewportToPlayhead(chart, {
+                        centerPlayhead: true,
+                        resetPriceScale: false,
+                        render: true,
+                    });
+                    return countVisibleBars(chart) > 0;
+                } catch (_) {}
+            }
+        }
+
+        const isEmbed = typeof chart._isMultichartEmbedPanel === 'function'
+            && chart._isMultichartEmbedPanel();
+        if (isEmbed && typeof chart._ensureMultichartViewportVisible === 'function') {
+            chart._ensureMultichartViewportVisible({
+                centerPlayhead: true,
+                resetPriceScale: false,
+                forceRecenter: false,
+                render: true,
+            });
+            return countVisibleBars(chart) > 0;
+        }
+        if (isEmbed) {
+            if (typeof chart.fitToView === 'function') {
+                chart.fitToView();
+                if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            }
+        } else if (typeof chart.jumpToLatest === 'function') {
+            chart.jumpToLatest();
+        } else if (typeof chart.fitToView === 'function') {
+            chart.fitToView();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        }
+        return countVisibleBars(chart) > 0;
+    }
+
+    function finishViewportApply(chart, panSync) {
+        if (!isViewportBootSettling(chart)) {
+            recoverViewportIfEmpty(chart);
+        }
+        chart._chartViewRestored = countVisibleBars(chart) > 0;
+        if (panSync) {
+            if (typeof chart._armPanSyncFollowBurst === 'function') {
+                try { chart._armPanSyncFollowBurst(); } catch (_) {}
+            } else {
+                chart._panSyncBurstUntil = performance.now() + 140;
+            }
+            if (typeof chart._schedulePanSyncFollowRender === 'function') {
+                chart._schedulePanSyncFollowRender();
+            } else if (typeof chart.scheduleRender === 'function') {
+                chart.scheduleRender();
+            } else if (typeof chart.render === 'function') {
+                chart.render();
+            }
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
+    }
+
+    /**
+     * TradingView-style: same bar count + right-edge time anchor (same TF only).
+     * @returns {boolean} true if applied
+     */
+    function applyTradingViewVisibleRange(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+
+        let startIdx = Number.isFinite(m.startIndex) ? Math.floor(m.startIndex) : null;
+        let endIdx = Number.isFinite(m.endIndex) ? Math.floor(m.endIndex) : null;
+        let barCount = Number.isFinite(m.visibleBarCount) ? Math.max(1, Math.floor(m.visibleBarCount)) : null;
+
+        if (startIdx != null && endIdx != null && endIdx >= startIdx) {
+            if (!barCount) barCount = endIdx - startIdx + 1;
+        } else if (Number.isFinite(m.startTime) && Number.isFinite(m.endTime) && m.endTime > m.startTime) {
+            const endMs = toMillis(m.endTime) - 1;
+            const startMs = toMillis(m.startTime);
+            endIdx = findLastAtOrBefore(chart.data, endMs, chart);
+            startIdx = findLastAtOrBefore(chart.data, startMs, chart);
+            if (!barCount) barCount = Math.max(1, endIdx - startIdx + 1);
+        } else {
+            return false;
+        }
+
+        barCount = Math.max(1, barCount);
+        let iR;
+        let iL;
+        if (Number.isFinite(m.endTime)) {
+            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
+            iL = Math.max(0, iR - barCount + 1);
+        } else if (endIdx != null) {
+            iR = Math.max(0, Math.min(endIdx, chart.data.length - 1));
+            iL = startIdx != null
+                ? Math.max(0, Math.min(startIdx, iR))
+                : Math.max(0, iR - barCount + 1);
+            if (iR - iL + 1 < barCount) iL = Math.max(0, iR - barCount + 1);
+        } else {
+            return false;
+        }
+
+        const margin = chart.margin || { l: 60, r: 60 };
+        const widthPx = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        if (widthPx <= 0) return false;
+
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+
+        let desiredSpacing = widthPx / barCount;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
+        }
+
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        chart.candleWidth = Math.max(allowedWidths[0], Math.min(allowedWidths[allowedWidths.length - 1], cw));
+
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (spacing > 0) {
+            chart.offsetX = widthPx - (iR2 + 1) * spacing;
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            }
+        }
+
+        finishViewportApply(chart, !!m.panSync);
+        return true;
+    }
+
+    function shouldPreserveManualPriceScale(chart) {
+        if (!chart) return false;
+        if (chart.priceScale && chart.priceScale.locked) return true;
+        if (chart.autoScale === false && chart.priceScale && chart.priceScale.autoScale === false) {
+            return true;
+        }
+        if (Number.isFinite(chart.priceZoom) && Math.abs(chart.priceZoom - 1) > 1e-6) return true;
+        if (Number.isFinite(chart.priceOffset) && Math.abs(chart.priceOffset) > 1e-9) return true;
+        return false;
+    }
+
+    function refitPriceAutoScale(chart) {
+        if (!chart || shouldPreserveManualPriceScale(chart)) return;
+        var __bl2bBefore = window.__talariaBl2bSnap && window.__talariaBl2bSnap(chart);
+        if (chart.priceScale) chart.priceScale.autoScale = true;
+        chart.autoScale = true;
+        window.__talariaBl2bLog && window.__talariaBl2bLog('sync-bridge.js:refitPriceAutoScale', chart, __bl2bBefore);
+    }
+
+    /**
      *
      * Modeled after chart.js's own internal cross-panel sync (chart.js:2015-
      * 2053). Key safety properties:
      *
      *   • Never sets candleWidth so small that candles disappear (MIN_BARS).
-     *   • Always centres on the closest candle to the synced midpoint.
+     *   • Right-edge anchoring: last bar in the synced window stays at the right margin.
      *   • If the source visible window has no time overlap with this chart's
      *     bar span, falls back to fitToView() (avoids multichart "wrong era"
      *     empty margins when host and iframe use different files / ranges).
@@ -90,8 +1054,9 @@
      *     so the user always sees SOMETHING. Without this guard, panning
      *     chart A (1m) by a small delta would leave chart B (1h) showing an
      *     empty canvas — which is exactly the "jump and hide" bug.
-     *   • Forces autoScale=true so the recipient's price axis re-fits its OWN
-     *     newly-visible candles. NEVER reads min/max from the source chart.
+     *   • Re-fits price autoScale unless the user has manually scaled the axis
+     *     (drag/wheel on price axis, or double-click lock). NEVER reads min/max
+     *     from the source chart.
      *
      * @param {object} chart   recipient chart instance
      * @param {number} startSec  inclusive start of source visible window (seconds)
@@ -127,94 +1092,81 @@
             if (Number.isFinite(r0) && Number.isFinite(r1) && r1 >= r0) {
                 const recEndExclusive = r1 + barSec;
                 if (!(startSec < recEndExclusive && r0 < endSec)) {
-                    try { chart.fitToView && chart.fitToView(); } catch (_) {}
-                    if (chart.priceScale) chart.priceScale.autoScale = true;
-                    chart.autoScale = true;
+                    if (!isViewportBootSettling(chart)) {
+                        recoverViewportIfEmpty(chart);
+                    }
+                    refitPriceAutoScale(chart);
                     if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
                     return;
                 }
             }
         }
 
-        // How many recipient-bars are in the source's visible window?
-        const spanSec = Math.max(1, endSec - startSec);
-        const desiredBars = spanSec / barSec;
-        // Floor so we always show enough candles to be visually useful.
-        // E.g. 30-min source window on a 1h recipient = 0.5 bars; clamping to
-        // 30 gives the user 30 hours of context centred on the midpoint instead
-        // of an essentially empty chart.
-        const MIN_BARS_TO_SHOW = 30;
-        const MAX_BARS_TO_SHOW = chart.data.length;
-        const targetBars = Math.max(MIN_BARS_TO_SHOW, Math.min(MAX_BARS_TO_SHOW, desiredBars));
-
-        // Compute the candleWidth that would fit targetBars in widthPx pixels.
-        const idealCandleWidth = widthPx / targetBars;
-
-        // Snap to the chart's allowed zoom levels (TradingView-style discrete
-        // zoom rungs). Keeps the chart's own zoom state consistent with what a
-        // user could reach via the wheel.
-        if (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths)
-            && chart.zoomLevel.allowedWidths.length > 0) {
-            const allowed = chart.zoomLevel.allowedWidths;
-            let nearestIdx = 0, best = Infinity;
-            for (let i = 0; i < allowed.length; i++) {
-                const d = Math.abs(allowed[i] - idealCandleWidth);
-                if (d < best) { best = d; nearestIdx = i; }
+        const startMs = startSec * 1000;
+        const endMs = endSec * 1000;
+        const findLastAtOrBefore = (data, ts) => {
+            if (!data || data.length === 0) return 0;
+            let lo = 0;
+            let hi = data.length - 1;
+            let ans = 0;
+            while (lo <= hi) {
+                const mid = (lo + hi) >>> 1;
+                const t = data[mid]?.t || 0;
+                if (t <= ts) { ans = mid; lo = mid + 1; }
+                else hi = mid - 1;
             }
-            chart.zoomLevel.candleWidthIndex = nearestIdx;
-            chart.candleWidth = allowed[nearestIdx];
-        } else {
-            chart.candleWidth = Math.max(0.5, Math.min(80, idealCandleWidth));
+            return ans;
+        };
+
+        const iL = findLastAtOrBefore(chart.data, startMs);
+        const iR = findLastAtOrBefore(chart.data, endMs - 1);
+        const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+        const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+        const numBars = Math.max(1, iR2 - iL2 + 1);
+
+        const desiredSpacing = widthPx / numBars;
+        let cw = desiredSpacing;
+        if (typeof chart._getSpacingForCandleWidth === 'function') {
+            const s1 = chart._getSpacingForCandleWidth(cw);
+            if (s1 > 0) cw = cw * (desiredSpacing / s1);
+            const s2 = chart._getSpacingForCandleWidth(cw);
+            if (s2 > 0) cw = cw * (desiredSpacing / s2);
         }
 
-        // Find the recipient candle closest to the midpoint of the source's
-        // visible window. Linear scan — chart.data is small (≤20k) and this
-        // runs at most once per rAF on the recipient.
-        const midMs = ((startSec + endSec) / 2) * 1000;
-        let bestIdx = 0;
-        let bestDiff = Infinity;
-        for (let i = 0; i < chart.data.length; i++) {
-            const t = +chart.data[i].t;
-            if (!Number.isFinite(t)) continue;
-            const d = Math.abs(t - midMs);
-            if (d < bestDiff) { bestDiff = d; bestIdx = i; }
-        }
+        const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+            ? chart.zoomLevel.allowedWidths
+            : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+        const minW = allowedWidths[0];
+        const maxW = allowedWidths[allowedWidths.length - 1];
+        chart.candleWidth = Math.max(minW, Math.min(maxW, cw));
 
-        // Position offsetX so bestIdx is at the horizontal CENTER of the chart
-        // drawing area. Same arithmetic chart.js uses in its own jumpToTimestamp
-        // (chart.js:11167-11172) and cross-panel align (chart.js:2041).
-        const cw = (chart.w || widthPx) - m.l - m.r;
+        let nearestIdx = 0;
+        let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+            if (d < minDiff) { minDiff = d; nearestIdx = i; }
+        }
+        if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const cwDraw = (chart.w || widthPx) - m.l - m.r;
         const candleSpacing = (typeof chart.getCandleSpacing === 'function')
             ? chart.getCandleSpacing()
             : chart.candleWidth;
-        if (candleSpacing > 0 && cw > 0) {
-            const centerX = cw / 2;
-            const candleX = bestIdx * candleSpacing;
-            chart.offsetX = centerX - candleX;
+        if (candleSpacing > 0 && cwDraw > 0) {
+            chart.offsetX = cwDraw - (iR2 + 1) * candleSpacing;
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
         }
 
-        // Safety net (mirrors chart.js:2050-2053): if our alignment left zero
-        // bars on screen, fall back to fitToView so we never produce a blank
-        // chart. This is the actual fix for the "jump and hide" report.
-        const visibleBarCount = function () {
-            const cs = (typeof chart.getCandleSpacing === 'function')
-                ? chart.getCandleSpacing() : chart.candleWidth;
-            if (cs <= 0 || cw <= 0) return chart.data.length;
-            const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
-            const i1 = Math.min(chart.data.length, i0 + Math.ceil(cw / cs));
-            return Math.max(0, i1 - i0);
-        };
-        if (visibleBarCount() === 0) {
-            try { chart.fitToView && chart.fitToView(); } catch (_) {}
+        // Safety net: if alignment left zero bars on screen, recover once boot settles.
+        if (!isViewportBootSettling(chart) && countVisibleBars(chart) === 0) {
+            recoverViewportIfEmpty(chart);
         }
 
-        // Force price autoScale ON so the recipient's price axis recomputes
-        // from its OWN newly-visible candles. NEVER set min/max from outside.
-        if (chart.priceScale) chart.priceScale.autoScale = true;
-        chart.autoScale = true;
+        // Re-fit price unless the user manually scaled this panel's axis.
+        refitPriceAutoScale(chart);
 
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
     }
@@ -231,9 +1183,22 @@
         const endT     = chart.data[endIdx]   && chart.data[endIdx].t;
         const barMs    = chart.inferBarDurationMs ? chart.inferBarDurationMs() : 60000;
         if (!Number.isFinite(startT) || !Number.isFinite(endT)) return null;
+        const pm = chart.margin || { l: 60, r: 60 };
+        const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
         return {
             startSec: toSeconds(startT),
             endSec:   toSeconds(endT) + Math.floor(barMs / 1000),
+            startIndex: startIdx,
+            endIndex: endIdx,
+            visibleBarCount: Math.max(1, endIdx - startIdx + 1),
+            rightEdgeBarIndex: (typeof chart.getVisibleEndIndex === 'function')
+                ? chart.getVisibleEndIndex()
+                : endIdx,
+            sourceTimeframe: chart.currentTimeframe || null,
+            offsetX: chart.offsetX,
+            candleWidth: chart.candleWidth,
+            zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+            plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
         };
     }
 
@@ -277,13 +1242,51 @@
             applyingClearRaf: 0,
             inboundSnap: null,
             inboundMode: null,
+            // After we apply an inbound `visibleRange`, chart.js still emits
+            // `chartScrolled` once `applying` has cleared (rAF after render).
+            // That outbound would fan to sibling iframes and they echo back
+            // with ranges derived from *their* shorter `chart.data` slices —
+            // feedback that jumps the panel the user was panning to an
+            // unrelated window (e.g. a few weeks / wrong year vs panel A).
+            suppressRangeScrollEchoUntil: 0,
+            suppressRangeScrollEchoLeft: 0,
+            /** Outbound dedupe — stops crosshair-clear postMessage storms. */
+            crosshairHidden: true,
         };
 
         global.__multichartBridgeState = state;
 
-        function beginApplying() {
+        function isLocalPanDragActive() {
+            return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
+        }
+
+        /** User-led wheel zoom on this panel — ignore peer echo that would crush cw. */
+        function isLocalWheelZoomActive() {
+            return !!(typeof chart._isWheelZoomBurst === 'function' && chart._isWheelZoomBurst());
+        }
+
+        function isLocalRangeLeaderActive() {
+            return isLocalPanDragActive() || isLocalWheelZoomActive();
+        }
+
+        /** Block inbound time-range sync while this panel is dragging any axis. */
+        function isLocalAxisDragActive() {
+            if (!chart.drag || !chart.drag.active) return false;
+            const t = chart.drag.type;
+            return t === 'pan' || t === 'timeAxis' || t === 'priceAxis' || t === 'separatePanelAxis';
+        }
+
+        function beginApplying(fast) {
             state.applying = true;
             if (state.applyingClearRaf) cancelAnimationFrame(state.applyingClearRaf);
+            if (fast) {
+                // Live pan follow: single rAF echo guard — keeps peer panels responsive.
+                state.applyingClearRaf = requestAnimationFrame(function () {
+                    state.applying = false;
+                    state.applyingClearRaf = 0;
+                });
+                return;
+            }
             // Double rAF: chart.js's render is rAF-deferred and the
             // chartScrolled echo lands one more frame later.
             state.applyingClearRaf = requestAnimationFrame(function () {
@@ -319,8 +1322,84 @@
         // that rate make the peer chart visibly lag. Coalesce so at most one
         // crosshair postMessage goes out per animation frame, with the LATEST
         // value. Same for visible-range pan.
-        const pending = { crosshair: null, crosshairClear: false, visibleRange: null };
+        const pending = { crosshair: null, crosshairClear: false, visibleRange: null, drawing: null };
         let rafScheduled = false;
+
+        function isLiveDrawingPayload(drawing) {
+            const id = drawing && drawing.id;
+            return typeof id === 'string' && id.indexOf('live_') === 0;
+        }
+
+        function postDrawingSync(action, drawing, drawingIndex) {
+            let drawingData = null;
+            try {
+                if (drawing && typeof drawing.toJSON === 'function') {
+                    drawingData = drawing.toJSON();
+                } else if (drawing != null) {
+                    drawingData = JSON.parse(JSON.stringify(drawing));
+                }
+                // toJSON() omits __syncId — copy it so live_ → dr_ promote still
+                // matches across panels / Objects Tree dedupe.
+                if (drawingData && drawing && drawing.__syncId != null && drawing.__syncId !== '') {
+                    drawingData.__syncId = drawing.__syncId;
+                }
+                if (drawingData && typeof chart._buildDrawingSyncAnchors === 'function') {
+                    drawingData = chart._buildDrawingSyncAnchors(drawingData);
+                }
+            } catch (e) {
+                warn('drawing serialize failed', action, e && e.message);
+                drawingData = null;
+            }
+            if (action !== 'clear' && !drawingData) return;
+            send({
+                type: 'drawing-' + action,
+                drawing: drawingData,
+                drawingIndex: (typeof drawingIndex === 'number') ? drawingIndex : null,
+            });
+        }
+        function buildCrosshairEnvelope(timestampMs) {
+            const payload = { type: 'crosshair', time: toSeconds(timestampMs) };
+            const sm = effectiveSyncMode();
+            if (sm && sm.visibleRange) {
+                const range = readVisibleTimeRange(chart);
+                if (range) {
+                    payload.startTime = range.startSec;
+                    payload.endTime = range.endSec;
+                    payload.startIndex = range.startIndex;
+                    payload.endIndex = range.endIndex;
+                    payload.visibleBarCount = range.visibleBarCount;
+                    payload.rightEdgeBarIndex = range.rightEdgeBarIndex;
+                    payload.sourceTimeframe = range.sourceTimeframe;
+                    payload.offsetX = range.offsetX;
+                    payload.candleWidth = range.candleWidth;
+                    payload.zoomLevelIndex = range.zoomLevelIndex;
+                    payload.plotWidthPx = range.plotWidthPx;
+                }
+                if (typeof chart.findLastDataIndexAtOrBeforeTime === 'function'
+                    && typeof chart.dataIndexToPixel === 'function') {
+                    let idx = Number.isFinite(chart._multichartCrosshairSourceDataIndex)
+                        ? chart._multichartCrosshairSourceDataIndex
+                        : -1;
+                    if (idx < 0) {
+                        idx = chart.findLastDataIndexAtOrBeforeTime(timestampMs);
+                    }
+                    if (idx >= 0) {
+                        payload.sourceDataIndex = idx;
+                        const x = chart.dataIndexToPixel(idx);
+                        const pm = chart.margin || { l: 60, r: 60 };
+                        const plotW = resolvePlotWidthPx(chart);
+                        if (plotW > 0 && Number.isFinite(x)) {
+                            payload.plotFraction = Math.max(0, Math.min(1, (x - pm.l) / plotW));
+                        }
+                    }
+                }
+            }
+            if (typeof chart._lastCrosshairTimeLabel === 'string' && chart._lastCrosshairTimeLabel) {
+                payload.labelText = chart._lastCrosshairTimeLabel;
+            }
+            return payload;
+        }
+
         function flushPending() {
             rafScheduled = false;
             if (pending.crosshairClear) {
@@ -328,11 +1407,48 @@
                 send({ type: 'crosshair-clear' });
             } else if (pending.crosshair !== null) {
                 const t = pending.crosshair; pending.crosshair = null;
-                send({ type: 'crosshair', time: toSeconds(t) });
+                send(buildCrosshairEnvelope(t));
             }
             if (pending.visibleRange) {
                 const r = pending.visibleRange; pending.visibleRange = null;
-                send({ type: 'visibleRange', startTime: r.startSec, endTime: r.endSec });
+                const smOut = effectiveSyncMode();
+                if (smOut && (smOut.visibleRange || smOut.timeSync)) {
+                    send({
+                        type: 'visibleRange',
+                        startTime: r.startSec,
+                        endTime: r.endSec,
+                        startIndex: r.startIndex,
+                        endIndex: r.endIndex,
+                        visibleBarCount: r.visibleBarCount,
+                        rightEdgeBarIndex: r.rightEdgeBarIndex,
+                        sourceTimeframe: r.sourceTimeframe,
+                        panSync: r.panSync,
+                        zoomSync: !!r.zoomSync,
+                        offsetX: r.offsetX,
+                        candleWidth: r.candleWidth,
+                        zoomLevelIndex: r.zoomLevelIndex,
+                        plotWidthPx: r.plotWidthPx,
+                    });
+                } else if (r.zoomOnly
+                    && isRangeSyncEnabled()
+                    && !(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true)
+                    && Number.isFinite(r.candleWidth) && r.candleWidth > 0) {
+                    // Only when Time / Date Range sync is ON (defense in depth —
+                    // chartScrolled should not enqueue zoomOnly when sync is OFF).
+                    send({
+                        type: 'visibleRange',
+                        zoomOnly: true,
+                        candleWidth: r.candleWidth,
+                        zoomLevelIndex: r.zoomLevelIndex,
+                        sourceTimeframe: r.sourceTimeframe,
+                        fileId: chart.currentFileId != null ? String(chart.currentFileId) : null,
+                    });
+                }
+            }
+            if (pending.drawing) {
+                const d = pending.drawing;
+                pending.drawing = null;
+                postDrawingSync(d.action, d.drawing, d.drawingIndex);
             }
         }
         function scheduleFlush() {
@@ -342,32 +1458,246 @@
         }
 
         // 1) Crosshair — monkey-patch broadcastCrosshairSync.
+        //
+        // We chain the original implementation (if any) so that within-chart
+        // sub-panel sync (e.g. an indicator panel below the price panel)
+        // continues to work after the bridge is installed. Without this, the
+        // host parent's #chartWrapper (where indicators may be present) would
+        // lose its internal crosshair sync the moment we go multi-panel.
         chart._crosshairPanelSyncAllowed = function () {
             return !!chart.syncCrosshair;
         };
+        const __origBroadcastCrosshairSync = (typeof chart.broadcastCrosshairSync === 'function')
+            ? chart.broadcastCrosshairSync.bind(chart)
+            : null;
         chart.broadcastCrosshairSync = function (timestamp, price) {
-            if (state.applying) return;
-            if (timestamp === null || timestamp === undefined) {
-                pending.crosshair = null;
-                pending.crosshairClear = true;
-            } else {
-                pending.crosshair = timestamp;
-                pending.crosshairClear = false;
+            // Bridge fan-out (cross-chart) — gated by the applying window.
+            // During pan drag, visible-range sync carries the viewport — skip
+            // crosshair postMessage storms (major 4-up lag source).
+            if (!state.applying && !isLocalPanDragActive()) {
+                if (timestamp === null || timestamp === undefined) {
+                    // Pan/zoom: pointer often leaves the plot box every frame — do not
+                    // fan crosshair-clear to every peer on each mousemove.
+                    if (chart.drag && chart.drag.active) {
+                        // skip outbound clear
+                    } else if (state.crosshairHidden && !pending.crosshair) {
+                        // Already cleared on peers — suppress infinite clear loop.
+                    } else {
+                        pending.crosshair = null;
+                        pending.crosshairClear = true;
+                        state.crosshairHidden = true;
+                        scheduleFlush();
+                    }
+                } else {
+                    pending.crosshair = timestamp;
+                    pending.crosshairClear = false;
+                    state.crosshairHidden = false;
+                    scheduleFlush();
+                }
+            } else if (timestamp !== null && timestamp !== undefined) {
+                state.crosshairHidden = false;
             }
-            scheduleFlush();
+            // Preserve original within-chart sub-panel sync if it existed.
+            if (__origBroadcastCrosshairSync) {
+                try { __origBroadcastCrosshairSync(timestamp, price); } catch (_) {}
+            }
         };
 
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
-            if (state.applying) return;
+            // Host tile A: do not broadcast range while multichart boot is frozen —
+            // iframe sync echoes were nudging the host viewport left/right.
+            if (chart._multichartHostViewportFrozen) return;
+            if (chart._multichartSuppressRangeEcho) return;
+            // While this tile is the pan/zoom leader, keep broadcasting even if a peer
+            // echo briefly set `applying` or suppressRangeScrollEcho*.
+            if (state.applying && !isLocalRangeLeaderActive()) return;
+            var nowEcho = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (!isLocalRangeLeaderActive()
+                && nowEcho < state.suppressRangeScrollEchoUntil
+                && state.suppressRangeScrollEchoLeft > 0) {
+                state.suppressRangeScrollEchoLeft--;
+                return;
+            }
+            if (nowEcho >= state.suppressRangeScrollEchoUntil) {
+                state.suppressRangeScrollEchoLeft = 0;
+            }
             const d = ev.detail || {};
             if (d.chart !== chart) return;
+            // Time + Date Range OFF → do not broadcast viewport/zoom to peers.
+            // (Previously zoomOnly candleWidth still fanned out and moved panel B.)
+            if (!isRangeSyncEnabled()) return;
+
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
-            pending.visibleRange = { startSec: toSeconds(startT), endSec: toSeconds(endT) };
+            const plotWidthPx = resolvePlotWidthPx(chart);
+            const si = Number.isFinite(d.startIndex) ? d.startIndex
+                : (typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0);
+            const ei = Number.isFinite(d.endIndex) ? d.endIndex
+                : (typeof chart.getVisibleEndIndex === 'function' ? chart.getVisibleEndIndex() : chart.data.length - 1);
+            const rangePayload = {
+                startSec: toSeconds(startT),
+                endSec: toSeconds(endT),
+                startIndex: si,
+                endIndex: ei,
+                visibleBarCount: Math.max(1, ei - si + 1),
+                rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
+                sourceTimeframe: chart.currentTimeframe || null,
+                panSync: !!(d.panSync || isLocalPanDragActive()),
+                zoomSync: !!(d.zoomSync || (typeof chart._isWheelZoomBurst === 'function'
+                    && chart._isWheelZoomBurst())),
+                offsetX: d.offsetX,
+                candleWidth: d.candleWidth,
+                zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+                plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
+                zoomOnly: false,
+            };
+            // Coalesce pan + release into one outbound envelope per frame (TradingView-style).
+            pending.visibleRange = rangePayload;
             scheduleFlush();
+            // After iframe-led pan release, re-sync data slice from host tile A.
+            if (!d.panSync && chart._multichartVisibleRangeSyncOn && isEmbedPanelChart()) {
+                requestAnimationFrame(function () {
+                    if (isLocalPanDragActive()) return;
+                    if (mirrorEmbedFromHostForDateRange() && typeof chart.render === 'function') {
+                        chart.render();
+                    }
+                });
+            }
         });
+
+        // 2b) Force-dispatch chartScrolled regardless of legacy panelManager.
+        //
+        // chart.js's native `dispatchScrollSync` (chart.js:8541) early-returns
+        // when `!window.panelManager || currentLayout === '1'` AND when
+        // pm.syncSettings.time/dateRange are both off. In the multichart
+        // system NEITHER condition is ever true:
+        //   • `window.panelManager` doesn't exist (PanelManager class isn't
+        //     wired in the V9 build).
+        //   • Even if it existed, our React layout state never propagates
+        //     `currentLayout` back to it — pm sees a permanent '1'.
+        //
+        // The result is no `chartScrolled` event ever fires from the host
+        // chart, so the listener above never sees a single visible-range
+        // change, so visible-range / Date Range / Time sync silently no-op.
+        //
+        // We monkey-patch `chart.dispatchScrollSync` to ALWAYS dispatch the
+        // event with the same envelope chart.js builds itself (sourced from
+        // `getVisibleStartIndex` / `getVisibleEndIndex` / `inferBarDurationMs`),
+        // then chain through to the original (which is a no-op in our
+        // environment but kept defensive for any future wiring that does
+        // restore panelManager).
+        const __origDispatchScrollSync = (typeof chart.dispatchScrollSync === 'function')
+            ? chart.dispatchScrollSync.bind(chart)
+            : null;
+        chart.dispatchScrollSync = function (force) {
+            try {
+                if (chart.data && chart.data.length > 0 && !chart._multichartSuppressRangeEcho) {
+                    const startIndex = (typeof chart.getVisibleStartIndex === 'function')
+                        ? chart.getVisibleStartIndex()
+                        : 0;
+                    const endIndex = (typeof chart.getVisibleEndIndex === 'function')
+                        ? chart.getVisibleEndIndex()
+                        : Math.max(0, chart.data.length - 1);
+                    const startTimestamp = chart.data[startIndex]
+                        ? Number(chart.data[startIndex].t)
+                        : 0;
+                    const barMs = (typeof chart.inferBarDurationMs === 'function')
+                        ? chart.inferBarDurationMs()
+                        : 60000;
+                    const endTimestamp = chart.data[endIndex]
+                        ? Number(chart.data[endIndex].t) + barMs
+                        : 0;
+                    if (Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+                        && endTimestamp > startTimestamp) {
+                        const m = chart.margin || { l: 60, r: 60 };
+                        const spacing = (typeof chart.getCandleSpacing === 'function')
+                            ? chart.getCandleSpacing()
+                            : chart.candleWidth;
+                        const rightEdgePx = (chart.w || 0) - m.r;
+                        const idxAtRight = spacing > 0
+                            ? (rightEdgePx - m.l - chart.offsetX) / spacing
+                            : endIndex;
+                        const rightEdgeBarIndex = Math.max(0, Math.min(
+                            chart.data.length - 1,
+                            Math.floor(idxAtRight)
+                        ));
+                        global.dispatchEvent(new CustomEvent('chartScrolled', {
+                            detail: {
+                                chart: chart,
+                                startIndex: startIndex,
+                                endIndex: endIndex,
+                                visibleBarCount: Math.max(1, endIndex - startIndex + 1),
+                                rightEdgeBarIndex: rightEdgeBarIndex,
+                                sourceTimeframe: chart.currentTimeframe || null,
+                                panSync: !!(chart.drag && chart.drag.active && chart.drag.type === 'pan'),
+                                zoomSync: !!(typeof chart._isWheelZoomBurst === 'function'
+                                    && chart._isWheelZoomBurst()),
+                                startTimestamp: startTimestamp,
+                                endTimestamp: endTimestamp,
+                                timeSyncEndTimestamp: endTimestamp,
+                                rangeEndExclusive: endTimestamp,
+                                offsetX: chart.offsetX,
+                                candleWidth: chart.candleWidth,
+                                zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
+                                plotWidthPx: (() => {
+                                    const pm = chart.margin || { l: 60, r: 60 };
+                                    const w = (chart.w || 0) - pm.l - pm.r;
+                                    return w > 0 ? w : undefined;
+                                })(),
+                                _multichartForced: true,
+                            },
+                        }));
+                    }
+                }
+            } catch (e) {
+                warn('forced dispatchScrollSync threw', e && e.message);
+            }
+            if (__origDispatchScrollSync) {
+                try { __origDispatchScrollSync(force); } catch (_) { /* native no-op in multichart env */ }
+            }
+        };
+
+        function sendImmediatePanSyncRange() {
+            if (!isRangeSyncEnabled()) return;
+            const r = readVisibleTimeRange(chart);
+            if (!r) return;
+            const smOut = effectiveSyncMode();
+            if (!smOut || (!smOut.visibleRange && !smOut.timeSync)) return;
+            send({
+                type: 'visibleRange',
+                startTime: r.startSec,
+                endTime: r.endSec,
+                startIndex: r.startIndex,
+                endIndex: r.endIndex,
+                visibleBarCount: r.visibleBarCount,
+                rightEdgeBarIndex: r.rightEdgeBarIndex,
+                sourceTimeframe: r.sourceTimeframe,
+                panSync: true,
+                offsetX: r.offsetX,
+                candleWidth: r.candleWidth,
+                zoomLevelIndex: r.zoomLevelIndex,
+                plotWidthPx: r.plotWidthPx,
+            });
+        }
+
+        const __origSnapshotPanDrawingsLayer = (typeof chart._snapshotPanDrawingsLayer === 'function')
+            ? chart._snapshotPanDrawingsLayer.bind(chart)
+            : null;
+        if (__origSnapshotPanDrawingsLayer) {
+            chart._snapshotPanDrawingsLayer = function () {
+                const panStart = !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
+                __origSnapshotPanDrawingsLayer();
+                if (!panStart || !isRangeSyncEnabled()) return;
+                if (typeof chart._armPanSyncFollowBurst === 'function') {
+                    try { chart._armPanSyncFollowBurst(); } catch (_) {}
+                }
+                sendImmediatePanSyncRange();
+            };
+        }
 
         // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
         //    v10.3: also include firstBarMs/lastBarMs so the shell can detect
@@ -383,6 +1713,10 @@
                 if (Number.isFinite(t0)) firstBarMs = t0 > 1e12 ? t0 : t0 * 1000;
                 if (Number.isFinite(tN)) lastBarMs  = tN > 1e12 ? tN : tN * 1000;
             }
+            const hasBars = chart.data && chart.data.length > 0;
+            const engineTf = hasBars && chart.currentTimeframe
+                ? chart.currentTimeframe
+                : (d.timeframe || chart.currentTimeframe || null);
             try {
                 global.parent.postMessage({
                     type: 'chart-state',
@@ -394,7 +1728,7 @@
                         // on inbound; fileId is not in the forbidden list.
                         fileId: d.fileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
-                        timeframe: d.timeframe || chart.currentTimeframe || null,
+                        timeframe: engineTf,
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,
@@ -408,22 +1742,185 @@
             const d = ev.detail || {};
             if (d.chart !== chart) return;
             try {
+                // Include symbol + fileId so the parent's MultichartManager
+                // cache stays aligned for order mirroring (host → iframe).
+                // Partial updates used to send { timeframe } only, leaving
+                // state.symbol stuck on the initial "—" placeholder — then
+                // findPanelsForSymbol never matched iframe peers after a host
+                // placeOrder even though every panel showed the same pair.
+                var st = { timeframe: d.timeframe };
+                if (chart.currentSymbol != null && String(chart.currentSymbol) !== '') {
+                    st.symbol = chart.currentSymbol;
+                }
+                if (chart.currentFileId != null && String(chart.currentFileId) !== '') {
+                    st.fileId = String(chart.currentFileId);
+                }
                 global.parent.postMessage({
                     type: 'chart-state',
                     source: chartId,
-                    state: { timeframe: d.timeframe },
+                    state: st,
                 }, parentOrigin);
             } catch (_) {}
         });
 
-        // ─── inbound: parent -> chart ──────────────────────────────────────
+        // 5) Drawings — monkey-patch broadcastDrawingChange.
+        //
+        // chart.js's native broadcastDrawingChange (chart.js:21008) walks
+        // window.panelManager.panels and calls receiveDrawingChange on
+        // each peer. window.panelManager doesn't exist in the multichart
+        // architecture (we replaced it with iframes + this bridge), so
+        // the native impl returns early on line 21010 — no drawing ever
+        // syncs. We replace it with a postMessage-based fan-out.
+        //
+        // Outbound: every add/update/remove/clear from chart.js's drawing
+        // tools manager flows through here, gets serialized to JSON, and
+        // posted to parent. The manager fans it out to peers; each peer's
+        // bridge calls chart.receiveDrawingChange (which does NOT check
+        // window.panelManager — see chart.js:21047) so the drawing
+        // appears on every other panel.
+        //
+        // Loop guard: we set chart._receivingDrawingSync = true while
+        // applying inbound drawings (same flag chart.js's native impl
+        // uses), and skip outbound while it's true. This prevents the
+        // received drawing from being re-broadcast back to its source.
+        //
+        // We chain the original impl for in-process (legacy panel-manager
+        // sub-panels). Defensive even though it's a no-op without
+        // panelManager — keeps behavior matching what chart.js expects
+        // if the legacy system ever returns.
+        const __origBroadcastDrawingChange = (typeof chart.broadcastDrawingChange === 'function')
+            ? chart.broadcastDrawingChange.bind(chart)
+            : null;
+        chart.broadcastDrawingChange = function (action, drawing, drawingIndex) {
+            // Skip outbound while we're applying an inbound drawing
+            // change — the drawing manager will call this from inside
+            // receiveDrawingChange, and we don't want a loop.
+            if (chart._receivingDrawingSync) {
+                if (__origBroadcastDrawingChange) {
+                    try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+                }
+                return;
+            }
+            if (action === 'remove' || action === 'clear') {
+                pending.drawing = null;
+                postDrawingSync(action, drawing, drawingIndex);
+                if (__origBroadcastDrawingChange) {
+                    try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+                }
+                return;
+            }
+            const isLive = isLiveDrawingPayload(drawing);
+            if (isLive || action === 'update') {
+                pending.drawing = { action, drawing, drawingIndex };
+                scheduleFlush();
+            } else {
+                postDrawingSync(action, drawing, drawingIndex);
+            }
+            if (__origBroadcastDrawingChange) {
+                try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
+            }
+        };
 
-        global.addEventListener('message', function (ev) {
-            // (parent origin check could be added here in prod)
-            const msg = ev.data;
+        // ─── inbound: parent -> chart ──────────────────────────────────────
+        //
+        // The same handler is used in two ways:
+        //   (a) iframe panels — receives MessageEvent via window.postMessage
+        //       from the parent shell.
+        //   (b) host panel (parent's own window.chart) — invoked DIRECTLY by
+        //       the manager's `_send` via the exposed `deliver` method.
+        //       Direct invocation avoids the manager hearing its own outbound
+        //       message back through window.postMessage and re-fanning it to
+        //       all peers (which would loop indefinitely because the manager
+        //       has no outbound causationId guard of its own; only the bridge
+        //       does).
+        // The set of message types this bridge actually CARES about.
+        // Everything else (chart-state metadata reports, panel-cmd, panel-
+        // focus, cmd-result, panel-cmd-ready, host-log, bridge-ready, …)
+        // is meant for the manager / parent React tree, not for this
+        // bridge to apply to the chart. We must NOT run those through
+        // filterForbiddenFields because chart-state legitimately carries
+        // metadata fields named like sync fields ("timeframe" reports the
+        // panel's CURRENT tf to the parent UI, it doesn't dictate it to
+        // peers). Filtering them spams the console with `inbound forbidden
+        // fields dropped` errors many times per second on every
+        // visible-range update, which is a real UX problem even though
+        // the messages themselves are silently ignored by the type switch
+        // below.
+        const SYNC_MSG_TYPES = {
+            'crosshair':       true,
+            'crosshair-clear': true,
+            'visibleRange':    true,
+            'symbol':          true,
+            'bridge-config':   true,
+            'guard-self-test': true,
+            // Drawing sync types — handled by applyDrawingChange below.
+            // These do NOT carry FORBIDDEN_SYNC_FIELDS payloads (drawings
+            // are pure user content), so the filter is a defensive no-op
+            // for them.
+            'drawing-add':     true,
+            'drawing-update':  true,
+            'drawing-remove':  true,
+            'drawing-clear':   true,
+        };
+
+        var pendingInboundPanRange = null;
+        var inboundPanRangeRaf = 0;
+        function scheduleInboundPanRangeApply(m) {
+            pendingInboundPanRange = m;
+            if (inboundPanRangeRaf) return;
+            inboundPanRangeRaf = requestAnimationFrame(function () {
+                inboundPanRangeRaf = 0;
+                const msg = pendingInboundPanRange;
+                pendingInboundPanRange = null;
+                if (msg) applyVisibleRange(msg);
+            });
+        }
+
+        function applyInbound(msg) {
             if (!msg || typeof msg !== 'object') return;
-            // ignore messages we ourselves originated
+            // Ignore messages we ourselves originated. For iframe bridges
+            // this matches strictly. For the host bridge this is also the
+            // mechanism that prevents the manager-to-host directDeliver of
+            // host-originated messages from being applied (manager skips
+            // source==chartId in _fanOut already, but defense-in-depth here
+            // protects against any future fan-out that forgets to filter).
             if (msg.source && msg.source === chartId) return;
+
+            // Skip filter+apply entirely for non-sync types. The forbidden-
+            // fields filter is a SYNC-channel guard (no chart should
+            // dictate another's price/timeframe via sync); applying it to
+            // metadata reports is a category error.
+            if (!SYNC_MSG_TYPES[msg.type]) return;
+
+            // Sync-mode gate: if the parent set a syncModeGate reference,
+            // respect its toggles. This prevents the raw message listener
+            // (which bypasses the manager's _fanOut gate) from applying
+            // sync messages that the user has explicitly turned off.
+            // Sync-mode gate: only the host bridge wires syncModeGate. Iframe
+            // bridges must NOT gate inbound — the manager already filtered at
+            // fan-out; gating here with a default-false localSyncMode broke
+            // Date Range pan/zoom on iframe panels.
+            if (syncModeGate) {
+                var mt = msg.type;
+                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
+                if (mt === 'visibleRange' && !syncModeGate.visibleRange && !syncModeGate.timeSync) {
+                    if (!msg.forceInitialSync
+                        && !(msg.causationId && String(msg.causationId).indexOf('host-init-') === 0)) {
+                        return;
+                    }
+                }
+                if (mt === 'symbol' && !syncModeGate.symbol) return;
+                if ((mt === 'drawing-add' || mt === 'drawing-update'
+                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;
+            }
+
+            // bridge-config carries syncMode toggles (including drawings), not chart
+            // drawing payloads — must not pass through FORBIDDEN_SYNC_FIELDS filter
+            // (which strips nested `drawings` and spams console errors).
+            if (msg.type === 'bridge-config') {
+                applyBridgeConfig(msg);
+                return;
+            }
 
             const cleaned = G.filterForbiddenFields(msg);
             if (cleaned.dropped.length) {
@@ -431,9 +1928,15 @@
             }
             const m = cleaned.clean;
 
-            // Loop guard — only forward types if not a recent self-applied causationId
+            // Loop guard — drop any message whose causationId we've recently
+            // applied (i.e. it's the echo of our OWN outbound).
             if (m.causationId && state.applied.has(m.causationId)) {
                 log('drop loop echo', m.type, m.causationId);
+                return;
+            }
+
+            if (m.type === 'visibleRange' && m.panSync) {
+                scheduleInboundPanRangeApply(m);
                 return;
             }
 
@@ -450,46 +1953,568 @@
                     applyBridgeConfig(m);
                 } else if (m.type === 'guard-self-test') {
                     runSelfTest();
+                } else if (m.type === 'drawing-add'
+                        || m.type === 'drawing-update'
+                        || m.type === 'drawing-remove'
+                        || m.type === 'drawing-clear') {
+                    applyDrawingChange(m);
                 }
                 // unknown types are silently ignored
             } catch (e) {
                 warn('inbound apply error', m.type, e);
             }
-        });
+        }
+
+        // ── Decorate incoming drawing points with local {x, y} indices ─
+        //
+        // Every drawing payload that crosses the bridge is the OUTPUT of
+        // chart.js BaseDrawing.toJSON (drawing-tools-base.js:757). When
+        // a drawing has timestampPoints (which is ALWAYS true after the
+        // first toJSON, since toJSON caches them back to the instance),
+        // toJSON serializes points as:
+        //   [{ timestamp, price }, …], coordinateSystem='timestamp'
+        // dropping the original {x, y} index fields entirely.
+        //
+        // chart.js's receiveDrawingChange (chart.js:21047) handles the
+        // NEW-add path by calling CoordinateUtils.pointsFromTimestamps
+        // (line 21123) to materialize {x, y} indices from those
+        // timestamps using the LOCAL chart.data — perfect.
+        //
+        // BUT the LIVE-update path (line 21068-21075, isLiveId branch)
+        // does NOT call pointsFromTimestamps. Instead it does a blind
+        //   existingById.points = drawingData.points
+        // assuming drawingData.points already has {x, y}. With our
+        // postMessage transport, drawingData.points is in {timestamp,
+        // price} form, so the resulting drawing instance has points
+        // without `x` or `y` — Trendline.render then reads `p1.x`
+        // (undefined) → dataIndexToPixel(undefined) → NaN, hits the
+        // SVG attribute validator, and the entire drawing renders
+        // invisible.
+        //
+        // We patch this on the receiver side by decorating each
+        // incoming point with a computed `x` (via pointsFromTimestamps
+        // against the iframe's local data + timeframe) and `y` (just
+        // the price). The live-update path then writes valid {x, y}
+        // and the renderer paints correctly. Idempotent: if a point
+        // already has finite x/y we leave them alone.
+        //
+        // Why receiver-side and not source-side: at broadcast time the
+        // bridge sees the toJSON OUTPUT, not the original drawing
+        // instance, so the {x, y} indices are already gone. Receiver-
+        // side fixup also has the right reference frame (we want
+        // indices into the LOCAL panel's data, not the source's).
+        function decorateDrawingPointsWithLocalIndices(drawingData) {
+            if (!drawingData || !Array.isArray(drawingData.points) || drawingData.points.length === 0) return;
+            const data = chart && chart.data;
+            if (!data || data.length === 0) return;
+            // CoordinateUtils is a top-level `class` in drawing-tools-base.js
+            // (loaded as a regular <script>). Top-level class bindings live
+            // on the script-global scope but are NOT mirrored on `window`,
+            // so reach them via the bare name. Fallback to global.* in case
+            // a future module bundle exposes it differently.
+            let CU = null;
+            try { CU = (typeof CoordinateUtils !== 'undefined') ? CoordinateUtils : null; }
+            catch (_) { CU = null; }
+            if (!CU && typeof global.CoordinateUtils !== 'undefined') CU = global.CoordinateUtils;
+            if (!CU || typeof CU.pointsFromTimestamps !== 'function') return;
+            // Only convert points that lack a finite x. Points may already
+            // have been decorated (e.g. retransmitted update) and
+            // re-converting would just recompute the same index.
+            const needsConvert = drawingData.points.some(function (p) {
+                return p && (typeof p.x !== 'number' || !Number.isFinite(p.x))
+                    && (p.timestamp != null || p.t != null);
+            });
+            if (needsConvert) {
+                const tf = chart.currentTimeframe || null;
+                // Normalize timestamp/t shape — pointsFromTimestamps reads p.timestamp.
+                const tsForConversion = drawingData.points.map(function (p) {
+                    return {
+                        timestamp: (p && (p.timestamp != null ? p.timestamp : p.t)),
+                        price:     (p && (p.price != null ? p.price : p.y)),
+                    };
+                });
+                const converted = CU.pointsFromTimestamps(tsForConversion, data, tf);
+                for (let i = 0; i < drawingData.points.length; i++) {
+                    const p = drawingData.points[i];
+                    const c = converted[i];
+                    if (!p || !c) continue;
+                    if (typeof p.x !== 'number' || !Number.isFinite(p.x)) {
+                        p.x = c.x;
+                    }
+                    if (typeof p.y !== 'number' || !Number.isFinite(p.y)) {
+                        // Prefer price when present (toJSON output stores it
+                        // there); fall back to converted.y which is just
+                        // p.price || p.y.
+                        p.y = (p.price != null ? p.price : c.y);
+                    }
+                }
+            } else {
+                // Even when x is fine, points may lack `y` (e.g. only
+                // `price`). Renderers read p.y, so backfill.
+                for (const p of drawingData.points) {
+                    if (p && (typeof p.y !== 'number' || !Number.isFinite(p.y)) && p.price != null) {
+                        p.y = p.price;
+                    }
+                }
+            }
+        }
+
+        function applyDrawingChange(m) {
+            if (typeof chart.receiveDrawingChange !== 'function') {
+                warn('chart.receiveDrawingChange missing — cannot apply drawing sync');
+                return;
+            }
+            const action = m.type.slice('drawing-'.length); // 'add' | 'update' | 'remove' | 'clear'
+            state.applied.add(m.causationId);
+            try { decorateDrawingPointsWithLocalIndices(m.drawing); }
+            catch (e) { warn('decorateDrawingPoints threw', e && e.message); }
+
+            const isLive = isLiveDrawingPayload(m.drawing);
+            if (opts.verbose) {
+                const incoming = m.drawing || {};
+                log('drawing-' + action,
+                    'id=' + (incoming.id || '?'),
+                    'type=' + (incoming.type || '?'),
+                    'live=' + isLive);
+            }
+
+            const wasReceiving = chart._receivingDrawingSync;
+            chart._receivingDrawingSync = true;
+            try {
+                chart.receiveDrawingChange(action, m.drawing, m.drawingIndex);
+            } catch (e) {
+                warn('receiveDrawingChange threw', action, e && e.message);
+            } finally {
+                chart._receivingDrawingSync = wasReceiving;
+            }
+
+            // Live preview: receiveDrawingChange already called renderDrawing —
+            // skip full-chart render + redrawAll (major multichart lag source).
+            if (isLive) return;
+
+            const dm = chart.drawingManager;
+            if (action === 'add' && dm && typeof dm.redrawAll === 'function') {
+                requestAnimationFrame(function () {
+                    try { dm.redrawAll(); } catch (e) {
+                        warn('redrawAll after drawing-add failed', e && e.message);
+                    }
+                });
+            }
+        }
+
+        // Host bridge: live reference to manager.syncMode (same object).
+        // Iframe bridges: local copy updated via bridge-config.syncMode.
+        var syncModeGate = null;
+        var localSyncMode = {
+            crosshair: true,
+            visibleRange: false,
+            timeSync: false,
+            symbol: false,
+            drawings: true,
+        };
+
+        function effectiveSyncMode() {
+            return syncModeGate || localSyncMode;
+        }
+
+        function isRangeSyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && (sm.visibleRange || sm.timeSync));
+        }
+
+        function isDateRangeSyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && sm.visibleRange);
+        }
+
+        function isTimeOnlySyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && sm.timeSync && !sm.visibleRange);
+        }
+
+        function refreshChartSyncCrosshairFlag() {
+            const sm = syncModeGate || localSyncMode;
+            const nextOn = !!(sm.visibleRange || sm.timeSync);
+            const wasOn = !!chart._multichartVisibleRangeSyncWasOn;
+            chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
+            chart._multichartVisibleRangeSyncOn = nextOn;
+            if (wasOn && !nextOn
+                && typeof chart._multichartDetachViewportFromHost === 'function') {
+                try { chart._multichartDetachViewportFromHost(); } catch (_) {}
+            }
+            chart._multichartVisibleRangeSyncWasOn = nextOn;
+            // Snap iframe data + scroll to host the moment date-range sync turns on.
+            if (nextOn && !wasOn && isEmbedPanelChart()) {
+                if (mirrorEmbedFromHostForDateRange()) {
+                    if (typeof chart.render === 'function') chart.render();
+                }
+            }
+        }
+
+        refreshChartSyncCrosshairFlag();
+
+        function isEmbedPanelChart() {
+            return typeof chart._isMultichartEmbedPanel === 'function'
+                && chart._isMultichartEmbedPanel();
+        }
+
+        function mirrorEmbedFromHostForDateRange() {
+            if (!chart._multichartVisibleRangeSyncOn || !isEmbedPanelChart()) return false;
+            if (typeof chart._multichartMirrorViewportFromHost !== 'function') return false;
+            try { return !!chart._multichartMirrorViewportFromHost(); } catch (_) { return false; }
+        }
+
+        /** Tile A (host) is the data/viewport authority; peer iframe pans must not re-mirror from A. */
+        function isHostLedRangeMessage(m) {
+            if (!m) return false;
+            if (m.forceInitialSync) return true;
+            var src = m.source != null ? String(m.source).trim().toUpperCase() : '';
+            return src === 'A';
+        }
+
+        if (!opts.skipMessageListener) {
+            global.addEventListener('message', function (ev) {
+                applyInbound(ev.data);
+            });
+        }
 
         function applyCrosshair(m) {
-            const before = G.snapshotPriceState(chart);
-            state.applied.add(m.causationId);
-            beginApplying();
-            // chart.js receiveCrosshairSync expects MILLISECONDS
-            chart.receiveCrosshairSync(toMillis(m.time), null, null);
-            const after = G.snapshotPriceState(chart);
-            const violations = G.diffPriceState(before, after, 'crosshair');
-            if (violations.length) {
-                console.error('[bridge:' + chartId + '] CROSSHAIR PRICE-AXIS LEAK:', violations);
-                reportAssertion('crosshair', violations);
-            } else {
-                reportAssertion('crosshair', null, before, after);
+            if (isLocalPanDragActive()
+                || (typeof chart._isPanSyncFollowBurst === 'function' && chart._isPanSyncFollowBurst())) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
             }
+            state.applied.add(m.causationId);
+            beginApplying(true);
+            // Same-pair iframe: mirror host before crosshair unless this tile is mid-pan.
+            var mirrored = false;
+            if (chart._multichartVisibleRangeSyncOn
+                && !isLocalPanDragActive()
+                && !chart._multichartViewportMirroredWithHost
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try { mirrored = !!chart._multichartMirrorViewportFromHost(); } catch (_) {}
+            }
+            if (mirrored && typeof chart.render === 'function') {
+                chart.render();
+            }
+            const usePlotFraction = Number.isFinite(m.plotFraction);
+            chart.receiveCrosshairSync(toMillis(m.time), null, null, {
+                usePlotFraction: usePlotFraction,
+                plotFraction: m.plotFraction,
+                sourceDataIndex: Number.isFinite(m.sourceDataIndex) ? m.sourceDataIndex : undefined,
+                labelText: (typeof m.labelText === 'string' && m.labelText) ? m.labelText : undefined,
+            });
+            state.crosshairHidden = false;
         }
 
         function applyCrosshairClear(m) {
             state.applied.add(m.causationId);
-            beginApplying();
+            state.crosshairHidden = true;
+            beginApplying(true);
             chart.receiveCrosshairSync(null, null, null);
         }
 
         function applyVisibleRange(m) {
+            window.__talariaBl2bMark && window.__talariaBl2bMark(chart, 'sync', 'sync-bridge.js:applyVisibleRange');
+            // When this iframe is mid-drag, it is the pan leader — ignore host/peer
+            // echo ranges that would mirror back from A and freeze B/C/D in place.
+            // Also ignore while price/time axis drag is active so manual Y scale
+            // is not reset mid-gesture by a peer's time sync.
+            if (isLocalAxisDragActive()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
+            // Zoom leader: ignore peer echo. Follower wall-clock lite was smashing
+            // candleWidth on the leader and stacking time-axis labels on both panes.
+            if (isLocalWheelZoomActive()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
+            const panSync = !!m.panSync;
+            const zoomSync = !!m.zoomSync;
+            // Boot-storm guard: opening a multichart layout fires forceInitialSync
+            // for the SAME panel several times within a few ms (per-panel ready +
+            // syncAllIframesToHost burst + chart-state updates). Each one mirrors
+            // host data and re-renders the panel. Once we've successfully mirrored a
+            // given host range, re-applying that identical range is a pure no-op that
+            // only burns main-thread time — skip it so a 2x2 split doesn't freeze the
+            // tab. A genuinely different host range still applies, and if the first
+            // mirror failed (parent data not ready yet) the mirrored flag stays false
+            // so race-retries still go through.
+            if (!panSync && m.forceInitialSync && isEmbedPanelChart()) {
+                const _fiSig = String(m.startTime) + '|' + String(m.endTime) + '|'
+                    + (Number.isFinite(m.offsetX) ? m.offsetX.toFixed(1) : 'x') + '|'
+                    + (Number.isFinite(m.candleWidth) ? m.candleWidth.toFixed(2) : 'x');
+                const _fiNow = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now() : Date.now();
+                if (chart._multichartViewportMirroredWithHost
+                    && state._lastForceInitSig === _fiSig
+                    && Number.isFinite(state._lastForceInitAt)
+                    && (_fiNow - state._lastForceInitAt) < 3500) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
+                // Anti-drift hold: once the panel is positioned with bars on screen
+                // and inside its boot settle window, STOP re-mirroring on every
+                // forceInitialSync. During multichart boot the host is still
+                // re-anchoring / resizing its own viewport, so tracking it makes the
+                // panel visibly drift/shake until the load completes. Holding the
+                // settled position makes the panel load fixed in place like the main
+                // chart. The settle window is short (~1.2s), after which normal sync
+                // resumes, and recovery passes still fix a genuinely empty panel.
+                const _vis = typeof chart._countVisiblePlotBars === 'function'
+                    ? chart._countVisiblePlotBars() : 0;
+                const _settleUntil = chart._multichartViewportSettleUntil;
+                const _withinSettle = Number.isFinite(_settleUntil) && _fiNow < _settleUntil;
+                if (chart._multichartBootViewportPositioned && _withinSettle) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
+                if (chart._multichartViewportMirroredWithHost && _vis > 1 && _withinSettle) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
+                state._pendingForceInitSig = _fiSig;
+                state._pendingForceInitAt = _fiNow;
+            }
+            if (!panSync && typeof chart._releasePanSyncFollowBurst === 'function') {
+                try { chart._releasePanSyncFollowBurst(); } catch (_) {}
+            }
+            // zoomOnly: adopt candleWidth/zoom index only when range sync is ON.
+            // With Time/Date Range OFF, ignore so peers stay independent.
+            if (m && m.zoomOnly) {
+                if (m.causationId) state.applied.add(m.causationId);
+                if (isRangeSyncEnabled()
+                    && !(global && global.__TALARIA_MC_DISABLE_SAME_PAIR_CANDLE_WIDTH_SYNC === true)
+                    && sameTimeframeMessage(chart, m)
+                    && (!m.fileId || String(chart.currentFileId || '') === String(m.fileId))
+                    && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
+                    const prevCw = Number(chart.candleWidth);
+                    chart.candleWidth = Number(m.candleWidth);
+                    if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                        chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+                    }
+                    if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+                    if (Math.abs(prevCw - chart.candleWidth) > 1e-6) {
+                        if (typeof chart.constrainOffset === 'function') {
+                            try { chart.constrainOffset(); } catch (_) {}
+                        }
+                        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                        else if (typeof chart.render === 'function') chart.render();
+                    }
+                }
+                return;
+            }
+
+            // When visible-range / date-range sync is ON, this panel MUST follow
+            // the host (panel A) — never refuse the incoming range. Self-echoes are
+            // already dropped by the causationId loop guard below.
+            //
+            // When sync is OFF, a tile the user directly panned during replay owns
+            // its viewport — ignore stray peer ranges so it doesn't snap back to
+            // the playhead (matches the main chart: a manual pan stops follow).
+            const rsOwn = chart.replaySystem;
+            if (!isRangeSyncEnabled()
+                && rsOwn && rsOwn.isActive
+                && (rsOwn.userHasPanned || !rsOwn.autoScrollEnabled)) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            beginApplying();
+            beginApplying(panSync || zoomSync);
+            if (isPeerLedRangeMessage(m) && isRangeSyncEnabled()) {
+                markReplayViewportForSyncFollow(chart);
+            }
 
-            // Snap to recipient TF buckets per Decision 3.
-            const myTf = chart.currentTimeframe || '1m';
-            const myBucket = tfSec(myTf);
-            const startSnapped = floorToBucket(m.startTime, myBucket);
-            const endSnapped   = ceilToBucket(m.endTime,   myBucket);
-            setVisibleTimeRange(chart, startSnapped, endSnapped);
+            // Split / boot snap: always mirror host tile A (even when Date Range toggle is off).
+            if (!panSync && m.forceInitialSync && isEmbedPanelChart()
+                && typeof chart._multichartMirrorViewportFromHost === 'function'
+                && chart._multichartMirrorViewportFromHost()) {
+                // Remember the host range we just mirrored so the next identical
+                // forceInitialSync (boot-storm duplicate) is skipped by the guard above.
+                state._lastForceInitSig = state._pendingForceInitSig;
+                state._lastForceInitAt = state._pendingForceInitAt;
+                finishViewportApply(chart, false);
+                return;
+            }
+
+            // Host-led pan can expose older bars on A after a fetch completes; if B/C/D
+            // still hold the pre-fetch left edge, adopt A's data before the lite
+            // geometry-only follow returns.
+            if (panSync
+                && isRangeSyncEnabled()
+                && isEmbedPanelChart()
+                && isHostLedRangeMessage(m)
+                && !(global && global.__TALARIA_MC_DISABLE_HOST_HISTORY_GROWTH_MIRROR)
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try {
+                    var parentChartHs2 = global.parent && global.parent !== global ? global.parent.chart : null;
+                    var parentFirstHs2 = parentChartHs2 && Array.isArray(parentChartHs2.data)
+                        ? Number(parentChartHs2.data[0] && parentChartHs2.data[0].t)
+                        : NaN;
+                    var localFirstHs2 = Array.isArray(chart.data)
+                        ? Number(chart.data[0] && chart.data[0].t)
+                        : NaN;
+                    if (Number.isFinite(parentFirstHs2)
+                        && Number.isFinite(localFirstHs2)
+                        && parentFirstHs2 < localFirstHs2) {
+                        chart._multichartMirrorViewportFromHost();
+                    }
+                } catch (_) {}
+            }
+            // Live pan drag: absolute offset mirror ONLY when bar arrays match.
+            // Cross-symbol (NQ+ES) must fall through to right-edge time follow —
+            // offset copy is what caused panel B to jump/hide.
+            if (panSync && isRangeSyncEnabled()
+                && canUseLightweightOffsetFollow(chart, m)
+                && applyLightweightPanFollow(chart, m)) {
+                var tSilLite = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                state.suppressRangeScrollEchoUntil = tSilLite + 120;
+                state.suppressRangeScrollEchoLeft = 4;
+                return;
+            }
+
+            // Same-pair embed: one-time data mirror when host-led pan starts (not every frame).
+            if (panSync
+                && isRangeSyncEnabled()
+                && isEmbedPanelChart()
+                && !chart._multichartViewportMirroredWithHost
+                && isHostLedRangeMessage(m)
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+                if (canUseLightweightOffsetFollow(chart, m) && applyLightweightPanFollow(chart, m)) {
+                    var tSilMir = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    state.suppressRangeScrollEchoUntil = tSilMir + 120;
+                    state.suppressRangeScrollEchoLeft = 4;
+                    return;
+                }
+            }
+
+            // Cross-symbol Date Range: live drag = right-edge follow (stable zoom).
+            if (panSync && isRangeSyncEnabled()) {
+                if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+                if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+                if (applyPanDragFollow(chart, m, { forceWallClock: true })) {
+                    var tSilTime = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    // Longer echo suppress — stops A↔B fight that flashes the axis.
+                    state.suppressRangeScrollEchoUntil = tSilTime + (isPeerLedRangeMessage(m) ? 280 : 160);
+                    state.suppressRangeScrollEchoLeft = isPeerLedRangeMessage(m) ? 10 : 6;
+                    return;
+                }
+            }
+
+            // Host-led range: mirror tile A data + scroll on pan release / ongoing date-range sync.
+            if (isEmbedPanelChart()
+                && typeof chart._isMultichartBootViewportLocked === 'function'
+                && chart._isMultichartBootViewportLocked()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
+            if (isEmbedPanelChart()
+                && isHostLedRangeMessage(m)
+                && !panSync
+                && (chart._multichartVisibleRangeSyncOn || m.forceInitialSync)
+                && typeof chart._multichartMirrorViewportFromHost === 'function'
+                && chart._multichartMirrorViewportFromHost()) {
+                finishViewportApply(chart, panSync);
+                var tSilHost = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                state.suppressRangeScrollEchoUntil = tSilHost + (panSync ? 120 : 200);
+                state.suppressRangeScrollEchoLeft = panSync ? 4 : 6;
+                if (panSync) return;
+                requestAnimationFrame(function () {
+                    const after = G.snapshotPriceState(chart);
+                    const v = G.diffPriceState(before, after, 'visibleRange');
+                    if (v.length) {
+                        console.error('[bridge:' + chartId + '] VISIBLE-RANGE LEAK (non-autoFit fields changed):', v);
+                        reportAssertion('visibleRange', v);
+                    } else {
+                        reportAssertion('visibleRange', null, before, after);
+                    }
+                });
+                return;
+            }
+
+            let applied = false;
+            const sameTf = sameTimeframeMessage(chart, m);
+            const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+                && m.endTime > m.startTime;
+            const canMatchViewport = sameTf && Number.isFinite(m.endTime)
+                && Number.isFinite(m.candleWidth)
+                && (Number.isFinite(m.visibleBarCount) || hasWallClock);
+
+            if (!panSync) {
+                ensureHistoryForVisibleStart(chart, m);
+            }
+
+            const peerLed = isPeerLedRangeMessage(m);
+            const panFollowOpts = peerLed ? { preferOffsetFirst: true } : null;
+
+            if (panSync) {
+                // Drag: right-edge time follow (no per-frame zoom refit).
+                if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+                if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+                applied = applyPanDragFollow(chart, m, Object.assign({ forceWallClock: true }, panFollowOpts || {}));
+                if (!applied) {
+                    applied = applyFastPanSync(chart, m);
+                }
+            } else if (isRangeSyncEnabled() && hasWallClock) {
+                // Live wheel: geometry / right-edge follow (no per-frame duration smash).
+                // Settle (!zoomSync): full wall-clock fit once for the shared clock window.
+                if (zoomSync) {
+                    applied = applyLiveZoomDateRangeFollow(chart, m);
+                    if (!applied) {
+                        applied = applyWallClockDateRange(chart, m, { lite: true });
+                    }
+                } else {
+                    applied = applyWallClockDateRange(chart, m, { lite: false });
+                }
+            } else if (isTimeOnlySyncEnabled()) {
+                applied = applyDiscreteTimeSync(chart, m);
+            } else if (canMatchViewport) {
+                if (typeof isEmbedPanelChart === 'function' && isEmbedPanelChart()
+                    && Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)
+                    && canUseLightweightOffsetFollow(chart, m)) {
+                    applied = applyZoomViewportFromLeader(chart, m);
+                    if (applied) finishViewportApply(chart, false);
+                }
+                if (!applied) {
+                    applied = applyMatchedViewport(chart, m);
+                }
+            }
+            if (!applied && hasWallClock) {
+                applied = applyWallClockDateRange(chart, m, { lite: false });
+            }
+            if (!applied && sameTf) {
+                applied = applyNativeChartViewport(chart, m);
+            }
+            if (!applied) {
+                applied = applyTradingViewVisibleRange(chart, m);
+            }
+            if (!applied) {
+                const myTf = chart.currentTimeframe || '1m';
+                const myBucket = tfSec(myTf);
+                const startSnapped = floorToBucket(m.startTime, myBucket);
+                const endSnapped   = ceilToBucket(m.endTime,   myBucket);
+                setVisibleTimeRange(chart, startSnapped, endSnapped);
+                refitPriceAutoScale(chart);
+            }
+
+            var tSil = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            state.suppressRangeScrollEchoUntil = tSil + ((panSync || zoomSync) ? 160 : 200);
+            state.suppressRangeScrollEchoLeft = (panSync || zoomSync) ? 8 : 6;
+
+            if (panSync || zoomSync) return;
 
             // Defer assertion until raf so render() has applied autoScale
             requestAnimationFrame(function () {
@@ -517,6 +2542,12 @@
         function applyBridgeConfig(m) {
             if (m.config && m.config.chartId) state.chartId = m.config.chartId;
             if (m.config && m.config.parentOrigin) state.parentOrigin = m.config.parentOrigin;
+            if (m.config && m.config.syncMode && typeof m.config.syncMode === 'object') {
+                Object.assign(localSyncMode, m.config.syncMode);
+                refreshChartSyncCrosshairFlag();
+            } else {
+                refreshChartSyncCrosshairFlag();
+            }
         }
 
         function reportAssertion(syncType, violations, before, after) {
@@ -558,11 +2589,29 @@
             }, parentOrigin);
         } catch (_) {}
 
+        // Same-origin fast path: parent manager can call this synchronously during
+        // panSync instead of postMessage (avoids one event-loop tick of lag).
+        global.__multichartSyncApply = applyInbound;
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b18';
+
         return {
             state,
+            chartId: chartId,
             send,
+            // Direct-deliver entry point used by the manager when this bridge
+            // is installed on the parent's host chart (Phase 7.2.5). For
+            // iframe bridges this is also called by the global 'message'
+            // listener — same code path either way.
+            deliver: applyInbound,
             setVisibleTimeRange: function (s, e) { setVisibleTimeRange(chart, s, e); },
             readVisibleTimeRange: function () { return readVisibleTimeRange(chart); },
+            // Let the parent wire the manager's syncMode object so the
+            // bridge's own message listener respects sync toggles.
+            setSyncModeGate: function (ref) {
+                syncModeGate = ref || null;
+                refreshChartSyncCrosshairFlag();
+            },
+            refreshSyncFlags: refreshChartSyncCrosshairFlag,
         };
     }
 
