@@ -246,20 +246,37 @@
      */
     function paintZoomFollow(chart) {
         chart._chartViewRestored = true;
+        // Drop pan-follow freeze — frozen pan ticks + new candleWidth = solid white axis.
         chart._panSyncBurstUntil = 0;
-        try {
-            if (typeof chart._clearPanTimeTickCache === 'function') {
-                chart._clearPanTimeTickCache();
-            }
-        } catch (_) {}
-        chart._cachedInteractionTimeTicks = null;
-        chart._idleTimeAxisKeyCached = null;
-        chart._timeTicks = null;
-        if (typeof chart.scheduleRender === 'function') {
-            chart.scheduleRender();
-        } else if (typeof chart.render === 'function') {
-            chart.render();
+        if (typeof chart._invalidateTimeAxisTickCaches === 'function') {
+            try { chart._invalidateTimeAxisTickCaches(); } catch (_) {}
+        } else {
+            try {
+                if (typeof chart._clearPanTimeTickCache === 'function') {
+                    chart._clearPanTimeTickCache();
+                }
+            } catch (_) {}
+            chart._cachedInteractionTimeTicks = null;
+            chart._idleTimeAxisKeyCached = null;
+            chart._timeTicks = null;
+            chart._wheelBurstSnapLabelInterval = null;
+            chart._wheelBurstSnapLabelIntervalTf = null;
         }
+        chart._lastComputedTimeLabelInterval = null;
+        chart._lastComputedTimeLabelIntervalTf = null;
+        // Force idle rebuild this frame. scheduleRender can be swallowed by a
+        // dying pan-sync RAF (early-return) and leave the garbled axis until the
+        // user selects the panel and zooms/drags locally.
+        if (chart._zoomSyncFollowRenderRaf != null) return;
+        chart._zoomSyncFollowRenderRaf = requestAnimationFrame(function () {
+            chart._zoomSyncFollowRenderRaf = null;
+            chart.renderPending = false;
+            if (typeof chart.render === 'function') {
+                chart.render();
+            } else if (typeof chart.scheduleRender === 'function') {
+                chart.scheduleRender();
+            }
+        });
     }
 
     /**
@@ -934,8 +951,9 @@
             } else if (typeof chart.render === 'function') {
                 chart.render();
             }
-        } else if (typeof chart.scheduleRender === 'function') {
-            chart.scheduleRender();
+        } else {
+            // Settle / non-pan: full time-axis rebuild (same as zoom follow).
+            paintZoomFollow(chart);
         }
     }
 
@@ -2597,7 +2615,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b20';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b21';
 
         return {
             state,

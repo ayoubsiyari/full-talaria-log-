@@ -25312,7 +25312,20 @@ class Chart {
         if (this._panSyncFollowRenderRaf != null) return;
         this._panSyncFollowRenderRaf = requestAnimationFrame(() => {
             this._panSyncFollowRenderRaf = null;
-            if (!this._isPanSyncFollowBurst()) return;
+            // Burst can expire before RAF — still idle-rebuild so the follower
+            // time axis is not left garbled until the user clicks that panel.
+            if (!this._isPanSyncFollowBurst()) {
+                try {
+                    if (typeof this._clearPanTimeTickCache === 'function') {
+                        this._clearPanTimeTickCache();
+                    }
+                } catch (_) {}
+                this._cachedInteractionTimeTicks = null;
+                this._idleTimeAxisKeyCached = null;
+                this.renderPending = false;
+                this.render();
+                return;
+            }
             this.renderPending = false;
             this.render();
         });
