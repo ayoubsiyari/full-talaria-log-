@@ -1314,6 +1314,8 @@ function alignHostChartForMultichart(ch, mgr) {
         const playheadMs = resolveHostReplayPlayheadMs(ch, mgr);
 
         if (!rs.isActive && typeof rs.enterReplayMode === "function") {
+            // Session can exist before candles finish loading on refresh — skip until rawData is ready.
+            if (!Array.isArray(ch.rawData) || ch.rawData.length === 0) return;
             const enterOpts = { startAtBeginning: true };
             if (Number.isFinite(playheadMs)) {
                 enterOpts.preservePlayhead = true;

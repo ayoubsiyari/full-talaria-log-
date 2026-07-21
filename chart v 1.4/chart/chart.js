@@ -18872,7 +18872,9 @@ class Chart {
             this._chartViewRestored = false;
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {
-                if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+                // Don't race enterReplayMode while rawData is still loading (refresh flash).
+                if (!rs.isActive && typeof rs.enterReplayMode === 'function'
+                    && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     rs.enterReplayMode({ startAtBeginning: true });
                 }
                 if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'
@@ -33283,6 +33285,16 @@ class Chart {
                     this.replaySystem.onUserPan();
                 }
                 this.scheduleRender();
+                // Live Date Range / Time sync: peers must follow during the wheel
+                // burst, not only on the ~500ms settle timer below.
+                if (typeof this.dispatchScrollSync === 'function') {
+                    if (this._wheelZoomSyncRaf == null) {
+                        this._wheelZoomSyncRaf = requestAnimationFrame(() => {
+                            this._wheelZoomSyncRaf = null;
+                            try { this.dispatchScrollSync(true); } catch (_e) {}
+                        });
+                    }
+                }
                 return;
             }
 

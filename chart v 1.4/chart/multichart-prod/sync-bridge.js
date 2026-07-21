@@ -1336,6 +1336,7 @@
                         rightEdgeBarIndex: r.rightEdgeBarIndex,
                         sourceTimeframe: r.sourceTimeframe,
                         panSync: r.panSync,
+                        zoomSync: !!r.zoomSync,
                         offsetX: r.offsetX,
                         candleWidth: r.candleWidth,
                         zoomLevelIndex: r.zoomLevelIndex,
@@ -1459,6 +1460,8 @@
                 rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
                 sourceTimeframe: chart.currentTimeframe || null,
                 panSync: !!(d.panSync || isLocalPanDragActive()),
+                zoomSync: !!(d.zoomSync || (typeof chart._isWheelZoomBurst === 'function'
+                    && chart._isWheelZoomBurst())),
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -1544,6 +1547,8 @@
                                 rightEdgeBarIndex: rightEdgeBarIndex,
                                 sourceTimeframe: chart.currentTimeframe || null,
                                 panSync: !!(chart.drag && chart.drag.active && chart.drag.type === 'pan'),
+                                zoomSync: !!(typeof chart._isWheelZoomBurst === 'function'
+                                    && chart._isWheelZoomBurst()),
                                 startTimestamp: startTimestamp,
                                 endTimestamp: endTimestamp,
                                 timeSyncEndTimestamp: endTimestamp,
@@ -2368,8 +2373,9 @@
                     applied = applyFastPanSync(chart, m);
                 }
             } else if (isRangeSyncEnabled() && hasWallClock) {
-                // Pan release / settle: one wall-clock fit (same clock window).
-                applied = applyWallClockDateRange(chart, m, { lite: false });
+                // Wheel zoom (zoomSync): lite wall-clock each frame for live follow.
+                // Pan release / settle: full wall-clock fit (same clock window).
+                applied = applyWallClockDateRange(chart, m, { lite: !!m.zoomSync });
             } else if (isTimeOnlySyncEnabled()) {
                 applied = applyDiscreteTimeSync(chart, m);
             } else if (canMatchViewport) {
@@ -2485,7 +2491,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b07';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b17';
 
         return {
             state,

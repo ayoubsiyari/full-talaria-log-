@@ -13408,8 +13408,10 @@ const TalariaV8bLive = () => {
     const rs = getReplaySystem();
     if (!rs) return null;
     if (rs.isActive) return rs;
+    const ch = window.chart;
+    if (!ch || !Array.isArray(ch.rawData) || ch.rawData.length === 0) return null;
     if (typeof rs.enterReplayMode === 'function') {
-      try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
+      try { rs.enterReplayMode({ userInitiated: true }); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
     }
     return rs;
   };

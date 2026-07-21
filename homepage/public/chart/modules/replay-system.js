@@ -1620,7 +1620,7 @@ class ReplaySystem {
      */
     toggleReplayMode() {
         if (!this.isActive) {
-            this.enterReplayMode();
+            this.enterReplayMode({ userInitiated: true });
             return;
         }
 
@@ -2901,7 +2901,14 @@ class ReplaySystem {
         }
         
         if (!this.chart.rawData || this.chart.rawData.length === 0) {
-            alert('Please load data first');
+            // Refresh / multichart boot often call enterReplayMode before
+            // autoLoadBacktestingData finishes. Alert only for explicit user actions
+            // (toolbar toggle); automatic callers retry once data is ready.
+            if (options.userInitiated) {
+                alert('Please load data first');
+            } else {
+                console.warn('[Replay] enterReplayMode skipped — no chart data yet (still loading)');
+            }
             return;
         }
 
