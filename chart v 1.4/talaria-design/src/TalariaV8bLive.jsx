@@ -37770,13 +37770,19 @@ const TalariaV8bLive = () => {
                                             <div key={def.id}>
                                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.07em",display:"block",marginBottom:4}}>{def.label.toUpperCase()}</span>
                                               <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-                                                {def.options.map(opt=>{
+                                                {def.options.map((opt,oi)=>{
                                                   const active=editTags.includes(opt);
-                                                  const isH=swHov===`td-opt-${r.id}-${def.id}-${opt}`;
+                                                  const isH=swHov===`td-opt-${r.id}-${def.id}-${oi}`;
                                                   return(
-                                                    <div key={opt} onClick={()=>{ if(!canEdit) return; updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt]); }}
-                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
-                                                      style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:"default",transition:"all 0.12s",
+                                                    <div key={`${def.id}-${oi}-${opt}`} onClick={()=>{
+                                                      if(!canEdit) return;
+                                                      // multi = single-choice per variable (not accumulate)
+                                                      const isSel=editTags.includes(opt);
+                                                      const without=editTags.filter(x=>!def.options.includes(x));
+                                                      updTags(r.id, isSel?without:[...without,opt]);
+                                                    }}
+                                                      onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${oi}`)} onMouseLeave={()=>setSwHov(null)}
+                                                      style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:canEdit?"pointer":"default",transition:"all 0.12s",
                                                         opacity:canEdit?1:0.72,
                                                         color:active?accentCol:!canEdit?c.trk:isH?"rgba(255,255,255,0.55)":c.ts,
                                                         background:active?accentBg:"transparent",
@@ -41272,16 +41278,21 @@ const TalariaV8bLive = () => {
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
                 <span style={{fontSize:11,color:canEdit?c.ts:"rgba(255,255,255,0.3)",flexShrink:0}}>{def.label}</span>
                 <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                  {def.options.map(opt=>{
+                  {def.options.map((opt,oi)=>{
                     const sel=selOpts.includes(opt);
                     const pillColor=sel?accent:canEdit?c.ts:c.trk;
                     const pillBg=sel?accentBg:"transparent";
                     const pillBd=sel?accentBd:canEdit?"rgba(255,255,255,0.07)":c.hv;
                     return(
-                      <div key={opt}
-                        onClick={canEdit?()=>setTags(pt=>sel?pt.filter(x=>x!==opt):[...pt,opt]):undefined}
+                      <div key={`${def.id}-${oi}-${opt}`}
+                        onClick={canEdit?()=>setTags(pt=>{
+                          // multi = single-choice (same as order-panel <select>), not multi-select
+                          const isSel=pt.includes(opt);
+                          const without=pt.filter(x=>!def.options.includes(x));
+                          return isSel?without:[...without,opt];
+                        }):undefined}
                         className={canEdit?`tc-opt${sel?" tc-opt-act":""}`:undefined}
-                        style={{padding:"2px 7px",fontSize:11,fontWeight:sel?700:400,cursor:"default",
+                        style={{padding:"2px 7px",fontSize:11,fontWeight:sel?700:400,cursor:canEdit?"pointer":"default",
                           color:pillColor,background:pillBg,border:`1px solid ${pillBd}`,
                           transition:"color 0.1s,background 0.1s"}}>
                         {opt}
@@ -41594,7 +41605,11 @@ const TalariaV8bLive = () => {
         const tDayName=dayNames[tDate.getDay()];
         const tSession=tHour<7?"Asian":tHour<13?"London":tHour<16?"London / NY Overlap":tHour<21?"New York":"After Hours";
         const toggleBool=(id)=>setTapTags(prev=>({...prev,[id]:!prev[id]}));
-        const toggleOpt=(id,opt)=>setTapTags(prev=>{const cur=Array.isArray(prev[id])?prev[id]:[];return{...prev,[id]:cur.includes(opt)?cur.filter(x=>x!==opt):[...cur,opt]};});
+        // multi = single-choice: pick one option or clear (not accumulate)
+        const toggleOpt=(id,opt)=>setTapTags(prev=>{
+          const cur=Array.isArray(prev[id])?prev[id]:[];
+          return{...prev,[id]:cur.includes(opt)?[]:[opt]};
+        });
         const confirmTap=()=>{
           const newTags=[];
           tagDefs.forEach(def=>{if(def.type==="bool"){if(tapTags[def.id])newTags.push(def.label);}else{(tapTags[def.id]||[]).forEach(o=>newTags.push(o));}});
