@@ -7659,7 +7659,22 @@ def _resolve_dataset_filter_policy(original_name: str | None):
     }
 
 
-def _apply_dataset_filters(candles, *, original_name: str | None, apply_spike: bool = True):
+def _apply_dataset_filters(
+    candles,
+    *,
+    original_name: str | None,
+    apply_spike: bool = True,
+    serve_prebuilt: bool = False,
+):
+    """
+    Normalize candle series for build or API serve.
+
+    serve_prebuilt=True: data already went through canonicalize/spike at ingest
+    (binary tiles, QuestDB, or CSV parse→resample). Do NOT re-run spike smoothing
+    or extreme-outlier drops on HTF aggregates — those treat a legitimate
+    min(1m.l) wick as an "isolated spike" vs neighboring HTF closes and raise
+    the low, so the same swing shows different lows across timeframes.
+    """
     if not candles:
         return candles
     policy = _resolve_dataset_filter_policy(original_name)
@@ -7668,12 +7683,23 @@ def _apply_dataset_filters(candles, *, original_name: str | None, apply_spike: b
         out = _filter_weekend_candles(out)
     if not out:
         return []
-    out = _drop_extreme_outlier_candles(out, original_name=original_name)
-    if not out:
-        return []
-    if apply_spike and policy["spike_filter"]:
+    if not serve_prebuilt:
+        out = _drop_extreme_outlier_candles(out, original_name=original_name)
+        if not out:
+            return []
+    if apply_spike and policy["spike_filter"] and not serve_prebuilt:
         out = _smooth_isolated_candle_spikes(out)
     return out
+
+
+def _serve_dataset_filters(candles, *, original_name: str | None):
+    """API read path: weekend strip only; never re-cap OHLC on prebuilt series."""
+    return _apply_dataset_filters(
+        candles,
+        original_name=original_name,
+        apply_spike=False,
+        serve_prebuilt=True,
+    )
 
 
 def _drop_extreme_outlier_candles(candles, *, original_name: str | None):
@@ -24278,7 +24304,7 @@ async def get_file_smart(
         raw_first_cursor = str(candles[0]['t']) if candles else None
         raw_last_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
+        candles = _serve_dataset_filters(candles, original_name=db_file.original_name)
 
         # Append merged CSV tail onto 1m windows only (cheap tail read; never replace full series).
         if timeframe == "1m" and candles and source in {"tiles", "binary"}:
@@ -24299,7 +24325,7 @@ async def get_file_smart(
                         start_ts=start_ts,
                         end_ts=end_ts,
                     )
-                    csv_candles = _apply_dataset_filters(csv_candles, original_name=db_file.original_name)
+                    csv_candles = _serve_dataset_filters(csv_candles, original_name=db_file.original_name)
                     if csv_candles:
                         candles = csv_candles
                         total_candles = csv_total
@@ -24392,7 +24418,7 @@ async def get_file_candles(
                     direction=direction,
                     limit=q_limit,
                 )
-                candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
+                candles = _serve_dataset_filters(candles, original_name=db_file.original_name)
                 if candles or not questdb_store.questdb_tiles_fallback():
                     prev_cursor = str(candles[0]["t"]) if candles else None
                     next_cursor = str(candles[-1]["t"]) if candles else None
@@ -24494,7 +24520,7 @@ async def get_file_candles(
         raw_prev_cursor = str(candles[0]['t']) if candles else None
         raw_next_cursor = str(candles[-1]['t']) if candles else None
 
-        candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
+        candles = _serve_dataset_filters(candles, original_name=db_file.original_name)
 
         if timeframe == "1m" and candles and tile_meta is not None:
             try:
@@ -24523,7 +24549,7 @@ async def get_file_candles(
                     elif len(recovered) > limit:
                         recovered = recovered[-limit:]
 
-                    recovered = _apply_dataset_filters(recovered, original_name=db_file.original_name)
+                    recovered = _serve_dataset_filters(recovered, original_name=db_file.original_name)
                     if recovered:
                         candles = recovered
             except Exception:
@@ -24675,7 +24701,12 @@ def _merge_csv_tail_onto_1m_candles(
     for c in extra:
         by_t[int(c["t"])] = c
     merged = sorted(by_t.values(), key=lambda x: x["t"])
-    result = _apply_dataset_filters(merged, original_name=db_file.original_name, apply_spike=False)
+    result = _apply_dataset_filters(
+        merged,
+        original_name=db_file.original_name,
+        apply_spike=False,
+        serve_prebuilt=True,
+    )
     if questdb_store.questdb_enabled() and extra:
         try:
             questdb_store.ensure_schema()
@@ -24799,7 +24830,7 @@ def _build_bars_payload(
             limit=limit, start_ts=from_ms, end_ts=to_ms, anchor="start",
         )
 
-    bars = _apply_dataset_filters(bars, original_name=db_file.original_name)
+    bars = _serve_dataset_filters(bars, original_name=db_file.original_name)
     has_more_left = False
     has_more_right = False
     if bars:
