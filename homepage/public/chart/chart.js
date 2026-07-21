@@ -442,7 +442,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260721b10';
+const CHART_ENGINE_BUILD = '20260721b11';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -8074,17 +8074,20 @@ class Chart {
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         if (!hasData) return false;
         const newMs = this.parseTimeframe(normalizedTf);
-        const rawMs = this._getNativeRawTfMs();
+        let rawMs = this._getNativeRawTfMs();
         if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(rawMs) || rawMs <= 0) return false;
+        // Trust measured bar cadence over a stale/wrong _nativeRawFetchTf label.
+        // If raw bars are actually ~5m but the flag says 1m, do not "upsample" to 1m.
+        const measuredMs = this._estimateBarsStepMs(this.rawData);
+        if (Number.isFinite(measuredMs) && measuredMs > rawMs * 1.5) {
+            rawMs = measuredMs;
+        }
+        // Never client-resample to a finer TF than the real raw cadence (5m→1m no-op).
+        if (newMs < rawMs * 0.92) return false;
         // Zoom-out (coarser/equal TF): instant client resample for small steps only.
         // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
-        if (newMs >= rawMs * 0.92) {
-            if (newMs / rawMs > 6) return false;
-            return true;
-        }
-        if (this._isBacktestReplayActive()) return false;
-        if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) return false;
-        return false;
+        if (newMs / rawMs > 6) return false;
+        return true;
     }
 
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
@@ -22242,43 +22245,33 @@ class Chart {
                 return;
             }
 
-            // 3) Non-backtest replay — client resample fallback.
-            if (this._canClientResampleToTimeframe(normalizedTf)) {
-                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                return;
+            // Finer than native master (e.g. 5m master → 1m): NEVER commit the new TF
+            // label and resample in place — resampleData(5m→1m) is a no-op, so users see
+            // "1m" with identical 5m candles. Fetch real finer bars, or keep last-good.
+            const targetMsReplay = this.parseTimeframe(normalizedTf);
+            const nativeMsReplay = this._getNativeRawTfMs();
+            const needsFinerFetch = Number.isFinite(targetMsReplay) && Number.isFinite(nativeMsReplay)
+                && targetMsReplay < nativeMsReplay * 0.92;
+            if (needsFinerFetch && this.currentFileId
+                && typeof this._refetchBacktestTimeframe === 'function') {
+                this._logTfSwitch('replay-finer-refetch', {
+                    to: normalizedTf,
+                    nativeMs: nativeMsReplay,
+                    targetMs: targetMsReplay,
+                });
+                return this._refetchBacktestTimeframe(normalizedTf);
+            }
+            if (needsFinerFetch && this.currentFileId) {
+                this._logTfSwitch('replay-finer-server-load', { to: normalizedTf });
+                return this._loadTimeframeFromServer(normalizedTf);
             }
 
-            // Client-side resample path: commit synchronously THEN let replay redraw,
-            // so onTimeframeChange's resampleData() reads the new timeframe.
-            this._logTfSwitch('replay-resample-fallback', { to: normalizedTf });
-            this._commitTimeframeChange(normalizedTf);
-            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                this.compareOverlay.refreshForTimeframe(normalizedTf);
-            }
-            // TradingView-style reset on every TF switch (double-click parity).
-            let replayTfEnded = false;
-            const finishReplayTfSwitch = () => {
-                if (replayTfEnded) return;
-                replayTfEnded = true;
-                if (this._replayTfSwitchWatchdog) {
-                    clearTimeout(this._replayTfSwitchWatchdog);
-                    this._replayTfSwitchWatchdog = null;
-                }
-                if (this.data && this.data.length > 0) {
-                    this._finishTfSwitchViewportRestore();
-                }
-                this._endTimeframeSwitching();
-            };
-            this._replayTfSwitchWatchdog = setTimeout(finishReplayTfSwitch, 3000);
-            try {
-                this.replaySystem.onTimeframeChange(this, { onReady: finishReplayTfSwitch });
-            } catch (err) {
-                console.warn('[chart] replay onTimeframeChange failed', err);
-                finishReplayTfSwitch();
-            }
-            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(normalizedTf));
-            }
+            // No safe path — keep previous TF + frame (do not relabel coarse bars).
+            this._logTfSwitch('replay-tf-switch-blocked-keep-last-good', {
+                to: normalizedTf,
+                reason: needsFinerFetch ? 'finer-than-native-no-fetch' : 'cannot-resample',
+            });
+            this._endTimeframeSwitching();
             return;
         }
 
@@ -22596,6 +22589,9 @@ class Chart {
 
     _endTimeframeSwitching() {
         const wasSwitching = !!this._timeframeSwitching;
+        // Capture before clearing — used if we must roll back a mismatched TF label.
+        const fromTf = this._switchingFromTimeframe;
+        const toTf = this._switchingToTimeframe;
         // Did the switch path actually install bars for the destination TF? Some
         // replay / multichart tiles commit currentTimeframe (so the axis/grid repaint
         // at the new TF) but leave this.data at the PREVIOUS timeframe until the user
@@ -22644,6 +22640,22 @@ class Chart {
                     }
                 }
             } catch (_rebuild) { /* ignore */ }
+        }
+        // If bars STILL don't match the committed TF (e.g. 5m master resampled to "1m"),
+        // roll the label back — never leave users on a lying timeframe button.
+        if (wasSwitching && fromTf && !this._committedBarsMatchTimeframe(this.currentTimeframe)) {
+            try {
+                this._logTfSwitch('tf-mismatch-rollback', {
+                    claimed: this.currentTimeframe,
+                    backTo: fromTf,
+                    attempted: toTf,
+                });
+            } catch (_log) { /* ignore */ }
+            try {
+                this._commitTimeframeChange(fromTf);
+            } catch (_rb) {
+                this.currentTimeframe = fromTf;
+            }
         }
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
