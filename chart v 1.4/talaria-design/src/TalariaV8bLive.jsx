@@ -11727,6 +11727,28 @@ function v9ApplyOrderTypeToOm(inferred, om) {
   } catch (_) {}
 }
 
+/** Session Advanced-order gate (split entry / multi-TP / BE / trailing). */
+function v9SessionAdvancedOrderAllowed() {
+  try {
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    if (om && typeof om._isAdvancedOrderAllowed === "function") {
+      return !!om._isAdvancedOrderAllowed();
+    }
+    if (om && om.advancedOrderEnabled === false) return false;
+    const tgl = typeof document !== "undefined" ? document.getElementById("advancedOrderToggle") : null;
+    if (tgl && !tgl.checked) return false;
+    const sess =
+      (typeof window !== "undefined" && (window.backtestingSession || window.chart?.backtestingSession)) || null;
+    if (sess && Object.prototype.hasOwnProperty.call(sess, "advanced_order") && !sess.advanced_order) {
+      return false;
+    }
+    if (tgl) return !!tgl.checked;
+    return !!sess?.advanced_order;
+  } catch (_e) {
+    return false;
+  }
+}
+
 /** Mirror V9 SL advanced rail (BE / Trailing) into hidden #orderPanel fields placeOrder reads. */
 function v9SyncSlAdvToHiddenOrderPanel({
   slAdvMode = "none",
@@ -11741,7 +11763,8 @@ function v9SyncSlAdvToHiddenOrderPanel({
 } = {}) {
   if (typeof document === "undefined") return;
   const om = window.chart?.orderManager;
-  const mode = panelMode !== "advanced" ? "none" : (slAdvMode || "none");
+  const advOk = v9SessionAdvancedOrderAllowed();
+  const mode = (!advOk || panelMode !== "advanced") ? "none" : (slAdvMode || "none");
   const unitToOm = (u) => (u === "dollar" ? "amount" : u === "pips" ? "pips" : "rr");
 
   const setIn = (id, val) => {
@@ -14231,7 +14254,62 @@ const TalariaV8bLive = () => {
   const [panelDetached, setPanelDetached] = useState(false);
   const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
-  const [panelMode, setPanelMode] = useState("advanced");
+  const [panelMode, setPanelMode] = useState(() => (v9SessionAdvancedOrderAllowed() ? "advanced" : "basic"));
+  /** Session-create Advanced order flag — locks split entry / multi-TP / BE / trailing when false. */
+  const [sessionAdvancedAllowed, setSessionAdvancedAllowed] = useState(() => v9SessionAdvancedOrderAllowed());
+  const sessionAdvancedAllowedRef = useRef(sessionAdvancedAllowed);
+  useEffect(() => {
+    sessionAdvancedAllowedRef.current = sessionAdvancedAllowed;
+  }, [sessionAdvancedAllowed]);
+  useEffect(() => {
+    const lockBasicOrderUi = () => {
+      setPanelMode("basic");
+      setSlAdvMode("none");
+      setSlAdvDrop(false);
+      // Keep a normal single Entry / SL / TP — drop only multi-level rows.
+      setEntryRows((rows) => {
+        if (!rows.length) return [{ id: Date.now(), price: "0", risk: "100" }];
+        if (rows.length === 1) return rows;
+        const r0 = rows[0];
+        return [{ id: r0.id ?? Date.now(), price: r0.price || "0", risk: r0.risk || "100" }];
+      });
+      setTpRows((rows) => {
+        if (!rows.length) return [{ id: Date.now(), price: "0", qty: "100", enabled: true }];
+        if (rows.length === 1) return rows;
+        const r0 = rows[0];
+        return [{ id: r0.id ?? Date.now(), price: r0.price || "0", qty: r0.qty || "100", enabled: r0.enabled !== false }];
+      });
+      try {
+        window.chart?.orderManager?._clampDraftToBasicOrderIfNeeded?.();
+      } catch (_e) { /* ignore */ }
+    };
+    const syncAdv = (enabled) => {
+      const next = enabled == null ? v9SessionAdvancedOrderAllowed() : !!enabled;
+      setSessionAdvancedAllowed(next);
+      if (!next) {
+        lockBasicOrderUi();
+      } else if (enabled === true) {
+        // Session was created with Advanced order — unlock advanced panel features.
+        setPanelMode("advanced");
+      }
+    };
+    const onSession = (e) => syncAdv(e?.detail?.enabled);
+    const onToggle = (e) => {
+      // Toggle sync only locks when advanced is off; don't override user's Basic Mode choice.
+      const next = e?.detail?.enabled == null ? v9SessionAdvancedOrderAllowed() : !!e.detail.enabled;
+      setSessionAdvancedAllowed(next);
+      if (!next) {
+        lockBasicOrderUi();
+      }
+    };
+    syncAdv(null);
+    window.addEventListener("talaria-session-advanced-order", onSession);
+    window.addEventListener("talaria-advanced-order-changed", onToggle);
+    return () => {
+      window.removeEventListener("talaria-session-advanced-order", onSession);
+      window.removeEventListener("talaria-advanced-order-changed", onToggle);
+    };
+  }, []);
   /** Order panel dropdown triggers (fixed overlays); re-measured while detached panel is dragged (transform). */
   const opOrderSizeBtnRef = useRef(null);
   const opOrderDotsBtnRef = useRef(null);
@@ -16649,15 +16727,17 @@ const TalariaV8bLive = () => {
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = resolveSessionChartSymbol(symbol, allSymbols);
-  /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false. */
+  /** Matches order-manager: hide Entry/TP “add level” + when DISABLE_ORDER_ENTRY_PLUS_UI is not false, or session Advanced off. */
   const chartEntryPlusSplitUiOff =
-    typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
+    !sessionAdvancedAllowed ||
+    (typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false);
   /** Show Entry/TP (+): futures need ≥1 whole contract; spot/forex/etc. allow fractional lots (>0). */
   const v9OrderQtyForSplitUi = Math.max(
     0,
     v9EntryOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, currentSymbol.type, entryRows)
   );
   const v9EntryTpPlusVisible =
+    panelMode === "advanced" &&
     !chartEntryPlusSplitUiOff &&
     (currentSymbol.type === "futures"
       ? Math.floor(v9OrderQtyForSplitUi) >= 1
@@ -18689,7 +18769,7 @@ const TalariaV8bLive = () => {
           if (prev.length === next.length && prev.every((p, i) => entrySame(p, next[i]))) return prev;
           return next;
         });
-        if (next.length > 1) setPanelMode("advanced");
+        if (next.length > 1 && sessionAdvancedAllowedRef.current) setPanelMode("advanced");
       } else {
         setEntryRows((rows) => {
           if (!rows.length) return rows;
@@ -18751,7 +18831,7 @@ const TalariaV8bLive = () => {
           if (prev.length === nextTp.length && prev.every((p, i) => tpSame(p, nextTp[i]))) return prev;
           return nextTp;
         });
-        if (nextTp.length > 1) setPanelMode("advanced");
+        if (nextTp.length > 1 && sessionAdvancedAllowedRef.current) setPanelMode("advanced");
       } else if (!rrLocked) {
         setTpRows((rows) => {
           if (!rows.length) return rows;
@@ -32631,6 +32711,10 @@ const TalariaV8bLive = () => {
                           om.calculateAdvancedRiskReward();
                           om.updatePlaceButtonText?.();
                         }
+                        // Advanced off: keep single Entry/SL/TP only — strip multi levels from RR tool.
+                        if (!sessionAdvancedAllowedRef.current) {
+                          try { om._clampDraftToBasicOrderIfNeeded?.(); } catch (_e) { /* ignore */ }
+                        }
                         const slChk = document.getElementById('enableSL');
                         if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const tpChk = document.getElementById('enableTP');
@@ -32651,7 +32735,7 @@ const TalariaV8bLive = () => {
                         // pushRiskRewardToolToManager(forceEntry) populated om.multiEntryLevels +
                         // isMultiEntryMode; forcing a single row here would drop those extra legs.
                         const omEntryLevels = Array.isArray(om.multiEntryLevels) ? om.multiEntryLevels : [];
-                        if (om.isMultiEntryMode && omEntryLevels.length > 1) {
+                        if (sessionAdvancedAllowedRef.current && om.isMultiEntryMode && omEntryLevels.length > 1) {
                           setEntryRows(omEntryLevels.map((l, li) => ({
                             id: l.id != null ? l.id : li,
                             price: String(l.price ?? entryStr),
@@ -32665,7 +32749,7 @@ const TalariaV8bLive = () => {
                         setSlEnabled(true);
                         const omTpTargets = Array.isArray(om.tpTargets) ? om.tpTargets : [];
                         const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
-                        if (mtpOn && omTpTargets.length > 1) {
+                        if (sessionAdvancedAllowedRef.current && mtpOn && omTpTargets.length > 1) {
                           const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
                           const mirrorSizeMode =
                             pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
@@ -38821,6 +38905,7 @@ const TalariaV8bLive = () => {
               setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
             const addRow = () => {
+              if (!sessionAdvancedAllowed || panelMode !== "advanced") return;
               if (entryRows.length >= 4) return;
               omPanelBridgeRef.current.entryAdd = Date.now();
               markOrderControlBridge();
@@ -39648,6 +39733,7 @@ const TalariaV8bLive = () => {
               return "";
             };
             const addTp = () => {
+              if (!sessionAdvancedAllowed || panelMode !== "advanced") return;
               if (tpRows.length >= 5) return;
               omPanelBridgeRef.current.tpAdd = Date.now();
               markOrderControlBridge();
@@ -40554,8 +40640,18 @@ const TalariaV8bLive = () => {
               <span style={{ fontSize:11, fontWeight:500, color:isH?c.tx:c.ts }}>{panelDetached?"Attach Panel":"Detach Panel"}</span>
             </div>
           ); })()}
-          {(()=>{ const isH=swHov==="dots-mode"; const isBasic=panelMode==="basic"; return (
-            <div onClick={()=>{ setPanelMode(m=>m==="advanced"?"basic":"advanced"); setOpDotsOpen(false); }}
+          {sessionAdvancedAllowed && (()=>{ const isH=swHov==="dots-mode"; const isBasic=panelMode==="basic"; return (
+            <div onClick={()=>{
+                setPanelMode((m) => {
+                  if (m === "advanced") {
+                    setSlAdvMode("none");
+                    setSlAdvDrop(false);
+                    return "basic";
+                  }
+                  return "advanced";
+                });
+                setOpDotsOpen(false);
+              }}
               onMouseEnter={()=>setSwHov("dots-mode")} onMouseLeave={()=>setSwHov(null)}
               style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"default", borderTop:"1px solid rgba(140,160,255,0.08)",
                        background:isH?"rgba(255,255,255,0.04)":"transparent", transition:"background 0.1s" }}>

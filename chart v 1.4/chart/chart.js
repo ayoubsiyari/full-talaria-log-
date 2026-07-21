@@ -1809,12 +1809,24 @@ class Chart {
             const om = this.orderManager;
             const adv = document.getElementById('advancedOrderToggle');
             const wantAdv = !!session.advanced_order;
-            if (adv) adv.checked = wantAdv;
+            if (adv) {
+                adv.checked = wantAdv;
+                // Session-create flag is authoritative — user cannot turn Advanced on mid-session.
+                adv.disabled = !wantAdv;
+                adv.title = wantAdv
+                    ? ''
+                    : 'Advanced order was not enabled when this session was created';
+            }
             if (om && typeof om.syncAdvancedOrderUI === 'function') {
                 om.syncAdvancedOrderUI({ skipPreviewAndCalc: true });
             } else if (om) {
                 om.advancedOrderEnabled = wantAdv;
             }
+            try {
+                window.dispatchEvent(new CustomEvent('talaria-session-advanced-order', {
+                    detail: { enabled: wantAdv },
+                }));
+            } catch (_e) { /* ignore */ }
         } catch (e) { /* ignore */ }
 
         try {

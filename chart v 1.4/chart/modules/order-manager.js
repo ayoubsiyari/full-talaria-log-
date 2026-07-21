@@ -4423,7 +4423,20 @@ class OrderManager {
 
             this.splitEntries = [];
             this.splitEntriesEnabled = false;
+            if (this.isMultiEntryMode) {
+                this.isMultiEntryMode = false;
+                this.multiEntryLevels = [];
+            }
+            if (Array.isArray(this.tpTargets) && this.tpTargets.length > 1) {
+                this.tpTargets = this.tpTargets.slice(0, 1);
+            }
         }
+
+        try {
+            window.dispatchEvent(new CustomEvent('talaria-advanced-order-changed', {
+                detail: { enabled: !!isEnabled },
+            }));
+        } catch (_e) { /* ignore */ }
 
         if (!skip) {
             this.updatePreviewLines();
@@ -13864,12 +13877,118 @@ class OrderManager {
     }
 
     /**
+     * Session / toggle gate for split-entry, multi-TP, BE, trailing.
+     * When session was created without Advanced order, these stay off.
+     * Single Entry / SL / TP for a normal order stay available either way.
+     */
+    _isAdvancedOrderAllowed() {
+        try {
+            if (this.advancedOrderEnabled === false) return false;
+            const tgl = document.getElementById('advancedOrderToggle');
+            if (tgl && !tgl.checked) return false;
+            const sess = (typeof window !== 'undefined' && (window.backtestingSession || window.chart?.backtestingSession)) || null;
+            if (sess && Object.prototype.hasOwnProperty.call(sess, 'advanced_order') && !sess.advanced_order) {
+                return false;
+            }
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
+     * Collapse multi-entry / multi-TP / BE / trailing back to a normal single-leg draft.
+     * Keeps primary entry + SL + TP prices so the user can still place a standard order.
+     */
+    _clampDraftToBasicOrderIfNeeded() {
+        if (this._isAdvancedOrderAllowed()) return false;
+        let changed = false;
+
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        if (multipleTPToggle?.checked) {
+            multipleTPToggle.checked = false;
+            changed = true;
+        }
+        const multipleTPSettings = document.getElementById('multipleTPSettings');
+        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        const multiTPBtn = document.getElementById('multiTPBtn');
+        if (multiTPBtn) {
+            multiTPBtn.textContent = 'Multi';
+            multiTPBtn.classList.remove('active');
+        }
+        const tpSingleView = document.querySelector('.order-tp-single');
+        if (tpSingleView) tpSingleView.classList.remove('is-hidden');
+        if (Array.isArray(this.tpTargets) && this.tpTargets.length > 0) {
+            // Keep far TP in #tpPrice; clear ladder so placeOrder uses single TP.
+            if (this.tpTargets.length > 1) {
+                const keep = this.tpTargets[this.tpTargets.length - 1];
+                const tpp = document.getElementById('tpPrice');
+                if (tpp && Number.isFinite(keep?.price) && keep.price > 0) {
+                    const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+                    tpp.value = Number(keep.price).toFixed(prec);
+                }
+            }
+            this.tpTargets = [];
+            changed = true;
+        }
+
+        if (this.isMultiEntryMode || (Array.isArray(this.multiEntryLevels) && this.multiEntryLevels.length > 0)) {
+            const primary = this.multiEntryLevels?.[0];
+            const ep = document.getElementById('orderEntryPrice');
+            if (ep && Number.isFinite(primary?.price) && primary.price > 0) {
+                const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+                ep.value = Number(primary.price).toFixed(prec);
+            }
+            this.multiEntryLevels = [];
+            this.splitEntries = [];
+            this.splitEntriesEnabled = false;
+            if (this.isMultiEntryMode) {
+                // Avoid setEntryMode(true) recursion — flip UI to single without re-seeding legs.
+                this.isMultiEntryMode = false;
+                const toggleBtn = document.getElementById('multiEntryToggle');
+                const singleMode = document.getElementById('singleEntryMode');
+                const multiMode = document.getElementById('multiEntryMode');
+                const orderTypeSection = document.getElementById('orderTypeSection');
+                if (toggleBtn) {
+                    toggleBtn.textContent = 'Multi';
+                    toggleBtn.classList.remove('active');
+                }
+                if (singleMode) singleMode.style.display = 'block';
+                if (multiMode) multiMode.style.display = 'none';
+                if (orderTypeSection) {
+                    orderTypeSection.style.opacity = '';
+                    orderTypeSection.style.pointerEvents = '';
+                }
+            }
+            changed = true;
+        }
+
+        const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
+        if (autoBreakevenToggle?.checked) {
+            autoBreakevenToggle.checked = false;
+            changed = true;
+        }
+        const trailingSLToggle = document.getElementById('trailingSLToggle');
+        if (trailingSLToggle?.checked) {
+            trailingSLToggle.checked = false;
+            changed = true;
+        }
+        document.getElementById('breakevenSettings')?.classList.add('is-hidden');
+        document.getElementById('trailingSLSettings')?.classList.add('is-hidden');
+        try { this.stopTrailingSL?.(); } catch (_e) { /* ignore */ }
+
+        return changed;
+    }
+
+    /**
      * When {@link window.__CHART_ENV.DISABLE_ORDER_ENTRY_PLUS_UI} is not strictly `false`, hide all
      * “+” / split-entry affordances: chart Entry+ badges, preview green + / purple split handles,
      * TP ladder +, native panel add row, V9 rail. Defaults to enabled in chart-env.defaults; set to `true` to disable.
+     * Also blocked when session Advanced order is off.
      */
     _isOrderEntryPlusUiDisabled() {
         try {
+            if (!this._isAdvancedOrderAllowed()) return true;
             return window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
         } catch (_e) {
             return true;
@@ -13953,6 +14072,10 @@ class OrderManager {
     }
 
     _applyPreviewActivator(kind) {
+        if (!this._isAdvancedOrderAllowed()) {
+            this.showNotification('Advanced order was not enabled for this session.', 'info', 2400);
+            return;
+        }
         if (kind === 'entry') {
             if (!this.isMultiEntryMode) {
                 this.setEntryMode(true);
@@ -17427,6 +17550,7 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
+        if (!this._isAdvancedOrderAllowed() || this._isOrderEntryPlusUiDisabled()) return;
         const numInput = document.getElementById('numTPTargets');
         if (numInput) {
             const currentNum = parseInt(numInput.value || 2, 10);
@@ -21471,6 +21595,9 @@ class OrderManager {
      * @param {boolean} isMulti
      */
     setEntryMode(isMulti) {
+        if (isMulti && !this._isAdvancedOrderAllowed()) {
+            isMulti = false;
+        }
         this.isMultiEntryMode = isMulti;
         const toggleBtn = document.getElementById('multiEntryToggle');
         const singleMode = document.getElementById('singleEntryMode');
@@ -22101,6 +22228,7 @@ class OrderManager {
      * Add a new entry level
      */
     addMultiEntryLevel() {
+        if (!this._isAdvancedOrderAllowed() || this._isOrderEntryPlusUiDisabled()) return;
         if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) return;
         const mode = this.positionSizeMode || 'risk-usd';
         const nNext = this.multiEntryLevels.length + 1;
@@ -23318,6 +23446,7 @@ class OrderManager {
      * Add a new TP target from split drag
      */
     addTPFromSplit(price) {
+        if (!this._isAdvancedOrderAllowed() || this._isOrderEntryPlusUiDisabled()) return;
         // Enable multiple TP if not already (without triggering change event that initializes)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
         const multipleTPSettings = document.getElementById('multipleTPSettings');
@@ -23940,7 +24069,9 @@ class OrderManager {
         }
 
         const uniqTp = [...new Set((allT || []).filter(Number.isFinite))];
-        if (uniqTp.length <= 1) {
+        // Without session Advanced order: keep a normal single TP from the far level — no multi-TP ladder.
+        const allowMultiLevels = this._isAdvancedOrderAllowed();
+        if (!allowMultiLevels || uniqTp.length <= 1) {
             this.tpTargets = [];
             const mt = document.getElementById('multipleTPToggle');
             if (mt) mt.checked = false;
@@ -24015,7 +24146,8 @@ class OrderManager {
         // Do **not** dedupe by price: when E1/E2 overlap, both legs can round to the same float / display
         // price; Set-dedup collapsed uniqE to one row, cleared multi-entry, and removed E2 from the tool.
         const uniqE = (allE || []).filter((p) => Number.isFinite(p));
-        if (uniqE.length <= 1) {
+        // Without session Advanced order: primary entry only — ignore extra RR entry levels.
+        if (!allowMultiLevels || uniqE.length <= 1) {
             this.multiEntryLevels = [];
             this.setEntryMode(false);
         } else {
@@ -24060,14 +24192,21 @@ class OrderManager {
         const beTgl = document.getElementById('autoBreakevenToggle');
         // Do not turn Auto BE on from drawing meta here — this runs on every TP/entry sync; stale
         // rrBreakevenLine flipped the panel on and showed BE over E1. Enabling BE is riskRewardAddBEFromTool.
-        if (Number.isFinite(beLineY) && beTgl?.checked) {
+        if (allowMultiLevels && Number.isFinite(beLineY) && beTgl?.checked) {
             const bes = document.getElementById('breakevenSettings');
             if (bes) bes.classList.remove('is-hidden');
             this._applyBreakevenInputsFromTriggerPrice(beLineY);
             this.beManuallyPositioned = true;
+        } else if (!allowMultiLevels) {
+            if (beTgl) beTgl.checked = false;
+            document.getElementById('breakevenSettings')?.classList.add('is-hidden');
+            const trTgl = document.getElementById('trailingSLToggle');
+            if (trTgl) trTgl.checked = false;
+            document.getElementById('trailingSLSettings')?.classList.add('is-hidden');
         }
 
         // R:R modal reads the same hidden #orderQuantity as TP profit math — must be filled after prices/risk sync.
+        // Always enable single SL/TP so a normal order can be placed even when Advanced is off.
         const enSl = document.getElementById('enableSL');
         if (enSl) {
             enSl.checked = true;
@@ -24076,6 +24215,10 @@ class OrderManager {
         }
         const enTp = document.getElementById('enableTP');
         if (enTp) enTp.checked = true;
+
+        if (!allowMultiLevels) {
+            this._clampDraftToBasicOrderIfNeeded();
+        }
 
         const buyTab = document.getElementById('buyTab');
         const sellTab = document.getElementById('sellTab');
@@ -25507,8 +25650,13 @@ class OrderManager {
             }
         }
 
-        // Get auto breakeven setting
-        const autoBreakeven = document.getElementById('autoBreakevenToggle')?.checked || false;
+        // Get auto breakeven setting (session Advanced order required).
+        // Still allow a normal single Entry/SL/TP order when Advanced is off.
+        const advancedOrderOk = this._isAdvancedOrderAllowed();
+        if (!advancedOrderOk) {
+            this._clampDraftToBasicOrderIfNeeded();
+        }
+        const autoBreakeven = advancedOrderOk && (document.getElementById('autoBreakevenToggle')?.checked || false);
         let breakevenSettings = null;
         if (autoBreakeven) {
             breakevenSettings = {
@@ -25525,7 +25673,8 @@ class OrderManager {
         
         // Get trailing stop settings (step-based system with activation).
         // Unit mode: R = multiples of |entry−SL|; pips; $ = profit at current lot size.
-        const trailingEnabled = document.getElementById('trailingSLToggle')?.checked || false;
+        // Session Advanced order required (same gate as BE / split / multi-TP).
+        const trailingEnabled = advancedOrderOk && (document.getElementById('trailingSLToggle')?.checked || false);
         let trailingStop = null;
         if (trailingEnabled) {
             const riskDistance = Math.abs(entryPrice - slPrice);
