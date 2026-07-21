@@ -662,7 +662,15 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 SUPPORT_UPLOAD_DIR = UPLOAD_DIR / "support"
 SUPPORT_UPLOAD_DIR.mkdir(exist_ok=True)
 
-DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
+# Prefer tracked scripts/ path (download/ is gitignored and often only present locally).
+_DUKASCOPY_SCRIPT_CANDIDATES = (
+    _APP_DIR / "scripts" / "dukascopy_fetch_data.js",
+    _APP_DIR / "download" / "fetch-data.js",
+)
+DUKASCOPY_SCRIPT_PATH = next(
+    (p for p in _DUKASCOPY_SCRIPT_CANDIDATES if p.exists()),
+    _DUKASCOPY_SCRIPT_CANDIDATES[0],
+)
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 DUKASCOPY_MAX_RANGE_DAYS = int(os.getenv("DUKASCOPY_MAX_RANGE_DAYS", "365"))
 DUKASCOPY_MAX_TOTAL_DAYS = int(os.getenv("DUKASCOPY_MAX_TOTAL_DAYS", "7300"))
@@ -6032,6 +6040,68 @@ def _start_firstrate_scheduler_thread() -> None:
     threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
 
 
+def _dukascopy_resolve_script_path() -> Path:
+    """Pick the first existing Dukascopy Node fetcher script."""
+    for p in _DUKASCOPY_SCRIPT_CANDIDATES:
+        if p.exists():
+            return p
+    return _DUKASCOPY_SCRIPT_CANDIDATES[0]
+
+
+def _dukascopy_clip_proc_output(text: str | None, *, max_chars: int = 2800) -> str:
+    """Keep the most useful tail of node stdout/stderr for admin UI + job JSON."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    lines = [ln.rstrip() for ln in t.splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    # Prefer the structured one-liner / JSON dump if present.
+    pick_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        ln = lines[i]
+        if ln.startswith("Dukascopy fetch failed:") or ln.startswith("DUKASCOPY_ERROR_JSON="):
+            pick_idx = i
+            break
+    if pick_idx is not None:
+        start = max(0, pick_idx - 2)
+        end = min(len(lines), pick_idx + 6)
+        chunk = "\n".join(lines[start:end])
+    else:
+        chunk = "\n".join(lines[-16:])
+    if len(chunk) > max_chars:
+        return "…" + chunk[-(max_chars - 1) :]
+    return chunk
+
+
+def _dukascopy_format_chunk_failure(
+    *,
+    idx: int,
+    total_chunks: int,
+    chunk_from_str: str,
+    chunk_to_str: str,
+    returncode: int | None,
+    stdout: str | None,
+    stderr: str | None,
+) -> str:
+    """Build a multi-line error so the admin panel can show the real network/API cause."""
+    err_tail = _dukascopy_clip_proc_output(stderr) or _dukascopy_clip_proc_output(stdout)
+    headline = ""
+    for ln in (err_tail or "").splitlines():
+        if ln.startswith("Dukascopy fetch failed:"):
+            headline = ln
+            break
+    if not headline:
+        headline = err_tail.splitlines()[0] if err_tail else "Unknown Dukascopy error"
+    header = (
+        f"Chunk {idx}/{total_chunks} failed ({chunk_from_str} to {chunk_to_str}) "
+        f"[exit={returncode if returncode is not None else '?'}]"
+    )
+    if err_tail and err_tail.strip() != headline.strip():
+        return f"{header}\n{headline}\n{err_tail}"
+    return f"{header}\n{headline}"
+
+
 def _dukascopy_full_history_range() -> tuple[datetime, datetime]:
     """Longest allowed M1 window ending today (UTC date)."""
     to_dt = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -6086,6 +6156,10 @@ def _execute_dukascopy_fetch(
     Download + merge + store one Dukascopy M1 instrument synchronously.
     `on_progress(phase, message, extra)` is optional for job status updates.
     """
+    script_path = _dukascopy_resolve_script_path()
+    if not script_path.exists():
+        raise RuntimeError(f"Dukascopy script not found: {script_path}")
+
     chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
     total_chunks = len(chunk_ranges)
     from_str = from_dt.strftime("%Y-%m-%d")
@@ -6102,6 +6176,11 @@ def _execute_dukascopy_fetch(
                 pass
 
     try:
+        print(
+            f"[dukascopy] {instrument} {from_str}→{to_str} "
+            f"chunks={total_chunks} script={script_path}",
+            flush=True,
+        )
         _prog("download", f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})")
         with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
@@ -6116,10 +6195,15 @@ def _execute_dukascopy_fetch(
                     f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
                     {"current_chunk": idx, "completed_chunks": idx - 1, "chunk_count": total_chunks},
                 )
+                print(
+                    f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
+                    f"{chunk_from_str}→{chunk_to_str}",
+                    flush=True,
+                )
 
                 cmd = [
                     node_binary,
-                    str(DUKASCOPY_SCRIPT_PATH),
+                    str(script_path),
                     "--instrument", instrument,
                     "--from", chunk_from_str,
                     "--to", chunk_to_str,
@@ -6135,18 +6219,29 @@ def _execute_dukascopy_fetch(
                         timeout=1200,
                     )
                 except subprocess.TimeoutExpired as exc:
-                    raise RuntimeError(
-                        f"Chunk {idx}/{total_chunks} timed out ({chunk_from_str} to {chunk_to_str})"
-                    ) from exc
+                    msg = (
+                        f"Chunk {idx}/{total_chunks} timed out after 1200s "
+                        f"({chunk_from_str} to {chunk_to_str})"
+                    )
+                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                    raise RuntimeError(msg) from exc
                 except Exception as exc:
-                    raise RuntimeError(f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}") from exc
+                    msg = f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}"
+                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                    raise RuntimeError(msg) from exc
 
                 if proc.returncode != 0:
-                    err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
-                    err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
-                    raise RuntimeError(
-                        f"Chunk {idx}/{total_chunks} failed ({chunk_from_str} to {chunk_to_str}): {err_line}"
+                    msg = _dukascopy_format_chunk_failure(
+                        idx=idx,
+                        total_chunks=total_chunks,
+                        chunk_from_str=chunk_from_str,
+                        chunk_to_str=chunk_to_str,
+                        returncode=proc.returncode,
+                        stdout=proc.stdout,
+                        stderr=proc.stderr,
                     )
+                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                    raise RuntimeError(msg)
 
                 if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
                     raise RuntimeError(
@@ -6384,9 +6479,13 @@ def _start_dukascopy_bulk_fetch_job(
                     it["finished_at"] = datetime.utcnow().isoformat()
                     done += 1
                 except Exception as exc:
+                    err_txt = str(exc) or "fetch failed"
                     it["status"] = "failed"
-                    it["error"] = str(exc) or "fetch failed"
+                    it["error"] = err_txt
+                    it["error_log"] = err_txt
+                    it["message"] = err_txt.splitlines()[0][:240]
                     it["finished_at"] = datetime.utcnow().isoformat()
+                    print(f"[dukascopy-bulk] FAIL {inst}: {err_txt}", flush=True)
                     failed += 1
 
                 state["completed_count"] = done
@@ -18518,8 +18617,9 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
             detail=f"Date range too large ({range_days} days). Max allowed per request is {DUKASCOPY_MAX_TOTAL_DAYS} days.",
         )
 
-    if not DUKASCOPY_SCRIPT_PATH.exists():
-        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {DUKASCOPY_SCRIPT_PATH}")
+    script_path = _dukascopy_resolve_script_path()
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {script_path}")
 
     node_binary = shutil.which("node")
     if not node_binary:
@@ -18539,8 +18639,9 @@ async def admin_fetch_dukascopy_bulk(payload: AdminDukascopyBulkFetchIn, request
     """Import many popular CFD tickers at once (full or custom M1 history)."""
     _require_admin(request)
 
-    if not DUKASCOPY_SCRIPT_PATH.exists():
-        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {DUKASCOPY_SCRIPT_PATH}")
+    script_path = _dukascopy_resolve_script_path()
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {script_path}")
 
     node_binary = shutil.which("node")
     if not node_binary:

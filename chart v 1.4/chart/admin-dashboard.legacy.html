@@ -3432,7 +3432,11 @@ select { cursor:default; }
               <span id="dukaProgress" style="font-size:12px;color:var(--text-muted);flex:1;min-width:160px"></span>
               <button type="button" class="btn sm primary" id="dkFetchBtn" onclick="fetchDukascopyBulk()">Download &amp; import</button>
             </div>
-            <div id="dk_bulk_items" style="display:none;margin-top:12px;max-height:220px;overflow:auto;font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.08)"></div>
+            <div id="dk_bulk_items" style="display:none;margin-top:12px;max-height:320px;overflow:auto;font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.08)"></div>
+            <details id="dk_job_log_wrap" style="display:none;margin-top:10px">
+              <summary style="cursor:default;font-size:12px;color:var(--text-muted)">Server log (full error detail)</summary>
+              <pre id="dk_job_log" style="margin:8px 0 0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;font-family:ui-monospace,monospace;line-height:1.5;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.12);color:var(--text)"></pre>
+            </details>
           </div>
         </div>
 
@@ -7601,6 +7605,38 @@ async function waitForYahooCmeJob(jobId) {
   }
 }
 
+let _dkLogLastMsg = '';
+const _dkLoggedFailures = Object.create(null);
+
+function appendDkJobLog(line, opts) {
+  const wrap = $('dk_job_log_wrap');
+  const pre = $('dk_job_log');
+  if (!pre || !line) return;
+  const text = String(line).trim();
+  if (!text) return;
+  const key = opts && opts.key ? String(opts.key) : '';
+  if (key) {
+    if (_dkLoggedFailures[key] === text) return;
+    _dkLoggedFailures[key] = text;
+  } else if (text === _dkLogLastMsg) {
+    return;
+  }
+  _dkLogLastMsg = text;
+  if (wrap) wrap.style.display = '';
+  const ts = new Date().toISOString().slice(11, 19);
+  const next = '[' + ts + '] ' + text;
+  const cur = String(pre.textContent || '');
+  pre.textContent = (cur ? cur + '\n' : '') + next;
+  pre.scrollTop = pre.scrollHeight;
+}
+
+function resetDkJobLog() {
+  const logEl = $('dk_job_log');
+  if (logEl) logEl.textContent = '';
+  _dkLogLastMsg = '';
+  Object.keys(_dkLoggedFailures).forEach(function (k) { delete _dkLoggedFailures[k]; });
+}
+
 function renderDkBulkItems(items) {
   const box = $('dk_bulk_items');
   if (!box) return;
@@ -7613,9 +7649,14 @@ function renderDkBulkItems(items) {
   box.innerHTML = items.map(function (it) {
     const st = it.status || '?';
     const mark = st === 'done' ? '✓' : (st === 'failed' ? '✗' : (st === 'skipped' ? '–' : (st === 'running' ? '…' : '·')));
-    const extra = it.error || it.message || '';
-    return '<div><span style="opacity:.7">' + mark + '</span> ' + esc(it.instrument || '') +
-      ' <span style="color:var(--text-muted)">[' + esc(st) + ']' + (extra ? ' ' + esc(String(extra).slice(0, 80)) : '') + '</span></div>';
+    const detail = String(it.error_log || it.error || it.message || '').trim();
+    const head = '<div style="margin-bottom:6px"><span style="opacity:.7">' + mark + '</span> <strong>' +
+      esc(it.instrument || '') + '</strong> <span style="color:var(--text-muted)">[' + esc(st) + ']</span>';
+    if (!detail) return head + '</div>';
+    const color = st === 'failed' ? 'var(--danger,#f87171)' : 'var(--text-muted)';
+    return head +
+      '<pre style="margin:4px 0 0;white-space:pre-wrap;word-break:break-word;color:' + color +
+      ';font:inherit;opacity:.95">' + esc(detail) + '</pre></div>';
   }).join('');
 }
 
@@ -7639,6 +7680,8 @@ async function fetchDukascopyBulk() {
   }
   if (btn) btn.disabled = true;
   if (prog) prog.textContent = 'Starting bulk import…';
+  resetDkJobLog();
+  appendDkJobLog('Starting bulk import — ' + instruments.length + ' symbol(s), period=' + period);
   renderDkBulkItems(instruments.map(function (id) { return { instrument: id, status: 'queued' }; }));
   try {
     const data = await api('/api/admin/datasets/fetch-dukascopy-bulk', {
@@ -7646,7 +7689,9 @@ async function fetchDukascopyBulk() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    if (data.job_id) appendDkJobLog('Job queued: ' + data.job_id);
     if (data.unknown_instruments && data.unknown_instruments.length) {
+      appendDkJobLog('Unknown curated ids (still attempted): ' + data.unknown_instruments.join(', '));
       toast('Note: ' + data.unknown_instruments.length + ' id(s) outside curated catalog (still attempted)', 'ok');
     }
     if (data.job_id) {
@@ -7656,6 +7701,7 @@ async function fetchDukascopyBulk() {
       await loadDatasets();
     }
   } catch (e) {
+    appendDkJobLog('Start failed: ' + (e.message || String(e)));
     toast(e.message || String(e), 'err');
     if (prog) prog.textContent = 'Failed to start';
   } finally {
@@ -7686,22 +7732,38 @@ async function waitForDukascopyJob(jobId) {
       try {
         const status = await api('/api/admin/datasets/fetch-dukascopy/' + encodeURIComponent(jobId) + '/status');
         const st = status.state || status.status;
-        if (status.items) renderDkBulkItems(status.items);
+        if (status.items) {
+          renderDkBulkItems(status.items);
+          (status.items || []).forEach(function (it) {
+            if (it && it.status === 'failed' && (it.error_log || it.error)) {
+              appendDkJobLog(
+                (it.instrument || '?') + ' FAILED\n' + String(it.error_log || it.error),
+                { key: 'fail:' + (it.instrument || '') }
+              );
+            }
+          });
+        }
+        if (status.message) appendDkJobLog(status.message, { key: 'msg' });
         if (st === 'done' || st === 'completed') {
           if (label) label.textContent = status.message || 'Done.';
+          appendDkJobLog(status.message || 'Done.', { key: 'final' });
           try { sessionStorage.removeItem('dk_active_job_id'); } catch (e) {}
           toast(status.message || 'Dukascopy import complete', 'ok');
           await loadDatasets();
           return;
         }
         if (st === 'failed' || st === 'error') {
-          if (label) label.textContent = 'Failed: ' + (status.error || status.message || 'Unknown error');
+          const failMsg = status.error || status.message || 'Unknown error';
+          if (label) label.textContent = 'Failed: ' + String(failMsg).split('\n')[0];
+          appendDkJobLog('JOB FAILED\n' + failMsg, { key: 'jobfail' });
           try { sessionStorage.removeItem('dk_active_job_id'); } catch (e) {}
-          toast('Dukascopy import failed', 'err');
+          toast('Dukascopy import failed — see log below', 'err');
           return;
         }
         if (label) label.textContent = status.message || st || 'Processing…';
-      } catch (e) { /* keep polling */ }
+      } catch (e) {
+        appendDkJobLog('Poll error (retrying): ' + (e.message || String(e)), { key: 'poll' });
+      }
     }
     if (label) label.textContent = 'Stopped updating this tab (job may still run on server).';
     toast('Browser watch timed out (server may still be working).', 'err');
