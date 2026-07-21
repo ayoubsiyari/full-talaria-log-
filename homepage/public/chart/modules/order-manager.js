@@ -16686,16 +16686,18 @@ class OrderManager {
                 canPlace = false;
                 
                 // Provide specific reason based on mode
-                if (this.marketType === 'futures') {
-                    reason = 'Minimum 1 Contract';
-                } else if (this.positionSizeMode === 'lot-size') {
-                    reason = `Enter ${positionLabel}`;
+                if (this.positionSizeMode === 'lot-size') {
+                    reason = this.marketType === 'futures' ? 'Minimum 1 Contract' : `Enter ${positionLabel}`;
                 } else if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')) {
                     if (!enableSL || !slPrice || slPrice <= 0) {
                         reason = 'Set Stop Loss';
+                    } else if (this.marketType === 'futures') {
+                        reason = 'Risk too small for 1 ct';
                     } else {
                         reason = 'Set Position Size';
                     }
+                } else if (this.marketType === 'futures') {
+                    reason = 'Minimum 1 Contract';
                 } else {
                     reason = 'Set Position Size';
                 }
@@ -25615,7 +25617,9 @@ class OrderManager {
                     if (!slEnabled || !slPrice || slPrice <= 0) {
                         errors.push('⚠️ Set a Stop Loss to calculate position size');
                     } else if (isWholeQtyInstrument) {
-                        errors.push('⚠️ Increase risk or reduce stop distance until size is at least 1 contract');
+                        // Do NOT suggest forcing 1 contract above the risk budget — that
+                        // was placing NQ orders with SL $ risk >> the user's $100 setting.
+                        errors.push('⚠️ Risk budget cannot cover 1 contract at this stop distance — increase risk $, tighten SL, or use a micro (MNQ)');
                     }
                 }
                 
@@ -26053,7 +26057,7 @@ class OrderManager {
                         orderValidationBox.innerHTML = `
                             <div class="order-validation__item">
                                 <span class="order-validation__icon">⚠️</span>
-                                <span>${msg} Increase risk or reduce stop distance.</span>
+                                <span>${msg} Raise risk $, tighten SL, or use a micro — do not force size above your risk budget.</span>
                             </div>`;
                     }
                     this.showNotification(msg, 'warning');
@@ -26368,6 +26372,21 @@ class OrderManager {
 
         // Session-level account guardrails (shared margin + risk caps).
         const sessionValidationErrors = [];
+
+        // Risk-$ / risk-% modes must never place with a larger stop $ than the user set
+        // (old futures path forced qty≥1 even when 1 NQ contract risk was e.g. $400 vs $100 budget).
+        if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')
+            && Number.isFinite(inputRiskAmount) && inputRiskAmount > 0
+            && Number.isFinite(actualRisk) && actualRisk > 0) {
+            const overBudgetTol = Math.max(1, inputRiskAmount * 0.02); // allow tiny tick/float drift
+            if (actualRisk > inputRiskAmount + overBudgetTol) {
+                sessionValidationErrors.push(
+                    `❌ Stop risk ($${actualRisk.toFixed(2)}) exceeds your risk budget ($${inputRiskAmount.toFixed(2)}). `
+                    + `Tighten SL, raise risk $, or use a micro contract. Order not placed.`
+                );
+            }
+        }
+
         if (this.orderService && typeof this.orderService.estimateTradeMargin === 'function') {
             const tentative = {
                 ticker: activeTicker,
@@ -26502,7 +26521,10 @@ class OrderManager {
         console.log(`   Pip Size: ${this.pipSize} | Pip Value/Lot: $${this.pipValuePerLot}`);
         if (Math.abs(actualRisk - inputRiskAmount) > 0.01) {
             console.warn(`   ⚠️ INPUT MISMATCH! Field shows $${inputRiskAmount.toFixed(2)} but actual is $${actualRisk.toFixed(2)}`);
-            console.warn(`   → Using ACTUAL risk ($${actualRisk.toFixed(2)}) for order`);
+            // Risk modes already blocked oversized actualRisk above; lot-size may differ by design.
+            if (this.positionSizeMode === 'lot-size') {
+                console.warn(`   → Lot-size mode: using ACTUAL risk ($${actualRisk.toFixed(2)}) for order`);
+            }
         }
         
         // Remove preview lines before placing order

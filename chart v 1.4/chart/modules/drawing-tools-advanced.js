@@ -1520,11 +1520,22 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        const pip = om?.pipSize || 0.0001;
-        const pipValue = om?.pipValuePerLot || 10;
-        const slPips = slDistance / pip;
-        const calculatedLots = riskUSD / (slPips * pipValue);
-        this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
+        let calculatedLots = 0;
+        if (om && typeof om._enginePositionSize === 'function') {
+            // Futures: floor to whole contracts; returns 0 when $ risk cannot cover 1 ct.
+            calculatedLots = om._enginePositionSize(riskUSD, entry, stop, entry);
+        } else {
+            const pip = om?.pipSize || 0.0001;
+            const pipValue = om?.pipValuePerLot || 10;
+            const slPips = slDistance / pip;
+            calculatedLots = (slPips > 0 && pipValue > 0) ? (riskUSD / (slPips * pipValue)) : 0;
+        }
+        const isFutures = om?.marketType === 'futures'
+            || (typeof om?._getQtyStep === 'function' && om._getQtyStep() >= 1);
+        // Never bump below-min size up to 0.01/1 — that inflated NQ SL $ above the risk budget.
+        this.meta.risk.lotSize = isFutures
+            ? Math.max(0, Math.floor(Number(calculatedLots) || 0))
+            : Math.max(0, Number(calculatedLots) || 0);
     }
 
     setAccountSize(value) {
