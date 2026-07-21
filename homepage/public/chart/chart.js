@@ -5543,6 +5543,27 @@ class Chart {
                 if (typeof this.render === 'function') {
                     this.render();
                 }
+                // Pair switch must drop the previous instrument's entry/exit arrows
+                // (same as loadFileData). Without this, ES markers linger on NQ after
+                // a V9 toolbar symbol change (host uses this loader, not loadFileData).
+                try {
+                    const om = this.orderManager
+                        || (typeof window !== 'undefined' && window.chart && window.chart.orderManager)
+                        || null;
+                    if (om) {
+                        if (typeof om.syncPipFromActiveSymbol === 'function') {
+                            om.syncPipFromActiveSymbol();
+                        }
+                        if (typeof om.syncOrderVisualsToActiveChart === 'function') {
+                            om.syncOrderVisualsToActiveChart();
+                        } else if (typeof om._pruneMarkerRegistriesForChart === 'function') {
+                            om._pruneMarkerRegistriesForChart(this);
+                        }
+                        if (typeof om.updatePositionsPanel === 'function') {
+                            om.updatePositionsPanel();
+                        }
+                    }
+                } catch (_omSync) { /* ignore */ }
                 if (samePairEmbedMc) {
                     this._syncIndicatorsAfterMultichartDataShare();
                 }
@@ -9668,7 +9689,12 @@ class Chart {
             const symbolDisplay = document.getElementById('symbolDisplay');
 
             const session = this.backtestingSession || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
-            const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
+            const switchingPair = String(this.currentFileId || '') !== String(targetFileId);
+            // Never keep the outgoing pair's ticker when resolve fails (that left ES
+            // markers matching currentSymbol after an NQ data load).
+            const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId)
+                || this.resolveTickerFromFileSelect(targetFileId)
+                || (switchingPair ? `FILE_${targetFileId}` : this.currentSymbol);
             if (this.currentFileId != null
                 && String(this.currentFileId) !== ''
                 && String(this.currentFileId) !== targetFileId) {
@@ -9687,7 +9713,6 @@ class Chart {
                     return false;
                 }
             }
-            const switchingPair = String(this.currentFileId || '') !== targetFileId;
             if (switchingPair) {
                 this._evictPanelMasterData();
                 pairSwitchLoadSeq = ++this._pairSwitchLoadSeq;
@@ -9915,11 +9940,16 @@ class Chart {
             this.currentFileId = targetFileId;
             // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
+            // Never fall back to session.fileName on a pair switch — that is often the session's
+            // primary instrument (e.g. ES) while targetFileId is NQ.
             this.currentSymbol = targetTicker
-                || (session.fileName
-                    ? (this._tickerFromFilename(session.fileName)
-                        || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
-                    : this.currentSymbol);
+                || this.resolveTickerFromFileSelect(targetFileId)
+                || (switchingPair
+                    ? `FILE_${targetFileId}`
+                    : (session.fileName
+                        ? (this._tickerFromFilename(session.fileName)
+                            || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
+                        : this.currentSymbol));
 
             this._nativeRawFetchTf = result.nativeRawFetchTf || requestTimeframe;
             if (anchorToHostPlayhead && isBacktestSession) {
@@ -10292,11 +10322,16 @@ class Chart {
 
             // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
             this.currentFileId = targetFileId;
+            const panelPairSwitched = outgoingPanelFileId != null
+                && String(outgoingPanelFileId) !== String(targetFileId);
             this.currentSymbol = targetTicker
-                || (session.fileName
-                    ? (this._tickerFromFilename(session.fileName)
-                        || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
-                    : this.currentSymbol);
+                || this.resolveTickerFromFileSelect(targetFileId)
+                || (panelPairSwitched
+                    ? `FILE_${targetFileId}`
+                    : (session.fileName
+                        ? (this._tickerFromFilename(session.fileName)
+                            || session.fileName.replace(/\.(csv)$/i, '').toUpperCase())
+                        : this.currentSymbol));
 
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
@@ -10422,10 +10457,13 @@ class Chart {
             }
 
             const mainOm = window.chart && window.chart.orderManager;
-            if (mainOm && typeof mainOm.syncPipFromActiveSymbol === 'function') {
-                mainOm.syncPipFromActiveSymbol();
+            const panelOm = this.orderManager || mainOm;
+            if (panelOm && typeof panelOm.syncPipFromActiveSymbol === 'function') {
+                panelOm.syncPipFromActiveSymbol();
             }
-            if (mainOm && typeof mainOm.syncOrderVisualsToActiveChart === 'function') {
+            if (panelOm && typeof panelOm.syncOrderVisualsToActiveChart === 'function') {
+                panelOm.syncOrderVisualsToActiveChart();
+            } else if (mainOm && typeof mainOm.syncOrderVisualsToActiveChart === 'function') {
                 mainOm.syncOrderVisualsToActiveChart();
             }
 

@@ -1406,7 +1406,19 @@ class OrderManager {
 
     _isMultiPanelLayout() {
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
-        return !!(pm && pm.currentLayout && String(pm.currentLayout) !== '1');
+        if (pm && pm.currentLayout && String(pm.currentLayout) !== '1') return true;
+        // V9 MultichartGrid does not wire legacy panelManager — detect peer tiles.
+        try {
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (grid && typeof grid.enumerateCharts === 'function') {
+                let n = 0;
+                for (const _ch of grid.enumerateCharts()) {
+                    n += 1;
+                    if (n > 1) return true;
+                }
+            }
+        } catch (_e) { /* ignore */ }
+        return false;
     }
 
     _collectLayoutCharts() {
@@ -1718,7 +1730,7 @@ class OrderManager {
         this.multiTPAvgLines = (this.multiTPAvgLines || []).filter((g) => g.chart !== chart);
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
-        s.selectAll('g[class*="entry-marker-"]').remove();
+        s.selectAll('g[class*="entry-marker-"], g.entry-marker, .entry-marker').remove();
         s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         s.selectAll('.trade-connector').remove();
@@ -37671,6 +37683,9 @@ class OrderManager {
     
     _updateEntryMarkersForChart(ch) {
         if (!this.entryMarkers?.length || !ch?.scales?.yScale) return;
+        // Drop foreign-pair markers left after a symbol switch (defense in depth).
+        this._pruneMarkerRegistriesForChart(ch);
+        if (!this.entryMarkers?.length) return;
         this.entryMarkers.forEach((markerData) => {
             const { marker, time, price, type } = markerData;
             const c = markerData.chart || this.chart;
@@ -37679,7 +37694,11 @@ class OrderManager {
 
             const order = markerData.order;
             const orderRef = order || this._orderRefForMarkerOrderId(markerData.orderId);
-            if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+            // No resolvable order → cannot prove it belongs here; hide it.
+            if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) {
+                try { if (marker?.remove) marker.remove(); } catch (_) {}
+                return;
+            }
 
             const entryRef = orderRef
                 ? { openTime: orderRef.openTime, openPrice: orderRef.openPrice, entryMarkerTimeMs: orderRef.entryMarkerTimeMs }
