@@ -34754,7 +34754,8 @@ class OrderManager {
             return;
         }
 
-        const marginRight = 120;
+        // Same right gutter as preview + executed (not the old hardcoded 120).
+        const rightEdge = this._getOrderOverlayRightEdge(ch);
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -34773,6 +34774,40 @@ class OrderManager {
                 }
 
                 const labelGroup = target.labelGroup;
+                // While dragging this target, keep the toast shell — only nudge Y.
+                // Full rebuild here fights drag and shoves LIMIT TP/SL sideways.
+                if (this._isDraggingPendingTarget && target._dragFrozenLabelX != null) {
+                    const dims = target.labelDimensions || { width: 80, height: 24 };
+                    const translateY = y - (dims.height || 24) / 2;
+                    labelGroup
+                        .attr('transform', `translate(${target._dragFrozenLabelX}, ${translateY})`)
+                        .style('cursor', isDraggable ? 'ns-resize' : 'default');
+                    target.line.attr('x1', 0).attr('x2', Math.max(0, target._dragFrozenLabelX));
+                    if (target.hitLine) {
+                        target.hitLine.attr('x1', 0).attr('x2', ch.w);
+                    }
+                    const shiftBtnY = (btn) => {
+                        if (!btn) return;
+                        const ct = btn.attr('transform');
+                        const cm = ct && ct.match(/translate\(\s*([^,\s)]+)\s*,\s*([^)]+?)\s*\)/);
+                        if (cm) btn.attr('transform', `translate(${cm[1]}, ${y})`);
+                    };
+                    shiftBtnY(target._pctStepperBtn);
+                    shiftBtnY(target._deleteBtn);
+                    shiftBtnY(target._splitBtn);
+                    if (target.priceHighlight) {
+                        try { target.priceHighlight.remove(); } catch (_) {}
+                        target.priceHighlight = null;
+                    }
+                    const bgColor = target.type === 'TP' ? '#089981'
+                        : target.type === 'SL' ? '#f23645'
+                        : '#f59e0b';
+                    target.priceHighlight = this.drawYAxisPriceHighlight(
+                        target.price, bgColor, `pending-${target.type.toLowerCase()}`, 0, ch
+                    );
+                    return;
+                }
+
                 labelGroup.selectAll('*').remove();
 
                 const accent = target.type === 'TP' ? (this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e')
@@ -34828,7 +34863,7 @@ class OrderManager {
                 const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
                 const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
 
-                const translateX = ch.w - totalLabelW - badgesW - marginRight;
+                const translateX = rightEdge - totalLabelW - badgesW;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
@@ -34964,7 +34999,7 @@ class OrderManager {
                     target.priceHighlight.remove();
                     target.priceHighlight = null;
                 }
-                target.priceHighlight = this.drawYAxisPriceHighlight(
+                    target.priceHighlight = this.drawYAxisPriceHighlight(
                     target.price,
                     bgColor,
                     `pending-${target.type.toLowerCase()}`,
@@ -34973,6 +35008,11 @@ class OrderManager {
                 );
             });
         });
+
+        // Column-align LIMIT/STOP entry + TP/SL with the shared preview gutter.
+        if (!this._isDraggingPendingTarget && !this._isDraggingOrderLine) {
+            this._alignAllOrderLabels(ch);
+        }
     }
 
     /**
@@ -35080,7 +35120,6 @@ class OrderManager {
         let isDragging = false;
         let dragLabelX = null;
         let avgFrameId = null;
-        const marginRight = 120;
 
         const drag = d3.drag()
             .on('start', function() {
@@ -35091,6 +35130,7 @@ class OrderManager {
                 const tr = target.labelGroup?.attr('transform') || '';
                 const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
                 dragLabelX = m ? (parseFloat(m[1]) || 0) : null;
+                target._dragFrozenLabelX = Number.isFinite(dragLabelX) ? dragLabelX : null;
                 target.line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending ${target.type}`);
             })
@@ -35140,11 +35180,13 @@ class OrderManager {
                 }
                 
                 const dims = target.labelDimensions || { width: 80, height: 20 };
+                const rightEdge = self._getOrderOverlayRightEdge(ch);
                 const translateX = Number.isFinite(dragLabelX)
                     ? dragLabelX
-                    : (ch.w - dims.width - marginRight);
+                    : (rightEdge - dims.width - (target.pctArrowsWidth || 0) - 24);
+                target._dragFrozenLabelX = translateX;
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
-                target.line.attr('x2', Math.max(0, translateX));
+                target.line.attr('x1', 0).attr('x2', Math.max(0, translateX));
                 if (target.hitLine) {
                     target.hitLine.attr('x1', 0).attr('x2', ch.w);
                 }
@@ -35236,6 +35278,7 @@ class OrderManager {
                 isDragging = false;
                 self._isDraggingPendingTarget = false;
                 dragLabelX = null;
+                target._dragFrozenLabelX = null;
                 
                 target.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
@@ -40818,9 +40861,11 @@ class OrderManager {
      * left edge so entries, TP, SL, Avg lines form a clean vertical column.
      * Rows are right-anchored via `_getOrderOverlayRightEdge` (same 175px gutter
      * as preview), then left-aligned here so widths don't stagger.
+     * Includes pending LIMIT/STOP TP/SL/BE label groups (transform-based).
      */
     _alignAllOrderLabels(ch) {
         if (!ch?.svg) return;
+        if (this._isDraggingPendingTarget || this._isDraggingOrderLine) return;
 
         // Collect the X position of every visible label box on this chart
         let minX = Infinity;
@@ -40840,8 +40885,18 @@ class OrderManager {
                 if (Number.isFinite(x) && x < minX) minX = x;
             });
         }
-        // Pending TP/SL/BE targets are positioned only in positionPendingOrderTargets (right-anchored).
-        // Do not fold them into minX or shift them here — that caused horizontal snap on click/drag.
+        // Pending LIMIT/STOP TP/SL/BE toasts use <g transform> (not attr x).
+        const pendingGroupNodes = [];
+        ch.svg.selectAll('.pending-tp-label,.pending-sl-label,.pending-be-label').each(function () {
+            const el = d3.select(this);
+            if (el.style('display') === 'none') return;
+            const tr = el.attr('transform') || '';
+            const m = /translate\(\s*([^,\s)]+)/.exec(tr);
+            const x = m ? parseFloat(m[1]) : NaN;
+            if (!Number.isFinite(x)) return;
+            pendingGroupNodes.push({ el, x, tr });
+            if (x < minX) minX = x;
+        });
 
         if (!Number.isFinite(minX) || minX === Infinity) return;
 
@@ -40989,6 +41044,42 @@ class OrderManager {
             if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
             if (g.pnlBox) g.pnlBox.attr('x', parseFloat(g.pnlBox.attr('x')) - dx);
             if (g.pnlText) g.pnlText.attr('x', parseFloat(g.pnlText.attr('x')) - dx);
+        });
+
+        // Shift pending LIMIT/STOP TP/SL/BE toast groups + their × / + / % controls
+        pendingGroupNodes.forEach(({ el, x }) => {
+            if (Math.abs(x - minX) < 0.5) return;
+            const dx = x - minX;
+            const tr = el.attr('transform') || '';
+            const ym = /translate\(\s*[^,\s)]+\s*,\s*([^)]+?)\s*\)/.exec(tr);
+            const y = ym ? ym[1] : '0';
+            el.attr('transform', `translate(${minX}, ${y})`);
+        });
+        (this.pendingTargetLines || []).forEach((entry) => {
+            if (entry.chart !== ch) return;
+            (entry.targets || []).forEach((target) => {
+                const tr = target.labelGroup?.attr('transform') || '';
+                const m = /translate\(\s*([^,\s)]+)/.exec(tr);
+                const curX = m ? parseFloat(m[1]) : NaN;
+                if (!Number.isFinite(curX)) return;
+                // Group already snapped above; shift sibling buttons by the same dx from prior X.
+                const priorX = pendingGroupNodes.find((n) => n.el.node() === target.labelGroup?.node())?.x;
+                if (!Number.isFinite(priorX) || Math.abs(priorX - minX) < 0.5) return;
+                const dx = priorX - minX;
+                const shiftBtn = (btn) => {
+                    if (!btn) return;
+                    const ct = btn.attr('transform');
+                    const cm = ct && ct.match(/translate\(\s*([^,\s)]+)\s*,\s*([^)]+?)\s*\)/);
+                    if (cm) btn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                };
+                shiftBtn(target._pctStepperBtn);
+                shiftBtn(target._deleteBtn);
+                shiftBtn(target._splitBtn);
+                if (Number.isFinite(target.labelDimensions?.width)) {
+                    const hitEnd = minX;
+                    target.line?.attr('x2', Math.max(0, hitEnd));
+                }
+            });
         });
     }
 
