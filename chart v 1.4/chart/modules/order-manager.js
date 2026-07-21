@@ -5975,6 +5975,51 @@ class OrderManager {
     }
 
     /**
+     * Cap quantity so required initial margin fits free margin (real broker behavior).
+     * Risk-$ sizing on tight futures stops can request many contracts (e.g. YM $100 risk
+     * at 1-pt SL → 20 contracts → $10k day margin) and fail place even though risk looks small.
+     */
+    _capQtyByAvailableMargin(qty, entryPrice = 0) {
+        const n = Number(qty);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        if (!this.orderService || typeof this.orderService.estimateTradeMargin !== 'function') {
+            return n;
+        }
+        try {
+            if (typeof this.orderService.recomputeSharedMarginState === 'function') {
+                this.orderService.recomputeSharedMarginState();
+            }
+        } catch (_e) { /* ignore */ }
+
+        const ticker = this._getActiveTicker();
+        const session = this.orderService.multiInstrumentSession || {};
+        let free = Number.parseFloat(session.free_margin);
+        if (!Number.isFinite(free)) free = Number.parseFloat(this.equity);
+        if (!(free > 0)) return 0;
+
+        const entry = Number.parseFloat(entryPrice) || 0;
+        const marginFor = (q) => {
+            const m = this.orderService.estimateTradeMargin({
+                ticker,
+                symbol: ticker,
+                quantity: q,
+                entryPrice: entry,
+            });
+            return Number.isFinite(m) && m > 0 ? m : 0;
+        };
+
+        const perUnit = marginFor(1);
+        if (!(perUnit > 0)) return n;
+
+        // Leave a tiny epsilon so projected margin level stays above a 100% margin-call line.
+        const maxAffordable = Math.floor((free * 0.999) / perUnit);
+        if (maxAffordable <= 0) return 0;
+        const step = this._getQtyStep();
+        const capped = Math.floor(Math.min(n, maxAffordable) / step) * step;
+        return capped > 0 ? capped : 0;
+    }
+
+    /**
      * Initialize order execution sounds
      */
     initOrderSounds() {
@@ -16900,6 +16945,9 @@ class OrderManager {
             return;
         }
         
+        // Ensure futures tick/pip + marketType are correct before risk→qty (YM vs stale FX pips).
+        this.syncPipFromActiveSymbol();
+
         // Calculate position size via MarketCalculationEngine (per-symbol correct math)
         // Falls back to pipSize×pipValuePerLot when engine is unavailable.
         const positionSize = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
@@ -16908,7 +16956,12 @@ class OrderManager {
         
         // Snap risk-derived qty to the instrument's lot step (futures=1 contract, BTC=0.001, …).
         // Floor-snap so we never exceed the user's risk budget on coarse-step instruments.
-        const snappedQty = this._roundQtyToStep(positionSize);
+        // Then cap by free margin so tight stops don't size YM/NQ into an unaffordable contract count.
+        let snappedQty = this._roundQtyToStep(positionSize);
+        const marginCappedQty = this._capQtyByAvailableMargin(snappedQty, entryPrice);
+        if (Number.isFinite(marginCappedQty) && marginCappedQty < snappedQty) {
+            snappedQty = marginCappedQty;
+        }
 
         // Update orderQuantity value for order placement
         const qtyInput = document.getElementById('orderQuantity');
@@ -25585,11 +25638,19 @@ class OrderManager {
             return { ok: false, reason: 'no_price_data' };
         }
 
+        // Refresh instrument specs + free margin before any session guardrails.
+        try { this.syncPipFromActiveSymbol(); } catch (_e) { /* ignore */ }
+        try {
+            if (this.orderService && typeof this.orderService.recomputeSharedMarginState === 'function') {
+                this.orderService.recomputeSharedMarginState();
+            }
+        } catch (_e) { /* ignore */ }
+
         const ctxChart = this._getOrderContextChart() || this.chart;
         const marketFillTimeMs = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         const currentPrice = currentCandle.c;
-        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        let quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         // `let` (not `const`) — tick-grid snap below re-assigns this value so all
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
@@ -25975,10 +26036,10 @@ class OrderManager {
                 const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);
                 if (Number.isFinite(equityNow) && equityNow > 0 && Number.isFinite(projectedUsedMargin) && projectedUsedMargin > 0) {
                     const projectedMarginLevel = (equityNow / projectedUsedMargin) * 100;
-                    if (Number.isFinite(stopOutLevel) && projectedMarginLevel <= stopOutLevel) {
-                        sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% <= ${stopOutLevel.toFixed(2)}%)`);
-                    } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel <= marginCallLevel) {
-                        sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% <= ${marginCallLevel.toFixed(2)}%)`);
+                    if (Number.isFinite(stopOutLevel) && projectedMarginLevel < stopOutLevel) {
+                        sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% < ${stopOutLevel.toFixed(2)}%)`);
+                    } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel < marginCallLevel) {
+                        sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% < ${marginCallLevel.toFixed(2)}%)`);
                     }
                 }
             }
@@ -26205,6 +26266,14 @@ class OrderManager {
             return { ok: true, orderId: placedOrderIds[0] ?? null };
         }
         
+        // Cap contracts by free margin before risk/margin checks (tight SL + $ risk can oversize YM/NQ).
+        const marginCappedPlaceQty = this._capQtyByAvailableMargin(quantity, entryPrice);
+        if (Number.isFinite(marginCappedPlaceQty) && marginCappedPlaceQty > 0 && marginCappedPlaceQty < quantity) {
+            quantity = marginCappedPlaceQty;
+            const qtyEl = document.getElementById('orderQuantity');
+            if (qtyEl) qtyEl.value = this._formatQty(quantity);
+        }
+
         // Calculate ACTUAL risk from final quantity and SL distance
         // This is the source of truth regardless of what's in input fields
         let actualRisk = 0;
@@ -26213,7 +26282,8 @@ class OrderManager {
             const slDistanceInPips = slDistance / this.pipSize;
             actualRisk = slDistanceInPips * quantity * this.pipValuePerLot;
         }
-        if (this.marketType === 'futures' && slEnabled && slPrice > 0 && entryPrice > 0 && quantity > 0) {
+        // Prefer engine risk whenever available (correct YM tick value even if marketType lagged).
+        if (slEnabled && slPrice > 0 && entryPrice > 0 && quantity > 0) {
             try {
                 const er = this._engineRisk(entryPrice, slPrice, quantity, entryPrice);
                 if (Number.isFinite(er) && er > 0) actualRisk = er;
@@ -26259,7 +26329,17 @@ class OrderManager {
             const maxRiskPerTradePct = Number.parseFloat(sessionState.max_risk_per_trade_pct);
 
             if (Number.isFinite(requiredMargin) && Number.isFinite(freeMargin) && requiredMargin > freeMargin) {
-                sessionValidationErrors.push(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`);
+                const perContract = quantity > 0 ? (requiredMargin / quantity) : requiredMargin;
+                const isFut = this.marketType === 'futures'
+                    || (this.orderService._defaultFuturesDayMarginUsd
+                        && this.orderService._defaultFuturesDayMarginUsd(activeTicker) != null);
+                if (isFut && Number.isFinite(perContract) && perContract > 0) {
+                    sessionValidationErrors.push(
+                        `❌ Insufficient free margin ($${requiredMargin.toFixed(2)} required for ${quantity} contract(s) @ $${perContract.toFixed(0)}/ct day margin, $${freeMargin.toFixed(2)} available). Risk $ is not margin — widen the stop or reduce size.`
+                    );
+                } else {
+                    sessionValidationErrors.push(`❌ Insufficient free margin (${requiredMargin.toFixed(2)} required, ${freeMargin.toFixed(2)} available)`);
+                }
             }
 
             if (Number.isFinite(maxRiskPerTradePct) && maxRiskPerTradePct > 0 && Number.isFinite(equityNow) && equityNow > 0) {
@@ -26278,10 +26358,11 @@ class OrderManager {
             const projectedUsedMargin = (Number.isFinite(usedMargin) ? usedMargin : 0) + (Number.isFinite(requiredMargin) ? requiredMargin : 0);
             if (Number.isFinite(equityNow) && equityNow > 0 && Number.isFinite(projectedUsedMargin) && projectedUsedMargin > 0) {
                 const projectedMarginLevel = (equityNow / projectedUsedMargin) * 100;
-                if (Number.isFinite(stopOutLevel) && projectedMarginLevel <= stopOutLevel) {
-                    sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% <= ${stopOutLevel.toFixed(2)}%)`);
-                } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel <= marginCallLevel) {
-                    sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% <= ${marginCallLevel.toFixed(2)}%)`);
+                // Use strict < so equity exactly covering required margin (level == 100%) is allowed.
+                if (Number.isFinite(stopOutLevel) && projectedMarginLevel < stopOutLevel) {
+                    sessionValidationErrors.push(`❌ Blocked by Stop-Out level (${projectedMarginLevel.toFixed(2)}% < ${stopOutLevel.toFixed(2)}%)`);
+                } else if (Number.isFinite(marginCallLevel) && projectedMarginLevel < marginCallLevel) {
+                    sessionValidationErrors.push(`❌ Blocked by Margin-Call level (${projectedMarginLevel.toFixed(2)}% < ${marginCallLevel.toFixed(2)}%)`);
                 }
             }
         }

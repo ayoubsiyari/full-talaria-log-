@@ -362,6 +362,8 @@ class FuturesCalculator {
         const slTicks = Math.abs(entry - sl) / tickSize;
         const riskPerContract = slTicks * tickValue;
         if (riskPerContract === 0) return 0;
+        // At least 1 contract when risk is set (min size). Tight stops can still size many
+        // contracts from the $ risk budget; order-manager caps that by free day margin.
         return Math.max(1, Math.floor(riskUSD / riskPerContract));
     }
 
