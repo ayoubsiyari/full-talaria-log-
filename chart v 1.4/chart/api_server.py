@@ -6243,10 +6243,36 @@ def _execute_dukascopy_fetch(
                     print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
                     raise RuntimeError(msg)
 
-                if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
-                    raise RuntimeError(
-                        f"Chunk {idx}/{total_chunks} returned empty CSV ({chunk_from_str} to {chunk_to_str})"
+                stdout_txt = proc.stdout or ""
+                empty_range = (
+                    "EMPTY_RANGE=1" in stdout_txt
+                    or re.search(r"(?m)^ROW_COUNT=0\s*$", stdout_txt) is not None
+                )
+                # Header-only / missing file counts as empty (common for early CFD history).
+                data_rows = 0
+                if chunk_path.exists() and chunk_path.stat().st_size > 0:
+                    try:
+                        with open(chunk_path, "rb") as _cf:
+                            _ = _cf.readline()  # header
+                            for _line in _cf:
+                                if _line.strip():
+                                    data_rows += 1
+                                    if data_rows > 0:
+                                        break
+                    except Exception:
+                        data_rows = 0
+                if empty_range or data_rows == 0:
+                    print(
+                        f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
+                        f"{chunk_from_str}→{chunk_to_str}: empty (skip)",
+                        flush=True,
                     )
+                    _prog(
+                        "download",
+                        f"Skipped empty chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                        {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
+                    )
+                    continue
 
                 _prog(
                     "download",
@@ -6255,7 +6281,17 @@ def _execute_dukascopy_fetch(
                 )
                 chunk_paths.append(chunk_path)
 
-            _prog("merge", f"Merging {total_chunks} chunk{'s' if total_chunks != 1 else ''} into one CSV")
+            if not chunk_paths:
+                raise RuntimeError(
+                    f"No Dukascopy data for {instrument} in {from_str}→{to_str} "
+                    f"({total_chunks} chunk{'s' if total_chunks != 1 else ''} empty)"
+                )
+
+            _prog(
+                "merge",
+                f"Merging {len(chunk_paths)} non-empty chunk{'s' if len(chunk_paths) != 1 else ''} "
+                f"(of {total_chunks})",
+            )
             with open(output_path, "wb") as out_f:
                 first_header = None
                 for idx, chunk_path in enumerate(chunk_paths):
@@ -6263,12 +6299,14 @@ def _execute_dukascopy_fetch(
                         first_line = in_f.readline()
                         if not first_line:
                             continue
-                        if idx == 0:
+                        if first_header is None:
                             first_header = first_line
                             out_f.write(first_line)
                         else:
-                            if not first_header or first_line.strip().lower() != first_header.strip().lower():
-                                out_f.write(first_line)
+                            if first_line.strip().lower() != first_header.strip().lower():
+                                # Unexpected different header — keep body only.
+                                pass
+                            # else: skip duplicate header
                         shutil.copyfileobj(in_f, out_f)
 
         if not output_path.exists() or output_path.stat().st_size <= 0:
