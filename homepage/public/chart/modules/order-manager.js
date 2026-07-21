@@ -37704,13 +37704,18 @@ class OrderManager {
                 ? { openTime: orderRef.openTime, openPrice: orderRef.openPrice, entryMarkerTimeMs: orderRef.entryMarkerTimeMs }
                 : { openTime: time, openPrice: price };
             const dataIndex = this._chartIndexForEntryMarkerOnChart(c, entryRef);
-            if (dataIndex === -1) return;
+            if (dataIndex === -1 || !c.data[dataIndex]) {
+                // Zoom-out / data refresh: hide stale pixels instead of leaving
+                // arrows floating in empty space to the right of candles.
+                try { if (marker) marker.style('display', 'none'); } catch (_) {}
+                return;
+            }
+            try { if (marker) marker.style('display', null); } catch (_) {}
 
             const candleSpacing = c.getCandleSpacing();
             const x = c.dataIndexToPixel(dataIndex);
             const y = c.scales.yScale(price);
             const candle = c.data[dataIndex];
-            if (!candle) return;
             const isBuy = type === 'BUY';
             const sz = 12;
             const gap = 4;
@@ -37750,10 +37755,12 @@ class OrderManager {
                     openTime: em.openTime ?? orderRef?.openTime,
                     entryMarkerTimeMs: em.entryMarkerTimeMs ?? orderRef?.entryMarkerTimeMs,
                 });
-                if (dataIndex === -1) return;
-
-                const candle = ch.data[dataIndex];
-                if (!candle) return;
+                const candle = (dataIndex >= 0 && ch.data) ? ch.data[dataIndex] : null;
+                if (dataIndex === -1 || !candle) {
+                    try { if (marker) marker.style('display', 'none'); } catch (_) {}
+                    return;
+                }
+                try { if (marker) marker.style('display', null); } catch (_) {}
                 const resolvedT = Number(candle.t);
                 if (Number.isFinite(resolvedT)) {
                     em.time = resolvedT;

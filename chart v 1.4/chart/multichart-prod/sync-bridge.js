@@ -276,7 +276,40 @@
             } else if (typeof chart.scheduleRender === 'function') {
                 chart.scheduleRender();
             }
+            // Glue trade markers after viewport change — host OM may own SVG on
+            // this embed; without this, zoom-out leaves arrows in empty space.
+            glueTradeMarkersAfterZoomFollow(chart);
         });
+    }
+
+    function glueTradeMarkersAfterZoomFollow(chart) {
+        if (!chart) return;
+        try {
+            if (typeof chart._syncOrderOverlaysDuringPan === 'function') {
+                chart._syncOrderOverlaysDuringPan(false);
+            }
+        } catch (_) {}
+        function glueOm(om) {
+            if (!om) return;
+            try {
+                if (typeof om._updateEntryMarkersForChart === 'function') {
+                    om._updateEntryMarkersForChart(chart);
+                }
+            } catch (_) {}
+            try {
+                if (typeof om._updateExitAndPartialMarkersOnMain === 'function') {
+                    om._updateExitAndPartialMarkersOnMain();
+                }
+            } catch (_) {}
+        }
+        glueOm(chart.orderManager);
+        try {
+            const parentChart = (global.parent && global.parent !== global)
+                ? global.parent.chart
+                : null;
+            const hostOm = parentChart && parentChart.orderManager;
+            if (hostOm && hostOm !== chart.orderManager) glueOm(hostOm);
+        } catch (_) {}
     }
 
     /**
@@ -2474,7 +2507,9 @@
                 && Number.isFinite(m.candleWidth)
                 && (Number.isFinite(m.visibleBarCount) || hasWallClock);
 
-            if (!panSync) {
+            // Live wheel zoom: geometry/wall-clock only — history fetch here
+            // refreshes peer data mid-gesture and leaves order marks in empty space.
+            if (!panSync && !zoomSync) {
                 ensureHistoryForVisibleStart(chart, m);
             }
 
@@ -2615,7 +2650,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b21';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b22';
 
         return {
             state,

@@ -7928,6 +7928,22 @@ class Chart {
         const serverTfMs = this.parseTimeframe(serverTf || chartTf) || chartTfMs;
         const existing = Array.isArray(this.rawData) && this.rawData.length ? this.rawData : this.data;
 
+        // Capture right-edge time before rewrite so offsetX can be remapped
+        // (same idea as pan-load prepend). Without this, candles jump left and
+        // trade markers float in the empty right gap.
+        const margin = this.margin || { l: 60, r: 60 };
+        const spacingBefore = (typeof this.getCandleSpacing === 'function')
+            ? this.getCandleSpacing()
+            : (this.candleWidth || 1);
+        const plotW = Math.max(1, (this.w || 0) - margin.l - margin.r);
+        let anchorT = null;
+        if (Array.isArray(this.data) && this.data.length && spacingBefore > 0) {
+            const idxAtRight = (plotW - this.offsetX) / spacingBefore - 1;
+            const i = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
+            const t = Number(this.data[i] && this.data[i].t);
+            if (Number.isFinite(t)) anchorT = t;
+        }
+
         const useAsViewportSnapshot =
             serverTfMs >= chartTfMs
             && sorted.length >= Math.min(1800, Math.max(120, win.visibleBarCount * 0.45));
@@ -7966,6 +7982,30 @@ class Chart {
             this._serverCursors.lastTs = String(this.rawData[this.rawData.length - 1].t);
             this._serverCursors.hasMoreLeft = win.startIdx < 0;
             this._serverCursors.hasMoreRight = true;
+        }
+
+        if (Number.isFinite(anchorT) && Array.isArray(this.data) && this.data.length) {
+            let newIdx = -1;
+            if (typeof this.findLastDataIndexAtOrBeforeTime === 'function') {
+                try { newIdx = this.findLastDataIndexAtOrBeforeTime(anchorT); } catch (_) { newIdx = -1; }
+            }
+            if (!(newIdx >= 0)) {
+                // Fallback linear scan (t may be sec or ms)
+                const target = anchorT > 1e12 ? anchorT : anchorT * 1000;
+                for (let i = this.data.length - 1; i >= 0; i--) {
+                    const ti = Number(this.data[i] && this.data[i].t);
+                    const tiMs = ti > 1e12 ? ti : ti * 1000;
+                    if (Number.isFinite(tiMs) && tiMs <= target) { newIdx = i; break; }
+                }
+            }
+            if (newIdx >= 0) {
+                const spacingAfter = (typeof this.getCandleSpacing === 'function')
+                    ? this.getCandleSpacing()
+                    : (this.candleWidth || 1);
+                if (spacingAfter > 0) {
+                    this.offsetX = plotW - (newIdx + 1) * spacingAfter;
+                }
+            }
         }
         return true;
     }
@@ -8014,6 +8054,20 @@ class Chart {
             }
             this._deferIndicatorRecalcAfterZoomFill(100);
             this.scheduleRender();
+            // Re-glue trade markers after data rewrite (prevents floating arrows
+            // in the empty right gap after zoom-out fill).
+            try {
+                const om = this.orderManager;
+                if (om && typeof om._updateEntryMarkersForChart === 'function') {
+                    om._updateEntryMarkersForChart(this);
+                }
+                if (om && typeof om._updateExitAndPartialMarkersOnMain === 'function') {
+                    om._updateExitAndPartialMarkersOnMain();
+                }
+                if (typeof this._syncOrderOverlaysDuringPan === 'function') {
+                    this._syncOrderOverlaysDuringPan(false);
+                }
+            } catch (_e) {}
 
             const winAfter = this._getVisibleFetchWindowFromPixels();
             if (
@@ -8025,6 +8079,15 @@ class Chart {
             } else {
                 requestAnimationFrame(() => {
                     try { this.constrainOffset(); } catch (_e) {}
+                    try {
+                        const om2 = this.orderManager;
+                        if (om2 && typeof om2._updateEntryMarkersForChart === 'function') {
+                            om2._updateEntryMarkersForChart(this);
+                        }
+                        if (om2 && typeof om2._updateExitAndPartialMarkersOnMain === 'function') {
+                            om2._updateExitAndPartialMarkersOnMain();
+                        }
+                    } catch (_e2) {}
                 });
             }
         } catch (err) {
