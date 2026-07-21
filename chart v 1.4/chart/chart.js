@@ -33225,6 +33225,9 @@ class Chart {
                         try { this.constrainOffset(); } catch (_e) {}
                     }
                 }
+                // Clear burst BEFORE settle sync so Date Range peers get
+                // zoomSync:false and one full wall-clock fit (not another lite frame).
+                this._wheelBurstUntil = 0;
                 if (typeof this.dispatchScrollSync === 'function') {
                     try { this.dispatchScrollSync(true); } catch (_e) {}
                 }

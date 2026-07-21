@@ -240,6 +240,74 @@
     }
 
     /**
+     * Live Date Range zoom follow paint.
+     * Must NOT arm pan-sync burst: that freezes pan tick density while candleWidth
+     * changes and piles overlapping time-axis labels into a solid white bar.
+     */
+    function paintZoomFollow(chart) {
+        chart._chartViewRestored = true;
+        chart._panSyncBurstUntil = 0;
+        try {
+            if (typeof chart._clearPanTimeTickCache === 'function') {
+                chart._clearPanTimeTickCache();
+            }
+        } catch (_) {}
+        chart._cachedInteractionTimeTicks = null;
+        chart._idleTimeAxisKeyCached = null;
+        chart._timeTicks = null;
+        if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
+    }
+
+    /**
+     * Live wheel zoom while Date Range sync is ON (TradingView-style).
+     * Same TF + same data → candleWidth + offset. Cross-symbol same TF →
+     * candleWidth + right-edge time. Cross-TF → right-edge only during burst.
+     * Never duration→candleWidth smash; never host data mirror.
+     */
+    function applyLiveZoomDateRangeFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+        if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+
+        const sameTf = sameTimeframeMessage(chart, m);
+        if (sameTf && Number.isFinite(m.candleWidth) && m.candleWidth > 0) {
+            if (canUseLightweightOffsetFollow(chart, m)
+                && Number.isFinite(m.offsetX)
+                && applyZoomViewportFromLeader(chart, m)) {
+                paintZoomFollow(chart);
+                return true;
+            }
+            chart.candleWidth = Number(m.candleWidth);
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+            if (applyRightEdgeTimeFollow(chart, m)) {
+                if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                    try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+                } else if (typeof chart.constrainOffset === 'function') {
+                    try { chart.constrainOffset(); } catch (_) {}
+                }
+                paintZoomFollow(chart);
+                return true;
+            }
+        }
+
+        if (applyRightEdgeTimeFollow(chart, m)) {
+            if (typeof chart._constrainOffsetDuringDrag === 'function') {
+                try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+            }
+            paintZoomFollow(chart);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Same-pair embed already sharing host data: pan drag only needs offset +
      * candleWidth — no history fetch, bar refit, or parent array copy per frame.
      * @returns {boolean}
@@ -602,7 +670,9 @@
                 chart.offsetX = widthPx - (iR2 + 1) * spacing;
                 applyLightweightOffsetClamp(chart);
             }
-            paintPanFollow(chart);
+            // Zoom sync must rebuild time ticks; pan-burst paint freezes old density.
+            if (m.zoomSync) paintZoomFollow(chart);
+            else paintPanFollow(chart);
             return true;
         }
 
@@ -1182,6 +1252,15 @@
             return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
         }
 
+        /** User-led wheel zoom on this panel — ignore peer echo that would crush cw. */
+        function isLocalWheelZoomActive() {
+            return !!(typeof chart._isWheelZoomBurst === 'function' && chart._isWheelZoomBurst());
+        }
+
+        function isLocalRangeLeaderActive() {
+            return isLocalPanDragActive() || isLocalWheelZoomActive();
+        }
+
         /** Block inbound time-range sync while this panel is dragging any axis. */
         function isLocalAxisDragActive() {
             if (!chart.drag || !chart.drag.active) return false;
@@ -1422,13 +1501,13 @@
             // iframe sync echoes were nudging the host viewport left/right.
             if (chart._multichartHostViewportFrozen) return;
             if (chart._multichartSuppressRangeEcho) return;
-            // While this tile is the pan leader, keep broadcasting even if a peer
+            // While this tile is the pan/zoom leader, keep broadcasting even if a peer
             // echo briefly set `applying` or suppressRangeScrollEcho*.
-            if (state.applying && !isLocalPanDragActive()) return;
+            if (state.applying && !isLocalRangeLeaderActive()) return;
             var nowEcho = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            if (!isLocalPanDragActive()
+            if (!isLocalRangeLeaderActive()
                 && nowEcho < state.suppressRangeScrollEchoUntil
                 && state.suppressRangeScrollEchoLeft > 0) {
                 state.suppressRangeScrollEchoLeft--;
@@ -1472,9 +1551,11 @@
             pending.visibleRange = rangePayload;
             scheduleFlush();
             // After iframe-led pan release, re-sync data slice from host tile A.
-            if (!d.panSync && chart._multichartVisibleRangeSyncOn && isEmbedPanelChart()) {
+            // Skip during live wheel zoom — remirror can churn peer data/viewport.
+            if (!d.panSync && !d.zoomSync && !rangePayload.zoomSync
+                && chart._multichartVisibleRangeSyncOn && isEmbedPanelChart()) {
                 requestAnimationFrame(function () {
-                    if (isLocalPanDragActive()) return;
+                    if (isLocalPanDragActive() || isLocalWheelZoomActive()) return;
                     if (mirrorEmbedFromHostForDateRange() && typeof chart.render === 'function') {
                         chart.render();
                     }
@@ -2137,7 +2218,13 @@
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
+            // Zoom leader: ignore peer echo so wall-clock lite cannot smash local cw.
+            if (isLocalWheelZoomActive()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             const panSync = !!m.panSync;
+            const zoomSync = !!m.zoomSync;
             // Boot-storm guard: opening a multichart layout fires forceInitialSync
             // for the SAME panel several times within a few ms (per-panel ready +
             // syncAllIframesToHost burst + chart-state updates). Each one mirrors
@@ -2228,7 +2315,7 @@
             }
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            beginApplying(panSync);
+            beginApplying(panSync || zoomSync);
             if (isPeerLedRangeMessage(m) && isRangeSyncEnabled()) {
                 markReplayViewportForSyncFollow(chart);
             }
@@ -2323,9 +2410,11 @@
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
+            // Never host-mirror on live zoom — viewport geometry follow only.
             if (isEmbedPanelChart()
                 && isHostLedRangeMessage(m)
                 && !panSync
+                && !zoomSync
                 && (chart._multichartVisibleRangeSyncOn || m.forceInitialSync)
                 && typeof chart._multichartMirrorViewportFromHost === 'function'
                 && chart._multichartMirrorViewportFromHost()) {
@@ -2373,9 +2462,16 @@
                     applied = applyFastPanSync(chart, m);
                 }
             } else if (isRangeSyncEnabled() && hasWallClock) {
-                // Wheel zoom (zoomSync): lite wall-clock each frame for live follow.
-                // Pan release / settle: full wall-clock fit (same clock window).
-                applied = applyWallClockDateRange(chart, m, { lite: !!m.zoomSync });
+                // Live wheel: geometry / right-edge follow (no per-frame duration smash).
+                // Settle (!zoomSync): full wall-clock fit once for the shared clock window.
+                if (zoomSync) {
+                    applied = applyLiveZoomDateRangeFollow(chart, m);
+                    if (!applied) {
+                        applied = applyWallClockDateRange(chart, m, { lite: true });
+                    }
+                } else {
+                    applied = applyWallClockDateRange(chart, m, { lite: false });
+                }
             } else if (isTimeOnlySyncEnabled()) {
                 applied = applyDiscreteTimeSync(chart, m);
             } else if (canMatchViewport) {
@@ -2410,10 +2506,10 @@
             var tSil = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            state.suppressRangeScrollEchoUntil = tSil + (panSync ? 120 : 200);
-            state.suppressRangeScrollEchoLeft = panSync ? 4 : 6;
+            state.suppressRangeScrollEchoUntil = tSil + ((panSync || zoomSync) ? 160 : 200);
+            state.suppressRangeScrollEchoLeft = (panSync || zoomSync) ? 8 : 6;
 
-            if (panSync) return;
+            if (panSync || zoomSync) return;
 
             // Defer assertion until raf so render() has applied autoScale
             requestAnimationFrame(function () {
@@ -2491,7 +2587,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b17';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260721b19';
 
         return {
             state,
