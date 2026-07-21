@@ -17,16 +17,17 @@ export const GOTO_ENGINE_PRESETS = [
 
 export const DEFAULT_GOTO_PINNED = [
   { id: 1, type: "datetime", label: "09 Jan 2009", time: "07:00", repeat: "none", pinned: true, dateIso: "2009-01-09", color: "#4A6AFF" },
-  { id: 2, type: "session", label: "NY Open", time: "08:00", repeat: "none", pinned: true, color: "#4A6AFF" },
+  // Session opens are daily HH:mm jumps (next occurrence from playhead), not one-off dates.
+  { id: 2, type: "session", label: "NY Open", time: "08:00", repeat: "daily", pinned: true, color: "#4A6AFF" },
   { id: 4, type: "price", label: "126.500", pinned: true, color: "#C9A84C" },
 ];
 
 export const DEFAULT_GOTO_PRESETS = [
-  { id: "ny", label: "New York Open", time: "08:00", type: "session", color: "#4A6AFF" },
-  { id: "lon", label: "London Open", time: "02:00", type: "session", color: "#00D4A1" },
-  { id: "tok", label: "Tokyo Open", time: "00:00", type: "session", color: "#FF8C42" },
-  { id: "syd", label: "Sydney Open", time: "22:00", type: "session", color: "#B06AFF" },
-  { id: "fra", label: "Frankfurt Open", time: "07:00", type: "session", color: "#C9A84C" },
+  { id: "ny", label: "New York Open", time: "08:00", type: "session", repeat: "daily", color: "#4A6AFF" },
+  { id: "lon", label: "London Open", time: "02:00", type: "session", repeat: "daily", color: "#00D4A1" },
+  { id: "tok", label: "Tokyo Open", time: "00:00", type: "session", repeat: "daily", color: "#FF8C42" },
+  { id: "syd", label: "Sydney Open", time: "22:00", type: "session", repeat: "daily", color: "#B06AFF" },
+  { id: "fra", label: "Frankfurt Open", time: "07:00", type: "session", repeat: "daily", color: "#C9A84C" },
   ...GOTO_ENGINE_PRESETS,
 ];
 
@@ -53,11 +54,16 @@ function writeStorage(payload) {
 function normalizeItem(item) {
   if (!item || typeof item !== "object") return null;
   const type = item.type === "price" || item.type === "session" ? item.type : "datetime";
+  // Legacy stored session pins used repeat:"none" and then failed via goToNextSession bar-scan.
+  let repeat = item.repeat || "none";
+  if (type === "session" && (!item.repeat || item.repeat === "none")) {
+    repeat = "daily";
+  }
   return {
     ...item,
     type,
     time: item.time != null ? String(item.time) : undefined,
-    repeat: item.repeat || "none",
+    repeat,
     pinned: !!item.pinned,
   };
 }
@@ -292,32 +298,39 @@ export function executeGotoItem(item, { fallbackDateIso } = {}) {
     return false;
   }
 
-  if (item.type === "session") {
-    const [hh, mm] = parseGotoTimeParts(item.time || "00:00");
-    if (typeof ch.goToNextSession === "function") {
+  // Session opens + datetime pins both resolve to a UTC ms target, then jumpToTimestamp
+  // (loads window if needed). Do NOT use goToNextSession bar-scan — it only searches
+  // already-loaded bars and alerts "No session found at HH:MM".
+  if (item.type === "session" || item.type === "datetime") {
+    const sessionItem = item.type === "session"
+      ? { ...item, repeat: item.repeat && item.repeat !== "none" ? item.repeat : "daily" }
+      : item;
+    const playhead = getChartPlayheadMs(ch);
+    const ms = resolveGotoTimestampMs(sessionItem, { fallbackDateIso, playheadMs: playhead });
+    if (ms == null || !Number.isFinite(ms)) {
+      notifyChart("Could not resolve date/time for Go To", "warning");
+      return false;
+    }
+
+    const jumpCheck = validateGotoOnChart(ch, { targetTimestamp: ms });
+    if (!jumpCheck.ok) {
+      notifyChart(jumpCheck.message || "Go To blocked by session rules", "warning");
+      return false;
+    }
+
+    if (typeof ch.jumpToTimestamp === "function") {
+      void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
+      return true;
+    }
+    // Legacy fallback if jumpToTimestamp missing.
+    if (item.type === "session" && typeof ch.goToNextSession === "function") {
+      const [hh, mm] = parseGotoTimeParts(item.time || "00:00");
       ch.goToNextSession(hh, mm);
       return true;
     }
     return false;
   }
 
-  const playhead = getChartPlayheadMs(ch);
-  const ms = resolveGotoTimestampMs(item, { fallbackDateIso, playheadMs: playhead });
-  if (ms == null || !Number.isFinite(ms)) {
-    notifyChart("Could not resolve date/time for Go To", "warning");
-    return false;
-  }
-
-  const jumpCheck = validateGotoOnChart(ch, { targetTimestamp: ms });
-  if (!jumpCheck.ok) {
-    notifyChart(jumpCheck.message || "Go To blocked by session rules", "warning");
-    return false;
-  }
-
-  if (typeof ch.jumpToTimestamp === "function") {
-    void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
-    return true;
-  }
   return false;
 }
 
@@ -327,7 +340,13 @@ export function presetToGotoItem(preset, fallbackDateIso) {
     return { type: "engine", engineAction: preset.engineAction, label: preset.label, color: preset.color };
   }
   if (preset.type === "session") {
-    return { type: "session", label: preset.label, time: preset.time, color: preset.color };
+    return {
+      type: "session",
+      label: preset.label,
+      time: preset.time,
+      repeat: preset.repeat && preset.repeat !== "none" ? preset.repeat : "daily",
+      color: preset.color,
+    };
   }
   if (preset.type === "price") {
     return { type: "price", label: preset.label, color: preset.color };

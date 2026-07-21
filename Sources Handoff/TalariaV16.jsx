@@ -11719,9 +11719,12 @@ const TalariaV8b = () => {
       if (!isV16LiveBoot()) return;
       const boot = window.__TALARIA_V16_BOOT__;
       if (!boot) return;
-      const nextSessions = boot.sessions || [];
-      if (nextSessions.length) {
+      // Always apply boot.sessions — including []. Skipping empty lists left deleted
+      // rows on screen until a full page refresh (delete last session / race with reload).
+      if (Array.isArray(boot.sessions)) {
+        const nextSessions = boot.sessions;
         setSessions((prev) => {
+          if (!nextSessions.length) return [];
           if (!prev.length) return nextSessions;
           const prevById = new Map(prev.map((s) => [String(s.id), s]));
           return nextSessions.map((s) => {
@@ -15304,21 +15307,41 @@ const TalariaV8b = () => {
     executeSessSeedTrades();
   };
   const performDeleteSession = (id) => {
-    fetch(`/api/sessions/${encodeURIComponent(String(id))}`, {
+    const sid = String(id);
+    const removeLocally = () => {
+      setSessions((prev) => prev.filter((s) => String(s.id) !== sid));
+      if (String(dashSessId) === sid) setDashSessId(null);
+      try {
+        const boot = typeof window !== "undefined" ? window.__TALARIA_V16_BOOT__ : null;
+        if (boot && Array.isArray(boot.sessions)) {
+          boot.sessions = boot.sessions.filter((s) => String(s.id) !== sid);
+          if (String(boot.openSessionId) === sid) boot.openSessionId = null;
+        }
+      } catch (_e) { /* ignore */ }
+    };
+    // Optimistic UI first so the row vanishes immediately (boot reload can race).
+    removeLocally();
+    fetch(`/api/sessions/${encodeURIComponent(sid)}`, {
       method: "DELETE",
       credentials: "include",
     })
       .then(async (res) => {
+        // 404 = already deleted server-side; keep optimistic removal.
+        if (res.status === 404) {
+          reloadEmbeddedV16Boot();
+          return;
+        }
         if (!res.ok) {
           const body = await res.json().catch(() => null);
-          const detail = body?.detail ? String(body.detail) : `HTTP ${res.status}`;
+          const detail = body?.detail != null
+            ? (typeof body.detail === "string" ? body.detail : (body.detail.message || JSON.stringify(body.detail)))
+            : `HTTP ${res.status}`;
           throw new Error(detail);
         }
-        setSessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
-        if (String(dashSessId) === String(id)) setDashSessId(null);
         reloadEmbeddedV16Boot();
       })
       .catch((err) => {
+        reloadEmbeddedV16Boot();
         window.alert(`Failed to delete session: ${err?.message || err}`);
       });
   };

@@ -20822,9 +20822,79 @@ class Chart {
     }
     
     /**
-     * Jump to next occurrence of a specific hour:minute
+     * Next wall-clock HH:mm after the playhead (chart timezone), as UTC ms.
+     * Used by session Go To so we can jumpToTimestamp (load window) instead of
+     * scanning only already-loaded bars.
+     */
+    _resolveNextSessionWallClockMs(targetHour, targetMinute = 0) {
+        const hh = Number(targetHour);
+        const mm = Number(targetMinute);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+
+        let playhead = null;
+        if (this.replaySystem?.isActive && Number.isFinite(this.replaySystem.replayTimestamp)) {
+            playhead = this.normalizeTimestampMs(this.replaySystem.replayTimestamp);
+        } else {
+            const idx = this.replaySystem?.currentIndex ?? (this.data?.length ? this.data.length - 1 : -1);
+            if (idx >= 0 && this.data?.[idx]) {
+                playhead = this.normalizeTimestampMs(this.data[idx].t);
+            }
+        }
+        if (!Number.isFinite(playhead)) return null;
+
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        if (tm && typeof tm.convertToTimezone === 'function' && typeof tm.wallClockToUtcMillis === 'function') {
+            const wall = tm.convertToTimezone(playhead);
+            let y = wall.getUTCFullYear();
+            let mo = wall.getUTCMonth() + 1;
+            let d = wall.getUTCDate();
+            let targetMs = tm.wallClockToUtcMillis(y, mo, d, hh, mm, 0);
+            let guard = 0;
+            while (Number.isFinite(targetMs) && targetMs <= playhead && guard < 400) {
+                const next = new Date(Date.UTC(y, mo - 1, d + 1));
+                y = next.getUTCFullYear();
+                mo = next.getUTCMonth() + 1;
+                d = next.getUTCDate();
+                targetMs = tm.wallClockToUtcMillis(y, mo, d, hh, mm, 0);
+                guard += 1;
+            }
+            return Number.isFinite(targetMs) ? targetMs : null;
+        }
+
+        // Fallback without timezone manager (local wall clock).
+        const wall = new Date(playhead);
+        let y = wall.getFullYear();
+        let mo = wall.getMonth() + 1;
+        let d = wall.getDate();
+        let targetMs = new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
+        let guard = 0;
+        while (Number.isFinite(targetMs) && targetMs <= playhead && guard < 400) {
+            const next = new Date(y, mo - 1, d + 1);
+            y = next.getFullYear();
+            mo = next.getMonth() + 1;
+            d = next.getDate();
+            targetMs = new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
+            guard += 1;
+        }
+        return Number.isFinite(targetMs) ? targetMs : null;
+    }
+
+    /**
+     * Jump to next occurrence of a specific hour:minute (chart timezone).
      */
     goToNextSession(targetHour, targetMinute = 0) {
+        const targetMs = this._resolveNextSessionWallClockMs(targetHour, targetMinute);
+        if (Number.isFinite(targetMs) && typeof this.jumpToTimestamp === 'function') {
+            const jumpCheck = this.validateGoToJump({ targetTimestamp: targetMs });
+            if (!jumpCheck.ok) {
+                this._showGoToBlocked(jumpCheck.message);
+                return;
+            }
+            void this.jumpToTimestamp(targetMs, { showLoadingOverlay: true });
+            return;
+        }
+
+        // Last resort: scan loaded bars only.
         this.jumpToNextMatchingBar((current, candidate) => {
             const currentTs = current.t;
             const candidateTs = candidate.t;
@@ -21095,20 +21165,43 @@ class Chart {
     }
 
     goToNextSessionCustom(hour, minute) {
-        const targetMinutes = (hour * 60) + minute;
+        // Prefer timezone-aware timestamp jump (same path as pinned NY Open / datetime Go To).
+        const targetMs = this._resolveNextSessionWallClockMs(hour, minute);
+        if (Number.isFinite(targetMs) && typeof this.jumpToTimestamp === 'function') {
+            const jumpCheck = this.validateGoToJump({ targetTimestamp: targetMs });
+            if (!jumpCheck.ok) {
+                this._showGoToBlocked(jumpCheck.message);
+                return;
+            }
+            void this.jumpToTimestamp(targetMs, { showLoadingOverlay: true });
+            return;
+        }
 
+        const targetMinutes = (hour * 60) + minute;
         this.jumpToNextMatchingBar((current, candidate) => {
             if (!candidate) return false;
 
-            const candidateDate = new Date(candidate.t);
-            const currentDate = new Date(current.t);
-
-            const candidateMinutes = (candidateDate.getHours() * 60) + candidateDate.getMinutes();
-            const currentMinutes = (currentDate.getHours() * 60) + currentDate.getMinutes();
-
-            const sameDay = candidateDate.getFullYear() === currentDate.getFullYear()
-                && candidateDate.getMonth() === currentDate.getMonth()
-                && candidateDate.getDate() === currentDate.getDate();
+            const tm = window.timezoneManager;
+            let candidateMinutes;
+            let currentMinutes;
+            let sameDay;
+            if (tm && typeof tm.convertToTimezone === 'function') {
+                const candidateDate = tm.convertToTimezone(candidate.t);
+                const currentDate = tm.convertToTimezone(current.t);
+                candidateMinutes = (candidateDate.getUTCHours() * 60) + candidateDate.getUTCMinutes();
+                currentMinutes = (currentDate.getUTCHours() * 60) + currentDate.getUTCMinutes();
+                sameDay = candidateDate.getUTCFullYear() === currentDate.getUTCFullYear()
+                    && candidateDate.getUTCMonth() === currentDate.getUTCMonth()
+                    && candidateDate.getUTCDate() === currentDate.getUTCDate();
+            } else {
+                const candidateDate = new Date(candidate.t);
+                const currentDate = new Date(current.t);
+                candidateMinutes = (candidateDate.getHours() * 60) + candidateDate.getMinutes();
+                currentMinutes = (currentDate.getHours() * 60) + currentDate.getMinutes();
+                sameDay = candidateDate.getFullYear() === currentDate.getFullYear()
+                    && candidateDate.getMonth() === currentDate.getMonth()
+                    && candidateDate.getDate() === currentDate.getDate();
+            }
 
             if (sameDay) {
                 if (currentMinutes >= targetMinutes) {
@@ -27998,6 +28091,14 @@ class Chart {
             while (idx < firstIdx) idx += step;
             return idx;
         }
+        // Intraday: match bar-index cadence (same as _buildTimeTicksClockAligned).
+        // Wall-clock search yields uneven gaps after TF resample skips sessions.
+        if (timeframeMs < 86400000) {
+            const phase = (((this.data.length - 1) % step) + step) % step;
+            let idx = Math.ceil(firstIdx);
+            while ((((idx % step) + step) % step) !== phase) idx++;
+            return idx;
+        }
         const labelIntervalMs = step * timeframeMs;
         // Anchor to the LAST bar (stable across backward history loads — see
         // _buildTimeTicks) and midnight-align for sub-day AND multi-day cadence.
@@ -28043,6 +28144,10 @@ class Chart {
         if (!Number.isFinite(idx)) return false;
         if (!this.data || this.data.length === 0 || !Number.isFinite(timeframeMs) || timeframeMs <= 0) {
             return (idx % labelStep) === 0;
+        }
+        if (timeframeMs < 86400000) {
+            const phase = (((this.data.length - 1) % labelStep) + labelStep) % labelStep;
+            return (((idx % labelStep) + labelStep) % labelStep) === phase;
         }
         const labelIntervalMs = labelStep * timeframeMs;
         const anchorBar = this.data[this.data.length - 1];
@@ -28426,7 +28531,6 @@ class Chart {
         const intradayCalendarMode = !isDailyOrHigher && !isCalendarTf && visibleDays > 14;
         const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
         const isReplayActive = !!(this.replaySystem && this.replaySystem.isActive);
-        const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
         const suppressIntradayBoundaryLabels = useUniformIntradayTicks;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
         // TradingView 1D (~2+ months on screen): ONLY month/year labels + matching
@@ -28531,27 +28635,19 @@ class Chart {
             let isRound = false;
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
-            } else if (useReplayIndexCadence) {
-                // Anchor cadence to ABSOLUTE local time (same as manual panning),
-                // NOT to a bar index. Index-anchored cadence pinned the grid/time
-                // ticks to fixed pixels while the replay playhead advanced — they
-                // relabeled in place instead of scrolling with the candles. Time
-                // anchoring ties each tick to a specific bar, so the whole grid +
-                // time axis moves as one with the chart during replay, exactly like
-                // dragging. (tickAlignmentBaseTs is local midnight → stable across
-                // history loads too, so it doesn't jump when older bars stream in.)
-                const deltaFromBase = candle.t - tickAlignmentBaseTs;
-                if (labelIntervalMs > 0 && Number.isFinite(deltaFromBase)) {
-                    const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
-                    const tol = 0.5;
-                    isRound = rem < tol || rem > labelIntervalMs - tol;
-                } else {
-                    isRound = false;
-                }
+            } else if (useUniformIntradayTicks) {
+                // Chart X is bar-index based (equal pixel spacing per candle). After TF
+                // resample (esp. 4H), missing weekend/session buckets are skipped, so
+                // wall-clock-aligned ticks land on irregular index gaps → uneven grid.
+                // Use absolute bar-index cadence; labels still show each bar's real time.
+                // Phase from last bar keeps the right edge stable when history prepends.
+                const step = Math.max(1, labelInterval);
+                const phase = useReplayFirstBarAnchor
+                    ? 0
+                    : (((this.data.length - 1) % step) + step) % step;
+                isRound = (((idx % step) + step) % step) === phase;
             } else {
-                // Keep intraday cadence deterministic without depending on timezone offset.
-                // Tolerant divisibility: strict `delta % interval === 0` can miss ticks across
-                // engines when timestamps are slightly non-integer at the edge.
+                // Daily+ / other: wall-clock alignment for calendar-style majors.
                 const deltaFromBase = candle.t - tickAlignmentBaseTs;
                 if (labelIntervalMs > 0 && Number.isFinite(deltaFromBase)) {
                     const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
@@ -28615,10 +28711,13 @@ class Chart {
                 pPrevDay = pDay; pPrevMonth = pMonth; pPrevYear = pYear;
 
                 let pIsRound;
-                {
-                    // Time-anchored (matches the visible-range cadence above) so the
-                    // projected left-edge ticks line up with and scroll alongside the
-                    // real ones — for both replay and manual panning.
+                if (useUniformIntradayTicks) {
+                    const step = Math.max(1, labelInterval);
+                    const phase = useReplayFirstBarAnchor
+                        ? 0
+                        : (((this.data.length - 1) % step) + step) % step;
+                    pIsRound = (((pi % step) + step) % step) === phase;
+                } else {
                     const deltaFromBase = ts - tickAlignmentBaseTs;
                     const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
                     const tol = 0.5;
@@ -28652,17 +28751,12 @@ class Chart {
             let futureIdx;
 
             if (useUniformIntradayTicks) {
-                if (this._isAxisRightEdgeTickAlignFixActive()) {
-                    // A1 tranche B: wall-clock grid for right-edge future ticks (not index cadence).
-                    futureIdx = this._fastTimeTickAlignStart(lastRealIdx + 1, labelInterval, timeframeMs);
-                } else {
-                    // Keep extrapolated replay labels on the same candle-index cadence
-                    // so spacing stays visually uniform even across session gaps.
-                    const lastRealTick = candidates.length > 0 ? candidates[candidates.length - 1] : null;
-                    futureIdx = lastRealTick ? (lastRealTick.idx + labelInterval) : (lastRealIdx + labelInterval);
-                    while (futureIdx <= lastRealIdx) {
-                        futureIdx += labelInterval;
-                    }
+                // Match real-bar index cadence so future filler ticks stay evenly spaced
+                // (wall-clock align reintroduces uneven gaps after sparse TF resample).
+                const lastRealTick = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+                futureIdx = lastRealTick ? (lastRealTick.idx + labelInterval) : (lastRealIdx + labelInterval);
+                while (futureIdx <= lastRealIdx) {
+                    futureIdx += labelInterval;
                 }
             } else {
                 const lastTs = last.t;
@@ -28695,9 +28789,11 @@ class Chart {
                 }
                 fPrevDay = fDay; fPrevMonth = fMonth; fPrevYear = fYear;
 
-                const isRoundFuture = this._isAxisRightEdgeTickAlignFixActive()
-                    ? this._barIndexIsWallClockAligned(fi, labelInterval, timeframeMs)
-                    : ((fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx));
+                const isRoundFuture = useUniformIntradayTicks
+                    ? ((fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx))
+                    : (this._isAxisRightEdgeTickAlignFixActive()
+                        ? this._barIndexIsWallClockAligned(fi, labelInterval, timeframeMs)
+                        : ((fi === futureIdx) || ((fi - futureIdx) % labelInterval === 0 && fi >= futureIdx)));
                 const hasFBoundary = fIsBoundary && !!fBoundaryLabel;
                 const shouldEmitFuture = suppressDayBoundaries
                     ? hasFBoundary
