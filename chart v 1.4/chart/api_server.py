@@ -1076,6 +1076,19 @@ class UserSession(Base):
     device = Column(String)
     last_active_at = Column(DateTime, default=datetime.utcnow)
 
+
+class ChartWindowPresence(Base):
+    """One row per open chart browser window / PWA instance (not multichart panels)."""
+
+    __tablename__ = "chart_window_presence"
+
+    client_id = Column(String(64), primary_key=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(String(512), nullable=True)
+
+
 class TradingSession(Base):
     __tablename__ = "trading_sessions"
 
@@ -1377,6 +1390,7 @@ _CHART_TABLES = [
     DatasetSettings.__table__,
     BinaryBuildJob.__table__,
     UserSession.__table__,
+    ChartWindowPresence.__table__,
     TradingSession.__table__,
     TradingSessionState.__table__,
     TradingSessionJournalTrade.__table__,
@@ -1397,6 +1411,11 @@ Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 # Ensure journal-trade mirror table exists (deployments that predated TradingSessionJournalTrade).
 try:
     TradingSessionJournalTrade.__table__.create(bind=engine, checkfirst=True)
+except Exception:
+    pass
+
+try:
+    ChartWindowPresence.__table__.create(bind=engine, checkfirst=True)
 except Exception:
     pass
 
@@ -13063,6 +13082,214 @@ async def auth_me(request: Request, response: Response):
         raise HTTPException(status_code=500, detail="Could not load profile.") from exc
     finally:
         db.close()
+
+
+# Concurrent chart windows / PWA instances (uses users.max_sessions). Multichart
+# panels in one host window share a single client_id and do not each consume a slot.
+_CHART_WINDOW_STALE_SECONDS = 90
+
+
+class _ChartWindowClaimIn(BaseModel):
+    client_id: str = Field(..., min_length=8, max_length=64)
+
+
+def _purge_stale_chart_windows(db, user_id: int, *, now: datetime | None = None) -> None:
+    cutoff = (now or datetime.utcnow()) - timedelta(seconds=_CHART_WINDOW_STALE_SECONDS)
+    (
+        db.query(ChartWindowPresence)
+        .filter(
+            ChartWindowPresence.user_id == user_id,
+            ChartWindowPresence.last_seen_at < cutoff,
+        )
+        .delete(synchronize_session=False)
+    )
+
+
+def _chart_window_limit_for_user(user: User) -> int:
+    if (getattr(user, "role", "") or "") == "admin":
+        return 0  # 0 = unlimited
+    raw = getattr(user, "max_sessions", 1)
+    try:
+        n = int(raw or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, n)
+
+
+@app.post("/api/chart/windows/claim")
+async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
+    """Register this browser window / installed app against max_sessions."""
+    if not AUTH_ENABLED:
+        return {"ok": True, "unlimited": True, "active": 1, "max_sessions": 0}
+    # Identity (not entitlement): count every signed-in chart window/app.
+    user = _get_session_identity(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    client_id = (body.client_id or "").strip()
+    if not client_id or len(client_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid client_id")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        _purge_stale_chart_windows(db, user.id, now=now)
+        max_sess = _chart_window_limit_for_user(user)
+        existing = (
+            db.query(ChartWindowPresence)
+            .filter(ChartWindowPresence.client_id == client_id)
+            .first()
+        )
+        if existing:
+            if int(existing.user_id) != int(user.id):
+                # Steal orphaned id from another account on same browser profile.
+                existing.user_id = user.id
+            existing.last_seen_at = now
+            existing.user_agent = (request.headers.get("user-agent") or "")[:512] or None
+            db.commit()
+            active = (
+                db.query(func.count(ChartWindowPresence.client_id))
+                .filter(ChartWindowPresence.user_id == user.id)
+                .scalar()
+                or 0
+            )
+            return {
+                "ok": True,
+                "client_id": client_id,
+                "active": int(active),
+                "max_sessions": max_sess,
+            }
+
+        active_rows = (
+            db.query(ChartWindowPresence)
+            .filter(ChartWindowPresence.user_id == user.id)
+            .order_by(ChartWindowPresence.last_seen_at.asc())
+            .all()
+        )
+        if max_sess > 0 and len(active_rows) >= max_sess:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "chart_window_limit",
+                    "message": (
+                        f"Chart window limit reached ({max_sess}). "
+                        "Close another Talaria chart window or app, then try again."
+                    ),
+                    "active": len(active_rows),
+                    "max_sessions": max_sess,
+                },
+            )
+
+        db.add(
+            ChartWindowPresence(
+                client_id=client_id,
+                user_id=user.id,
+                created_at=now,
+                last_seen_at=now,
+                user_agent=(request.headers.get("user-agent") or "")[:512] or None,
+            )
+        )
+        db.commit()
+        return {
+            "ok": True,
+            "client_id": client_id,
+            "active": len(active_rows) + 1,
+            "max_sessions": max_sess,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not claim chart window.") from exc
+    finally:
+        db.close()
+
+
+@app.post("/api/chart/windows/heartbeat")
+async def chart_window_heartbeat(request: Request, body: _ChartWindowClaimIn):
+    """Keep this chart window counted as active."""
+    if not AUTH_ENABLED:
+        return {"ok": True, "unlimited": True}
+    user = _get_session_identity(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    client_id = (body.client_id or "").strip()
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Invalid client_id")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        row = (
+            db.query(ChartWindowPresence)
+            .filter(
+                ChartWindowPresence.client_id == client_id,
+                ChartWindowPresence.user_id == user.id,
+            )
+            .first()
+        )
+        if not row:
+            # Slot lost (stale purge / another client) — force re-claim.
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "chart_window_unknown",
+                    "message": "This chart window is no longer registered. Reloading…",
+                },
+            )
+        row.last_seen_at = now
+        db.commit()
+        return {"ok": True, "client_id": client_id}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not update chart window.") from exc
+    finally:
+        db.close()
+
+
+async def _chart_window_release_impl(request: Request):
+    """Release this window slot (tab close / navigate away)."""
+    if not AUTH_ENABLED:
+        return {"ok": True}
+    user = _get_session_identity(request)
+    if user is None:
+        return {"ok": True}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    client_id = str((body or {}).get("client_id") or "").strip()
+    if not client_id:
+        return {"ok": True}
+    db = SessionLocal()
+    try:
+        (
+            db.query(ChartWindowPresence)
+            .filter(
+                ChartWindowPresence.client_id == client_id,
+                ChartWindowPresence.user_id == user.id,
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return {"ok": True}
+    except Exception:
+        db.rollback()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.delete("/api/chart/windows/release")
+async def chart_window_release_delete(request: Request):
+    return await _chart_window_release_impl(request)
+
+
+@app.post("/api/chart/windows/release")
+async def chart_window_release_post(request: Request):
+    """POST variant for navigator.sendBeacon on tab close."""
+    return await _chart_window_release_impl(request)
 
 
 class _UserSelfProfileIn(BaseModel):
