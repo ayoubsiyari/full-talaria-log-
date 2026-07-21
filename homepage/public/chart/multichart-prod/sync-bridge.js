@@ -178,12 +178,59 @@
     }
 
     /**
+     * True only when follower bar array matches the host closely enough that
+     * copying absolute offsetX is safe. Cross-symbol layouts (NQ+ES) never
+     * match — they must follow wall-clock / right-edge time instead.
+     */
+    function canUseLightweightOffsetFollow(chart, m) {
+        if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) return false;
+        if (!m || !Number.isFinite(m.offsetX) || !Number.isFinite(m.candleWidth)) return false;
+
+        // Verify against parent host array when available (most reliable).
+        try {
+            const parentChart = global.parent && global.parent !== global ? global.parent.chart : null;
+            if (parentChart && Array.isArray(parentChart.data) && parentChart.data.length > 0) {
+                if (parentChart.data.length !== chart.data.length) return false;
+                const pt0 = Number(parentChart.data[0] && parentChart.data[0].t);
+                const lt0 = Number(chart.data[0] && chart.data[0].t);
+                const ptN = Number(parentChart.data[parentChart.data.length - 1]
+                    && parentChart.data[parentChart.data.length - 1].t);
+                const ltN = Number(chart.data[chart.data.length - 1]
+                    && chart.data[chart.data.length - 1].t);
+                if (!(Number.isFinite(pt0) && Number.isFinite(lt0) && pt0 === lt0)) return false;
+                if (!(Number.isFinite(ptN) && Number.isFinite(ltN) && ptN === ltN)) return false;
+                return true;
+            }
+        } catch (_) { /* ignore */ }
+
+        // No host to compare: only allow for verified same-pair data-share embeds.
+        return !!(chart._multichartViewportMirroredWithHost && isSamePairDataShareEmbed(chart));
+    }
+
+    /** Pin follower right edge to leader endTime while keeping leader candleWidth. */
+    function applyRightEdgeTimeFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        if (!Number.isFinite(idxAtRight)) return false;
+        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        return true;
+    }
+
+    /**
      * Same-pair embed already sharing host data: pan drag only needs offset +
      * candleWidth — no history fetch, bar refit, or parent array copy per frame.
      * @returns {boolean}
      */
     function applyLightweightPanFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!canUseLightweightOffsetFollow(chart, m)) return false;
         const srcCw = Number(m.candleWidth);
         if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
         const plotW = resolvePlotWidthPx(chart);
@@ -252,45 +299,71 @@
         if (!(spacing > 0)) return false;
 
         let positioned = false;
-        const sameTf = sameTimeframeMessage(chart, m);
         const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime;
         const panSync = !!m.panSync;
-        if (panSync && (chart._multichartViewportMirroredWithHost || isSamePairSyncedEmbed(chart))) {
+        if (panSync && canUseLightweightOffsetFollow(chart, m)) {
             return applyLightweightPanFollow(chart, m);
         }
         if (!panSync) {
             ensureHistoryForVisibleStart(chart, m);
         }
 
-        if (preferOffsetFirst && Number.isFinite(m.offsetX)) {
-            const sw = Number(m.plotWidthPx);
-            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-            positioned = true;
-        }
-        // Host-led / same data slice: wall-clock window first.
-        if (!positioned && sameTf && hasWallClock) {
-            positioned = applyWallClockDateRange(chart, m);
-        }
-        if (!positioned && Number.isFinite(m.endTime)) {
-            const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
-            if (Number.isFinite(idxAtRight)) {
-                chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        // Live drag across different symbols/data slices: pin right edge to
+        // leader endTime. Avoid applyWallClockDateRange every frame — it refits
+        // candleWidth from bar-count and causes jump/hide on NQ vs ES.
+        if (panSync) {
+            if (preferOffsetFirst && canUseLightweightOffsetFollow(chart, m) && Number.isFinite(m.offsetX)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+                positioned = true;
+            }
+            if (!positioned) {
+                positioned = applyRightEdgeTimeFollow(chart, m);
+            }
+            if (!positioned && Number.isFinite(m.offsetX) && canUseLightweightOffsetFollow(chart, m)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+                positioned = true;
+            }
+        } else {
+            if (preferOffsetFirst && Number.isFinite(m.offsetX) && canUseLightweightOffsetFollow(chart, m)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+                positioned = true;
+            }
+            if (!positioned && hasWallClock) {
+                positioned = applyWallClockDateRange(chart, m);
+            }
+            if (!positioned && Number.isFinite(m.endTime)) {
+                positioned = applyRightEdgeTimeFollow(chart, m);
+            }
+            if (!positioned && Number.isFinite(m.offsetX)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
                 positioned = true;
             }
         }
-        if (!positioned && Number.isFinite(m.offsetX)) {
-            const sw = Number(m.plotWidthPx);
-            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-            positioned = true;
-        }
         if (!positioned) return false;
+
+        if (Number.isFinite(m.endTime)) {
+            chart._multichartLastSyncEndTime = m.endTime;
+        }
+        if (Number.isFinite(m.startTime)) {
+            chart._multichartLastSyncStartTime = m.startTime;
+        }
 
         if (typeof chart._constrainOffsetDuringDrag === 'function') {
             try { chart._constrainOffsetDuringDrag(); } catch (_) {}
         } else if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
         } else {
+            applyLightweightOffsetClamp(chart);
+        }
+
+        // If offset clamp / short data left the viewport blank, re-pin to endTime.
+        if (countVisibleBars(chart) <= 0 && Number.isFinite(m.endTime)) {
+            applyRightEdgeTimeFollow(chart, m);
             applyLightweightOffsetClamp(chart);
         }
 
@@ -669,6 +742,22 @@
                 && (rsRec.userHasPanned || !rsRec.autoScrollEnabled))
             || !!chart._multichartVisibleRangeSyncOn;
         if (userOwned) {
+            // Sync-safe recovery: re-pin to last synced right edge instead of
+            // leaving a blank (jump/hide) tile while Date Range sync is ON.
+            if (chart._multichartVisibleRangeSyncOn
+                && Number.isFinite(chart._multichartLastSyncEndTime)) {
+                const rescued = applyRightEdgeTimeFollow(chart, {
+                    endTime: chart._multichartLastSyncEndTime,
+                });
+                if (rescued) {
+                    applyLightweightOffsetClamp(chart);
+                    if (countVisibleBars(chart) > 0) {
+                        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                        else if (typeof chart.render === 'function') chart.render();
+                        return true;
+                    }
+                }
+            }
             if (rsRec && rsRec.isActive
                 && typeof chart._scheduleReplayPanLoadLeft === 'function') {
                 try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
@@ -2160,9 +2249,11 @@
                     }
                 } catch (_) {}
             }
-            // Live pan drag: offset + zoom mirror on every follower (same lite path as leader).
+            // Live pan drag: absolute offset mirror ONLY when bar arrays match.
+            // Cross-symbol (NQ+ES) must fall through to right-edge time follow —
+            // offset copy is what caused panel B to jump/hide.
             if (panSync && isRangeSyncEnabled()
-                && Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)
+                && canUseLightweightOffsetFollow(chart, m)
                 && applyLightweightPanFollow(chart, m)) {
                 var tSilLite = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now()
@@ -2180,11 +2271,25 @@
                 && isHostLedRangeMessage(m)
                 && typeof chart._multichartMirrorViewportFromHost === 'function') {
                 try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
-                if (applyLightweightPanFollow(chart, m)) {
+                if (canUseLightweightOffsetFollow(chart, m) && applyLightweightPanFollow(chart, m)) {
                     var tSilMir = (typeof performance !== 'undefined' && performance.now)
                         ? performance.now()
                         : Date.now();
                     state.suppressRangeScrollEchoUntil = tSilMir + 120;
+                    state.suppressRangeScrollEchoLeft = 4;
+                    return;
+                }
+            }
+
+            // Cross-symbol / mismatched slices: smooth right-edge follow during drag.
+            if (panSync && isRangeSyncEnabled()) {
+                if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+                if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+                if (applyPanDragFollow(chart, m, null)) {
+                    var tSilTime = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    state.suppressRangeScrollEchoUntil = tSilTime + 120;
                     state.suppressRangeScrollEchoLeft = 4;
                     return;
                 }
@@ -2239,17 +2344,12 @@
             const panFollowOpts = peerLed ? { preferOffsetFirst: true } : null;
 
             if (panSync) {
-                // Drag: wall-clock window on same TF, else offset mirror.
-                if (!peerLed && sameTf && hasWallClock) {
-                    applied = applyWallClockDateRange(chart, m);
-                }
-                if (!applied) {
-                    applied = applyPanDragFollow(chart, m, panFollowOpts);
-                }
-                if (!applied && peerLed && sameTf && hasWallClock) {
-                    applied = applyWallClockDateRange(chart, m);
-                }
-                if (!applied && hasWallClock && !sameTf) {
+                // Drag: right-edge time follow (smooth). Full wall-clock fit
+                // only as fallback — per-frame bar-count refit jumps tiles.
+                if (Number.isFinite(m.endTime)) chart._multichartLastSyncEndTime = m.endTime;
+                if (Number.isFinite(m.startTime)) chart._multichartLastSyncStartTime = m.startTime;
+                applied = applyPanDragFollow(chart, m, panFollowOpts);
+                if (!applied && hasWallClock) {
                     applied = applyWallClockDateRange(chart, m);
                 }
                 if (!applied) {
