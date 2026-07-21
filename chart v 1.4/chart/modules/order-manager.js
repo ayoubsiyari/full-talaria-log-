@@ -8884,13 +8884,67 @@ class OrderManager {
     }
     
     /**
+     * Snapshot enough fields for the V9 trade card when live rows lag (fast replay / limit fill).
+     */
+    _tradeCardOrderSnapshot(order, isClosing = false, closeData = null) {
+        if (!order || order.id == null) return null;
+        const side = order.type || order.direction || order.side || 'BUY';
+        const entry = order.openPrice ?? order.entryPrice ?? order.current_price ?? null;
+        const exit = (closeData && closeData.closePrice != null)
+            ? closeData.closePrice
+            : (order.closePrice ?? null);
+        const pnl = (closeData && closeData.pnl != null)
+            ? closeData.pnl
+            : (order.pnl ?? order.realizedPnL ?? null);
+        return {
+            id: order.id,
+            ticker: order.ticker || order.symbol || null,
+            symbol: order.symbol || order.ticker || null,
+            direction: side,
+            type: side,
+            quantity: order.quantity,
+            orderType: order.orderType || (order.wasLimitOrder ? 'limit' : order.wasStopOrder ? 'stop' : 'market'),
+            entryPrice: entry,
+            openPrice: entry,
+            takeProfit: order.takeProfit ?? null,
+            stopLoss: order.stopLoss ?? null,
+            openTime: order.openTime || order.placedTime || null,
+            closeTime: (closeData && closeData.closeTime != null) ? closeData.closeTime : (order.closeTime || null),
+            closePrice: exit,
+            pnl,
+            status: isClosing || order.status === 'closed' || order.closePrice != null ? 'closed' : 'open',
+        };
+    }
+
+    /**
      * Create and show trade journal modal
      */
     showTradeJournalModal(order, isClosing = false, closeData = null) {
-        // In multichart iframes, suppress the modal — the host chart
-        // (Panel A) already shows it as a full-screen overlay so the
-        // user sees only one global "Trade Closed" dialog.
-        if (window.__multichartBridge || (window.parent && window.parent !== window)) {
+        const detail = order && order.id != null
+            ? {
+                orderId: order.id,
+                isClosing: !!isClosing,
+                closeData,
+                orderSnapshot: this._tradeCardOrderSnapshot(order, isClosing, closeData),
+            }
+            : null;
+
+        // Multichart panel iframe: forward to host shell (one global card), do not open locally.
+        const inMcIframe = !!(window.__multichartBridge
+            || (typeof window !== 'undefined' && window.parent && window.parent !== window
+                && (window.location.search || '').includes('panelId=')));
+        if (inMcIframe && detail) {
+            try {
+                const origin = window.location.origin || '*';
+                window.parent.postMessage({ type: 'talaria-open-v9-trade-card', detail }, origin);
+            } catch (_e) {
+                try {
+                    window.parent.postMessage({ type: 'talaria-open-v9-trade-card', detail }, '*');
+                } catch (_e2) { /* ignore */ }
+            }
+            try {
+                window.parent.dispatchEvent(new CustomEvent('talaria:open-v9-trade-card', { detail }));
+            } catch (_e3) { /* cross-origin */ }
             return;
         }
 
@@ -8899,12 +8953,16 @@ class OrderManager {
         if (existingModal) existingModal.remove();
 
         // V9 live React shell (TalariaV8bLive): open the in-app trade card instead of the legacy DOM modal.
-        if (typeof window !== 'undefined' && typeof document !== 'undefined' && order && order.id != null) {
+        if (typeof window !== 'undefined' && typeof document !== 'undefined' && detail) {
             try {
                 if (document.querySelector('[data-v9-chrome="1"]')) {
-                    window.dispatchEvent(new CustomEvent('talaria:open-v9-trade-card', {
-                        detail: { orderId: order.id, isClosing: !!isClosing, closeData }
-                    }));
+                    const fire = () => {
+                        window.dispatchEvent(new CustomEvent('talaria:open-v9-trade-card', { detail }));
+                    };
+                    fire();
+                    // Fast replay / panel sync: row may appear a few frames later — nudge again.
+                    setTimeout(fire, 60);
+                    setTimeout(fire, 220);
                     return;
                 }
             } catch (_) {
@@ -28750,25 +28808,19 @@ class OrderManager {
                     order.entryScreenshot = screenshot;
                     console.log('✅ Entry screenshot captured for executed pending order #' + order.id);
                 }
-                // Show journal modal for drawing tool orders
-                if (order.createdFromTool) {
-                    this.showTradeJournalModal(order, false, null);
-                }
                 return screenshot;
             }).catch(err => {
                 console.error('❌ Failed to capture entry screenshot:', err);
-                if (order.createdFromTool) {
-                    this.showTradeJournalModal(order, false, null);
-                }
                 return null;
             });
-        } else if (order.createdFromTool) {
-            this.showTradeJournalModal(order, false, null);
         }
 
         this._pauseReplayIfPlaying('pending order filled');
         
         this.updatePositionsPanel();
+
+        // Always open trade card on limit/stop fill (same as market) — not only drawing-tool orders.
+        this.showTradeJournalModal(order, false, null);
     }
     
     /**

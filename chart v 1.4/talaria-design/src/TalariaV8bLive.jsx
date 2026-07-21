@@ -12042,46 +12042,110 @@ const TalariaV8bLive = () => {
     };
   }, [riskVal]);
 
-  /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
+  /** OrderManager journal modal → V9 trade card (market / limit / stop fill + close; multichart host). */
   useEffect(() => {
-    const onOpenV9Card = (ev) => {
-      const oid = ev?.detail?.orderId;
+    const theme = () => tradeRowThemeRef.current || { gn: "#22c55e", rd: "#ef4444", tm: "rgba(255,255,255,0.45)" };
+
+    const rowFromSnapshot = (snap, isClosing) => {
+      if (!snap || snap.id == null) return null;
+      const t = theme();
+      const sideU = String(snap.direction || snap.type || "BUY").toUpperCase();
+      const side = sideU === "SELL" || sideU === "SHORT" ? "SHORT" : "LONG";
+      const ot = String(snap.orderType || "market").toLowerCase();
+      const typeLabel = ot === "limit" ? "Limit" : ot === "stop" ? "Stop" : "Market";
+      const closed = !!(isClosing || snap.status === "closed");
+      const pnlN = Number.parseFloat(snap.pnl);
+      const pnlText = Number.isFinite(pnlN)
+        ? `${pnlN >= 0 ? "+" : ""}$${Math.abs(pnlN).toFixed(2)}`
+        : "—";
+      return {
+        id: `#${snap.id}`,
+        omId: snap.id,
+        time: "—",
+        status: closed ? "closed" : "open",
+        sym: String(snap.ticker || snap.symbol || "—").replace(/_/g, "/"),
+        side,
+        sz: snap.quantity != null ? String(snap.quantity) : "—",
+        type: typeLabel,
+        entry: snap.openPrice != null || snap.entryPrice != null
+          ? String(snap.openPrice ?? snap.entryPrice)
+          : "—",
+        exit: closed && snap.closePrice != null ? String(snap.closePrice) : "—",
+        pnl: closed ? pnlText : "—",
+        pc: Number.isFinite(pnlN) ? (pnlN >= 0 ? "gn" : "rd") : "tm",
+        tp: snap.takeProfit != null ? String(snap.takeProfit) : "—",
+        sl: snap.stopLoss != null ? String(snap.stopLoss) : "—",
+        dur: "—",
+        preTags: [],
+        postTags: [],
+      };
+    };
+
+    const openFromDetail = (detail) => {
+      const oid = detail?.orderId;
       if (oid == null) return;
+      const isClosing = !!detail?.isClosing;
       const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
       let attempts = 0;
-      const maxAttempts = 25;
+      const maxAttempts = 60;
+
+      const applyRow = (r) => {
+        if (!r) return;
+        const row = isClosing && r.status !== "closed" ? { ...r, status: "closed" } : r;
+        const tid = row.omId;
+        let j = null;
+        if (om && tid != null) {
+          j = Array.isArray(om.tradeJournal)
+            ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
+            : null;
+        }
+        const order =
+          om?.pendingOrders?.find((o) => Number(o.id) === Number(tid)) ||
+          om?.openPositions?.find((o) => Number(o.id) === Number(tid)) ||
+          om?.closedPositions?.find((o) => Number(o.id) === Number(tid));
+        const noteFallback = resolveTradeNotesForRow(row.id, tid, tradeNotesRef.current, om);
+        setTradeCard(row);
+        setTradeCardPreTags([...(row.preTags || [])]);
+        setTradeCardPostTags([...(row.postTags || [])]);
+        setTradeCardNotes(noteFallback);
+        setTradeScreenshots((prev) => mergeTradeScreenshotState(prev, row.id, order, j));
+        setOmTradeRev((n) => n + 1);
+      };
+
       const tryOpen = () => {
         attempts += 1;
         const { om: rowOm, panelSnapshots: rowSnaps } = resolveTradesPanelOrderManager();
-        const rows = buildLiveTradeRowsFromOrderManager(rowOm, tradeRowThemeRef.current, { panelSnapshots: rowSnaps });
-        const r = rows.find((x) => Number(x.omId) === Number(oid));
+        const rows = buildLiveTradeRowsFromOrderManager(rowOm, theme(), { panelSnapshots: rowSnaps });
+        let r = rows.find((x) => Number(x.omId) === Number(oid));
+        if (!r && detail?.orderSnapshot) {
+          r = rowFromSnapshot(detail.orderSnapshot, isClosing);
+        }
         if (r) {
-          const tid = r.omId;
-          let j = null;
-          if (om && tid != null) {
-            j = Array.isArray(om.tradeJournal)
-              ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(tid))
-              : null;
-          }
-          const order =
-            om?.pendingOrders?.find((o) => o.id === tid) ||
-            om?.openPositions?.find((o) => o.id === tid) ||
-            om?.closedPositions?.find((o) => o.id === tid);
-          const noteFallback = resolveTradeNotesForRow(r.id, tid, tradeNotesRef.current, om);
-          setTradeCard(r);
-          setTradeCardPreTags([...r.preTags]);
-          setTradeCardPostTags([...r.postTags]);
-          setTradeCardNotes(noteFallback);
-          setTradeScreenshots((prev) => mergeTradeScreenshotState(prev, r.id, order, j));
-          setOmTradeRev((n) => n + 1);
+          applyRow(r);
           return;
         }
-        if (attempts < maxAttempts) requestAnimationFrame(tryOpen);
+        if (attempts < maxAttempts) {
+          if (attempts < 30) requestAnimationFrame(tryOpen);
+          else setTimeout(tryOpen, 32);
+        } else if (detail?.orderSnapshot) {
+          applyRow(rowFromSnapshot(detail.orderSnapshot, isClosing));
+        }
       };
       requestAnimationFrame(tryOpen);
     };
+
+    const onOpenV9Card = (ev) => openFromDetail(ev?.detail);
+    const onMsg = (ev) => {
+      const data = ev?.data;
+      if (!data || data.type !== "talaria-open-v9-trade-card") return;
+      openFromDetail(data.detail);
+    };
     window.addEventListener("talaria:open-v9-trade-card", onOpenV9Card);
-    return () => window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+    window.addEventListener("message", onMsg);
+    return () => {
+      window.removeEventListener("talaria:open-v9-trade-card", onOpenV9Card);
+      window.removeEventListener("message", onMsg);
+    };
   }, []);
 
   const replaceInputRef = useRef(null);
