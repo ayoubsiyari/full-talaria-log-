@@ -1487,7 +1487,8 @@ class BaseRiskRewardTool extends BaseDrawing {
     recalculateLotSizeFromRisk() {
         if (!this.meta.risk) return;
 
-        const mode = this.meta.risk.riskMode || this.meta.risk.positionSizeMode || 'risk-usd';
+        const omMode = typeof window !== 'undefined' ? window.chart?.orderManager?.positionSizeMode : null;
+        const mode = omMode || this.meta.risk.riskMode || this.meta.risk.positionSizeMode || 'risk-usd';
         if (mode === 'lot-size') {
             const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
             const pip = om?.pipSize || (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
@@ -2387,15 +2388,30 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
             const quantity = panelOrderQty;
 
-            // Get risk amount from settings (THIS is the amount we're risking)
+            // Prefer live order-panel size mode / $ risk so drag stays locked to the
+            // user's $100 (meta.risk can lag or stay on lot-size after a prior place).
+            const liveMode = om?.positionSizeMode
+                || this.meta.risk?.riskMode
+                || this.meta.risk?.positionSizeMode
+                || 'risk-usd';
             let riskUSD = 100; // Default
-            if (this.meta.risk) {
-                if (this.meta.risk.riskMode === 'risk-usd') {
-                    riskUSD = this.meta.risk.riskAmountUSD || 100;
-                } else {
-                    const accountSize = this.meta.risk.accountSize || 10000;
-                    riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
+            if (liveMode === 'risk-usd') {
+                const fromPanel = parseFloat(document.getElementById('riskAmountUSD')?.value || '');
+                riskUSD = Number.isFinite(fromPanel) && fromPanel > 0
+                    ? fromPanel
+                    : (this.meta.risk?.riskAmountUSD || 100);
+                if (this.meta.risk) {
+                    this.meta.risk.riskMode = 'risk-usd';
+                    this.meta.risk.riskAmountUSD = riskUSD;
                 }
+            } else if (liveMode === 'risk-percent') {
+                const accountSize = this.meta.risk?.accountSize || om?.balance || 10000;
+                const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || '')
+                    || this.meta.risk?.riskPercent || 1;
+                riskUSD = (accountSize * rp) / 100;
+            } else if (this.meta.risk) {
+                const accountSize = this.meta.risk.accountSize || 10000;
+                riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
             }
 
             const labelPaddingX = 10;
@@ -2476,9 +2492,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 || (rewNumFromPanel === 0 && !String(targetAmountStr).includes('∞'))) {
                 targetAmountStr = `$${fallbackRewardUsd}`;
             }
-            let stopAmountStr = parsePanelSummaryAmount(document.getElementById('riskAmount'));
-            if (stopAmountStr == null) {
+            // Risk-$ / risk-%: keep Stop Amount on the budget while dragging.
+            // Panel #riskAmount used to show qty×distance (e.g. $160) when qty was stale at 1.
+            let stopAmountStr = null;
+            if (liveMode === 'risk-usd' || liveMode === 'risk-percent') {
                 stopAmountStr = `$${Math.round(riskUSD)}`;
+            } else {
+                stopAmountStr = parsePanelSummaryAmount(document.getElementById('riskAmount'));
+                if (stopAmountStr == null) stopAmountStr = `$${Math.round(riskUSD)}`;
             }
 
             let targetRewardUsdForBadges = fallbackRewardUsd;

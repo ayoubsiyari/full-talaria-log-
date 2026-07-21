@@ -4299,8 +4299,9 @@ class OrderManager {
                 }
             }
 
-            // Futures are whole-contract instruments. When desired risk snaps up/down to
-            // a valid contract count, display the actual SL exposure, not the requested risk input.
+            // Futures are whole-contract instruments. When desired risk snaps to a valid
+            // contract count, show actual SL $ — but NEVER above the user's risk budget
+            // (old path kept qty=1 while dragging SL wider → Amount jumped $100 → $160).
             if (this.marketType === 'futures' && quantity > 0) {
                 let actualRisk = NaN;
                 if (window.marketCalcEngine) {
@@ -4310,7 +4311,16 @@ class OrderManager {
                     const slDistanceInPips = slDistance / (this.pipSize || 0.0001);
                     actualRisk = slDistanceInPips * quantity * this.pipValuePerLot;
                 }
-                if (Number.isFinite(actualRisk) && actualRisk > 0) risk = actualRisk;
+                if (Number.isFinite(actualRisk) && actualRisk > 0) {
+                    const budgetModes = this.positionSizeMode === 'risk-usd'
+                        || this.positionSizeMode === 'risk-percent';
+                    if (budgetModes && Number.isFinite(risk) && risk > 0) {
+                        const tol = Math.max(1, risk * 0.02);
+                        risk = actualRisk <= risk + tol ? actualRisk : risk;
+                    } else {
+                        risk = actualRisk;
+                    }
+                }
             }
         }
         return { hasValidSL, slDistance, risk };
@@ -20352,28 +20362,17 @@ class OrderManager {
                             if (tpRRInputEl) tpRRInputEl.value = rr > 0 && Number.isFinite(rr) ? rr.toFixed(2) : '';
                         }
                         
-                        // Calculate lot size and update displays
+                        // Resize from $ risk budget (engine floor — never round up futures to 1 ct).
                         if ((self.positionSizeMode === 'risk-usd' || self.positionSizeMode === 'risk-percent') && riskPips > 0) {
-                            let riskAmount;
-                            if (self.positionSizeMode === 'risk-usd') {
-                                riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 50);
-                            } else {
-                                const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 1);
-                                riskAmount = (self.accountBalance || 100000) * (riskPercent / 100);
-                            }
-                            
-                            const lotSize = riskAmount / (riskPips * self.pipValuePerLot);
-                            const roundedLotSize = Math.round(lotSize * 100) / 100;
-                            
-                            // Update quantity input
-                            const quantityInput = document.getElementById('orderQuantity');
-                            if (quantityInput) quantityInput.value = roundedLotSize.toFixed(2);
-                            
                             self.calculatePositionFromRisk();
-                            
-                            // Update SL amount display
+                            const riskAmount = self.positionSizeMode === 'risk-usd'
+                                ? parseFloat(document.getElementById('riskAmountUSD')?.value || 50)
+                                : ((self.accountBalance || 100000)
+                                    * (parseFloat(document.getElementById('riskAmountPercent')?.value || 1) / 100));
                             const slAmountDisplay = document.getElementById('slAmountDisplay');
-                            if (slAmountDisplay) slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
+                            if (slAmountDisplay && Number.isFinite(riskAmount)) {
+                                slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
+                            }
                         }
                         // Re-render multi-TP rows so R:R updates with new SL
                         const multiTPEnabled = document.getElementById('multipleTPToggle')?.checked;
@@ -25023,6 +25022,7 @@ class OrderManager {
             this._autoDetectOrderTypeFromEntry();
             this._dispatchRrOrderPrefilledEvent();
         }
+        this.calculatePositionFromRisk();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing, entryOpts);
@@ -25049,6 +25049,9 @@ class OrderManager {
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         const slp = document.getElementById('slPrice');
         if (slp) slp.value = this.formatPrice(sanitized);
+        // Resize contracts from the $ risk budget BEFORE refreshing Amount labels —
+        // otherwise qty stays at 1 and SL Amount jumps above the set risk while dragging.
+        this.calculatePositionFromRisk();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing);
