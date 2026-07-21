@@ -799,10 +799,43 @@ class OrderManager {
         }
         const siblings = order.isSplitEntry && order.splitGroupId
             ? this._getSplitGroupOpenPositions(order) : [order];
+        const precision = typeof this.getPricePrecision === 'function'
+            ? this.getPricePrecision(price)
+            : 5;
+        const snapped = parseFloat(Number(price).toFixed(precision));
         for (const sib of siblings) {
-            if (lineType === 'sl') sib.stopLoss = price;
-            else if (lineType === 'tp') sib.takeProfit = price;
+            if (lineType === 'sl') {
+                sib.stopLoss = snapped;
+            } else if (lineType === 'tp') {
+                sib.takeProfit = snapped;
+                // Keep single-TP ladder rows in sync — updateSLTPLines / visualSig prefer tpTargets[].price.
+                if (Array.isArray(sib.tpTargets) && sib.tpTargets.length === 1 && sib.tpTargets[0]) {
+                    sib.tpTargets[0].price = snapped;
+                }
+            }
         }
+        // Mirror into hidden OM inputs so V9 React reverse-bridge / trade card see the new levels.
+        try {
+            const formatted = typeof this.formatPrice === 'function' ? this.formatPrice(snapped) : String(snapped);
+            if (lineType === 'sl') {
+                const slInput = document.getElementById('slPrice');
+                if (slInput) slInput.value = formatted;
+                this.slManuallyPositioned = true;
+            } else if (lineType === 'tp') {
+                const tpInput = document.getElementById('tpPrice');
+                if (tpInput) tpInput.value = formatted;
+                this.tpManuallyPositioned = true;
+            }
+            this._lastChartTargetDragAt = Date.now();
+        } catch (_e) { /* ignore */ }
+        try {
+            if (typeof this.persistRuntimeOrderState === 'function') {
+                this.persistRuntimeOrderState({ critical: true });
+            }
+        } catch (_e) { /* ignore */ }
+        try {
+            this.orderService?.emit?.('order:update-tick', { orderId: order?.id, lineType, price: snapped });
+        } catch (_e) { /* ignore */ }
     }
 
     /** A6-4 Step 4: iframe open-leg commits route to host store. */

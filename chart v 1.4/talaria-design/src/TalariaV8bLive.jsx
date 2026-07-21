@@ -12432,6 +12432,41 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
+  // Keep an open trade card's SL/TP/P&L/R:R in sync when the order is modified on the chart.
+  useEffect(() => {
+    if (!tradeCard?.omId) return;
+    const theme = tradeRowThemeRef.current || { gn: "#22c55e", rd: "#ef4444", tm: "rgba(255,255,255,0.45)" };
+    const { om, panelSnapshots } = resolveTradesPanelOrderManager();
+    const rows = buildLiveTradeRowsFromOrderManager(om, theme, { panelSnapshots });
+    const next = rows.find((x) => Number(x.omId) === Number(tradeCard.omId));
+    if (!next) return;
+    setTradeCard((prev) => {
+      if (!prev || Number(prev.omId) !== Number(next.omId)) return prev;
+      const same =
+        prev.sl === next.sl
+        && prev.tp === next.tp
+        && prev.entry === next.entry
+        && prev.exit === next.exit
+        && prev.pnl === next.pnl
+        && prev.status === next.status
+        && prev.slPx === next.slPx
+        && prev.tpPx === next.tpPx
+        && prev.rMultiple === next.rMultiple
+        && prev.plannedRR === next.plannedRR
+        && prev.riskAmount === next.riskAmount
+        && prev.dur === next.dur;
+      if (same) return prev;
+      // Preserve modal identity; refresh live order fields from OM.
+      return {
+        ...next,
+        // Keep multi-leg payloads if rebuild omitted them briefly.
+        entries: next.entries?.length ? next.entries : prev.entries,
+        targets: next.targets?.length ? next.targets : prev.targets,
+        avgMetrics: next.avgMetrics || prev.avgMetrics,
+      };
+    });
+  }, [omTradeRev, tradeCard?.omId]);
+
   // Multichart: aggregate iframe panel order snapshots for trades rail PnL/open rows.
   useEffect(() => {
     if (!mcReplayPnlHostAggV1Enabled()) {
@@ -41088,7 +41123,7 @@ const TalariaV8bLive = () => {
       {tradeCard&&(()=>{
         const r=tradeCard;
         const isLong=r.side==="LONG";
-        const { rrStr, rrCol, rrRisk, plannedAtEntryStr, showPlannedAtEntry } = resolveTradeCardRR(r, c);
+        const { rrStr, rrCol, rrRisk, rrRiskUnit, plannedAtEntryStr, showPlannedAtEntry } = resolveTradeCardRR(r, c);
         const statusCol=r.status==="open"?c.gn:r.status==="pending"?"#FF8C42":c.tm;
         const isActive=r.status==="open"||r.status==="pending";
         const canEditPre=r.status==="pending"||r.status==="open";
@@ -41360,7 +41395,7 @@ const TalariaV8bLive = () => {
                 <div style={{padding:"10px 14px",borderRight:`1px solid ${c.br}`}}>
                   <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:5}}>STOP LOSS</div>
                   <span style={{fontSize:15,fontWeight:700,color:c.rd,fontVariantNumeric:"tabular-nums"}}>{r.sl}</span>
-                  {rrRisk>0&&<div style={{fontSize:10,color:c.ts,marginTop:3,fontVariantNumeric:"tabular-nums"}}>{rrRisk.toFixed(2)} pts</div>}
+                  {rrRisk>0&&<div style={{fontSize:10,color:c.ts,marginTop:3,fontVariantNumeric:"tabular-nums"}}>{rrRisk.toFixed(2)} {rrRiskUnit||"pts"}</div>}
                   {hasProtection&&<div style={{marginTop:6,display:"flex",flexDirection:"column",gap:3}}>
                     {r.breakeven&&<div style={{display:"flex",alignItems:"center",gap:3}}>
                       <div style={{width:5,height:5,borderRadius:"50%",background:"rgba(74,106,255,0.8)",flexShrink:0}}/>

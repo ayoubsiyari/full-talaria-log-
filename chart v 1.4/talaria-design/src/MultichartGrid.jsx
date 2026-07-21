@@ -7824,11 +7824,15 @@ export default function MultichartGrid({
                     if (!order) return;
                     const lineType = msg.lineType === "tp" ? "tp" : "sl";
                     const price = Number(msg.price);
-                    const siblings = order.isSplitEntry && order.splitGroupId
-                        ? hom._getSplitGroupOpenPositions(order) : [order];
-                    for (const sib of siblings) {
-                        if (lineType === "sl") sib.stopLoss = price;
-                        else sib.takeProfit = price;
+                    if (typeof hom._oiCommitOpenSltpToStore === "function") {
+                        hom._oiCommitOpenSltpToStore(order, lineType, price);
+                    } else {
+                        const siblings = order.isSplitEntry && order.splitGroupId
+                            ? hom._getSplitGroupOpenPositions(order) : [order];
+                        for (const sib of siblings) {
+                            if (lineType === "sl") sib.stopLoss = price;
+                            else sib.takeProfit = price;
+                        }
                     }
                     try { if (typeof hom.drawSLTPLines === "function") hom.drawSLTPLines(order); } catch (_) {}
                     fanOutOrderSnapshot(null);

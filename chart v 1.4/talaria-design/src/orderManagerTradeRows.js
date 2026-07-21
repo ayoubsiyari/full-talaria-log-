@@ -1017,21 +1017,21 @@ export function computePlannedRRForTrade(om, order, journal, row) {
  * else reconstructs from initial_sl + plannedTpSnapshot.
  */
 export function computePlannedRRAtEntryFromSources(om, order, journal, row) {
-  const frozen = Number.parseFloat(journal?.plannedRRAtEntry ?? order?.plannedRRAtEntry);
-  if (Number.isFinite(frozen)) return frozen;
-
   const side = resolveTradeSide(order, journal, row);
   const isLong = side !== "SELL" && side !== "SHORT";
   const entryPx = resolveTradeEntryPxForTpMath(om, order, journal, row);
   const sl = Number.parseFloat(
-    journal?.initial_sl ?? order?.initial_sl ?? journal?.stopLoss ?? order?.stopLoss ?? row?.sl
+    journal?.initial_sl ?? order?.initial_sl ?? journal?.stopLoss ?? order?.stopLoss ?? row?.slPx ?? row?.sl
   );
   const qty = resolveTradeQtyForTpMath(om, order, journal, row);
   const riskUsd = Number.parseFloat(
     journal?.originalRiskAmount ?? journal?.riskAmount
       ?? order?.originalRiskAmount ?? order?.riskAmount ?? row?.riskAmount
   );
-  if (!Number.isFinite(entryPx) || !(entryPx > 0) || !Number.isFinite(sl)) return null;
+  if (!Number.isFinite(entryPx) || !(entryPx > 0) || !Number.isFinite(sl)) {
+    const frozenOnly = Number.parseFloat(journal?.plannedRRAtEntry ?? order?.plannedRRAtEntry);
+    return Number.isFinite(frozenOnly) ? frozenOnly : null;
+  }
 
   const tpList =
     journal?.plannedTpSnapshot
@@ -1041,6 +1041,7 @@ export function computePlannedRRAtEntryFromSources(om, order, journal, row) {
       : null)
     || (Array.isArray(order?.tpTargets) && order.tpTargets.length > 1 ? order.tpTargets : null);
 
+  let recomputed = null;
   if (tpList?.length > 1 && om && riskUsd > 0 && qty > 0) {
     let ePcts = null;
     try {
@@ -1060,47 +1061,88 @@ export function computePlannedRRAtEntryFromSources(om, order, journal, row) {
         rewardUsd += Math.max(0, om.estimatePnLForPriceLevel(side, entryPx, tpPx, partialQty, sym));
       }
     });
-    if (rewardUsd > 0) return rewardUsd / riskUsd;
+    if (rewardUsd > 0) recomputed = rewardUsd / riskUsd;
   }
 
-  const tp = Number.parseFloat(
-    journal?.initial_takeProfit ?? order?.initial_takeProfit
-      ?? journal?.takeProfit ?? order?.takeProfit ?? row?.tp
-  );
-  return computePlannedRRFromPrices(entryPx, sl, tp);
+  if (recomputed == null) {
+    const tp = Number.parseFloat(
+      journal?.initial_takeProfit ?? order?.initial_takeProfit
+        ?? journal?.takeProfit ?? order?.takeProfit ?? row?.tpPx ?? row?.tp
+    );
+    recomputed = computePlannedRRFromPrices(entryPx, sl, tp);
+  }
+
+  const frozen = Number.parseFloat(journal?.plannedRRAtEntry ?? order?.plannedRRAtEntry);
+  // Prefer frozen when sane; reject absurd values (e.g. reward-$ stored as R when risk was ~$1).
+  if (Number.isFinite(frozen)) {
+    if (
+      recomputed == null
+      || !Number.isFinite(recomputed)
+      || (Math.abs(frozen) <= 50 && Math.abs(frozen - recomputed) <= 5)
+      || Math.abs(frozen / (recomputed || 1)) <= 3
+    ) {
+      return frozen;
+    }
+  }
+  return recomputed;
 }
 
 /** Hero R:R for trade card modal (planned when open, realized when closed). */
 export function resolveTradeCardRR(row, theme) {
   const isLong = row?.side === "LONG";
-  const entryP = Number.parseFloat(row?.plannedEntryPx ?? row?.entry);
-  const slP = Number.parseFloat(row?.sl);
-  const tpP = Number.parseFloat(row?.tp);
-  const exitP = row?.exit && row.exit !== "—" ? Number.parseFloat(row.exit) : NaN;
-  const rrRisk = Math.abs(entryP - slP);
+  const entryP = Number.parseFloat(row?.plannedEntryPx ?? row?.entryPx ?? row?.entry);
+  const slP = Number.parseFloat(row?.slPx ?? row?.sl);
+  const tpP = Number.parseFloat(row?.tpPx ?? row?.tp);
+  const exitP = row?.exit && row.exit !== "—"
+    ? Number.parseFloat(row?.exitPx ?? row.exit)
+    : NaN;
+  const riskPx = Math.abs(entryP - slP);
   const rrReward = Math.abs(tpP - entryP);
+  const pipSize = Number.parseFloat(row?.pipSize);
+  const unit = Number.isFinite(pipSize) && pipSize > 0 ? pipSize : null;
+  // Instrument units for the STOP LOSS distance label (pips/ticks), not raw price delta.
+  const rrRisk = unit && riskPx > 0 ? riskPx / unit : riskPx;
   const plannedRR = Number.isFinite(row?.plannedRR)
     ? row.plannedRR
-    : rrRisk > 0 && Number.isFinite(rrReward)
-      ? rrReward / rrRisk
+    : riskPx > 0 && Number.isFinite(rrReward)
+      ? rrReward / riskPx
       : null;
 
   let rrVal = null;
   if (row?.status === "closed") {
-    const stored = Number.parseFloat(row?.rMultiple);
-    if (Number.isFinite(stored)) {
-      rrVal = stored;
-    } else if (rrRisk > 0 && Number.isFinite(exitP)) {
-      rrVal = isLong ? (exitP - entryP) / rrRisk : (entryP - exitP) / rrRisk;
-    }
-    const pnlUsd = Number.parseFloat(row?.targetsTotalProfitUsd);
+    const riskUsd = Number.parseFloat(row?.riskAmount);
     const pnlFromHero = Number.parseFloat(String(row?.pnl || "").replace(/[^0-9.-]/g, ""));
+    const pnlUsd = Number.parseFloat(row?.targetsTotalProfitUsd);
     const pnlRef = Number.isFinite(pnlFromHero) ? pnlFromHero : pnlUsd;
+    const fromPx =
+      riskPx > 0 && Number.isFinite(exitP)
+        ? (isLong ? (exitP - entryP) / riskPx : (entryP - exitP) / riskPx)
+        : null;
+    if (Number.isFinite(riskUsd) && riskUsd > 0 && Number.isFinite(pnlRef)) {
+      const fromUsd = pnlRef / riskUsd;
+      // Guard: risk≈$1 (or similar) makes R mirror raw $ PnL; prefer price-based R when sane.
+      const looksLikeRawPnl =
+        Number.isFinite(fromPx)
+        && Math.abs(fromUsd) > 10
+        && Math.abs(fromPx) <= 10
+        && Math.abs(Math.abs(fromUsd) - Math.abs(pnlRef)) <= Math.max(1, 0.05 * Math.abs(pnlRef));
+      rrVal = looksLikeRawPnl ? fromPx : fromUsd;
+    } else {
+      const stored = Number.parseFloat(row?.rMultiple);
+      if (Number.isFinite(stored)) {
+        const looksLikeRawStored =
+          Number.isFinite(fromPx)
+          && Number.isFinite(pnlRef)
+          && Math.abs(stored) > 10
+          && Math.abs(fromPx) <= 10
+          && Math.abs(Math.abs(stored) - Math.abs(pnlRef)) <= Math.max(1, 0.05 * Math.abs(pnlRef));
+        rrVal = looksLikeRawStored ? fromPx : stored;
+      } else if (fromPx != null) {
+        rrVal = fromPx;
+      }
+    }
     if (Number.isFinite(rrVal) && Number.isFinite(pnlRef) && pnlRef !== 0 && rrVal * pnlRef < 0) {
       rrVal = -Math.abs(rrVal);
-    } else if (!Number.isFinite(rrVal) && Number.isFinite(row?.riskAmount) && row.riskAmount > 0) {
-      const pnl = Number.parseFloat(String(row?.pnl || "").replace(/[^0-9.-]/g, ""));
-      if (Number.isFinite(pnl)) rrVal = pnl / row.riskAmount;
     }
   } else {
     rrVal = plannedRR;
@@ -1130,12 +1172,15 @@ export function resolveTradeCardRR(row, theme) {
           : rrVal < 0
             ? rd
             : tm
-      : plannedRR != null && rrRisk > 0
+      : plannedRR != null && riskPx > 0
         ? plannedRR >= 1
           ? gn
           : rd
         : tm;
-  return { rrVal, rrStr, rrCol, rrRisk, plannedRR, plannedAtEntryStr, showPlannedAtEntry };
+  const rrRiskUnit = unit
+    ? (row?.sym && String(row.sym).includes("/") ? "pips" : "pts")
+    : "pts";
+  return { rrVal, rrStr, rrCol, rrRisk, rrRiskUnit, plannedRR, plannedAtEntryStr, showPlannedAtEntry };
 }
 
 /** Signed realized R-multiple (negative when the trade lost). */
@@ -1145,20 +1190,15 @@ export function extractRealizedRMultiple(trade, om, sideHint) {
     trade.originalRiskAmount ?? trade.riskAmount ?? trade.riskPerTrade
   );
   const pnl = extractOrderManagerTradePnl(trade, om);
+  // Always prefer pnl / original risk — stored rMultiple is often raw $ pnl when risk was wrong.
   if (riskUsd > 0 && Number.isFinite(pnl)) {
-    const computed = pnl / riskUsd;
-    const stored = Number.parseFloat(trade.rMultiple ?? trade.actual_rr_net);
-    if (Number.isFinite(stored)) {
-      if (pnl * stored < 0 && Math.abs(pnl) > 1e-8) return computed;
-      return stored;
-    }
-    return computed;
+    return pnl / riskUsd;
   }
   const stored = Number.parseFloat(trade.rMultiple ?? trade.actual_rr_net);
   if (Number.isFinite(stored)) return stored;
   const entry = Number.parseFloat(trade.entryPrice ?? trade.openPrice);
   const exit = Number.parseFloat(trade.exitPrice ?? trade.closePrice);
-  const sl = Number.parseFloat(trade.stopLoss);
+  const sl = Number.parseFloat(trade.initial_sl ?? trade.initialStopLoss ?? trade.stopLoss);
   if (!Number.isFinite(entry) || !Number.isFinite(exit) || !Number.isFinite(sl)) return null;
   const riskPx = Math.abs(entry - sl);
   if (!(riskPx > 0)) return null;
@@ -1166,6 +1206,29 @@ export function extractRealizedRMultiple(trade, om, sideHint) {
   const isLong = dir !== "SELL" && dir !== "SHORT";
   const move = isLong ? exit - entry : entry - exit;
   return move / riskPx;
+}
+
+function resolveRowPipSize(om, order, journal) {
+  const candidates = [
+    order?.instrument_settings?.pip_size,
+    order?.instrument_settings?.pipSize,
+    journal?.instrument_settings?.pip_size,
+    journal?.instrument_settings?.pipSize,
+    typeof om?._getPositionPipSize === "function" ? om._getPositionPipSize(order || journal) : null,
+    om?.pipSize,
+  ];
+  for (const c of candidates) {
+    const n = Number.parseFloat(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const sym = String(order?.ticker || order?.symbol || journal?.ticker || journal?.symbol || rowSymHint(journal) || "");
+  if (/JPY/i.test(sym)) return 0.01;
+  if (/\//.test(sym) || /^[A-Z]{6}$/.test(sym.replace("/", ""))) return 0.0001;
+  return null;
+}
+
+function rowSymHint(journal) {
+  return journal?.symbol || journal?.ticker || "";
 }
 
 function attachTradeMetricsToRow(om, row, order, journal) {
@@ -1187,6 +1250,8 @@ function attachTradeMetricsToRow(om, row, order, journal) {
       ?? order?.originalRiskAmount ?? order?.riskAmount
   );
   if (Number.isFinite(riskUsd) && riskUsd > 0) row.riskAmount = riskUsd;
+  const pip = resolveRowPipSize(om, order, journal);
+  if (pip != null) row.pipSize = pip;
   if (row.status === "closed") {
     const sideHint = row.side === "SHORT" ? "SELL" : "BUY";
     const realized = extractRealizedRMultiple(journal || order, om, sideHint);
@@ -1317,6 +1382,17 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
   const open = [...(om.openPositions || [])];
   const closed = [...(om.closedPositions || [])];
 
+  const attachRawPx = (row, o, { entry, exit } = {}) => {
+    const entryN = Number.parseFloat(entry ?? o.openPrice ?? o.entryPrice);
+    const slN = Number.parseFloat(o.stopLoss);
+    const tpN = Number.parseFloat(o.takeProfit);
+    const exitN = Number.parseFloat(exit ?? o.closePrice);
+    if (Number.isFinite(entryN)) row.entryPx = entryN;
+    if (Number.isFinite(slN)) row.slPx = slN;
+    if (Number.isFinite(tpN)) row.tpPx = tpN;
+    if (Number.isFinite(exitN)) row.exitPx = exitN;
+  };
+
   pend.forEach((o) => {
     const tMs = o.placedTime || o.openTime || Date.now();
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
@@ -1341,6 +1417,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       preTags: [],
       postTags: [],
     };
+    attachRawPx(row, o, { entry: o.entryPrice });
     attachJournalTagsToRow(om, row, o);
     rows.push(row);
   });
@@ -1375,6 +1452,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       preTags: [],
       postTags: [],
     };
+    attachRawPx(row, o, { entry: o.openPrice });
     attachJournalTagsToRow(om, row, o);
     rows.push(row);
   });
@@ -1414,6 +1492,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       mae: o.mae != null && Number.isFinite(Number.parseFloat(o.mae)) ? fmtPx(o.mae) : undefined,
       mfe: o.mfe != null && Number.isFinite(Number.parseFloat(o.mfe)) ? fmtPx(o.mfe) : undefined,
     };
+    attachRawPx(row, o, { entry: o.openPrice, exit: o.closePrice });
     attachJournalTagsToRow(om, row, o);
     rows.push(row);
   });

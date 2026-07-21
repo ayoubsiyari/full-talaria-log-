@@ -1330,12 +1330,12 @@ select { cursor: default; }
   font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-muted); margin: 0;
 }
-#fr_pairs_count {
+#fr_pairs_count, #dk_pairs_count {
   font-size: 11px; font-weight: 600; color: var(--accent, #60a5fa);
   padding: 2px 8px; border-radius: 999px;
   background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.25);
 }
-#fr_pairs_count.is-empty { color: var(--text-muted); background: transparent; border-color: var(--border); }
+#fr_pairs_count.is-empty, #dk_pairs_count.is-empty { color: var(--text-muted); background: transparent; border-color: var(--border); }
 .fr-symbols-toolbar .btn-clear { margin-left: auto; }
 #fr_pairs {
   width: 100%; min-height: 120px; max-height: 220px;
@@ -3962,46 +3962,131 @@ select { cursor: default; }
           </div>
         </div>
 
-        <!-- Dukascopy: server-side M1 CSV (dukascopy-node) — no FirstRate account needed -->
+        <!-- Dukascopy CFD import (bid M1) — popular packs + custom list, FirstRate-style -->
         <div class="card" id="dukascopyFetchCard" data-ds-group="import" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <div class="card-title">Dukascopy sample (M1)</div>
+            <div class="card-title">Dukascopy CFD import</div>
           </div>
-          <div class="card-body">
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px;line-height:1.55">
-              Fetches <strong>bid M1</strong> CSV through the server, merges it into a chart dataset, and shows up in the list below. Handy to validate the pipeline without FirstRate. Large ranges are split into chunks server-side (may take several minutes).
-            </p>
-            <div id="dk_cat_tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-              <button type="button" class="btn sm dk-cat-tab primary" data-group="us_indices" onclick="setDukascopyGroup('us_indices')">US indices</button>
-              <button type="button" class="btn sm dk-cat-tab" data-group="energy" onclick="setDukascopyGroup('energy')">Energy</button>
-              <button type="button" class="btn sm dk-cat-tab" data-group="world_indices" onclick="setDukascopyGroup('world_indices')">World indices</button>
-              <button type="button" class="btn sm dk-cat-tab" data-group="forex" onclick="setDukascopyGroup('forex')">Forex</button>
-            </div>
-            <input type="hidden" id="dk_pair" value="eurusd" />
-            <div class="form-grid">
-              <div class="field fg-full">
-                <label for="dk_instrument_select">Instrument</label>
-                <select id="dk_instrument_select" class="input" onchange="onDukascopySelectChange()">
-                  <option disabled selected>(loading…)</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="dk_from">From</label>
-                <input type="date" id="dk_from" class="input">
-              </div>
-              <div class="field">
-                <label for="dk_to">To</label>
-                <input type="date" id="dk_to" class="input">
-              </div>
-              <div class="field">
-                <label>Timeframe</label>
-                <input type="text" class="input" value="M1 (fixed)" disabled style="opacity:0.85">
-              </div>
-            </div>
-            <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center">
-              <span id="dukaProgress" style="font-size:12px;color:var(--text-muted);flex:1;min-width:160px"></span>
-              <button type="button" class="btn sm primary" id="dkFetchBtn" onclick="fetchDukascopy()">Fetch &amp; save dataset</button>
+          <div class="card-body" style="padding-top:0">
+            <div class="fr-import">
+              <p class="ds-card-lead" style="margin:14px 16px 0;padding:0 0 4px">
+                Free <strong>bid M1</strong> CFDs via dukascopy-node (gold, silver, Nasdaq/S&amp;P-style indices, energy, FX, crypto).
+                No FirstRate account. Full history is capped server-side (~20y) and chunked; bulk jobs can take hours.
+              </p>
+
+              <section class="fr-step" style="margin:12px 16px 0">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">1</span>
+                  <div>
+                    <h3 class="fr-step-title">Range &amp; timeframe</h3>
+                    <p class="fr-step-desc">Full history (recommended) or a custom date window — always 1-minute bars</p>
+                  </div>
+                </div>
+                <div class="fr-step-body">
+                  <div class="fr-settings-grid">
+                    <div class="field">
+                      <label for="dk_period">Period</label>
+                      <select id="dk_period" class="input" onchange="updateDkPeriodUi()">
+                        <option value="full" selected>full (max history)</option>
+                        <option value="custom">custom dates</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Timeframe</label>
+                      <input type="text" class="input" value="1min (M1 bid)" disabled style="opacity:0.85">
+                    </div>
+                    <div class="field" id="dk_full_hint_wrap">
+                      <label>Window</label>
+                      <input type="text" id="dk_full_hint" class="input" disabled style="opacity:0.85" value="loading…">
+                    </div>
+                    <div class="field" id="dk_from_wrap" style="display:none">
+                      <label for="dk_from">From</label>
+                      <input type="date" id="dk_from" class="input">
+                    </div>
+                    <div class="field" id="dk_to_wrap" style="display:none">
+                      <label for="dk_to">To</label>
+                      <input type="date" id="dk_to" class="input">
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="fr-step" style="margin:0 16px">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">2</span>
+                  <div>
+                    <h3 class="fr-step-title">CFD symbol list</h3>
+                    <p class="fr-step-desc">Use popular packs or pick from the catalog — Dukascopy ids (e.g. xauusd, usa500idxusd)</p>
+                  </div>
+                </div>
+                <div class="fr-step-body">
+                  <div class="fr-symbols-layout">
+                    <aside class="fr-quickadd-panel">
+                      <div class="fr-quickadd-label">Quick add</div>
+                      <div class="fr-quickadd-btns">
+                        <button type="button" class="btn sm primary" onclick="dkPairsFillPreset('popular_cfd')" title="Metals + US/world indices + energy + FX majors + BTC/ETH">All popular CFDs</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('metals')">Metals</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('us_indices')">US indices</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('world_indices')">World indices</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('energy')">Energy</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('forex_majors')">FX majors</button>
+                        <button type="button" class="btn sm" onclick="dkPairsFillPreset('crypto')">Crypto CFDs</button>
+                      </div>
+                      <div class="fr-quickadd-tools">
+                        <div class="fr-quickadd-label" style="margin-bottom:6px">Browse catalog</div>
+                        <div id="dk_cat_tabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+                          <button type="button" class="btn sm dk-cat-tab primary" data-group="metals" onclick="setDukascopyGroup('metals')">Metals</button>
+                          <button type="button" class="btn sm dk-cat-tab" data-group="us_indices" onclick="setDukascopyGroup('us_indices')">US</button>
+                          <button type="button" class="btn sm dk-cat-tab" data-group="world_indices" onclick="setDukascopyGroup('world_indices')">World</button>
+                          <button type="button" class="btn sm dk-cat-tab" data-group="energy" onclick="setDukascopyGroup('energy')">Energy</button>
+                          <button type="button" class="btn sm dk-cat-tab" data-group="forex" onclick="setDukascopyGroup('forex')">Forex</button>
+                          <button type="button" class="btn sm dk-cat-tab" data-group="crypto" onclick="setDukascopyGroup('crypto')">Crypto</button>
+                        </div>
+                        <select id="dk_instrument_select" class="input" size="6" multiple style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></select>
+                        <button type="button" class="btn sm" onclick="dkAddSelectedFromCatalog()">Add selected</button>
+                      </div>
+                    </aside>
+                    <div class="fr-symbols-main">
+                      <div class="fr-symbols-toolbar">
+                        <label for="dk_pairs">Instruments</label>
+                        <span id="dk_pairs_count" class="is-empty">Empty</span>
+                        <button type="button" class="btn sm btn-clear" onclick="dkPairsClear()">Clear list</button>
+                      </div>
+                      <textarea id="dk_pairs" rows="8" class="input" placeholder="xauusd, xagusd, usa500idxusd, usatechidxusd …" oninput="updateDkPairsCount()"></textarea>
+                      <p id="dk_ticker_hint" style="font-size:11px;color:var(--text-muted);margin:8px 0 0;line-height:1.5">
+                        Tip: start with <strong>All popular CFDs</strong> + period <strong>full</strong>. Symbols already in the registry are skipped when the option below is on.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="fr-step" style="margin:0 16px 16px">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">3</span>
+                  <div>
+                    <h3 class="fr-step-title">Review &amp; download</h3>
+                    <p class="fr-step-desc">Imports run sequentially on the server — leave this tab open to watch progress</p>
+                  </div>
+                </div>
+                <div class="fr-step-body">
+                  <div class="fr-review-grid">
+                    <label class="fr-review-opt" title="Skip symbols that already have a dataset row">
+                      <input type="checkbox" id="dk_skip_existing" checked>
+                      <span><strong>Skip existing</strong> — do not re-download symbols already in the library</span>
+                    </label>
+                  </div>
+                  <div class="fr-actions-row">
+                    <button type="button" class="btn primary" id="dkFetchBtn" onclick="fetchDukascopyBulk()">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download &amp; import
+                    </button>
+                    <span id="dukaProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto;min-width:0;flex:1;text-align:right"></span>
+                  </div>
+                  <div id="dk_bulk_items" style="display:none;margin-top:12px;max-height:220px;overflow:auto;font-size:11px;font-family:ui-monospace,monospace;line-height:1.55;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.08)"></div>
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -10422,21 +10507,106 @@ async function uploadFile(file) {
   } catch (e) { label.textContent = 'Upload failed'; toast(e.message, 'err'); }
 }
 
-// Dukascopy M1 fetch (datasets section card).
+// Dukascopy CFD bulk import (datasets section — FirstRate-style packs + full M1).
+let dukaActiveGroup = 'metals';
+let dukaGroups = {};
+let dukaPresets = {};
+let dukaFullHistory = null;
+let dukaWatchInProgress = false;
+let dukaWatchingJobId = null;
+
+function normalizeDkInstrumentToken(s) {
+  return String(s || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toLowerCase()
+    .slice(0, 24);
+}
+
+function parseDkPairsFromTextarea() {
+  const el = $('dk_pairs');
+  const raw = el && el.value != null ? String(el.value) : '';
+  const parts = raw.split(/[\s,;]+/).map(function (s) { return String(s).trim(); }).filter(Boolean);
+  const seen = Object.create(null);
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const t = normalizeDkInstrumentToken(parts[i]);
+    if (!t || seen[t]) continue;
+    seen[t] = true;
+    out.push(t);
+  }
+  return out;
+}
+
+function updateDkPairsCount() {
+  const el = $('dk_pairs_count');
+  if (!el) return;
+  const n = parseDkPairsFromTextarea().length;
+  if (!n) {
+    el.textContent = 'Empty';
+    el.classList.add('is-empty');
+  } else {
+    el.textContent = n + ' symbol' + (n !== 1 ? 's' : '');
+    el.classList.remove('is-empty');
+  }
+}
+
+function dkPairsClear() {
+  const el = $('dk_pairs');
+  if (el) el.value = '';
+  updateDkPairsCount();
+}
+
+function dkPairsAdd(ids) {
+  const el = $('dk_pairs');
+  if (!el || !ids || !ids.length) return;
+  const cur = parseDkPairsFromTextarea();
+  const seen = Object.create(null);
+  cur.forEach(function (t) { seen[t] = true; });
+  const merged = cur.slice();
+  ids.forEach(function (raw) {
+    const t = normalizeDkInstrumentToken(raw);
+    if (!t || seen[t]) return;
+    seen[t] = true;
+    merged.push(t);
+  });
+  el.value = merged.join(', ');
+  updateDkPairsCount();
+}
+
+function dkPairsFillPreset(key) {
+  const pack = dukaPresets[key];
+  if (!pack || !pack.length) {
+    toast('Preset not loaded yet — wait a moment and try again', 'err');
+    return;
+  }
+  dkPairsAdd(pack);
+  toast('Added ' + pack.length + ' from ' + key.replace(/_/g, ' '), 'ok');
+}
+
+function updateDkPeriodUi() {
+  const period = ($('dk_period') && $('dk_period').value) || 'full';
+  const isCustom = period === 'custom';
+  const fromWrap = $('dk_from_wrap');
+  const toWrap = $('dk_to_wrap');
+  const hintWrap = $('dk_full_hint_wrap');
+  if (fromWrap) fromWrap.style.display = isCustom ? '' : 'none';
+  if (toWrap) toWrap.style.display = isCustom ? '' : 'none';
+  if (hintWrap) hintWrap.style.display = isCustom ? 'none' : '';
+}
+
 function setDefaultDukascopyDates() {
   const fromEl = $('dk_from');
   const toEl = $('dk_to');
   if (!fromEl || !toEl) return;
   const today = new Date();
   const from = new Date(today);
-  from.setFullYear(from.getFullYear() - 1);
+  from.setFullYear(from.getFullYear() - 5);
   fromEl.value = from.toISOString().slice(0, 10);
   toEl.value = today.toISOString().slice(0, 10);
 }
 setDefaultDukascopyDates();
-
-let dukaActiveGroup = 'us_indices';
-let dukaGroups = {};
+updateDkPeriodUi();
+updateDkPairsCount();
 
 function setDukascopyGroup(group) {
   dukaActiveGroup = group;
@@ -10444,45 +10614,47 @@ function setDukascopyGroup(group) {
     const on = b.getAttribute('data-group') === group;
     if (on) { b.classList.add('primary'); } else { b.classList.remove('primary'); }
   });
-  renderDukascopySelect(true);
+  renderDukascopySelect();
 }
 
-function renderDukascopySelect(resetToFirst) {
+function renderDukascopySelect() {
   const sel = $('dk_instrument_select');
-  const pairEl = $('dk_pair');
-  if (!sel || !pairEl) return;
+  if (!sel) return;
   const list = dukaGroups[dukaActiveGroup];
   if (!list || !list.length) {
     sel.innerHTML = '<option disabled>(loading…)</option>';
     return;
   }
-  if (resetToFirst) {
-    pairEl.value = list[0].id;
-  }
-  const cur = (pairEl.value || '').trim().toLowerCase();
   sel.innerHTML = list.map(function (row) {
     const id = row.id || '';
     const label = row.label || id;
-    const selected = (id.toLowerCase() === cur) ? ' selected' : '';
-    return '<option value="' + esc(id) + '"' + selected + '>' + esc(label) + '</option>';
+    return '<option value="' + esc(id) + '">' + esc(label) + ' (' + esc(id) + ')</option>';
   }).join('');
-  const has = list.some(function (r) { return (r.id || '').toLowerCase() === cur; });
-  if (has) sel.value = cur;
-  else if (list.length) { pairEl.value = list[0].id; sel.value = list[0].id; }
 }
 
-function onDukascopySelectChange() {
+function dkAddSelectedFromCatalog() {
   const sel = $('dk_instrument_select');
-  const pairEl = $('dk_pair');
-  if (!sel || !pairEl) return;
-  pairEl.value = sel.value;
+  if (!sel) return;
+  const picked = Array.from(sel.selectedOptions || []).map(function (o) { return o.value; });
+  if (!picked.length) return toast('Select one or more instruments in the catalog', 'err');
+  dkPairsAdd(picked);
 }
 
 async function loadDukascopyInstrumentGroups() {
   try {
     const data = await api('/api/admin/datasets/dukascopy-instruments');
     dukaGroups = data.groups || {};
-    renderDukascopySelect(false);
+    dukaPresets = data.presets || {};
+    dukaFullHistory = data.full_history || null;
+    const hint = $('dk_full_hint');
+    if (hint && dukaFullHistory) {
+      hint.value = (dukaFullHistory.from_date || '?') + ' → ' + (dukaFullHistory.to_date || '?');
+    }
+    if (!dukaGroups[dukaActiveGroup]) {
+      const keys = Object.keys(dukaGroups);
+      if (keys.length) dukaActiveGroup = keys[0];
+    }
+    setDukascopyGroup(dukaActiveGroup);
   } catch (e) {
     const sel = $('dk_instrument_select');
     if (sel) sel.innerHTML = '<option disabled>(failed to load)</option>';
@@ -10679,25 +10851,54 @@ async function waitForYahooCmeJob(jobId) {
   }
 }
 
-async function fetchDukascopy() {
-  const pairEl = $('dk_pair');
-  const fromEl = $('dk_from');
-  const toEl = $('dk_to');
+function renderDkBulkItems(items) {
+  const box = $('dk_bulk_items');
+  if (!box) return;
+  if (!items || !items.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = items.map(function (it) {
+    const st = it.status || '?';
+    const mark = st === 'done' ? '✓' : (st === 'failed' ? '✗' : (st === 'skipped' ? '–' : (st === 'running' ? '…' : '·')));
+    const extra = it.error || it.message || '';
+    return '<div><span style="opacity:.7">' + mark + '</span> ' + esc(it.instrument || '') +
+      ' <span style="color:var(--text-muted)">[' + esc(st) + ']' + (extra ? ' ' + esc(String(extra).slice(0, 80)) : '') + '</span></div>';
+  }).join('');
+}
+
+async function fetchDukascopyBulk() {
   const btn = $('dkFetchBtn');
   const prog = $('dukaProgress');
-  if (!pairEl || !fromEl || !toEl) return toast('Dukascopy form is not available', 'err');
-  const instrument = pairEl.value.trim().toLowerCase();
-  const fromDate = fromEl.value;
-  const toDate = toEl.value;
-  if (!instrument || !fromDate || !toDate) return toast('Fill in all Dukascopy fields', 'err');
+  const instruments = parseDkPairsFromTextarea();
+  if (!instruments.length) return toast('Add CFD symbols (or click All popular CFDs)', 'err');
+  const period = ($('dk_period') && $('dk_period').value) || 'full';
+  const body = {
+    instruments: instruments,
+    period: period,
+    skip_existing: !!($('dk_skip_existing') && $('dk_skip_existing').checked),
+  };
+  if (period === 'custom') {
+    const fromDate = $('dk_from') && $('dk_from').value;
+    const toDate = $('dk_to') && $('dk_to').value;
+    if (!fromDate || !toDate) return toast('Pick From and To for custom period', 'err');
+    body.from_date = fromDate;
+    body.to_date = toDate;
+  }
   if (btn) btn.disabled = true;
-  if (prog) prog.textContent = 'Starting…';
+  if (prog) prog.textContent = 'Starting bulk import…';
+  renderDkBulkItems(instruments.map(function (id) { return { instrument: id, status: 'queued' }; }));
   try {
-    const data = await api('/api/admin/datasets/fetch-dukascopy', {
+    const data = await api('/api/admin/datasets/fetch-dukascopy-bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instrument, from_date: fromDate, to_date: toDate })
+      body: JSON.stringify(body)
     });
+    if (data.unknown_instruments && data.unknown_instruments.length) {
+      toast('Note: ' + data.unknown_instruments.length + ' id(s) outside curated catalog (still attempted)', 'ok');
+    }
     if (data.job_id) {
       await waitForDukascopyJob(data.job_id);
     } else {
@@ -10705,35 +10906,88 @@ async function fetchDukascopy() {
       await loadDatasets();
     }
   } catch (e) {
-    toast(e.message, 'err');
+    toast(e.message || String(e), 'err');
+    if (prog) prog.textContent = 'Failed to start';
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-async function waitForDukascopyJob(jobId) {
-  const label = $('dukaProgress');
-  for (let i = 0; i < 600; i++) {
-    await sleep(2000);
-    try {
-      const status = await api(`/api/admin/datasets/fetch-dukascopy/${jobId}/status`);
-      const st = status.state || status.status;
-      if (st === 'done' || st === 'completed') {
-        if (label) label.textContent = 'Done.';
-        toast('Dukascopy fetch complete', 'ok');
-        await loadDatasets();
-        return;
-      } else if (st === 'failed' || st === 'error') {
-        if (label) label.textContent = 'Failed: ' + (status.error || 'Unknown error');
-        toast('Dukascopy fetch failed', 'err');
-        return;
-      }
-      if (label) label.textContent = status.message || st || 'Processing…';
-    } catch (e) { break; }
-  }
-  if (label) label.textContent = 'Stopped polling (job may still run on server — refresh datasets).';
-  toast('Browser watch timed out (server may still be working).', 'err');
+/** Kept for any leftover callers / bookmarks — routes to bulk with one instrument. */
+async function fetchDukascopy() {
+  return fetchDukascopyBulk();
 }
+
+async function waitForDukascopyJob(jobId) {
+  if (dukaWatchInProgress) {
+    if (dukaWatchingJobId === jobId) return;
+    toast('This tab is already tracking a Dukascopy download.', 'err');
+    return;
+  }
+  dukaWatchInProgress = true;
+  dukaWatchingJobId = jobId;
+  const label = $('dukaProgress');
+  const btn = $('dkFetchBtn');
+  try {
+    try { sessionStorage.setItem('dk_active_job_id', jobId); } catch (e) {}
+    if (btn) btn.disabled = true;
+    // Bulk full-history jobs can run for many hours.
+    const deadline = Date.now() + 48 * 60 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await sleep(2500);
+      try {
+        const status = await api('/api/admin/datasets/fetch-dukascopy/' + encodeURIComponent(jobId) + '/status');
+        const st = status.state || status.status;
+        if (status.items) renderDkBulkItems(status.items);
+        if (st === 'done' || st === 'completed') {
+          if (label) label.textContent = status.message || 'Done.';
+          try { sessionStorage.removeItem('dk_active_job_id'); } catch (e) {}
+          toast(status.message || 'Dukascopy import complete', 'ok');
+          await loadDatasets();
+          return;
+        }
+        if (st === 'failed' || st === 'error') {
+          if (label) label.textContent = 'Failed: ' + (status.error || status.message || 'Unknown error');
+          try { sessionStorage.removeItem('dk_active_job_id'); } catch (e) {}
+          toast('Dukascopy import failed', 'err');
+          return;
+        }
+        if (label) label.textContent = status.message || st || 'Processing…';
+      } catch (e) {
+        /* transient — keep polling */
+      }
+    }
+    if (label) {
+      label.textContent = 'Stopped updating this tab (job may still run on server — refresh to reconnect).';
+    }
+    toast('Browser watch timed out (server may still be working).', 'err');
+  } finally {
+    dukaWatchInProgress = false;
+    dukaWatchingJobId = null;
+    if (btn) btn.disabled = false;
+  }
+}
+
+(async function resumeDukascopyIfNeeded() {
+  try {
+    let jid = null;
+    try { jid = sessionStorage.getItem('dk_active_job_id'); } catch (e) {}
+    if (!jid) return;
+    const chk = await api('/api/admin/datasets/fetch-dukascopy/' + encodeURIComponent(jid) + '/status');
+    const st = chk.state || chk.status;
+    if (st === 'done' || st === 'completed' || st === 'failed' || st === 'error') {
+      try { sessionStorage.removeItem('dk_active_job_id'); } catch (e) {}
+      if (chk.items) renderDkBulkItems(chk.items);
+      return;
+    }
+    if ($('dukaProgress')) $('dukaProgress').textContent = chk.message || 'Reconnecting to Dukascopy job…';
+    if (chk.items) renderDkBulkItems(chk.items);
+    toast('Reconnecting to Dukascopy import…', 'ok');
+    await waitForDukascopyJob(jid);
+  } catch (e) {
+    /* no active job */
+  }
+})();
 
 async function checkFirstratePairs() {
   const panel = $('fr_pair_check_panel');

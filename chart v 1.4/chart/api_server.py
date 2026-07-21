@@ -667,6 +667,9 @@ DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
 DUKASCOPY_MAX_RANGE_DAYS = int(os.getenv("DUKASCOPY_MAX_RANGE_DAYS", "365"))
 DUKASCOPY_MAX_TOTAL_DAYS = int(os.getenv("DUKASCOPY_MAX_TOTAL_DAYS", "7300"))
 DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
+# Bulk full-history imports can run for many hours across dozens of symbols.
+DUKASCOPY_BULK_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_BULK_JOB_TTL_SECONDS", "172800"))
+DUKASCOPY_MAX_BULK_INSTRUMENTS = int(os.getenv("DUKASCOPY_MAX_BULK_INSTRUMENTS", "40"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
@@ -681,34 +684,40 @@ DATASET_PURGE_CONFIRMATION = os.getenv("DATASET_PURGE_CONFIRMATION", "DELETE_ALL
 FIrstrate_SCHEDULE_PATH = UPLOAD_DIR / "firstrate_schedule.json"
 _firstrate_schedule_lock = threading.Lock()
 
-# Curated Dukascopy instrument ids for admin UI (indices / commodities / forex).
-# These are Dukascopy CFD / cash-index symbols — not exchange-listed futures like CME NQ or CL.
+# Curated Dukascopy instrument ids for admin UI (CFD / cash-index / spot).
+# These are Dukascopy symbols — not exchange-listed futures like CME NQ or CL.
 DUKASCOPY_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
-    "us_indices": [
-        {
-            "id": "usa500idxusd",
-            "label": "USA 500 index (S&P 500–style cash index CFD)",
-        },
-        {
-            "id": "usatechidxusd",
-            "label": "USA 100 Tech index (Nasdaq-100–style cash index CFD)",
-        },
-        {"id": "usa30idxusd", "label": "USA 30 index (Dow-style cash index CFD)"},
-        {"id": "dollaridxusd", "label": "US Dollar index"},
+    "metals": [
+        {"id": "xauusd", "label": "Gold / USD (spot CFD)"},
+        {"id": "xagusd", "label": "Silver / USD (spot CFD)"},
+        {"id": "xptusd", "label": "Platinum / USD"},
+        {"id": "xpdusd", "label": "Palladium / USD"},
+        {"id": "coppercmdusd", "label": "Copper (commodity CFD)"},
     ],
-    "energy": [
-        {"id": "lightcmdusd", "label": "US Light crude oil (WTI-style CFD)"},
-        {"id": "brentcmdusd", "label": "Brent crude oil (CFD)"},
-        {"id": "gascmdusd", "label": "Natural gas (CFD)"},
-        {"id": "dieselcmdusd", "label": "Gas oil (CFD)"},
+    "us_indices": [
+        {"id": "usa500idxusd", "label": "USA 500 (S&P 500–style index CFD)"},
+        {"id": "usatechidxusd", "label": "USA 100 Tech (Nasdaq-100–style index CFD)"},
+        {"id": "usa30idxusd", "label": "USA 30 (Dow-style index CFD)"},
+        {"id": "ussc2000idxusd", "label": "US Small Cap 2000 (Russell-style CFD)"},
+        {"id": "dollaridxusd", "label": "US Dollar index"},
+        {"id": "volidxusd", "label": "Volatility index (VIX-style CFD)"},
     ],
     "world_indices": [
-        {"id": "fraidxeur", "label": "France 40 index"},
         {"id": "deuidxeur", "label": "Germany 40 index"},
         {"id": "gbridxgbp", "label": "UK 100 index"},
+        {"id": "fraidxeur", "label": "France 40 index"},
         {"id": "eusidxeur", "label": "Europe 50 index"},
         {"id": "jpnidxjpy", "label": "Japan 225 index"},
         {"id": "hkgidxhkd", "label": "Hong Kong 40 index"},
+        {"id": "ausidxaud", "label": "Australia 200 index"},
+        {"id": "sgpidxsgd", "label": "Singapore index"},
+        {"id": "chiidxusd", "label": "China A50 index"},
+    ],
+    "energy": [
+        {"id": "lightcmdusd", "label": "US Light crude (WTI-style CFD)"},
+        {"id": "brentcmdusd", "label": "Brent crude oil (CFD)"},
+        {"id": "gascmdusd", "label": "Natural gas (CFD)"},
+        {"id": "dieselcmdusd", "label": "Gas oil (CFD)"},
     ],
     "forex": [
         {"id": "eurusd", "label": "EUR/USD"},
@@ -768,9 +777,41 @@ DUKASCOPY_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
         {"id": "usdzar", "label": "USD/ZAR"},
         {"id": "eurzar", "label": "EUR/ZAR"},
         {"id": "gbpzar", "label": "GBP/ZAR"},
-        {"id": "xauusd", "label": "Gold / USD"},
-        {"id": "xagusd", "label": "Silver / USD"},
     ],
+    "crypto": [
+        {"id": "btcusd", "label": "Bitcoin / USD"},
+        {"id": "ethusd", "label": "Ethereum / USD"},
+        {"id": "ltcusd", "label": "Litecoin / USD"},
+        {"id": "xrpusd", "label": "XRP / USD"},
+        {"id": "bchusd", "label": "Bitcoin Cash / USD"},
+        {"id": "solusd", "label": "Solana / USD"},
+        {"id": "adausd", "label": "Cardano / USD"},
+        {"id": "dogeusd", "label": "Dogecoin / USD"},
+        {"id": "linkusd", "label": "Chainlink / USD"},
+        {"id": "dotusd", "label": "Polkadot / USD"},
+    ],
+}
+
+# Preset packs for one-click “popular CFD” imports (ids must exist in groups above).
+DUKASCOPY_PRESET_PACKS: dict[str, list[str]] = {
+    "popular_cfd": [
+        "xauusd", "xagusd",
+        "usa500idxusd", "usatechidxusd", "usa30idxusd", "ussc2000idxusd",
+        "deuidxeur", "gbridxgbp", "jpnidxjpy",
+        "lightcmdusd", "brentcmdusd", "gascmdusd",
+        "eurusd", "gbpusd", "usdjpy", "audusd", "usdcad", "usdchf",
+        "btcusd", "ethusd",
+    ],
+    "metals": ["xauusd", "xagusd", "xptusd", "xpdusd", "coppercmdusd"],
+    "us_indices": [
+        "usa500idxusd", "usatechidxusd", "usa30idxusd", "ussc2000idxusd", "dollaridxusd",
+    ],
+    "world_indices": [
+        "deuidxeur", "gbridxgbp", "fraidxeur", "eusidxeur", "jpnidxjpy", "hkgidxhkd", "ausidxaud",
+    ],
+    "energy": ["lightcmdusd", "brentcmdusd", "gascmdusd", "dieselcmdusd"],
+    "forex_majors": ["eurusd", "gbpusd", "usdjpy", "audusd", "nzdusd", "usdcad", "usdchf"],
+    "crypto": ["btcusd", "ethusd", "ltcusd", "xrpusd", "solusd", "adausd", "dogeusd"],
 }
 
 BINANCE_MAX_TICKERS = int(os.getenv("BINANCE_MAX_TICKERS", "5"))
@@ -4181,9 +4222,11 @@ def _dukascopy_job_path(job_id: str) -> Path:
     return DUKASCOPY_JOBS_DIR / f"{safe_job_id}.json"
 
 def _dukascopy_cleanup_jobs() -> None:
-    cutoff = time.time() - max(60, DUKASCOPY_JOB_TTL_SECONDS)
+    cutoff_single = time.time() - max(60, DUKASCOPY_JOB_TTL_SECONDS)
+    cutoff_bulk = time.time() - max(60, DUKASCOPY_BULK_JOB_TTL_SECONDS)
     for p in DUKASCOPY_JOBS_DIR.glob("*.json"):
         try:
+            cutoff = cutoff_bulk if p.name.startswith("dkb_") else cutoff_single
             if p.stat().st_mtime < cutoff:
                 p.unlink()
         except Exception:
@@ -5989,7 +6032,60 @@ def _start_firstrate_scheduler_thread() -> None:
     threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
 
 
-def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
+def _dukascopy_full_history_range() -> tuple[datetime, datetime]:
+    """Longest allowed M1 window ending today (UTC date)."""
+    to_dt = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    from_dt = to_dt - timedelta(days=max(1, DUKASCOPY_MAX_TOTAL_DAYS) - 1)
+    return from_dt, to_dt
+
+
+def _dukascopy_all_known_ids() -> set[str]:
+    out: set[str] = set()
+    for rows in DUKASCOPY_INSTRUMENT_GROUPS.values():
+        for row in rows:
+            iid = _normalize_dukascopy_instrument(row.get("id") or "")
+            if iid:
+                out.add(iid)
+    return out
+
+
+def _dukascopy_dataset_already_exists(instrument: str) -> bool:
+    """True if a Dukascopy (or same-id) dataset is already registered."""
+    needle = f"{instrument}-{DUKASCOPY_DEFAULT_TIMEFRAME}-bid-"
+    needle_u = instrument.upper()
+    db = SessionLocal()
+    try:
+        rows = db.query(CSVFile).all()
+        for row in rows:
+            orig = str(row.original_name or "").lower()
+            disk = str(row.filename or "").lower()
+            if needle in orig or needle in disk:
+                return True
+            # Also match FirstRate-style XAUUSD / EURUSD names so we don't
+            # double-import the same retail symbol from Dukascopy by accident
+            # when the admin asked to skip existing.
+            ticker = (_firstrate_extract_ticker_from_filename(row.original_name or "") or "").upper()
+            if ticker and ticker == needle_u:
+                return True
+            if len(needle_u) == 6 and ticker == needle_u:
+                return True
+        return False
+    finally:
+        db.close()
+
+
+def _execute_dukascopy_fetch(
+    instrument: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    node_binary: str,
+    *,
+    on_progress=None,
+) -> dict:
+    """
+    Download + merge + store one Dukascopy M1 instrument synchronously.
+    `on_progress(phase, message, extra)` is optional for job status updates.
+    """
     chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
     total_chunks = len(chunk_ranges)
     from_str = from_dt.strftime("%Y-%m-%d")
@@ -5998,12 +6094,128 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
     unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
     output_path = (UPLOAD_DIR / unique_filename).resolve()
 
+    def _prog(phase: str, message: str, extra: dict | None = None):
+        if callable(on_progress):
+            try:
+                on_progress(phase, message, extra or {})
+            except Exception:
+                pass
+
+    try:
+        _prog("download", f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})")
+        with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
+            chunk_paths: list[Path] = []
+
+            for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
+                chunk_from_str = chunk_from.strftime("%Y-%m-%d")
+                chunk_to_str = chunk_to.strftime("%Y-%m-%d")
+                chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
+                _prog(
+                    "download",
+                    f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                    {"current_chunk": idx, "completed_chunks": idx - 1, "chunk_count": total_chunks},
+                )
+
+                cmd = [
+                    node_binary,
+                    str(DUKASCOPY_SCRIPT_PATH),
+                    "--instrument", instrument,
+                    "--from", chunk_from_str,
+                    "--to", chunk_to_str,
+                    "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
+                    "--out", str(chunk_path),
+                ]
+                try:
+                    proc = subprocess.run(
+                        cmd,
+                        cwd=str(_APP_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=1200,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError(
+                        f"Chunk {idx}/{total_chunks} timed out ({chunk_from_str} to {chunk_to_str})"
+                    ) from exc
+                except Exception as exc:
+                    raise RuntimeError(f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}") from exc
+
+                if proc.returncode != 0:
+                    err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
+                    err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
+                    raise RuntimeError(
+                        f"Chunk {idx}/{total_chunks} failed ({chunk_from_str} to {chunk_to_str}): {err_line}"
+                    )
+
+                if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
+                    raise RuntimeError(
+                        f"Chunk {idx}/{total_chunks} returned empty CSV ({chunk_from_str} to {chunk_to_str})"
+                    )
+
+                _prog(
+                    "download",
+                    f"Completed chunk {idx}/{total_chunks}",
+                    {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
+                )
+                chunk_paths.append(chunk_path)
+
+            _prog("merge", f"Merging {total_chunks} chunk{'s' if total_chunks != 1 else ''} into one CSV")
+            with open(output_path, "wb") as out_f:
+                first_header = None
+                for idx, chunk_path in enumerate(chunk_paths):
+                    with open(chunk_path, "rb") as in_f:
+                        first_line = in_f.readline()
+                        if not first_line:
+                            continue
+                        if idx == 0:
+                            first_header = first_line
+                            out_f.write(first_line)
+                        else:
+                            if not first_header or first_line.strip().lower() != first_header.strip().lower():
+                                out_f.write(first_line)
+                        shutil.copyfileobj(in_f, out_f)
+
+        if not output_path.exists() or output_path.stat().st_size <= 0:
+            raise RuntimeError("Merged Dukascopy CSV is empty")
+
+        _prog("store", "Saving dataset and triggering binary conversion")
+        result = _store_dataset_file(
+            file_path=output_path,
+            original_name=original_name,
+            description=f"Dukascopy {instrument.upper()} {DUKASCOPY_DEFAULT_TIMEFRAME.upper()} {from_str} to {to_str}",
+        )
+        result["source"] = "dukascopy"
+        result["params"] = {
+            "instrument": instrument,
+            "from_date": from_str,
+            "to_date": to_str,
+            "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+            "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
+            "chunk_count": total_chunks,
+        }
+        return result
+    except Exception:
+        if output_path.exists():
+            try:
+                output_path.unlink()
+            except Exception:
+                pass
+        raise
+
+
+def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
+    chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
+    total_chunks = len(chunk_ranges)
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+
     job_id = f"dk_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
     now_iso = datetime.utcnow().isoformat()
     state = {
         "job_id": job_id,
-        "status": "queued",          # queued | running | done | failed
-        "phase": "queued",           # queued | download | merge | store | done | failed
+        "status": "queued",
+        "phase": "queued",
         "message": f"Queued Dukascopy fetch ({total_chunks} chunk{'s' if total_chunks != 1 else ''})",
         "instrument": instrument,
         "from_date": from_str,
@@ -6020,7 +6232,7 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
                 "index": idx,
                 "from_date": c_from.strftime("%Y-%m-%d"),
                 "to_date": c_to.strftime("%Y-%m-%d"),
-                "status": "pending",  # pending | processing | done | failed
+                "status": "pending",
             }
             for idx, (c_from, c_to) in enumerate(chunk_ranges, start=1)
         ],
@@ -6029,117 +6241,30 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
     _dukascopy_write_job(job_id, state)
 
     def _worker():
-        current_chunk_idx = 0
         try:
             state["status"] = "running"
-            state["phase"] = "download"
-            state["message"] = f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})"
-            _dukascopy_write_job(job_id, state)
 
-            with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
-                tmp_dir_path = Path(tmp_dir)
-                chunk_paths: list[Path] = []
-
-                for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
-                    current_chunk_idx = idx
-                    chunk_from_str = chunk_from.strftime("%Y-%m-%d")
-                    chunk_to_str = chunk_to.strftime("%Y-%m-%d")
-                    chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
-
-                    chunk_info = state["chunks"][idx - 1]
-                    chunk_info["status"] = "processing"
-                    chunk_info["started_at"] = datetime.utcnow().isoformat()
-                    state["current_chunk"] = idx
-                    state["message"] = f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})"
-                    _dukascopy_write_job(job_id, state)
-
-                    cmd = [
-                        node_binary,
-                        str(DUKASCOPY_SCRIPT_PATH),
-                        "--instrument", instrument,
-                        "--from", chunk_from_str,
-                        "--to", chunk_to_str,
-                        "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
-                        "--out", str(chunk_path),
-                    ]
-
-                    try:
-                        proc = subprocess.run(
-                            cmd,
-                            cwd=str(_APP_DIR),
-                            capture_output=True,
-                            text=True,
-                            timeout=1200,
-                        )
-                    except subprocess.TimeoutExpired:
-                        raise RuntimeError(f"Chunk {idx}/{total_chunks} timed out ({chunk_from_str} to {chunk_to_str})")
-                    except Exception as exc:
-                        raise RuntimeError(f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}")
-
-                    if proc.returncode != 0:
-                        err_txt = (proc.stderr or proc.stdout or "Unknown Dukascopy error").strip()
-                        err_line = err_txt.splitlines()[-1] if err_txt else "Unknown error"
-                        raise RuntimeError(
-                            f"Chunk {idx}/{total_chunks} failed ({chunk_from_str} to {chunk_to_str}): {err_line}"
-                        )
-
-                    if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
-                        raise RuntimeError(
-                            f"Chunk {idx}/{total_chunks} returned empty CSV ({chunk_from_str} to {chunk_to_str})"
-                        )
-
-                    chunk_info["status"] = "done"
-                    chunk_info["rows"] = int(max(count_csv_rows(chunk_path), 0))
-                    chunk_info["completed_at"] = datetime.utcnow().isoformat()
-                    state["completed_chunks"] = idx
-                    state["message"] = f"Completed chunk {idx}/{total_chunks}"
-                    _dukascopy_write_job(job_id, state)
-
-                    chunk_paths.append(chunk_path)
-
-                state["phase"] = "merge"
-                state["message"] = f"Merging {total_chunks} chunk{'s' if total_chunks != 1 else ''} into one CSV"
+            def _on_progress(phase, message, extra):
+                state["phase"] = phase
+                state["message"] = message
+                if "current_chunk" in extra:
+                    state["current_chunk"] = extra["current_chunk"]
+                if "completed_chunks" in extra:
+                    state["completed_chunks"] = extra["completed_chunks"]
+                    idx = int(extra["completed_chunks"])
+                    if 0 < idx <= len(state["chunks"]):
+                        state["chunks"][idx - 1]["status"] = "done"
+                        state["chunks"][idx - 1]["completed_at"] = datetime.utcnow().isoformat()
+                if "current_chunk" in extra:
+                    ci = int(extra["current_chunk"]) - 1
+                    if 0 <= ci < len(state["chunks"]) and state["chunks"][ci]["status"] == "pending":
+                        state["chunks"][ci]["status"] = "processing"
+                        state["chunks"][ci]["started_at"] = datetime.utcnow().isoformat()
                 _dukascopy_write_job(job_id, state)
 
-                with open(output_path, "wb") as out_f:
-                    first_header = None
-                    for idx, chunk_path in enumerate(chunk_paths):
-                        with open(chunk_path, "rb") as in_f:
-                            first_line = in_f.readline()
-                            if not first_line:
-                                continue
-
-                            if idx == 0:
-                                first_header = first_line
-                                out_f.write(first_line)
-                            else:
-                                if not first_header or first_line.strip().lower() != first_header.strip().lower():
-                                    out_f.write(first_line)
-
-                            shutil.copyfileobj(in_f, out_f)
-
-            if not output_path.exists() or output_path.stat().st_size <= 0:
-                raise RuntimeError("Merged Dukascopy CSV is empty")
-
-            state["phase"] = "store"
-            state["message"] = "Saving dataset and triggering binary conversion"
-            _dukascopy_write_job(job_id, state)
-
-            result = _store_dataset_file(
-                file_path=output_path,
-                original_name=original_name,
-                description=f"Dukascopy {instrument.upper()} {DUKASCOPY_DEFAULT_TIMEFRAME.upper()} {from_str} to {to_str}"
+            result = _execute_dukascopy_fetch(
+                instrument, from_dt, to_dt, node_binary, on_progress=_on_progress
             )
-            result["source"] = "dukascopy"
-            result["params"] = {
-                "instrument": instrument,
-                "from_date": from_str,
-                "to_date": to_str,
-                "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
-                "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
-                "chunk_count": total_chunks,
-            }
-
             state["status"] = "done"
             state["phase"] = "done"
             state["message"] = f"Completed Dukascopy fetch ({total_chunks} chunk{'s' if total_chunks != 1 else ''})"
@@ -6148,19 +6273,6 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             _dukascopy_write_job(job_id, state)
         except Exception as exc:
             err_text = str(exc) or "Unknown Dukascopy job error"
-            if output_path.exists():
-                try:
-                    output_path.unlink()
-                except Exception:
-                    pass
-
-            if current_chunk_idx > 0 and current_chunk_idx <= len(state.get("chunks", [])):
-                c = state["chunks"][current_chunk_idx - 1]
-                if c.get("status") not in {"done", "failed"}:
-                    c["status"] = "failed"
-                    c["error"] = err_text
-                    c["completed_at"] = datetime.utcnow().isoformat()
-
             state["status"] = "failed"
             state["phase"] = "failed"
             state["message"] = err_text
@@ -6168,7 +6280,7 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             state["finished_at"] = datetime.utcnow().isoformat()
             _dukascopy_write_job(job_id, state)
 
-    t = threading.Thread(target=_worker, daemon=True)
+    t = threading.Thread(target=_worker, daemon=True, name=f"dukascopy-{instrument}")
     t.start()
 
     return {
@@ -6182,7 +6294,147 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
             "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
             "chunk_count": total_chunks,
-        }
+        },
+    }
+
+
+def _start_dukascopy_bulk_fetch_job(
+    instruments: list[str],
+    from_dt: datetime,
+    to_dt: datetime,
+    node_binary: str,
+    *,
+    skip_existing: bool = True,
+) -> dict:
+    """Queue a sequential multi-instrument Dukascopy M1 import (FirstRate-style bulk)."""
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+    job_id = f"dkb_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+
+    items = []
+    for inst in instruments:
+        status = "pending"
+        note = None
+        if skip_existing and _dukascopy_dataset_already_exists(inst):
+            status = "skipped"
+            note = "dataset already exists"
+        items.append({
+            "instrument": inst,
+            "status": status,  # pending | running | done | failed | skipped
+            "message": note,
+            "error": None,
+            "result": None,
+        })
+
+    pending_count = sum(1 for it in items if it["status"] == "pending")
+    state = {
+        "job_id": job_id,
+        "kind": "bulk",
+        "status": "queued",
+        "phase": "queued",
+        "message": f"Queued Dukascopy bulk ({pending_count} to fetch, {len(items) - pending_count} skipped)",
+        "from_date": from_str,
+        "to_date": to_str,
+        "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+        "skip_existing": bool(skip_existing),
+        "instrument_count": len(items),
+        "completed_count": 0,
+        "failed_count": 0,
+        "skipped_count": len(items) - pending_count,
+        "current_instrument": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "items": items,
+        "result": None,
+    }
+    _dukascopy_write_job(job_id, state)
+
+    def _worker():
+        try:
+            state["status"] = "running"
+            state["phase"] = "download"
+            done = 0
+            failed = 0
+            for it in state["items"]:
+                if it["status"] == "skipped":
+                    continue
+                inst = it["instrument"]
+                state["current_instrument"] = inst
+                it["status"] = "running"
+                it["started_at"] = datetime.utcnow().isoformat()
+                state["message"] = f"Fetching {inst} ({done + failed + 1}/{pending_count})"
+                _dukascopy_write_job(job_id, state)
+
+                def _on_progress(phase, message, extra, _inst=inst):
+                    state["phase"] = phase
+                    state["message"] = f"{_inst}: {message}"
+                    _dukascopy_write_job(job_id, state)
+
+                try:
+                    result = _execute_dukascopy_fetch(
+                        inst, from_dt, to_dt, node_binary, on_progress=_on_progress
+                    )
+                    it["status"] = "done"
+                    it["result"] = {
+                        "file_id": (result.get("file") or {}).get("id"),
+                        "original_name": (result.get("file") or {}).get("original_name"),
+                        "row_count": (result.get("file") or {}).get("row_count"),
+                    }
+                    it["finished_at"] = datetime.utcnow().isoformat()
+                    done += 1
+                except Exception as exc:
+                    it["status"] = "failed"
+                    it["error"] = str(exc) or "fetch failed"
+                    it["finished_at"] = datetime.utcnow().isoformat()
+                    failed += 1
+
+                state["completed_count"] = done
+                state["failed_count"] = failed
+                state["message"] = f"Progress: {done} done, {failed} failed, {state['skipped_count']} skipped"
+                _dukascopy_write_job(job_id, state)
+
+            state["status"] = "done" if failed == 0 else ("done" if done > 0 else "failed")
+            state["phase"] = "done"
+            state["current_instrument"] = None
+            state["message"] = (
+                f"Bulk complete — {done} imported, {failed} failed, {state['skipped_count']} skipped"
+            )
+            state["result"] = {
+                "imported": done,
+                "failed": failed,
+                "skipped": state["skipped_count"],
+                "total": len(items),
+            }
+            state["finished_at"] = datetime.utcnow().isoformat()
+            if done == 0 and failed > 0:
+                state["status"] = "failed"
+                state["error"] = state["message"]
+            _dukascopy_write_job(job_id, state)
+        except Exception as exc:
+            state["status"] = "failed"
+            state["phase"] = "failed"
+            state["message"] = str(exc) or "Bulk Dukascopy job failed"
+            state["error"] = state["message"]
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True, name="dukascopy-bulk")
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "instruments": [it["instrument"] for it in items],
+            "from_date": from_str,
+            "to_date": to_str,
+            "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+            "skip_existing": bool(skip_existing),
+            "pending_count": pending_count,
+            "skipped_count": len(items) - pending_count,
+        },
     }
 
 # ── Binance historical (binance-historical-data) jobs ─────────────────────
@@ -10697,6 +10949,16 @@ class AdminDukascopyFetchIn(BaseModel):
     instrument: str
     from_date: str
     to_date: str
+
+
+class AdminDukascopyBulkFetchIn(BaseModel):
+    """Multi-instrument Dukascopy M1 import (popular CFD packs / custom lists)."""
+    instruments: list[str] | None = None
+    preset: str | None = None  # popular_cfd | metals | us_indices | ...
+    period: str = "full"  # full | custom
+    from_date: str | None = None
+    to_date: str | None = None
+    skip_existing: bool = True
 
 
 class AdminFirstrateFxSyncIn(BaseModel):
@@ -18215,16 +18477,25 @@ async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)
 @app.get("/api/admin/datasets/dukascopy-instruments")
 async def admin_dukascopy_instruments(request: Request):
     """
-    Curated instrument groups for the admin Dukascopy picker (indices, energy, forex).
-    These are Dukascopy symbols (CFD / cash index), not crypto or CME futures contracts.
+    Curated instrument groups + preset packs for the admin Dukascopy CFD importer.
+    Symbols are Dukascopy CFDs / cash indices / spot — not CME futures contracts.
     """
     _require_admin(request)
+    full_from, full_to = _dukascopy_full_history_range()
     return {
         "success": True,
         "groups": {k: list(v) for k, v in DUKASCOPY_INSTRUMENT_GROUPS.items()},
+        "presets": {k: list(v) for k, v in DUKASCOPY_PRESET_PACKS.items()},
+        "timeframe": DUKASCOPY_DEFAULT_TIMEFRAME,
+        "full_history": {
+            "from_date": full_from.strftime("%Y-%m-%d"),
+            "to_date": full_to.strftime("%Y-%m-%d"),
+            "max_total_days": DUKASCOPY_MAX_TOTAL_DAYS,
+        },
+        "max_bulk_instruments": DUKASCOPY_MAX_BULK_INSTRUMENTS,
         "note": (
-            "Dukascopy lists cash index and commodity CFDs (e.g. usa500idxusd, lightcmdusd). "
-            "They track major benchmarks but are not the same instruments as CME ES/NQ/CL futures."
+            "Dukascopy bid M1 CFDs (e.g. xauusd, usa500idxusd, usatechidxusd). "
+            "They track major benchmarks but are not the same as CME GC/ES/NQ futures."
         ),
     }
 
@@ -18261,6 +18532,92 @@ async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, req
         to_dt=to_dt,
         node_binary=node_binary,
     )
+
+
+@app.post("/api/admin/datasets/fetch-dukascopy-bulk")
+async def admin_fetch_dukascopy_bulk(payload: AdminDukascopyBulkFetchIn, request: Request):
+    """Import many popular CFD tickers at once (full or custom M1 history)."""
+    _require_admin(request)
+
+    if not DUKASCOPY_SCRIPT_PATH.exists():
+        raise HTTPException(status_code=500, detail=f"Dukascopy script not found: {DUKASCOPY_SCRIPT_PATH}")
+
+    node_binary = shutil.which("node")
+    if not node_binary:
+        raise HTTPException(status_code=500, detail="Node.js is not installed on the server")
+
+    raw_ids: list[str] = []
+    preset_key = (payload.preset or "").strip().lower()
+    if preset_key:
+        pack = DUKASCOPY_PRESET_PACKS.get(preset_key)
+        if not pack:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown preset '{preset_key}'. Valid: {', '.join(sorted(DUKASCOPY_PRESET_PACKS))}",
+            )
+        raw_ids.extend(pack)
+    if payload.instruments:
+        raw_ids.extend(payload.instruments)
+
+    known = _dukascopy_all_known_ids()
+    instruments: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_ids:
+        inst = _normalize_dukascopy_instrument(raw)
+        if not inst or inst in seen:
+            continue
+        # Allow any valid dukascopy-node id (curated list preferred; unknown still ok).
+        if not re.fullmatch(r"[a-z0-9]{3,24}", inst):
+            raise HTTPException(status_code=400, detail=f"Invalid Dukascopy instrument id: {raw}")
+        seen.add(inst)
+        instruments.append(inst)
+
+    if not instruments:
+        raise HTTPException(status_code=400, detail="Provide instruments[] and/or a preset pack")
+    if len(instruments) > DUKASCOPY_MAX_BULK_INSTRUMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many instruments ({len(instruments)}). Max {DUKASCOPY_MAX_BULK_INSTRUMENTS} per bulk job.",
+        )
+
+    period = (payload.period or "full").strip().lower()
+    if period == "full":
+        from_dt, to_dt = _dukascopy_full_history_range()
+    elif period == "custom":
+        if not payload.from_date or not payload.to_date:
+            raise HTTPException(status_code=400, detail="custom period requires from_date and to_date")
+        from_dt = _parse_iso_date(payload.from_date, "from_date")
+        to_dt = _parse_iso_date(payload.to_date, "to_date")
+    else:
+        raise HTTPException(status_code=400, detail="period must be 'full' or 'custom'")
+
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > DUKASCOPY_MAX_TOTAL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max {DUKASCOPY_MAX_TOTAL_DAYS} days.",
+        )
+
+    # Soft warning list: unknown curated ids still allowed (dukascopy-node may support them).
+    unknown = [i for i in instruments if i not in known]
+
+    _dukascopy_cleanup_jobs()
+    out = _start_dukascopy_bulk_fetch_job(
+        instruments=instruments,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        node_binary=node_binary,
+        skip_existing=bool(payload.skip_existing),
+    )
+    if unknown:
+        out["unknown_instruments"] = unknown
+        out["note"] = (
+            "Some ids are outside the curated catalog; fetch will still attempt them via dukascopy-node."
+        )
+    return out
+
 
 @app.get("/api/admin/datasets/fetch-dukascopy/{job_id}/status")
 async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Request):
