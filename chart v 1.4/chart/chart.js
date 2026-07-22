@@ -27085,9 +27085,11 @@ class Chart {
         //   window.__TALARIA_DISABLE_ORDER_OVERLAY_PAN_LITE_V1 = true
         //
         // Closed-trade entry/exit arrows live in entryMarkers/exitMarkers — not
-        // orderLines. Pan-lite used to skip them whenever there was no open line,
-        // so marks froze in screen space until mouse-up. Always thin-reposition
-        // those markers (and MFE/MAE) on the pan path.
+        // orderLines. Incomplete pan-lite skipped marker glue whenever an open
+        // line existed, so marks froze in screen space until mouse-up. Always
+        // thin-reposition markers (and MFE/MAE) on the pan path.
+        // Kill-switch (reproduces screen-sticking with open lines + coarse overwrite):
+        //   window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 = true
         let panLite = false;
         try {
             panLite = !!panActive
@@ -27111,13 +27113,22 @@ class Chart {
                     hasOrderLines = lines.some((ol) => !ol || !ol.chart || ol.chart === this);
                 }
             } catch (_) { hasOrderLines = true; }
+            let skipMarkersWhenLines = false;
+            try {
+                skipMarkersWhenLines = typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 === true;
+            } catch (_) { skipMarkersWhenLines = false; }
             if (hasOrderLines && typeof om.updateOrderLines === 'function') {
                 // panLite: reposition without purge (full rebuild glitched panel B).
-                // Label column align still runs inside updateOrderLines so TP/SL/entry
-                // toasts do not stagger sideways while panning.
-                om.updateOrderLines(this, { panLite: true });
-            } else {
-                // No open/pending lines — still glue closed-trade marks to the candles.
+                // skipTradeMarkers: kill-switch reproduces markers stuck on screen
+                // while order lines still track pan.
+                om.updateOrderLines(this, {
+                    panLite: true,
+                    skipTradeMarkers: !!(skipMarkersWhenLines && hasOrderLines),
+                });
+            }
+            // Always glue trade markers during pan unless kill-switch + open lines.
+            if (!(skipMarkersWhenLines && hasOrderLines)) {
                 try {
                     if (typeof om._updateEntryMarkersForChart === 'function') {
                         om._updateEntryMarkersForChart(this);
