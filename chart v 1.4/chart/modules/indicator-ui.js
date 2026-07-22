@@ -1495,6 +1495,89 @@ function __talariaFvgParamList() {
     ];
 }
 
+function __talariaWeeklyMapParamList() {
+    const lineStyle = [{ value: 'solid', label: 'Solid' }, { value: 'dashed', label: 'Dashed' }, { value: 'dotted', label: 'Dotted' }];
+    const tblPos = ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right']
+        .map(function (v) { return { value: v, label: v.replace(/_/g, ' ') }; });
+    return [
+        { id: 'h1', type: 'heading', label: '1 · Session & Clock' },
+        { id: 'tzStr', label: 'Timezone', type: 'text', default: 'America/New_York' },
+        { id: 'dayShift', label: 'Day boundary shift (hours; 6 = day starts 18:00 NY)', type: 'number', default: 6, min: 0, max: 12 },
+        { id: 'h2', type: 'heading', label: '2 · Classification (relative ruler)' },
+        { id: 'avgWeeks', label: 'Average over N completed weeks', type: 'number', default: 14, min: 5, max: 30 },
+        { id: 'rNarrowX', label: 'Regime — narrow ≤ (× avg)', type: 'number', default: 0.60, step: 0.05 },
+        { id: 'rWideX', label: 'Regime — wide ≥ (× avg)', type: 'number', default: 1.30, step: 0.05 },
+        { id: 'gapGiantX', label: 'Gap — giant (no fade) ≥ (× avg)', type: 'number', default: 0.35, step: 0.05 },
+        { id: 'gapMicroP', label: 'Gap — noise floor < (% of price, absolute)', type: 'number', default: 0.20, step: 0.05 },
+        { id: 'h3', type: 'heading', label: '3 · Info Box' },
+        { id: 'showC', label: 'Show compass cell [C]', type: 'checkbox', default: true },
+        { id: 'showR', label: 'Show regime cell [R]', type: 'checkbox', default: true },
+        { id: 'showG', label: 'Show gap cell [G]', type: 'checkbox', default: true },
+        { id: 'showOut', label: 'Show IN/OUT cell', type: 'checkbox', default: true },
+        { id: 'showDay', label: 'Show weekly-clock cell [DAY]', type: 'checkbox', default: true },
+        { id: 'tblPos', label: 'Position', type: 'select', options: tblPos, default: 'top_right' },
+        { id: 'txtSize', label: 'Text size', type: 'select', options: [{ value: 'tiny', label: 'Tiny' }, { value: 'small', label: 'Small' }, { value: 'normal', label: 'Normal' }, { value: 'large', label: 'Large' }, { value: 'huge', label: 'Huge' }], default: 'normal' },
+        { id: 'cTxt', label: 'Text color', type: 'color', default: '#ffffff' },
+        { id: 'cellOpacity', label: 'Background opacity %', type: 'number', default: 85, min: 10, max: 100 },
+        { id: 'h4', type: 'heading', label: '4 · Info Box — Regime Colors' },
+        { id: 'cLong', label: 'Compass above / expansion / tradeable', type: 'color', default: '#089981' },
+        { id: 'cShort', label: 'Compass below / trap / no-fade', type: 'color', default: '#f23645' },
+        { id: 'cNeut', label: 'Neutral / micro', type: 'color', default: '#787b86' },
+        { id: 'cEntry', label: 'Entry window (Mon–Tue)', type: 'color', default: '#2962ff' },
+        { id: 'cExit', label: 'Exit window (Thu–Fri) / OUT', type: 'color', default: '#ff9800' },
+        { id: 'h5', type: 'heading', label: '5 · Levels — Previous Week (PWH / PWL / Mid)' },
+        { id: 'showPW', label: 'Show', type: 'checkbox', default: true },
+        { id: 'cPWH', label: 'PWH color', type: 'color', default: '#008080' },
+        { id: 'sPWH', label: 'PWH style', type: 'select', options: lineStyle, default: 'solid' },
+        { id: 'cPWL', label: 'PWL color', type: 'color', default: '#008080' },
+        { id: 'sPWL', label: 'PWL style', type: 'select', options: lineStyle, default: 'solid' },
+        { id: 'cPWM', label: 'Mid color', type: 'color', default: '#6e7684' },
+        { id: 'sPWM', label: 'Mid style', type: 'select', options: lineStyle, default: 'dotted' },
+        { id: 'wPW', label: 'Width', type: 'number', default: 1, min: 1, max: 4 },
+        { id: 'h6', type: 'heading', label: '6 · Levels — Weekend Gap' },
+        { id: 'showGapLv', label: 'Show (only when gap is TRADEABLE)', type: 'checkbox', default: true },
+        { id: 'cFri', label: 'Friday close (full fill)', type: 'color', default: '#606a78' },
+        { id: 'sFri', label: 'Friday close style', type: 'select', options: lineStyle, default: 'dashed' },
+        { id: 'cHalf', label: '50% gap line (1st target)', type: 'color', default: '#2962ff' },
+        { id: 'sHalf', label: '50% gap style', type: 'select', options: lineStyle, default: 'solid' },
+        { id: 'wGap', label: 'Width', type: 'number', default: 2, min: 1, max: 4 },
+        { id: 'showGapBox', label: 'Shade the gap (low-opacity box)', type: 'checkbox', default: true },
+        { id: 'cBoxUp', label: 'Box — gap up', type: 'color', default: 'rgba(0,128,128,0.12)' },
+        { id: 'cBoxDn', label: 'Box — gap down', type: 'color', default: 'rgba(136,14,79,0.12)' },
+        { id: 'cBoxGi', label: 'Box — GIANT (no fade)', type: 'color', default: 'rgba(242,54,69,0.20)' },
+        { id: 'h7', type: 'heading', label: "7 · Levels — Friday's Range" },
+        { id: 'showFR', label: 'Show (only when week opens OUTSIDE it)', type: 'checkbox', default: true },
+        { id: 'cFR', label: 'Friday high/low', type: 'color', default: '#ff9800' },
+        { id: 'sFR', label: 'Friday range style', type: 'select', options: lineStyle, default: 'solid' },
+        { id: 'wFR', label: 'Width', type: 'number', default: 2, min: 1, max: 4 },
+        { id: 'showFarFR', label: 'Also show far (unbroken) edge — dimmed', type: 'checkbox', default: false },
+        { id: 'dimFR', label: 'Dim broken edge after touch (target hit ✕)', type: 'checkbox', default: true },
+        { id: 'h8', type: 'heading', label: '8 · Levels — Weekly Open (magnet, expires ~Tue)' },
+        { id: 'showWO', label: 'Show', type: 'checkbox', default: true },
+        { id: 'cWO', label: 'Weekly open', type: 'color', default: '#b8860b' },
+        { id: 'sWO', label: 'Weekly open style', type: 'select', options: lineStyle, default: 'dashed' },
+        { id: 'wWO', label: 'Width', type: 'number', default: 1, min: 1, max: 4 },
+        { id: 'dimWO', label: 'Dim after Tuesday (magnet expired)', type: 'checkbox', default: true },
+        { id: 'h9', type: 'heading', label: '9 · Levels — OWR (Mon–Tue range, drawn from Wednesday)' },
+        { id: 'showOWR', label: 'Show OWR high/low', type: 'checkbox', default: true },
+        { id: 'cOWR', label: 'OWR', type: 'color', default: '#9c27b0' },
+        { id: 'sOWR', label: 'OWR style', type: 'select', options: lineStyle, default: 'solid' },
+        { id: 'wOWR', label: 'Width', type: 'number', default: 2, min: 1, max: 4 },
+        { id: 'showRetr', label: 'Show 25% / 50% pullback lines', type: 'checkbox', default: false },
+        { id: 'showLad', label: 'Show extension ladder', type: 'checkbox', default: true },
+        { id: 'ladSteps', label: 'Ladder steps (×0.1 of OWR each)', type: 'number', default: 3, min: 1, max: 5 },
+        { id: 'cLad', label: 'Ladder / retrace color', type: 'color', default: '#00838f' },
+        { id: 'showOWRBox', label: 'Shade the Mon–Tue range (box)', type: 'checkbox', default: true },
+        { id: 'cOWRBox', label: 'OWR box tint', type: 'color', default: 'rgba(156,39,176,0.10)' },
+        { id: 'h10', type: 'heading', label: '10 · Level Labels' },
+        { id: 'showLbl', label: 'Show level labels', type: 'checkbox', default: true },
+        { id: 'lblSizeStr', label: 'Size', type: 'select', options: [{ value: 'small', label: 'Small' }, { value: 'normal', label: 'Normal' }, { value: 'large', label: 'Large' }], default: 'normal' },
+        { id: 'lblOff', label: 'Label offset (bars →)', type: 'number', default: 1, min: 0, max: 20 },
+        { id: 'lblStagger', label: 'Stagger step (bars →)', type: 'number', default: 8, min: 2, max: 40 },
+        { id: 'mergeK', label: 'Stagger labels closer than (× avg weekly range)', type: 'number', default: 0.03, min: 0, step: 0.01 }
+    ];
+}
+
 function __talariaRatioGapParamList() {
     const lineStyle = [{ value: 'solid', label: 'Solid' }, { value: 'dashed', label: 'Dashed' }, { value: 'dotted', label: 'Dotted' }];
     const tblPos = ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right']
@@ -2241,6 +2324,11 @@ const INDICATOR_DEFINITIONS = {
         name: 'Talaria — Ratio + Gap',
         type: 'overlay',
         params: __talariaRatioGapParamList()
+    },
+    talariaweeklymap: {
+        name: 'Talaria — Weekly Map',
+        type: 'overlay',
+        params: __talariaWeeklyMapParamList()
     },
     custom: {
         name: 'Custom (sandboxed JS)',
@@ -3565,6 +3653,11 @@ function createIndicatorSelectionMenu(chartInstance) {
             icon: '',
             indicators: ['ictpd', 'ictsesspd', 'ictasian', 'ictote', 'ictfvg', 'ictliquidity', 'icteverything']
         },
+        talaria: {
+            name: 'Talaria',
+            icon: '',
+            indicators: ['talariafvg', 'talariaratiogap', 'talariaweeklymap']
+        },
         script: {
             name: 'Custom',
             icon: '',
@@ -3760,6 +3853,7 @@ function createIndicatorSelectionMenu(chartInstance) {
     sidebar.appendChild(createCategoryItem('technicals', categories.technicals));
     sidebar.appendChild(createCategoryItem('sessions', categories.sessions));
     sidebar.appendChild(createCategoryItem('ict', categories.ict));
+    sidebar.appendChild(createCategoryItem('talaria', categories.talaria));
     sidebar.appendChild(createCategoryItem(null, 'SCRIPT', true));
     sidebar.appendChild(createCategoryItem('script', categories.script));
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
@@ -4122,7 +4216,9 @@ function indicatorUpdateNeedsDataRecalc(indicatorType, merged, previous) {
         || indicatorPayloadValueChanged(merged.dataUrl, prev.dataUrl))) return true;
     // Talaria FVG / Ratio+Gap bake colors, fills, and opacity into calculated geometry —
     // treat every def field (including opacity/color-style ids) as a recalc input.
-    const talariaBakeAll = indicatorType === 'talariafvg' || indicatorType === 'talariaratiogap';
+    const talariaBakeAll = indicatorType === 'talariafvg'
+        || indicatorType === 'talariaratiogap'
+        || indicatorType === 'talariaweeklymap';
     return def.params.some(function(param) {
         if (param.type === 'heading' || param.type === 'divider') return false;
         if (!talariaBakeAll && isIndicatorStyleOrThicknessParam(param)) return false;

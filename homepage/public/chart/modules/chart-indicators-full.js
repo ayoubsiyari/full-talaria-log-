@@ -4087,6 +4087,16 @@
         return mod.calculate(data, indicator.params);
     }
 
+    function calculateTalariaWeeklyMapIndicator(data, indicator, chartRef) {
+        var mod = global.TalariaWeeklyMapIndicator;
+        if (!mod || typeof mod.calculate !== 'function') return { lines: [], boxes: [], labels: [], infoCells: [] };
+        return mod.calculate(data, indicator.params, {
+            resample: chartRef && typeof chartRef.resampleData === 'function' ? chartRef.resampleData.bind(chartRef) : null,
+            rawData: chartRef && Array.isArray(chartRef.rawData) ? chartRef.rawData : data,
+            currentTimeframe: chartRef && chartRef.currentTimeframe
+        });
+    }
+
     /**
      * Premium/discount vs previous completed session window (UTC), e.g. NY 13:00–21:00.
      * Looks back up to maxLookbackDays for the last day that had bars in that session (weekends).
@@ -6662,6 +6672,15 @@
                 this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
                 break;
 
+            case 'talariaweeklymap':
+                indicator.overlay = true;
+                indicator.isTalariaWeeklyMap = true;
+                indicator.name = 'Talaria — Weekly Map';
+                indicator.params = indicator.params || {};
+                _applyIndicatorDefParams(indicator, 'talariaweeklymap', params);
+                this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -7242,9 +7261,11 @@
                 });
             }
         }
-        // Talaria FVG / Ratio+Gap: bake all UI fields into indicator.params before recalc.
+        // Talaria overlays: bake all UI fields into indicator.params before recalc.
         // Without this, Apply Changes recalculates against stale add-time defaults.
-        if (indicator.type === 'talariafvg' || indicator.type === 'talariaratiogap') {
+        if (indicator.type === 'talariafvg'
+            || indicator.type === 'talariaratiogap'
+            || indicator.type === 'talariaweeklymap') {
             _applyIndicatorDefParams(indicator, indicator.type, newParams);
         }
 
@@ -7921,6 +7942,10 @@
                 indicator.name = 'Talaria — Ratio + Gap';
                 this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
                 break;
+            case 'talariaweeklymap':
+                indicator.name = 'Talaria — Weekly Map';
+                this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -8085,7 +8110,7 @@
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-                'talariafvg', 'talariaratiogap'
+                'talariafvg', 'talariaratiogap', 'talariaweeklymap'
             ];
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
@@ -8113,7 +8138,7 @@
         }
 
         // Run sync fallback for skipped indicators immediately
-        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap'];
+        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap'];
         var needsSyncOnly = chart.indicators.active.some(function(ind) {
             return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
         });
@@ -8242,13 +8267,25 @@
         }
     };
 
+    function _indicatorDataFingerprint(chart) {
+        var data = chart && chart.data;
+        if (!Array.isArray(data) || !data.length) return '0';
+        var last = data[data.length - 1] || {};
+        return [
+            data.length,
+            last.t, last.o, last.h, last.l, last.c, last.v
+        ].join('|');
+    }
+
     Chart.prototype._markIndicatorRecalcComplete = function() {
         if (!Array.isArray(this.data)) return;
         this._indCalcSnapshot = {
             barCount: this.data.length,
             dataVersion: this.dataVersion != null ? this.dataVersion : 0,
             paramsHash: this._indicatorParamsHash(),
-            timeframe: String(this.currentTimeframe || '')
+            timeframe: String(this.currentTimeframe || ''),
+            // Forming-bar OHLC can change without a barCount bump; FVG/Ratio need that.
+            dataFp: _indicatorDataFingerprint(this)
         };
     };
 
@@ -8280,13 +8317,15 @@
         const dataVersion = this.dataVersion != null ? this.dataVersion : 0;
         const paramsHash = this._indicatorParamsHash();
         const timeframe = String(this.currentTimeframe || '');
+        const dataFp = _indicatorDataFingerprint(this);
         const snap = this._indCalcSnapshot;
 
         if (!opts.force && snap
             && snap.barCount === barCount
             && snap.dataVersion === dataVersion
             && snap.paramsHash === paramsHash
-            && snap.timeframe === timeframe) {
+            && snap.timeframe === timeframe
+            && snap.dataFp === dataFp) {
             return;
         }
 
@@ -8631,13 +8670,32 @@
         if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
         const mySeq = ++chart._indicatorWorkerSeq;
 
+        // Keep main-thread sync-only overlays (Talaria FVG / Ratio+Gap / sessions)
+        // fresh on append. Without this, incremental worker updates SMA/etc. and
+        // leaves FVG stale until a forced full recalc (refresh / TF change).
+        var syncOnlyTypes = [
+            'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
+            'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
+            'talariafvg', 'talariaratiogap', 'talariaweeklymap'
+        ];
+        var needsSyncOnly = chart.indicators.active.some(function(ind) {
+            return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
+        });
+        if (needsSyncOnly) {
+            try {
+                chart._recalcOnlyTypes = syncOnlyTypes;
+                chart.recalculateIndicators();
+            } catch (_) {}
+            chart._recalcOnlyTypes = null;
+        }
+
         const indicators = {};
         chart.indicators.active.forEach(function(ind) {
             const workerSkip = [
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-                'talariafvg', 'talariaratiogap', 'volume', 'custom'
+                'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'volume', 'custom'
             ];
             const indType = String(ind.type || '').toLowerCase();
             if (workerSkip.indexOf(indType) >= 0) return;
@@ -8646,7 +8704,17 @@
 
         if (Object.keys(indicators).length === 0) {
             finishIncrementalPass();
-            try { chart.recalculateIndicators(); } catch (_) {}
+            // Sync-only types already recalculated above; still run full sync when
+            // nothing was synced (e.g. volume/custom-only) or sync pass was skipped.
+            if (!needsSyncOnly) {
+                try { chart.recalculateIndicators(); } catch (_) {}
+            } else if (typeof chart._markIndicatorRecalcComplete === 'function') {
+                try { chart._markIndicatorRecalcComplete(); } catch (_) {}
+            }
+            if (typeof chart.bumpIndicatorRenderVersion === 'function') {
+                try { chart.bumpIndicatorRenderVersion(); } catch (_) {}
+            }
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
             return;
         }
 
@@ -9031,6 +9099,9 @@
                     break;
                 case 'talariaratiogap':
                     this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
+                    break;
+                case 'talariaweeklymap':
+                    this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -9499,6 +9570,12 @@
                 }
             } else if (indicator.type === 'talariaratiogap' || indicator.isTalariaRatioGap) {
                 if (typeof this.drawTalariaRatioGap === 'function') {
+                    this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
+                }
+            } else if (indicator.type === 'talariaweeklymap' || indicator.isTalariaWeeklyMap) {
+                if (typeof this.drawTalariaWeeklyMap === 'function') {
+                    this.drawTalariaWeeklyMap(data, indicator.style, startIndex, endIndex);
+                } else if (typeof this.drawTalariaRatioGap === 'function') {
                     this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
                 }
             } else if (indicator.type === 'adr' || indicator.isADR) {
