@@ -3056,11 +3056,17 @@ class ReplaySystem {
             if (pending && typeof this.applyPersistedState === 'function') {
                 this.applyPersistedState(pending);
                 if (this.chart) this.chart._pendingReplayState = null;
-            } else {
+            } else if (preservePlayhead && initialReplayTs != null) {
+                // enterReplayMode already positioned from initialReplayTimestamp.
                 this._persistedPlayheadApplied = true;
+            } else {
+                // Do NOT mark applied yet — a late GET /state may still carry the
+                // real playhead. Marking true here was the "stuck at session start" bug.
+                this._persistedPlayheadApplied = false;
             }
         } catch (e) {
-            this._persistedPlayheadApplied = true;
+            // Keep false so a subsequent hydrate can still move the playhead forward.
+            this._persistedPlayheadApplied = !!(preservePlayhead && initialReplayTs != null);
         }
         
         // Tick path cache is built lazily on demand via getTickPath()
@@ -5428,6 +5434,12 @@ class ReplaySystem {
 
     _persistReplayStateThrottled() {
         if (!this.chart || !this.isActive) return;
+        // Avoid writing session-start over a saved advanced playhead while hydrate
+        // is still in flight (OrderManager / GET /state race on re-open).
+        if (!this._persistedPlayheadApplied
+            && this.chart._sessionStateLoadedFor !== String(this.chart.getActiveTradingSessionId?.() || '')) {
+            return;
+        }
         const now = Date.now();
         const intervalMs = this.isPlaying ? 8000 : 2500;
         if (this._lastReplayPersistAt && now - this._lastReplayPersistAt < intervalMs) {

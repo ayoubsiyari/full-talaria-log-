@@ -11211,6 +11211,7 @@ class Chart {
     /**
      * Merge sync-local, hydrated server, and backup replay blobs — pick the most
      * advanced wall-clock playhead so refresh never restarts at session start.
+     * Also considers dashboard furthest_replay_ts (progress) when playhead was lost.
      */
     _resolveReplayPlayheadRestoreState(localPending) {
         const sessionId = this.getActiveTradingSessionId();
@@ -11223,7 +11224,25 @@ class Chart {
             const backup = this._readTradingSessionLocalBackup(sessionId);
             if (backup && backup.replay && typeof backup.replay === 'object') {
                 candidates.push(backup.replay);
+                const bd = backup.replay.dashboard;
+                if (bd && typeof bd === 'object' && Number.isFinite(Number(bd.furthest_replay_ts))) {
+                    candidates.push({ replayTimestamp: Number(bd.furthest_replay_ts) });
+                }
             }
+        }
+        const pendingDash = this._pendingReplayState
+            && this._pendingReplayState.dashboard
+            && typeof this._pendingReplayState.dashboard === 'object'
+            ? this._pendingReplayState.dashboard
+            : null;
+        if (pendingDash && Number.isFinite(Number(pendingDash.furthest_replay_ts))) {
+            candidates.push({ replayTimestamp: Number(pendingDash.furthest_replay_ts) });
+        }
+        if (Number.isFinite(this._dashboardFurthestReplayHydratedTs)) {
+            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayHydratedTs) });
+        }
+        if (Number.isFinite(this._dashboardFurthestReplayTs)) {
+            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayTs) });
         }
         let winner = null;
         let winTs = null;
@@ -11246,6 +11265,26 @@ class Chart {
             playbackMode: winner.playbackMode,
             tickElapsedMs: winner.tickElapsedMs,
         };
+    }
+
+    /** Wait until OrderManager exists so session hydrate can merge journal + playhead. */
+    _waitForOrderManagerForSession(maxTries = 80, delayMs = 50) {
+        return new Promise((resolve) => {
+            let n = 0;
+            const tick = () => {
+                if (this._getOrderManagerForSessionPersistence()) {
+                    resolve(true);
+                    return;
+                }
+                n += 1;
+                if (n > maxTries) {
+                    resolve(false);
+                    return;
+                }
+                setTimeout(tick, delayMs);
+            };
+            tick();
+        });
     }
 
     /** Sync read of last saved replay playhead for refresh restore (before OHLC fetch). */
@@ -11452,23 +11491,6 @@ class Chart {
         if (this._sessionStateLoadedFor === String(sessionId)) return;
         this._restoredFromLocalBackupOnly = false;
 
-        // Journal merge requires orderManager. Retry briefly so refresh doesn't mark the session
-        // "loaded" before OrderManager exists (race with initReplaySystem).
-        if (!this._getOrderManagerForSessionPersistence()) {
-            this._sessionStateLoadRetryCount = (this._sessionStateLoadRetryCount || 0) + 1;
-            if (this._sessionStateLoadRetryCount > 80) {
-                console.warn('⚠️ Trading session state: orderManager not ready after retries; open replay/backtest to restore journal');
-                return;
-            }
-            clearTimeout(this._sessionStateLoadRetryTimer);
-            this._sessionStateLoadRetryTimer = setTimeout(() => {
-                this._sessionStateLoadRetryTimer = null;
-                this.loadTradingSessionStateIfNeeded();
-            }, 50);
-            return;
-        }
-        this._sessionStateLoadRetryCount = 0;
-
         // Deduplicate overlapping GET /state calls (e.g. initReplaySystem setTimeout(0) + enterReplayMode microtask).
         // Same behavior as a single fetch; concurrent callers share one promise (TradingView-style: one restore pass).
         const sid = String(sessionId);
@@ -11479,6 +11501,17 @@ class Chart {
         let settledPromise;
         settledPromise = (async () => {
             try {
+                // CRITICAL: await OrderManager readiness. A bare setTimeout-return used to
+                // resolve startBacktestingReplay's await with NO hydrate → enter at session
+                // start → mark playhead applied → later GET skipped (user stuck at start).
+                if (!this._getOrderManagerForSessionPersistence()) {
+                    const ready = await this._waitForOrderManagerForSession(80, 50);
+                    if (!ready) {
+                        console.warn('⚠️ Trading session state: orderManager not ready after retries; restoring playhead from local/server best-effort');
+                    }
+                }
+                this._sessionStateLoadRetryCount = 0;
+
                 const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
                 if (!res.ok) {
                     this._applyTradingSessionFromLocalBackupOnly(sessionId);
@@ -11604,10 +11637,29 @@ class Chart {
                     this._dashboardFurthestReplayTs = NaN;
                 }
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
-                    const skipStaleReplay = this._replaySessionPlayheadRestoreEnabled()
-                        && this.replaySystem._persistedPlayheadApplied;
-                    if (!skipStaleReplay) {
-                        this.replaySystem.applyPersistedState(state.replay);
+                    const incomingTs = this._parseReplayRestoreTimestamp(state.replay);
+                    const dashTs = state.replay.dashboard
+                        && Number.isFinite(Number(state.replay.dashboard.furthest_replay_ts))
+                        ? Number(state.replay.dashboard.furthest_replay_ts)
+                        : null;
+                    const bestIncoming = Math.max(
+                        Number.isFinite(incomingTs) ? incomingTs : -Infinity,
+                        Number.isFinite(dashTs) ? dashTs : -Infinity,
+                    );
+                    const currentTs = Number(this.replaySystem.replayTimestamp);
+                    // Even if a default session-start playhead was marked "applied",
+                    // still accept a more advanced server/local timestamp.
+                    const alreadyApplied = !!(this._replaySessionPlayheadRestoreEnabled()
+                        && this.replaySystem._persistedPlayheadApplied);
+                    const incomingIsAhead = Number.isFinite(bestIncoming)
+                        && (!Number.isFinite(currentTs) || bestIncoming > currentTs + 500);
+                    if (!alreadyApplied || incomingIsAhead) {
+                        const applyBlob = Object.assign({}, state.replay);
+                        if (Number.isFinite(bestIncoming)
+                            && (!Number.isFinite(incomingTs) || bestIncoming > incomingTs)) {
+                            applyBlob.replayTimestamp = bestIncoming;
+                        }
+                        this.replaySystem.applyPersistedState(applyBlob);
                         if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
                             try {
                                 // Refresh: clean right-anchored, auto-scaled view (latest
@@ -11625,6 +11677,9 @@ class Chart {
                     }
                     this._pendingReplayState = null;
                 }
+            } else if (this.replaySystem && this.replaySystem.isActive) {
+                // Hydrate confirmed no server playhead — allow normal persist.
+                this.replaySystem._persistedPlayheadApplied = true;
             }
 
             // Restore chart view (pan/zoom position)
@@ -11893,10 +11948,30 @@ class Chart {
             const ra = a.replay;
             const rb = b.replay;
             out.replay = Object.assign({}, ra, rb);
+            // Never let a stale session-start playhead overwrite a more advanced one.
+            const ta = Number(ra.replayTimestamp);
+            const tb = Number(rb.replayTimestamp);
+            if (Number.isFinite(ta) && Number.isFinite(tb)) {
+                if (ta > tb) {
+                    out.replay.replayTimestamp = ta;
+                    if (Number.isFinite(ra.currentIndex)) out.replay.currentIndex = ra.currentIndex;
+                    if (typeof ra.tickElapsedMs === 'number') out.replay.tickElapsedMs = ra.tickElapsedMs;
+                }
+            } else if (Number.isFinite(ta) && !Number.isFinite(tb)) {
+                out.replay.replayTimestamp = ta;
+            }
             const da = ra.dashboard && typeof ra.dashboard === 'object' ? ra.dashboard : null;
             const dbb = rb.dashboard && typeof rb.dashboard === 'object' ? rb.dashboard : null;
             if (da || dbb) {
                 out.replay.dashboard = Object.assign({}, da || {}, dbb || {});
+                const fa = da && Number(da.furthest_replay_ts);
+                const fb = dbb && Number(dbb.furthest_replay_ts);
+                if (Number.isFinite(fa) || Number.isFinite(fb)) {
+                    out.replay.dashboard.furthest_replay_ts = Math.max(
+                        Number.isFinite(fa) ? fa : -Infinity,
+                        Number.isFinite(fb) ? fb : -Infinity,
+                    );
+                }
             }
         }
         return out;

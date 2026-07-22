@@ -8321,8 +8321,50 @@
     };
 
     /**
+     * Session / ICT overlays: O(n) Intl wall-clock scans on main thread (worker-skipped).
+     * Recomputing them every replay play frame freezes the chart. Kill-switch:
+     *   window.__TALARIA_FIX_SESSION_REPLAY_PERF = false
+     */
+    var SESSION_REPLAY_HEAVY_TYPES = [
+        'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
+        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything'
+    ];
+
+    function _sessionReplayPerfFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_FIX_SESSION_REPLAY_PERF !== false;
+    }
+
+    function _sessionReplayHeavyFingerprint(chart) {
+        const data = chart && chart.data;
+        if (!Array.isArray(data) || !data.length) return null;
+        const last = data[data.length - 1] || {};
+        return [
+            data.length,
+            last.t, last.o, last.h, last.l, last.c,
+            // Invalidate when session indicators are added/removed.
+            (chart.indicators.active || []).map(function(ind) {
+                return String(ind.id || '') + ':' + String(ind.type || '').toLowerCase();
+            }).join(',')
+        ].join('|');
+    }
+
+    function _sessionReplayHeavyReady(chart) {
+        if (!chart || !chart.indicators || !Array.isArray(chart.indicators.active)) return false;
+        const dataMap = chart.indicators.data || {};
+        for (let i = 0; i < chart.indicators.active.length; i++) {
+            const ind = chart.indicators.active[i];
+            const t = String(ind && ind.type || '').toLowerCase();
+            if (SESSION_REPLAY_HEAVY_TYPES.indexOf(t) < 0) continue;
+            if (!dataMap[ind.id]) return false;
+        }
+        return true;
+    }
+
+    /**
      * Replay playback: one synchronous full recalc per animation frame (same path as DEMA/TEMA/HMA).
      * Worker/incremental paths lag behind at 60x — sync-on-rAF keeps every overlay aligned with candles.
+     * Session/ICT types are skipped mid-tick when the bar fingerprint is unchanged (pause still full).
      */
     Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
@@ -8342,6 +8384,8 @@
             if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
             this._indicatorWorkerSeq++;
             this._indicatorWorkerCoalesce = false;
+            this._sessionIndReplayFp = null;
+            this._recalcSkipTypes = null;
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_) {}
             }
@@ -8364,11 +8408,35 @@
             if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
             chart._indicatorWorkerSeq++;
             chart._indicatorWorkerCoalesce = false;
+
+            // Skip O(n) Intl session scans until the candle actually advances.
+            let skipSessionHeavy = false;
+            if (_sessionReplayPerfFixEnabled()) {
+                const hasSessionHeavy = chart.indicators.active.some(function(ind) {
+                    return SESSION_REPLAY_HEAVY_TYPES.indexOf(String(ind.type || '').toLowerCase()) >= 0;
+                });
+                if (hasSessionHeavy) {
+                    const fp = _sessionReplayHeavyFingerprint(chart);
+                    if (fp
+                        && fp === chart._sessionIndReplayFp
+                        && _sessionReplayHeavyReady(chart)) {
+                        skipSessionHeavy = true;
+                    } else if (fp) {
+                        chart._sessionIndReplayFp = fp;
+                    }
+                }
+            }
+
             try {
                 if (typeof chart.recalculateIndicators === 'function') {
-                    chart.recalculateIndicators();
+                    chart._recalcSkipTypes = skipSessionHeavy ? SESSION_REPLAY_HEAVY_TYPES : null;
+                    try { chart.recalculateIndicators(); } finally {
+                        chart._recalcSkipTypes = null;
+                    }
                 }
-            } catch (_) {}
+            } catch (_) {
+                chart._recalcSkipTypes = null;
+            }
             pinReplayLegendHoverBeforeRecalc(chart);
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
             if (typeof chart.bumpIndicatorRenderVersion === 'function') chart.bumpIndicatorRenderVersion();
@@ -8669,9 +8737,11 @@
         }
 
         var onlyTypes = this._recalcOnlyTypes;
+        var skipTypes = this._recalcSkipTypes;
         
         this.indicators.active.forEach(function(indicator) {
             indicator.type = String(indicator.type || '').toLowerCase();
+            if (skipTypes && skipTypes.indexOf(indicator.type) >= 0) return;
             if (onlyTypes && onlyTypes.indexOf(indicator.type) < 0) return;
             switch (indicator.type) {
                 case 'sma':
