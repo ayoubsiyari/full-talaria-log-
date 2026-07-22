@@ -162,13 +162,30 @@ export function resolveGlobalTradeId(
   sessionId: number | string,
   index: number
 ): { globalId: string; sessionLocalId: string; chartTradeId: string | number } {
-  const sessionLocalId = String(
-    row.client_trade_id ?? row.tradeId ?? row.trade_id ?? row.id ?? `t${index + 1}`
-  );
-  const chartTradeId = (row.tradeId ?? row.id ?? sessionLocalId) as string | number;
   const jid = row.journal_trade_id;
-  if (jid != null && String(jid).trim() !== "") {
-    return { globalId: String(jid), sessionLocalId, chartTradeId };
+  const jidText = jid != null && String(jid).trim() !== "" ? String(jid).trim() : null;
+  // Session-local chart # only — never the global SQL id shared across all users.
+  const localCandidates = [
+    row.client_trade_id,
+    row.chart_trade_id,
+    row.n,
+    row.tradeId,
+    row.trade_id,
+    row.id,
+  ];
+  const sessionLocalRaw = localCandidates.find((v) => {
+    if (v === undefined || v === null || v === "") return false;
+    const s = String(v).trim();
+    if (!s) return false;
+    if (jidText && s === jidText) return false;
+    if (s.includes(":")) return false;
+    return true;
+  });
+  const sessionLocalId = String(sessionLocalRaw ?? index + 1);
+  const chartNum = Number(row.chart_trade_id ?? row.n ?? sessionLocalId);
+  const chartTradeId = Number.isFinite(chartNum) ? chartNum : sessionLocalId;
+  if (jidText) {
+    return { globalId: jidText, sessionLocalId, chartTradeId };
   }
   return { globalId: `${sessionId}:${sessionLocalId}`, sessionLocalId, chartTradeId };
 }
@@ -216,7 +233,8 @@ export function mapJournalRowToV16Trade(
     journal_trade_id: row.journal_trade_id ?? null,
     client_trade_id: sessionLocalId,
     chart_trade_id: chartTradeId,
-    n: Number(row.n) || index + 1,
+    display_trade_id: sessionLocalId,
+    n: Number(sessionLocalId) || Number(row.n) || index + 1,
     date: date || row.date,
     closeTime: ts
       ? new Date(ts).toISOString()
@@ -488,5 +506,21 @@ export async function fetchAndMapTradesForSession(
   sess: ApiSession
 ): Promise<Record<string, unknown>[]> {
   const rawRows = await fetchJournalTradesForSession(sess.id);
-  return rawRows.map((row, i) => mapJournalRowToV16Trade(row, sess, i));
+  const mapped = rawRows.map((row, i) => mapJournalRowToV16Trade(row, sess, i));
+  // Guarantee Trades page never shows the global all-users SQL id.
+  return mapped.map((trade, i) => {
+    const jid = trade.journal_trade_id != null ? String(trade.journal_trade_id) : null;
+    let local = String(trade.display_trade_id ?? trade.client_trade_id ?? trade.chart_trade_id ?? trade.n ?? "");
+    if (!local.trim() || (jid && local === jid) || local.includes(":")) {
+      local = String(Number(trade.n) || i + 1);
+    }
+    const n = Number(local);
+    return {
+      ...trade,
+      client_trade_id: local,
+      chart_trade_id: Number.isFinite(n) ? n : local,
+      display_trade_id: local,
+      n: Number.isFinite(n) ? n : i + 1,
+    };
+  });
 }

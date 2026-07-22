@@ -30030,6 +30030,54 @@ class Chart {
 
         if (this.replaySystem && this.replaySystem.isActive) {
             const rs = this.replaySystem;
+            // L2-M2 / TAL-01798: same-symbol multichart panels share the host market mark
+            // so 1m vs 15m current-price labels match at one replay instant.
+            const canonicalMarkEnabled = typeof window === 'undefined'
+                || !window.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1;
+            if (canonicalMarkEnabled) {
+                // Prefer live host mark (coalesced seeks can leave a stale stamped mark).
+                try {
+                    if (typeof this._isMultichartEmbedPanel === 'function'
+                        && this._isMultichartEmbedPanel()
+                        && typeof window !== 'undefined'
+                        && window.parent && window.parent !== window) {
+                        const parentChart = window.parent.chart;
+                        const parentRs = parentChart && parentChart.replaySystem;
+                        const parentFid = parentChart && parentChart.currentFileId != null
+                            ? String(parentChart.currentFileId)
+                            : '';
+                        const myFid = this.currentFileId != null ? String(this.currentFileId) : '';
+                        if (parentRs && parentRs.isActive
+                            && (!parentFid || !myFid || parentFid === myFid)) {
+                            let live = null;
+                            if (typeof parentRs._resolveCanonicalReplayMark === 'function') {
+                                live = parentRs._resolveCanonicalReplayMark();
+                            }
+                            if (!Number.isFinite(live)) {
+                                live = Number(parentChart._mcCanonicalReplayMark);
+                            }
+                            if (Number.isFinite(live)) {
+                                this._mcCanonicalReplayMark = live;
+                                // Keep forming-candle close on the same source of truth as the label.
+                                if (Array.isArray(this.data) && this.data.length) {
+                                    const last = this.data[this.data.length - 1];
+                                    if (last && typeof last === 'object') {
+                                        last.c = live;
+                                        const h = Number(last.h ?? last.high);
+                                        const l = Number(last.l ?? last.low);
+                                        if (Number.isFinite(h)) last.h = Math.max(h, live);
+                                        if (Number.isFinite(l)) last.l = Math.min(l, live);
+                                    }
+                                }
+                                return live;
+                            }
+                        }
+                    }
+                } catch (_liveMark) { /* cross-origin / missing parent */ }
+                if (Number.isFinite(Number(this._mcCanonicalReplayMark))) {
+                    return Number(this._mcCanonicalReplayMark);
+                }
+            }
             const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
 
             if (hasOwnData) {

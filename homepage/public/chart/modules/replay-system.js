@@ -3,6 +3,12 @@
  * Implements TradingView-style candle-by-candle replay with draggable toolbar
  */
 
+/** L2-M2 / TAL-01798: same-symbol panels share one host market mark (default ON). */
+function _mcCanonicalReplayMarkV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -7376,6 +7382,7 @@ class ReplaySystem {
         // the single biggest replay-playback CPU saver in multichart.
         if (sharesHostDataset
             && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+            this._applyCanonicalReplayMarkFromDetail(detail);
             return true;
         }
 
@@ -7390,6 +7397,7 @@ class ReplaySystem {
                     hostFileId: detail.hostFileId,
                     isPlaying: detail.isPlaying,
                     ticksPerCandle: detail.ticksPerCandle,
+                    canonicalMark: detail.canonicalMark,
                     _indepAnimFallback: true,
                 });
             }
@@ -7416,6 +7424,7 @@ class ReplaySystem {
                 ? frd[indep.formingIdx]
                 : indep.candle;
             this._syncMirrorAnimatingCandleState(detail, anim, indepPathTarget);
+            this._applyCanonicalReplayMarkFromDetail(detail);
             this._finishMultichartMirrorRender(chart);
             return true;
         }
@@ -7428,6 +7437,7 @@ class ReplaySystem {
                     && chart._isIndependentMultichartPair());
             if (samePairEmbed) {
                 if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    this._applyCanonicalReplayMarkFromDetail(detail);
                     return true;
                 }
                 // Never reseed-from-parent when display TF differs — that seek
@@ -7453,6 +7463,7 @@ class ReplaySystem {
                 if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
                     && chart._syncReplayMasterFromParentIfCovers(ts)
                     && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    this._applyCanonicalReplayMarkFromDetail(detail);
                     return true;
                 }
                 return false;
@@ -7537,6 +7548,7 @@ class ReplaySystem {
                 && !(typeof chart._isIndependentMultichartPair === 'function'
                     && chart._isIndependentMultichartPair())) {
                 if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    this._applyCanonicalReplayMarkFromDetail(detail);
                     return true;
                 }
                 let parentTfStatic = '';
@@ -7559,6 +7571,7 @@ class ReplaySystem {
                 if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
                     && chart._syncReplayMasterFromParentIfCovers(ts)
                     && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    this._applyCanonicalReplayMarkFromDetail(detail);
                     return true;
                 }
                 return false;
@@ -7594,8 +7607,76 @@ class ReplaySystem {
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
         }
 
+        this._applyCanonicalReplayMarkFromDetail(detail);
         this._finishMultichartMirrorRender(chart);
         return true;
+    }
+
+    /**
+     * Host market mark for the current replay instant (candle or tick mode).
+     * Used so mixed-TF same-symbol panels share one current-price label / forming close.
+     */
+    _resolveCanonicalReplayMark() {
+        if (typeof this.getCurrentAnimatedPrice === 'function') {
+            const ap = this.getCurrentAnimatedPrice();
+            if (Number.isFinite(ap)) return ap;
+        }
+        const chart = this.chart;
+        if (chart && Array.isArray(chart.data) && chart.data.length) {
+            const c = Number(chart.data[chart.data.length - 1].c
+                ?? chart.data[chart.data.length - 1].close);
+            if (Number.isFinite(c)) return c;
+        }
+        const raw = Array.isArray(this.fullRawData) ? this.fullRawData[this.currentIndex] : null;
+        if (raw) {
+            const c = Number(raw.c ?? raw.close);
+            if (Number.isFinite(c)) return c;
+        }
+        return null;
+    }
+
+    /**
+     * Stamp same-symbol panel forming close + label mark from host canonicalMark.
+     * Never applies across different symbols. Kill-switch restores legacy divergence.
+     */
+    _applyCanonicalReplayMarkFromDetail(detail) {
+        const chart = this.chart;
+        if (!chart) return;
+        if (!_mcCanonicalReplayMarkV1Enabled()) {
+            chart._mcCanonicalReplayMark = null;
+            return;
+        }
+        if (!detail || typeof detail !== 'object') return;
+        const mark = Number(detail.canonicalMark);
+        if (!Number.isFinite(mark)) return;
+
+        const hostFid = detail.hostFileId != null ? String(detail.hostFileId) : '';
+        const myFid = chart.currentFileId != null ? String(chart.currentFileId) : '';
+        if (hostFid && myFid && hostFid !== myFid) {
+            chart._mcCanonicalReplayMark = null;
+            return;
+        }
+
+        chart._mcCanonicalReplayMark = mark;
+        if (Array.isArray(chart.data) && chart.data.length) {
+            const last = chart.data[chart.data.length - 1];
+            if (last && typeof last === 'object') {
+                last.c = mark;
+                const h = Number(last.h ?? last.high);
+                const l = Number(last.l ?? last.low);
+                if (Number.isFinite(h)) last.h = Math.max(h, mark);
+                if (Number.isFinite(l)) last.l = Math.min(l, mark);
+            }
+        }
+        if (this.animatingCandle && typeof this.animatingCandle === 'object') {
+            this.animatingCandle.close = mark;
+            if (Number.isFinite(Number(this.animatingCandle.high))) {
+                this.animatingCandle.high = Math.max(Number(this.animatingCandle.high), mark);
+            }
+            if (Number.isFinite(Number(this.animatingCandle.low))) {
+                this.animatingCandle.low = Math.min(Number(this.animatingCandle.low), mark);
+            }
+        }
     }
 
     /**
@@ -7627,6 +7708,17 @@ class ReplaySystem {
                 c: ac.close,
                 v: ac.volume || 0,
             };
+        }
+        // Candle-mode frames previously omitted animatedCandle, so coarse peers sought
+        // onto a completed TF close (TAL-01798). Always publish the host market mark.
+        if (_mcCanonicalReplayMarkV1Enabled()) {
+            const mark = this._resolveCanonicalReplayMark();
+            if (Number.isFinite(mark)) {
+                detail.canonicalMark = mark;
+                if (this.chart) this.chart._mcCanonicalReplayMark = mark;
+            }
+        } else if (this.chart) {
+            this.chart._mcCanonicalReplayMark = null;
         }
         return detail;
     }

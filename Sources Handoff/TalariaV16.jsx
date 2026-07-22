@@ -996,11 +996,56 @@ const DASH_CSV_FIELD_CATALOG = [
   { key: "durationMinutes", label: "Duration (minutes)", required: false },
   { key: "status", label: "Status (open/closed)", required: false },
 ];
+/** Session trade # for Trades page — never the global SQL id shared by all users. */
+const pickDashDisplayTradeId = (trade, fallback = "-") => {
+  if (!trade || typeof trade !== "object") return fallback;
+  const read = (keys) => {
+    for (const key of keys) {
+      const value = trade[key];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  };
+  const jid = trade.journal_trade_id != null ? String(trade.journal_trade_id) : null;
+  const sourceType = String(trade.sourceType || trade.libraryType || trade.sourceKind || "").toLowerCase();
+  const sourceKey = String(trade.sourceKey || trade.sourceFilterKey || "");
+  const isSessionTrade =
+    trade.trading_session_id != null
+    || trade.sourceSessionId != null
+    || sourceKey.startsWith("session:")
+    || sourceType.includes("backtest")
+    || sourceType === "session"
+    || trade.client_trade_id != null
+    || trade.chart_trade_id != null
+    || trade.display_trade_id != null;
+  // Prefer session-local numbers only (same as chart #1, #2…).
+  const candidates = isSessionTrade
+    ? ["display_trade_id", "client_trade_id", "chart_trade_id", "n"]
+    : ["display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"];
+  for (const key of candidates) {
+    const raw = read([key]);
+    if (raw == null) continue;
+    const s = String(raw).trim();
+    if (!s) continue;
+    if (jid && s === jid) continue;
+    if (s.includes(":")) continue;
+    if (/^live-/i.test(s)) continue;
+    return s.replace(/^#/, "").replace(/^manual-/, "M-");
+  }
+  // Session trades: never fall back to global journal_trade_id.
+  if (isSessionTrade) {
+    const n = Number(trade.n);
+    if (Number.isFinite(n) && n > 0) return String(n);
+    return fallback;
+  }
+  const live = read(["tradeId", "trade_id", "id", "n"]);
+  return live != null ? String(live).replace(/^manual-/, "M-") : fallback;
+};
 const DASH_CSV_FIELD_ALIASES = {
   netPnL: ["netPnL", "pnl_currency_net", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl"],
   closeTime: ["closeTime", "exitTime", "exitDate"],
   openTime: ["openTime", "entryTime", "entryDate", "date"],
-  tradeId: ["tradeId", "trade_id", "journal_trade_id", "client_trade_id", "id", "n"],
+  tradeId: ["display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"],
   ticker: ["ticker", "symbol", "instrument", "pair"],
   direction: ["direction", "side", "type"],
   setup: ["setup", "playbook", "strategy", "strategyName", "strategy_label", "tag"],
@@ -25840,7 +25885,7 @@ const TalariaV8b = () => {
                 },
                 sortValues:{
                   source:`${sourceKind}-${edited ? "edited" : "original"}`,
-                  tradeId:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], ""),
+                  tradeId:pickDashDisplayTradeId(t, ""),
                   sourceName:firstValue(t, sourceNameKeys, ""),
                   strategy:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], ""),
                   symbol:firstValue(t, ["symbol","ticker"], ""),
@@ -25868,7 +25913,7 @@ const TalariaV8b = () => {
                 },
                 values:{
                   source:{node:null, raw:`${sourceKind} ${edited ? "edited" : "original"}`},
-                  tradeId:{text:String(firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "-")).replace(/^manual-/, "M-"), raw:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "")},
+                  tradeId:{text:pickDashDisplayTradeId(t, "-"), raw:pickDashDisplayTradeId(t, "")},
                   sourceName:{text:String(firstValue(t, sourceNameKeys, "-")), raw:firstValue(t, sourceNameKeys, "")},
                   strategy:{text:String(firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "-")), raw:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "")},
                   symbol:{text:String(firstValue(t, ["symbol","ticker"], "-")).toUpperCase(), raw:firstValue(t, ["symbol","ticker"], "")},
@@ -26780,7 +26825,7 @@ const TalariaV8b = () => {
                     style={{maxWidth:"100%",overflowX:"auto",overflowY:"visible",paddingBottom:8,overscrollBehaviorX:"contain"}}>
                     <div style={{width:minTableWidth}}>
                       {tradeRows.length ? tradeRows.map((trade, index) => {
-                        const tradeId = firstValue(trade, ["journal_trade_id", "tradeId", "trade_id", "client_trade_id", "id"], trade.n ?? index + 1);
+                        const tradeId = pickDashDisplayTradeId(trade, trade.n ?? index + 1);
                         const isManualTrade = trade?.is_manual === true || trade?.manual === true || trade?.data_source === "manual";
                         const pnlRaw = firstValue(trade, ["netPnL", "pnl_dollars_net", "pnl", "realizedPnL"]);
                         const pnl = Number(pnlRaw) || 0;

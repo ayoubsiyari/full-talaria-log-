@@ -12058,12 +12058,9 @@ const TalariaV8bLive = () => {
       const pnlText = Number.isFinite(pnlN)
         ? `${pnlN >= 0 ? "+" : ""}$${Math.abs(pnlN).toFixed(2)}`
         : "—";
-      const jid = snap.journal_trade_id ?? snap.journalTradeId;
-      const displayId = jid != null && String(jid).trim() !== "" ? String(jid).trim() : String(snap.id);
       return {
-        id: displayId,
+        id: `#${snap.id}`,
         omId: snap.id,
-        journalTradeId: jid ?? null,
         time: "—",
         status: closed ? "closed" : "open",
         sym: String(snap.ticker || snap.symbol || "—").replace(/_/g, "/"),
@@ -37645,9 +37642,7 @@ const TalariaV8bLive = () => {
                   // Prefer numeric timestamps / ids — never parse the display TIME string
                   // (that old month*31 heuristic scrambled Aug 10 23:15 vs Aug 11 10:25).
                   if(key==="id"){
-                    // Same global journal id as dashboard Trades (not session-local omId).
-                    const jn=Number(r.journalTradeId ?? r.id);
-                    if(Number.isFinite(jn)) return jn;
+                    // Session-local order id (#1,#2…) — not global SQL journal id.
                     const n=Number(r.omId);
                     if(Number.isFinite(n)) return n;
                     return parseInt(String(r.id||"").replace(/\D/g,""),10)||0;
@@ -37679,8 +37674,7 @@ const TalariaV8bLive = () => {
                     cmp=(Number(va)||0)-(Number(vb)||0);
                   }
                   if(cmp===0){
-                    const idA=Number(a.journalTradeId??a.id??a.omId)||0;
-                    const idB=Number(b.journalTradeId??b.id??b.omId)||0;
+                    const idA=Number(a.omId)||0, idB=Number(b.omId)||0;
                     cmp=idA-idB;
                   }
                   return dir==="asc"?cmp:-cmp;

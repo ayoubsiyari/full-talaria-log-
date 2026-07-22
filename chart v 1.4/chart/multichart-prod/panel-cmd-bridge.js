@@ -777,6 +777,12 @@
         var ts = Number(args.timestamp);
         if (!Number.isFinite(ts)) return;
 
+        // Stash host market mark for coalesced coarse seeks (candle-mode has no animatedCandle).
+        try {
+            var frameMark = Number(args.canonicalMark);
+            if (Number.isFinite(frameMark)) ch._mcPendingCanonicalMark = frameMark;
+        } catch (_fm) { /* ignore */ }
+
         // D-016 / T8: pin shared virtual market timestamp on every play frame so
         // coarse panels stay byte-aligned with the host finest-TF clock (parity).
         if (args.isPlaying
@@ -1094,6 +1100,9 @@
         if (applied) {
             ch._mcCatchUpFails = 0;
             ch._mcCatchUpCooldownUntil = 0;
+            if (Number.isFinite(Number(args.canonicalMark))) {
+                applyCanonicalReplayMarkToPanel(ch, Number(args.canonicalMark));
+            }
             return;
         }
 
@@ -1103,6 +1112,9 @@
         if (forceSamePairParentDataMirror(ch, args)) {
             ch._mcCatchUpFails = 0;
             ch._mcCatchUpCooldownUntil = 0;
+            if (Number.isFinite(Number(args.canonicalMark))) {
+                applyCanonicalReplayMarkToPanel(ch, Number(args.canonicalMark));
+            }
             return;
         }
 
@@ -1292,6 +1304,26 @@
                     v: Number(animSrc.volume != null ? animSrc.volume : animSrc.v) || 0,
                 };
             }
+            // L2-M2 / TAL-01798: candle-mode frames lack animatedCandle; publish host mark.
+            try {
+                if (!(typeof global !== 'undefined'
+                    && global.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1)) {
+                    var mark = null;
+                    if (typeof prs._resolveCanonicalReplayMark === 'function') {
+                        mark = prs._resolveCanonicalReplayMark();
+                    } else if (typeof prs.getCurrentAnimatedPrice === 'function') {
+                        mark = prs.getCurrentAnimatedPrice();
+                    }
+                    if (!Number.isFinite(mark) && payload.animatedCandle
+                        && Number.isFinite(Number(payload.animatedCandle.c))) {
+                        mark = Number(payload.animatedCandle.c);
+                    }
+                    if (!Number.isFinite(mark) && pc && Array.isArray(pc.data) && pc.data.length) {
+                        mark = Number(pc.data[pc.data.length - 1].c);
+                    }
+                    if (Number.isFinite(mark)) payload.canonicalMark = mark;
+                }
+            } catch (_mark) { /* ignore */ }
             return payload;
         } catch (_) {}
         return null;
@@ -2233,6 +2265,20 @@
                         && ch.replaySystem && Number.isFinite(seekTs)) {
                         ch.replaySystem.replayTimestamp = seekTs;
                     }
+                    try {
+                        var liveAfterMirror = null;
+                        var pcAfter = readParentChart();
+                        if (pcAfter && pcAfter.replaySystem
+                            && typeof pcAfter.replaySystem._resolveCanonicalReplayMark === 'function') {
+                            liveAfterMirror = Number(pcAfter.replaySystem._resolveCanonicalReplayMark());
+                        }
+                        var stampAfter = Number.isFinite(liveAfterMirror)
+                            ? liveAfterMirror
+                            : Number(ch._mcPendingCanonicalMark);
+                        if (Number.isFinite(stampAfter)) {
+                            applyCanonicalReplayMarkToPanel(ch, stampAfter);
+                        }
+                    } catch (_am) { /* ignore */ }
                     maybePanelPlayViewportFollow(ch); return;
                 }
                 if (applyStaticMirrorFrame(ch, seekTs)) {
@@ -2241,6 +2287,20 @@
                         && ch.replaySystem && Number.isFinite(seekTs)) {
                         ch.replaySystem.replayTimestamp = seekTs;
                     }
+                    try {
+                        var liveAfterStatic = null;
+                        var pcStatic = readParentChart();
+                        if (pcStatic && pcStatic.replaySystem
+                            && typeof pcStatic.replaySystem._resolveCanonicalReplayMark === 'function') {
+                            liveAfterStatic = Number(pcStatic.replaySystem._resolveCanonicalReplayMark());
+                        }
+                        var stampStatic = Number.isFinite(liveAfterStatic)
+                            ? liveAfterStatic
+                            : Number(ch._mcPendingCanonicalMark);
+                        if (Number.isFinite(stampStatic)) {
+                            applyCanonicalReplayMarkToPanel(ch, stampStatic);
+                        }
+                    } catch (_as) { /* ignore */ }
                     maybePanelPlayViewportFollow(ch); return;
                 }
             }
@@ -2330,6 +2390,38 @@
         });
     }
 
+    function applyCanonicalReplayMarkToPanel(ch, mark) {
+        try {
+            if (typeof global !== 'undefined'
+                && global.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1) {
+                if (ch) ch._mcCanonicalReplayMark = null;
+                return;
+            }
+            if (!ch || !Number.isFinite(mark)) return;
+            if (!isSameSymbolAsHost(ch)) {
+                ch._mcCanonicalReplayMark = null;
+                return;
+            }
+            var rs = ch.replaySystem;
+            if (rs && typeof rs._applyCanonicalReplayMarkFromDetail === 'function') {
+                rs._applyCanonicalReplayMarkFromDetail({
+                    canonicalMark: mark,
+                    hostFileId: readParentHostFileId(),
+                });
+                return;
+            }
+            ch._mcCanonicalReplayMark = mark;
+            if (Array.isArray(ch.data) && ch.data.length) {
+                var last = ch.data[ch.data.length - 1];
+                if (last && typeof last === 'object') {
+                    last.c = mark;
+                    if (Number.isFinite(Number(last.h))) last.h = Math.max(Number(last.h), mark);
+                    if (Number.isFinite(Number(last.l))) last.l = Math.min(Number(last.l), mark);
+                }
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     function forceReplaySeek(ch, ts, isEnter, onDone) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:forceReplaySeek');
         markHostReplayContext(ch);
@@ -2373,6 +2465,30 @@
             if (Number.isFinite(ts)) {
                 rs.replayTimestamp = ts;
             }
+            // Candle-mode coarse seek often lands on a completed TF close; restamp
+            // the live host market mark so labels AND forming close match panel A.
+            try {
+                var pendingMark = Number(ch._mcPendingCanonicalMark);
+                var liveMark = null;
+                try {
+                    var pcMark = readParentChart();
+                    var prsMark = pcMark && pcMark.replaySystem;
+                    if (prsMark && typeof prsMark._resolveCanonicalReplayMark === 'function') {
+                        liveMark = Number(prsMark._resolveCanonicalReplayMark());
+                    }
+                    if (!Number.isFinite(liveMark) && pcMark) {
+                        liveMark = Number(pcMark._mcCanonicalReplayMark);
+                    }
+                } catch (_lm) { /* ignore */ }
+                if (!Number.isFinite(pendingMark)) {
+                    var parentPayload = readParentReplayMirrorPayload();
+                    if (parentPayload) pendingMark = Number(parentPayload.canonicalMark);
+                }
+                var stampMark = Number.isFinite(liveMark) ? liveMark : pendingMark;
+                if (Number.isFinite(stampMark)) {
+                    applyCanonicalReplayMarkToPanel(ch, stampMark);
+                }
+            } catch (_cm) { /* ignore */ }
             if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({

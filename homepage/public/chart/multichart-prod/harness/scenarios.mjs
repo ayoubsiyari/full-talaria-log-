@@ -9221,6 +9221,161 @@ async function hS85(ctx) {
   });
 }
 
+// ── H-S86 ────────────────────────────────────────────────────────────────
+// L2-M2 / TAL-01798: same-symbol A=1m + B=15m share one canonical market mark
+// at the same replay instant (candle-mode frames historically omitted it).
+const M2_CANONICAL_MARK_SWITCH = '__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1';
+
+async function readPanelCurrentPrice(page, id) {
+  if (id === 'A') {
+    return page.evaluate(() => {
+      const c = window.chart;
+      if (!c || typeof c.resolveEffectiveCurrentPrice !== 'function') return null;
+      const price = c.resolveEffectiveCurrentPrice(c.data);
+      const lastC = Array.isArray(c.data) && c.data.length
+        ? Number(c.data[c.data.length - 1].c)
+        : null;
+      return {
+        price: Number.isFinite(price) ? Number(price) : null,
+        lastC: Number.isFinite(lastC) ? lastC : null,
+        mark: Number.isFinite(Number(c._mcCanonicalReplayMark))
+          ? Number(c._mcCanonicalReplayMark)
+          : null,
+        tf: String(c.currentTimeframe || ''),
+      };
+    });
+  }
+  const frames = panelFrameMap(page);
+  const frame = frames[id];
+  if (!frame) return null;
+  return frame.evaluate(() => {
+    const c = window.chart;
+    if (!c || typeof c.resolveEffectiveCurrentPrice !== 'function') return null;
+    const price = c.resolveEffectiveCurrentPrice(c.data);
+    const lastC = Array.isArray(c.data) && c.data.length
+      ? Number(c.data[c.data.length - 1].c)
+      : null;
+    return {
+      price: Number.isFinite(price) ? Number(price) : null,
+      lastC: Number.isFinite(lastC) ? lastC : null,
+      mark: Number.isFinite(Number(c._mcCanonicalReplayMark))
+        ? Number(c._mcCanonicalReplayMark)
+        : null,
+      tf: String(c.currentTimeframe || ''),
+    };
+  });
+}
+
+async function hS86Core(page, checks, expectMatch, killOn = false) {
+  await page.evaluate((flag, on) => {
+    if (on) window[flag] = true;
+    else {
+      try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+    }
+  }, M2_CANONICAL_MARK_SWITCH, killOn);
+  // Propagate kill-switch into embed iframes.
+  for (const frame of embedFrames(page)) {
+    await frame.evaluate((flag, on) => {
+      if (on) window[flag] = true;
+      else {
+        try { delete window[flag]; } catch (_) { window[flag] = undefined; }
+      }
+    }, M2_CANONICAL_MARK_SWITCH, killOn).catch(() => {});
+  }
+
+  const ts0 = await replayStartTs(page);
+  checks.check(`H-S86${killOn ? '-KILL' : ''} replay start ts`, ts0 != null, `ts0=${ts0}`);
+  if (ts0 == null) return;
+
+  await hostReplayEnter(page, ts0);
+  await broadcastCmd(page, 'replayEnter', { timestamp: ts0 });
+  await sleep(1000);
+  await panelCmd(page, 'B', 'setTimeframe', { tf: '15m' }).catch(() => {});
+  await sleep(1600);
+
+  const host = await readHost(page);
+  const b = await readPanel(page, 'B');
+  checks.check(`H-S86${killOn ? '-KILL' : ''} setup A=1m B=15m`,
+    !!(host && b && host.tf === '1m' && b.tf === '15m'),
+    `A.tf=${host?.tf} B.tf=${b?.tf}`);
+
+  // Candle-mode style frames: host seeks first, then publishes the same
+  // _buildMultichartReplayFrameDetail().canonicalMark production broadcasts.
+  let ts = ts0;
+  for (let i = 0; i < 12; i++) {
+    ts += 60_000;
+    const detail = await page.evaluate((nextTs) => {
+      const c = window.chart;
+      const rs = c && c.replaySystem;
+      if (!rs) return null;
+      rs.replayTimestamp = nextTs;
+      if (typeof rs.goToReplayTimestamp === 'function') {
+        try { rs.goToReplayTimestamp(nextTs, { preserveVisibleWindow: true }); } catch (_) {}
+      }
+      rs.replayTimestamp = nextTs;
+      if (typeof rs._buildMultichartReplayFrameDetail === 'function') {
+        const d = rs._buildMultichartReplayFrameDetail();
+        d.isPlaying = true;
+        // Force candle-mode shape: no animatedCandle (the historical RED path).
+        delete d.animatedCandle;
+        d.tickProgress = 0;
+        return d;
+      }
+      return {
+        timestamp: nextTs,
+        isPlaying: true,
+        canonicalMark: typeof rs._resolveCanonicalReplayMark === 'function'
+          ? rs._resolveCanonicalReplayMark()
+          : null,
+        hostFileId: c.currentFileId != null ? String(c.currentFileId) : null,
+      };
+    }, ts);
+    if (!detail || !Number.isFinite(Number(detail.timestamp))) continue;
+    await broadcastCmd(page, 'replayFrame', detail);
+    if (i % 3 === 0) await sleep(40);
+  }
+  await sleep(600);
+
+  const aPrice = await readPanelCurrentPrice(page, 'A');
+  const bPrice = await readPanelCurrentPrice(page, 'B');
+  const bothFinite = !!(aPrice && bPrice
+    && Number.isFinite(aPrice.price) && Number.isFinite(bPrice.price));
+  checks.check(`H-S86${killOn ? '-KILL' : ''} prices readable`, bothFinite,
+    `A=${JSON.stringify(aPrice)} B=${JSON.stringify(bPrice)}`);
+  if (!bothFinite) return;
+
+  const match = Math.abs(aPrice.price - bPrice.price) < 1e-9;
+  if (expectMatch) {
+    checks.check('H-S86 GREEN: A/B current-price labels match exactly',
+      match, `A=${aPrice.price} B=${bPrice.price}`);
+  } else {
+    checks.check('H-S86 RED-again: kill-switch reproduces A/B price divergence',
+      !match, `A=${aPrice.price} B=${bPrice.price}`);
+  }
+}
+
+async function hS86(ctx) {
+  return runWith(ctx, { pair: 'same', panels: 2, tf: '1m' }, async (boot, notes) => {
+    const { page } = boot;
+    const checks = makeChecks();
+    await setSync(page, false);
+    await setIntervalSync(page, false);
+    await waitBootSettled(page, ['A', 'B'], 20_000, boot.getInFlightDataRequests);
+
+    await hS86Core(page, checks, true, false);
+    // Three stability samples on the GREEN path.
+    for (let rep = 0; rep < 2; rep++) {
+      await hS86Core(page, checks, true, false);
+    }
+    await hS86Core(page, checks, false, true);
+
+    notes.push('H-S86 (L2-M2 / TAL-01798): A=1m B=15m same symbol, interval sync OFF. '
+      + 'Candle-mode replayFrame carries canonicalMark; current-price labels must match. '
+      + 'Kill-switch __TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1 reproduces divergence.');
+    return checks;
+  });
+}
+
 export function scenarioList() {
   return [
     { id: 'H-S2', title: 'drag tile A right 3 screens, sync ON', run: hS2 },
@@ -9317,6 +9472,7 @@ export function scenarioList() {
     { id: 'H-S84', title: 'TAL-01612 V1: interval owner — stale hidden select ignored on Auto step', run: hS84 },
     { id: 'H-A1-B', title: 'A1-B: 30m right-edge grid tail wall-clock aligned (TAL-01565/01618/01625)', run: hA1B },
     { id: 'H-S85', title: 'TAL-01619 / A1-G: separate-panel indicator axis pill anchored (not crosshair-Y)', run: hS85 },
+    { id: 'H-S86', title: 'L2-M2 / TAL-01798: cross-TF canonical replay mark (1m vs 15m current price)', run: hS86 },
     { id: 'H-S82', title: 'TAL-01579 / D-017: pan-release snap-back — settled offsetX holds release', run: hS82 },
     // Reserved (T0 step 16 — not yet implemented):
     // H-S81: mixed-coarse tick-play fetch+render budget fence (T8 step 10; deferred Lane-4/T2)

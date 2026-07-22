@@ -237,22 +237,27 @@ function findJournalEntry(om, tradeId) {
 }
 
 /**
- * Display ID for chart All Trade / History — same global SQL id as dashboard Trades
- * (`journal_trade_id`), not session-local order #1/#2/#3.
+ * Display ID for chart All Trade / History — session-local order id (#1, #2…),
+ * never the global SQL journal_trade_id shared across all users.
  */
 function resolveChartDisplayTradeId(om, orderOrJournal, omId) {
   const fromObj = (obj) => {
     if (!obj || typeof obj !== "object") return null;
+    // Prefer explicit client/session trade number; ignore global journal_trade_id.
+    const cid = obj.client_trade_id ?? obj.clientTradeId ?? obj.tradeId ?? obj.id;
+    if (cid == null || String(cid).trim() === "") return null;
+    const s = String(cid).trim();
     const jid = obj.journal_trade_id ?? obj.journalTradeId;
-    if (jid != null && String(jid).trim() !== "") return String(jid).trim();
-    return null;
+    // If payload id was overwritten with the global SQL id, skip it.
+    if (jid != null && String(jid) === s) return null;
+    return s;
   };
   const direct = fromObj(orderOrJournal);
-  if (direct) return direct;
+  if (direct) return `#${direct.replace(/^#/, "")}`;
   const journal = findJournalEntry(om, omId);
   const fromJournal = fromObj(journal);
-  if (fromJournal) return fromJournal;
-  if (omId != null && String(omId).trim() !== "") return String(omId).trim();
+  if (fromJournal) return `#${fromJournal.replace(/^#/, "")}`;
+  if (omId != null && String(omId).trim() !== "") return `#${String(omId).trim().replace(/^#/, "")}`;
   return "—";
 }
 
@@ -1540,10 +1545,10 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
 
   appendJournalOnlyClosedRows(om, rows, theme, { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs });
 
-  // Default: journal trade id ascending (same numbers as dashboard Trades).
+  // Default: session-local trade id ascending (#1, #2…).
   rows.sort((a, b) => {
-    const idA = Number(a.journalTradeId ?? a.id ?? a.omId);
-    const idB = Number(b.journalTradeId ?? b.id ?? b.omId);
+    const idA = Number(a.omId);
+    const idB = Number(b.omId);
     const na = Number.isFinite(idA) ? idA : 0;
     const nb = Number.isFinite(idB) ? idB : 0;
     if (na !== nb) return na - nb;
