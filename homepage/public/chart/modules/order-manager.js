@@ -37223,9 +37223,35 @@ class OrderManager {
     }
 
     /**
-     * Exit / partial marker column: prefer persisted `exitMarkerTimeMs` (hit candle), else `closeTime`,
-     * then forward-only price coherence so SL/TP ticks stay on the candle that touched the level
-     * (chart render updates must use this — time-only mapping can snap back to the entry bar).
+     * TAL-01798 trade-marker projection — default ON.
+     * Canonical entry/exit event times stay immutable; each TF maps them to the
+     * containing candle for X only (tick Y stays at trade price).
+     * Kill-switch (restores coarse-bucket overwrite + price-refine divergence +
+     * pan-lite marker skip when order lines exist):
+     *   window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 = true
+     *   TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1=1
+     */
+    _useCanonicalTradeMarkerProjection() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 === true) {
+                return false;
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (typeof process !== 'undefined'
+                && process.env
+                && process.env.TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 === '1') {
+                return false;
+            }
+        } catch (_) { /* ignore */ }
+        return true;
+    }
+
+    /**
+     * Exit / partial marker column: prefer persisted `exitMarkerTimeMs` (canonical
+     * event time), else `closeTime`. Under canonical projection, map to the
+     * containing candle only — never rewrite the event to a coarse TF bucket.
      * @param {object} exitRef `{ closeTime, closePrice, exitMarkerTimeMs?, openTime?, entryMarkerTimeMs? }`
      */
     _chartIndexForExitMarkerOnChart(ch, exitRef) {
@@ -37234,12 +37260,14 @@ class OrderManager {
         const tForIndex = Number.isFinite(anchor) ? anchor : exitRef.closeTime;
         let idx = this._chartIndexForCloseMarkerOnChart(ch, tForIndex);
         if (idx === -1) return -1;
+        // Canonical path: containing candle only; tick stays at closePrice.
+        if (this._useCanonicalTradeMarkerProjection()) return idx;
         const px = Number(exitRef.closePrice);
         if (!Number.isFinite(px)) return idx;
         idx = this._refineExitMarkerIndexForClose(ch, idx, tForIndex, px);
 
-        // If time collapsed onto the entry bar (or a bar that never traded the exit price),
-        // rescan forward from the entry column so the tick lands on the SL/TP hit candle.
+        // Legacy: if time collapsed onto the entry bar (or a bar that never traded
+        // the exit price), rescan forward from the entry column.
         const bar = ch?.data?.[idx];
         if (bar) {
             const lo = Number(bar.l);
@@ -37259,10 +37287,14 @@ class OrderManager {
     }
 
     /**
-     * Chart-bar open time for the exit tick column (parallel to entryMarkerTimeMs).
-     * Keeps SL/TP marks on the hit candle across refresh / render updates.
+     * Persist canonical exit event time (close/hit instant). Do not stamp the
+     * displaying chart's bucket open — coarse panels must not overwrite the event.
      */
     _exitMarkerAnchorTimeMsFromClose(chart, closeTime, closePrice, entryRef = null) {
+        const ct = Number(closeTime);
+        if (this._useCanonicalTradeMarkerProjection() && Number.isFinite(ct)) {
+            return ct;
+        }
         const ch = chart || this.chart;
         const exitRef = {
             closeTime,
@@ -37272,16 +37304,16 @@ class OrderManager {
         };
         const idx = this._chartIndexForExitMarkerOnChart(ch, exitRef);
         if (idx < 0 || !ch?.data?.[idx]) {
-            const ct = Number(closeTime);
             return Number.isFinite(ct) ? ct : undefined;
         }
         const bt = Number(ch.data[idx].t);
-        return Number.isFinite(bt) ? bt : (Number.isFinite(Number(closeTime)) ? Number(closeTime) : undefined);
+        return Number.isFinite(bt) ? bt : (Number.isFinite(ct) ? ct : undefined);
     }
 
     /**
      * Entry marker / connector start: replay column rules on `entryMarkerTimeMs` when set,
-     * else `openTime`; then optional forward-only price coherence.
+     * else `openTime`. Canonical projection maps that timestamp to the containing candle
+     * without price-refine drifting across TF buckets.
      * @param {object} entryRef `{ openTime, openPrice, entryMarkerTimeMs? }`
      */
     _chartIndexForEntryMarkerOnChart(ch, entryRef) {
@@ -37290,6 +37322,9 @@ class OrderManager {
         const tForIndex = Number.isFinite(anchor) ? anchor : entryRef.openTime;
         const idx = this._chartIndexForCloseMarkerOnChart(ch, tForIndex);
         if (idx === -1 || entryRef.openPrice == null) return idx;
+        if (this._useCanonicalTradeMarkerProjection() && Number.isFinite(anchor)) {
+            return idx;
+        }
         const px = Number(entryRef.openPrice);
         if (!Number.isFinite(px)) return idx;
         return this._refineEntryMarkerIndexForOpen(ch, idx, tForIndex, px);
@@ -37626,10 +37661,15 @@ class OrderManager {
             }
             return;
         }
-        const resolvedExitTime = Number(chart.data[dataIndex]?.t);
-        const markerTime = Number.isFinite(resolvedExitTime)
-            ? resolvedExitTime
-            : Number(exitRef.exitMarkerTimeMs ?? closeData.closeTime);
+        // Canonical exit event time stays immutable. Never replace it with the
+        // displaying chart's bucket open (coarse TF panels would diverge).
+        const canonicalExit = Number(
+            exitRef.exitMarkerTimeMs ?? closeData.closeTime ?? order.exitMarkerTimeMs,
+        );
+        const legacyBucketT = Number(chart.data[dataIndex]?.t);
+        const markerTime = this._useCanonicalTradeMarkerProjection()
+            ? (Number.isFinite(canonicalExit) ? canonicalExit : legacyBucketT)
+            : (Number.isFinite(legacyBucketT) ? legacyBucketT : canonicalExit);
         if (Number.isFinite(markerTime) && order.exitMarkerTimeMs == null) {
             order.exitMarkerTimeMs = markerTime;
         }
@@ -37797,6 +37837,12 @@ class OrderManager {
         const x2 = chart.dataIndexToPixel(exitIdx);
         const y2 = yScale(closeData.closePrice);
         const resolvedExitTime = Number(chart.data[exitIdx]?.t);
+        const canonicalExitMs = Number(
+            closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs ?? closeData.closeTime,
+        );
+        const connectorExitMs = this._useCanonicalTradeMarkerProjection()
+            ? (Number.isFinite(canonicalExitMs) ? canonicalExitMs : resolvedExitTime)
+            : (Number.isFinite(resolvedExitTime) ? resolvedExitTime : canonicalExitMs);
 
         const line = chart.svg.append('line')
             .attr('class', `trade-connector trade-connector-${order.id}`)
@@ -37815,9 +37861,7 @@ class OrderManager {
             entryMarkerTimeMs: order.entryMarkerTimeMs,
             entryPrice: order.openPrice,
             exitTime: closeData.closeTime,
-            exitMarkerTimeMs: Number.isFinite(resolvedExitTime)
-                ? resolvedExitTime
-                : (closeData.exitMarkerTimeMs ?? order.exitMarkerTimeMs),
+            exitMarkerTimeMs: connectorExitMs,
             exitPrice: closeData.closePrice
         });
         // Keep entry→exit line and markers aligned without waiting for the next chart click/render.
@@ -37858,10 +37902,13 @@ class OrderManager {
         };
         const dataIndex = this._chartIndexForExitMarkerOnChart(chart, exitRef);
         if (dataIndex === -1) return;
-        const resolvedExitTime = Number(chart.data[dataIndex]?.t);
-        const markerTime = Number.isFinite(resolvedExitTime)
-            ? resolvedExitTime
-            : Number(exitRef.exitMarkerTimeMs ?? closeData.closeTime);
+        const canonicalExit = Number(
+            exitRef.exitMarkerTimeMs ?? closeData.closeTime ?? order.exitMarkerTimeMs,
+        );
+        const legacyBucketT = Number(chart.data[dataIndex]?.t);
+        const markerTime = this._useCanonicalTradeMarkerProjection()
+            ? (Number.isFinite(canonicalExit) ? canonicalExit : legacyBucketT)
+            : (Number.isFinite(legacyBucketT) ? legacyBucketT : canonicalExit);
 
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
 
@@ -38077,10 +38124,14 @@ class OrderManager {
                     return;
                 }
                 try { if (marker) marker.style('display', null); } catch (_) {}
-                const resolvedT = Number(candle.t);
-                if (Number.isFinite(resolvedT)) {
-                    em.time = resolvedT;
-                    em.exitMarkerTimeMs = resolvedT;
+                // Canonical projection: never overwrite exitMarkerTimeMs with this
+                // chart's bucket open (5m/15m panels previously mutated the event).
+                if (!this._useCanonicalTradeMarkerProjection()) {
+                    const resolvedT = Number(candle.t);
+                    if (Number.isFinite(resolvedT)) {
+                        em.time = resolvedT;
+                        em.exitMarkerTimeMs = resolvedT;
+                    }
                 }
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
@@ -38128,10 +38179,12 @@ class OrderManager {
 
                 const candle = ch.data[dataIndex];
                 if (!candle) return;
-                const resolvedT = Number(candle.t);
-                if (Number.isFinite(resolvedT)) {
-                    pm.time = resolvedT;
-                    pm.exitMarkerTimeMs = resolvedT;
+                if (!this._useCanonicalTradeMarkerProjection()) {
+                    const resolvedT = Number(candle.t);
+                    if (Number.isFinite(resolvedT)) {
+                        pm.time = resolvedT;
+                        pm.exitMarkerTimeMs = resolvedT;
+                    }
                 }
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
@@ -38181,8 +38234,10 @@ class OrderManager {
                     entryMarkerTimeMs: tc.entryMarkerTimeMs,
                 });
                 if (eIdx === -1 || xIdx === -1) return;
-                const resolvedExitT = Number(ch.data[xIdx]?.t);
-                if (Number.isFinite(resolvedExitT)) tc.exitMarkerTimeMs = resolvedExitT;
+                if (!this._useCanonicalTradeMarkerProjection()) {
+                    const resolvedExitT = Number(ch.data[xIdx]?.t);
+                    if (Number.isFinite(resolvedExitT)) tc.exitMarkerTimeMs = resolvedExitT;
+                }
                 tc.line
                     .attr('x1', ch.dataIndexToPixel(eIdx))
                     .attr('y1', mainY(tc.entryPrice))
@@ -41189,11 +41244,13 @@ class OrderManager {
 
     /**
      * @param {object} [sourceChart]
-     * @param {{ panLite?: boolean }} [opts] panLite: skip purge/align/connector rebuild
-     *   so multichart iframe pan stays smooth (markers still reposition).
+     * @param {{ panLite?: boolean, skipTradeMarkers?: boolean }} [opts]
+     *   panLite: skip purge/align/connector rebuild so multichart iframe pan stays smooth.
+     *   skipTradeMarkers: kill-switch path — reposition order lines only (markers freeze).
      */
     updateOrderLines(sourceChart, opts) {
         const panLite = !!(opts && opts.panLite);
+        const skipTradeMarkers = !!(opts && opts.skipTradeMarkers);
         this._pruneReplayFutureTradeMarkers();
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
             this._collectLayoutCharts().forEach((c) => {
@@ -41221,10 +41278,12 @@ class OrderManager {
 
         let plotClipUrl = this._syncMainPlotSvgClip(ch);
 
-        this._updateEntryMarkersForChart(ch);
-
-        // Exit/partial markers and connectors store their host chart; update all whenever any surface renders.
-        this._updateExitAndPartialMarkersOnMain();
+        // Closed-trade entry/exit arrows must move every pan frame even when
+        // open orderLines exist (incomplete pan-lite previously skipped them).
+        if (!skipTradeMarkers) {
+            this._updateEntryMarkersForChart(ch);
+            this._updateExitAndPartialMarkersOnMain();
+        }
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
         ch.svg.selectAll('.y-axis-entry-highlight').remove();

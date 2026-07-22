@@ -6,6 +6,9 @@
  * candle; marker ticks stay at trade price; pan must move markers every frame
  * even when an open order line exists.
  *
+ * Pan glue is gated through production chart.js::_syncOrderOverlaysDuringPan
+ * (not by manually calling marker-update helpers).
+ *
  * GREEN (default):
  *   node --test "chart v 1.4/chart/modules/m10-trade-marker-projection.test.mjs"
  *
@@ -14,11 +17,21 @@
  *     "chart v 1.4/chart/modules/m10-trade-marker-projection.test.mjs"
  */
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const KILL = process.env.TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 === '1';
+
+const CHART_JS_SRC = path.resolve(__dirname, '../chart.js');
+const CHART_JS_HP = path.resolve(__dirname, '../../../homepage/public/chart/chart.js');
+const OM_SRC = path.resolve(__dirname, 'order-manager.js');
+const OM_HP = path.resolve(__dirname, '../../../homepage/public/chart/modules/order-manager.js');
 
 function installWindow() {
   global.window = KILL
@@ -28,6 +41,51 @@ function installWindow() {
 
 installWindow();
 const OrderManager = require('./order-manager.js');
+
+function sha256File(p) {
+  return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+}
+
+/** Load the exact production method body from chart.js (brace-balanced extract). */
+function loadProductionSyncOrderOverlaysDuringPan(chartJsPath = CHART_JS_SRC) {
+  const src = fs.readFileSync(chartJsPath, 'utf8');
+  const start = src.indexOf('_syncOrderOverlaysDuringPan(panActive)');
+  assert.ok(start >= 0, 'chart.js missing _syncOrderOverlaysDuringPan(panActive)');
+  const braceStart = src.indexOf('{', start);
+  assert.ok(braceStart >= 0, 'method body missing');
+  let depth = 0;
+  let end = braceStart;
+  for (; end < src.length; end += 1) {
+    const ch = src[end];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        end += 1;
+        break;
+      }
+    }
+  }
+  const methodSrc = `function ${src.slice(start, end)}`;
+  // eslint-disable-next-line no-new-func
+  return new Function(`${methodSrc}; return _syncOrderOverlaysDuringPan;`)();
+}
+
+function wireProductionPanSync(chart, om) {
+  const sync = loadProductionSyncOrderOverlaysDuringPan();
+  chart.orderManager = om;
+  chart._syncOrderOverlaysDuringPan = sync;
+  // Production sync may call updateOrderLines; keep that path honest about
+  // skipTradeMarkers while still using real marker reposition helpers.
+  om.updateOrderLines = function updateOrderLines(ch, opts) {
+    if (opts && opts.skipTradeMarkers) return;
+    this._updateEntryMarkersForChart(ch);
+    this._updateExitAndPartialMarkersOnMain();
+  };
+  om.updateMfeMaeMarkers = () => {};
+  om.updatePreviewLinePositions = () => {};
+  return sync;
+}
 
 const T0 = 1_700_000_000_000;
 const ENTRY_T = T0 + 7 * 60_000; // mid 1m bar inside first 15m / second 5m
@@ -299,7 +357,7 @@ test('marker tick Y stays at canonical trade price on every TF', () => {
   }
 });
 
-test('pan repositions markers every frame even with an open order line', () => {
+test('pan repositions markers via chart.js::_syncOrderOverlaysDuringPan (with order line)', () => {
   installWindow();
   const bars1m = make1mBars();
   const chart = makeChart('5m', resample(bars1m, 5 * 60_000), 0);
@@ -309,24 +367,22 @@ test('pan repositions markers every frame even with an open order line', () => {
   om.orderLines = [{ orderId: 99, chart, line: selStub() }];
   om.openPositions = [{ id: 99, openPrice: ENTRY_PX }];
 
+  const sync = wireProductionPanSync(chart, om);
+  // Initial draw (non-pan) establishes baseline pixels; the pan frame below
+  // must go exclusively through production _syncOrderOverlaysDuringPan.
   om._updateEntryMarkersForChart(chart);
   om._updateExitAndPartialMarkersOnMain();
   const x0 = Number(entryTick._state.x1);
   const y0 = Number(entryTick._state.y1);
   const ex0 = Number(exitTick._state.x1);
 
-  // Simulate a real pan frame: offset + price scale change, then pan glue path.
+  // Pan frame: viewport/scale change, then production sync only (no manual glue).
   chart.offsetX = -120;
   const baseY = (p) => 1000 - Number(p) * 100;
   const yScale2 = (p) => baseY(p) + 40;
   chart.yScale = yScale2;
   chart.scales.yScale = yScale2;
-
-  const skipMarkersWhenLines = KILL;
-  if (!skipMarkersWhenLines) {
-    om._updateEntryMarkersForChart(chart);
-    om._updateExitAndPartialMarkersOnMain();
-  }
+  sync.call(chart, true);
 
   if (KILL) {
     assert.equal(Number(entryTick._state.x1), x0, 'kill-switch: entry X stuck during pan');
@@ -361,7 +417,7 @@ test('different-symbol chart stays independent', () => {
   }
 });
 
-test('three stable repetitions: projection + pan glue', () => {
+test('three stable repetitions: production pan sync glue', () => {
   installWindow();
   if (KILL) {
     assert.ok(true, 'skip stability under kill-switch');
@@ -373,11 +429,30 @@ test('three stable repetitions: projection + pan glue', () => {
     const om = makeOm(chart);
     om.orderLines = [{ orderId: 1, chart }];
     const { entryTick } = seedMarkers(om, chart);
+    const sync = wireProductionPanSync(chart, om);
     om._updateEntryMarkersForChart(chart);
     const x0 = Number(entryTick._state.x1);
     chart.offsetX = -90;
-    om._updateEntryMarkersForChart(chart);
+    sync.call(chart, true);
     assert.equal(Number(entryTick._state.x1), x0 - 90, `rep ${rep + 1} pan`);
     assert.equal(om.exitMarkers[0].exitMarkerTimeMs, EXIT_T, `rep ${rep + 1} immutable`);
   }
+});
+
+test('I8 parity: source/homepage chart.js + order-manager.js are byte-identical', () => {
+  const omSrc = sha256File(OM_SRC);
+  const omHp = sha256File(OM_HP);
+  const chSrc = sha256File(CHART_JS_SRC);
+  const chHp = sha256File(CHART_JS_HP);
+  assert.equal(omSrc, omHp, `order-manager.js mirror mismatch\nsrc=${omSrc}\nhp =${omHp}`);
+  assert.equal(chSrc, chHp, `chart.js mirror mismatch\nsrc=${chSrc}\nhp =${chHp}`);
+  // Also prove the pan method extract resolves on both mirrors.
+  assert.equal(
+    typeof loadProductionSyncOrderOverlaysDuringPan(CHART_JS_SRC),
+    'function',
+  );
+  assert.equal(
+    typeof loadProductionSyncOrderOverlaysDuringPan(CHART_JS_HP),
+    'function',
+  );
 });
