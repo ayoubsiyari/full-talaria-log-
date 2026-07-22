@@ -25684,9 +25684,7 @@ class OrderManager {
      */
     _usesHostProjectedOrderRuntime() {
         return _orderMcSnapshotProjectionV1Enabled()
-            && this._multichartIsEmbedIframe()
-            && this._hostSnapshotVersion != null
-            && Number.isFinite(Number(this._hostSnapshotVersion));
+            && this._multichartIsEmbedIframe();
     }
 
     /** Parent pauses setDraftPreview while user drags preview on an iframe tile (avoids TP/SL flicker). */

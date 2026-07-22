@@ -165,6 +165,7 @@ export function fanOutHostOrderSnapshotToIframes(deps) {
         runCommand,
         chart,
         versionHolder = { current: 0 },
+        runtimeOnly = false,
     } = deps || {};
 
     const om = chart?.orderManager;
@@ -184,7 +185,11 @@ export function fanOutHostOrderSnapshotToIframes(deps) {
             if (!c || !c.ready || c.host || c.id === excludePanelId) continue;
             panelIds.push(c.id);
             try {
-                const p = runCommand('applyOrderSnapshot', { snapshot: snap }, { panelId: c.id });
+                const p = runCommand(
+                    'applyOrderSnapshot',
+                    { snapshot: snap, runtimeOnly: runtimeOnly === true },
+                    { panelId: c.id },
+                );
                 if (p && typeof p.catch === 'function') p.catch(() => {});
             } catch (_) {}
         }

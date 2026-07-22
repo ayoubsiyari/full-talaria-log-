@@ -25677,6 +25677,16 @@ class OrderManager {
         }
     }
 
+    /**
+     * A6-4: iframe order rows are a read-only projection of the host store.
+     * They must not re-mark or execute from their display timeframe because a
+     * 1m/15m layout would otherwise show two P&Ls for the same position.
+     */
+    _usesHostProjectedOrderRuntime() {
+        return _orderMcSnapshotProjectionV1Enabled()
+            && this._multichartIsEmbedIframe();
+    }
+
     /** Parent pauses setDraftPreview while user drags preview on an iframe tile (avoids TP/SL flicker). */
     _multichartPostDraftDragBusy(busy) {
         if (!this._multichartIsEmbedIframe()) return;
@@ -29177,6 +29187,11 @@ class OrderManager {
      * Update positions with current prices
      */
     updatePositions() {
+        // Host-canonical snapshots own lifecycle + P&L. A projected iframe may
+        // redraw geometry, but its resampled display candle cannot mutate money.
+        if (this._usesHostProjectedOrderRuntime()) {
+            return;
+        }
         if (this._shouldDeferOrderExecutionForTimeframeTransition()) {
             return;
         }
@@ -38950,12 +38965,11 @@ class OrderManager {
             return;
         }
 
-        // Guard: remove any existing SL/TP/BE lines for this order first to prevent duplicates.
-        // Many call-sites invoke drawSLTPLines without a preceding removeSLTPLines, so we
-        // deduplicate here once rather than patching every caller.
-        this.removeSLTPLines(order.id);
-
         if (targetChart == null && this._isMultiPanelLayout()) {
+            // Clear the old fan-out once. Recursive per-chart draws must only
+            // dedupe their own surface; a global clear in each recursion leaves
+            // SL/TP visible on the final panel only.
+            this.removeSLTPLines(order.id);
             const charts = this._collectLayoutCharts();
             for (const ch of charts) {
                 if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
@@ -38968,6 +38982,9 @@ class OrderManager {
         }
 
         const chart = targetChart || this.chart;
+        // Guard: remove an existing row on this surface before rebuilding it.
+        // Calls without a target remain global for single-chart/close flows.
+        this.removeSLTPLines(order.id, targetChart || null);
         if (!chart?.svg) {
             console.error('❌ Chart SVG not found! Cannot draw SL/TP lines.');
             return;
@@ -39533,10 +39550,13 @@ class OrderManager {
     /**
      * Remove SL/TP lines from chart
      */
-    removeSLTPLines(orderId) {
+    removeSLTPLines(orderId, targetChart = null) {
+        const matchesTarget = (row) => row && row.orderId === orderId
+            && (!targetChart || (row.chart || this.chart) === targetChart);
+
         // Remove SL lines (one per chart in multi-panel)
         if (this.slLines) {
-            const slToRemove = this.slLines.filter((sl) => sl.orderId === orderId);
+            const slToRemove = this.slLines.filter(matchesTarget);
             if (slToRemove.length > 0) {
                 console.log(`   🧹 Removing ${slToRemove.length} SL line(s) for order #${orderId}`);
                 slToRemove.forEach((slLine) => {
@@ -39551,13 +39571,13 @@ class OrderManager {
                     if (slLine.priceText) slLine.priceText.remove();
                     if (slLine.yAxisHighlight) slLine.yAxisHighlight.remove();
                 });
-                this.slLines = this.slLines.filter((sl) => sl.orderId !== orderId);
+                this.slLines = this.slLines.filter((sl) => !matchesTarget(sl));
             }
         }
         
         // Remove TP lines (may be multiple for multi-TP orders!)
         if (this.tpLines) {
-            const tpLinesToRemove = this.tpLines.filter(tp => tp.orderId === orderId);
+            const tpLinesToRemove = this.tpLines.filter(matchesTarget);
             if (tpLinesToRemove.length > 0) {
                 console.log(`   🧹 Removing ${tpLinesToRemove.length} TP line(s) for order #${orderId}`);
                 tpLinesToRemove.forEach(tpLine => {
@@ -39576,13 +39596,13 @@ class OrderManager {
                     if (tpLine.tpPlusBadge) tpLine.tpPlusBadge.remove();
                     if (tpLine.yAxisHighlight) tpLine.yAxisHighlight.remove();
                 });
-                this.tpLines = this.tpLines.filter(tp => tp.orderId !== orderId);
+                this.tpLines = this.tpLines.filter((tp) => !matchesTarget(tp));
             }
         }
         
         // Remove BE lines
         if (this.beLines) {
-            const beToRemove = this.beLines.filter((be) => be.orderId === orderId);
+            const beToRemove = this.beLines.filter(matchesTarget);
             if (beToRemove.length > 0) {
                 console.log(`   🧹 Removing ${beToRemove.length} BE line(s) for order #${orderId}`);
                 beToRemove.forEach((beLine) => {
@@ -39594,7 +39614,7 @@ class OrderManager {
                     if (beLine.priceText) beLine.priceText.remove();
                     if (beLine.yAxisHighlight) beLine.yAxisHighlight.remove();
                 });
-                this.beLines = this.beLines.filter((be) => be.orderId !== orderId);
+                this.beLines = this.beLines.filter((be) => !matchesTarget(be));
             }
         }
         
@@ -42176,6 +42196,16 @@ class OrderManager {
 
     _markPriceForOpenPosition(position, chart) {
         if (!position) return null;
+        const hostCanonicalLayout = _orderMcSnapshotProjectionV1Enabled()
+            && (this._usesHostProjectedOrderRuntime() || this._isMultiPanelLayout());
+        if (hostCanonicalLayout) {
+            const hostMark = Number.parseFloat(position._miLastMarkPrice);
+            if (Number.isFinite(hostMark) && hostMark > 0) return hostMark;
+            // Before the host's first replay tick, placement price is the only
+            // canonical mark; never substitute a panel's coarse display candle.
+            const entry = Number.parseFloat(position.openPrice ?? position.entryPrice);
+            return Number.isFinite(entry) && entry > 0 ? entry : null;
+        }
         const ch = chart || this._getOrderContextChart() || this.chart;
         const candle = this._getCurrentCandleForChart(ch);
         if (!candle) return null;
