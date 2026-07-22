@@ -566,6 +566,8 @@ class OrderManager {
         this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
         this._pendingPositionsPanelRaf = null;
+        /** rAF handle for M19-A coalesced runtime P&L/equity text updates (not full panel rebuild). */
+        this._positionsPanelRuntimeRaf = null;
         /** rAF handle for coalesced multichart `order:pending-updated` emits while dragging pending lines */
         this._pendingMirrorSyncRaf = null;
 
@@ -2871,9 +2873,17 @@ class OrderManager {
             const curBar = this.getCurrentCandle();
             return { t: curBar ? Number(curBar.t) : null, tick: Infinity };
         }
-        const anim = rs.animatingCandle;
+        // pause() zeroes tickProgress but keeps the frozen candle + real progress
+        // in _savedTickState. Placement / SL guards must use that saved tick, or a
+        // mid-candle pause+place arms guardTick=0 and step-forward skips the SL wick.
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (anim) {
-            return { t: Number(anim.t), tick: Number(rs.tickProgress) || 0 };
+            let tick = Number(rs.tickProgress);
+            if ((!Number.isFinite(tick) || tick <= 0) && saved && Number.isFinite(Number(saved.tickProgress))) {
+                tick = Number(saved.tickProgress);
+            }
+            return { t: Number(anim.t), tick: Number.isFinite(tick) ? tick : 0 };
         }
         const curBar = this.getCurrentCandle();
         return { t: curBar ? Number(curBar.t) : null, tick: -1 };
@@ -2894,9 +2904,13 @@ class OrderManager {
         const mode = typeof rs.getPlaybackMode === 'function'
             ? rs.getPlaybackMode()
             : (rs.playbackMode || 'tick');
-        const anim = rs.animatingCandle;
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (mode === 'tick' && anim && Number.isFinite(Number(anim.t))) {
-            const tick = Number(rs.tickProgress);
+            let tick = Number(rs.tickProgress);
+            if ((!Number.isFinite(tick) || tick <= 0) && saved && Number.isFinite(Number(saved.tickProgress))) {
+                tick = Number(saved.tickProgress);
+            }
             return `tick:${Number(anim.t)}:${Number.isFinite(tick) ? tick : 0}`;
         }
 
@@ -30073,13 +30087,252 @@ class OrderManager {
             console.log(`💰 Total Unrealized P&L: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)} | Balance: $${this.balance.toFixed(2)} | Equity: $${this.equity.toFixed(2)}`);
         }
 
-        try {
-            if (typeof this.renderCrossInstrumentPositionsDock === 'function') {
-                this.renderCrossInstrumentPositionsDock();
-            }
-        } catch (e) { /* ignore */ }
+        // M19-A: per-tick path must not full-rebuild the positions panel (innerHTML /
+        // analytics / journal / persist). Coalesce a lightweight P&L/equity text update
+        // (includes cross-instrument dock text). Structural place/fill/close/cancel/
+        // restore still call updatePositionsPanel().
+        // Kill-switch (restore per-tick full rebuilds):
+        //   window.__TALARIA_DISABLE_M19_PANEL_DIRTY_V1 = true
+        this._schedulePositionsPanelRuntimeUpdate();
+    }
 
-        this.updatePositionsPanel();
+    /**
+     * M19-A — panel dirty / lightweight runtime path enabled unless kill-switch is set.
+     */
+    _m19PanelDirtyV1Enabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M19_PANEL_DIRTY_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
+     * Schedule one rAF-coalesced lightweight P&L/equity text update for the play tick path.
+     * Kill-switch falls back to a full updatePositionsPanel() (pre-Fix-A behavior).
+     */
+    _schedulePositionsPanelRuntimeUpdate() {
+        if (!this._m19PanelDirtyV1Enabled()) {
+            try {
+                if (typeof this.renderCrossInstrumentPositionsDock === 'function') {
+                    this.renderCrossInstrumentPositionsDock();
+                }
+            } catch (_) { /* ignore */ }
+            if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+            return;
+        }
+        if (this._positionsPanelRuntimeRaf != null) return;
+        const raf = (typeof requestAnimationFrame === 'function')
+            ? requestAnimationFrame
+            : (fn) => setTimeout(fn, 0);
+        this._positionsPanelRuntimeRaf = raf(() => {
+            this._positionsPanelRuntimeRaf = null;
+            try {
+                this._updatePositionsPanelRuntimeOnly();
+            } catch (_) { /* ignore */ }
+        });
+    }
+
+    /** Format helpers for M19-A runtime text patches (must match structural rebuild). */
+    _m19FmtSignedUsd(v) {
+        const n = Number(v) || 0;
+        return `${n >= 0 ? '+' : ''}$${n.toFixed(2)}`;
+    }
+
+    _m19FmtUsd(v) {
+        return `$${(Number(v) || 0).toFixed(2)}`;
+    }
+
+    _m19FmtSignedR(v) {
+        const n = Number(v) || 0;
+        return `${n >= 0 ? '+' : ''}${n.toFixed(2)}R`;
+    }
+
+    _m19FmtPercent(v) {
+        return `${(Number(v) || 0).toFixed(2)}%`;
+    }
+
+    _m19CardPnlPercent(pos, pnl) {
+        const basis = pos && pos.riskAmount && pos.riskAmount > 0
+            ? pos.riskAmount
+            : ((Number(pos && pos.openPrice) * Number(pos && pos.quantity)) || 1);
+        return ((Number(pnl) || 0) / basis) * 100;
+    }
+
+    _m19DockNowTs() {
+        const normalizeEpochMs = (value, fallback) => {
+            const raw = Number(value);
+            if (!Number.isFinite(raw) || raw <= 0) return fallback;
+            return raw < 1e12 ? raw * 1000 : raw;
+        };
+        const sessionNowTs = normalizeEpochMs(this.orderService?.multiInstrumentSession?.current_time, NaN);
+        const replayNowTs = normalizeEpochMs(this.replaySystem?.replayTimestamp, NaN);
+        const chartNowTs = normalizeEpochMs(this.chart?.replaySystem?.replayTimestamp, NaN);
+        const fallbackNowTs = Date.now();
+        return Number.isFinite(sessionNowTs)
+            ? sessionNowTs
+            : (Number.isFinite(replayNowTs)
+                ? replayNowTs
+                : (Number.isFinite(chartNowTs) ? chartNowTs : fallbackNowTs));
+    }
+
+    _m19DockTimeLabel(pos, nowTs) {
+        const normalizeEpochMs = (value, fallback) => {
+            const raw = Number(value);
+            if (!Number.isFinite(raw) || raw <= 0) return fallback;
+            return raw < 1e12 ? raw * 1000 : raw;
+        };
+        const openTs = normalizeEpochMs(pos && pos.openTime, nowTs);
+        const replayNowTs = normalizeEpochMs(this.replaySystem?.replayTimestamp, NaN);
+        let mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
+        if (mins > 60 * 24 * 365 && Number.isFinite(replayNowTs)) {
+            mins = Math.max(0, Math.round((replayNowTs - openTs) / 60000));
+        }
+        return mins >= 1440 ? `${(mins / 1440).toFixed(1)}d` : mins >= 60 ? `${(mins / 60).toFixed(1)}h` : `${mins}m`;
+    }
+
+    _m19SetSignedMetricEl(el, value) {
+        if (!el) return;
+        el.textContent = this._m19FmtSignedUsd(value);
+        if (el.classList) {
+            el.classList.remove('metric-value--positive', 'metric-value--negative');
+            if (value > 0) el.classList.add('metric-value--positive');
+            else if (value < 0) el.classList.add('metric-value--negative');
+        }
+    }
+
+    _m19SetPnlClass(el, pnl) {
+        if (!el || !el.classList) return;
+        el.classList.remove('order-value--profit', 'order-value--loss');
+        if (pnl > 0) el.classList.add('order-value--profit');
+        else if (pnl < 0) el.classList.add('order-value--loss');
+    }
+
+    /**
+     * Patch existing dock live fields only (textContent). Never writes innerHTML.
+     * Rows must already exist from a structural renderCrossInstrumentPositionsDock().
+     */
+    _patchCrossInstrumentPositionsDockRuntimeOnly() {
+        if (typeof document === 'undefined') return;
+        const dock = document.getElementById('multiInstrumentOpenPositionsDock');
+        if (!dock) return;
+        const meta = dock.querySelector('#miDockMeta') || dock.querySelector('[data-m19-role="dock-meta"]');
+        if (meta) meta.textContent = String((this.openPositions || []).length || 0);
+        const nowTs = this._m19DockNowTs();
+        const equityForPct = Number.parseFloat(this.orderService?.equity ?? this.equity) || 0;
+        const positions = Array.isArray(this.openPositions) ? this.openPositions : [];
+        for (let i = 0; i < positions.length; i++) {
+            const pos = positions[i];
+            if (!pos || pos.id == null) continue;
+            const oid = String(pos.id);
+            const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
+            const risk = Number.parseFloat(pos.riskAmount || 0);
+            const rNow = risk > 0 ? (pnl / risk) : 0;
+            const margin = this.orderService && typeof this.orderService.estimateTradeMargin === 'function'
+                ? this.orderService.estimateTradeMargin(pos)
+                : 0;
+            const marginPct = equityForPct > 0 ? (margin / equityForPct) * 100 : null;
+            const marginPctLabel = marginPct != null && Number.isFinite(marginPct)
+                ? `${marginPct.toFixed(1)}%`
+                : '—';
+            const row = dock.querySelector(`[data-m19-role="dock-row"][data-m19-order-id="${oid}"]`);
+            if (!row) continue;
+            const pnlEl = row.querySelector('[data-m19-role="dock-pnl-dollar"]');
+            const rEl = row.querySelector('[data-m19-role="dock-r"]');
+            const marginEl = row.querySelector('[data-m19-role="dock-margin"]');
+            const timeEl = row.querySelector('[data-m19-role="dock-time"]');
+            if (pnlEl) {
+                pnlEl.textContent = this._m19FmtSignedUsd(pnl);
+                if (pnlEl.style) pnlEl.style.color = pnl >= 0 ? '#22c55e' : '#ef4444';
+            }
+            if (rEl) rEl.textContent = this._m19FmtSignedR(rNow);
+            if (marginEl) marginEl.textContent = marginPctLabel;
+            if (timeEl) timeEl.textContent = this._m19DockTimeLabel(pos, nowTs);
+        }
+    }
+
+    /**
+     * Lightweight runtime panel update: textContent only on stamped live fields.
+     * No innerHTML, analytics, journal traversal, persistence, or dock rebuild.
+     */
+    _updatePositionsPanelRuntimeOnly() {
+        if (typeof document === 'undefined') return;
+        const balance = Number(this.balance) || 0;
+        const equity = Number(this.equity);
+        const eq = Number.isFinite(equity) ? equity : balance;
+        const unrealizedPnL = eq - balance;
+        const realizedPnL = balance - (Number(this.initialBalance) || 0);
+        const setText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+
+        setText('accountBalance', this._m19FmtUsd(balance));
+        setText('initialBalance', this._m19FmtUsd(Number(this.initialBalance) || 0));
+        ['replayMetaBalance', 'replayMetaBalance2', 'replayMetaBalanceAll'].forEach((id) => {
+            setText(id, this._m19FmtUsd(balance));
+        });
+        this._m19SetSignedMetricEl(document.getElementById('unrealizedPnL'), unrealizedPnL);
+        this._m19SetSignedMetricEl(document.getElementById('realizedPnL'), realizedPnL);
+        ['replayMetaUnrealized', 'replayMetaUnrealized2'].forEach((id) => {
+            this._m19SetSignedMetricEl(document.getElementById(id), unrealizedPnL);
+        });
+        ['replayMetaRealized', 'replayMetaRealized2'].forEach((id) => {
+            this._m19SetSignedMetricEl(document.getElementById(id), realizedPnL);
+        });
+
+        const mark = this.chart?.latestCandle?.close
+            ?? this.chart?.latestCandle?.c
+            ?? this.chart?.data?.[this.chart?.data?.length - 1]?.close
+            ?? this.chart?.data?.[this.chart?.data?.length - 1]?.c
+            ?? null;
+
+        const positions = Array.isArray(this.openPositions) ? this.openPositions : [];
+        for (let i = 0; i < positions.length; i++) {
+            const pos = positions[i];
+            if (!pos || pos.id == null) continue;
+            const oid = String(pos.id);
+            const pnl = Number.isFinite(pos.unrealizedPnL) ? pos.unrealizedPnL : 0;
+            const pct = this._m19CardPnlPercent(pos, pnl);
+
+            const cardDollar = document.querySelector(
+                `[data-m19-role="card-pnl-dollar"][data-m19-order-id="${oid}"]`,
+            );
+            const cardPct = document.querySelector(
+                `[data-m19-role="card-pnl-percent"][data-m19-order-id="${oid}"]`,
+            );
+            if (cardDollar) {
+                cardDollar.textContent = this._m19FmtSignedUsd(pnl);
+                this._m19SetPnlClass(cardDollar, pnl);
+            }
+            if (cardPct) cardPct.textContent = this._m19FmtPercent(pct);
+
+            const tablePnl = document.querySelector(
+                `[data-m19-role="table-pnl"][data-m19-order-id="${oid}"]`,
+            );
+            if (tablePnl) {
+                tablePnl.textContent = this._m19FmtSignedUsd(pnl);
+                this._m19SetPnlClass(tablePnl, pnl);
+            }
+
+            const tableMark = document.querySelector(
+                `[data-m19-role="table-mark"][data-m19-order-id="${oid}"]`,
+            );
+            if (tableMark && Number.isFinite(Number(mark))) {
+                tableMark.textContent = Number(mark).toFixed(5);
+            }
+
+            const allTradesPnl = document.querySelector(
+                `[data-m19-role="alltrades-pnl"][data-m19-order-id="${oid}"]`,
+            );
+            if (allTradesPnl) {
+                allTradesPnl.textContent = this._m19FmtSignedUsd(pnl);
+                this._m19SetPnlClass(allTradesPnl, pnl);
+            }
+        }
+
+        this._patchCrossInstrumentPositionsDockRuntimeOnly();
     }
 
     /**
@@ -42704,7 +42957,7 @@ class OrderManager {
                             <div class="order-card__chips">
                                 <span class="order-chip">Position ID <strong>#${pos.id}</strong></span>
                                 <span class="order-chip">Risk Target <strong>${pos.riskAmount ? '$' + pos.riskAmount.toFixed(2) : '—'}</strong></span>
-                                <span class="${pnlChipClass}">Unrealized P&amp;L <strong class="${pnlClass}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPercent.toFixed(2)}%)</strong></span>
+                                <span class="${pnlChipClass}">Unrealized P&amp;L <strong class="${pnlClass}" data-m19-role="card-pnl" data-m19-order-id="${pos.id}"><span data-m19-role="card-pnl-dollar" data-m19-order-id="${pos.id}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</span> (<span data-m19-role="card-pnl-percent" data-m19-order-id="${pos.id}">${pnlPercent.toFixed(2)}%</span>)</strong></span>
                             </div>
                         </div>
                     </div>
@@ -42747,8 +43000,8 @@ class OrderManager {
                             <td><span class="replay-badge ${sideClass}">${pos.type}</span></td>
                             <td class="replay-cell-number">${quantity}</td>
                             <td class="replay-cell-number">${entryPrice}</td>
-                            <td class="replay-cell-number">${currentPriceStr}</td>
-                            <td class="replay-cell-number ${pnlClass}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
+                            <td class="replay-cell-number" data-m19-role="table-mark" data-m19-order-id="${pos.id}">${currentPriceStr}</td>
+                            <td class="replay-cell-number ${pnlClass}" data-m19-role="table-pnl" data-m19-order-id="${pos.id}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
                             <td class="replay-cell-number">${tp}</td>
                             <td class="replay-cell-number">${sl}</td>
                             <td class="replay-cell-center">
@@ -42913,7 +43166,7 @@ class OrderManager {
                             <td><span class="replay-badge">${orderType}</span></td>
                             <td class="replay-cell-number">${entryPrice}</td>
                             <td class="replay-cell-number">${currentPrice}</td>
-                            <td class="replay-cell-number ${pnlClass}">${pnlDisplay}</td>
+                            <td class="replay-cell-number ${pnlClass}"${trade.type === 'open' ? ` data-m19-role="alltrades-pnl" data-m19-order-id="${trade.id}"` : ''}>${pnlDisplay}</td>
                             <td class="replay-cell-number">${tp}</td>
                             <td class="replay-cell-number">${sl}</td>
                             <td>${time}</td>
@@ -43424,29 +43677,17 @@ class OrderManager {
         const body = dock.querySelector('#miDockBody');
         const meta = dock.querySelector('#miDockMeta');
         if (!body || !meta) return;
+        meta.setAttribute('data-m19-role', 'dock-meta');
         meta.textContent = String(this.openPositions.length || 0);
 
         if (!this.openPositions.length) {
             body.innerHTML = `<div style="padding:10px;color:#94a3b8;font-size:12px;">No open positions.</div>`;
             return;
         }
-        const normalizeEpochMs = (value, fallback) => {
-            const raw = Number(value);
-            if (!Number.isFinite(raw) || raw <= 0) return fallback;
-            // If value looks like epoch seconds, convert to ms.
-            return raw < 1e12 ? raw * 1000 : raw;
-        };
-        const sessionNowTs = normalizeEpochMs(this.orderService?.multiInstrumentSession?.current_time, NaN);
-        const replayNowTs = normalizeEpochMs(this.replaySystem?.replayTimestamp, NaN);
-        const chartNowTs = normalizeEpochMs(this.chart?.replaySystem?.replayTimestamp, NaN);
-        const fallbackNowTs = Date.now();
-        // Prefer backtest/replay timeline over wall clock for time-in-trade.
-        const nowTs = Number.isFinite(sessionNowTs)
-            ? sessionNowTs
-            : (Number.isFinite(replayNowTs)
-                ? replayNowTs
-                : (Number.isFinite(chartNowTs) ? chartNowTs : fallbackNowTs));
+        const nowTs = this._m19DockNowTs();
         const equityForPct = Number.parseFloat(this.orderService?.equity ?? this.equity) || 0;
+        // Structural rebuild only — runtime path patches stamped roles via
+        // _patchCrossInstrumentPositionsDockRuntimeOnly() (textContent, no innerHTML).
         body.innerHTML = this.openPositions.map((pos) => {
             const ticker = String(pos.ticker || pos.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             const pnl = Number.parseFloat(pos.unrealizedPnL || 0) || 0;
@@ -43460,21 +43701,16 @@ class OrderManager {
             const marginPctLabel = marginPct != null && Number.isFinite(marginPct)
                 ? `${marginPct.toFixed(1)}%`
                 : '—';
-            const openTs = normalizeEpochMs(pos.openTime, nowTs);
-            let mins = Math.max(0, Math.round((nowTs - openTs) / 60000));
-            // Guard: if we somehow mix wall-clock with replay timeline, prefer replay delta.
-            if (mins > 60 * 24 * 365 && Number.isFinite(replayNowTs)) {
-                mins = Math.max(0, Math.round((replayNowTs - openTs) / 60000));
-            }
-            const timeLabel = mins >= 1440 ? `${(mins / 1440).toFixed(1)}d` : mins >= 60 ? `${(mins / 60).toFixed(1)}h` : `${mins}m`;
+            const timeLabel = this._m19DockTimeLabel(pos, nowTs);
+            const oid = pos.id;
             return `
-                <div data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:default;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
+                <div data-m19-role="dock-row" data-m19-order-id="${oid}" data-switch-ticker="${ticker}" style="padding:8px 10px;border-top:1px solid rgba(255,255,255,0.07);cursor:default;display:grid;grid-template-columns:70px 52px 56px 1fr 82px 54px;gap:8px;align-items:center;">
                     <div style="font-size:12px;font-weight:700;">${ticker}</div>
                     <div style="font-size:11px;color:${pos.type === 'SELL' ? '#f87171' : '#4ade80'};">${pos.type || '-'}</div>
                     <div style="font-size:11px;">${Number(pos.quantity || 0).toFixed(2)}L</div>
-                    <div style="font-size:11px;color:${pnlClass};">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${rNow >= 0 ? '+' : ''}${rNow.toFixed(2)}R)</div>
-                    <div style="font-size:11px;color:#cbd5e1;">${marginPctLabel}</div>
-                    <div style="font-size:11px;color:#94a3b8;">${timeLabel}</div>
+                    <div style="font-size:11px;color:${pnlClass};"><span data-m19-role="dock-pnl-dollar" data-m19-order-id="${oid}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</span> (<span data-m19-role="dock-r" data-m19-order-id="${oid}">${rNow >= 0 ? '+' : ''}${rNow.toFixed(2)}R</span>)</div>
+                    <div style="font-size:11px;color:#cbd5e1;" data-m19-role="dock-margin" data-m19-order-id="${oid}">${marginPctLabel}</div>
+                    <div style="font-size:11px;color:#94a3b8;" data-m19-role="dock-time" data-m19-order-id="${oid}">${timeLabel}</div>
                 </div>
             `;
         }).join('');

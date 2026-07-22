@@ -182,7 +182,12 @@ class PreferencesSyncManager {
     }
 
     queueMergedFieldsForSync(serverPrefs, mergedPrefs) {
-        const fields = ['chart_templates', 'drawing_tool_templates', 'v9_chart_templates'];
+        const fields = [
+            'chart_templates',
+            'drawing_tool_templates',
+            'indicator_settings_templates',
+            'v9_chart_templates',
+        ];
         for (const field of fields) {
             const serverVal = (serverPrefs && serverPrefs[field]) || {};
             const mergedVal = (mergedPrefs && mergedPrefs[field]) || {};

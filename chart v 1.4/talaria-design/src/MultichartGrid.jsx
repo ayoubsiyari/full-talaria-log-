@@ -1067,6 +1067,14 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
             ? String(window.__TALARIA_CHART_BUILD_ID)
             : "";
     if (buildV) params.set("v", buildV);
+    // Share host window claim with panel iframes (hard-gated /api/file + session state).
+    try {
+        const lim = typeof window !== "undefined" ? window.__talariaChartWindowLimit : null;
+        const wid = lim && typeof lim.getClientId === "function" ? lim.getClientId() : "";
+        if (wid && String(wid).length >= 8) {
+            params.set("chartWindowId", String(wid).slice(0, 64));
+        }
+    } catch (_) { /* ignore */ }
     // Bust cached chart-embed.html shells (nginx serves /chart/ from static export with 1h TTL).
     params.set("embedRev", "ohlc2");
     // Lightweight chart-only page — no React bundle per iframe (major multichart perf win).

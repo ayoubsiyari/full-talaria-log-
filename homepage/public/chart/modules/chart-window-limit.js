@@ -1,14 +1,22 @@
 /**
  * Limit concurrent Talaria chart windows / PWA apps using users.max_sessions.
- * Multichart panel iframes (panelId=…) do not consume a slot — only the host window does.
+ * Over-cap policy: kick-oldest (newest window wins).
+ * Multichart panel iframes (panelId=…) do not claim a slot — they inherit the
+ * host window id and still send X-Talaria-Chart-Window-Id on heavy API calls.
  */
 (function () {
     'use strict';
 
     var STORAGE_KEY = 'talaria_chart_window_id';
+    var HEADER_NAME = 'X-Talaria-Chart-Window-Id';
     var HEARTBEAT_MS = 25000;
+    var KICKED_MESSAGE = 'This chart was opened elsewhere — reload to take over.';
     /** Set when the windows API is missing/misrouted (e.g. nginx 405) so we stop spamming. */
     var apiUnavailable = false;
+    var fetchPatched = false;
+    var wsPatched = false;
+    var claimPromise = null;
+    var everClaimed = false;
 
     function isMultichartPanel() {
         try {
@@ -18,9 +26,8 @@
         return false;
     }
 
-    function shouldEnforce() {
-        if (isMultichartPanel()) return false;
-        return true;
+    function shouldClaim() {
+        return !isMultichartPanel();
     }
 
     function getOrCreateClientId() {
@@ -42,6 +49,26 @@
         return id;
     }
 
+    function resolveSharedClientId() {
+        try {
+            var p = new URLSearchParams(window.location.search || '');
+            var fromUrl = (p.get('chartWindowId') || p.get('chart_window_id') || '').trim();
+            if (fromUrl && fromUrl.length >= 8) return fromUrl.slice(0, 64);
+        } catch (_e) { /* ignore */ }
+        try {
+            if (window.parent && window.parent !== window) {
+                var parentApi = window.parent.__talariaChartWindowLimit;
+                if (parentApi && typeof parentApi.getClientId === 'function') {
+                    var fromParent = parentApi.getClientId();
+                    if (fromParent && String(fromParent).length >= 8) {
+                        return String(fromParent).slice(0, 64);
+                    }
+                }
+            }
+        } catch (_e2) { /* cross-origin */ }
+        return null;
+    }
+
     function parseDetail(res, data) {
         var d = data && data.detail;
         if (d && typeof d === 'object') return d;
@@ -51,10 +78,13 @@
         return { message: (data && data.message) || ('Window limit (' + res.status + ')') };
     }
 
+    function isKickedDetail(detail) {
+        var code = detail && detail.code;
+        return code === 'chart_window_kicked' || code === 'chart_window_unknown';
+    }
+
     function showBlockedOverlay(detail) {
-        var maxS = detail && detail.max_sessions != null ? detail.max_sessions : null;
-        var msg = (detail && detail.message) ||
-            'Chart window limit reached. Close another Talaria chart window or app, then reload.';
+        var msg = (detail && detail.message) || KICKED_MESSAGE;
         var existing = document.getElementById('talariaWindowLimitOverlay');
         if (existing) {
             var t = existing.querySelector('[data-wlim-msg]');
@@ -78,28 +108,19 @@
             'box-shadow:0 20px 60px rgba(0,0,0,0.45)',
         ].join(';');
         var title = document.createElement('div');
-        title.textContent = 'Chart window limit';
+        title.textContent = 'Chart opened elsewhere';
         title.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:10px;';
         var body = document.createElement('div');
         body.setAttribute('data-wlim-msg', '1');
         body.textContent = msg;
         body.style.cssText = 'font-size:13px;line-height:1.5;opacity:0.9;margin-bottom:18px;';
-        if (maxS != null) {
-            var meta = document.createElement('div');
-            meta.textContent = 'Your plan allows ' + maxS + ' concurrent chart window' + (maxS === 1 ? '' : 's') + '.';
-            meta.style.cssText = 'font-size:12px;opacity:0.65;margin-bottom:18px;';
-            card.appendChild(title);
-            card.appendChild(body);
-            card.appendChild(meta);
-        } else {
-            card.appendChild(title);
-            card.appendChild(body);
-        }
+        card.appendChild(title);
+        card.appendChild(body);
         var actions = document.createElement('div');
         actions.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;';
         var reloadBtn = document.createElement('button');
         reloadBtn.type = 'button';
-        reloadBtn.textContent = 'Try again';
+        reloadBtn.textContent = 'Reload to take over';
         reloadBtn.style.cssText = [
             'cursor:pointer', 'border:0', 'padding:8px 14px',
             'background:#2962ff', 'color:#fff', 'font-weight:600', 'font-size:13px',
@@ -120,6 +141,12 @@
         el.appendChild(card);
         (document.body || document.documentElement).appendChild(el);
         try { window.__talariaChartWindowBlocked = true; } catch (_e) { /* ignore */ }
+        try {
+            window.dispatchEvent(new CustomEvent('talaria-chart-window-blocked', {
+                detail: detail || { message: msg },
+            }));
+        } catch (_e2) { /* ignore */ }
+        stopHeavyWork();
     }
 
     function removeBlockedOverlay() {
@@ -128,12 +155,32 @@
         try { window.__talariaChartWindowBlocked = false; } catch (_e) { /* ignore */ }
     }
 
+    function stopHeavyWork() {
+        try {
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            }
+        } catch (_e) { /* ignore */ }
+        try {
+            var chart = window.chart;
+            if (chart) {
+                if (typeof chart.stopReplay === 'function') chart.stopReplay();
+                else if (chart.replaySystem && typeof chart.replaySystem.pause === 'function') {
+                    chart.replaySystem.pause();
+                } else if (chart.replaySystem && typeof chart.replaySystem.stop === 'function') {
+                    chart.replaySystem.stop();
+                }
+            }
+        } catch (_e2) { /* ignore */ }
+    }
+
     var clientId = null;
     var heartbeatTimer = null;
     var claimInFlight = false;
 
     function release() {
-        if (!clientId) return;
+        if (!shouldClaim() || !clientId) return;
         var payload = JSON.stringify({ client_id: clientId });
         try {
             if (navigator.sendBeacon) {
@@ -171,8 +218,13 @@
         } catch (_e) { /* ignore */ }
     }
 
+    function handleKicked(detail) {
+        showBlockedOverlay(detail || { code: 'chart_window_kicked', message: KICKED_MESSAGE });
+    }
+
     function heartbeat() {
         if (apiUnavailable || !clientId || window.__talariaChartWindowBlocked) return;
+        if (!shouldClaim()) return;
         fetch('/api/chart/windows/heartbeat', {
             method: 'POST',
             credentials: 'include',
@@ -186,18 +238,28 @@
                 return;
             }
             if (res.status === 409) {
-                // Slot lost — try reclaim (may show limit overlay).
-                claim(true);
+                return res.json().catch(function () { return {}; }).then(function (data) {
+                    var detail = parseDetail(res, data);
+                    if (isKickedDetail(detail) || everClaimed) {
+                        handleKicked(detail);
+                        return;
+                    }
+                    // Rare: never claimed successfully — try reclaim once.
+                    claim(true);
+                });
             }
         }).catch(function () { /* ignore transient */ });
     }
 
     function claim(isRetry) {
+        if (!shouldClaim()) {
+            return Promise.resolve(true);
+        }
         if (apiUnavailable) return Promise.resolve(true);
-        if (claimInFlight) return Promise.resolve(false);
+        if (claimInFlight && claimPromise) return claimPromise;
         claimInFlight = true;
         clientId = getOrCreateClientId();
-        return fetch('/api/chart/windows/claim', {
+        claimPromise = fetch('/api/chart/windows/claim', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -206,6 +268,7 @@
         }).then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (data) {
                 if (res.ok && data && data.ok !== false) {
+                    everClaimed = true;
                     removeBlockedOverlay();
                     if (!heartbeatTimer) {
                         heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
@@ -214,10 +277,19 @@
                 }
                 if (res.status === 409) {
                     var detail = parseDetail(res, data);
-                    if (detail.code === 'chart_window_unknown' && !isRetry) {
+                    // Legacy block-new response — treat as kicked/takeover UX.
+                    if (detail.code === 'chart_window_limit') {
+                        handleKicked({
+                            code: 'chart_window_kicked',
+                            message: detail.message || KICKED_MESSAGE,
+                        });
+                        return false;
+                    }
+                    if (isKickedDetail(detail) && !isRetry) {
+                        // Unexpected on claim; retry once after release race.
                         return claim(true);
                     }
-                    showBlockedOverlay(detail);
+                    handleKicked(detail);
                     return false;
                 }
                 if (res.status === 401) return false;
@@ -225,7 +297,7 @@
                     markApiUnavailable(res.status);
                     return true;
                 }
-                // Soft-fail: do not brick chart on unexpected server errors.
+                // Soft-fail: do not brick chart on unexpected server errors during bootstrap.
                 return true;
             });
         }).catch(function () {
@@ -234,10 +306,164 @@
             claimInFlight = false;
             return ok;
         });
+        return claimPromise;
+    }
+
+    function ensureClaimed() {
+        if (!shouldClaim()) return Promise.resolve(true);
+        if (window.__talariaChartWindowBlocked) return Promise.resolve(false);
+        if (everClaimed && clientId) return Promise.resolve(true);
+        if (claimPromise) return claimPromise;
+        return claim(false);
+    }
+
+    function isGatedUrl(url) {
+        try {
+            var u = typeof url === 'string' ? url : (url && url.url) || '';
+            if (!u) return false;
+            // Relative or same-origin absolute.
+            var path = u;
+            if (/^https?:\/\//i.test(u)) {
+                var parsed = new URL(u, window.location.href);
+                if (parsed.origin !== window.location.origin) return false;
+                path = parsed.pathname || '';
+            } else {
+                try {
+                    path = new URL(u, window.location.href).pathname || u;
+                } catch (_e) {
+                    path = u;
+                }
+            }
+            if (path.indexOf('/api/file/') === 0) return true;
+            if (/^\/api\/sessions\/\d+\/state\/?$/.test(path)) return true;
+            return false;
+        } catch (_e2) {
+            return false;
+        }
+    }
+
+    function withWindowHeader(init) {
+        var headers;
+        if (init && init.headers) {
+            if (typeof Headers !== 'undefined' && init.headers instanceof Headers) {
+                headers = new Headers(init.headers);
+            } else if (Array.isArray(init.headers)) {
+                headers = new Headers(init.headers);
+            } else {
+                headers = new Headers(init.headers);
+            }
+        } else {
+            headers = new Headers();
+        }
+        if (clientId && !headers.has(HEADER_NAME)) {
+            headers.set(HEADER_NAME, clientId);
+        }
+        var next = init ? Object.assign({}, init) : {};
+        next.headers = headers;
+        if (next.credentials == null) next.credentials = 'include';
+        return next;
+    }
+
+    function installFetchPatch() {
+        if (fetchPatched || typeof window.fetch !== 'function') return;
+        fetchPatched = true;
+        var originalFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (!isGatedUrl(url)) {
+                return originalFetch(input, init);
+            }
+            if (window.__talariaChartWindowBlocked) {
+                return Promise.resolve(new Response(
+                    JSON.stringify({
+                        detail: {
+                            code: 'chart_window_kicked',
+                            message: KICKED_MESSAGE,
+                        },
+                    }),
+                    { status: 409, headers: { 'Content-Type': 'application/json' } }
+                ));
+            }
+            return ensureClaimed().then(function (ok) {
+                if (!ok || window.__talariaChartWindowBlocked) {
+                    return new Response(
+                        JSON.stringify({
+                            detail: {
+                                code: 'chart_window_kicked',
+                                message: KICKED_MESSAGE,
+                            },
+                        }),
+                        { status: 409, headers: { 'Content-Type': 'application/json' } }
+                    );
+                }
+                if (!clientId) {
+                    clientId = isMultichartPanel()
+                        ? (resolveSharedClientId() || getOrCreateClientId())
+                        : getOrCreateClientId();
+                }
+                return originalFetch(input, withWindowHeader(init)).then(function (res) {
+                    if (res.status === 409) {
+                        res.clone().json().catch(function () { return {}; }).then(function (data) {
+                            var detail = parseDetail(res, data);
+                            if (isKickedDetail(detail) || !detail.code) {
+                                handleKicked(detail);
+                            }
+                        });
+                    }
+                    return res;
+                });
+            });
+        };
+    }
+
+    function installWebSocketPatch() {
+        if (wsPatched || typeof window.WebSocket !== 'function') return;
+        wsPatched = true;
+        var OriginalWS = window.WebSocket;
+        window.WebSocket = function (url, protocols) {
+            var finalUrl = url;
+            try {
+                if (typeof url === 'string' && url.indexOf('/ws/chart/') !== -1 && clientId) {
+                    var u = new URL(url, window.location.href);
+                    if (!u.searchParams.get('chart_window_id')) {
+                        u.searchParams.set('chart_window_id', clientId);
+                    }
+                    finalUrl = u.toString();
+                }
+            } catch (_e) { /* ignore */ }
+            if (protocols === undefined) return new OriginalWS(finalUrl);
+            return new OriginalWS(finalUrl, protocols);
+        };
+        window.WebSocket.prototype = OriginalWS.prototype;
+        try {
+            Object.keys(OriginalWS).forEach(function (k) {
+                try { window.WebSocket[k] = OriginalWS[k]; } catch (_e2) { /* ignore */ }
+            });
+            window.WebSocket.CONNECTING = OriginalWS.CONNECTING;
+            window.WebSocket.OPEN = OriginalWS.OPEN;
+            window.WebSocket.CLOSING = OriginalWS.CLOSING;
+            window.WebSocket.CLOSED = OriginalWS.CLOSED;
+        } catch (_e3) { /* ignore */ }
     }
 
     function boot() {
-        if (!shouldEnforce()) return;
+        installFetchPatch();
+        installWebSocketPatch();
+
+        if (isMultichartPanel()) {
+            clientId = resolveSharedClientId();
+            if (!clientId) {
+                // Host may still be claiming — retry briefly for parent id.
+                var tries = 0;
+                var timer = setInterval(function () {
+                    tries += 1;
+                    clientId = resolveSharedClientId();
+                    if (clientId || tries > 40) clearInterval(timer);
+                }, 50);
+            }
+            return;
+        }
+
         clientId = getOrCreateClientId();
         var started = false;
         function start() {
@@ -249,10 +475,10 @@
             start();
         } else {
             var n = 0;
-            var timer = setInterval(function () {
+            var waitTimer = setInterval(function () {
                 n += 1;
                 if (window.__talariaUserId || n > 80) {
-                    clearInterval(timer);
+                    clearInterval(waitTimer);
                     start();
                 }
             }, 50);
@@ -271,9 +497,27 @@
         boot();
     }
 
+    // Install patches immediately so early chart fetches wait on claim.
+    installFetchPatch();
+    installWebSocketPatch();
+    if (shouldClaim()) {
+        clientId = getOrCreateClientId();
+    } else {
+        clientId = resolveSharedClientId();
+    }
+
     window.__talariaChartWindowLimit = {
         claim: function () { return claim(false); },
         release: release,
-        getClientId: function () { return clientId || getOrCreateClientId(); },
+        getClientId: function () {
+            if (clientId) return clientId;
+            if (isMultichartPanel()) {
+                clientId = resolveSharedClientId();
+                return clientId;
+            }
+            return getOrCreateClientId();
+        },
+        ensureClaimed: ensureClaimed,
+        isBlocked: function () { return !!window.__talariaChartWindowBlocked; },
     };
 })();

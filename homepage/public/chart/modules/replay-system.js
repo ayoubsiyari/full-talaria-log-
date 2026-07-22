@@ -4100,6 +4100,15 @@ class ReplaySystem {
             return;
         }
 
+        // Kick-oldest: displaced window must not keep burning replay CPU/network.
+        try {
+            if (typeof window !== 'undefined' && window.__talariaChartWindowBlocked) {
+                this.isPlaying = false;
+                this.syncPlayPauseUI();
+                return;
+            }
+        } catch (_blocked) { /* ignore */ }
+
         // Re-scan panel TFs so coarse-main Play never uses a stale host-only finest.
         try { this._onFinestTfCadencePanelsChanged(); } catch (_e) { /* ignore */ }
 
@@ -6134,6 +6143,57 @@ class ReplaySystem {
     }
 
     /**
+     * Before a manual bar-step abandons mid-candle tick animation, evaluate SL/TP
+     * against the remaining tick path after each position's placement guard.
+     * Otherwise step-forward skips those ticks and a same-bar SL never fires
+     * (while a later-bar TP still can).
+     */
+    _flushIntrabarSltpBeforeBarStep() {
+        if (this.getPlaybackMode() !== 'tick') return;
+        const om = this.chart && this.chart.orderManager;
+        if (!om || typeof om.updatePositions !== 'function') return;
+
+        const saved = this._savedTickState;
+        const anim = (saved && saved.animatingCandle) || this.animatingCandle;
+        if (!anim) return;
+
+        const tc = anim.target || anim;
+        let path = anim.cachedPath;
+        if ((!path || !path.length) && typeof this.getTickPath === 'function') {
+            path = this.getTickPath(tc);
+        }
+        if (!path || !path.length) return;
+
+        const prevAnim = this.animatingCandle;
+        const prevProgress = this.tickProgress;
+        const prevElapsed = this.tickElapsedMs;
+        const prevSaved = this._savedTickState;
+
+        // Restore live anim + jump progress to candle end so existing guarded
+        // tick-path SL/TP checks see every sample after the placement guard.
+        this._savedTickState = null;
+        this.animatingCandle = anim;
+        if (!anim.cachedPath) anim.cachedPath = path;
+        const th = Number.parseFloat(tc.h ?? tc.high);
+        const tl = Number.parseFloat(tc.l ?? tc.low);
+        const tcClose = Number.parseFloat(tc.c ?? tc.close);
+        if (Number.isFinite(th)) anim.high = th;
+        if (Number.isFinite(tl)) anim.low = tl;
+        if (Number.isFinite(tcClose)) anim.close = tcClose;
+        this.tickProgress = path.length;
+        this.tickElapsedMs = prevElapsed;
+
+        try {
+            om.updatePositions();
+        } catch (_e) { /* ignore */ }
+
+        this.animatingCandle = prevAnim;
+        this.tickProgress = prevProgress;
+        this.tickElapsedMs = prevElapsed;
+        this._savedTickState = prevSaved;
+    }
+
+    /**
      * Manual step forward request from UI controls/clone.
      * Ensures replay does not continue running after a single-step action.
      */
@@ -6150,6 +6210,8 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
+        // Must run before clearing animatingCandle / _savedTickState.
+        this._flushIntrabarSltpBeforeBarStep();
         this._savedTickState = null;
         this.animatingCandle = null;
         this.tickProgress = 0;

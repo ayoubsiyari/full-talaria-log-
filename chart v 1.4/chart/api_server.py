@@ -3718,6 +3718,12 @@ async def auth_middleware(request: Request, call_next):
                 {"detail": "Active subscription required to use chart market data"},
                 status_code=403,
             )
+        # Kick-oldest hard gate: displaced windows cannot keep loading candles/state.
+        if _path_requires_chart_window(path):
+            try:
+                _require_active_chart_window(request, user=user)
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         return await call_next(request)
 
     if path.startswith("/api/"):
@@ -14079,7 +14085,12 @@ async def auth_me(request: Request, response: Response):
 
 # Concurrent chart windows / PWA instances (uses users.max_sessions). Multichart
 # panels in one host window share a single client_id and do not each consume a slot.
+# Over-cap policy: kick-oldest (newest claim wins; displaced windows hard-stop).
 _CHART_WINDOW_STALE_SECONDS = 90
+_CHART_WINDOW_ID_HEADER = "X-Talaria-Chart-Window-Id"
+_CHART_WINDOW_KICKED_MESSAGE = (
+    "This chart was opened elsewhere — reload to take over."
+)
 
 
 class _ChartWindowClaimIn(BaseModel):
@@ -14109,11 +14120,103 @@ def _chart_window_limit_for_user(user: User) -> int:
     return max(1, n)
 
 
+def _chart_window_id_from_request(request: Request) -> str:
+    header = (request.headers.get(_CHART_WINDOW_ID_HEADER) or "").strip()
+    if header:
+        return header[:64]
+    try:
+        q = (request.query_params.get("chart_window_id") or "").strip()
+    except Exception:
+        q = ""
+    return q[:64] if q else ""
+
+
+def _chart_window_kicked_error(*, code: str = "chart_window_kicked") -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": code,
+            "message": _CHART_WINDOW_KICKED_MESSAGE,
+        },
+    )
+
+
+def _path_requires_chart_window(path: str) -> bool:
+    """Heavy chart/replay routes that must hold an active window claim."""
+    if not path:
+        return False
+    if path.startswith("/api/file/"):
+        return True
+    # /api/sessions/{id}/state only — list/create/dashboard session CRUD stay ungated.
+    if re.fullmatch(r"/api/sessions/\d+/state/?", path):
+        return True
+    return False
+
+
+def _require_active_chart_window(request: Request, user=None) -> None:
+    """Reject heavy chart/replay work when this browser window is not claimed."""
+    if not AUTH_ENABLED:
+        return
+    if user is None:
+        user = _get_session_identity(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Admins are unlimited (same as claim).
+    if _chart_window_limit_for_user(user) == 0:
+        return
+    client_id = _chart_window_id_from_request(request)
+    if not client_id or len(client_id) < 8:
+        raise _chart_window_kicked_error()
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        row = (
+            db.query(ChartWindowPresence)
+            .filter(
+                ChartWindowPresence.client_id == client_id,
+                ChartWindowPresence.user_id == user.id,
+            )
+            .first()
+        )
+        if not row:
+            raise _chart_window_kicked_error()
+        cutoff = now - timedelta(seconds=_CHART_WINDOW_STALE_SECONDS)
+        last_seen = row.last_seen_at or row.created_at
+        if last_seen is not None and last_seen < cutoff:
+            raise _chart_window_kicked_error()
+    finally:
+        db.close()
+
+
+def _evict_oldest_chart_windows(db, user_id: int, *, need_slots: int) -> list[str]:
+    """Delete oldest presence rows until ``need_slots`` free slots exist. Returns evicted ids."""
+    if need_slots <= 0:
+        return []
+    rows = (
+        db.query(ChartWindowPresence)
+        .filter(ChartWindowPresence.user_id == user_id)
+        .order_by(ChartWindowPresence.last_seen_at.asc())
+        .limit(need_slots)
+        .all()
+    )
+    evicted: list[str] = []
+    for row in rows:
+        evicted.append(str(row.client_id))
+        db.delete(row)
+    return evicted
+
+
 @app.post("/api/chart/windows/claim")
 async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
-    """Register this browser window / installed app against max_sessions."""
+    """Register this browser window / installed app against max_sessions (kick-oldest)."""
     if not AUTH_ENABLED:
-        return {"ok": True, "unlimited": True, "active": 1, "max_sessions": 0}
+        return {
+            "ok": True,
+            "unlimited": True,
+            "active": 1,
+            "max_sessions": 0,
+            "evicted_client_ids": [],
+        }
     # Identity (not entitlement): count every signed-in chart window/app.
     user = _get_session_identity(request)
     if user is None:
@@ -14124,8 +14227,12 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
     db = SessionLocal()
     try:
         now = datetime.utcnow()
+        # Serialize concurrent claims per user (same lock as session-create quota).
+        locked = _lock_user_for_session_quota(db, user.id)
+        if not locked:
+            raise HTTPException(status_code=404, detail="User not found")
         _purge_stale_chart_windows(db, user.id, now=now)
-        max_sess = _chart_window_limit_for_user(user)
+        max_sess = _chart_window_limit_for_user(locked)
         existing = (
             db.query(ChartWindowPresence)
             .filter(ChartWindowPresence.client_id == client_id)
@@ -14149,6 +14256,7 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
                 "client_id": client_id,
                 "active": int(active),
                 "max_sessions": max_sess,
+                "evicted_client_ids": [],
             }
 
         active_rows = (
@@ -14157,18 +14265,11 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
             .order_by(ChartWindowPresence.last_seen_at.asc())
             .all()
         )
+        evicted_client_ids: list[str] = []
         if max_sess > 0 and len(active_rows) >= max_sess:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "chart_window_limit",
-                    "message": (
-                        f"Chart window limit reached ({max_sess}). "
-                        "Close another Talaria chart window or app, then try again."
-                    ),
-                    "active": len(active_rows),
-                    "max_sessions": max_sess,
-                },
+            need = len(active_rows) - max_sess + 1
+            evicted_client_ids = _evict_oldest_chart_windows(
+                db, user.id, need_slots=need
             )
 
         db.add(
@@ -14181,11 +14282,18 @@ async def chart_window_claim(request: Request, body: _ChartWindowClaimIn):
             )
         )
         db.commit()
+        active_after = (
+            db.query(func.count(ChartWindowPresence.client_id))
+            .filter(ChartWindowPresence.user_id == user.id)
+            .scalar()
+            or 0
+        )
         return {
             "ok": True,
             "client_id": client_id,
-            "active": len(active_rows) + 1,
+            "active": int(active_after),
             "max_sessions": max_sess,
+            "evicted_client_ids": evicted_client_ids,
         }
     except HTTPException:
         db.rollback()
@@ -14220,14 +14328,8 @@ async def chart_window_heartbeat(request: Request, body: _ChartWindowClaimIn):
             .first()
         )
         if not row:
-            # Slot lost (stale purge / another client) — force re-claim.
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "chart_window_unknown",
-                    "message": "This chart window is no longer registered. Reloading…",
-                },
-            )
+            # Slot lost (kick-oldest / stale purge) — client must hard-stop or re-claim.
+            raise _chart_window_kicked_error(code="chart_window_unknown")
         row.last_seen_at = now
         db.commit()
         return {"ok": True, "client_id": client_id}
@@ -26543,6 +26645,26 @@ async def ws_chart_stream(ws: WebSocket, file_id: int, timeframe: str):
       - {"type": "subscribe", "timeframe": "5m"}  -> switch timeframe
     """
     await chart_ws_manager.connect(ws, file_id, timeframe)
+    # Hard-gate displaced chart windows (query: chart_window_id=…).
+    if AUTH_ENABLED:
+        try:
+            class _WsReq:
+                headers = ws.headers
+                query_params = ws.query_params
+
+            user = _get_user_from_websocket(ws)
+            if user is None:
+                await ws.close(code=4401)
+                return
+            _require_active_chart_window(_WsReq(), user=user)  # type: ignore[arg-type]
+        except HTTPException:
+            chart_ws_manager.disconnect(ws, file_id, timeframe)
+            await ws.close(code=4409)
+            return
+        except Exception:
+            chart_ws_manager.disconnect(ws, file_id, timeframe)
+            await ws.close(code=4409)
+            return
     current_tf = timeframe
     try:
         while True:

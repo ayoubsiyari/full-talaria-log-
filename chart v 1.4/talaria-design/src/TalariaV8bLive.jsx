@@ -40,8 +40,6 @@ import {
   loadIndicatorSettingsTemplates,
   saveNamedIndicatorSettingsTemplate,
   deleteIndicatorSettingsTemplate,
-  publishIndicatorSettingsTemplate,
-  importSharedIndicatorSettingsTemplate,
   snapshotIndicatorSettingsDraft,
 } from "./indicatorSettingsTemplates.js";
 
@@ -1669,26 +1667,39 @@ function v9OmTpTargetToReactQty(om, targetIndex, sizeMode, symbolType) {
 
 /** Share lots for one TP rung — same math as chart labels. */
 function v9OmTpShareLotsAt(om, targetIndex, symbolType) {
-  if (!om?.tpTargets?.[targetIndex]) return symbolType === "futures" ? "0" : "0.00";
+  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const fmtOq = () =>
+    symbolType === "futures"
+      ? String(Math.max(0, Math.round(oq)))
+      : (Number.isFinite(oq) ? oq.toFixed(2) : "0.00");
+  // Single-TP mode often leaves om.tpTargets empty — still show full order size, not "0 Contracts".
+  if (!om?.tpTargets?.[targetIndex]) {
+    return oq > 0 ? fmtOq() : symbolType === "futures" ? "0" : "0.00";
+  }
   const entryPx =
     typeof om._getReferenceEntryForOrderMath === "function"
       ? om._getReferenceEntryForOrderMath()
       : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
-  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
   const side = om.orderSide || "BUY";
   const eff =
     typeof om._computeEffectiveTPPercentages === "function"
       ? om._computeEffectiveTPPercentages(entryPx, oq, side, { tpTargets: om.tpTargets })
       : [];
   const lots = oq * ((eff[targetIndex] || 0) / 100);
-  if (!(lots > 0)) return symbolType === "futures" ? "0" : "0.00";
+  if (!(lots > 0)) {
+    // Ladder present but effective % not ready yet — fall back to full order qty for the sole rung.
+    if (om.tpTargets.length === 1 && oq > 0) return fmtOq();
+    return symbolType === "futures" ? "0" : "0.00";
+  }
   return symbolType === "futures" ? String(Math.round(lots)) : lots.toFixed(2);
 }
 
-function formatV9AccountNum(n) {
+function formatV9AccountNum(n, { fractionDigits = null } = {}) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
-  return x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const min = fractionDigits == null ? 0 : fractionDigits;
+  const max = fractionDigits == null ? 2 : fractionDigits;
+  return x.toLocaleString(undefined, { minimumFractionDigits: min, maximumFractionDigits: max });
 }
 
 const V9_BALANCE_VISIBLE_KEY = "v9BalanceVisible";
@@ -1708,14 +1719,21 @@ function maskV9AccountValue(visible, text) {
 
 function formatV9HudSessionPnl(om) {
   if (!om) return { text: "—", nonNeg: true };
+  const fmtSigned = (x) => {
+    const abs = Math.abs(x).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${x >= 0 ? "+" : "-"}${abs}`;
+  };
   const init = Number(om.initialBalance);
   const eq = Number(om.equity);
   if (Number.isFinite(init) && Number.isFinite(eq)) {
     const x = eq - init;
-    return { text: `${x >= 0 ? "+" : ""}${x.toFixed(2)}`, nonNeg: x >= 0 };
+    return { text: fmtSigned(x), nonNeg: x >= 0 };
   }
   const r = Number(om.realizedPnL);
-  if (Number.isFinite(r)) return { text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}`, nonNeg: r >= 0 };
+  if (Number.isFinite(r)) return { text: fmtSigned(r), nonNeg: r >= 0 };
   return { text: "—", nonNeg: true };
 }
 
@@ -11517,12 +11535,35 @@ function v9OmManualHiddenPriceWins(om, hiddenId, reactRowPx) {
   return !Number.isFinite(reactN) || reactN <= 0 || Math.abs(domN - reactN) >= 1e-8;
 }
 
-/** Mid-edit price strings ("", ".", "26.") — do not mirror/overwrite from hidden OM inputs. */
+/** Mid-edit price strings (".", "26.") — do not mirror/overwrite from hidden OM inputs.
+ *  Empty "" is NOT partial for SL/TP recovery (see v9ShouldHoldReactPriceAgainstOmMirror).
+ *  SIZE / risk fields still treat blank as mid-edit via v9IsBlankOrPartialDecimalInput. */
 function v9IsPartialDecimalInput(str) {
   const s = String(str ?? "").trim();
-  if (s === "" || s === ".") return true;
+  if (s === ".") return true;
   if (s.endsWith(".")) return true;
   return false;
+}
+
+/** Blank or mid-edit — use for SIZE/risk so clearing the field does not push "" into OM. */
+function v9IsBlankOrPartialDecimalInput(str) {
+  if (String(str ?? "").trim() === "") return true;
+  return v9IsPartialDecimalInput(str);
+}
+
+/** Skip OM→React price mirror while typing (partial decimals, or empty field that still has focus). */
+function v9ShouldHoldReactPriceAgainstOmMirror(reactPrice, focused) {
+  if (v9IsPartialDecimalInput(reactPrice)) return true;
+  if (focused && String(reactPrice ?? "").trim() === "") return true;
+  return false;
+}
+
+/** Valid positive price from hidden OM inputs — never treat blank/0 as a sync source that wipes React. */
+function v9PositivePriceStr(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? s : null;
 }
 
 /** SIZE rail input — allow free typing; cap fractional digits (default 3). */
@@ -14342,12 +14383,8 @@ const TalariaV8bLive = () => {
   const [indSettOpen, setIndSettOpen] = useState(false);
   const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
   const [indSettTplOpen, setIndSettTplOpen] = useState(false);
-  const [indSettTplMode, setIndSettTplMode] = useState(null); // null | "save" | "import" | "share-result"
+  const [indSettTplSaveAs, setIndSettTplSaveAs] = useState(false);
   const [indSettTplName, setIndSettTplName] = useState("");
-  const [indSettTplImportId, setIndSettTplImportId] = useState("");
-  const [indSettTplShareId, setIndSettTplShareId] = useState("");
-  const [indSettTplBusy, setIndSettTplBusy] = useState(false);
-  const [indSettTplMsg, setIndSettTplMsg] = useState("");
   const [indSettTplTick, setIndSettTplTick] = useState(0);
   tlSettOpenRef.current = tlSettOpen;
   txtSettOpenRef.current = txtSettOpen;
@@ -14503,6 +14540,8 @@ const TalariaV8bLive = () => {
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
   const sizeInputFocusedRef = useRef(false);
+  /** "sl" | "tp" | null — empty React price held only while that field is focused. */
+  const slTpPriceFocusedRef = useRef(null);
   /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
   const omHeaderRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
@@ -15647,14 +15686,20 @@ const TalariaV8bLive = () => {
       const eq = ledger?.equity ?? Number(om?.equity);
       const pnlDelta = Number.isFinite(startBal) && Number.isFinite(eq) ? eq - startBal : NaN;
       const pnlStr = Number.isFinite(pnlDelta)
-        ? { text: `${pnlDelta >= 0 ? "+" : ""}${pnlDelta.toFixed(2)}`, nonNeg: pnlDelta >= 0 }
+        ? (() => {
+            const abs = Math.abs(pnlDelta).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
+            return { text: `${pnlDelta >= 0 ? "+" : "-"}${abs}`, nonNeg: pnlDelta >= 0 };
+          })()
         : formatV9HudSessionPnl(om);
       setReplayHud({
         dateLine: formatV9HudDateLine(ms),
         clock: formatV9HudClock(ms, use12),
         tzLabel: v9HudTzShortLabel(s?.timezone),
-        balanceStr: formatV9AccountNum(ledger?.balance ?? om?.balance),
-        equityStr: formatV9AccountNum(ledger?.equity ?? om?.equity),
+        balanceStr: formatV9AccountNum(ledger?.balance ?? om?.balance, { fractionDigits: 2 }),
+        equityStr: formatV9AccountNum(ledger?.equity ?? om?.equity, { fractionDigits: 2 }),
         pnlStr: pnlStr.text,
         pnlNonNeg: pnlStr.nonNeg,
       });
@@ -16391,12 +16436,8 @@ const TalariaV8bLive = () => {
   };
   const closeIndSett = () => {
     setIndSettTplOpen(false);
-    setIndSettTplMode(null);
+    setIndSettTplSaveAs(false);
     setIndSettTplName("");
-    setIndSettTplImportId("");
-    setIndSettTplShareId("");
-    setIndSettTplMsg("");
-    setIndSettTplBusy(false);
     clearSettingsPanelHover();
     setV9IndSelectMenu(null);
     setIndStyleDrop(null);
@@ -16994,6 +17035,13 @@ const TalariaV8bLive = () => {
       return [{ ...r0, risk: want }];
     });
   }, [orderPanelOpen, sizeMode, riskVal]);
+
+  /** % / # SIZE: drop the leftover $ default (100) so open/switch shows 1% or 1 contract. */
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    if (sizeMode !== "%" && sizeMode !== "#") return;
+    setRiskVal((prev) => (String(prev).trim() === "100" ? "1" : prev));
+  }, [orderPanelOpen, sizeMode]);
 
   /** Lot-size (#): when SIZE changes, scale multi-entry row lots to the new total. */
   useEffect(() => {
@@ -18031,9 +18079,9 @@ const TalariaV8bLive = () => {
         };
 
         if (sizeMode === "$") {
-          if (!v9IsPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
         } else if (sizeMode === "%") {
-          if (!v9IsPartialDecimalInput(riskVal)) {
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) {
           let pct = riskVal;
           // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
           if (riskBasis === "equity" && om) {
@@ -18072,12 +18120,12 @@ const TalariaV8bLive = () => {
           } else if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
             lotStr = om._formatQty(om._roundQtyToStep(lotCore));
           }
-          if (!v9IsPartialDecimalInput(riskVal)) {
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) {
             setIn("lotSizeAmount", lotStr);
           }
           queueMicrotask(() => {
             try {
-              if (sizeInputFocusedRef.current || v9IsPartialDecimalInput(riskVal)) return;
+              if (sizeInputFocusedRef.current || v9IsBlankOrPartialDecimalInput(riskVal)) return;
               if (bridgeLead) return;
               const lsNum = parseFloat(lotStr || "0");
               if (rvNum > 0 && lsNum === 0) return;
@@ -18398,12 +18446,15 @@ const TalariaV8bLive = () => {
 
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
+        const slTyping =
+          slTpPriceFocusedRef.current === "sl" &&
+          (v9IsPartialDecimalInput(slRowPx) || String(slRowPx).trim() === "");
         const reactBridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
         if (!skipPosSync) {
-          if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
+          if (slEnabled && (slPx > 0 || slTyping || v9IsPartialDecimalInput(slRowPx))) {
             if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "slPrice", slRowPx)) {
-              const domSl = document.getElementById("slPrice")?.value ?? "";
-              if (domSl && !v9IsPartialDecimalInput(domSl)) {
+              const domSl = v9PositivePriceStr(document.getElementById("slPrice")?.value ?? "");
+              if (domSl) {
                 setSlRows((rows) => {
                   if (!rows.length) return rows;
                   const r0 = rows[0];
@@ -18411,8 +18462,9 @@ const TalariaV8bLive = () => {
                   return [{ ...r0, price: domSl }];
                 });
               }
-            } else {
-              setIn("slPrice", slRowPx);
+            } else if (slPx > 0 || slTyping) {
+              // Never push a blank unfocused React row into #slPrice (wipes chart-backed levels).
+              setIn("slPrice", slRowPx === "" ? "0" : slRowPx);
               if (om && slPx > 0) om.slManuallyPositioned = true;
             }
           } else if (!slEnabled) {
@@ -18422,15 +18474,18 @@ const TalariaV8bLive = () => {
           const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
           const tpPx = parseFloat(tp0?.price ?? "0");
           const tpRowPx = String(tp0?.price ?? "0");
+          const tpTyping =
+            slTpPriceFocusedRef.current === "tp" &&
+            (v9IsPartialDecimalInput(tpRowPx) || String(tpRowPx).trim() === "");
           if (
             !tpMultiActive &&
             tpActive.length <= 1 &&
             tp0?.enabled !== false &&
-            (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
+            (tpPx > 0 || tpTyping || v9IsPartialDecimalInput(tpRowPx))
           ) {
             if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "tpPrice", tpRowPx)) {
-              const domTp = document.getElementById("tpPrice")?.value ?? "";
-              if (domTp && !v9IsPartialDecimalInput(domTp)) {
+              const domTp = v9PositivePriceStr(document.getElementById("tpPrice")?.value ?? "");
+              if (domTp) {
                 setTpRows((rows) => {
                   if (!rows.length) return rows;
                   const r0 = rows[0];
@@ -18438,8 +18493,8 @@ const TalariaV8bLive = () => {
                   return [{ ...r0, price: domTp }];
                 });
               }
-            } else {
-              setIn("tpPrice", tpRowPx);
+            } else if (tpPx > 0 || tpTyping) {
+              setIn("tpPrice", tpRowPx === "" ? "0" : tpRowPx);
               if (om && tpPx > 0) om.tpManuallyPositioned = true;
             }
           } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
@@ -18921,15 +18976,19 @@ const TalariaV8bLive = () => {
           if (!rows.length) return rows;
           // Don't collapse while user just clicked "+" — OM is still single-entry until forward bridge runs (~80ms).
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) {
+            const epPos = v9PositivePriceStr(ep);
+            if (!epPos) return rows;
             const r0 = rows[0];
-            return [{ ...r0, price: ep, risk: r0.risk }];
+            return [{ ...r0, price: epPos, risk: r0.risk }];
           }
           if (v9IsPartialDecimalInput(rows[0].price)) return rows;
-          const epp = parseFloat(ep);
+          const epPos = v9PositivePriceStr(ep);
+          if (!epPos) return rows;
+          const epp = parseFloat(epPos);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
           const nex = [...rows];
-          nex[0] = { ...nex[0], price: ep };
+          nex[0] = { ...nex[0], price: epPos };
           return nex;
         });
       }
@@ -18939,12 +18998,16 @@ const TalariaV8bLive = () => {
       if (!rrLocked) {
         setSlRows((rows) => {
           if (!rows.length) return rows;
-          if (v9IsPartialDecimalInput(rows[0].price)) return rows;
-          const slpN = parseFloat(slp);
+          if (v9ShouldHoldReactPriceAgainstOmMirror(rows[0].price, slTpPriceFocusedRef.current === "sl")) {
+            return rows;
+          }
+          const slPos = v9PositivePriceStr(slp);
+          if (!slPos) return rows;
+          const slpN = parseFloat(slPos);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
           const next = [...rows];
-          next[0] = { ...next[0], price: slp };
+          next[0] = { ...next[0], price: slPos };
           return next;
         });
 
@@ -18982,19 +19045,27 @@ const TalariaV8bLive = () => {
         setTpRows((rows) => {
           if (!rows.length) return rows;
           const tpOn = !!document.getElementById("enableTP")?.checked;
+          const tpPos = v9PositivePriceStr(tpp);
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
-            return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
+            if (!tpPos) return [{ ...r0, qty: r0.qty ?? "100", enabled: tpOn }];
+            return [{ ...r0, price: tpPos, qty: r0.qty ?? "100", enabled: tpOn }];
           }
           const r0 = rows[0];
-          if (v9IsPartialDecimalInput(r0.price)) return rows;
-          const tppN = parseFloat(tpp);
+          if (v9ShouldHoldReactPriceAgainstOmMirror(r0.price, slTpPriceFocusedRef.current === "tp")) {
+            const enChgHold = !!r0.enabled !== tpOn;
+            if (!enChgHold) return rows;
+            const nextHold = [...rows];
+            nextHold[0] = { ...r0, enabled: tpOn };
+            return nextHold;
+          }
+          const tppN = tpPos ? parseFloat(tpPos) : NaN;
           const curP = parseFloat(r0.price || "0");
-          const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
+          const priceChg = !!tpPos && (!Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8);
           const enChg = !!r0.enabled !== tpOn;
           if (!priceChg && !enChg) return rows;
           const next = [...rows];
-          next[0] = { ...r0, price: tpp, enabled: tpOn };
+          next[0] = { ...r0, ...(tpPos ? { price: tpPos } : {}), enabled: tpOn };
           return next;
         });
       }
@@ -19026,7 +19097,7 @@ const TalariaV8bLive = () => {
             rv = String((parseFloat(rv) * b) / eq);
           }
         }
-        if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsPartialDecimalInput(riskVal)) {
+        if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsBlankOrPartialDecimalInput(riskVal)) {
           const rvNum = parseFloat(riskVal || "0");
           const hidNum = parseFloat(rv || "0");
           if (!(rvNum > 0 && hidNum === 0)) {
@@ -30814,7 +30885,8 @@ const TalariaV8bLive = () => {
             setIndStyleDrop(null);
             setIndStyleDropAnchor(null);
             setIndSettTplOpen(false);
-            setIndSettTplMode(null);
+            setIndSettTplSaveAs(false);
+            setIndSettTplName("");
           }}
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
@@ -30839,32 +30911,59 @@ const TalariaV8bLive = () => {
             window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
           }} style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: c.tx, flex: 1 }}>{title} Settings</span>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
               <div
                 data-ind-sett-tpl="1"
-                {...modalPointerActivate(() => {
-                  setIndSettTplOpen((v) => !v);
-                  setIndSettTplMode(null);
-                  setIndSettTplMsg("");
-                  setIndSettTplTick((n) => n + 1);
-                })}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onMouseEnter={() => setHov("indtpl")}
                 onMouseLeave={() => setHov(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (indSettTplOpen) {
+                    setIndSettTplOpen(false);
+                    setIndSettTplSaveAs(false);
+                    setIndSettTplName("");
+                  } else {
+                    setIndSettTplOpen(true);
+                    setIndSettTplSaveAs(false);
+                    setIndSettTplName("");
+                    setIndSettTplTick((n) => n + 1);
+                  }
+                  setIndStyleDrop(null);
+                  setIndStyleDropAnchor(null);
+                  setColorPicker(null);
+                  cpBarAnchorRef.current = null;
+                }}
                 title="Templates"
                 style={{
-                  height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "default", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-                  color: indSettTplOpen || hov === "indtpl" ? c.acL : c.ts,
-                  background: indSettTplOpen ? "rgba(74,106,255,0.12)" : hov === "indtpl" ? "rgba(255,255,255,0.06)" : "transparent",
-                  transition: "background 0.12s, color 0.12s",
+                  width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "default", position: "relative",
+                  background: indSettTplOpen ? "rgba(74,106,255,0.10)" : hov === "indtpl" ? c.hv : "transparent",
+                  transition: "background 0.12s",
+                  color: indSettTplOpen ? c.acL : hov === "indtpl" ? c.tx : c.ts,
                 }}
               >
-                Template
-              </div>
-              <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
-                style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
-                  background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
-                <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+                <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+                  <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                  <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
+                {indSettTplOpen && (
+                  <div style={{
+                    position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+                    boxShadow: `0 0 6px ${c.acG}`,
+                  }} />
+                )}
+                {hov === "indtpl" && !indSettTplOpen && (
+                  <div style={{
+                    position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    width: "50%", height: 1, background: `linear-gradient(90deg,transparent,${c.hvLn},transparent)`,
+                  }} />
+                )}
               </div>
               {indSettTplOpen && (() => {
                 const indType = ctx.indicatorType;
@@ -30874,9 +30973,36 @@ const TalariaV8bLive = () => {
                   if (!params || typeof params !== "object") return;
                   patchIndSettDraftLive((d) => ({ ...d, ...snapshotIndicatorSettingsDraft(params) }));
                 };
-                const rowStyle = {
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "7px 10px", cursor: "default", color: c.tx, fontSize: 12, gap: 8,
+                const applyDefaultParams = () => {
+                  const next = {};
+                  (def.params || []).forEach((p) => {
+                    if (p.type === "heading" || p.type === "divider") return;
+                    if (p.type === "timeRange") {
+                      next[p.startId] = p.defaultStart;
+                      next[p.endId] = p.defaultEnd;
+                      return;
+                    }
+                    if (p.type === "sessionInput") {
+                      next[p.showId] = p.defaultShow !== false;
+                      next[p.nameId] = p.defaultName || p.label || "";
+                      next[p.startId] = p.defaultStart;
+                      next[p.endId] = p.defaultEnd;
+                      return;
+                    }
+                    next[p.id] = p.default;
+                  });
+                  Object.assign(next, v9DefaultIndicatorVisibilityDraftPatch());
+                  next.visible = true;
+                  if (indType === "cmf") next.hideFromContainer = false;
+                  patchIndSettDraftLive(() => next);
+                };
+                const saveCurrentAs = () => {
+                  const name = indSettTplName.trim();
+                  if (!name) return;
+                  saveNamedIndicatorSettingsTemplate(indType, name, indSettDraftRef.current || indSettDraft);
+                  setIndSettTplSaveAs(false);
+                  setIndSettTplName("");
+                  setIndSettTplTick((n) => n + 1);
                 };
                 return (
                   <div
@@ -30885,190 +31011,129 @@ const TalariaV8bLive = () => {
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      position: "absolute", top: "100%", right: 0, marginTop: 6, width: 260,
-                      background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 12px 36px rgba(0,0,0,0.55)",
-                      zIndex: 12000, padding: "4px 0",
+                      position: "absolute", top: "calc(100% + 4px)", right: -30, zIndex: 12000, width: 180,
+                      background: c.sf, border: "1px solid rgba(140,160,255,0.22)", fontFamily: F,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.5)", cursor: "default",
+                      animation: "tlrDropIn 0.15s ease",
                     }}
                   >
-                    {!indSettTplMode && (
-                      <>
-                        <div
-                          onMouseEnter={() => setHov("ist-save")} onMouseLeave={() => setHov(null)}
-                          onClick={() => { setIndSettTplMode("save"); setIndSettTplName(""); setIndSettTplMsg(""); }}
-                          style={{ ...rowStyle, background: hov === "ist-save" ? "rgba(255,255,255,0.05)" : "transparent" }}
-                        >Save as…</div>
-                        <div
-                          onMouseEnter={() => setHov("ist-share")} onMouseLeave={() => setHov(null)}
-                          onClick={async () => {
-                            if (indSettTplBusy) return;
-                            setIndSettTplBusy(true);
-                            setIndSettTplMsg("");
-                            try {
-                              const draft = indSettDraftRef.current || indSettDraft;
-                              const published = await publishIndicatorSettingsTemplate({
-                                indicatorType: indType,
-                                name: `${title} template`,
-                                params: draft,
-                              });
-                              setIndSettTplShareId(published.shareId);
-                              setIndSettTplMode("share-result");
-                              saveNamedIndicatorSettingsTemplate(indType, published.name, draft, { shareId: published.shareId });
-                              setIndSettTplTick((n) => n + 1);
-                              try { await navigator.clipboard.writeText(published.shareId); } catch (_e) { /* ignore */ }
-                            } catch (err) {
-                              setIndSettTplMsg(err?.message || "Could not create share ID (sign in required)");
-                            } finally {
-                              setIndSettTplBusy(false);
-                            }
-                          }}
-                          style={{ ...rowStyle, background: hov === "ist-share" ? "rgba(255,255,255,0.05)" : "transparent", opacity: indSettTplBusy ? 0.6 : 1 }}
-                        >{indSettTplBusy ? "Sharing…" : "Get share ID"}</div>
-                        <div
-                          onMouseEnter={() => setHov("ist-import")} onMouseLeave={() => setHov(null)}
-                          onClick={() => { setIndSettTplMode("import"); setIndSettTplImportId(""); setIndSettTplMsg(""); }}
-                          style={{ ...rowStyle, background: hov === "ist-import" ? "rgba(255,255,255,0.05)" : "transparent" }}
-                        >Load by ID…</div>
-                        {templates.length > 0 && <div style={{ height: 1, background: c.br, margin: "4px 0" }} />}
-                        {templates.map((t) => (
-                          <div
-                            key={t.id}
-                            onMouseEnter={() => setHov(`ist-${t.id}`)} onMouseLeave={() => setHov(null)}
-                            style={{ ...rowStyle, background: hov === `ist-${t.id}` ? "rgba(74,106,255,0.08)" : "transparent" }}
-                          >
-                            <div
-                              onClick={() => { applyTplParams(t.params); setIndSettTplOpen(false); setIndSettTplMode(null); }}
-                              style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                              title={t.shareId ? `${t.name} · ${t.shareId}` : t.name}
-                            >
-                              {t.name}
-                              {t.shareId ? <span style={{ color: c.tm, fontSize: 10, marginLeft: 6 }}>{t.shareId}</span> : null}
-                            </div>
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteIndicatorSettingsTemplate(indType, t.id);
-                                setIndSettTplTick((n) => n + 1);
-                              }}
-                              style={{ color: c.tm, fontSize: 14, padding: "0 2px" }}
-                              title="Delete"
-                            >×</div>
+                    <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+                    <div style={{ padding: "4px 0" }}>
+                      {[["Save as", () => { setIndSettTplSaveAs(true); setIndSettTplName(""); }],
+                        ["Apply default", () => {
+                          applyDefaultParams();
+                          setIndSettTplOpen(false);
+                          setIndSettTplSaveAs(false);
+                          setIndSettTplName("");
+                        }]].map(([lbl, action]) => {
+                        const isH = hov === `ist-${lbl}`;
+                        const isAct = lbl === "Save as" && indSettTplSaveAs;
+                        return (
+                          <div key={lbl} onClick={action}
+                            onMouseEnter={() => setHov(`ist-${lbl}`)} onMouseLeave={() => setHov(null)}
+                            style={{
+                              display: "flex", alignItems: "center", padding: "6px 12px", cursor: "default", position: "relative",
+                              background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition: "background 0.1s",
+                            }}>
+                            {isAct && (
+                              <div style={{
+                                position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2,
+                                background: `linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                boxShadow: `0 0 6px ${c.acG}`,
+                              }} />
+                            )}
+                            <span style={{ fontSize: 13, color: isAct ? c.acL : isH ? c.tx : c.ts, fontWeight: isAct ? 700 : 500 }}>{lbl}</span>
                           </div>
-                        ))}
-                        {templates.length === 0 && (
-                          <div style={{ padding: "8px 10px", fontSize: 11, color: c.tm }}>No saved templates yet.</div>
-                        )}
-                        {indSettTplMsg ? (
-                          <div style={{ padding: "6px 10px", fontSize: 11, color: c.rd }}>{indSettTplMsg}</div>
-                        ) : null}
-                      </>
-                    )}
-                    {indSettTplMode === "save" && (
-                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Save template name</div>
-                        <input
-                          autoFocus
-                          value={indSettTplName}
-                          onChange={(e) => setIndSettTplName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && indSettTplName.trim()) {
-                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
-                              setIndSettTplMode(null);
-                              setIndSettTplName("");
-                              setIndSettTplTick((n) => n + 1);
-                            }
-                          }}
-                          placeholder="e.g. My FVG setup"
-                          style={{
-                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
-                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
-                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
-                          }}
-                        />
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div onClick={() => setIndSettTplMode(null)} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
-                          <div
-                            onClick={() => {
-                              if (!indSettTplName.trim()) return;
-                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
-                              setIndSettTplMode(null);
-                              setIndSettTplName("");
-                              setIndSettTplTick((n) => n + 1);
+                        );
+                      })}
+                      <div style={{ height: 1, margin: "4px 0", background: c.brH }} />
+                      {indSettTplSaveAs && (
+                        <div style={{ padding: "4px 8px 4px 12px", display: "flex", alignItems: "center", gap: 4, boxSizing: "border-box", width: "100%" }}
+                          onMouseDown={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            value={indSettTplName}
+                            onChange={(e) => setIndSettTplName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveCurrentAs();
+                              if (e.key === "Escape") { setIndSettTplSaveAs(false); setIndSettTplName(""); }
                             }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}
-                          >Save</div>
-                        </div>
-                      </div>
-                    )}
-                    {indSettTplMode === "import" && (
-                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Enter template ID</div>
-                        <input
-                          autoFocus
-                          value={indSettTplImportId}
-                          onChange={(e) => setIndSettTplImportId(e.target.value.toUpperCase())}
-                          placeholder="IST-XXXXXX"
-                          style={{
-                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
-                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
-                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
-                            letterSpacing: "0.06em",
-                          }}
-                        />
-                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.rd }}>{indSettTplMsg}</div> : null}
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
+                            placeholder="Template name…"
+                            style={{
+                              flex: 1, minWidth: 0, background: c.hv, border: "1px solid rgba(140,160,255,0.22)",
+                              outline: "none", color: c.tx, fontSize: 11, fontFamily: F, padding: "3px 6px",
+                              boxSizing: "border-box", cursor: "text",
+                            }}
+                          />
                           <div
-                            onClick={async () => {
-                              if (indSettTplBusy || !indSettTplImportId.trim()) return;
-                              setIndSettTplBusy(true);
-                              setIndSettTplMsg("");
-                              try {
-                                const remote = await importSharedIndicatorSettingsTemplate(indSettTplImportId.trim(), { saveToProfile: true });
-                                if (remote.indicatorType && remote.indicatorType !== String(indType).toLowerCase()) {
-                                  setIndSettTplMsg(`This ID is for ${remote.indicatorType}, not ${indType}`);
-                                  return;
-                                }
-                                applyTplParams(remote.params);
+                            onClick={saveCurrentAs}
+                            onMouseEnter={() => setHov("ist-save-ok")} onMouseLeave={() => setHov(null)}
+                            style={{
+                              padding: "2px 4px", display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: "default", flexShrink: 0, position: "relative",
+                              background: hov === "ist-save-ok" ? c.hv : "transparent", transition: "background 0.12s",
+                            }}
+                          >
+                            <I n="check" s={11} cl={indSettTplName.trim() ? c.acL : c.tm} />
+                            {hov === "ist-save-ok" && (
+                              <div style={{
+                                position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                                width: "50%", height: 1, background: `linear-gradient(90deg,transparent,${c.hvLn},transparent)`,
+                                pointerEvents: "none",
+                              }} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {templates.length === 0 && !indSettTplSaveAs ? (
+                        <div style={{ padding: "6px 12px" }}>
+                          <span style={{ fontSize: 11, color: c.tm, fontStyle: "italic" }}>No saved templates</span>
+                        </div>
+                      ) : templates.map((tpl, idx) => (
+                        <div
+                          key={tpl.id || idx}
+                          onMouseEnter={() => setHov(`ist-${idx}`)} onMouseLeave={() => setHov(null)}
+                          style={{
+                            display: "flex", alignItems: "center", padding: "4px 8px 4px 12px", cursor: "default", position: "relative",
+                            background: hov === `ist-${idx}` ? c.hv2 : "transparent", transition: "background 0.1s",
+                          }}
+                        >
+                          <span
+                            onClick={() => {
+                              applyTplParams(tpl.params);
+                              setIndSettTplOpen(false);
+                              setIndSettTplSaveAs(false);
+                              setIndSettTplName("");
+                            }}
+                            style={{
+                              flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              fontSize: 12, color: hov === `ist-${idx}` ? c.tx : c.ts, fontWeight: 500,
+                            }}
+                          >{tpl.name}</span>
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (tpl.id) {
+                                deleteIndicatorSettingsTemplate(indType, tpl.id);
                                 setIndSettTplTick((n) => n + 1);
-                                setIndSettTplOpen(false);
-                                setIndSettTplMode(null);
-                              } catch (err) {
-                                setIndSettTplMsg(err?.message || "Could not load template");
-                              } finally {
-                                setIndSettTplBusy(false);
                               }
                             }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700, opacity: indSettTplBusy ? 0.6 : 1 }}
-                          >{indSettTplBusy ? "Loading…" : "Load & save"}</div>
+                            onMouseEnter={() => setHov(`ist-del-${idx}`)} onMouseLeave={() => setHov(`ist-${idx}`)}
+                            style={{ padding: "2px 4px", cursor: "default" }}
+                          >
+                            <I n="x" s={11} cl={hov === `ist-del-${idx}` ? c.rd : c.tm} />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {indSettTplMode === "share-result" && (
-                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Share this ID with others</div>
-                        <div style={{
-                          fontSize: 14, fontWeight: 800, color: c.acL, letterSpacing: "0.08em",
-                          padding: "8px 10px", background: "rgba(74,106,255,0.10)", border: `1px solid ${c.brH}`,
-                          textAlign: "center", userSelect: "all",
-                        }}>{indSettTplShareId}</div>
-                        <div style={{ fontSize: 10, color: c.tm, lineHeight: 1.4 }}>
-                          Copied to clipboard when possible. Others: Template → Load by ID.
-                        </div>
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div
-                            onClick={async () => {
-                              try { await navigator.clipboard.writeText(indSettTplShareId); setIndSettTplMsg("Copied"); } catch (_e) { setIndSettTplMsg("Copy failed"); }
-                            }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}
-                          >Copy</div>
-                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}>Done</div>
-                        </div>
-                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.gn || c.acL }}>{indSettTplMsg}</div> : null}
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
+            </div>
+            <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
+              style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
+                background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
+              <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
             </div>
           </div>
           <div style={{ height: 1, background: c.br, flexShrink: 0 }} />
@@ -37577,9 +37642,9 @@ const TalariaV8bLive = () => {
             {/* Right separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 0 0 4px",flexShrink:0}}/>
             </div>
-            {/* Balance + panel toggle — grid column 3, right-aligned */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px',minWidth:0,maxWidth:'100%'}}>
+            {/* Balance + panel toggle — grid column 3, right-aligned; fixed widths keep digits from shifting */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',minWidth:292,flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px',flexShrink:0}}>
                 {/* Eye visibility toggle — object-tree style */}
                 <button
                   type="button"
@@ -37606,20 +37671,20 @@ const TalariaV8bLive = () => {
                     </svg>
                   )}
                 </button>
-                {/* Label/value columns — flex so large numbers don't clip */}
-                <div style={{display:'flex',alignItems:'flex-end',gap:14,minWidth:0,flexShrink:1}}>
+                {/* Fixed-width columns so live P&L digit changes don't nudge the row */}
+                <div style={{display:'flex',alignItems:'flex-end',gap:14,flexShrink:0}}>
                   {[
-                    { label: 'BALANCE', value: replayHud.balanceStr, col: c.tx },
-                    { label: 'EQUITY', value: replayHud.equityStr, col: c.tx },
-                    { label: 'P&L', value: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
-                  ].map(({ label, value, col }) => (
-                    <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,minWidth:0,flex:'0 1 auto'}}>
+                    { label: 'BALANCE', value: replayHud.balanceStr, col: c.tx, width: 92 },
+                    { label: 'EQUITY', value: replayHud.equityStr, col: c.tx, width: 92 },
+                    { label: 'P&L', value: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd, width: 78 },
+                  ].map(({ label, value, col, width }) => (
+                    <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,width,flexShrink:0,boxSizing:'border-box'}}>
                       <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1,whiteSpace:'nowrap'}}>{label}</span>
                       <span style={{
                         fontSize:12,fontWeight:700,
                         color: balVis ? col : c.tm,
-                        fontVariantNumeric:'tabular-nums',lineHeight:1,
-                        whiteSpace:'nowrap',maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',
+                        fontVariantNumeric:'tabular-nums',fontFeatureSettings:'"tnum" 1',lineHeight:1,
+                        whiteSpace:'nowrap',width:'100%',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',
                       }}>{maskV9AccountValue(balVis, value)}</span>
                     </div>
                   ))}
@@ -39770,8 +39835,12 @@ const TalariaV8bLive = () => {
                       <SlChk/>
                       <div style={{ flex:1, display:"flex", alignItems:"center", background:c.well, border:`1px solid ${slEnabled?"rgba(255,80,104,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 5px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", opacity:slEnabled?1:0.38, transition:"border-color 0.15s, opacity 0.15s" }}>
                         <input type="text" value={slRow.price} disabled={!slEnabled}
+                          onFocus={() => { slTpPriceFocusedRef.current = "sl"; }}
                           onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
-                          onBlur={e => { updSl(v9NormalizePriceInputOnBlur(e.target.value)); }}
+                          onBlur={e => {
+                            slTpPriceFocusedRef.current = null;
+                            updSl(v9NormalizePriceInputOnBlur(e.target.value));
+                          }}
                           style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:slEnabled?c.rd:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                         <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                           {arw(()=>stepSl(1),  true,  "sl-up")}
@@ -40382,8 +40451,12 @@ const TalariaV8bLive = () => {
                           {/* Price well */}
                           <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${row.enabled?"rgba(0,212,161,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}>
                             <input type="text" value={row.price} disabled={!row.enabled}
+                              onFocus={() => { slTpPriceFocusedRef.current = "tp"; }}
                               onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"price",e.target.value); }}
-                              onBlur={e => { updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value)); }}
+                              onBlur={e => {
+                                slTpPriceFocusedRef.current = null;
+                                updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value));
+                              }}
                               style={{ width:58, background:"transparent", border:"none", outline:"none", color:row.enabled?c.gn:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepTp(row.id,"price", 1), true,  `tp-${row.id}-up`)}
@@ -40887,7 +40960,14 @@ const TalariaV8bLive = () => {
               const isAct = sizeMode === m;
               const isH = swHov === `sz-drop-${m}`;
               return (
-                <div key={m} onClick={() => { setSizeMode(m); clickHiddenSizeMode(m); setOpSizeOpen(false); }}
+                <div key={m} onClick={() => {
+                    markOrderControlBridge();
+                    setSizeMode(m);
+                    // % / # default to 1 (not leftover $100 → 100% / 100 contracts). $ stays 100.
+                    setRiskVal(m === "$" ? "100" : "1");
+                    clickHiddenSizeMode(m);
+                    setOpSizeOpen(false);
+                  }}
                   onMouseEnter={()=>setSwHov(`sz-drop-${m}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                            background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>

@@ -2680,6 +2680,19 @@ class DrawingToolsManager {
                     return;
                 }
 
+                // Armed draw tool: placement wins over geometric hits on existing
+                // baselines/handles (findDrawingsAtPoint). Alt+click selects instead.
+                if (this.currentTool && !event.altKey) {
+                    this.handleMouseDown(event);
+                    suppressNextCanvasClick = true;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    return;
+                }
+
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
 
@@ -3903,11 +3916,11 @@ class DrawingToolsManager {
     }
 
     /**
-     * Multichart host (panel A): select an existing shape when a draw tool is still armed.
-     * Does not start drag — the normal svg/canvas paths handle move after select.
+     * Multichart host (panel A): Alt+click selects an existing shape while a draw tool is armed.
+     * Plain click prefers new placement (same as single-chart).
      */
     _tryMultichartHostShapePointerSelect(event) {
-        if (!event || event.button !== 0 || event.shiftKey || event.altKey) return false;
+        if (!event || event.button !== 0 || event.shiftKey || !event.altKey) return false;
         const ch = this.chart;
         if (!ch || typeof ch._isMultichartHostPanel !== "function" || !ch._isMultichartHostPanel()) {
             return false;
@@ -4080,7 +4093,12 @@ class DrawingToolsManager {
     }
 
     _selectExistingDrawingViaLifecycle(event) {
-        if (!this._isToolLifecycleV2Enabled() || !event || event.button !== 0 || event.shiftKey || event.altKey) {
+        if (!this._isToolLifecycleV2Enabled() || !event || event.button !== 0 || event.shiftKey) {
+            return false;
+        }
+        // Armed draw tool: placement wins over baselines/handles under the cursor
+        // (TradingView-like). Hold Alt to select an existing shape instead.
+        if (!this.currentTool || !event.altKey) {
             return false;
         }
         const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
