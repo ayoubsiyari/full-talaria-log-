@@ -1,0 +1,81 @@
+{
+  "fixtureId": "L2-M19-legacy-uncapped-v1",
+  "note": "Legacy uncapped excursion arrays + screenshot fields for restore identity (D-030). Arrays expand in the harness from recipes — values are deterministic first/middle/last sentinels.",
+  "account_runtime": {
+    "balance": 12345.67,
+    "equity": 12400.12,
+    "initialBalance": 10000,
+    "session_current_time": 1700000000000
+  },
+  "order_counters": {
+    "orderIdCounter": 900,
+    "tradeGroupIdCounter": 40
+  },
+  "pending_orders": [],
+  "open_positions": [
+    {
+      "id": 501,
+      "type": "BUY",
+      "quantity": 1.25,
+      "openPrice": 1.10025,
+      "openTime": 1699990000000,
+      "entryMarkerTimeMs": 1699990000000,
+      "stopLoss": 1.09525,
+      "takeProfit": 1.12025,
+      "initialStopLoss": 1.09525,
+      "initial_sl": 1.09525,
+      "array_base_price": 1.10025,
+      "symbol": "EURUSD",
+      "ticker": "EURUSD",
+      "sourceFileId": "file-eurusd",
+      "uncappedArrayLen": 4800,
+      "arraySeed": 11
+    },
+    {
+      "id": 502,
+      "type": "SELL",
+      "quantity": 0.75,
+      "openPrice": 1.10110,
+      "openTime": 1699990600000,
+      "entryMarkerTimeMs": 1699990600000,
+      "stopLoss": 1.10610,
+      "takeProfit": 1.08110,
+      "initialStopLoss": 1.10610,
+      "initial_sl": 1.10610,
+      "array_base_price": 1.10110,
+      "symbol": "EURUSD",
+      "ticker": "EURUSD",
+      "sourceFileId": "file-eurusd",
+      "uncappedArrayLen": 4800,
+      "arraySeed": 22
+    }
+  ],
+  "journal": [
+    {
+      "id": 401,
+      "tradeId": 401,
+      "type": "BUY",
+      "direction": "BUY",
+      "quantity": 1,
+      "openPrice": 1.09900,
+      "entryPrice": 1.09900,
+      "closePrice": 1.10200,
+      "exitPrice": 1.10200,
+      "openTime": 1699980000000,
+      "closeTime": 1699983600000,
+      "entryMarkerTimeMs": 1699980000000,
+      "exitMarkerTimeMs": 1699983600000,
+      "netPnL": 30,
+      "realizedPnL": 30,
+      "symbol": "EURUSD",
+      "ticker": "EURUSD",
+      "status": "CLOSED",
+      "closeType": "TP",
+      "uncappedArrayLen": 2400,
+      "arraySeed": 33,
+      "postExitLen": 120,
+      "entryScreenshot": "data:image/png;base64,M19LEGACYENTRY",
+      "exitScreenshot": "data:image/png;base64,M19LEGACYEXIT"
+    }
+  ]
+}
