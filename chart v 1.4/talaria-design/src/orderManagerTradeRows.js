@@ -236,6 +236,26 @@ function findJournalEntry(om, tradeId) {
   return om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === id) || null;
 }
 
+/**
+ * Display ID for chart All Trade / History — same global SQL id as dashboard Trades
+ * (`journal_trade_id`), not session-local order #1/#2/#3.
+ */
+function resolveChartDisplayTradeId(om, orderOrJournal, omId) {
+  const fromObj = (obj) => {
+    if (!obj || typeof obj !== "object") return null;
+    const jid = obj.journal_trade_id ?? obj.journalTradeId;
+    if (jid != null && String(jid).trim() !== "") return String(jid).trim();
+    return null;
+  };
+  const direct = fromObj(orderOrJournal);
+  if (direct) return direct;
+  const journal = findJournalEntry(om, omId);
+  const fromJournal = fromObj(journal);
+  if (fromJournal) return fromJournal;
+  if (omId != null && String(omId).trim() !== "") return String(omId).trim();
+  return "—";
+}
+
 function splitCommaTags(s) {
   if (typeof s !== "string" || !s.trim()) return [];
   return s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -1314,9 +1334,11 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
       j.stopLoss != null && Number.isFinite(Number.parseFloat(j.stopLoss)) ? fmtPx(j.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(j));
 
+    const displayId = resolveChartDisplayTradeId(om, j, tid);
     const row = {
-      id: `#${tid}`,
+      id: displayId,
       omId: tid,
+      journalTradeId: j.journal_trade_id ?? j.journalTradeId ?? null,
       _sortMs: sortMs,
       _openMs: openMs,
       time: v9FormatTradeTime(openMs),
@@ -1406,9 +1428,11 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tMs = o.placedTime || o.openTime || Date.now();
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
+    const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
-      id: `#${o.id}`,
+      id: displayId,
       omId: o.id,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
       _sortMs: tMs,
       _openMs: tMs,
       time: v9FormatTradeTime(tMs),
@@ -1442,9 +1466,11 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(o));
+    const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
-      id: `#${o.id}`,
+      id: displayId,
       omId: o.id,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
       _sortMs: tMs,
       _openMs: tMs,
       time: v9FormatTradeTime(tMs),
@@ -1482,9 +1508,11 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(o));
+    const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
-      id: `#${o.id}`,
+      id: displayId,
       omId: o.id,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
       _sortMs: sortMs,
       _openMs: openMs,
       time: v9FormatTradeTime(openMs),
@@ -1512,10 +1540,10 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
 
   appendJournalOnlyClosedRows(om, rows, theme, { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs });
 
-  // Default: trade ID ascending (#1, #2, #3…) — UI may re-sort by column.
+  // Default: journal trade id ascending (same numbers as dashboard Trades).
   rows.sort((a, b) => {
-    const idA = Number(a.omId);
-    const idB = Number(b.omId);
+    const idA = Number(a.journalTradeId ?? a.id ?? a.omId);
+    const idB = Number(b.journalTradeId ?? b.id ?? b.omId);
     const na = Number.isFinite(idA) ? idA : 0;
     const nb = Number.isFinite(idB) ? idB : 0;
     if (na !== nb) return na - nb;

@@ -10134,6 +10134,9 @@ const TalariaV8b = () => {
                   // Prefer numeric timestamps / ids — never parse the display TIME string
                   // (that old month*31 heuristic scrambled Aug 10 23:15 vs Aug 11 10:25).
                   if(key==="id"){
+                    // Same global journal id as dashboard Trades (not session-local omId).
+                    const jn=Number(r.journalTradeId ?? r.id);
+                    if(Number.isFinite(jn)) return jn;
                     const n=Number(r.omId);
                     if(Number.isFinite(n)) return n;
                     return parseInt(String(r.id||"").replace(/\D/g,""),10)||0;
@@ -10165,7 +10168,8 @@ const TalariaV8b = () => {
                     cmp=(Number(va)||0)-(Number(vb)||0);
                   }
                   if(cmp===0){
-                    const idA=Number(a.omId)||0, idB=Number(b.omId)||0;
+                    const idA=Number(a.journalTradeId??a.id??a.omId)||0;
+                    const idB=Number(b.journalTradeId??b.id??b.omId)||0;
                     cmp=idA-idB;
                   }
                   return dir==="asc"?cmp:-cmp;
