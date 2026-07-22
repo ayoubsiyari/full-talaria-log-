@@ -680,6 +680,11 @@ DUKASCOPY_BULK_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_BULK_JOB_TTL_SECONDS",
 DUKASCOPY_MAX_BULK_INSTRUMENTS = int(os.getenv("DUKASCOPY_MAX_BULK_INSTRUMENTS", "40"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
+# Durable per-chunk CSVs so a deploy/restart can resume mid-symbol instead of restarting at chunk 1.
+DUKASCOPY_CHUNKS_DIR = UPLOAD_DIR / "dukascopy_chunks"
+DUKASCOPY_CHUNKS_DIR.mkdir(exist_ok=True)
+_dukascopy_job_threads: dict[str, threading.Thread] = {}
+_dukascopy_job_thread_lock = threading.Lock()
 
 # FirstRate Data bundle imports (ZIP → CSV → chart binaries). Jobs mirror Dukascopy JSON files.
 FIrstrate_JOB_TTL_SECONDS = int(os.getenv("FIrstrate_JOB_TTL_SECONDS", "86400"))
@@ -4237,6 +4242,17 @@ def _dukascopy_cleanup_jobs() -> None:
             cutoff = cutoff_bulk if p.name.startswith("dkb_") else cutoff_single
             if p.stat().st_mtime < cutoff:
                 p.unlink()
+                try:
+                    p.with_suffix(".owner").unlink(missing_ok=True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    # Orphan owner files with no matching job JSON.
+    for p in DUKASCOPY_JOBS_DIR.glob("*.owner"):
+        try:
+            if not p.with_suffix(".json").exists():
+                p.unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -6144,6 +6160,141 @@ def _dukascopy_dataset_already_exists(instrument: str) -> bool:
         db.close()
 
 
+def _dukascopy_work_dir(instrument: str, from_str: str, to_str: str) -> Path:
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", f"{instrument}_{from_str}_{to_str}")
+    d = DUKASCOPY_CHUNKS_DIR / safe
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _dukascopy_chunk_has_data(chunk_path: Path) -> bool:
+    if not chunk_path.exists() or chunk_path.stat().st_size <= 0:
+        return False
+    try:
+        with open(chunk_path, "rb") as cf:
+            _ = cf.readline()  # header
+            for line in cf:
+                if line.strip():
+                    return True
+    except Exception:
+        return False
+    return False
+
+
+def _dukascopy_owner_path(job_id: str) -> Path:
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", job_id or "") or "invalid"
+    return DUKASCOPY_JOBS_DIR / f"{safe}.owner"
+
+
+def _dukascopy_pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _dukascopy_touch_owner(job_id: str) -> None:
+    """Refresh cross-worker ownership heartbeat (survives long chunk downloads)."""
+    p = _dukascopy_owner_path(job_id)
+    try:
+        payload = {"pid": os.getpid(), "heartbeat": time.time()}
+        tmp = p.with_suffix(".owner.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        tmp.replace(p)
+    except Exception:
+        pass
+
+
+def _dukascopy_try_claim_job(job_id: str) -> bool:
+    """
+    Cross-gunicorn claim so only one worker runs a given Dukascopy job.
+    Stale locks (dead PID or old heartbeat) are stolen after restart/deploy.
+    """
+    if not job_id:
+        return False
+    if _dukascopy_job_thread_alive(job_id):
+        return False
+    lock_path = _dukascopy_owner_path(job_id)
+    now = time.time()
+    stale_sec = max(90, int(os.getenv("DUKASCOPY_OWNER_STALE_SEC", "180")))
+    if lock_path.exists():
+        try:
+            with open(lock_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            other_pid = int(data.get("pid") or 0)
+            hb = float(data.get("heartbeat") or 0) or lock_path.stat().st_mtime
+            if other_pid != os.getpid() and _dukascopy_pid_alive(other_pid) and (now - hb) < stale_sec:
+                return False
+            lock_path.unlink(missing_ok=True)
+        except Exception:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "heartbeat": now}, f)
+        return True
+    except FileExistsError:
+        return False
+    except Exception:
+        return False
+
+
+def _dukascopy_release_job_claim(job_id: str) -> None:
+    p = _dukascopy_owner_path(job_id)
+    try:
+        if not p.exists():
+            return
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if int(data.get("pid") or 0) == os.getpid():
+            p.unlink(missing_ok=True)
+    except Exception:
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _dukascopy_start_owner_heartbeat(job_id: str) -> threading.Event:
+    stop = threading.Event()
+
+    def _beat():
+        while not stop.wait(30.0):
+            if not _dukascopy_job_thread_alive(job_id):
+                break
+            _dukascopy_touch_owner(job_id)
+
+    threading.Thread(
+        target=_beat, daemon=True, name=f"dukascopy-hb-{job_id[:16]}"
+    ).start()
+    return stop
+
+
+def _dukascopy_register_job_thread(job_id: str, thread: threading.Thread) -> None:
+    with _dukascopy_job_thread_lock:
+        _dukascopy_job_threads[job_id] = thread
+    _dukascopy_touch_owner(job_id)
+
+
+def _dukascopy_job_thread_alive(job_id: str) -> bool:
+    with _dukascopy_job_thread_lock:
+        t = _dukascopy_job_threads.get(job_id)
+    return bool(t and t.is_alive())
+
+
+def _dukascopy_clear_job_thread(job_id: str) -> None:
+    with _dukascopy_job_thread_lock:
+        _dukascopy_job_threads.pop(job_id, None)
+    _dukascopy_release_job_claim(job_id)
+
+
 def _execute_dukascopy_fetch(
     instrument: str,
     from_dt: datetime,
@@ -6154,6 +6305,8 @@ def _execute_dukascopy_fetch(
 ) -> dict:
     """
     Download + merge + store one Dukascopy M1 instrument synchronously.
+    Chunks are written under uploads/dukascopy_chunks/ so a restart resumes
+    from the first incomplete chunk instead of re-downloading from scratch.
     `on_progress(phase, message, extra)` is optional for job status updates.
     """
     script_path = _dukascopy_resolve_script_path()
@@ -6167,6 +6320,7 @@ def _execute_dukascopy_fetch(
     original_name = f"{instrument}-{DUKASCOPY_DEFAULT_TIMEFRAME}-bid-{from_str}-{to_str}.csv"
     unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
     output_path = (UPLOAD_DIR / unique_filename).resolve()
+    work_dir = _dukascopy_work_dir(instrument, from_str, to_str)
 
     def _prog(phase: str, message: str, extra: dict | None = None):
         if callable(on_progress):
@@ -6178,136 +6332,171 @@ def _execute_dukascopy_fetch(
     try:
         print(
             f"[dukascopy] {instrument} {from_str}→{to_str} "
-            f"chunks={total_chunks} script={script_path}",
+            f"chunks={total_chunks} work_dir={work_dir} script={script_path}",
             flush=True,
         )
-        _prog("download", f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})")
-        with tempfile.TemporaryDirectory(prefix="duka_", dir=str(UPLOAD_DIR.resolve())) as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
-            chunk_paths: list[Path] = []
+        _prog(
+            "download",
+            f"Starting Dukascopy download ({total_chunks} chunk{'s' if total_chunks != 1 else ''})",
+            {"work_dir": str(work_dir)},
+        )
+        chunk_paths: list[Path] = []
 
-            for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
-                chunk_from_str = chunk_from.strftime("%Y-%m-%d")
-                chunk_to_str = chunk_to.strftime("%Y-%m-%d")
-                chunk_path = tmp_dir_path / f"chunk_{idx:04d}.csv"
-                _prog(
-                    "download",
-                    f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
-                    {"current_chunk": idx, "completed_chunks": idx - 1, "chunk_count": total_chunks},
-                )
+        for idx, (chunk_from, chunk_to) in enumerate(chunk_ranges, start=1):
+            chunk_from_str = chunk_from.strftime("%Y-%m-%d")
+            chunk_to_str = chunk_to.strftime("%Y-%m-%d")
+            chunk_path = work_dir / f"chunk_{idx:04d}.csv"
+            empty_marker = work_dir / f"chunk_{idx:04d}.empty"
+
+            # Resume: keep finished chunks / empty markers across restarts.
+            if empty_marker.exists():
                 print(
                     f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
-                    f"{chunk_from_str}→{chunk_to_str}",
+                    f"{chunk_from_str}→{chunk_to_str}: resume skip (empty)",
                     flush=True,
                 )
-
-                cmd = [
-                    node_binary,
-                    str(script_path),
-                    "--instrument", instrument,
-                    "--from", chunk_from_str,
-                    "--to", chunk_to_str,
-                    "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
-                    "--out", str(chunk_path),
-                ]
-                try:
-                    proc = subprocess.run(
-                        cmd,
-                        cwd=str(_APP_DIR),
-                        capture_output=True,
-                        text=True,
-                        timeout=1200,
-                    )
-                except subprocess.TimeoutExpired as exc:
-                    msg = (
-                        f"Chunk {idx}/{total_chunks} timed out after 1200s "
-                        f"({chunk_from_str} to {chunk_to_str})"
-                    )
-                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
-                    raise RuntimeError(msg) from exc
-                except Exception as exc:
-                    msg = f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}"
-                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
-                    raise RuntimeError(msg) from exc
-
-                if proc.returncode != 0:
-                    msg = _dukascopy_format_chunk_failure(
-                        idx=idx,
-                        total_chunks=total_chunks,
-                        chunk_from_str=chunk_from_str,
-                        chunk_to_str=chunk_to_str,
-                        returncode=proc.returncode,
-                        stdout=proc.stdout,
-                        stderr=proc.stderr,
-                    )
-                    print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
-                    raise RuntimeError(msg)
-
-                stdout_txt = proc.stdout or ""
-                empty_range = (
-                    "EMPTY_RANGE=1" in stdout_txt
-                    or re.search(r"(?m)^ROW_COUNT=0\s*$", stdout_txt) is not None
-                )
-                # Header-only / missing file counts as empty (common for early CFD history).
-                data_rows = 0
-                if chunk_path.exists() and chunk_path.stat().st_size > 0:
-                    try:
-                        with open(chunk_path, "rb") as _cf:
-                            _ = _cf.readline()  # header
-                            for _line in _cf:
-                                if _line.strip():
-                                    data_rows += 1
-                                    if data_rows > 0:
-                                        break
-                    except Exception:
-                        data_rows = 0
-                if empty_range or data_rows == 0:
-                    print(
-                        f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
-                        f"{chunk_from_str}→{chunk_to_str}: empty (skip)",
-                        flush=True,
-                    )
-                    _prog(
-                        "download",
-                        f"Skipped empty chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
-                        {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
-                    )
-                    continue
-
                 _prog(
                     "download",
-                    f"Completed chunk {idx}/{total_chunks}",
-                    {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
+                    f"Resumed — skipped empty chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                    {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks, "resumed": True},
+                )
+                continue
+            if _dukascopy_chunk_has_data(chunk_path):
+                print(
+                    f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
+                    f"{chunk_from_str}→{chunk_to_str}: resume skip (on disk)",
+                    flush=True,
+                )
+                _prog(
+                    "download",
+                    f"Resumed — kept chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                    {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks, "resumed": True},
                 )
                 chunk_paths.append(chunk_path)
-
-            if not chunk_paths:
-                raise RuntimeError(
-                    f"No Dukascopy data for {instrument} in {from_str}→{to_str} "
-                    f"({total_chunks} chunk{'s' if total_chunks != 1 else ''} empty)"
-                )
+                continue
 
             _prog(
-                "merge",
-                f"Merging {len(chunk_paths)} non-empty chunk{'s' if len(chunk_paths) != 1 else ''} "
-                f"(of {total_chunks})",
+                "download",
+                f"Downloading chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                {"current_chunk": idx, "completed_chunks": idx - 1, "chunk_count": total_chunks},
             )
-            with open(output_path, "wb") as out_f:
-                first_header = None
-                for idx, chunk_path in enumerate(chunk_paths):
-                    with open(chunk_path, "rb") as in_f:
-                        first_line = in_f.readline()
-                        if not first_line:
-                            continue
-                        if first_header is None:
-                            first_header = first_line
-                            out_f.write(first_line)
-                        else:
-                            if first_line.strip().lower() != first_header.strip().lower():
-                                # Unexpected different header — keep body only.
-                                pass
-                            # else: skip duplicate header
-                        shutil.copyfileobj(in_f, out_f)
+            print(
+                f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
+                f"{chunk_from_str}→{chunk_to_str}",
+                flush=True,
+            )
+
+            # Remove any partial download from a killed process.
+            try:
+                if chunk_path.exists():
+                    chunk_path.unlink()
+            except Exception:
+                pass
+
+            cmd = [
+                node_binary,
+                str(script_path),
+                "--instrument", instrument,
+                "--from", chunk_from_str,
+                "--to", chunk_to_str,
+                "--timeframe", DUKASCOPY_DEFAULT_TIMEFRAME,
+                "--out", str(chunk_path),
+            ]
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(_APP_DIR),
+                    capture_output=True,
+                    text=True,
+                    timeout=1200,
+                )
+            except subprocess.TimeoutExpired as exc:
+                msg = (
+                    f"Chunk {idx}/{total_chunks} timed out after 1200s "
+                    f"({chunk_from_str} to {chunk_to_str})"
+                )
+                print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                raise RuntimeError(msg) from exc
+            except Exception as exc:
+                msg = f"Chunk {idx}/{total_chunks} failed to start: {str(exc)}"
+                print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                raise RuntimeError(msg) from exc
+
+            if proc.returncode != 0:
+                msg = _dukascopy_format_chunk_failure(
+                    idx=idx,
+                    total_chunks=total_chunks,
+                    chunk_from_str=chunk_from_str,
+                    chunk_to_str=chunk_to_str,
+                    returncode=proc.returncode,
+                    stdout=proc.stdout,
+                    stderr=proc.stderr,
+                )
+                print(f"[dukascopy] FAIL {instrument}: {msg}", flush=True)
+                raise RuntimeError(msg)
+
+            stdout_txt = proc.stdout or ""
+            empty_range = (
+                "EMPTY_RANGE=1" in stdout_txt
+                or re.search(r"(?m)^ROW_COUNT=0\s*$", stdout_txt) is not None
+            )
+            data_rows = 1 if _dukascopy_chunk_has_data(chunk_path) else 0
+            if empty_range or data_rows == 0:
+                print(
+                    f"[dukascopy] {instrument} chunk {idx}/{total_chunks} "
+                    f"{chunk_from_str}→{chunk_to_str}: empty (skip)",
+                    flush=True,
+                )
+                try:
+                    empty_marker.write_text("empty\n", encoding="utf-8")
+                except Exception:
+                    pass
+                try:
+                    if chunk_path.exists():
+                        chunk_path.unlink()
+                except Exception:
+                    pass
+                _prog(
+                    "download",
+                    f"Skipped empty chunk {idx}/{total_chunks} ({chunk_from_str} to {chunk_to_str})",
+                    {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
+                )
+                continue
+
+            _prog(
+                "download",
+                f"Completed chunk {idx}/{total_chunks}",
+                {"current_chunk": idx, "completed_chunks": idx, "chunk_count": total_chunks},
+            )
+            chunk_paths.append(chunk_path)
+
+        if not chunk_paths:
+            raise RuntimeError(
+                f"No Dukascopy data for {instrument} in {from_str}→{to_str} "
+                f"({total_chunks} chunk{'s' if total_chunks != 1 else ''} empty)"
+            )
+
+        _prog(
+            "merge",
+            f"Merging {len(chunk_paths)} non-empty chunk{'s' if len(chunk_paths) != 1 else ''} "
+            f"(of {total_chunks})",
+        )
+        with open(output_path, "wb") as out_f:
+            first_header = None
+            for chunk_path in chunk_paths:
+                with open(chunk_path, "rb") as in_f:
+                    first_line = in_f.readline()
+                    if not first_line:
+                        continue
+                    if first_header is None:
+                        first_header = first_line
+                        out_f.write(first_line)
+                    else:
+                        if first_line.strip().lower() != first_header.strip().lower():
+                            # Unexpected different header — keep body only.
+                            pass
+                        # else: skip duplicate header
+                    shutil.copyfileobj(in_f, out_f)
 
         if not output_path.exists() or output_path.stat().st_size <= 0:
             raise RuntimeError("Merged Dukascopy CSV is empty")
@@ -6327,6 +6516,11 @@ def _execute_dukascopy_fetch(
             "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
             "chunk_count": total_chunks,
         }
+        # Free disk once the merged dataset is registered.
+        try:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        except Exception:
+            pass
         return result
     except Exception:
         if output_path.exists():
@@ -6372,8 +6566,12 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
         "result": None,
     }
     _dukascopy_write_job(job_id, state)
+    if not _dukascopy_try_claim_job(job_id):
+        # Extremely unlikely for a fresh job_id; keep JSON so status can resume later.
+        print(f"[dukascopy] Could not claim fresh job {job_id}", flush=True)
 
     def _worker():
+        hb_stop = _dukascopy_start_owner_heartbeat(job_id)
         try:
             state["status"] = "running"
 
@@ -6394,6 +6592,7 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
                         state["chunks"][ci]["status"] = "processing"
                         state["chunks"][ci]["started_at"] = datetime.utcnow().isoformat()
                 _dukascopy_write_job(job_id, state)
+                _dukascopy_touch_owner(job_id)
 
             result = _execute_dukascopy_fetch(
                 instrument, from_dt, to_dt, node_binary, on_progress=_on_progress
@@ -6412,8 +6611,12 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             state["error"] = err_text
             state["finished_at"] = datetime.utcnow().isoformat()
             _dukascopy_write_job(job_id, state)
+        finally:
+            hb_stop.set()
+            _dukascopy_clear_job_thread(job_id)
 
     t = threading.Thread(target=_worker, daemon=True, name=f"dukascopy-{instrument}")
+    _dukascopy_register_job_thread(job_id, t)
     t.start()
 
     return {
@@ -6482,8 +6685,11 @@ def _start_dukascopy_bulk_fetch_job(
         "result": None,
     }
     _dukascopy_write_job(job_id, state)
+    if not _dukascopy_try_claim_job(job_id):
+        print(f"[dukascopy] Could not claim fresh bulk job {job_id}", flush=True)
 
     def _worker():
+        hb_stop = _dukascopy_start_owner_heartbeat(job_id)
         try:
             state["status"] = "running"
             state["phase"] = "download"
@@ -6498,11 +6704,13 @@ def _start_dukascopy_bulk_fetch_job(
                 it["started_at"] = datetime.utcnow().isoformat()
                 state["message"] = f"Fetching {inst} ({done + failed + 1}/{pending_count})"
                 _dukascopy_write_job(job_id, state)
+                _dukascopy_touch_owner(job_id)
 
                 def _on_progress(phase, message, extra, _inst=inst):
                     state["phase"] = phase
                     state["message"] = f"{_inst}: {message}"
                     _dukascopy_write_job(job_id, state)
+                    _dukascopy_touch_owner(job_id)
 
                 try:
                     result = _execute_dukascopy_fetch(
@@ -6555,8 +6763,12 @@ def _start_dukascopy_bulk_fetch_job(
             state["error"] = state["message"]
             state["finished_at"] = datetime.utcnow().isoformat()
             _dukascopy_write_job(job_id, state)
+        finally:
+            hb_stop.set()
+            _dukascopy_clear_job_thread(job_id)
 
     t = threading.Thread(target=_worker, daemon=True, name="dukascopy-bulk")
+    _dukascopy_register_job_thread(job_id, t)
     t.start()
 
     return {
@@ -6573,6 +6785,267 @@ def _start_dukascopy_bulk_fetch_job(
             "skipped_count": len(items) - pending_count,
         },
     }
+
+
+def _dukascopy_resume_single_job(state: dict, node_binary: str) -> bool:
+    """Restart a stuck single-instrument job; durable chunks skip already-finished ranges."""
+    job_id = str(state.get("job_id") or "")
+    if not job_id or _dukascopy_job_thread_alive(job_id):
+        return False
+    if not _dukascopy_try_claim_job(job_id):
+        return False
+    instrument = _normalize_dukascopy_instrument(str(state.get("instrument") or ""))
+    if not instrument:
+        _dukascopy_release_job_claim(job_id)
+        return False
+    try:
+        from_dt = _parse_iso_date(str(state.get("from_date") or ""), "from_date")
+        to_dt = _parse_iso_date(str(state.get("to_date") or ""), "to_date")
+    except Exception:
+        _dukascopy_release_job_claim(job_id)
+        return False
+
+    state["status"] = "running"
+    state["phase"] = "download"
+    state["message"] = "Resuming Dukascopy fetch after server restart…"
+    state.pop("error", None)
+    state.pop("finished_at", None)
+    for ch in state.get("chunks") or []:
+        if ch.get("status") == "processing":
+            ch["status"] = "pending"
+    _dukascopy_write_job(job_id, state)
+
+    def _worker():
+        hb_stop = _dukascopy_start_owner_heartbeat(job_id)
+        try:
+            def _on_progress(phase, message, extra):
+                state["phase"] = phase
+                state["message"] = message
+                if "current_chunk" in extra:
+                    state["current_chunk"] = extra["current_chunk"]
+                if "completed_chunks" in extra:
+                    state["completed_chunks"] = extra["completed_chunks"]
+                    idx = int(extra["completed_chunks"])
+                    if 0 < idx <= len(state.get("chunks") or []):
+                        state["chunks"][idx - 1]["status"] = "done"
+                        state["chunks"][idx - 1]["completed_at"] = datetime.utcnow().isoformat()
+                if "current_chunk" in extra:
+                    ci = int(extra["current_chunk"]) - 1
+                    chunks = state.get("chunks") or []
+                    if 0 <= ci < len(chunks) and chunks[ci].get("status") == "pending":
+                        chunks[ci]["status"] = "processing"
+                        chunks[ci]["started_at"] = datetime.utcnow().isoformat()
+                _dukascopy_write_job(job_id, state)
+                _dukascopy_touch_owner(job_id)
+
+            result = _execute_dukascopy_fetch(
+                instrument, from_dt, to_dt, node_binary, on_progress=_on_progress
+            )
+            total_chunks = int(state.get("chunk_count") or len(state.get("chunks") or []) or 0)
+            state["status"] = "done"
+            state["phase"] = "done"
+            state["message"] = (
+                f"Completed Dukascopy fetch ({total_chunks} chunk{'s' if total_chunks != 1 else ''})"
+            )
+            state["result"] = result
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Dukascopy job error"
+            state["status"] = "failed"
+            state["phase"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+        finally:
+            hb_stop.set()
+            _dukascopy_clear_job_thread(job_id)
+
+    t = threading.Thread(target=_worker, daemon=True, name=f"dukascopy-resume-{instrument}")
+    _dukascopy_register_job_thread(job_id, t)
+    t.start()
+    print(f"[dukascopy] Resumed single job {job_id} ({instrument})", flush=True)
+    return True
+
+
+def _dukascopy_resume_bulk_job(state: dict, node_binary: str) -> bool:
+    """Restart a stuck bulk job; finished symbols stay done, mid-symbol chunks resume from disk."""
+    job_id = str(state.get("job_id") or "")
+    if not job_id or _dukascopy_job_thread_alive(job_id):
+        return False
+    if not _dukascopy_try_claim_job(job_id):
+        return False
+    try:
+        from_dt = _parse_iso_date(str(state.get("from_date") or ""), "from_date")
+        to_dt = _parse_iso_date(str(state.get("to_date") or ""), "to_date")
+    except Exception:
+        _dukascopy_release_job_claim(job_id)
+        return False
+
+    items = state.get("items") or []
+    pending_left = 0
+    for it in items:
+        st = it.get("status")
+        # Leave true failures alone; only requeue mid-flight / not-started items.
+        if st in ("done", "skipped", "failed"):
+            continue
+        if st in ("running", "pending"):
+            it["status"] = "pending"
+            it.pop("error", None)
+            it.pop("error_log", None)
+            it.pop("started_at", None)
+            it.pop("finished_at", None)
+            pending_left += 1
+
+    if pending_left <= 0:
+        _dukascopy_release_job_claim(job_id)
+        return False
+
+    state["status"] = "running"
+    state["phase"] = "download"
+    state["message"] = f"Resuming Dukascopy bulk after restart ({pending_left} remaining)…"
+    state.pop("error", None)
+    state.pop("finished_at", None)
+    _dukascopy_write_job(job_id, state)
+
+    def _worker():
+        hb_stop = _dukascopy_start_owner_heartbeat(job_id)
+        try:
+            done = int(state.get("completed_count") or 0)
+            failed = int(state.get("failed_count") or 0)
+            skipped = int(state.get("skipped_count") or 0)
+            for it in state["items"]:
+                if it.get("status") in ("done", "skipped", "failed"):
+                    continue
+                inst = it["instrument"]
+                state["current_instrument"] = inst
+                it["status"] = "running"
+                it["started_at"] = datetime.utcnow().isoformat()
+                state["message"] = f"Resuming {inst}"
+                _dukascopy_write_job(job_id, state)
+                _dukascopy_touch_owner(job_id)
+
+                def _on_progress(phase, message, extra, _inst=inst):
+                    state["phase"] = phase
+                    state["message"] = f"{_inst}: {message}"
+                    _dukascopy_write_job(job_id, state)
+                    _dukascopy_touch_owner(job_id)
+
+                try:
+                    result = _execute_dukascopy_fetch(
+                        inst, from_dt, to_dt, node_binary, on_progress=_on_progress
+                    )
+                    it["status"] = "done"
+                    it["result"] = {
+                        "file_id": (result.get("file") or {}).get("id"),
+                        "original_name": (result.get("file") or {}).get("original_name"),
+                        "row_count": (result.get("file") or {}).get("row_count"),
+                    }
+                    it["finished_at"] = datetime.utcnow().isoformat()
+                    done += 1
+                except Exception as exc:
+                    err_txt = str(exc) or "fetch failed"
+                    it["status"] = "failed"
+                    it["error"] = err_txt
+                    it["error_log"] = err_txt
+                    it["message"] = err_txt.splitlines()[0][:240]
+                    it["finished_at"] = datetime.utcnow().isoformat()
+                    print(f"[dukascopy-bulk] FAIL {inst}: {err_txt}", flush=True)
+                    failed += 1
+
+                state["completed_count"] = done
+                state["failed_count"] = failed
+                state["message"] = f"Progress: {done} done, {failed} failed, {skipped} skipped"
+                _dukascopy_write_job(job_id, state)
+
+            state["status"] = "done" if failed == 0 else ("done" if done > 0 else "failed")
+            state["phase"] = "done"
+            state["current_instrument"] = None
+            state["message"] = (
+                f"Bulk complete — {done} imported, {failed} failed, {skipped} skipped"
+            )
+            state["result"] = {
+                "imported": done,
+                "failed": failed,
+                "skipped": skipped,
+                "total": len(items),
+            }
+            state["finished_at"] = datetime.utcnow().isoformat()
+            if done == 0 and failed > 0:
+                state["status"] = "failed"
+                state["error"] = state["message"]
+            _dukascopy_write_job(job_id, state)
+        except Exception as exc:
+            state["status"] = "failed"
+            state["phase"] = "failed"
+            state["message"] = str(exc) or "Bulk Dukascopy job failed"
+            state["error"] = state["message"]
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _dukascopy_write_job(job_id, state)
+        finally:
+            hb_stop.set()
+            _dukascopy_clear_job_thread(job_id)
+
+    t = threading.Thread(target=_worker, daemon=True, name="dukascopy-bulk-resume")
+    _dukascopy_register_job_thread(job_id, t)
+    t.start()
+    print(f"[dukascopy] Resumed bulk job {job_id} ({pending_left} remaining)", flush=True)
+    return True
+
+
+def _dukascopy_resume_interrupted_jobs() -> int:
+    """
+    After deploy/restart, daemon download threads are gone but job JSON + chunk files remain.
+    Re-attach workers for any queued/running Dukascopy jobs that are not alive in-process.
+    """
+    node_binary = shutil.which("node")
+    if not node_binary:
+        print("[dukascopy] Resume skipped — Node.js not installed", flush=True)
+        return 0
+    resumed = 0
+    for p in sorted(DUKASCOPY_JOBS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                state = json.load(f)
+        except Exception:
+            continue
+        status = str(state.get("status") or "").lower()
+        if status not in ("queued", "running"):
+            continue
+        job_id = str(state.get("job_id") or p.stem)
+        if _dukascopy_job_thread_alive(job_id):
+            continue
+        kind = str(state.get("kind") or "")
+        ok = False
+        if kind == "bulk" or job_id.startswith("dkb_"):
+            ok = _dukascopy_resume_bulk_job(state, node_binary)
+        else:
+            ok = _dukascopy_resume_single_job(state, node_binary)
+        if ok:
+            resumed += 1
+    return resumed
+
+
+def _dukascopy_maybe_resume_job(job_id: str, state: dict | None = None) -> dict | None:
+    """If a queued/running job has no live owner, resume it and return fresh state."""
+    st = state or _dukascopy_read_job(job_id)
+    if not st:
+        return None
+    status = str(st.get("status") or "").lower()
+    if status not in ("queued", "running"):
+        return st
+    if _dukascopy_job_thread_alive(job_id):
+        return st
+    node_binary = shutil.which("node")
+    if not node_binary:
+        return st
+    kind = str(st.get("kind") or "")
+    if kind == "bulk" or job_id.startswith("dkb_"):
+        _dukascopy_resume_bulk_job(st, node_binary)
+    else:
+        _dukascopy_resume_single_job(st, node_binary)
+    return _dukascopy_read_job(job_id) or st
 
 # ── Binance historical (binance-historical-data) jobs ─────────────────────
 
@@ -18795,6 +19268,8 @@ async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Reques
     state = _dukascopy_read_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Dukascopy job not found or expired")
+    # After deploy/restart the UI keeps polling the same job_id — resume if orphaned.
+    state = _dukascopy_maybe_resume_job(job_id, state) or state
     out = dict(state)
     out["state"] = state.get("status")
     return out
@@ -26302,6 +26777,16 @@ async def _firstrate_scheduler_app_startup():
                 print(f"⚠️ QuestDB schema init failed: {exc}")
         if APP_ROLE == "worker":
             _start_firstrate_scheduler_thread()
+        # Dukascopy downloads run on the API role; resume mid-chunk jobs after deploy/restart.
+        if APP_ROLE == "api":
+            try:
+                # Small delay so multiple gunicorn workers don't all race the claim at t=0.
+                time.sleep(1.0 + (os.getpid() % 7) * 0.35)
+                resumed = _dukascopy_resume_interrupted_jobs()
+                if resumed:
+                    print(f"[dukascopy] Resumed {resumed} interrupted job(s) on startup", flush=True)
+            except Exception as exc:
+                print(f"[dukascopy] Startup resume failed: {exc}", flush=True)
         # Crash/restart notifier: containers auto-restart (restart: unless-stopped),
         # so a fresh startup that you didn't trigger means it crashed. Env-gated —
         # only sends if SECURITY_ALERT_EMAIL / Slack is configured. Also fires on

@@ -68,6 +68,16 @@ function _orderProvisionalFocusCancelV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_PROVISIONAL_FOCUS_CANCEL_V1;
 }
 
+/**
+ * M10: user/order actions own only future replay price events.
+ * In candle playback the current OHLC is already complete and has no trustworthy
+ * intra-bar ordering, so it cannot execute a newly placed/activated/edited order.
+ */
+function _orderLifecycleEventOwnershipV1Enabled() {
+    return typeof window === 'undefined'
+        || !window.__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1;
+}
+
 /** D-030 Step 0: mark/close from owning panel feed only — never focused peer (default ON). */
 function _orderOwningPanelPriceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1;
@@ -2698,12 +2708,83 @@ class OrderManager {
     _getCurrentTickSnapshot() {
         const rs = this._playbackReplaySystem();
         if (!rs || !rs.isActive) return { t: null, tick: -1 };
+        const mode = typeof rs.getPlaybackMode === 'function'
+            ? rs.getPlaybackMode()
+            : (rs.playbackMode || 'tick');
+        if (_orderLifecycleEventOwnershipV1Enabled() && mode === 'candle') {
+            const curBar = this.getCurrentCandle();
+            return { t: curBar ? Number(curBar.t) : null, tick: Infinity };
+        }
         const anim = rs.animatingCandle;
         if (anim) {
             return { t: Number(anim.t), tick: Number(rs.tickProgress) || 0 };
         }
         const curBar = this.getCurrentCandle();
         return { t: curBar ? Number(curBar.t) : null, tick: -1 };
+    }
+
+    /**
+     * Canonical replay event identity. It intentionally ignores display-candle time:
+     * resampling the same playhead during TF/layout/view changes is not new price action.
+     */
+    _currentOrderLifecycleEventKey(candle) {
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return null;
+        const rs = this.replaySystem || this._playbackReplaySystem();
+        if (!rs || !rs.isActive) return null;
+
+        const mode = typeof rs.getPlaybackMode === 'function'
+            ? rs.getPlaybackMode()
+            : (rs.playbackMode || 'tick');
+        const anim = rs.animatingCandle;
+        if (mode === 'tick' && anim && Number.isFinite(Number(anim.t))) {
+            const tick = Number(rs.tickProgress);
+            return `tick:${Number(anim.t)}:${Number.isFinite(tick) ? tick : 0}`;
+        }
+
+        const replayTs = Number(rs.replayTimestamp);
+        if (Number.isFinite(replayTs)) return `replay:${replayTs}`;
+        const idx = Number(rs.currentIndex);
+        const rawT = Number.isFinite(idx) && Array.isArray(rs.fullRawData)
+            ? Number(rs.fullRawData[idx]?.t)
+            : NaN;
+        if (Number.isFinite(rawT)) return `replay:${rawT}`;
+        const candleT = Number(candle?.t);
+        return Number.isFinite(candleT) ? `replay:${candleT}` : null;
+    }
+
+    /**
+     * A persisted order gets one trigger-evaluation opportunity per market event.
+     * First observation is a baseline only, preventing refresh/re-entry/view work
+     * from treating already-rendered OHLC as newly arrived price action.
+     */
+    _claimOrderLifecycleEvent(record, candle) {
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return true;
+        if (!record || typeof record !== 'object') return false;
+        const key = this._currentOrderLifecycleEventKey(candle);
+        if (key == null) return true;
+        const previous = record._lastOrderLifecycleEventKey;
+        this._writeOrderLifecycleEventKey(record, key);
+        if (previous == null) return false;
+        return previous !== key;
+    }
+
+    _seedOrderLifecycleEvent(record, candle) {
+        if (!_orderLifecycleEventOwnershipV1Enabled() || !record || typeof record !== 'object') return;
+        const key = this._currentOrderLifecycleEventKey(candle);
+        if (key != null) this._writeOrderLifecycleEventKey(record, key);
+    }
+
+    _writeOrderLifecycleEventKey(record, key) {
+        try {
+            Object.defineProperty(record, '_lastOrderLifecycleEventKey', {
+                value: key,
+                writable: true,
+                configurable: true,
+                enumerable: false,
+            });
+        } catch (_e) {
+            record._lastOrderLifecycleEventKey = key;
+        }
     }
 
     _isNoTriggerGuardActive(guardTime, guardTick, candle) {
@@ -2789,6 +2870,7 @@ class OrderManager {
         if (tick === undefined) tick = -1;
 
         for (const pos of (this.openPositions || [])) {
+            this._seedOrderLifecycleEvent(pos, { t });
             pos._slNoTriggerBeforeTime = t;
             pos._slNoTriggerBeforeTick = tick;
             pos._tpNoTriggerBeforeTime = t;
@@ -2803,6 +2885,7 @@ class OrderManager {
         }
 
         for (const po of (this.pendingOrders || [])) {
+            this._seedOrderLifecycleEvent(po, { t });
             po._noFillBeforeTime = t;
             po._noFillBeforeTick = tick;
         }
@@ -26279,6 +26362,7 @@ class OrderManager {
                     if (idx === 0) this._consumeV9RailDraftForOrder(order);
                     this._applyPreTradeVariablesFromOrderPanel(order);
                     this._freezePlannedRRAtEntry(order);
+                    this._seedOrderLifecycleEvent(order, currentCandle);
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
                     } else {
@@ -26758,6 +26842,7 @@ class OrderManager {
         this._consumeV9RailDraftForOrder(order);
         this._applyPreTradeVariablesFromOrderPanel(order);
         this._freezePlannedRRAtEntry(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
 
         if (order.tpTargets && order.tpTargets.length > 0) {
             const guardTick = this._getCurrentTickSnapshot().tick;
@@ -26937,6 +27022,7 @@ class OrderManager {
         this._consumeV9RailDraftForOrder(pendingOrder);
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         this._freezePlannedRRAtEntry(pendingOrder);
+        this._seedOrderLifecycleEvent(pendingOrder, this.getCurrentCandle());
         
         // Reset scaling flag after storing
         if (this.scaleNextOrder) {
@@ -27013,6 +27099,7 @@ class OrderManager {
         this._consumeV9RailDraftForOrder(pendingOrder, { onlyIfFirstSplit: true });
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         this._freezePlannedRRAtEntry(pendingOrder);
+        this._seedOrderLifecycleEvent(pendingOrder, this.getCurrentCandle());
 
         if (this.orderService) {
             this.orderService.registerPendingOrder(pendingOrder);
@@ -27153,11 +27240,14 @@ class OrderManager {
                 autoBreakeven: false,
                 breakevenSettings: null,
                 placedTime: currentCandle.t,
+                _noFillBeforeTime: currentCandle.t,
+                _noFillBeforeTick: this._getCurrentTickSnapshot().tick,
                 status: 'PENDING',
                 createdFromTool: true,
                 toolType: toolData.toolType
             };
             
+            this._seedOrderLifecycleEvent(pendingOrder, currentCandle);
             this.pendingOrders.push(pendingOrder);
             
             const orderTypeLabel = orderType === 'limit' ? 'Limit' : 'Stop';
@@ -27212,6 +27302,7 @@ class OrderManager {
             };
 
             this._applyPreTradeVariablesFromOrderPanel(order);
+            this._seedOrderLifecycleEvent(order, currentCandle);
             
             // ═══ POSITION SCALING ═══
             if (this.enablePositionScaling && this.scaleNextOrder) {
@@ -27358,6 +27449,7 @@ class OrderManager {
         };
 
         this._applyPreTradeVariablesFromOrderPanel(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -27449,6 +27541,7 @@ class OrderManager {
         };
 
         this._applyPreTradeVariablesFromOrderPanel(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -27529,6 +27622,7 @@ class OrderManager {
         };
 
         this._applyPreTradeVariablesFromOrderPanel(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -27598,6 +27692,7 @@ class OrderManager {
         };
 
         this._applyPreTradeVariablesFromOrderPanel(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -28488,13 +28583,14 @@ class OrderManager {
      * Check and execute pending orders when price reaches them
      */
     checkPendingOrders(currentCandle) {
-        if (this.pendingOrders.length === 0) return;
-        if (!currentCandle) return;
+        if (this.pendingOrders.length === 0) return false;
+        if (!currentCandle) return false;
 
         const tMs = Number(currentCandle.t);
         const activeT = this._normalizeTicker(this._getActiveTicker());
         const ordersToExecute = [];
         const idsToRemove = [];
+        let lifecycleEventEvaluated = false;
 
         this.pendingOrders.forEach((pendingOrder) => {
             if (pendingOrder.status !== 'PENDING') {
@@ -28532,6 +28628,10 @@ class OrderManager {
             if (!Number.isFinite(high) || !Number.isFinite(low)) {
                 return;
             }
+            if (!this._claimOrderLifecycleEvent(pendingOrder, touchCandle)) {
+                return;
+            }
+            lifecycleEventEvaluated = true;
 
             // Don't fill on price action that already happened when the order was
             // placed or last dragged — only new ticks should trigger it.
@@ -28588,6 +28688,7 @@ class OrderManager {
         ordersToExecute.forEach(({ pendingOrder, bar }) => {
             this.executePendingOrder(pendingOrder, bar);
         });
+        return lifecycleEventEvaluated;
     }
     
     /**
@@ -28737,6 +28838,7 @@ class OrderManager {
             order.initial_takeProfit = pendingOrder.initial_takeProfit;
         }
         this._freezePlannedRRAtEntry(order);
+        this._seedOrderLifecycleEvent(order, currentCandle);
 
         // Guard multi-TP targets against triggering on the fill candle
         if (order.tpTargets && order.tpTargets.length > 0) {
@@ -28929,7 +29031,7 @@ class OrderManager {
         let low = activeCandle.l;
         
         // Check and execute pending orders
-        this.checkPendingOrders(activeCandle);
+        let lifecycleEventEvaluated = this.checkPendingOrders(activeCandle) === true;
 
         // Keep preview order lines tracking the current price during replay
         this._syncPreviewToReplayPrice();
@@ -28937,7 +29039,15 @@ class OrderManager {
         // If no open positions but have MFE/MAE tracking, still continue
         if (this.openPositions.length === 0) {
             if (this.mfeMaeTrackingPositions.length > 0) {
-                this.updateMfeMaeTracking(currentCandle, currentCandle.h, currentCandle.l);
+                let canAdvanceTracking = false;
+                this.mfeMaeTrackingPositions.forEach((position) => {
+                    if (this._claimOrderLifecycleEvent(position, currentCandle)) {
+                        canAdvanceTracking = true;
+                    }
+                });
+                if (lifecycleEventEvaluated || canAdvanceTracking) {
+                    this.updateMfeMaeTracking(currentCandle, currentCandle.h, currentCandle.l);
+                }
             }
             return;
         }
@@ -28984,6 +29094,11 @@ class OrderManager {
                     position.unrealizedPnL = this._calculatePositionPnL(position, markForPnL);
                     position._miLastMarkPrice = markForPnL;
                 }
+                if (!this._claimOrderLifecycleEvent(position, currentCandle)) {
+                    totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
+                    return;
+                }
+                lifecycleEventEvaluated = true;
 
                 // Fast replay / seek can jump many minutes on the focused chart while the
                 // foreign ticker only gets evaluated at the landing bar — catch up every
@@ -28998,10 +29113,11 @@ class OrderManager {
                     : [];
                 if (!barsToEval.length) {
                     const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
-                    if (bgBar) barsToEval = [bgBar];
+                    if (bgBar && Number(bgBar.t) > afterExclusive) barsToEval = [bgBar];
                 }
 
                 const alreadyQueued = () => positionsToClose.some((row) => row && row.id === position.id);
+                let latestEvaluatedTime = Number.isFinite(lastEval) ? lastEval : null;
 
                 for (let bi = 0; bi < barsToEval.length; bi++) {
                     const bgBar = barsToEval[bi];
@@ -29009,6 +29125,11 @@ class OrderManager {
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
                     const bgTime = Number(bgBar.t);
+                    if (!Number.isFinite(bgTime) || bgTime <= afterExclusive) continue;
+                    lifecycleEventEvaluated = true;
+                    latestEvaluatedTime = latestEvaluatedTime == null
+                        ? bgTime
+                        : Math.max(latestEvaluatedTime, bgTime);
                     if (Number.isFinite(bgTime) && bgTime !== position.openTime) {
                         this._appendExcursionSnapshot(position, bgBar, false);
                     }
@@ -29026,8 +29147,8 @@ class OrderManager {
                     }
                     if (alreadyQueued()) break;
                 }
-                if (Number.isFinite(tMs)) {
-                    position._bgSltpLastEvalTime = tMs;
+                if (latestEvaluatedTime != null) {
+                    position._bgSltpLastEvalTime = latestEvaluatedTime;
                 }
 
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
@@ -29050,6 +29171,18 @@ class OrderManager {
                 if (Number.isFinite(evalClose)) currentPrice = evalClose;
             }
 
+            const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
+            const markPx = Number.isFinite(markForUnrealized)
+                ? markForUnrealized
+                : Number.parseFloat(currentPrice);
+            if (!this._claimOrderLifecycleEvent(position, currentCandle)) {
+                position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
+                position._miLastMarkPrice = markPx;
+                totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
+                return;
+            }
+            lifecycleEventEvaluated = true;
+
             if (position._beTriggeredBarT != null && position._beTriggeredBarT !== currentCandle.t) {
                 position._beTriggeredBarT = null;
             }
@@ -29063,8 +29196,6 @@ class OrderManager {
             if (currentCandle.t !== position.openTime) {
                 this._appendExcursionSnapshot(position, currentCandle, false);
             }
-            const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
-            const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
             const barQ = this._barQuotesForSltp(position, high, low, open);
             if (position._trailSlAccLow != null && Number.isFinite(markPx)) {
                 position._trailSlAccLow = Math.min(position._trailSlAccLow, markPx);
@@ -29736,8 +29867,10 @@ class OrderManager {
             }
         }
         
-        // Continue tracking MFE/MAE for closed positions
-        this.updateMfeMaeTracking(currentCandle, high, low);
+        // Continue tracking MFE/MAE only when canonical market time advanced.
+        if (lifecycleEventEvaluated) {
+            this.updateMfeMaeTracking(currentCandle, high, low);
+        }
         
         if (positionsToClose.length > 0) {
             this._pauseReplayIfPlaying('TP/SL hit');
@@ -29750,7 +29883,9 @@ class OrderManager {
             this.orderService.recomputeSharedMarginState();
         }
 
-        this._maybeLiquidateOnStopOut(currentCandle);
+        if (lifecycleEventEvaluated) {
+            this._maybeLiquidateOnStopOut(currentCandle);
+        }
         
         // Log current state
         if (this.openPositions.length > 0) {
