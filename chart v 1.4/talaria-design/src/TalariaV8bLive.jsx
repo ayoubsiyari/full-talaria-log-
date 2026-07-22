@@ -15847,6 +15847,7 @@ const TalariaV8bLive = () => {
     // Talaria (proprietary)
     { id:"TALARIA_FVG", type:"talariafvg", name:"Talaria — FVG", abbr:"FVG", cat:"talaria", desc:"Multi-timeframe fair value gaps with fpFVG session bias tags" },
     { id:"TALARIA_RG", type:"talariaratiogap", name:"Talaria — Ratio + Gap", abbr:"R+G", cat:"talaria", desc:"NY-session range/gap ratios, PDR levels, ORB-15 & IB-60 info box" },
+    { id:"TALARIA_WM", type:"talariaweeklymap", name:"Talaria — Weekly Map", abbr:"WMAP", cat:"talaria", desc:"Week compass, relative regime, weekend gap, Friday range, OWR & info box" },
   ];
   const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
     acc[row.id] = row.type;
@@ -16721,7 +16722,7 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap") first = "input";
+      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") first = "input";
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
@@ -16730,7 +16731,7 @@ const TalariaV8bLive = () => {
       v9SuppressNextChartDeselect();
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap") ? 260 : 210;
+      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") ? 260 : 210;
       setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
       flushSync(() => {
         setIndSettDraft(draft);
@@ -29504,7 +29505,7 @@ const TalariaV8bLive = () => {
           ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
         if (!def || !ctx.indicator) return null;
         const isIctEverything = ctx.indicatorType === "icteverything";
-        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap";
+        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap" || ctx.indicatorType === "talariaweeklymap";
         const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
