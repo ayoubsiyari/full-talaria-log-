@@ -60,17 +60,24 @@ export function resolveOrderManagerForTradesPanel(hostOm) {
 
 function resolveTradeRowNowMs(om, panelSnapshots) {
   let rowNowMs = NaN;
+  const includeReplayClock = (value) => {
+    const ts = normalizeEpochMs(value, NaN);
+    if (Number.isFinite(ts) && (!Number.isFinite(rowNowMs) || ts > rowNowMs)) rowNowMs = ts;
+  };
   if (tradeDurationNormV1Enabled()) {
-    const sessionNow = normalizeEpochMs(om?.orderService?.multiInstrumentSession?.current_time, NaN);
-    if (Number.isFinite(sessionNow)) rowNowMs = sessionNow;
+    includeReplayClock(om?.orderService?.multiInstrumentSession?.current_time);
+    includeReplayClock(om?.replaySystem?.replayTimestamp);
+    includeReplayClock(om?.chart?.replaySystem?.replayTimestamp);
+    try {
+      includeReplayClock(om?._playbackReplaySystem?.()?.replayTimestamp);
+    } catch (_) {}
   }
-  if (!Number.isFinite(rowNowMs)) {
-    rowNowMs = normalizeEpochMs(typeof window !== "undefined" ? window.chart?.replaySystem?.replayTimestamp : NaN, NaN);
-  }
+  includeReplayClock(
+    typeof window !== "undefined" ? window.chart?.replaySystem?.replayTimestamp : NaN
+  );
   if (mcReplayPnlHostAggV1Enabled() && Array.isArray(panelSnapshots)) {
     panelSnapshots.forEach((s) => {
-      const ts = normalizeEpochMs(s?.replayTimestamp, NaN);
-      if (Number.isFinite(ts) && (!Number.isFinite(rowNowMs) || ts > rowNowMs)) rowNowMs = ts;
+      includeReplayClock(s?.replayTimestamp);
     });
   }
   if (!Number.isFinite(rowNowMs)) rowNowMs = Date.now();
@@ -1295,6 +1302,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
     seenIds.add(tid);
 
     const sortMs = Number.isFinite(tClose) ? tClose : Number.isFinite(tOpen) ? tOpen : 0;
+    const openMs = Number.isFinite(tOpen) ? tOpen : sortMs;
     const pnlN = extractOrderManagerTradePnl(j, om);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
 
@@ -1310,7 +1318,8 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
       id: `#${tid}`,
       omId: tid,
       _sortMs: sortMs,
-      time: v9FormatTradeTime(Number.isFinite(tOpen) ? tOpen : Number.isFinite(tClose) ? tClose : sortMs),
+      _openMs: openMs,
+      time: v9FormatTradeTime(openMs),
       status: "closed",
       sym: v9DisplaySymbol(j.ticker || j.symbol),
       side: sideStr(j.type || j.direction),
@@ -1401,6 +1410,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       id: `#${o.id}`,
       omId: o.id,
       _sortMs: tMs,
+      _openMs: tMs,
       time: v9FormatTradeTime(tMs),
       status: "pending",
       sym: v9DisplaySymbol(o.ticker || o.symbol),
@@ -1436,6 +1446,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       id: `#${o.id}`,
       omId: o.id,
       _sortMs: tMs,
+      _openMs: tMs,
       time: v9FormatTradeTime(tMs),
       status: "open",
       sym: v9DisplaySymbol(o.ticker || o.symbol),
@@ -1465,6 +1476,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       ? normalizeEpochMs(o.closeTime, NaN)
       : o.closeTime;
     const sortMs = Number.isFinite(tClose) ? tClose : tOpen || 0;
+    const openMs = Number.isFinite(tOpen) ? tOpen : sortMs;
     const pnlN = extractOrderManagerTradePnl(o, om);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
@@ -1474,7 +1486,8 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
       id: `#${o.id}`,
       omId: o.id,
       _sortMs: sortMs,
-      time: v9FormatTradeTime(tOpen || tClose),
+      _openMs: openMs,
+      time: v9FormatTradeTime(openMs),
       status: "closed",
       sym: v9DisplaySymbol(o.ticker || o.symbol),
       side: sideStr(o.type || o.direction),
@@ -1499,7 +1512,15 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
 
   appendJournalOnlyClosedRows(om, rows, theme, { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs });
 
-  rows.sort((a, b) => (b._sortMs || 0) - (a._sortMs || 0));
+  // Default: trade ID ascending (#1, #2, #3…) — UI may re-sort by column.
+  rows.sort((a, b) => {
+    const idA = Number(a.omId);
+    const idB = Number(b.omId);
+    const na = Number.isFinite(idA) ? idA : 0;
+    const nb = Number.isFinite(idB) ? idB : 0;
+    if (na !== nb) return na - nb;
+    return (a._openMs || a._sortMs || 0) - (b._openMs || b._sortMs || 0);
+  });
   return rows;
 }
 

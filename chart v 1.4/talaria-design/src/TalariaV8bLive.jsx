@@ -37639,20 +37639,45 @@ const TalariaV8bLive = () => {
                   {label:"ACTION",       key:null,     sortable:false},
                 ];
                 const getSortVal=(r,key)=>{
-                  if(key==="id")     return parseInt(r.id.replace(/\D/g,""));
-                  if(key==="time"){ const mo={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}; const p=(r.time||"").split(" "); const [h,m]=(p[2]||"00:00").split(":").map(Number); return ((mo[p[0]]||0)*31+parseInt(p[1]||0))*1440+h*60+m; }
-                  if(key==="sym")    return r.sym;
-                  if(key==="side")   return r.side;
-                  if(key==="status") return r.status;
+                  // Prefer numeric timestamps / ids — never parse the display TIME string
+                  // (that old month*31 heuristic scrambled Aug 10 23:15 vs Aug 11 10:25).
+                  if(key==="id"){
+                    const n=Number(r.omId);
+                    if(Number.isFinite(n)) return n;
+                    return parseInt(String(r.id||"").replace(/\D/g,""),10)||0;
+                  }
+                  if(key==="time"){
+                    const open=Number(r._openMs);
+                    if(Number.isFinite(open)&&open>0) return open;
+                    const close=Number(r._sortMs);
+                    return Number.isFinite(close)?close:0;
+                  }
+                  if(key==="sym")    return r.sym||"";
+                  if(key==="side")   return r.side||"";
+                  if(key==="status") return r.status||"";
                   if(key==="sz")     return parseFloat(r.sz)||0;
-                  if(key==="type")   return r.type;
-                  if(key==="pnl"){   if(r.pnl==="—")return -Infinity; return parseFloat(r.pnl.replace(/[$,+]/g,""))||0; }
-                  if(key==="dur"){   if(r.dur==="—")return -1; const m=r.dur.match(/(\d+)h\s*(\d+)m/); return m?parseInt(m[1])*60+parseInt(m[2]):0; }
+                  if(key==="type")   return r.type||"";
+                  if(key==="pnl"){   if(r.pnl==="—")return -Infinity; return parseFloat(String(r.pnl).replace(/[$,+]/g,""))||0; }
+                  if(key==="dur"){   if(r.dur==="—")return -1; const m=String(r.dur||"").match(/(\d+)h\s*(\d+)m/); return m?parseInt(m[1],10)*60+parseInt(m[2],10):0; }
                   return "";
                 };
-                const displayRows=tblSort
-                  ?[...filtered].sort((a,b)=>{const va=getSortVal(a,tblSort.col),vb=getSortVal(b,tblSort.col);if(typeof va==="string")return tblSort.dir==="asc"?va.localeCompare(vb):vb.localeCompare(va);return tblSort.dir==="asc"?va-vb:vb-va;})
-                  :[...filtered].reverse();
+                const displayRows=[...filtered].sort((a,b)=>{
+                  // Default: ID ascending (#1…#N). Column header overrides when clicked.
+                  const col=tblSort?tblSort.col:"id";
+                  const dir=tblSort?tblSort.dir:"asc";
+                  const va=getSortVal(a,col), vb=getSortVal(b,col);
+                  let cmp=0;
+                  if(typeof va==="string"||typeof vb==="string"){
+                    cmp=String(va).localeCompare(String(vb));
+                  }else{
+                    cmp=(Number(va)||0)-(Number(vb)||0);
+                  }
+                  if(cmp===0){
+                    const idA=Number(a.omId)||0, idB=Number(b.omId)||0;
+                    cmp=idA-idB;
+                  }
+                  return dir==="asc"?cmp:-cmp;
+                });
                 return(
                 <div className="tlr-scroll" style={{flex:1,overflowY:btmOpen?"auto":"hidden",minHeight:0}}>
                   <div style={{display:"grid",gridTemplateColumns:cols,columnGap:6,fontSize:9,fontWeight:700,letterSpacing:"0.08em",color:c.tm,padding:"4px 10px 3px",borderBottom:`1px solid ${c.br}`,position:"sticky",top:0,background:c.sf,zIndex:1}}>

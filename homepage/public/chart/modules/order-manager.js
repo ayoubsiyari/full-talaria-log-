@@ -2855,6 +2855,12 @@ class OrderManager {
         }
     }
 
+    /** Pending activation stays visible on-chart; its trade card remains available from the row. */
+    _shouldAutoOpenTradeCardOnPendingFill() {
+        return typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_PENDING_FILL_NO_AUTO_CARD_V1 === true;
+    }
+
     _getCurrentTickSnapshot() {
         const rs = this._playbackReplaySystem();
         if (!rs || !rs.isActive) return { t: null, tick: -1 };
@@ -29160,8 +29166,11 @@ class OrderManager {
         
         this.updatePositionsPanel();
 
-        // Always open trade card on limit/stop fill (same as market) — not only drawing-tool orders.
-        this.showTradeJournalModal(order, false, null);
+        // Keep the fill candle observable. The same card opens from the trade row;
+        // the kill-switch restores the legacy blocking popup.
+        if (this._shouldAutoOpenTradeCardOnPendingFill()) {
+            this.showTradeJournalModal(order, false, null);
+        }
     }
     
     /**
