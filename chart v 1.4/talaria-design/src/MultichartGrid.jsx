@@ -195,6 +195,13 @@ function orderMcPnlHubV1Enabled() {
         && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1);
 }
 
+/** Host play fan-out on replayFrame (not only iframe order-pnl-tick / replayTick). */
+function orderMcPnlReplayFrameHubV1Enabled() {
+    if (!orderMcPnlHubV1Enabled()) return false;
+    return !(typeof window !== "undefined"
+        && window.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true);
+}
+
 function orderMcOpenPatchV1Enabled() {
     return orderMcStateConvergeFixEnabled()
         && !(typeof window !== "undefined" && window.__TALARIA_DISABLE_ORDER_MC_OPEN_PATCH_V1);
@@ -3903,11 +3910,25 @@ export default function MultichartGrid({
             if (typeof window.__multichartManagerBroadcastReplay === "function") {
                 coalescedFrameDetail = null;
                 window.__multichartManagerBroadcastReplay(detail);
-                return;
+            } else {
+                coalescedFrameDetail = null;
+                lastReplayFrameBroadcastAt = performance.now();
+                broadcastReplayFrameToIframes(detail);
             }
-            coalescedFrameDetail = null;
-            lastReplayFrameBroadcastAt = performance.now();
-            broadcastReplayFrameToIframes(detail);
+            // Failure A: Play streams replayFrame, not replayTick. Host already
+            // updatePositions() in the play loop; fan runtimeOnly so B/C/D P&L
+            // labels track A continuously (no full journal rebuild).
+            // Kill-switch: __TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1
+            if (orderMcPnlReplayFrameHubV1Enabled() && detail.isPlaying === true) {
+                try {
+                    const hom = window.chart && window.chart.orderManager;
+                    const live = ((hom && hom.openPositions) || []).length
+                        + ((hom && hom.pendingOrders) || []).length;
+                    if (live > 0 && typeof window.__multichartScheduleHostPnlFanout === "function") {
+                        window.__multichartScheduleHostPnlFanout();
+                    }
+                } catch (_) { /* ignore */ }
+            }
         };
 
         const onMultichartReplayFrame = (ev) => {
@@ -4345,6 +4366,7 @@ export default function MultichartGrid({
     // Sending replayEnter the moment B is ready closes that window.
     const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
     const hostOrderSnapshotVersionRef = useRef(0);
+    const hostPnlFanoutTimerRef = useRef(null);
     const fanOutHostOrderSnapshotImpl = useCallback((options = {}) => {
         if (!orderMcSnapshotProjectionV1Enabled()) return { ok: false, reason: "snapshot-off" };
         const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
@@ -4363,6 +4385,31 @@ export default function MultichartGrid({
             runtimeOnly: options.runtimeOnly === true,
         });
     }, []);
+    // Coalesced runtimeOnly fan-out for Play (replayFrame) + order-pnl-tick.
+    const scheduleHostPnlSnapshotFanout = useCallback(() => {
+        if (!orderMcPnlHubV1Enabled()) return;
+        if (hostPnlFanoutTimerRef.current != null) return;
+        hostPnlFanoutTimerRef.current = setTimeout(() => {
+            hostPnlFanoutTimerRef.current = null;
+            try { fanOutHostOrderSnapshotImpl({ runtimeOnly: true }); } catch (_) { /* ignore */ }
+        }, 50);
+    }, [fanOutHostOrderSnapshotImpl]);
+    useEffect(() => {
+        try {
+            window.__multichartScheduleHostPnlFanout = scheduleHostPnlSnapshotFanout;
+        } catch (_) { /* ignore */ }
+        return () => {
+            try {
+                if (window.__multichartScheduleHostPnlFanout === scheduleHostPnlSnapshotFanout) {
+                    delete window.__multichartScheduleHostPnlFanout;
+                }
+            } catch (_) { /* ignore */ }
+            if (hostPnlFanoutTimerRef.current != null) {
+                clearTimeout(hostPnlFanoutTimerRef.current);
+                hostPnlFanoutTimerRef.current = null;
+            }
+        };
+    }, [scheduleHostPnlSnapshotFanout]);
     // Peer pair switch: iframe OM only holds the last filtered snapshot. After
     // B changes GBP→EUR, re-project host open/pending so EUR lines appear.
     const scheduleFanOutHostOrdersAfterPairLoad = useCallback(() => {
@@ -6994,8 +7041,6 @@ export default function MultichartGrid({
     // match on sourceFileId/fileId when the manager's iframe state.symbol
     // is still the placeholder "—" (chart-state can lag behind visible data).
     useEffect(() => {
-        let hostPnlFanoutTimer = null;
-
         // Read order spec from parent's hidden #orderPanel DOM.
         // React (TalariaV8bLive) keeps these inputs in sync with its
         // own form state via the useEffect at ~line 6008 — so by the
@@ -7099,11 +7144,13 @@ export default function MultichartGrid({
         }
 
         function scheduleHostPnlSnapshotFanout() {
-            if (hostPnlFanoutTimer != null) return;
-            hostPnlFanoutTimer = setTimeout(() => {
-                hostPnlFanoutTimer = null;
-                fanOutOrderSnapshot(null, { runtimeOnly: true });
-            }, 50);
+            try {
+                if (typeof window.__multichartScheduleHostPnlFanout === "function") {
+                    window.__multichartScheduleHostPnlFanout();
+                } else {
+                    fanOutOrderSnapshot(null, { runtimeOnly: true });
+                }
+            } catch (_) { /* ignore */ }
         }
 
         function tagLatestHostOrderWithPanel(panelId) {
@@ -8081,10 +8128,6 @@ export default function MultichartGrid({
 
         return () => {
             _broadcastClearDraftPreviewImpl = null;
-            if (hostPnlFanoutTimer != null) {
-                clearTimeout(hostPnlFanoutTimer);
-                hostPnlFanoutTimer = null;
-            }
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
             window.removeEventListener("message", onIframeOrder);

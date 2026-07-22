@@ -545,10 +545,12 @@
                 }, this);
             }
 
-            // Label collision solve is expensive — skip during replay play (pause still draws).
+            // Always draw labels in replay (play + pause). Collision deconflict is
+            // cheap for typical Talaria label counts; skip only the O(n) nudge loop
+            // while actively playing so 60x stays smooth without blanking text.
             var replayPlaying = !!(this.replaySystem && this.replaySystem.isActive
                 && (this.replaySystem.isPlaying || this._multichartPassivePlayActive));
-            if (data.labels && data.labels.length && !replayPlaying) {
+            if (data.labels && data.labels.length) {
                 var lm = data.labelMeta || {};
                 var fontSize = lm.size === 'tiny' ? 9 : lm.size === 'small' ? 10
                     : lm.size === 'large' ? 14 : lm.size === 'huge' ? 17 : 12;
@@ -578,9 +580,15 @@
                 placed.sort(function (a, b) { return a.y - b.y; });
                 // Fixed X column at session end (+ lblOff), not the chart's last bar —
                 // otherwise after-hours bars drag labels past the trading session.
+                // In replay the slice ends at the playhead — clamp to visible bars so
+                // labels stay on-screen instead of anchoring past the right edge.
                 var anchorIdx = Number.isFinite(data.labelAnchorIndex)
                     ? data.labelAnchorIndex
                     : (n - 1);
+                if (this.replaySystem && this.replaySystem.isActive) {
+                    var replayEnd = Number.isFinite(endIndex) ? endIndex : (n - 1);
+                    anchorIdx = Math.min(anchorIdx, replayEnd);
+                }
                 anchorIdx = Math.max(0, Math.min(n - 1, Math.floor(anchorIdx)));
                 var lastBarX = this.dataIndexToPixel(anchorIdx);
                 if (!Number.isFinite(lastBarX)) lastBarX = plotR;
@@ -617,8 +625,8 @@
                 }
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
-                    var y = findFreeY(it.y);
-                    usedYs.push(y);
+                    var y = replayPlaying ? it.y : findFreeY(it.y);
+                    if (!replayPlaying) usedYs.push(y);
                     ctx.fillStyle = it.color || '#ffffff';
                     ctx.fillText(it.text, anchorX, y);
                 }

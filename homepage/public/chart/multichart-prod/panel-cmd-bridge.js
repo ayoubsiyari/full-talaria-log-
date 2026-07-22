@@ -173,6 +173,32 @@
         return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1;
     }
 
+    /**
+     * Play uses replayFrame (not replayTick). Without this, order-pnl-tick never
+     * fires during Play and host runtimeOnly snapshots never reach peers.
+     * Kill-switch (restores A updates / B stuck at +0.00 during Play):
+     *   window.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 = true
+     */
+    function orderMcPnlReplayFrameHubV1EnabledBridge() {
+        if (!orderMcPnlHubV1EnabledBridge()) return false;
+        try {
+            if (global.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true) return false;
+        } catch (_) {}
+        return true;
+    }
+
+    function postOrderPnlTick(ch, ts) {
+        if (!orderMcPnlHubV1EnabledBridge()) return;
+        try {
+            window.parent.postMessage({
+                type: 'order-pnl-tick',
+                panelId: panelId,
+                symbol: (ch && ch.currentSymbol) || '',
+                timestamp: ts,
+            }, '*');
+        } catch (_pnlHub) { /* ignore */ }
+    }
+
     function applyOrderSnapshotProjection(ch, snapshot, opts) {
         var om = ch && ch.orderManager;
         if (!om || !snapshot) return { ok: false, reason: 'missing' };
@@ -3729,16 +3755,7 @@
                     // ─── ALWAYS seek to parent's position ───────────
                     pendingReplayTs = ts2;
                     scheduleCoalescedSeek(ch, ts2);
-                    if (orderMcPnlHubV1EnabledBridge()) {
-                        try {
-                            window.parent.postMessage({
-                                type: 'order-pnl-tick',
-                                panelId: panelId,
-                                symbol: ch.currentSymbol || '',
-                                timestamp: ts2,
-                            }, '*');
-                        } catch (_pnlHub) { /* ignore */ }
-                    }
+                    postOrderPnlTick(ch, ts2);
                     return;
                 }
                 case 'replayExit': {
@@ -3777,7 +3794,15 @@
                 //     mirror parent chart slice + forming candle each frame
                 //   replayTick {timestamp} — seek on pause/scrub (not during play)
                 case 'replayFrame': {
-                    return applyReplayFrame(ch, args);
+                    var frameResult = applyReplayFrame(ch, args);
+                    // Play never reaches replayTick (passive iframes early-return),
+                    // so runtime P&L hub must tick here or peers freeze at +0.00.
+                    if (orderMcPnlReplayFrameHubV1EnabledBridge()
+                        && args && args.isPlaying === true) {
+                        var tsFrame = Number(args.timestamp);
+                        if (Number.isFinite(tsFrame)) postOrderPnlTick(ch, tsFrame);
+                    }
+                    return frameResult;
                 }
                 case 'replayPlay': {
                     // Always stash intent first so a deferred apply

@@ -423,7 +423,7 @@ test('different-symbol chart stays independent', () => {
 
 test('three stable repetitions: production pan sync glue', () => {
   installWindow();
-  if (KILL || LIVE_PAN_KILL) {
+  if (KILL) {
     assert.ok(true, 'skip stability under kill-switch');
     return;
   }

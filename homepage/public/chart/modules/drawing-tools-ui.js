@@ -300,11 +300,24 @@ function applyImageToolUploadDisplayDefaults(drawing) {
     drawing.style.heightInDataUnits = null;
 }
 
-/** Read numeric input without treating 0 as empty (parseFloat(x)||0 breaks decrement to zero). */
+/**
+ * Read numeric input without treating 0 as empty (parseFloat(x)||0 breaks decrement to zero).
+ * Returns NaN for incomplete drafts ("", "-", ".", "1.") so callers can skip apply
+ * while the user is still typing — forcing 0 mid-edit made Fib levels unusable.
+ */
 function readTvNumberInputValue(input) {
-    if (!input) return 0;
-    const n = parseFloat(input.value);
-    return Number.isFinite(n) ? n : 0;
+    if (!input) return NaN;
+    const raw = String(input.value ?? '').trim().replace(',', '.');
+    if (raw === '' || raw === '-' || raw === '+' || raw === '.' || raw === '-.' || raw === '+.') {
+        return NaN;
+    }
+    // Trailing decimal while typing (e.g. "1.") — keep previous commit; don't coerce to 0.
+    if (/^[+-]?\d+\.$/.test(raw)) {
+        const n = parseFloat(raw);
+        return Number.isFinite(n) ? n : NaN;
+    }
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : NaN;
 }
 
 function getTvNumberInputStepDecimals(step) {
@@ -331,10 +344,15 @@ function stepTvNumberInputValue(input, direction) {
     const safeStep = Number.isFinite(step) && step > 0 ? step : 0.001;
     const decimals = getTvNumberInputStepDecimals(safeStep);
     const factor = Math.pow(10, decimals);
-    const cur = readTvNumberInputValue(input);
+    const curRaw = readTvNumberInputValue(input);
+    const cur = Number.isFinite(curRaw) ? curRaw : 0;
     let next = Math.round((cur + direction * safeStep) * factor) / factor;
-    if (direction < 0 && cur > 0 && next < 0) next = 0;
-    if (direction > 0 && cur < 0 && next > 0) next = 0;
+    // Fib / Gann level editors must allow negatives (e.g. -0.272). Other number
+    // fields still clamp across zero so decrement-from-0.001 doesn't go negative.
+    if (!isTvLevelValueSpinnerInput(input)) {
+        if (direction < 0 && cur > 0 && next < 0) next = 0;
+        if (direction > 0 && cur < 0 && next > 0) next = 0;
+    }
     input.value = formatTvNumberInputValue(next, decimals);
     return next;
 }
@@ -10113,11 +10131,16 @@ body.light-mode .template-save-dialog .dialog-title {
         const levelsRef = ensureLevelsArray();
         // Retracement-style tools use 0/1 as fixed anchors; fib-arcs / circles / wedge use
         // the same numeric values as radii — do not mark those rows as immutably "locked".
+        // Only lock rows that are already anchors (or unmarked 0/1 defaults) — never
+        // re-lock a row the user explicitly unlocked after editing its value.
         const lock01AsAnchors = drawing.type !== 'fib-arcs' && drawing.type !== 'fib-wedge'
             && drawing.type !== 'fib-circles' && drawing.type !== 'fib-spiral';
         if (lock01AsAnchors) {
             levelsRef.forEach((l) => {
-                if (l && typeof l === 'object' && (parseFloat(l.value) === 0 || parseFloat(l.value) === 1)) l.locked = true;
+                if (!l || typeof l !== 'object') return;
+                if (l.locked === false) return;
+                const v = parseFloat(l.value);
+                if (v === 0 || v === 1) l.locked = true;
             });
         }
 
@@ -11241,13 +11264,18 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const input = document.createElement('input');
 
-            input.type = 'number';
+            // text + inputmode: HTML number inputs reject commas / some decimals and
+            // fight mid-edit drafts; spinners still step via dataset.step.
+            input.type = 'text';
+            input.inputMode = 'decimal';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
 
             input.className = 'tv-number-input';
 
             input.dataset.prop = valueProp;
 
-            const _isPct = !isTimeZone && drawing.style.levelsLabelMode === 'percent';
+            const _isPct = !isTimeZone && drawing.style && drawing.style.levelsLabelMode === 'percent';
             input.step = isTimeZone ? '1' : (_isPct ? '0.1' : '0.001');
             input.value = _isPct ? String(parseFloat((level.value * 100).toFixed(4))) : String(level.value);
 
@@ -11255,37 +11283,45 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            const updateLevelFromInput = () => {
+            const updateLevelFromInput = (opts = {}) => {
 
                 const parsed = readTvNumberInputValue(input);
 
-                if (Number.isFinite(parsed)) {
+                if (!Number.isFinite(parsed)) return;
 
-                    if (!isTimeZone && drawing.style.levelsLabelMode === 'percent') {
+                if (!isTimeZone && drawing.style && drawing.style.levelsLabelMode === 'percent') {
 
-                        level.value = parseFloat((parsed / 100).toFixed(6));
+                    level.value = parseFloat((parsed / 100).toFixed(6));
 
-                        level.label = String(level.value);
+                    level.label = String(level.value);
 
-                    } else {
+                } else {
 
-                        level.value = parsed;
+                    level.value = parsed;
 
-                        level.label = input.value;
-
-                    }
-
-                    applyChanges();
+                    const dec = getTvNumberInputStepDecimals(input.step || '0.001');
+                    level.label = formatTvNumberInputValue(parsed, dec);
 
                 }
+
+                if (opts.normalizeDisplay) {
+                    const dec = getTvNumberInputStepDecimals(input.step || '0.001');
+                    input.value = !isTimeZone && drawing.style && drawing.style.levelsLabelMode === 'percent'
+                        ? formatTvNumberInputValue(parsed, dec)
+                        : level.label;
+                }
+
+                applyChanges();
 
             };
 
 
 
-            input.addEventListener('input', updateLevelFromInput);
+            input.addEventListener('input', () => updateLevelFromInput());
 
-            input.addEventListener('change', updateLevelFromInput);
+            input.addEventListener('change', () => updateLevelFromInput({ normalizeDisplay: true }));
+
+            input.addEventListener('blur', () => updateLevelFromInput({ normalizeDisplay: true }));
 
 
 
@@ -18946,7 +18982,16 @@ body.light-mode .template-save-dialog .dialog-title {
 
             // [debug removed]
 
-            
+            // Flush Fib/Gann level number fields before apply — last keystroke may
+            // not have committed if the draft was incomplete, or a prior live apply
+            // may have left style.levels pointing at a stale clone.
+            try {
+                modal.querySelectorAll(
+                    'input.tv-number-input[data-prop$="LevelValue_0"], input.tv-number-input[data-prop*="LevelValue_"]'
+                ).forEach((inp) => {
+                    inp.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+            } catch (_) { /* ignore */ }
 
             // Apply all pending changes to the drawing
 
@@ -18986,11 +19031,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     }
 
-                    if (drawing.levels) {
+                    const levelsSource = Array.isArray(drawing.levels) && drawing.levels.length
+                        ? drawing.levels
+                        : (drawing.style && Array.isArray(drawing.style.levels) ? drawing.style.levels : null);
 
-                        actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
+                    if (levelsSource) {
+
+                        actualDrawing.levels = JSON.parse(JSON.stringify(levelsSource));
 
                         if (actualDrawing.style) actualDrawing.style.levels = actualDrawing.levels;
+
+                        if (actualDrawing.type === 'fib-timezone') {
+                            actualDrawing.fibNumbers = actualDrawing.levels;
+                            actualDrawing.style.fibNumbers = actualDrawing.levels;
+                        }
 
                         // [debug removed]
 
@@ -24237,14 +24291,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 // [debug removed]
 
-                // Also copy levels if they exist (for pitchfork/channel tools)
-
-        if (drawing.levels) {
-
-                    actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
+                // Levels: share the same array the settings UI is editing.
+                // Deep-cloning here orphaned Fib Input-tab row closures so typed
+                // values looked applied in the modal but never stuck on the drawing.
+                if (drawing.levels) {
+                    actualDrawing.levels = drawing.levels;
                     if (!actualDrawing.style) actualDrawing.style = {};
                     actualDrawing.style.levels = actualDrawing.levels;
-
+                    if (drawing.style) drawing.style.levels = actualDrawing.levels;
+                    if (drawing.type === 'fib-timezone' || actualDrawing.type === 'fib-timezone') {
+                        actualDrawing.fibNumbers = actualDrawing.levels;
+                        actualDrawing.style.fibNumbers = actualDrawing.levels;
+                        drawing.fibNumbers = actualDrawing.levels;
+                        if (drawing.style) drawing.style.fibNumbers = actualDrawing.levels;
+                    }
                 }
 
                 // [debug removed]

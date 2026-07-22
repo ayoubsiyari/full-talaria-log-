@@ -505,7 +505,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260722b18';
+  const buildId = '20260722b21';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -879,10 +879,82 @@ function hostPageHtml(query) {
         return !(typeof window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === 'boolean'
           && window.__TALARIA_DISABLE_MULTICHART_PEER_DESELECT_V1 === true);
       }
+      var _hostOrderSnapVer = 0;
+      var _hostPnlFanTimer = null;
+      function cloneList(arr) {
+        try { return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : [])); }
+        catch (_) { return []; }
+      }
+      function buildHostOrderSnap(om) {
+        _hostOrderSnapVer += 1;
+        return {
+          version: _hostOrderSnapVer,
+          sessionId: null,
+          pendingOrders: cloneList(om && om.pendingOrders),
+          openPositions: cloneList(om && om.openPositions),
+          closedPositions: cloneList(om && om.closedPositions).slice(-50),
+          tradeJournal: cloneList(om && om.tradeJournal).slice(-100),
+          orders: cloneList(om && om.orders),
+          account: {
+            balance: om && om.balance,
+            equity: om && om.equity,
+            initialBalance: om && om.initialBalance,
+          },
+          counters: {
+            orderIdCounter: om && om.orderIdCounter,
+            tradeGroupIdCounter: om && om.tradeGroupIdCounter,
+          },
+        };
+      }
+      function fanOutHostOrderSnapshot(opts) {
+        var om = window.chart && window.chart.orderManager;
+        if (!om || !mgr || !mgr.charts) return { ok: false };
+        var runtimeOnly = !!(opts && opts.runtimeOnly === true);
+        var snap = buildHostOrderSnap(om);
+        var n = 0;
+        mgr.charts.forEach(function (c) {
+          if (!c || c.host || !c.frame) return;
+          try {
+            if (typeof mgr.sendCommandNoReply === 'function') {
+              mgr.sendCommandNoReply(c.id, 'applyOrderSnapshot', {
+                snapshot: snap,
+                runtimeOnly: runtimeOnly,
+              });
+            } else {
+              mgr.sendCommand(c.id, 'applyOrderSnapshot', {
+                snapshot: snap,
+                runtimeOnly: runtimeOnly,
+              });
+            }
+            n += 1;
+          } catch (_) {}
+        });
+        return { ok: n > 0, panelIds: n };
+      }
+      function scheduleHostPnlFanout() {
+        if (window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
+        if (_hostPnlFanTimer != null) return;
+        _hostPnlFanTimer = setTimeout(function () {
+          _hostPnlFanTimer = null;
+          fanOutHostOrderSnapshot({ runtimeOnly: true });
+        }, 50);
+      }
+      window.__multichartScheduleHostPnlFanout = scheduleHostPnlFanout;
       window.addEventListener('message', function (ev) {
         try {
           var msg = ev.data;
           if (!msg || typeof msg !== 'object' || !msg.type) return;
+          if (msg.type === 'order-pnl-tick') {
+            if (window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
+            var hom = window.chart && window.chart.orderManager;
+            if (hom && typeof hom.updatePositions === 'function') {
+              var hadLive = ((hom.openPositions || []).length + (hom.pendingOrders || []).length);
+              try { hom.updatePositions(); } catch (_) {}
+              var hasLive = ((hom.openPositions || []).length + (hom.pendingOrders || []).length);
+              if (hadLive > 0 || hasLive > 0) scheduleHostPnlFanout();
+            }
+            return;
+          }
           if (msg.type === 'multichart-clear-drawing-ui') {
             var sourceId = msg.source != null ? String(msg.source) : null;
             var grid = window.__multichartGrid;
@@ -907,6 +979,20 @@ function hostPageHtml(query) {
           }
         } catch (_) {}
       });
+      // Host Play path: MultichartGrid fans runtimeOnly on replayFrame; harness
+      // mirrors that so A→B P&L stays continuous without a React shell.
+      window.addEventListener('replayMultichartFrame', function (ev) {
+        try {
+          if (window.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true) return;
+          if (window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
+          var detail = ev && ev.detail;
+          if (!detail || detail.isPlaying !== true) return;
+          var om = window.chart && window.chart.orderManager;
+          var live = ((om && om.openPositions) || []).length
+            + ((om && om.pendingOrders) || []).length;
+          if (live > 0) scheduleHostPnlFanout();
+        } catch (_) {}
+      });
       function getChartForPanelId(panelId) {
         var pid = panelId != null ? String(panelId) : (window.__harnessFocusedPanelId || 'A');
         if (pid === 'A') return window.chart || null;
@@ -929,6 +1015,12 @@ function hostPageHtml(query) {
         refreshFinestReplayCadence: refreshFinestReplayCadence,
         cancelScheduledPeerDeselect: cancelScheduledPeerDeselect,
         focusPanelById: focusPanelById,
+        fanOutHostOrderSnapshot: fanOutHostOrderSnapshot,
+        runCommand: function (cmd, args, opts) {
+          var pid = opts && opts.panelId;
+          if (!pid) return Promise.resolve(null);
+          return mgr.sendCommand(pid, cmd, args || {});
+        },
       };
 
       window.__harnessHostReady = true;

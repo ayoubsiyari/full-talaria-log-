@@ -5450,17 +5450,29 @@ class ReplaySystem {
     }
 
     _buildReplaySessionPatch() {
-        return {
-            replay: {
-                replayTimestamp: this.replayTimestamp,
-                currentIndex: this.currentIndex,
-                tickElapsedMs: this.tickElapsedMs,
-                speed: this.speed,
-                playbackMode: this.getPlaybackMode(),
-                timeframe: this.chart.currentTimeframe,
-                isActive: true
-            }
+        const ts = Number(this.replayTimestamp);
+        const dash = {};
+        if (Number.isFinite(ts)) {
+            dash.furthest_replay_ts = ts;
+        }
+        const chartDashTs = this.chart && Number(this.chart._dashboardFurthestReplayTs);
+        if (Number.isFinite(chartDashTs)
+            && (!Number.isFinite(dash.furthest_replay_ts) || chartDashTs > dash.furthest_replay_ts)) {
+            dash.furthest_replay_ts = chartDashTs;
+        }
+        const replay = {
+            replayTimestamp: this.replayTimestamp,
+            currentIndex: this.currentIndex,
+            tickElapsedMs: this.tickElapsedMs,
+            speed: this.speed,
+            playbackMode: this.getPlaybackMode(),
+            timeframe: this.chart.currentTimeframe,
+            isActive: true,
         };
+        if (Number.isFinite(dash.furthest_replay_ts)) {
+            replay.dashboard = dash;
+        }
+        return { replay };
     }
 
     _persistReplayStateThrottled() {

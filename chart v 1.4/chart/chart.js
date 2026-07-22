@@ -10612,9 +10612,16 @@ class Chart {
                         // (paused) instead of racing async GET /state over sync local.
                         await this.loadTradingSessionStateIfNeeded();
                         restore = this._resolveReplayPlayheadRestoreState(restore);
+                        // Second pass after hydrate: local backup may be the only
+                        // survivor if the unload keepalive lost a race.
+                        if (!restore || !Number.isFinite(Number(restore.replayTimestamp))) {
+                            restore = this._resolveReplayPlayheadRestoreState(
+                                this._pendingReplayRestore || this._pendingReplayState || null
+                            );
+                        }
                     }
-                    const restoreTs = restore && Number.isFinite(restore.replayTimestamp)
-                        ? restore.replayTimestamp
+                    const restoreTs = restore && Number.isFinite(Number(restore.replayTimestamp))
+                        ? Number(restore.replayTimestamp)
                         : null;
                     this.replaySystem.enterReplayMode({
                         preservePlayhead: restoreOn && Number.isFinite(restoreTs),
@@ -11678,8 +11685,31 @@ class Chart {
                     this._pendingReplayState = null;
                 }
             } else if (this.replaySystem && this.replaySystem.isActive) {
-                // Hydrate confirmed no server playhead — allow normal persist.
-                this.replaySystem._persistedPlayheadApplied = true;
+                // Server blob missing replay — still prefer local backup / furthest ts
+                // before locking persist (unload may have lost the keepalive PATCH).
+                const localRestore = this._resolveReplayPlayheadRestoreState(
+                    this._pendingReplayRestore || null
+                );
+                const localTs = localRestore && Number.isFinite(Number(localRestore.replayTimestamp))
+                    ? Number(localRestore.replayTimestamp)
+                    : null;
+                const currentTs = Number(this.replaySystem.replayTimestamp);
+                if (Number.isFinite(localTs)
+                    && (!Number.isFinite(currentTs) || localTs > currentTs + 500)
+                    && typeof this.replaySystem.applyPersistedState === 'function') {
+                    this.replaySystem.applyPersistedState(localRestore);
+                    if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                        try {
+                            this.replaySystem.syncReplayViewportToPlayhead(this, {
+                                centerPlayhead: false,
+                                resetPriceScale: true,
+                                render: true,
+                            });
+                        } catch (_) { /* ignore */ }
+                    }
+                } else {
+                    this.replaySystem._persistedPlayheadApplied = true;
+                }
             }
 
             // Restore chart view (pan/zoom position)
@@ -12323,7 +12353,30 @@ class Chart {
             }
         }
         if (this._sessionStatePatchInFlight) {
-            this._sessionPatchFlushQueued = true;
+            // Normal path: queue until the in-flight PATCH finishes, then drain.
+            // Unload/keepalive path: a queued drain never runs after page death, so
+            // fire a second keepalive with the latest pending playhead immediately.
+            if (!useKeepalive) {
+                this._sessionPatchFlushQueued = true;
+                return;
+            }
+            const latePatch = this._pendingSessionStatePatch;
+            this._writeTradingSessionLocalBackupThrottled({ force: true });
+            if (!latePatch) return;
+            if (this._sessionStateLoadedFor !== String(sessionId)
+                && !this._sessionStatePatchAllowedBeforeHydrate(latePatch)) {
+                return;
+            }
+            this._pendingSessionStatePatch = null;
+            try {
+                void fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    keepalive: true,
+                    body: JSON.stringify(latePatch),
+                });
+            } catch (_) { /* unload best-effort */ }
             return;
         }
         const patch = this._pendingSessionStatePatch;
@@ -12476,6 +12529,9 @@ class Chart {
                                 this._sessionStateSaveTimer = null;
                             }
                             this._replaySessionStateLastPatchAt = 0;
+                            // Always force a local snapshot BEFORE the network flush so a
+                            // dropped keepalive / in-flight race still restores on re-open.
+                            this._writeTradingSessionLocalBackupThrottled({ force: true });
                             // keepalive so the browser doesn't abort the request when the
                             // page is torn down by a refresh/close — this is what makes the
                             // advanced playhead actually reach the server on refresh.
@@ -12484,6 +12540,7 @@ class Chart {
                         } catch (e) {}
                     };
                     window.addEventListener('pagehide', flushPendingSessionState);
+                    window.addEventListener('beforeunload', flushPendingSessionState);
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'hidden') flushPendingSessionState();
                     });
@@ -19056,9 +19113,34 @@ class Chart {
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {
                 // Don't race enterReplayMode while rawData is still loading (refresh flash).
+                // Prefer a saved playhead over hard session-start so empty-viewport recovery
+                // cannot wipe progress before the hydrate microtask finishes.
                 if (!rs.isActive && typeof rs.enterReplayMode === 'function'
                     && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    rs.enterReplayMode({ startAtBeginning: true });
+                    let enterOpts = { startAtBeginning: true };
+                    if (typeof this._replaySessionPlayheadRestoreEnabled === 'function'
+                        && this._replaySessionPlayheadRestoreEnabled()
+                        && typeof this._resolveReplayPlayheadRestoreState === 'function') {
+                        const restore = this._resolveReplayPlayheadRestoreState(
+                            this._pendingReplayRestore || null
+                        );
+                        const restoreTs = restore && Number.isFinite(Number(restore.replayTimestamp))
+                            ? Number(restore.replayTimestamp)
+                            : null;
+                        if (Number.isFinite(restoreTs)) {
+                            enterOpts = {
+                                preservePlayhead: true,
+                                initialReplayTimestamp: restoreTs,
+                                initialCurrentIndex: Number.isFinite(restore.currentIndex)
+                                    ? restore.currentIndex
+                                    : undefined,
+                                initialTickElapsedMs: (typeof restore.tickElapsedMs === 'number')
+                                    ? restore.tickElapsedMs
+                                    : undefined,
+                            };
+                        }
+                    }
+                    rs.enterReplayMode(enterOpts);
                 }
                 if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'
                     && this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
@@ -27087,8 +27169,11 @@ class Chart {
         // Closed-trade entry/exit arrows live in entryMarkers/exitMarkers — not
         // orderLines. Incomplete pan-lite skipped marker glue whenever an open
         // line existed, so marks froze in screen space until mouse-up. Always
-        // thin-reposition markers (and MFE/MAE) on the pan path.
-        // Kill-switch (reproduces screen-sticking with open lines + coarse overwrite):
+        // thin-reposition markers (and MFE/MAE) on the pan path using live
+        // offsetX (real drag commits offsetX every mousemove after panCommitted).
+        // Kill-switch discriminator for LIVE PAN GLUE only (not canonical TF):
+        //   window.__TALARIA_DISABLE_TRADE_MARKER_LIVE_PAN_GLUE_V1 = true
+        // Canonical TF overwrite kill-switch remains separate:
         //   window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 = true
         let panLite = false;
         try {
@@ -27113,22 +27198,22 @@ class Chart {
                     hasOrderLines = lines.some((ol) => !ol || !ol.chart || ol.chart === this);
                 }
             } catch (_) { hasOrderLines = true; }
-            let skipMarkersWhenLines = false;
+            let skipLiveMarkerPanGlue = false;
             try {
-                skipMarkersWhenLines = typeof window !== 'undefined'
-                    && window.__TALARIA_DISABLE_TRADE_MARKER_CANONICAL_PROJECTION_V1 === true;
-            } catch (_) { skipMarkersWhenLines = false; }
+                skipLiveMarkerPanGlue = typeof window !== 'undefined'
+                    && window.__TALARIA_DISABLE_TRADE_MARKER_LIVE_PAN_GLUE_V1 === true;
+            } catch (_) { skipLiveMarkerPanGlue = false; }
             if (hasOrderLines && typeof om.updateOrderLines === 'function') {
                 // panLite: reposition without purge (full rebuild glitched panel B).
-                // skipTradeMarkers: kill-switch reproduces markers stuck on screen
-                // while order lines still track pan.
+                // skipTradeMarkers: live-pan kill-switch reproduces markers stuck
+                // on screen while order lines still track pan.
                 om.updateOrderLines(this, {
                     panLite: true,
-                    skipTradeMarkers: !!(skipMarkersWhenLines && hasOrderLines),
+                    skipTradeMarkers: !!(skipLiveMarkerPanGlue && hasOrderLines),
                 });
             }
-            // Always glue trade markers during pan unless kill-switch + open lines.
-            if (!(skipMarkersWhenLines && hasOrderLines)) {
+            // Always glue trade markers during pan unless live-pan kill-switch.
+            if (!skipLiveMarkerPanGlue) {
                 try {
                     if (typeof om._updateEntryMarkersForChart === 'function') {
                         om._updateEntryMarkersForChart(this);
