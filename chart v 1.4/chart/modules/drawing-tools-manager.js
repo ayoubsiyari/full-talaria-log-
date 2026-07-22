@@ -9379,6 +9379,12 @@ class DrawingToolsManager {
         return Math.max(0, Math.min(1, v));
     }
 
+    /** Allow Gann Box levels outside 0–1 (extensions); keep fan/square in-unit by default. */
+    _clampGannBoxLevelRatio(v) {
+        if (!Number.isFinite(v)) return null;
+        return Math.max(-20, Math.min(20, v));
+    }
+
     _computeGannLevelValueFromPointer(drawing, meta, mouseX, mouseY) {
         const scales = this._getGannDrawingScales();
         if (!scales || !drawing || !meta) return null;
@@ -9389,8 +9395,16 @@ class DrawingToolsManager {
 
         const orient = meta.orient;
         let next = null;
+        const isGannBox = drawing.type === 'gann-box';
 
         if (orient === 'h') {
+            // Gann Box: ratio along first→second anchor (supports >1 / <0 like TradingView).
+            if (isGannBox && Number.isFinite(layout.y1) && Number.isFinite(layout.y2)) {
+                const dy = layout.y2 - layout.y1;
+                if (Math.abs(dy) < 1e-9) return null;
+                next = (mouseY - layout.y1) / dy;
+                return this._clampGannBoxLevelRatio(next);
+            }
             if (layout.height != null && layout.height > 0) {
                 next = (mouseY - layout.top) / layout.height;
             } else if (layout.size != null && layout.size > 0) {
@@ -9399,6 +9413,12 @@ class DrawingToolsManager {
             return next != null && Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
         }
         if (orient === 'v') {
+            if (isGannBox && Number.isFinite(layout.x1) && Number.isFinite(layout.x2)) {
+                const dx = layout.x2 - layout.x1;
+                if (Math.abs(dx) < 1e-9) return null;
+                next = (mouseX - layout.x1) / dx;
+                return this._clampGannBoxLevelRatio(next);
+            }
             if (layout.width != null && layout.width > 0) {
                 next = (mouseX - layout.left) / layout.width;
             } else if (layout.size != null && layout.size > 0) {

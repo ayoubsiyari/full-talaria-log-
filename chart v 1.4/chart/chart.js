@@ -21094,6 +21094,20 @@ class Chart {
      * Used by session Go To so we can jumpToTimestamp (load window) instead of
      * scanning only already-loaded bars.
      */
+    /**
+     * Saturday always dead for daily session Go To. Sunday before 17:00 chart-TZ
+     * is dead (weekday RTH opens → Monday); Sunday evening reopen stays valid.
+     */
+    _isGoToDeadWeekendWallClock(y, mo, d, hh = 0, mm = 0) {
+        const day = new Date(Date.UTC(y, (mo || 1) - 1, d || 1)).getUTCDay();
+        if (day === 6) return true;
+        if (day === 0) {
+            const minutes = (Number(hh) || 0) * 60 + (Number(mm) || 0);
+            return minutes < 17 * 60;
+        }
+        return false;
+    }
+
     _resolveNextSessionWallClockMs(targetHour, targetMinute = 0) {
         const hh = Number(targetHour);
         const mm = Number(targetMinute);
@@ -21118,7 +21132,10 @@ class Chart {
             let d = wall.getUTCDate();
             let targetMs = tm.wallClockToUtcMillis(y, mo, d, hh, mm, 0);
             let guard = 0;
-            while (Number.isFinite(targetMs) && targetMs <= playhead && guard < 400) {
+            while (Number.isFinite(targetMs) && guard < 400) {
+                const pastPlayhead = targetMs > playhead;
+                const deadWeekend = this._isGoToDeadWeekendWallClock(y, mo, d, hh, mm);
+                if (pastPlayhead && !deadWeekend) break;
                 const next = new Date(Date.UTC(y, mo - 1, d + 1));
                 y = next.getUTCFullYear();
                 mo = next.getUTCMonth() + 1;
@@ -21136,7 +21153,10 @@ class Chart {
         let d = wall.getDate();
         let targetMs = new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
         let guard = 0;
-        while (Number.isFinite(targetMs) && targetMs <= playhead && guard < 400) {
+        while (Number.isFinite(targetMs) && guard < 400) {
+            const pastPlayhead = targetMs > playhead;
+            const deadWeekend = this._isGoToDeadWeekendWallClock(y, mo, d, hh, mm);
+            if (pastPlayhead && !deadWeekend) break;
             const next = new Date(y, mo - 1, d + 1);
             y = next.getFullYear();
             mo = next.getMonth() + 1;
@@ -21813,11 +21833,24 @@ class Chart {
     }
 
     /**
+     * Max forward snap for Go To before preferring nearest bar (avoids Friday→Sunday leaps).
+     */
+    _goToMaxForwardGapMs() {
+        const tfMs = (typeof this.parseTimeframe === 'function'
+            ? this.parseTimeframe(this.currentTimeframe || this.replaySystem?.rawTimeframe || '1m')
+            : null) || 60_000;
+        // At least ~3h, scale with TF, but never treat a weekend-sized leap as "on/after".
+        return Math.min(Math.max(tfMs * 180, 3 * 60 * 60 * 1000), 18 * 60 * 60 * 1000);
+    }
+
+    /**
      * Resolve a Go To timestamp to a bar index.
-     * Prefers an exact timestamp match; otherwise the first bar on/after target time.
+     * Prefers an exact timestamp match; otherwise the first bar on/after target time
+     * when the forward gap is within maxForwardGapMs; otherwise nearest bar
+     * (so weekend gaps do not snap Friday targets to Sunday open).
      * Works even if sourceData is partially unsorted.
      */
-    findGoToTargetIndex(sourceData, targetTimestamp) {
+    findGoToTargetIndex(sourceData, targetTimestamp, opts = {}) {
         if (!Array.isArray(sourceData) || sourceData.length === 0) {
             return -1;
         }
@@ -21827,11 +21860,17 @@ class Chart {
             return -1;
         }
 
+        const maxForwardGapMs = Number.isFinite(opts?.maxForwardGapMs)
+            ? opts.maxForwardGapMs
+            : this._goToMaxForwardGapMs();
+
         let exactIndex = -1;
         let firstOnOrAfterIndex = -1;
         let firstOnOrAfterTs = Infinity;
         let nearestIndex = -1;
         let minDiff = Infinity;
+        let lastBeforeIndex = -1;
+        let lastBeforeTs = -Infinity;
 
         for (let i = 0; i < sourceData.length; i++) {
             const ts = this.normalizeTimestampMs(sourceData[i]?.t);
@@ -21846,6 +21885,11 @@ class Chart {
                 firstOnOrAfterIndex = i;
             }
 
+            if (ts < normalizedTarget && ts > lastBeforeTs) {
+                lastBeforeTs = ts;
+                lastBeforeIndex = i;
+            }
+
             const diff = Math.abs(ts - normalizedTarget);
             if (diff < minDiff) {
                 minDiff = diff;
@@ -21858,7 +21902,18 @@ class Chart {
         }
 
         if (firstOnOrAfterIndex !== -1) {
-            return firstOnOrAfterIndex;
+            const forwardGap = firstOnOrAfterTs - normalizedTarget;
+            if (!Number.isFinite(maxForwardGapMs) || forwardGap <= maxForwardGapMs) {
+                return firstOnOrAfterIndex;
+            }
+            // Weekend-sized leap: prefer last bar before target when closer than Sunday open.
+            if (lastBeforeIndex !== -1) {
+                const backGap = normalizedTarget - lastBeforeTs;
+                if (backGap <= forwardGap) {
+                    return lastBeforeIndex;
+                }
+            }
+            return nearestIndex !== -1 ? nearestIndex : firstOnOrAfterIndex;
         }
 
         return nearestIndex;

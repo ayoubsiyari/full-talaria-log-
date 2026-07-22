@@ -36,6 +36,14 @@ import {
   upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
 import { readV9UiSettingsLocal, persistV9UiSettings } from "./v9UiSettingsStorage.js";
+import {
+  loadIndicatorSettingsTemplates,
+  saveNamedIndicatorSettingsTemplate,
+  deleteIndicatorSettingsTemplate,
+  publishIndicatorSettingsTemplate,
+  importSharedIndicatorSettingsTemplate,
+  snapshotIndicatorSettingsDraft,
+} from "./indicatorSettingsTemplates.js";
 
 function isMultichartEmbedPanel() {
   if (typeof window === "undefined") return false;
@@ -14333,6 +14341,14 @@ const TalariaV8bLive = () => {
   });
   const [indSettOpen, setIndSettOpen] = useState(false);
   const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
+  const [indSettTplOpen, setIndSettTplOpen] = useState(false);
+  const [indSettTplMode, setIndSettTplMode] = useState(null); // null | "save" | "import" | "share-result"
+  const [indSettTplName, setIndSettTplName] = useState("");
+  const [indSettTplImportId, setIndSettTplImportId] = useState("");
+  const [indSettTplShareId, setIndSettTplShareId] = useState("");
+  const [indSettTplBusy, setIndSettTplBusy] = useState(false);
+  const [indSettTplMsg, setIndSettTplMsg] = useState("");
+  const [indSettTplTick, setIndSettTplTick] = useState(0);
   tlSettOpenRef.current = tlSettOpen;
   txtSettOpenRef.current = txtSettOpen;
   vwapSettOpenRef.current = vwapSettOpen;
@@ -16374,6 +16390,13 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
   };
   const closeIndSett = () => {
+    setIndSettTplOpen(false);
+    setIndSettTplMode(null);
+    setIndSettTplName("");
+    setIndSettTplImportId("");
+    setIndSettTplShareId("");
+    setIndSettTplMsg("");
+    setIndSettTplBusy(false);
     clearSettingsPanelHover();
     setV9IndSelectMenu(null);
     setIndStyleDrop(null);
@@ -30787,8 +30810,11 @@ const TalariaV8bLive = () => {
           onClick={(e) => {
             e.stopPropagation();
             if (typeof e.target?.closest === "function" && e.target.closest("[data-ind-style-drop]")) return;
+            if (typeof e.target?.closest === "function" && e.target.closest("[data-ind-sett-tpl]")) return;
             setIndStyleDrop(null);
             setIndStyleDropAnchor(null);
+            setIndSettTplOpen(false);
+            setIndSettTplMode(null);
           }}
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
@@ -30813,10 +30839,236 @@ const TalariaV8bLive = () => {
             window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
           }} style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: c.tx, flex: 1 }}>{title} Settings</span>
-            <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
-              style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
-                background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
-              <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+              <div
+                data-ind-sett-tpl="1"
+                {...modalPointerActivate(() => {
+                  setIndSettTplOpen((v) => !v);
+                  setIndSettTplMode(null);
+                  setIndSettTplMsg("");
+                  setIndSettTplTick((n) => n + 1);
+                })}
+                onMouseEnter={() => setHov("indtpl")}
+                onMouseLeave={() => setHov(null)}
+                title="Templates"
+                style={{
+                  height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "default", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                  color: indSettTplOpen || hov === "indtpl" ? c.acL : c.ts,
+                  background: indSettTplOpen ? "rgba(74,106,255,0.12)" : hov === "indtpl" ? "rgba(255,255,255,0.06)" : "transparent",
+                  transition: "background 0.12s, color 0.12s",
+                }}
+              >
+                Template
+              </div>
+              <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
+                style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
+                  background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
+                <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+              </div>
+              {indSettTplOpen && (() => {
+                const indType = ctx.indicatorType;
+                const templates = loadIndicatorSettingsTemplates(indType);
+                void indSettTplTick;
+                const applyTplParams = (params) => {
+                  if (!params || typeof params !== "object") return;
+                  patchIndSettDraftLive((d) => ({ ...d, ...snapshotIndicatorSettingsDraft(params) }));
+                };
+                const rowStyle = {
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "7px 10px", cursor: "default", color: c.tx, fontSize: 12, gap: 8,
+                };
+                return (
+                  <div
+                    data-ind-sett-tpl="1"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute", top: "100%", right: 0, marginTop: 6, width: 260,
+                      background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 12px 36px rgba(0,0,0,0.55)",
+                      zIndex: 12000, padding: "4px 0",
+                    }}
+                  >
+                    {!indSettTplMode && (
+                      <>
+                        <div
+                          onMouseEnter={() => setHov("ist-save")} onMouseLeave={() => setHov(null)}
+                          onClick={() => { setIndSettTplMode("save"); setIndSettTplName(""); setIndSettTplMsg(""); }}
+                          style={{ ...rowStyle, background: hov === "ist-save" ? "rgba(255,255,255,0.05)" : "transparent" }}
+                        >Save as…</div>
+                        <div
+                          onMouseEnter={() => setHov("ist-share")} onMouseLeave={() => setHov(null)}
+                          onClick={async () => {
+                            if (indSettTplBusy) return;
+                            setIndSettTplBusy(true);
+                            setIndSettTplMsg("");
+                            try {
+                              const draft = indSettDraftRef.current || indSettDraft;
+                              const published = await publishIndicatorSettingsTemplate({
+                                indicatorType: indType,
+                                name: `${title} template`,
+                                params: draft,
+                              });
+                              setIndSettTplShareId(published.shareId);
+                              setIndSettTplMode("share-result");
+                              saveNamedIndicatorSettingsTemplate(indType, published.name, draft, { shareId: published.shareId });
+                              setIndSettTplTick((n) => n + 1);
+                              try { await navigator.clipboard.writeText(published.shareId); } catch (_e) { /* ignore */ }
+                            } catch (err) {
+                              setIndSettTplMsg(err?.message || "Could not create share ID (sign in required)");
+                            } finally {
+                              setIndSettTplBusy(false);
+                            }
+                          }}
+                          style={{ ...rowStyle, background: hov === "ist-share" ? "rgba(255,255,255,0.05)" : "transparent", opacity: indSettTplBusy ? 0.6 : 1 }}
+                        >{indSettTplBusy ? "Sharing…" : "Get share ID"}</div>
+                        <div
+                          onMouseEnter={() => setHov("ist-import")} onMouseLeave={() => setHov(null)}
+                          onClick={() => { setIndSettTplMode("import"); setIndSettTplImportId(""); setIndSettTplMsg(""); }}
+                          style={{ ...rowStyle, background: hov === "ist-import" ? "rgba(255,255,255,0.05)" : "transparent" }}
+                        >Load by ID…</div>
+                        {templates.length > 0 && <div style={{ height: 1, background: c.br, margin: "4px 0" }} />}
+                        {templates.map((t) => (
+                          <div
+                            key={t.id}
+                            onMouseEnter={() => setHov(`ist-${t.id}`)} onMouseLeave={() => setHov(null)}
+                            style={{ ...rowStyle, background: hov === `ist-${t.id}` ? "rgba(74,106,255,0.08)" : "transparent" }}
+                          >
+                            <div
+                              onClick={() => { applyTplParams(t.params); setIndSettTplOpen(false); setIndSettTplMode(null); }}
+                              style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                              title={t.shareId ? `${t.name} · ${t.shareId}` : t.name}
+                            >
+                              {t.name}
+                              {t.shareId ? <span style={{ color: c.tm, fontSize: 10, marginLeft: 6 }}>{t.shareId}</span> : null}
+                            </div>
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteIndicatorSettingsTemplate(indType, t.id);
+                                setIndSettTplTick((n) => n + 1);
+                              }}
+                              style={{ color: c.tm, fontSize: 14, padding: "0 2px" }}
+                              title="Delete"
+                            >×</div>
+                          </div>
+                        ))}
+                        {templates.length === 0 && (
+                          <div style={{ padding: "8px 10px", fontSize: 11, color: c.tm }}>No saved templates yet.</div>
+                        )}
+                        {indSettTplMsg ? (
+                          <div style={{ padding: "6px 10px", fontSize: 11, color: c.rd }}>{indSettTplMsg}</div>
+                        ) : null}
+                      </>
+                    )}
+                    {indSettTplMode === "save" && (
+                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Save template name</div>
+                        <input
+                          autoFocus
+                          value={indSettTplName}
+                          onChange={(e) => setIndSettTplName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && indSettTplName.trim()) {
+                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
+                              setIndSettTplMode(null);
+                              setIndSettTplName("");
+                              setIndSettTplTick((n) => n + 1);
+                            }
+                          }}
+                          placeholder="e.g. My FVG setup"
+                          style={{
+                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
+                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
+                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
+                          }}
+                        />
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <div onClick={() => setIndSettTplMode(null)} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
+                          <div
+                            onClick={() => {
+                              if (!indSettTplName.trim()) return;
+                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
+                              setIndSettTplMode(null);
+                              setIndSettTplName("");
+                              setIndSettTplTick((n) => n + 1);
+                            }}
+                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}
+                          >Save</div>
+                        </div>
+                      </div>
+                    )}
+                    {indSettTplMode === "import" && (
+                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Enter template ID</div>
+                        <input
+                          autoFocus
+                          value={indSettTplImportId}
+                          onChange={(e) => setIndSettTplImportId(e.target.value.toUpperCase())}
+                          placeholder="IST-XXXXXX"
+                          style={{
+                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
+                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
+                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
+                            letterSpacing: "0.06em",
+                          }}
+                        />
+                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.rd }}>{indSettTplMsg}</div> : null}
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
+                          <div
+                            onClick={async () => {
+                              if (indSettTplBusy || !indSettTplImportId.trim()) return;
+                              setIndSettTplBusy(true);
+                              setIndSettTplMsg("");
+                              try {
+                                const remote = await importSharedIndicatorSettingsTemplate(indSettTplImportId.trim(), { saveToProfile: true });
+                                if (remote.indicatorType && remote.indicatorType !== String(indType).toLowerCase()) {
+                                  setIndSettTplMsg(`This ID is for ${remote.indicatorType}, not ${indType}`);
+                                  return;
+                                }
+                                applyTplParams(remote.params);
+                                setIndSettTplTick((n) => n + 1);
+                                setIndSettTplOpen(false);
+                                setIndSettTplMode(null);
+                              } catch (err) {
+                                setIndSettTplMsg(err?.message || "Could not load template");
+                              } finally {
+                                setIndSettTplBusy(false);
+                              }
+                            }}
+                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700, opacity: indSettTplBusy ? 0.6 : 1 }}
+                          >{indSettTplBusy ? "Loading…" : "Load & save"}</div>
+                        </div>
+                      </div>
+                    )}
+                    {indSettTplMode === "share-result" && (
+                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Share this ID with others</div>
+                        <div style={{
+                          fontSize: 14, fontWeight: 800, color: c.acL, letterSpacing: "0.08em",
+                          padding: "8px 10px", background: "rgba(74,106,255,0.10)", border: `1px solid ${c.brH}`,
+                          textAlign: "center", userSelect: "all",
+                        }}>{indSettTplShareId}</div>
+                        <div style={{ fontSize: 10, color: c.tm, lineHeight: 1.4 }}>
+                          Copied to clipboard when possible. Others: Template → Load by ID.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <div
+                            onClick={async () => {
+                              try { await navigator.clipboard.writeText(indSettTplShareId); setIndSettTplMsg("Copied"); } catch (_e) { setIndSettTplMsg("Copy failed"); }
+                            }}
+                            style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}
+                          >Copy</div>
+                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}>Done</div>
+                        </div>
+                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.gn || c.acL }}>{indSettTplMsg}</div> : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div style={{ height: 1, background: c.br, flexShrink: 0 }} />

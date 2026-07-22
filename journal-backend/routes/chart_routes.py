@@ -8,7 +8,10 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from datetime import datetime
 
-from models import db, ChartDrawing, ChartSettings, UserPreferences, User
+import secrets
+import string
+
+from models import db, ChartDrawing, ChartSettings, UserPreferences, User, IndicatorSettingsShare
 from functools import wraps
 
 from subscription_access import user_entitles_journal
@@ -505,6 +508,7 @@ def get_preferences():
                     'keyboard_shortcuts': {},
                     'drawing_tool_styles': {},
                     'drawing_tool_templates': {},
+                    'indicator_settings_templates': {},
                     'v9_chart_templates': [],
                     'panel_sync_settings': {},
                     'panel_settings': {},
@@ -524,6 +528,7 @@ def get_preferences():
                 'keyboard_shortcuts': prefs.keyboard_shortcuts or {},
                 'drawing_tool_styles': prefs.drawing_tool_styles or {},
                 'drawing_tool_templates': prefs.drawing_tool_templates or {},
+                'indicator_settings_templates': prefs.indicator_settings_templates or {},
                 'v9_chart_templates': prefs.v9_chart_templates or [],
                 'panel_sync_settings': prefs.panel_sync_settings or {},
                 'panel_settings': prefs.panel_settings or {},
@@ -556,6 +561,7 @@ def update_preferences():
     - keyboard_shortcuts
     - drawing_tool_styles
     - drawing_tool_templates
+    - indicator_settings_templates
     - v9_chart_templates
     - panel_sync_settings
     - panel_settings
@@ -594,6 +600,8 @@ def update_preferences():
             prefs.drawing_tool_styles = data['drawing_tool_styles']
         if 'drawing_tool_templates' in data:
             prefs.drawing_tool_templates = data['drawing_tool_templates']
+        if 'indicator_settings_templates' in data:
+            prefs.indicator_settings_templates = data['indicator_settings_templates']
         if 'v9_chart_templates' in data:
             prefs.v9_chart_templates = data['v9_chart_templates']
         if 'panel_sync_settings' in data:
@@ -625,3 +633,77 @@ def update_preferences():
             'success': False,
             'error': str(e)
         }), 500
+
+
+def _new_indicator_settings_share_id():
+    alphabet = string.ascii_uppercase + string.digits
+    # e.g. IST-7K2M9Q — short, shareable, unique.
+    for _ in range(12):
+        body = ''.join(secrets.choice(alphabet) for _ in range(6))
+        share_id = f'IST-{body}'
+        if not IndicatorSettingsShare.query.filter_by(share_id=share_id).first():
+            return share_id
+    return f'IST-{secrets.token_hex(4).upper()}'
+
+
+@chart_bp.route('/indicator-settings-templates', methods=['POST'])
+@jwt_required()
+@journal_access_required
+def publish_indicator_settings_template():
+    """Publish current indicator settings as a global shareable template ID."""
+    try:
+        user_id = int(get_jwt_identity())
+        data = request.get_json() or {}
+        indicator_type = str(data.get('indicator_type') or '').strip().lower()
+        name = str(data.get('name') or 'Untitled').strip()[:120] or 'Untitled'
+        params = data.get('params')
+        if not indicator_type:
+            return jsonify({'success': False, 'error': 'indicator_type is required'}), 400
+        if not isinstance(params, dict):
+            return jsonify({'success': False, 'error': 'params must be an object'}), 400
+
+        share_id = _new_indicator_settings_share_id()
+        row = IndicatorSettingsShare(
+            share_id=share_id,
+            user_id=user_id,
+            indicator_type=indicator_type,
+            name=name,
+            params=params,
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'share_id': share_id,
+            'name': name,
+            'indicator_type': indicator_type,
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error publishing indicator settings template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@chart_bp.route('/indicator-settings-templates/<share_id>', methods=['GET'])
+@jwt_required()
+@journal_access_required
+def get_indicator_settings_template(share_id):
+    """Load a globally shared indicator settings template by ID."""
+    try:
+        sid = str(share_id or '').strip()
+        if not sid:
+            return jsonify({'success': False, 'error': 'share_id is required'}), 400
+        row = IndicatorSettingsShare.query.filter_by(share_id=sid).first()
+        if not row:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+        return jsonify({
+            'success': True,
+            'share_id': row.share_id,
+            'name': row.name,
+            'indicator_type': row.indicator_type,
+            'params': row.params or {},
+            'created_at': row.created_at.isoformat() if row.created_at else None,
+        }), 200
+    except Exception as e:
+        print(f"❌ Error loading indicator settings template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500

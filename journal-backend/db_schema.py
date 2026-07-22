@@ -561,6 +561,30 @@ def ensure_users_schema(app) -> None:
                                     "v9_chart_templates JSON"
                                 )
                             )
+                        if "indicator_settings_templates" not in pref_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE user_preferences ADD COLUMN "
+                                    "indicator_settings_templates JSON"
+                                )
+                            )
+                    if "indicator_settings_shares" not in insp.get_table_names():
+                        conn.execute(
+                            text(
+                                """
+                                CREATE TABLE IF NOT EXISTS indicator_settings_shares (
+                                    id INTEGER PRIMARY KEY,
+                                    share_id VARCHAR(24) NOT NULL UNIQUE,
+                                    user_id INTEGER NOT NULL REFERENCES users(id),
+                                    indicator_type VARCHAR(64) NOT NULL,
+                                    name VARCHAR(120) NOT NULL,
+                                    params JSON NOT NULL,
+                                    created_at TIMESTAMP,
+                                    updated_at TIMESTAMP
+                                )
+                                """
+                            )
+                        )
                     if "journal_groups" in insp.get_table_names():
                         grp_cols = {c["name"] for c in insp.get_columns("journal_groups")}
                         if "default_modules" not in grp_cols:

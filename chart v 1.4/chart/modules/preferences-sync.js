@@ -81,6 +81,7 @@ class PreferencesSyncManager {
             'keyboard_shortcuts',
             'drawing_tool_styles',
             'drawing_tool_templates',
+            'indicator_settings_templates',
             'v9_chart_templates',
             'panel_sync_settings',
             'panel_settings',
@@ -110,6 +111,7 @@ class PreferencesSyncManager {
             keyboard_shortcuts: this.getLocalItem('chart_custom_shortcuts', {}),
             drawing_tool_styles: this.getLocalItem('drawingToolStyles', {}),
             drawing_tool_templates: this.loadDrawingToolTemplatesLocal(),
+            indicator_settings_templates: this.getLocalItem('indicator_settings_templates', {}),
             v9_chart_templates: this.readV9ChartTemplatesLocal(),
             panel_sync_settings: this.getLocalItem('chart_panel_sync_settings', {}),
             panel_settings: this.getAllPanelSettings(),
@@ -126,7 +128,7 @@ class PreferencesSyncManager {
      */
     mergeCloudWithLocal(serverPrefs, localPrefs) {
         const merged = { ...(serverPrefs || {}) };
-        const templateFields = ['chart_templates', 'drawing_tool_templates'];
+        const templateFields = ['chart_templates', 'drawing_tool_templates', 'indicator_settings_templates'];
         for (const field of templateFields) {
             merged[field] = this.mergeJsonObjects(
                 serverPrefs && serverPrefs[field],
@@ -331,6 +333,9 @@ class PreferencesSyncManager {
                             );
                         });
                     }
+                    break;
+                case 'indicator_settings_templates':
+                    userStorage.setItem('indicator_settings_templates', JSON.stringify(value || {}));
                     break;
                 case 'v9_chart_templates':
                     userStorage.setItem('v9CustomChartTemplates', JSON.stringify(value || []));

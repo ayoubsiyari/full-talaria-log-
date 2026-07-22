@@ -290,6 +290,11 @@ class GannBoxTool extends BaseDrawing {
             return c;
         };
 
+        // TradingView-style ratios: 0 = first corner, 1 = second corner.
+        // Values >1 / <0 extend past the box (same direction as the anchors).
+        const priceYAt = (v) => y1 + (y2 - y1) * v;
+        const timeXAt = (v) => x1 + (x2 - x1) * v;
+
         const sortedPrice = (this.style.priceLevels || []).slice().sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
         const sortedTime = (this.style.timeLevels || []).slice().sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
 
@@ -303,8 +308,8 @@ class GannBoxTool extends BaseDrawing {
                     const a = Number(enabledPrice[i].value);
                     const b = Number(enabledPrice[i + 1].value);
                     if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) continue;
-                    const yA = top + (height * a);
-                    const yB = top + (height * b);
+                    const yA = priceYAt(a);
+                    const yB = priceYAt(b);
                     const y = Math.min(yA, yB);
                     const h = Math.abs(yB - yA);
                     const base = enabledPrice[i].color || strokeColor;
@@ -321,7 +326,7 @@ class GannBoxTool extends BaseDrawing {
             }
         }
 
-        // Outer border
+        // Outer border (0–1 box only)
         this.group.append('rect')
             .attr('x', left)
             .attr('y', top)
@@ -348,14 +353,15 @@ class GannBoxTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Price levels (horizontal grid + left/right labels)
+        // Price levels (horizontal grid + left/right labels) — may extend outside 0–1
         const priceRaw = Array.isArray(this.style.priceLevels) ? this.style.priceLevels : [];
         priceRaw.forEach((rawLevel, idx) => {
             if (!rawLevel || rawLevel.enabled === false) return;
             const v = Number(rawLevel.value);
             if (!Number.isFinite(v)) return;
 
-            const y = top + (height * v);
+            const y = priceYAt(v);
+            if (!Number.isFinite(y)) return;
             const c = rawLevel.color || strokeColor;
             const levelMeta = {
                 'data-gann-level-array': 'priceLevels',
@@ -418,14 +424,15 @@ class GannBoxTool extends BaseDrawing {
             }
         });
 
-        // Time levels (vertical grid + top/bottom labels)
+        // Time levels (vertical grid + top/bottom labels) — may extend outside 0–1
         const timeRaw = Array.isArray(this.style.timeLevels) ? this.style.timeLevels : [];
         timeRaw.forEach((rawLevel, idx) => {
             if (!rawLevel || rawLevel.enabled === false) return;
             const v = Number(rawLevel.value);
             if (!Number.isFinite(v)) return;
 
-            const x = left + (width * v);
+            const x = timeXAt(v);
+            if (!Number.isFinite(x)) return;
             const c = rawLevel.color || strokeColor;
             const levelMeta = {
                 'data-gann-level-array': 'timeLevels',
@@ -511,7 +518,8 @@ class GannBoxTool extends BaseDrawing {
         const width = right - left;
         const height = bottom - top;
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-        return { left, top, right, bottom, width, height };
+        // Keep anchor pixels so ratios >1 / <0 resolve past the 0–1 box (TradingView).
+        return { left, top, right, bottom, width, height, x1, y1, x2, y2 };
     }
 
     static fromJSON(data) {

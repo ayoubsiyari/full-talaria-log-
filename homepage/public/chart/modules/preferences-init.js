@@ -73,6 +73,27 @@ window.saveDrawingToolTemplatesForType = function(toolType, templates) {
     window.preferencesSync.updatePreference('drawing_tool_templates', all);
 };
 
+// Indicator settings templates (named param presets per indicator type)
+window.loadIndicatorSettingsTemplates = function(indicatorType) {
+    const all = window.preferencesSync.get('indicator_settings_templates', null);
+    if (all && typeof all === 'object' && Array.isArray(all[indicatorType])) {
+        return all[indicatorType];
+    }
+    try {
+        const saved = userStorage.getItem('indicator_settings_templates');
+        const parsed = saved ? JSON.parse(saved) : {};
+        return Array.isArray(parsed?.[indicatorType]) ? parsed[indicatorType] : [];
+    } catch (e) {
+        return [];
+    }
+};
+
+window.saveIndicatorSettingsTemplatesForType = function(indicatorType, templates) {
+    const all = { ...(window.preferencesSync.get('indicator_settings_templates', {}) || {}) };
+    all[indicatorType] = templates;
+    window.preferencesSync.updatePreference('indicator_settings_templates', all);
+};
+
 // V9/V16 chart color templates (Settings → Template → Save as)
 window.loadV9ChartTemplates = function() {
     return window.preferencesSync.get('v9_chart_templates', []);

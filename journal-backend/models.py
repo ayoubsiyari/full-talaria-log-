@@ -788,6 +788,7 @@ class UserPreferences(db.Model):
     keyboard_shortcuts = db.Column(JSON, nullable=True, default=dict)  # Custom keyboard shortcuts
     drawing_tool_styles = db.Column(JSON, nullable=True, default=dict)  # Saved tool styles per type
     drawing_tool_templates = db.Column(JSON, nullable=True, default=dict)  # Named drawing tool templates per type
+    indicator_settings_templates = db.Column(JSON, nullable=True, default=dict)  # Named indicator settings templates per type
     v9_chart_templates = db.Column(JSON, nullable=True, default=list)  # V9/V16 chart color templates (array)
     panel_sync_settings = db.Column(JSON, nullable=True, default=dict)  # Multi-panel sync preferences
     panel_settings = db.Column(JSON, nullable=True, default=dict)  # Individual panel configurations
@@ -801,5 +802,20 @@ class UserPreferences(db.Model):
     
     # Relationship to user
     user = db.relationship('User', backref=db.backref('preferences', uselist=False, lazy=True))
+
+
+class IndicatorSettingsShare(db.Model):
+    """Globally shareable indicator settings template (lookup by short public share_id)."""
+    __tablename__ = 'indicator_settings_shares'
+    id = db.Column(db.Integer, primary_key=True)
+    share_id = db.Column(db.String(24), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    indicator_type = db.Column(db.String(64), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False, default='Untitled')
+    params = db.Column(JSON, nullable=False, default=dict)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('indicator_settings_shares', lazy=True))
 
 
