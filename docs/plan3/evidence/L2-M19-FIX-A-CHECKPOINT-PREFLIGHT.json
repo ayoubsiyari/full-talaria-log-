@@ -1,0 +1,142 @@
+{
+  "row": "L2-M19-FIX-A",
+  "task": "CHECKPOINT-PREFLIGHT",
+  "status": "READY-CHECKPOINT-CANDIDATE",
+  "finishedAt": "2026-07-22T23:05:00.000Z",
+  "baseSha": "019e8c7304da3a8f877cac86adfa21e75ebf8ed4",
+  "worktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-fixa-ckpt-preflight-019e8c730",
+  "deFrozen": {
+    "worktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-de-019e8c730",
+    "status": "FROZEN — not transplanted"
+  },
+  "transplantedPaths": [
+    "chart v 1.4/chart/modules/order-manager.js",
+    "homepage/public/chart/modules/order-manager.js",
+    "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+    "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+    "chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs",
+    "homepage/public/chart/modules/m19-panel-dirty-runtime-contract.test.mjs"
+  ],
+  "excludedDependencies": [
+    "order-manager.js pause/_savedTickState SLTP helper bodies (replay-step-forward-sltp-flush — not Fix A)",
+    "replay-step-forward-sltp-flush.test.mjs",
+    "M19-D / M19-E (frozen isolated worktree)",
+    "api_server.py, sw.js, MultichartGrid.jsx, drawing-tools, preferences-sync, chart-window-limit, and all other dirty main files"
+  ],
+  "requiredDependencies": [
+    "None beyond Fix A surface: panel-dirty runtime path + data-m19-role stamps + dock text helpers in order-manager.js",
+    "Fix A soak harness discrimination (ON / KILL)",
+    "m19-panel-dirty-runtime-contract.test.mjs",
+    "Homepage byte mirrors of the three product/test pairs"
+  ],
+  "mirrorHashesSha256": {
+    "chart v 1.4/chart/modules/order-manager.js": "8efd6e5fa451a3f5f6bc5f84fec98d7f0c658293d7ff07581ad3e557ef8f363b",
+    "homepage/public/chart/modules/order-manager.js": "8efd6e5fa451a3f5f6bc5f84fec98d7f0c658293d7ff07581ad3e557ef8f363b",
+    "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs": "be844e8298a70e25a735475d1f5faab6e07149116eb2e35d39276060bc57bb67",
+    "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs": "be844e8298a70e25a735475d1f5faab6e07149116eb2e35d39276060bc57bb67",
+    "chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs": "0d7c04e786a63b1bef43900114d98800eae987254512be1a6bd7f7b952c894c3",
+    "homepage/public/chart/modules/m19-panel-dirty-runtime-contract.test.mjs": "0d7c04e786a63b1bef43900114d98800eae987254512be1a6bd7f7b952c894c3",
+    "mirrorParity": {
+      "orderManager": true,
+      "soak": true,
+      "uiContract": true
+    }
+  },
+  "untouchedProvenanceHashes": {
+    "replay-system.js": "e5bc68dc8fff190daf2186ca0b3e406199f9b0be511a5639d55809c0efd6c37c",
+    "chart.js": "c00ca02989bd5d1ddc87dab850fdf9d61fbded55ee0bc58b287214164a1e9e3e"
+  },
+  "exactDiffArtifacts": {
+    "orderManager": "docs/plan3/queued-hunks/M19-A-fix-a.order-manager.diff",
+    "soak": "docs/plan3/queued-hunks/M19-A-fix-a.soak.diff",
+    "diffstat": "docs/plan3/queued-hunks/M19-A-fix-a.diffstat.txt",
+    "diffstatSummary": "order-manager.js ±294 lines (chart+homepage); soak ±325 lines (chart+homepage); +untracked UI contract test mirrored"
+  },
+  "gateResults": {
+    "fixAOnSoak": {
+      "command": "node \"chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs\"",
+      "verdict": "FIX-A-GREEN",
+      "exitCode": 0,
+      "fixAAllPass": true,
+      "panelRebuildsPerCanonical": [0, 0, 0],
+      "runtimePanelLitePerCanonical": [5500, 5500, 5500],
+      "dockInnerHtmlWritesDuringLite": [0, 0, 0],
+      "persist": "M19-PERSIST-RED (b/c out of scope)",
+      "evidence": "docs/plan3/evidence/L2-M19-fix-a-panel-dirty-on.json",
+      "report": "docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-ON.md"
+    },
+    "fixAKillSoak": {
+      "command": "TALARIA_DISABLE_M19_PANEL_DIRTY_V1=1 node \"chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs\"",
+      "verdict": "FIX-A-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED (kill reconstructs per-tick full rebuilds)",
+      "fixAAllPass": true,
+      "panelRebuildsPerCanonical": [5500, 5500, 5500],
+      "runtimePanelLitePerCanonical": [0, 0, 0],
+      "frameSlopeFail": "3/3",
+      "evidence": "docs/plan3/evidence/L2-M19-fix-a-panel-dirty-kill.json",
+      "report": "docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-KILL.md"
+    },
+    "uiContract": {
+      "command": "node --test \"chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs\"",
+      "pass": "4/4",
+      "exitCode": 0,
+      "cases": [
+        "real dock renderer present",
+        "runtime-only zero innerHTML; formats preserved",
+        "parity vs structural rebuild",
+        "100 schedules → 1 rAF callback"
+      ]
+    },
+    "orderRegressions": {
+      "order-lifecycle-event-ownership.test.mjs": "PASS (node:test)",
+      "order-owning-panel-price.test.mjs": "PASS 29/29",
+      "order-host-store.test.mjs": "PASS 29/29",
+      "order-cross-panel-projection.test.mjs": "PASS 6/6",
+      "aggregate": "GREEN"
+    }
+  },
+  "proposedCheckpointManifest": {
+    "title": "M19 Fix A — panel dirty / runtime dock (independent checkpoint)",
+    "base": "019e8c7304da3a8f877cac86adfa21e75ebf8ed4",
+    "kill": "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1",
+    "include": [
+      "chart v 1.4/chart/modules/order-manager.js",
+      "homepage/public/chart/modules/order-manager.js",
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+      "chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs",
+      "homepage/public/chart/modules/m19-panel-dirty-runtime-contract.test.mjs",
+      "docs/plan3/evidence/L2-M19-fix-a-panel-dirty-on.json",
+      "docs/plan3/evidence/L2-M19-fix-a-panel-dirty-kill.json",
+      "docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-ON.md",
+      "docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-KILL.md",
+      "docs/plan3/evidence/L2-M19-FIX-A-CHECKPOINT-PREFLIGHT.json"
+    ],
+    "exclude": [
+      "M19-D/E worktree contents",
+      "replay-step-forward-sltp-flush.*",
+      "pause/_savedTickState OM helper bodies",
+      "any B/C/D/E product gates",
+      "build bump / GHCR publish / deploy (not this preflight)"
+    ],
+    "acceptanceGates": [
+      "FIX-A-GREEN soak ON (panelRebuilds 5500→0)",
+      "FIX-A-KILL-RED discriminator (panelRebuilds 5500 restored; exit 1 expected)",
+      "UI contract 4/4",
+      "order lifecycle / owning-panel / host-store / cross-panel GREEN"
+    ],
+    "persistNote": "Overall M19 persist remains RED until (b)/(c); Fix A checkpoint must not claim persist GREEN",
+    "nextStepsNotDone": [
+      "commit",
+      "push",
+      "build bump / D-031/D-034 successor",
+      "publish by digest",
+      "deploy + tripwire"
+    ]
+  },
+  "notes": [
+    "Transplanted OM SHA-256 matches prior Manager Fix-A ON evidence hash 8efd6e5f…",
+    "D/E remain frozen and were not opened for edits in this preflight"
+  ]
+}
