@@ -68,6 +68,14 @@ def enrich_journal_trade_from_sql_row(payload: dict, row: Any, session_id: int) 
     enriched["trading_session_id"] = int(session_id)
     if client_id:
         enriched["client_trade_id"] = client_id
+    try:
+        user_trade_id = int(getattr(row, "user_trade_id", 0) or 0)
+    except (TypeError, ValueError):
+        user_trade_id = 0
+    if user_trade_id > 0:
+        enriched["user_trade_id"] = user_trade_id
+        # Canonical display id for chart + Trades (per user, across sessions).
+        enriched["display_trade_id"] = user_trade_id
     return enriched
 
 

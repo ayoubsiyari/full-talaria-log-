@@ -9227,30 +9227,10 @@ async function hS85(ctx) {
 const M2_CANONICAL_MARK_SWITCH = '__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1';
 
 async function readPanelCurrentPrice(page, id) {
-  if (id === 'A') {
-    return page.evaluate(() => {
-      const c = window.chart;
-      if (!c || typeof c.resolveEffectiveCurrentPrice !== 'function') return null;
-      const price = c.resolveEffectiveCurrentPrice(c.data);
-      const lastC = Array.isArray(c.data) && c.data.length
-        ? Number(c.data[c.data.length - 1].c)
-        : null;
-      return {
-        price: Number.isFinite(price) ? Number(price) : null,
-        lastC: Number.isFinite(lastC) ? lastC : null,
-        mark: Number.isFinite(Number(c._mcCanonicalReplayMark))
-          ? Number(c._mcCanonicalReplayMark)
-          : null,
-        tf: String(c.currentTimeframe || ''),
-      };
-    });
-  }
-  const frames = panelFrameMap(page);
-  const frame = frames[id];
-  if (!frame) return null;
-  return frame.evaluate(() => {
+  const reader = () => {
     const c = window.chart;
     if (!c || typeof c.resolveEffectiveCurrentPrice !== 'function') return null;
+    // resolveEffectiveCurrentPrice is the label path; it also keeps forming close aligned.
     const price = c.resolveEffectiveCurrentPrice(c.data);
     const lastC = Array.isArray(c.data) && c.data.length
       ? Number(c.data[c.data.length - 1].c)
@@ -9263,7 +9243,12 @@ async function readPanelCurrentPrice(page, id) {
         : null,
       tf: String(c.currentTimeframe || ''),
     };
-  });
+  };
+  if (id === 'A') return page.evaluate(reader);
+  const frames = panelFrameMap(page);
+  const frame = frames[id];
+  if (!frame) return null;
+  return frame.evaluate(reader);
 }
 
 async function hS86Core(page, checks, expectMatch, killOn = false) {
@@ -9345,12 +9330,18 @@ async function hS86Core(page, checks, expectMatch, killOn = false) {
   if (!bothFinite) return;
 
   const match = Math.abs(aPrice.price - bPrice.price) < 1e-9;
+  const formingMatch = bothFinite
+    && Number.isFinite(aPrice.lastC)
+    && Number.isFinite(bPrice.lastC)
+    && Math.abs(aPrice.lastC - bPrice.lastC) < 1e-9;
   if (expectMatch) {
     checks.check('H-S86 GREEN: A/B current-price labels match exactly',
       match, `A=${aPrice.price} B=${bPrice.price}`);
+    checks.check('H-S86 GREEN: A/B forming-candle closes match exactly',
+      formingMatch, `A.lastC=${aPrice.lastC} B.lastC=${bPrice.lastC}`);
   } else {
     checks.check('H-S86 RED-again: kill-switch reproduces A/B price divergence',
-      !match, `A=${aPrice.price} B=${bPrice.price}`);
+      !match || !formingMatch, `A=${aPrice.price}/${aPrice.lastC} B=${bPrice.price}/${bPrice.lastC}`);
   }
 }
 

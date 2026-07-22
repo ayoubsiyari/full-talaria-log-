@@ -164,8 +164,10 @@ export function resolveGlobalTradeId(
 ): { globalId: string; sessionLocalId: string; chartTradeId: string | number } {
   const jid = row.journal_trade_id;
   const jidText = jid != null && String(jid).trim() !== "" ? String(jid).trim() : null;
-  // Session-local chart # only — never the global SQL id shared across all users.
+  // Per-user trade # (across sessions) — never the global SQL id shared across all users.
   const localCandidates = [
+    row.user_trade_id,
+    row.display_trade_id,
     row.client_trade_id,
     row.chart_trade_id,
     row.n,
@@ -182,7 +184,7 @@ export function resolveGlobalTradeId(
     return true;
   });
   const sessionLocalId = String(sessionLocalRaw ?? index + 1);
-  const chartNum = Number(row.chart_trade_id ?? row.n ?? sessionLocalId);
+  const chartNum = Number(row.user_trade_id ?? row.display_trade_id ?? row.chart_trade_id ?? row.n ?? sessionLocalId);
   const chartTradeId = Number.isFinite(chartNum) ? chartNum : sessionLocalId;
   if (jidText) {
     return { globalId: jidText, sessionLocalId, chartTradeId };
@@ -231,6 +233,7 @@ export function mapJournalRowToV16Trade(
     trade_id: globalId,
     tradeId: globalId,
     journal_trade_id: row.journal_trade_id ?? null,
+    user_trade_id: row.user_trade_id ?? (Number.isFinite(Number(sessionLocalId)) ? Number(sessionLocalId) : null),
     client_trade_id: sessionLocalId,
     chart_trade_id: chartTradeId,
     display_trade_id: sessionLocalId,
@@ -507,16 +510,19 @@ export async function fetchAndMapTradesForSession(
 ): Promise<Record<string, unknown>[]> {
   const rawRows = await fetchJournalTradesForSession(sess.id);
   const mapped = rawRows.map((row, i) => mapJournalRowToV16Trade(row, sess, i));
-  // Guarantee Trades page never shows the global all-users SQL id.
+  // Guarantee Trades page shows per-user ids (never global all-users SQL id).
   return mapped.map((trade, i) => {
     const jid = trade.journal_trade_id != null ? String(trade.journal_trade_id) : null;
-    let local = String(trade.display_trade_id ?? trade.client_trade_id ?? trade.chart_trade_id ?? trade.n ?? "");
+    let local = String(
+      trade.user_trade_id ?? trade.display_trade_id ?? trade.client_trade_id ?? trade.chart_trade_id ?? trade.n ?? ""
+    );
     if (!local.trim() || (jid && local === jid) || local.includes(":")) {
       local = String(Number(trade.n) || i + 1);
     }
     const n = Number(local);
     return {
       ...trade,
+      user_trade_id: Number.isFinite(n) ? n : trade.user_trade_id ?? null,
       client_trade_id: local,
       chart_trade_id: Number.isFinite(n) ? n : local,
       display_trade_id: local,

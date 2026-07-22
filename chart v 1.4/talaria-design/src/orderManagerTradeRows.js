@@ -237,18 +237,25 @@ function findJournalEntry(om, tradeId) {
 }
 
 /**
- * Display ID for chart All Trade / History — session-local order id (#1, #2…),
- * never the global SQL journal_trade_id shared across all users.
+ * Display ID for chart All Trade / History — per-user sequence (#1, #2… across that
+ * user's sessions). Never the global SQL journal_trade_id shared by all users.
  */
 function resolveChartDisplayTradeId(om, orderOrJournal, omId) {
   const fromObj = (obj) => {
     if (!obj || typeof obj !== "object") return null;
-    // Prefer explicit client/session trade number; ignore global journal_trade_id.
+    const jid = obj.journal_trade_id ?? obj.journalTradeId;
+    // Prefer per-user sequence (stable if sessions are merged later).
+    for (const key of ["user_trade_id", "userTradeId", "display_trade_id"]) {
+      const v = obj[key];
+      if (v == null || String(v).trim() === "") continue;
+      const s = String(v).trim();
+      if (jid != null && String(jid) === s) continue;
+      return s;
+    }
+    // Fallback: session-local chart order id until SQL assigns user_trade_id.
     const cid = obj.client_trade_id ?? obj.clientTradeId ?? obj.tradeId ?? obj.id;
     if (cid == null || String(cid).trim() === "") return null;
     const s = String(cid).trim();
-    const jid = obj.journal_trade_id ?? obj.journalTradeId;
-    // If payload id was overwritten with the global SQL id, skip it.
     if (jid != null && String(jid) === s) return null;
     return s;
   };
@@ -1343,6 +1350,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
     const row = {
       id: displayId,
       omId: tid,
+      userTradeId: j.user_trade_id ?? j.userTradeId ?? j.display_trade_id ?? null,
       journalTradeId: j.journal_trade_id ?? j.journalTradeId ?? null,
       _sortMs: sortMs,
       _openMs: openMs,
@@ -1433,11 +1441,13 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tMs = o.placedTime || o.openTime || Date.now();
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
+    const jPend = findJournalEntry(om, o.id);
     const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
       id: displayId,
       omId: o.id,
-      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
+      userTradeId: o.user_trade_id ?? o.userTradeId ?? jPend?.user_trade_id ?? jPend?.display_trade_id ?? null,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? jPend?.journal_trade_id ?? null,
       _sortMs: tMs,
       _openMs: tMs,
       time: v9FormatTradeTime(tMs),
@@ -1471,11 +1481,13 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(o));
+    const jOpen = findJournalEntry(om, o.id);
     const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
       id: displayId,
       omId: o.id,
-      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
+      userTradeId: o.user_trade_id ?? o.userTradeId ?? jOpen?.user_trade_id ?? jOpen?.display_trade_id ?? null,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? jOpen?.journal_trade_id ?? null,
       _sortMs: tMs,
       _openMs: tMs,
       time: v9FormatTradeTime(tMs),
@@ -1513,11 +1525,13 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(o));
+    const jClosed = findJournalEntry(om, o.id);
     const displayId = resolveChartDisplayTradeId(om, o, o.id);
     const row = {
       id: displayId,
       omId: o.id,
-      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? findJournalEntry(om, o.id)?.journal_trade_id ?? null,
+      userTradeId: o.user_trade_id ?? o.userTradeId ?? jClosed?.user_trade_id ?? jClosed?.display_trade_id ?? null,
+      journalTradeId: o.journal_trade_id ?? o.journalTradeId ?? jClosed?.journal_trade_id ?? null,
       _sortMs: sortMs,
       _openMs: openMs,
       time: v9FormatTradeTime(openMs),
@@ -1545,12 +1559,17 @@ export function buildLiveTradeRowsFromOrderManager(om, theme, opts = {}) {
 
   appendJournalOnlyClosedRows(om, rows, theme, { fmtPx, fmtQty, sideStr, typeLabel, rowNowMs });
 
-  // Default: session-local trade id ascending (#1, #2…).
+  // Default: per-user trade id ascending when present, else session order id.
   rows.sort((a, b) => {
-    const idA = Number(a.omId);
-    const idB = Number(b.omId);
-    const na = Number.isFinite(idA) ? idA : 0;
-    const nb = Number.isFinite(idB) ? idB : 0;
+    const parseDisplay = (r) => {
+      const fromUser = Number(r.userTradeId);
+      if (Number.isFinite(fromUser) && fromUser > 0) return fromUser;
+      const fromText = parseInt(String(r.id || "").replace(/\D/g, ""), 10);
+      if (Number.isFinite(fromText) && fromText > 0) return fromText;
+      return Number(r.omId) || 0;
+    };
+    const na = parseDisplay(a);
+    const nb = parseDisplay(b);
     if (na !== nb) return na - nb;
     return (a._openMs || a._sortMs || 0) - (b._openMs || b._sortMs || 0);
   });

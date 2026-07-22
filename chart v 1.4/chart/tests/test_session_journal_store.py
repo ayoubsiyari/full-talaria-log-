@@ -96,9 +96,12 @@ def test_enrich_journal_trade_from_sql_row_adds_global_id():
     class Row:
         id = 42
         client_trade_id = "1"
+        user_trade_id = 7
 
     out = sjs.enrich_journal_trade_from_sql_row({"tradeId": "1", "pnl": 10}, Row(), 1003)
     assert out["journal_trade_id"] == 42
     assert out["trading_session_id"] == 1003
     assert out["client_trade_id"] == "1"
     assert out["tradeId"] == "1"
+    assert out["user_trade_id"] == 7
+    assert out["display_trade_id"] == 7

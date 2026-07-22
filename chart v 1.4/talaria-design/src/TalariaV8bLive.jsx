@@ -37642,7 +37642,9 @@ const TalariaV8bLive = () => {
                   // Prefer numeric timestamps / ids — never parse the display TIME string
                   // (that old month*31 heuristic scrambled Aug 10 23:15 vs Aug 11 10:25).
                   if(key==="id"){
-                    // Session-local order id (#1,#2…) — not global SQL journal id.
+                    // Per-user trade id — not global SQL journal id.
+                    const u=Number(r.userTradeId);
+                    if(Number.isFinite(u)&&u>0) return u;
                     const n=Number(r.omId);
                     if(Number.isFinite(n)) return n;
                     return parseInt(String(r.id||"").replace(/\D/g,""),10)||0;

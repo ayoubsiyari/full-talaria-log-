@@ -1018,10 +1018,10 @@ const pickDashDisplayTradeId = (trade, fallback = "-") => {
     || trade.client_trade_id != null
     || trade.chart_trade_id != null
     || trade.display_trade_id != null;
-  // Prefer session-local numbers only (same as chart #1, #2…).
+  // Prefer per-user sequence (stable across sessions / merges).
   const candidates = isSessionTrade
-    ? ["display_trade_id", "client_trade_id", "chart_trade_id", "n"]
-    : ["display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"];
+    ? ["user_trade_id", "display_trade_id", "client_trade_id", "chart_trade_id", "n"]
+    : ["user_trade_id", "display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"];
   for (const key of candidates) {
     const raw = read([key]);
     if (raw == null) continue;
@@ -1045,7 +1045,7 @@ const DASH_CSV_FIELD_ALIASES = {
   netPnL: ["netPnL", "pnl_currency_net", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl"],
   closeTime: ["closeTime", "exitTime", "exitDate"],
   openTime: ["openTime", "entryTime", "entryDate", "date"],
-  tradeId: ["display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"],
+  tradeId: ["user_trade_id", "display_trade_id", "client_trade_id", "chart_trade_id", "n", "tradeId", "trade_id", "id"],
   ticker: ["ticker", "symbol", "instrument", "pair"],
   direction: ["direction", "side", "type"],
   setup: ["setup", "playbook", "strategy", "strategyName", "strategy_label", "tag"],

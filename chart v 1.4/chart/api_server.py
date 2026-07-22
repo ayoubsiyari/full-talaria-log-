@@ -1166,12 +1166,17 @@ class TradingSessionJournalTrade(Base):
     """One row per backtest journal trade for SQL queries and backups; kept in sync with state_json journal on PATCH."""
 
     __tablename__ = "trading_session_journal_trades"
-    __table_args__ = (UniqueConstraint("session_id", "client_trade_id", name="uq_tsjt_session_client_trade"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_trade_id", name="uq_tsjt_session_client_trade"),
+        UniqueConstraint("user_id", "user_trade_id", name="uq_tsjt_user_trade_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("trading_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
     user_id = Column(Integer, index=True, nullable=False)
     client_trade_id = Column(String(128), nullable=False, index=True)
+    # Per-user display/sequence id (1, 2, 3… for that user across all sessions). Not global across users.
+    user_trade_id = Column(Integer, nullable=True, index=True)
     payload_json = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1463,6 +1468,69 @@ Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 # Ensure journal-trade mirror table exists (deployments that predated TradingSessionJournalTrade).
 try:
     TradingSessionJournalTrade.__table__.create(bind=engine, checkfirst=True)
+except Exception:
+    pass
+
+# Per-user trade sequence (stable across sessions; safe for future session merges).
+try:
+    with engine.connect() as _conn:
+        try:
+            _conn.execute(
+                text(
+                    "ALTER TABLE trading_session_journal_trades "
+                    "ADD COLUMN IF NOT EXISTS user_trade_id INTEGER"
+                )
+            )
+        except Exception:
+            # SQLite without IF NOT EXISTS support for ADD COLUMN
+            try:
+                _conn.execute(
+                    text("ALTER TABLE trading_session_journal_trades ADD COLUMN user_trade_id INTEGER")
+                )
+            except Exception:
+                pass
+        _conn.commit()
+except Exception:
+    pass
+
+try:
+    _db_uid = SessionLocal()
+    try:
+        _rows = (
+            _db_uid.query(TradingSessionJournalTrade)
+            .order_by(
+                TradingSessionJournalTrade.user_id.asc(),
+                nulls_last(TradingSessionJournalTrade.created_at),
+                TradingSessionJournalTrade.id.asc(),
+            )
+            .all()
+        )
+        _counters: dict[int, int] = {}
+        _changed = False
+        for _r in _rows:
+            uid = int(_r.user_id or 0)
+            if _r.user_trade_id is not None and int(_r.user_trade_id) > 0:
+                _counters[uid] = max(_counters.get(uid, 0), int(_r.user_trade_id))
+                continue
+            _counters[uid] = int(_counters.get(uid, 0)) + 1
+            _r.user_trade_id = _counters[uid]
+            _changed = True
+        if _changed:
+            _db_uid.commit()
+    finally:
+        _db_uid.close()
+except Exception:
+    pass
+
+try:
+    with engine.connect() as _conn:
+        _conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_tsjt_user_trade_id_idx "
+                "ON trading_session_journal_trades (user_id, user_trade_id)"
+            )
+        )
+        _conn.commit()
 except Exception:
     pass
 
@@ -12245,10 +12313,31 @@ def _get_or_create_trading_session_state(db, session_id: int, user_id: int) -> T
     return st
 
 
+def _next_user_trade_id(db, user_id: int) -> int:
+    """Allocate the next per-user trade sequence number (not global across users)."""
+    current = (
+        db.query(func.max(TradingSessionJournalTrade.user_trade_id))
+        .filter(TradingSessionJournalTrade.user_id == int(user_id))
+        .scalar()
+    )
+    try:
+        return int(current or 0) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, journal: list) -> None:
     """Upsert one DB row per chart journal trade; remove rows no longer present in the canonical journal array."""
     if not isinstance(journal, list):
         return
+    uid = int(user_id)
+    existing_rows = (
+        db.query(TradingSessionJournalTrade)
+        .filter(TradingSessionJournalTrade.session_id == session_id)
+        .all()
+    )
+    by_client = {str(r.client_trade_id): r for r in existing_rows if r.client_trade_id is not None}
+    next_user_tid = _next_user_trade_id(db, uid)
     incoming_ids: set[str] = set()
     for raw in journal:
         if not isinstance(raw, dict):
@@ -12257,50 +12346,84 @@ def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, jour
         if not tid:
             continue
         incoming_ids.add(tid)
-        payload = json.dumps(raw, separators=(",", ":"))
-        if DATABASE_URL.startswith("sqlite"):
-            row = (
+        # Prefer already-assigned per-user id from payload when valid.
+        payload_user_tid = None
+        for key in ("user_trade_id", "userTradeId", "display_trade_id"):
+            raw_uid = raw.get(key)
+            if raw_uid is None or raw_uid == "":
+                continue
+            try:
+                n = int(raw_uid)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                payload_user_tid = n
+                break
+        row = by_client.get(tid)
+        if row:
+            row.payload_json = json.dumps(raw, separators=(",", ":"))
+            row.user_id = uid
+            if row.user_trade_id is None or int(row.user_trade_id or 0) <= 0:
+                if payload_user_tid and payload_user_tid >= next_user_tid:
+                    # Keep payload id only if it doesn't collide below next allocator.
+                    clash = (
+                        db.query(TradingSessionJournalTrade)
+                        .filter(
+                            TradingSessionJournalTrade.user_id == uid,
+                            TradingSessionJournalTrade.user_trade_id == payload_user_tid,
+                            TradingSessionJournalTrade.id != row.id,
+                        )
+                        .first()
+                    )
+                    if clash is None:
+                        row.user_trade_id = payload_user_tid
+                        next_user_tid = max(next_user_tid, payload_user_tid + 1)
+                    else:
+                        row.user_trade_id = next_user_tid
+                        next_user_tid += 1
+                else:
+                    row.user_trade_id = next_user_tid
+                    next_user_tid += 1
+            # Mirror onto payload so chart/GET state keep a stable display id.
+            try:
+                enriched = dict(raw)
+                enriched["user_trade_id"] = int(row.user_trade_id)
+                enriched["client_trade_id"] = tid
+                row.payload_json = json.dumps(enriched, separators=(",", ":"))
+            except Exception:
+                pass
+            continue
+
+        assigned = payload_user_tid
+        if assigned is not None:
+            clash = (
                 db.query(TradingSessionJournalTrade)
                 .filter(
-                    TradingSessionJournalTrade.session_id == session_id,
-                    TradingSessionJournalTrade.client_trade_id == tid,
+                    TradingSessionJournalTrade.user_id == uid,
+                    TradingSessionJournalTrade.user_trade_id == assigned,
                 )
                 .first()
             )
-            if row:
-                row.payload_json = payload
-                row.user_id = user_id
-            else:
-                db.add(
-                    TradingSessionJournalTrade(
-                        session_id=session_id,
-                        user_id=user_id,
-                        client_trade_id=tid,
-                        payload_json=payload,
-                    )
-                )
+            if clash is not None:
+                assigned = None
+        if assigned is None:
+            assigned = next_user_tid
+            next_user_tid += 1
         else:
-            now = datetime.utcnow()
-            stmt = pg_insert(TradingSessionJournalTrade).values(
-                session_id=session_id,
-                user_id=user_id,
-                client_trade_id=tid,
-                payload_json=payload,
-                created_at=now,
-                updated_at=now,
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=[
-                    TradingSessionJournalTrade.session_id,
-                    TradingSessionJournalTrade.client_trade_id,
-                ],
-                set_={
-                    "user_id": user_id,
-                    "payload_json": payload,
-                    "updated_at": now,
-                },
-            )
-            db.execute(stmt)
+            next_user_tid = max(next_user_tid, assigned + 1)
+
+        enriched = dict(raw)
+        enriched["user_trade_id"] = int(assigned)
+        enriched["client_trade_id"] = tid
+        new_row = TradingSessionJournalTrade(
+            session_id=session_id,
+            user_id=uid,
+            client_trade_id=tid,
+            user_trade_id=int(assigned),
+            payload_json=json.dumps(enriched, separators=(",", ":")),
+        )
+        db.add(new_row)
+        by_client[tid] = new_row
 
     q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
     if incoming_ids:
@@ -24767,6 +24890,7 @@ async def list_user_journal_trades(
                     "session_id": r.session_id,
                     "session_name": session_names.get(int(r.session_id), ""),
                     "client_trade_id": r.client_trade_id,
+                    "user_trade_id": r.user_trade_id,
                     "payload": payload,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 }
@@ -24811,6 +24935,7 @@ async def list_trading_session_journal_trades(session_id: int, request: Request)
                     "journal_trade_id": r.id,
                     "session_id": session_id,
                     "client_trade_id": r.client_trade_id,
+                    "user_trade_id": r.user_trade_id,
                     "payload": payload,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 }
@@ -24881,10 +25006,16 @@ async def upsert_trading_session_journal_trade(
         journal_trade_id = int(sql_row.id) if sql_row and sql_row.id is not None else None
         if journal_trade_id is not None:
             trade = sjs.enrich_journal_trade_from_sql_row(trade, sql_row, session_id)
+        user_trade_id = (
+            int(sql_row.user_trade_id)
+            if sql_row is not None and getattr(sql_row, "user_trade_id", None) is not None
+            else None
+        )
         return {
             "session_id": session_id,
             "client_trade_id": client_trade_id,
             "journal_trade_id": journal_trade_id,
+            "user_trade_id": user_trade_id,
             "trade": trade,
             "journal_len": len(merged),
             "upserted": True,
