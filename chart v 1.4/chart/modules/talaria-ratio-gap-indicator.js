@@ -506,7 +506,10 @@
                 }, this);
             }
 
-            if (data.labels && data.labels.length) {
+            // Label collision solve is expensive — skip during replay play (pause still draws).
+            var replayPlaying = !!(this.replaySystem && this.replaySystem.isActive
+                && (this.replaySystem.isPlaying || this._multichartPassivePlayActive));
+            if (data.labels && data.labels.length && !replayPlaying) {
                 var lm = data.labelMeta || {};
                 var fontSize = lm.size === 'tiny' ? 9 : lm.size === 'small' ? 10
                     : lm.size === 'large' ? 14 : lm.size === 'huge' ? 17 : 12;

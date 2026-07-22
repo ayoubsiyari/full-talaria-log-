@@ -7,6 +7,8 @@
 
     var STORAGE_KEY = 'talaria_chart_window_id';
     var HEARTBEAT_MS = 25000;
+    /** Set when the windows API is missing/misrouted (e.g. nginx 405) so we stop spamming. */
+    var apiUnavailable = false;
 
     function isMultichartPanel() {
         try {
@@ -152,8 +154,25 @@
         } catch (_e2) { /* ignore */ }
     }
 
+    function markApiUnavailable(status) {
+        if (apiUnavailable) return;
+        // 405 = wrong upstream (method not allowed); 404 = route missing.
+        if (status !== 404 && status !== 405) return;
+        apiUnavailable = true;
+        if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+        try {
+            console.warn(
+                '[chart-window-limit] /api/chart/windows/* unavailable (HTTP '
+                + status + '); window-limit checks paused for this page.'
+            );
+        } catch (_e) { /* ignore */ }
+    }
+
     function heartbeat() {
-        if (!clientId || window.__talariaChartWindowBlocked) return;
+        if (apiUnavailable || !clientId || window.__talariaChartWindowBlocked) return;
         fetch('/api/chart/windows/heartbeat', {
             method: 'POST',
             credentials: 'include',
@@ -162,6 +181,10 @@
             cache: 'no-store',
         }).then(function (res) {
             if (res.status === 401) return;
+            if (res.status === 404 || res.status === 405) {
+                markApiUnavailable(res.status);
+                return;
+            }
             if (res.status === 409) {
                 // Slot lost — try reclaim (may show limit overlay).
                 claim(true);
@@ -170,6 +193,7 @@
     }
 
     function claim(isRetry) {
+        if (apiUnavailable) return Promise.resolve(true);
         if (claimInFlight) return Promise.resolve(false);
         claimInFlight = true;
         clientId = getOrCreateClientId();
@@ -197,6 +221,10 @@
                     return false;
                 }
                 if (res.status === 401) return false;
+                if (res.status === 404 || res.status === 405) {
+                    markApiUnavailable(res.status);
+                    return true;
+                }
                 // Soft-fail: do not brick chart on unexpected server errors.
                 return true;
             });

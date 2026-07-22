@@ -8360,13 +8360,14 @@
     };
 
     /**
-     * Session / ICT overlays: O(n) Intl wall-clock scans on main thread (worker-skipped).
-     * Recomputing them every replay play frame freezes the chart. Kill-switch:
-     *   window.__TALARIA_FIX_SESSION_REPLAY_PERF = false
+     * Main-thread O(n) overlays (Sessions/ICT + Talaria). Recomputing them every
+     * replay play frame freezes the chart — especially with all 3 Talaria on.
+     * Kill-switch: window.__TALARIA_FIX_SESSION_REPLAY_PERF = false
      */
     var SESSION_REPLAY_HEAVY_TYPES = [
         'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
-        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything'
+        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
+        'talariafvg', 'talariaratiogap', 'talariaweeklymap'
     ];
 
     function _sessionReplayPerfFixEnabled() {
@@ -8378,11 +8379,15 @@
         const data = chart && chart.data;
         if (!Array.isArray(data) || !data.length) return null;
         const last = data[data.length - 1] || {};
+        // Bar-advance only (length + open time). Do NOT include OHLC — forming-candle
+        // animation would otherwise force a full Talaria/Sessions scan every frame.
         return [
             data.length,
-            last.t, last.o, last.h, last.l, last.c,
-            // Invalidate when session indicators are added/removed.
-            (chart.indicators.active || []).map(function(ind) {
+            last.t,
+            // Invalidate when heavy indicators are added/removed.
+            (chart.indicators.active || []).filter(function(ind) {
+                return SESSION_REPLAY_HEAVY_TYPES.indexOf(String(ind.type || '').toLowerCase()) >= 0;
+            }).map(function(ind) {
                 return String(ind.id || '') + ':' + String(ind.type || '').toLowerCase();
             }).join(',')
         ].join('|');
@@ -8403,7 +8408,7 @@
     /**
      * Replay playback: one synchronous full recalc per animation frame (same path as DEMA/TEMA/HMA).
      * Worker/incremental paths lag behind at 60x — sync-on-rAF keeps every overlay aligned with candles.
-     * Session/ICT types are skipped mid-tick when the bar fingerprint is unchanged (pause still full).
+     * Session/ICT/Talaria types are skipped mid-tick until the bar advances (pause still full).
      */
     Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;

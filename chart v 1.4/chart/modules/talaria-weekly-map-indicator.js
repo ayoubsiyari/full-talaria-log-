@@ -174,15 +174,51 @@
         return out;
     }
 
+    // Reuse 1h aggregation across recalcs — resampling full raw history every tick freezes.
+    var _h1Cache = { key: '', bars: null };
+    // ~36 calendar weeks of 1h bars covers avgWeeks(14) + warmup with headroom.
+    var MAX_H1_BARS = 36 * 7 * 24;
+
+    function sliceRecentRaw(raw, lookbackMs) {
+        if (!Array.isArray(raw) || !raw.length) return raw || [];
+        var lastT = Number(raw[raw.length - 1].t);
+        if (!Number.isFinite(lastT)) return raw;
+        var cutoff = lastT - lookbackMs;
+        if (!(Number(raw[0].t) < cutoff)) return raw;
+        var lo = 0, hi = raw.length - 1, ans = 0;
+        while (lo <= hi) {
+            var mid = (lo + hi) >> 1;
+            if (Number(raw[mid].t) < cutoff) { lo = mid + 1; }
+            else { ans = mid; hi = mid - 1; }
+        }
+        return raw.slice(Math.max(0, ans));
+    }
+
     function buildEngineBars(chartData, ctx) {
-        var raw = ctx && Array.isArray(ctx.rawData) && ctx.rawData.length ? ctx.rawData : chartData;
+        var rawFull = ctx && Array.isArray(ctx.rawData) && ctx.rawData.length ? ctx.rawData : chartData;
+        var raw = sliceRecentRaw(rawFull, MAX_H1_BARS * HOUR_MS);
+        var first = raw && raw.length ? raw[0] : null;
+        var last = raw && raw.length ? raw[raw.length - 1] : null;
+        var cacheKey = [
+            rawFull ? rawFull.length : 0,
+            first && first.t, last && last.t, last && last.c,
+            ctx && ctx.currentTimeframe
+        ].join('|');
+        if (_h1Cache.key === cacheKey && Array.isArray(_h1Cache.bars) && _h1Cache.bars.length) {
+            return _h1Cache.bars;
+        }
+
+        var h1 = null;
         if (ctx && typeof ctx.resample === 'function' && raw && raw.length) {
             try {
                 var rs = ctx.resample(raw, '1h');
-                if (Array.isArray(rs) && rs.length) return rs;
+                if (Array.isArray(rs) && rs.length) h1 = rs;
             } catch (_) { /* fall through */ }
         }
-        return bucket1h(raw || chartData);
+        if (!h1) h1 = bucket1h(raw || chartData);
+        if (h1.length > MAX_H1_BARS) h1 = h1.slice(-MAX_H1_BARS);
+        _h1Cache = { key: cacheKey, bars: h1 };
+        return h1;
     }
 
     function indexAtOrBefore(bars, t) {

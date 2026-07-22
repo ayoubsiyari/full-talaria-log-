@@ -3541,13 +3541,10 @@ class ReplaySystem {
             chart.render();
         }
         if (this.isPlaying) return;
+        // Pause/scrub settle: layout + rAF only. Do NOT call getImageData() here —
+        // reading pixels forces a GPU→CPU sync and stutters on fanless / low-power GPUs.
         if (chart.canvas) {
             void chart.canvas.offsetHeight;
-            if (chart.ctx) {
-                try {
-                    void chart.ctx.getImageData(0, 0, 1, 1);
-                } catch (_e) { /* ignore */ }
-            }
         }
         setTimeout(() => {
             chart.renderPending = true;
