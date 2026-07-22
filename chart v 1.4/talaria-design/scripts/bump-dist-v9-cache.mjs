@@ -25,8 +25,18 @@ const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html")
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
-const LEGACY_SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(modules\/[^"?]+|chart\.js|settings-panel[^"?]*)(?:\?[^"#]*)?(")/g;
-const LEGACY_LINK_HREF_RE = /(<link\b[^>]*\shref=")((?:modules\/|fonts\/)[^"?]+)(?:\?[^"#]*)?(")/g;
+/**
+ * Legacy shell scripts may be relative (`modules/...`, `chart.js`) or absolute
+ * (`/chart/modules/...`). Absolute paths must be stamped too — otherwise
+ * CHECKPOINT layout proof sees mixed cache ids (e.g. b01 + stale b03).
+ */
+export const LEGACY_SCRIPT_SRC_RE =
+  /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+|modules\/[^"?]+|chart\.js|settings-panel[^"?]*)(?:\?[^"#]*)?(")/g;
+/**
+ * Same dual-form rule for stylesheet links under checkpoint builds.
+ */
+export const LEGACY_LINK_HREF_RE =
+  /(<link\b[^>]*\shref=")(\/chart\/(?:modules|fonts)\/[^"?]+|(?:modules|fonts)\/[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
 const INLINE_MULTICHART_V_RE = /var V = '[^']+';/g;
 const WINDOW_BUILD_ID_RE = /window\.__TALARIA_CHART_BUILD_ID\s*=\s*'[^']+'/g;
@@ -68,6 +78,24 @@ function resolveBuildId(html) {
   return defaultBuildId();
 }
 
+/**
+ * Stamp legacy-index script (and optionally link) cache-bust query ids.
+ * Exported for permanent regression proof of relative + absolute paths.
+ */
+export function stampLegacyHtml(html, buildId, { stampLinks = false } = {}) {
+  let after = String(html).replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  if (stampLinks) {
+    after = after.replace(LEGACY_LINK_HREF_RE, `$1$2?v=${buildId}$3`);
+  }
+  return after;
+}
+
+/** Unique `?v=` / `&v=` cache ids in HTML (same extraction as layout proof). */
+export function uniqueCacheIds(html) {
+  const ids = [...String(html).matchAll(/[?&]v=([^"'&#\s]+)/g)].map((m) => m[1]);
+  return [...new Set(ids)];
+}
+
 function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }) {
   if (!fs.existsSync(filePath)) {
     if (required) {
@@ -99,10 +127,8 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
 function bumpLegacyIndexHtml(filePath, buildId) {
   if (!fs.existsSync(filePath) || !buildId) return 0;
   const before = fs.readFileSync(filePath, "utf8");
-  let after = before.replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
-  if (process.env.CHECKPOINT_BUILD === "1") {
-    after = after.replace(LEGACY_LINK_HREF_RE, `$1$2?v=${buildId}$3`);
-  }
+  const stampLinks = process.env.CHECKPOINT_BUILD === "1";
+  const after = stampLegacyHtml(before, buildId, { stampLinks });
   if (after === before) return 0;
   fs.writeFileSync(filePath, after, "utf8");
   console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on legacy-index scripts in", filePath);
@@ -169,86 +195,96 @@ function bumpServiceWorkerVersion(buildId) {
   return touched;
 }
 
-const mode = process.argv.includes("--dist")
-  ? "dist"
-  : process.argv.includes("--live")
-    ? "live"
-    : "both";
+function main() {
+  const mode = process.argv.includes("--dist")
+    ? "dist"
+    : process.argv.includes("--live")
+      ? "live"
+      : "both";
 
-let touched = 0;
-let buildIdForDist = null;
+  let touched = 0;
+  let buildIdForDist = null;
 
-if (mode === "live" || mode === "both") {
-  if (fs.existsSync(liveIndexPath)) {
-    const liveBefore = fs.readFileSync(liveIndexPath, "utf8");
-    buildIdForDist = resolveBuildId(liveBefore);
-  }
-  const liveRes = bumpChartScriptsInHtml(liveIndexPath, {
-    required: mode === "live",
-    buildId: buildIdForDist,
-  });
-  touched += liveRes.touched;
-  if (liveRes.buildId) buildIdForDist = liveRes.buildId;
-  if (buildIdForDist) {
-    touched += bumpServiceWorkerVersion(buildIdForDist);
-  }
-}
-
-if (mode === "dist" || mode === "both") {
-  let distBuildId = buildIdForDist;
-  if (process.env.BUILD_ID?.trim()) {
-    distBuildId = process.env.BUILD_ID.trim();
-  } else if (fs.existsSync(distIndexPath)) {
-    const distCurrent = readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"));
-    // After `vite build`, dist copies live's id — bump dist one step so browsers reload modules.
-    distBuildId = distCurrent ? incrementBuildId(distCurrent) : distBuildId;
-  }
-  if (!distBuildId && fs.existsSync(liveIndexPath)) {
-    distBuildId = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
+  if (mode === "live" || mode === "both") {
+    if (fs.existsSync(liveIndexPath)) {
+      const liveBefore = fs.readFileSync(liveIndexPath, "utf8");
+      buildIdForDist = resolveBuildId(liveBefore);
+    }
+    const liveRes = bumpChartScriptsInHtml(liveIndexPath, {
+      required: mode === "live",
+      buildId: buildIdForDist,
+    });
+    touched += liveRes.touched;
+    if (liveRes.buildId) buildIdForDist = liveRes.buildId;
+    if (buildIdForDist) {
+      touched += bumpServiceWorkerVersion(buildIdForDist);
+    }
   }
 
-  const distRes = bumpChartScriptsInHtml(distIndexPath, {
-    required: mode === "dist" || mode === "both",
-    buildId: distBuildId,
-  });
-  touched += distRes.touched;
-  if (distRes.buildId) distBuildId = distRes.buildId;
+  if (mode === "dist" || mode === "both") {
+    let distBuildId = buildIdForDist;
+    if (process.env.BUILD_ID?.trim()) {
+      distBuildId = process.env.BUILD_ID.trim();
+    } else if (fs.existsSync(distIndexPath)) {
+      const distCurrent = readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"));
+      // After `vite build`, dist copies live's id — bump dist one step so browsers reload modules.
+      distBuildId = distCurrent ? incrementBuildId(distCurrent) : distBuildId;
+    }
+    if (!distBuildId && fs.existsSync(liveIndexPath)) {
+      distBuildId = readCurrentChartBuildId(fs.readFileSync(liveIndexPath, "utf8"));
+    }
 
-  if (distBuildId && fs.existsSync(liveIndexPath)) {
-    touched += bumpChartScriptsInHtml(liveIndexPath, {
-      required: false,
+    const distRes = bumpChartScriptsInHtml(distIndexPath, {
+      required: mode === "dist" || mode === "both",
       buildId: distBuildId,
-    }).touched;
-    touched += bumpChartScriptsInHtml(homepageDistIndexPath, {
-      required: false,
-      buildId: distBuildId,
-    }).touched;
-    touched += bumpServiceWorkerVersion(distBuildId);
-    touched += bumpLegacyIndexHtml(legacyIndexPath, distBuildId);
-    // homepage copy of legacy if present
-    touched += bumpLegacyIndexHtml(
-      path.resolve(repoRoot, "homepage/public/chart/legacy-index.html"),
-      distBuildId,
-    );
-    touched += bumpChartEmbedHtml(distBuildId);
-    touched += bumpHarnessServeMjs(distBuildId);
+    });
+    touched += distRes.touched;
+    if (distRes.buildId) distBuildId = distRes.buildId;
+
+    if (distBuildId && fs.existsSync(liveIndexPath)) {
+      touched += bumpChartScriptsInHtml(liveIndexPath, {
+        required: false,
+        buildId: distBuildId,
+      }).touched;
+      touched += bumpChartScriptsInHtml(homepageDistIndexPath, {
+        required: false,
+        buildId: distBuildId,
+      }).touched;
+      touched += bumpServiceWorkerVersion(distBuildId);
+      touched += bumpLegacyIndexHtml(legacyIndexPath, distBuildId);
+      // homepage copy of legacy if present
+      touched += bumpLegacyIndexHtml(
+        path.resolve(repoRoot, "homepage/public/chart/legacy-index.html"),
+        distBuildId,
+      );
+      touched += bumpChartEmbedHtml(distBuildId);
+      touched += bumpHarnessServeMjs(distBuildId);
+    }
+  }
+
+  if (touched === 0 && (mode === "dist" || mode === "both")) {
+    const checkPath = fs.existsSync(distIndexPath) ? distIndexPath : liveIndexPath;
+    if (fs.existsSync(checkPath) && readCurrentChartBuildId(fs.readFileSync(checkPath, "utf8"))) {
+      console.log("[bump-dist-v9-cache] No changes needed (already bumped)");
+    } else {
+      process.exit(1);
+    }
+  }
+
+  if (buildIdForDist || mode === "dist") {
+    const finalId = fs.existsSync(distIndexPath)
+      ? readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"))
+      : buildIdForDist;
+    if (finalId) {
+      console.log("[bump-dist-v9-cache] Active build id:", finalId);
+    }
   }
 }
 
-if (touched === 0 && (mode === "dist" || mode === "both")) {
-  const checkPath = fs.existsSync(distIndexPath) ? distIndexPath : liveIndexPath;
-  if (fs.existsSync(checkPath) && readCurrentChartBuildId(fs.readFileSync(checkPath, "utf8"))) {
-    console.log("[bump-dist-v9-cache] No changes needed (already bumped)");
-  } else {
-    process.exit(1);
-  }
-}
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-if (buildIdForDist || mode === "dist") {
-  const finalId = fs.existsSync(distIndexPath)
-    ? readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"))
-    : buildIdForDist;
-  if (finalId) {
-    console.log("[bump-dist-v9-cache] Active build id:", finalId);
-  }
+if (isMain) {
+  main();
 }
