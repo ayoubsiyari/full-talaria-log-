@@ -996,11 +996,36 @@ const DASH_CSV_FIELD_CATALOG = [
   { key: "durationMinutes", label: "Duration (minutes)", required: false },
   { key: "status", label: "Status (open/closed)", required: false },
 ];
+/** Prefer session-local chart trade # (1, 2, 3…) over global SQL journal_trade_id (615…). */
+const pickDashDisplayTradeId = (trade, fallback = "-") => {
+  if (!trade || typeof trade !== "object") return fallback;
+  const read = (keys) => {
+    for (const key of keys) {
+      const value = trade[key];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  };
+  const sourceType = String(trade.sourceType || trade.libraryType || trade.sourceKind || "").toLowerCase();
+  const sourceKey = String(trade.sourceKey || trade.sourceFilterKey || "");
+  const isSessionTrade =
+    trade.trading_session_id != null
+    || trade.sourceSessionId != null
+    || sourceKey.startsWith("session:")
+    || sourceType.includes("backtest")
+    || sourceType === "session";
+  const keys = isSessionTrade
+    ? ["chart_trade_id", "client_trade_id", "n", "tradeId", "trade_id", "journal_trade_id", "id"]
+    : ["journal_trade_id", "tradeId", "trade_id", "client_trade_id", "id", "n"];
+  const raw = read(keys);
+  if (raw == null) return fallback;
+  return String(raw).replace(/^manual-/, "M-");
+};
 const DASH_CSV_FIELD_ALIASES = {
   netPnL: ["netPnL", "pnl_currency_net", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl"],
   closeTime: ["closeTime", "exitTime", "exitDate"],
   openTime: ["openTime", "entryTime", "entryDate", "date"],
-  tradeId: ["tradeId", "trade_id", "journal_trade_id", "client_trade_id", "id", "n"],
+  tradeId: ["chart_trade_id", "client_trade_id", "n", "tradeId", "trade_id", "journal_trade_id", "id"],
   ticker: ["ticker", "symbol", "instrument", "pair"],
   direction: ["direction", "side", "type"],
   setup: ["setup", "playbook", "strategy", "strategyName", "strategy_label", "tag"],
@@ -25840,7 +25865,7 @@ const TalariaV8b = () => {
                 },
                 sortValues:{
                   source:`${sourceKind}-${edited ? "edited" : "original"}`,
-                  tradeId:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], ""),
+                  tradeId:pickDashDisplayTradeId(t, ""),
                   sourceName:firstValue(t, sourceNameKeys, ""),
                   strategy:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], ""),
                   symbol:firstValue(t, ["symbol","ticker"], ""),
@@ -25868,7 +25893,7 @@ const TalariaV8b = () => {
                 },
                 values:{
                   source:{node:null, raw:`${sourceKind} ${edited ? "edited" : "original"}`},
-                  tradeId:{text:String(firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "-")).replace(/^manual-/, "M-"), raw:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "")},
+                  tradeId:{text:pickDashDisplayTradeId(t, "-"), raw:pickDashDisplayTradeId(t, "")},
                   sourceName:{text:String(firstValue(t, sourceNameKeys, "-")), raw:firstValue(t, sourceNameKeys, "")},
                   strategy:{text:String(firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "-")), raw:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "")},
                   symbol:{text:String(firstValue(t, ["symbol","ticker"], "-")).toUpperCase(), raw:firstValue(t, ["symbol","ticker"], "")},
@@ -26780,7 +26805,7 @@ const TalariaV8b = () => {
                     style={{maxWidth:"100%",overflowX:"auto",overflowY:"visible",paddingBottom:8,overscrollBehaviorX:"contain"}}>
                     <div style={{width:minTableWidth}}>
                       {tradeRows.length ? tradeRows.map((trade, index) => {
-                        const tradeId = firstValue(trade, ["journal_trade_id", "tradeId", "trade_id", "client_trade_id", "id"], trade.n ?? index + 1);
+                        const tradeId = pickDashDisplayTradeId(trade, trade.n ?? index + 1);
                         const isManualTrade = trade?.is_manual === true || trade?.manual === true || trade?.data_source === "manual";
                         const pnlRaw = firstValue(trade, ["netPnL", "pnl_dollars_net", "pnl", "realizedPnL"]);
                         const pnl = Number(pnlRaw) || 0;
@@ -30296,15 +30321,19 @@ const TalariaV8b = () => {
               || trade?.pair
               || dashTxt("Trade","صفقة")
             ).toUpperCase();
-            const snapshotTradeId = (trade, fallbackIndex) => String(
-              trade?.tradeId
-              || trade?.trade_id
-              || trade?.id
-              || trade?.ticket
-              || trade?.orderId
-              || trade?.order_id
-              || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
-            );
+            const snapshotTradeId = (trade, fallbackIndex) => {
+              const local = pickDashDisplayTradeId(trade, "");
+              if (local && local !== "-") return local;
+              return String(
+                trade?.tradeId
+                || trade?.trade_id
+                || trade?.id
+                || trade?.ticket
+                || trade?.orderId
+                || trade?.order_id
+                || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+              );
+            };
             const snapshotTradeRankRows = snapshotTradeRows.map((trade, index) => {
               const resultR = snapshotTradeResultR(trade);
               const pnl = snapshotTradePnl(trade);
@@ -30505,28 +30534,36 @@ const TalariaV8b = () => {
                 return joinDateTimeParts(datePart, timePart);
               };
               const tradeDateValue = trade => tradeExitDateValue(trade) || tradeOpenDateValue(trade);
-              const pulseTradeId = (trade, fallbackIndex) => String(
-                trade?.tradeId
-                || trade?.trade_id
-                || trade?.clientTradeId
-                || trade?.client_trade_id
-                || trade?.id
-                || trade?.ticket
-                || trade?.orderId
-                || trade?.order_id
-                || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
-              );
-              const pulseTradeFullId = (trade, fallbackIndex) => String(
-                trade?.trade_id
-                || trade?.client_trade_id
-                || trade?.clientTradeId
-                || trade?.id
-                || trade?.tradeId
-                || trade?.ticket
-                || trade?.orderId
-                || trade?.order_id
-                || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
-              );
+              const pulseTradeId = (trade, fallbackIndex) => {
+                const local = pickDashDisplayTradeId(trade, "");
+                if (local && local !== "-") return local;
+                return String(
+                  trade?.tradeId
+                  || trade?.trade_id
+                  || trade?.clientTradeId
+                  || trade?.client_trade_id
+                  || trade?.id
+                  || trade?.ticket
+                  || trade?.orderId
+                  || trade?.order_id
+                  || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+                );
+              };
+              const pulseTradeFullId = (trade, fallbackIndex) => {
+                const local = pickDashDisplayTradeId(trade, "");
+                if (local && local !== "-") return local;
+                return String(
+                  trade?.trade_id
+                  || trade?.client_trade_id
+                  || trade?.clientTradeId
+                  || trade?.id
+                  || trade?.tradeId
+                  || trade?.ticket
+                  || trade?.orderId
+                  || trade?.order_id
+                  || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+                );
+              };
               const formatPulseTradeTime = value => {
                 if (!value) return "-";
                 const date = new Date(value);

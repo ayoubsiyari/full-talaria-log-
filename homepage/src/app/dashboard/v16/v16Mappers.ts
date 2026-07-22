@@ -162,13 +162,30 @@ export function resolveGlobalTradeId(
   sessionId: number | string,
   index: number
 ): { globalId: string; sessionLocalId: string; chartTradeId: string | number } {
-  const sessionLocalId = String(
-    row.client_trade_id ?? row.tradeId ?? row.trade_id ?? row.id ?? `t${index + 1}`
-  );
-  const chartTradeId = (row.tradeId ?? row.id ?? sessionLocalId) as string | number;
   const jid = row.journal_trade_id;
-  if (jid != null && String(jid).trim() !== "") {
-    return { globalId: String(jid), sessionLocalId, chartTradeId };
+  const jidText = jid != null && String(jid).trim() !== "" ? String(jid) : null;
+  // Session-local chart numbers (#1, #2…) — skip values that are just the global SQL id.
+  const localCandidates = [
+    row.chart_trade_id,
+    row.client_trade_id,
+    row.n,
+    row.tradeId,
+    row.trade_id,
+    row.id,
+  ];
+  const sessionLocalRaw = localCandidates.find((v) => {
+    if (v === undefined || v === null || v === "") return false;
+    const s = String(v);
+    if (jidText && s === jidText) return false;
+    if (s.includes(":")) return false;
+    return true;
+  });
+  const sessionLocalId = String(sessionLocalRaw ?? `t${index + 1}`);
+  const chartTradeId = (row.chart_trade_id ?? row.n ?? row.client_trade_id ?? sessionLocalId) as
+    | string
+    | number;
+  if (jidText) {
+    return { globalId: jidText, sessionLocalId, chartTradeId };
   }
   return { globalId: `${sessionId}:${sessionLocalId}`, sessionLocalId, chartTradeId };
 }
