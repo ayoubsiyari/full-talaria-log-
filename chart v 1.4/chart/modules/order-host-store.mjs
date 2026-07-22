@@ -38,6 +38,87 @@ export function cloneOrderList(arr) {
     }
 }
 
+/**
+ * Live position / P&L fields only for runtimeOnly Play fan-out.
+ * Explicitly omits closedPositions, tradeJournal, orders, screenshots,
+ * and excursion / MFE-MAE history arrays (M19 hot-path bound).
+ */
+const RUNTIME_PNL_ROW_KEYS = [
+    'id', 'symbol', 'ticker', 'sourceFileId',
+    'status', 'type', 'direction',
+    'openPrice', 'entryPrice', 'quantity', 'remainingQuantity',
+    'stopLoss', 'takeProfit', 'tpTargets',
+    'splitGroupId', 'splitIndex', 'isSplitEntry',
+    'autoBreakeven', 'breakevenSettings',
+    'unrealizedPnL', 'currentPrice', 'markPrice',
+    'pendingOrderPrice', 'wasLimitOrder',
+];
+
+function slimRuntimePnlRow(row) {
+    if (!row || typeof row !== 'object') return null;
+    const out = {};
+    for (let i = 0; i < RUNTIME_PNL_ROW_KEYS.length; i++) {
+        const k = RUNTIME_PNL_ROW_KEYS[i];
+        if (row[k] !== undefined) out[k] = row[k];
+    }
+    // Keep visual-shape TP targets; drop screenshot / excursion blobs if present.
+    if (Array.isArray(out.tpTargets)) {
+        out.tpTargets = out.tpTargets.map((t, index) => ({
+            id: t && t.id != null ? t.id : index,
+            price: Number(t && t.price) || 0,
+            percentage: Number(t && t.percentage) || 0,
+            hit: !!(t && t.hit),
+        }));
+    }
+    if (out.breakevenSettings && typeof out.breakevenSettings === 'object') {
+        out.breakevenSettings = {
+            triggered: !!out.breakevenSettings.triggered,
+            be_recalculated: !!out.breakevenSettings.be_recalculated,
+        };
+    }
+    return out;
+}
+
+function slimRuntimePnlList(arr) {
+    const src = Array.isArray(arr) ? arr : [];
+    const out = [];
+    for (let i = 0; i < src.length; i++) {
+        const row = slimRuntimePnlRow(src[i]);
+        if (row) out.push(row);
+    }
+    return out;
+}
+
+/**
+ * Hot-path snapshot: live open/pending + account P&L only.
+ * Never clones closedPositions, tradeJournal, orders, screenshots, or excursions.
+ */
+export function buildHostRuntimePnlSnapshot(om, sessionId, version = 0) {
+    if (!om) {
+        return {
+            version: Number(version) || 0,
+            sessionId: sessionId || null,
+            runtimeOnly: true,
+            pendingOrders: [],
+            openPositions: [],
+            account: {},
+        };
+    }
+    return {
+        version: Number(version) || 0,
+        sessionId: sessionId != null ? String(sessionId) : null,
+        runtimeOnly: true,
+        pendingOrders: slimRuntimePnlList(om.pendingOrders),
+        openPositions: slimRuntimePnlList(om.openPositions),
+        account: {
+            balance: om.balance,
+            equity: om.equity,
+            initialBalance: om.initialBalance,
+            sessionCurrentTime: om.orderService?.multiInstrumentSession?.current_time,
+        },
+    };
+}
+
 /** Build host-canonical snapshot from live OrderManager fields. */
 export function buildHostOrderStoreSnapshot(om, sessionId, version = 0, ctx = {}) {
     if (!om) {
@@ -202,6 +283,9 @@ export function scheduleHostPnlFromReplayFrame(detail, deps = {}) {
  * Executable ReplaySystem → manager fast path → host scheduler chain.
  * Mirrors production preference: when managerBroadcast exists, ReplaySystem
  * does NOT dispatch replayMultichartFrame.
+ *
+ * Production path uses requestAnimationFrame → __multichartScheduleHostPnlFanout.
+ * Pass requestAnimationFrame (or a fake) to prove the rAF → scheduler hop.
  */
 export function runReplaySystemManagerPnlChain({
     frames = 12,
@@ -211,6 +295,7 @@ export function runReplaySystemManagerPnlChain({
     coalesceMs = 50,
     setTimeout: setTimer,
     clearTimeout: clearTimer,
+    requestAnimationFrame: rafFn,
     advanceTimers,
     openPositions,
     fanOut,
@@ -235,16 +320,40 @@ export function runReplaySystemManagerPnlChain({
     });
     const positions = openPositions || [{ id: 1, unrealizedPnL: 0, openPrice: 1.1 }];
     const frameCmds = [];
+    let rafScheduleCount = 0;
+    let rafFlushCount = 0;
 
     // Production MultichartManager.__multichartManagerBroadcastReplay (rAF-coalesced).
     let coalescedDetail = null;
     let coalescedScheduled = false;
+    const scheduleRaf = typeof rafFn === 'function'
+        ? (fn) => {
+            rafScheduleCount += 1;
+            return rafFn(() => {
+                rafFlushCount += 1;
+                fn();
+            });
+        }
+        : (typeof setTimer === 'function'
+            ? (fn) => {
+                rafScheduleCount += 1;
+                return setTimer(() => {
+                    rafFlushCount += 1;
+                    fn();
+                }, 0);
+            }
+            : (fn) => {
+                rafScheduleCount += 1;
+                rafFlushCount += 1;
+                fn();
+            });
+
     const managerBroadcastReplay = (detail) => {
         if (!detail || !Number.isFinite(Number(detail.timestamp))) return false;
         coalescedDetail = detail;
         if (coalescedScheduled) return true;
         coalescedScheduled = true;
-        const flush = () => {
+        scheduleRaf(() => {
             coalescedScheduled = false;
             const payload = coalescedDetail;
             coalescedDetail = null;
@@ -261,10 +370,7 @@ export function runReplaySystemManagerPnlChain({
                 pendingOrders: [],
                 schedule: () => scheduler.schedule(),
             });
-        };
-        // Immediate flush in Node (production uses rAF).
-        if (typeof setTimer === 'function') setTimer(flush, 0);
-        else flush();
+        });
         return true;
     };
 
@@ -291,6 +397,8 @@ export function runReplaySystemManagerPnlChain({
         frameCmds,
         frameCmdCount: frameCmds.length,
         peerPanelCount: (panelIds || []).filter((id) => id !== 'A').length,
+        rafScheduleCount,
+        rafFlushCount,
     };
 }
 
@@ -385,7 +493,9 @@ export function fanOutHostOrderSnapshotToIframes(deps) {
     const sessionId = typeof chart.getActiveTradingSessionId === 'function'
         ? chart.getActiveTradingSessionId()
         : null;
-    const snap = buildHostOrderStoreSnapshot(om, sessionId, versionHolder.current, { win: deps?.win });
+    const snap = runtimeOnly === true
+        ? buildHostRuntimePnlSnapshot(om, sessionId, versionHolder.current)
+        : buildHostOrderStoreSnapshot(om, sessionId, versionHolder.current, { win: deps?.win });
 
     const panelIds = [];
     if (managerCharts && typeof managerCharts.values === 'function') {
@@ -402,12 +512,17 @@ export function fanOutHostOrderSnapshotToIframes(deps) {
             } catch (_) {}
         }
     }
+    let payloadBytes = 0;
+    try { payloadBytes = JSON.stringify(snap).length; } catch (_) { payloadBytes = 0; }
     return {
         ok: panelIds.length > 0,
         panelIds,
         snapshotVersion: versionHolder.current,
         openCount: (snap.openPositions || []).length,
         pendingCount: (snap.pendingOrders || []).length,
+        runtimeOnly: runtimeOnly === true,
+        payloadBytes,
+        snapshot: snap,
     };
 }
 

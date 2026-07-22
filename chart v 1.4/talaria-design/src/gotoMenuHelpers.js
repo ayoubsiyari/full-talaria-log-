@@ -166,6 +166,21 @@ function advanceWallClockYmd(y, mo, d, repeat) {
   return [y, mo, d];
 }
 
+/**
+ * Futures/FX weekend dead zones for daily session Go To (chart wall-clock Y/M/D + HH:mm).
+ * Saturday is always dead. Sunday before ~17:00 is dead (weekday RTH opens → Monday);
+ * Sunday evening reopen times remain valid.
+ */
+export function isGotoDeadWeekendWallClock(y, mo, d, hh = 0, mm = 0) {
+  const day = new Date(Date.UTC(y, mo - 1, d)).getUTCDay(); // 0=Sun … 6=Sat
+  if (day === 6) return true;
+  if (day === 0) {
+    const minutes = (Number(hh) || 0) * 60 + (Number(mm) || 0);
+    return minutes < 17 * 60;
+  }
+  return false;
+}
+
 export function resolveGotoTimestampMs(item, { fallbackDateIso, playheadMs } = {}) {
   const [hh, mm] = parseGotoTimeParts(item?.time || "00:00");
   const repeat = item?.repeat && item.repeat !== "none" ? item.repeat : "none";
@@ -195,8 +210,12 @@ export function resolveGotoTimestampMs(item, { fallbackDateIso, playheadMs } = {
     timeLabel
   );
 
+  const skipWeekend = repeat === "daily";
   let guard = 0;
-  while (Number.isFinite(targetMs) && targetMs <= playhead && guard < 500) {
+  while (Number.isFinite(targetMs) && guard < 500) {
+    const pastPlayhead = targetMs > playhead;
+    const deadWeekend = skipWeekend && isGotoDeadWeekendWallClock(y, mo, d, hh, mm);
+    if (pastPlayhead && !deadWeekend) break;
     [y, mo, d] = advanceWallClockYmd(y, mo, d, repeat);
     targetMs = buildGotoTimestampMs(
       `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`,

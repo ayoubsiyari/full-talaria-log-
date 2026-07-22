@@ -6,6 +6,7 @@
  */
 import {
     buildHostOrderStoreSnapshot,
+    buildHostRuntimePnlSnapshot,
     collectUnsyncedReadyPanelIds,
     fanOutHostOrderSnapshotToIframes,
     orderMcReadyPanelsSnapshotV1Enabled,
@@ -101,10 +102,22 @@ calls.length = 0;
 const runtimeFan = fanOutHostOrderSnapshotToIframes({
     managerCharts: charts,
     runCommand(cmd, args, opts) {
-        calls.push({ cmd, panelId: opts?.panelId, runtimeOnly: args?.runtimeOnly });
+        calls.push({
+            cmd,
+            panelId: opts?.panelId,
+            runtimeOnly: args?.runtimeOnly,
+            hasJournal: args?.snapshot?.tradeJournal != null,
+            hasClosed: args?.snapshot?.closedPositions != null,
+            hasOrders: args?.snapshot?.orders != null,
+        });
     },
     chart: {
-        orderManager: om,
+        orderManager: {
+            ...om,
+            tradeJournal: [{ id: 9, entryScreenshot: 'x'.repeat(5000), excursions: [1, 2, 3] }],
+            closedPositions: [{ id: 8, exitScreenshot: 'y'.repeat(5000) }],
+            orders: [{ id: 101 }, { id: 102 }, { id: 9 }],
+        },
         getActiveTradingSessionId: () => 'sess-1',
     },
     versionHolder,
@@ -112,6 +125,16 @@ const runtimeFan = fanOutHostOrderSnapshotToIframes({
 });
 assert(runtimeFan.ok, 'runtime fan-out reaches ready iframe');
 assert(calls.length === 1 && calls[0].runtimeOnly === true, 'runtimeOnly flag reaches applyOrderSnapshot');
+assert(calls[0].hasJournal === false && calls[0].hasClosed === false && calls[0].hasOrders === false,
+    'runtimeOnly payload omits journal/closed/orders');
+const slim = buildHostRuntimePnlSnapshot({
+    ...om,
+    tradeJournal: [{ id: 9, entryScreenshot: 'BIG' }],
+    closedPositions: [{ id: 8 }],
+    orders: [{ id: 1 }],
+}, 'sess-1', 1);
+assert(slim.runtimeOnly === true && slim.tradeJournal === undefined && slim.orders === undefined,
+    'buildHostRuntimePnlSnapshot is live P&L only');
 
 section('primeReadyPanelsWithHostOrders GREEN — F5 restore path uses snapshot');
 calls.length = 0;

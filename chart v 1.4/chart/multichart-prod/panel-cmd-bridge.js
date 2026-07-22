@@ -220,8 +220,57 @@
         var open = expandSplitSiblings(openAll.filter(matchRow), openAll);
         var pending = expandSplitSiblings(pendingAll.filter(matchRow), pendingAll);
         var visualShape = projectedOrderVisualShape(open, pending);
-        var runtimeOnly = !!(opts && opts.runtimeOnly === true
-            && om._hostProjectedVisualShape === visualShape);
+        // Hot-path Play ticks: patch live P&L onto existing rows only.
+        // Never clone closedPositions / tradeJournal / orders / screenshots /
+        // excursion arrays, and never rebuild the positions panel DOM.
+        if (opts && opts.runtimeOnly === true) {
+            function patchLivePnlRows(localArr, hostRows) {
+                if (!Array.isArray(localArr) || !Array.isArray(hostRows)) return;
+                var byId = {};
+                for (var hi = 0; hi < hostRows.length; hi++) {
+                    var hr = hostRows[hi];
+                    if (hr && hr.id != null) byId[hr.id] = hr;
+                }
+                for (var li = 0; li < localArr.length; li++) {
+                    var loc = localArr[li];
+                    if (!loc || loc.id == null) continue;
+                    var src = byId[loc.id];
+                    if (!src) continue;
+                    if (src.unrealizedPnL !== undefined) loc.unrealizedPnL = src.unrealizedPnL;
+                    if (src.currentPrice !== undefined) loc.currentPrice = src.currentPrice;
+                    if (src.markPrice !== undefined) loc.markPrice = src.markPrice;
+                    if (src.equity !== undefined) loc.equity = src.equity;
+                    if (src.stopLoss !== undefined) loc.stopLoss = src.stopLoss;
+                    if (src.takeProfit !== undefined) loc.takeProfit = src.takeProfit;
+                    if (Array.isArray(src.tpTargets)) loc.tpTargets = src.tpTargets;
+                    if (src.breakevenSettings) loc.breakevenSettings = src.breakevenSettings;
+                }
+            }
+            // Shape mismatch: skip line paint (next full snapshot repairs), but
+            // still never rebuild journal/panel from a runtime-only payload.
+            var shapeOk = om._hostProjectedVisualShape === visualShape;
+            patchLivePnlRows(om.openPositions, open);
+            patchLivePnlRows(om.pendingOrders, pending);
+            if (snapshot.account && typeof snapshot.account === 'object') {
+                if (snapshot.account.balance != null) om.balance = snapshot.account.balance;
+                if (snapshot.account.equity != null) om.equity = snapshot.account.equity;
+            }
+            om._hostSnapshotVersion = snapshot.version;
+            if (shapeOk) {
+                try {
+                    if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch);
+                    if (typeof om.updateSLTPLines === 'function') om.updateSLTPLines(ch);
+                    if (typeof om.updateBELines === 'function') om.updateBELines(ch);
+                } catch (_) {}
+            }
+            return {
+                ok: true,
+                version: snapshot.version,
+                runtimeOnly: true,
+                shapeOk: shapeOk,
+                panelRebuild: false,
+            };
+        }
         om.openPositions = cloneOrderList(open);
         om.pendingOrders = cloneOrderList(pending);
         var ids = new Set();
@@ -241,17 +290,6 @@
         }
         om._hostSnapshotVersion = snapshot.version;
         om._hostProjectedVisualShape = visualShape;
-        if (runtimeOnly) {
-            // P&L-only host ticks keep the existing SVG nodes. Rebuilding every
-            // replay frame caused label flicker and unnecessary DOM churn.
-            try {
-                if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch);
-                if (typeof om.updateSLTPLines === 'function') om.updateSLTPLines(ch);
-                if (typeof om.updateBELines === 'function') om.updateBELines(ch);
-                if (typeof om.updatePositionsPanel === 'function') om.updatePositionsPanel();
-            } catch (_) {}
-            return { ok: true, version: snapshot.version, runtimeOnly: true };
-        }
         // Full strip+redraw so pending→open fills keep every multi-entry leg
         // (and correct aggregate TP/SL lots). Piecemeal drawOrderLine left stale
         // pending graphics and raced with pending-removed mirror deletes.
