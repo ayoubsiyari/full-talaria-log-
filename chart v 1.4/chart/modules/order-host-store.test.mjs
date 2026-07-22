@@ -76,7 +76,12 @@ const fan = fanOutHostOrderSnapshotToIframes({
     excludePanelId: null,
     managerCharts: charts,
     runCommand(cmd, args, opts) {
-        calls.push({ cmd, panelId: opts?.panelId, open: args?.snapshot?.openPositions?.length });
+        calls.push({
+            cmd,
+            panelId: opts?.panelId,
+            open: args?.snapshot?.openPositions?.length,
+            runtimeOnly: args?.runtimeOnly,
+        });
         return Promise.resolve();
     },
     chart: {
@@ -88,7 +93,25 @@ const fan = fanOutHostOrderSnapshotToIframes({
 assert(fan.ok && fan.panelIds.join(',') === 'B', 'fans out only to ready non-host iframes');
 assert(calls.length === 1 && calls[0].cmd === 'applyOrderSnapshot' && calls[0].panelId === 'B', 'uses applyOrderSnapshot not addOrder');
 assert(calls[0].open === 1, 'snapshot carries host open positions');
+assert(calls[0].runtimeOnly === false, 'normal snapshot requests a structural redraw');
 assert(versionHolder.current === 1, 'bumps snapshot version');
+
+section('runtime fan-out preserves SVG and projects only host marks');
+calls.length = 0;
+const runtimeFan = fanOutHostOrderSnapshotToIframes({
+    managerCharts: charts,
+    runCommand(cmd, args, opts) {
+        calls.push({ cmd, panelId: opts?.panelId, runtimeOnly: args?.runtimeOnly });
+    },
+    chart: {
+        orderManager: om,
+        getActiveTradingSessionId: () => 'sess-1',
+    },
+    versionHolder,
+    runtimeOnly: true,
+});
+assert(runtimeFan.ok, 'runtime fan-out reaches ready iframe');
+assert(calls.length === 1 && calls[0].runtimeOnly === true, 'runtimeOnly flag reaches applyOrderSnapshot');
 
 section('primeReadyPanelsWithHostOrders GREEN — F5 restore path uses snapshot');
 calls.length = 0;

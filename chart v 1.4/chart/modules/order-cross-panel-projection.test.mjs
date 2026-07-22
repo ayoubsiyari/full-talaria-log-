@@ -48,6 +48,26 @@ test('projected order labels use the host mark on every timeframe', () => {
     );
 });
 
+test('host panel A and projected panel B render the same canonical mark', () => {
+    const host = Object.create(OrderManager.prototype);
+    host._multichartIsEmbedIframe = () => false;
+    host._isMultiPanelLayout = () => true;
+    host._getCurrentCandleForChart = () => {
+        throw new Error('panel A display candle was read');
+    };
+
+    const order = {
+        id: 17,
+        openPrice: 1.29621,
+        _miLastMarkPrice: 1.29655,
+    };
+    assert.equal(host._markPriceForOpenPosition(order, { currentTimeframe: '1m' }), 1.29655);
+    assert.equal(
+        projectedManager()._markPriceForOpenPosition(order, { currentTimeframe: '15m' }),
+        1.29655,
+    );
+});
+
 test('snapshot kill-switch reconstructs panel-local mark divergence', () => {
     const om = projectedManager();
     om._getCurrentCandleForChart = () => ({ t: 1, c: 1.30043 });

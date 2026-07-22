@@ -25685,6 +25685,7 @@ class OrderManager {
     _usesHostProjectedOrderRuntime() {
         return _orderMcSnapshotProjectionV1Enabled()
             && this._multichartIsEmbedIframe()
+            && this._hostSnapshotVersion != null
             && Number.isFinite(Number(this._hostSnapshotVersion));
     }
 
@@ -42197,11 +42198,13 @@ class OrderManager {
 
     _markPriceForOpenPosition(position, chart) {
         if (!position) return null;
-        if (this._usesHostProjectedOrderRuntime()) {
+        const hostCanonicalLayout = _orderMcSnapshotProjectionV1Enabled()
+            && (this._usesHostProjectedOrderRuntime() || this._isMultiPanelLayout());
+        if (hostCanonicalLayout) {
             const hostMark = Number.parseFloat(position._miLastMarkPrice);
             if (Number.isFinite(hostMark) && hostMark > 0) return hostMark;
             // Before the host's first replay tick, placement price is the only
-            // canonical mark; never substitute this iframe's coarse candle.
+            // canonical mark; never substitute a panel's coarse display candle.
             const entry = Number.parseFloat(position.openPrice ?? position.entryPrice);
             return Number.isFinite(entry) && entry > 0 ? entry : null;
         }

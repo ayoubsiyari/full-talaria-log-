@@ -113,6 +113,40 @@
         }
     }
 
+    function projectedOrderVisualShape(open, pending) {
+        function rowShape(row, kind) {
+            if (!row) return null;
+            return {
+                kind: kind,
+                id: row.id,
+                status: row.status,
+                type: row.type || row.direction || '',
+                openPrice: Number(row.openPrice) || 0,
+                entryPrice: Number(row.entryPrice) || 0,
+                stopLoss: Number(row.stopLoss) || 0,
+                takeProfit: Number(row.takeProfit) || 0,
+                quantity: Number(row.quantity) || 0,
+                remainingQuantity: Number(row.remainingQuantity) || 0,
+                splitGroupId: row.splitGroupId != null ? String(row.splitGroupId) : '',
+                splitIndex: Number(row.splitIndex) || 0,
+                autoBreakeven: !!row.autoBreakeven,
+                breakevenTriggered: !!(row.breakevenSettings && row.breakevenSettings.triggered),
+                targets: (Array.isArray(row.tpTargets) ? row.tpTargets : []).map(function (target, index) {
+                    return {
+                        id: target && target.id != null ? target.id : index,
+                        price: Number(target && target.price) || 0,
+                        percentage: Number(target && target.percentage) || 0,
+                        hit: !!(target && target.hit),
+                    };
+                }),
+            };
+        }
+        return JSON.stringify({
+            open: (open || []).map(function (row) { return rowShape(row, 'open'); }),
+            pending: (pending || []).map(function (row) { return rowShape(row, 'pending'); }),
+        });
+    }
+
     function orderMcStateConvergeFixEnabledBridge() {
         try { if (global.__TALARIA_DISABLE_ORDER_MC_STATE_CONVERGE_FIX) return false; } catch (_) {}
         return true;
@@ -139,7 +173,7 @@
         return orderMcStateConvergeFixEnabledBridge() && !global.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1;
     }
 
-    function applyOrderSnapshotProjection(ch, snapshot) {
+    function applyOrderSnapshotProjection(ch, snapshot, opts) {
         var om = ch && ch.orderManager;
         if (!om || !snapshot) return { ok: false, reason: 'missing' };
         var sym = String(ch.currentSymbol || '').replace(/\//g, '').toUpperCase();
@@ -185,6 +219,9 @@
         var pendingAll = snapshot.pendingOrders || [];
         var open = expandSplitSiblings(openAll.filter(matchRow), openAll);
         var pending = expandSplitSiblings(pendingAll.filter(matchRow), pendingAll);
+        var visualShape = projectedOrderVisualShape(open, pending);
+        var runtimeOnly = !!(opts && opts.runtimeOnly === true
+            && om._hostProjectedVisualShape === visualShape);
         om.openPositions = cloneOrderList(open);
         om.pendingOrders = cloneOrderList(pending);
         var ids = new Set();
@@ -203,6 +240,18 @@
             om.closedPositions = cloneOrderList(closedAll.filter(matchRow));
         }
         om._hostSnapshotVersion = snapshot.version;
+        om._hostProjectedVisualShape = visualShape;
+        if (runtimeOnly) {
+            // P&L-only host ticks keep the existing SVG nodes. Rebuilding every
+            // replay frame caused label flicker and unnecessary DOM churn.
+            try {
+                if (typeof om.updateOrderLines === 'function') om.updateOrderLines(ch);
+                if (typeof om.updateSLTPLines === 'function') om.updateSLTPLines(ch);
+                if (typeof om.updateBELines === 'function') om.updateBELines(ch);
+                if (typeof om.updatePositionsPanel === 'function') om.updatePositionsPanel();
+            } catch (_) {}
+            return { ok: true, version: snapshot.version, runtimeOnly: true };
+        }
         // Full strip+redraw so pending→open fills keep every multi-entry leg
         // (and correct aggregate TP/SL lots). Piecemeal drawOrderLine left stale
         // pending graphics and raced with pending-removed mirror deletes.
@@ -3831,7 +3880,7 @@
                     if (!orderMcSnapshotProjectionV1EnabledBridge()) {
                         return { skipped: true, reason: 'snapshot_projection_off' };
                     }
-                    return applyOrderSnapshotProjection(ch, args && args.snapshot);
+                    return applyOrderSnapshotProjection(ch, args && args.snapshot, args);
                 }
                 case 'placeOrder': {
                     if (orderMcHostPlaceV1EnabledBridge()) {

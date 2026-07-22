@@ -4345,7 +4345,7 @@ export default function MultichartGrid({
     // Sending replayEnter the moment B is ready closes that window.
     const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
     const hostOrderSnapshotVersionRef = useRef(0);
-    const fanOutHostOrderSnapshotImpl = useCallback(() => {
+    const fanOutHostOrderSnapshotImpl = useCallback((options = {}) => {
         if (!orderMcSnapshotProjectionV1Enabled()) return { ok: false, reason: "snapshot-off" };
         const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
         const mgr = managerRef.current;
@@ -4360,6 +4360,7 @@ export default function MultichartGrid({
             chart: ch,
             versionHolder: hostOrderSnapshotVersionRef,
             win: typeof window !== "undefined" ? window : {},
+            runtimeOnly: options.runtimeOnly === true,
         });
     }, []);
     // Peer pair switch: iframe OM only holds the last filtered snapshot. After
@@ -6993,6 +6994,7 @@ export default function MultichartGrid({
     // match on sourceFileId/fileId when the manager's iframe state.symbol
     // is still the placeholder "—" (chart-state can lag behind visible data).
     useEffect(() => {
+        let hostPnlFanoutTimer = null;
 
         // Read order spec from parent's hidden #orderPanel DOM.
         // React (TalariaV8bLive) keeps these inputs in sync with its
@@ -7076,10 +7078,10 @@ export default function MultichartGrid({
             };
         }
 
-        function fanOutOrderSnapshot(excludePanelId) {
+        function fanOutOrderSnapshot(excludePanelId, options = {}) {
             if (!orderMcSnapshotProjectionV1Enabled()) return;
             if (excludePanelId == null) {
-                fanOutHostOrderSnapshotImpl();
+                fanOutHostOrderSnapshotImpl(options);
                 return;
             }
             const grid = window.__multichartGrid;
@@ -7092,7 +7094,16 @@ export default function MultichartGrid({
                 chart: window.chart,
                 versionHolder: hostOrderSnapshotVersionRef,
                 win: typeof window !== "undefined" ? window : {},
+                runtimeOnly: options.runtimeOnly === true,
             });
+        }
+
+        function scheduleHostPnlSnapshotFanout() {
+            if (hostPnlFanoutTimer != null) return;
+            hostPnlFanoutTimer = setTimeout(() => {
+                hostPnlFanoutTimer = null;
+                fanOutOrderSnapshot(null, { runtimeOnly: true });
+            }, 50);
         }
 
         function tagLatestHostOrderWithPanel(panelId) {
@@ -7830,7 +7841,10 @@ export default function MultichartGrid({
                 if (msg.type === "order-pnl-tick" && orderMcPnlHubV1Enabled()) {
                     const hom = window.chart && window.chart.orderManager;
                     if (hom && typeof hom.updatePositions === "function") {
+                        const hadLive = (hom.openPositions || []).length + (hom.pendingOrders || []).length;
                         try { hom.updatePositions(); } catch (_) {}
+                        const hasLive = (hom.openPositions || []).length + (hom.pendingOrders || []).length;
+                        if (hadLive > 0 || hasLive > 0) scheduleHostPnlSnapshotFanout();
                     }
                     return;
                 }
@@ -8067,6 +8081,10 @@ export default function MultichartGrid({
 
         return () => {
             _broadcastClearDraftPreviewImpl = null;
+            if (hostPnlFanoutTimer != null) {
+                clearTimeout(hostPnlFanoutTimer);
+                hostPnlFanoutTimer = null;
+            }
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
             window.removeEventListener("message", onIframeOrder);
