@@ -155,6 +155,214 @@ export function collectUnsyncedReadyPanelIds(readyPanelIds, syncedSet, hostPanel
 }
 
 /**
+ * Decide whether a manager/ReplaySystem replayFrame detail should trigger the
+ * host-owned coalesced P&L schedule. Pure — no DOM / postMessage.
+ *
+ * Production call sites:
+ *   - multichart-manager __multichartManagerBroadcastReplay (ReplaySystem fast path)
+ *   - MultichartGrid CustomEvent fallback when manager broadcast is absent
+ */
+export function shouldScheduleHostPnlOnReplayFrame(detail, deps = {}) {
+    const win = deps.win || (typeof globalThis !== 'undefined' ? globalThis : null);
+    const killEnv = deps.kill === true
+        || (win && win.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true)
+        || (win && win.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true);
+    if (killEnv) return false;
+    if (!detail || detail.isPlaying !== true) return false;
+    const om = deps.orderManager
+        || (win && win.chart && win.chart.orderManager)
+        || null;
+    const open = (deps.openPositions != null)
+        ? deps.openPositions
+        : ((om && om.openPositions) || []);
+    const pending = (deps.pendingOrders != null)
+        ? deps.pendingOrders
+        : ((om && om.pendingOrders) || []);
+    const live = (Array.isArray(open) ? open.length : 0)
+        + (Array.isArray(pending) ? pending.length : 0);
+    return live > 0;
+}
+
+/**
+ * One host scheduler call from a replayFrame detail (manager fast path).
+ * Returns true when schedule() was invoked.
+ */
+export function scheduleHostPnlFromReplayFrame(detail, deps = {}) {
+    if (!shouldScheduleHostPnlOnReplayFrame(detail, deps)) return false;
+    const schedule = deps.schedule
+        || (deps.win && typeof deps.win.__multichartScheduleHostPnlFanout === 'function'
+            ? deps.win.__multichartScheduleHostPnlFanout
+            : null);
+    if (typeof schedule !== 'function') return false;
+    schedule();
+    return true;
+}
+
+/**
+ * Executable ReplaySystem → manager fast path → host scheduler chain.
+ * Mirrors production preference: when managerBroadcast exists, ReplaySystem
+ * does NOT dispatch replayMultichartFrame.
+ */
+export function runReplaySystemManagerPnlChain({
+    frames = 12,
+    isPlaying = true,
+    panelIds = ['A', 'B'],
+    kill = false,
+    coalesceMs = 50,
+    setTimeout: setTimer,
+    clearTimeout: clearTimer,
+    advanceTimers,
+    openPositions,
+    fanOut,
+} = {}) {
+    const timers = (!setTimer || !advanceTimers) ? null : { setTimer, clearTimer, advanceTimers };
+    const applyCalls = [];
+    const defaultFanOut = fanOut || ((opts) => {
+        const peers = (panelIds || []).filter((id) => id !== 'A');
+        for (const panelId of peers) {
+            applyCalls.push({
+                cmd: 'applyOrderSnapshot',
+                runtimeOnly: !!(opts && opts.runtimeOnly),
+                panelId,
+            });
+        }
+        return { ok: true, panelIds: peers.length };
+    });
+    const scheduler = createHostPnlFanoutScheduler(defaultFanOut, {
+        coalesceMs,
+        setTimeout: setTimer,
+        clearTimeout: clearTimer,
+    });
+    const positions = openPositions || [{ id: 1, unrealizedPnL: 0, openPrice: 1.1 }];
+    const frameCmds = [];
+
+    // Production MultichartManager.__multichartManagerBroadcastReplay (rAF-coalesced).
+    let coalescedDetail = null;
+    let coalescedScheduled = false;
+    const managerBroadcastReplay = (detail) => {
+        if (!detail || !Number.isFinite(Number(detail.timestamp))) return false;
+        coalescedDetail = detail;
+        if (coalescedScheduled) return true;
+        coalescedScheduled = true;
+        const flush = () => {
+            coalescedScheduled = false;
+            const payload = coalescedDetail;
+            coalescedDetail = null;
+            if (!payload) return;
+            // Fan replayFrame to peers (count must not affect host schedule).
+            for (const id of (panelIds || [])) {
+                if (id === 'A') continue;
+                frameCmds.push({ cmd: 'replayFrame', panelId: id, isPlaying: !!payload.isPlaying });
+            }
+            // ONE host scheduler call on the manager fast path.
+            scheduleHostPnlFromReplayFrame(payload, {
+                kill,
+                openPositions: positions,
+                pendingOrders: [],
+                schedule: () => scheduler.schedule(),
+            });
+        };
+        // Immediate flush in Node (production uses rAF).
+        if (typeof setTimer === 'function') setTimer(flush, 0);
+        else flush();
+        return true;
+    };
+
+    // Production ReplaySystem preference: manager path, no CustomEvent.
+    const replaySystemBroadcast = (detail) => {
+        managerBroadcastReplay(detail);
+    };
+
+    for (let i = 0; i < frames; i++) {
+        replaySystemBroadcast({
+            timestamp: 1_700_000_000_000 + i * 60_000,
+            isPlaying,
+            currentIndex: i,
+        });
+        if (advanceTimers) advanceTimers(16);
+    }
+    if (advanceTimers) advanceTimers(Math.max(coalesceMs, 50));
+    else if (timers) { /* no-op */ }
+
+    return {
+        counts: scheduler.getCounts(),
+        applyCalls,
+        applyCount: applyCalls.length,
+        frameCmds,
+        frameCmdCount: frameCmds.length,
+        peerPanelCount: (panelIds || []).filter((id) => id !== 'A').length,
+    };
+}
+
+/**
+ * Host-owned coalesced runtime P&L fan-out scheduler.
+ * schedule() may be called every play frame; fanOut runs at most once per
+ * coalesceMs. scheduleCount grows with calls; fanCount stays O(frames), not
+ * O(panels × frames).
+ */
+export function createHostPnlFanoutScheduler(fanOut, opts = {}) {
+    const coalesceMs = Number.isFinite(Number(opts.coalesceMs)) ? Number(opts.coalesceMs) : 50;
+    const setTimer = typeof opts.setTimeout === 'function' ? opts.setTimeout : setTimeout;
+    const clearTimer = typeof opts.clearTimeout === 'function' ? opts.clearTimeout : clearTimeout;
+    let timer = null;
+    let scheduleCount = 0;
+    let fanCount = 0;
+    let lastFanResult = null;
+    return {
+        schedule(args) {
+            scheduleCount += 1;
+            if (timer != null) return { coalesced: true, scheduleCount, fanCount };
+            timer = setTimer(() => {
+                timer = null;
+                fanCount += 1;
+                try {
+                    lastFanResult = typeof fanOut === 'function'
+                        ? fanOut({ runtimeOnly: true, ...(args || {}) })
+                        : null;
+                } catch (err) {
+                    lastFanResult = { ok: false, error: String(err && err.message || err) };
+                }
+            }, coalesceMs);
+            return { coalesced: false, scheduleCount, fanCount };
+        },
+        flushNow(args) {
+            if (timer != null) {
+                clearTimer(timer);
+                timer = null;
+            }
+            fanCount += 1;
+            try {
+                lastFanResult = typeof fanOut === 'function'
+                    ? fanOut({ runtimeOnly: true, ...(args || {}) })
+                    : null;
+            } catch (err) {
+                lastFanResult = { ok: false, error: String(err && err.message || err) };
+            }
+            return lastFanResult;
+        },
+        getCounts() {
+            return {
+                scheduleCount,
+                fanCount,
+                pending: timer != null,
+                lastFanResult,
+            };
+        },
+        resetCounts() {
+            scheduleCount = 0;
+            fanCount = 0;
+            lastFanResult = null;
+        },
+        dispose() {
+            if (timer != null) {
+                clearTimer(timer);
+                timer = null;
+            }
+        },
+    };
+}
+
+/**
  * Fan host OM snapshot to ready iframe panels via applyOrderSnapshot.
  * Pure — caller supplies runCommand + manager chart registry.
  */

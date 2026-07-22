@@ -393,6 +393,39 @@ function attachTvNumberSpinnerButton(btn, input, direction, onAfterStep) {
     btn.addEventListener('mouseleave', stopHold);
 }
 
+/**
+ * Fib / Gann level value field: text+decimal so users can type 1.272 / 1.618
+ * without HTML number-input rejection, and incomplete drafts don't snap to 0.
+ * @returns {(opts?: {normalizeDisplay?: boolean}) => void} commit helper (for spinners)
+ */
+function bindTvLevelValueInput(input, options = {}) {
+    const step = options.step != null ? String(options.step) : '0.001';
+    const onCommit = typeof options.onCommit === 'function' ? options.onCommit : null;
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    if (!input.classList.contains('tv-number-input')) {
+        input.className = (input.className ? input.className + ' ' : '') + 'tv-number-input';
+    }
+    input.step = step;
+    if (options.initialValue != null) {
+        input.value = String(options.initialValue);
+    }
+    const update = (opts = {}) => {
+        const parsed = readTvNumberInputValue(input);
+        if (!Number.isFinite(parsed)) return;
+        const dec = getTvNumberInputStepDecimals(input.step || step);
+        const label = formatTvNumberInputValue(parsed, dec);
+        if (opts.normalizeDisplay) input.value = label;
+        if (onCommit) onCommit(parsed, label);
+    };
+    input.addEventListener('input', () => update());
+    input.addEventListener('change', () => update({ normalizeDisplay: true }));
+    input.addEventListener('blur', () => update({ normalizeDisplay: true }));
+    return update;
+}
+
 
 
 /** Parent multichart shell: legacy tv-settings-modal must sit above iframes + host slot. */
@@ -8195,12 +8228,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (!actualDrawing.style) actualDrawing.style = {};
 
-                actualDrawing.style.gridLevels = gridLevels;
-
-                actualDrawing.style.fanLevels = fanLevels;
-
-                actualDrawing.style.arcLevels = arcLevels;
-
                 actualDrawing.style.levelsLineDasharray = drawing.style.levelsLineDasharray;
 
                 actualDrawing.style.levelsLineWidth = drawing.style.levelsLineWidth;
@@ -8210,6 +8237,14 @@ body.light-mode .template-save-dialog .dialog-title {
                 actualDrawing.style.backgroundOpacity = drawing.style.backgroundOpacity;
 
                 Object.assign(actualDrawing.style, drawing.style);
+
+                // Keep live level-array refs after Object.assign (same orphan bug as Fib).
+                actualDrawing.style.gridLevels = gridLevels;
+                actualDrawing.style.fanLevels = fanLevels;
+                actualDrawing.style.arcLevels = arcLevels;
+                drawing.style.gridLevels = gridLevels;
+                drawing.style.fanLevels = fanLevels;
+                drawing.style.arcLevels = arcLevels;
 
                 drawingManager.renderDrawing(actualDrawing);
 
@@ -8492,37 +8527,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const input = document.createElement('input');
 
-            input.type = 'number';
-
             input.className = 'tv-number-input';
 
             input.dataset.prop = valueProp;
 
-            input.value = level.value;
-
-            input.step = '0.001';
-
             input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
-
-
-            const updateLevelFromInput = () => {
-
-                const parsed = parseFloat(input.value);
-
-                if (!isNaN(parsed)) {
-
+            const updateLevelFromInput = bindTvLevelValueInput(input, {
+                step: '0.001',
+                initialValue: level.value,
+                onCommit: (parsed) => {
                     level.value = parsed;
-
                     applyChanges();
-
-                }
-
-            };
-
-            input.addEventListener('input', updateLevelFromInput);
-
-            input.addEventListener('change', updateLevelFromInput);
+                },
+            });
 
 
 
@@ -8902,8 +8920,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (!actualDrawing.style) actualDrawing.style = {};
 
-                actualDrawing.style.fanLevels = fanLevels;
-
                 actualDrawing.style.levelsLineDasharray = drawing.style.levelsLineDasharray;
 
                 actualDrawing.style.levelsLineWidth = drawing.style.levelsLineWidth;
@@ -8913,6 +8929,10 @@ body.light-mode .template-save-dialog .dialog-title {
                 actualDrawing.style.backgroundOpacity = drawing.style.backgroundOpacity;
 
                 Object.assign(actualDrawing.style, drawing.style);
+
+                // Keep live level-array refs after Object.assign (same orphan bug as Fib).
+                actualDrawing.style.fanLevels = fanLevels;
+                drawing.style.fanLevels = fanLevels;
 
                 drawingManager.renderDrawing(actualDrawing);
 
@@ -9193,37 +9213,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const input = document.createElement('input');
 
-            input.type = 'number';
-
             input.className = 'tv-number-input';
 
             input.dataset.prop = valueProp;
 
-            input.value = level.value;
-
-            input.step = '0.001';
-
             input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
-
-
-            const updateLevelFromInput = () => {
-
-                const parsed = parseFloat(input.value);
-
-                if (!isNaN(parsed)) {
-
+            const updateLevelFromInput = bindTvLevelValueInput(input, {
+                step: '0.001',
+                initialValue: level.value,
+                onCommit: (parsed) => {
                     level.value = parsed;
-
                     applyChanges();
-
-                }
-
-            };
-
-            input.addEventListener('input', updateLevelFromInput);
-
-            input.addEventListener('change', updateLevelFromInput);
+                },
+            });
 
 
 
@@ -11696,10 +11699,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (!actualDrawing.style) actualDrawing.style = {};
 
-                actualDrawing.style.priceLevels = priceLevels;
-
-                actualDrawing.style.timeLevels = timeLevels;
-
                 actualDrawing.style.levelsLineDasharray = drawing.style.levelsLineDasharray;
 
                 actualDrawing.style.levelsLineWidth = drawing.style.levelsLineWidth;
@@ -11709,6 +11708,12 @@ body.light-mode .template-save-dialog .dialog-title {
                 actualDrawing.style.backgroundOpacity = drawing.style.backgroundOpacity;
 
                 Object.assign(actualDrawing.style, drawing.style);
+
+                // Keep live level-array refs after Object.assign (same orphan bug as Fib).
+                actualDrawing.style.priceLevels = priceLevels;
+                actualDrawing.style.timeLevels = timeLevels;
+                drawing.style.priceLevels = priceLevels;
+                drawing.style.timeLevels = timeLevels;
 
                 dmTf.renderDrawing(actualDrawing);
 
@@ -11993,37 +11998,20 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const input = document.createElement('input');
 
-                input.type = 'number';
-
                 input.className = 'tv-number-input';
 
                 input.dataset.prop = valueProp;
 
-                input.value = level.value;
-
-                input.step = '0.001';
-
                 input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
-
-
-                const updateLevelFromInput = () => {
-
-                    const parsed = parseFloat(input.value);
-
-                    if (!isNaN(parsed)) {
-
+                const updateLevelFromInput = bindTvLevelValueInput(input, {
+                    step: '0.001',
+                    initialValue: level.value,
+                    onCommit: (parsed) => {
                         level.value = parsed;
-
                         applyChanges();
-
-                    }
-
-                };
-
-                input.addEventListener('input', updateLevelFromInput);
-
-                input.addEventListener('change', updateLevelFromInput);
+                    },
+                });
 
 
 

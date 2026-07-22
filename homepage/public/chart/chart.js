@@ -27204,15 +27204,15 @@ class Chart {
                     && window.__TALARIA_DISABLE_TRADE_MARKER_LIVE_PAN_GLUE_V1 === true;
             } catch (_) { skipLiveMarkerPanGlue = false; }
             if (hasOrderLines && typeof om.updateOrderLines === 'function') {
-                // panLite: reposition without purge (full rebuild glitched panel B).
-                // skipTradeMarkers: live-pan kill-switch reproduces markers stuck
-                // on screen while order lines still track pan.
+                // panLite: reposition lines without purge. Always skipTradeMarkers
+                // here so entry/exit markers are updated exactly once below
+                // (updateOrderLines would otherwise double-glue them).
                 om.updateOrderLines(this, {
                     panLite: true,
-                    skipTradeMarkers: !!(skipLiveMarkerPanGlue && hasOrderLines),
+                    skipTradeMarkers: true,
                 });
             }
-            // Always glue trade markers during pan unless live-pan kill-switch.
+            // Exactly one marker glue pass per pan frame unless live-pan kill-switch.
             if (!skipLiveMarkerPanGlue) {
                 try {
                     if (typeof om._updateEntryMarkersForChart === 'function') {

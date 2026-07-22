@@ -1334,6 +1334,11 @@
     /** One rAF-coalesced replay fan-out — avoids MultichartGrid double-throttle lag. */
     var _mcReplayCoalescedDetail = null;
     var _mcReplayCoalescedScheduled = false;
+    /**
+     * ReplaySystem → manager fast path → iframe replayFrame + ONE host P&L schedule.
+     * Marker: M10_HOST_PNL_FROM_MANAGER_FASTPATH_V1
+     * Kill: window.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 = true
+     */
     global.__multichartManagerBroadcastReplay = function (detail) {
         if (!detail || !Number.isFinite(Number(detail.timestamp))) return false;
         _mcReplayCoalescedDetail = detail;
@@ -1351,6 +1356,19 @@
                 if (!c || c.host || !c.frame) continue;
                 try { mgr.sendCommandNoReply(c.id, 'replayFrame', payload); } catch (_) {}
             }
+            // Host-owned coalesced runtime P&L — connected on the production fast
+            // path (ReplaySystem prefers this over CustomEvent). One schedule()
+            // per coalesced manager flush; panel count must not multiply calls.
+            try {
+                if (global.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true) return;
+                if (global.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
+                if (payload.isPlaying !== true) return;
+                if (typeof global.__multichartScheduleHostPnlFanout !== 'function') return;
+                var om = global.chart && global.chart.orderManager;
+                var live = ((om && om.openPositions) || []).length
+                    + ((om && om.pendingOrders) || []).length;
+                if (live > 0) global.__multichartScheduleHostPnlFanout();
+            } catch (_) { /* ignore */ }
         });
         return true;
     };

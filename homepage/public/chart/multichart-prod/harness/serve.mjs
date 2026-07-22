@@ -505,7 +505,7 @@ function hostPageHtml(query) {
   }
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260722b21';
+  const buildId = '20260722b22';
 
   const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
 
@@ -945,14 +945,7 @@ function hostPageHtml(query) {
           var msg = ev.data;
           if (!msg || typeof msg !== 'object' || !msg.type) return;
           if (msg.type === 'order-pnl-tick') {
-            if (window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
-            var hom = window.chart && window.chart.orderManager;
-            if (hom && typeof hom.updatePositions === 'function') {
-              var hadLive = ((hom.openPositions || []).length + (hom.pendingOrders || []).length);
-              try { hom.updatePositions(); } catch (_) {}
-              var hasLive = ((hom.openPositions || []).length + (hom.pendingOrders || []).length);
-              if (hadLive > 0 || hasLive > 0) scheduleHostPnlFanout();
-            }
+            // Host-owned P&L fan-out only — ignore iframe ticks.
             return;
           }
           if (msg.type === 'multichart-clear-drawing-ui') {
@@ -979,20 +972,41 @@ function hostPageHtml(query) {
           }
         } catch (_) {}
       });
-      // Host Play path: MultichartGrid fans runtimeOnly on replayFrame; harness
-      // mirrors that so A→B P&L stays continuous without a React shell.
-      window.addEventListener('replayMultichartFrame', function (ev) {
+      // Host Play path: MultichartGrid fans runtimeOnly on replayFrame. Harness
+      // mirrors that on BOTH the CustomEvent and the manager fast-path (which
+      // replay-system prefers when __multichartManagerBroadcastReplay exists).
+      function onHostReplayFrameDetail(detail) {
         try {
           if (window.__TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1 === true) return;
           if (window.__TALARIA_DISABLE_ORDER_MC_PNL_HUB_V1 === true) return;
-          var detail = ev && ev.detail;
           if (!detail || detail.isPlaying !== true) return;
           var om = window.chart && window.chart.orderManager;
           var live = ((om && om.openPositions) || []).length
             + ((om && om.pendingOrders) || []).length;
           if (live > 0) scheduleHostPnlFanout();
         } catch (_) {}
+      }
+      window.addEventListener('replayMultichartFrame', function (ev) {
+        onHostReplayFrameDetail(ev && ev.detail);
       });
+      (function wrapManagerBroadcastReplay() {
+        var prev = window.__multichartManagerBroadcastReplay;
+        if (typeof prev !== 'function' || prev.__m10PnlWrapped) {
+          // Manager may install later — retry briefly.
+          if (typeof prev !== 'function') {
+            setTimeout(wrapManagerBroadcastReplay, 50);
+            setTimeout(wrapManagerBroadcastReplay, 200);
+            setTimeout(wrapManagerBroadcastReplay, 800);
+          }
+          return;
+        }
+        var wrapped = function (detail) {
+          try { prev(detail); } catch (_) {}
+          onHostReplayFrameDetail(detail);
+        };
+        wrapped.__m10PnlWrapped = true;
+        window.__multichartManagerBroadcastReplay = wrapped;
+      })();
       function getChartForPanelId(panelId) {
         var pid = panelId != null ? String(panelId) : (window.__harnessFocusedPanelId || 'A');
         if (pid === 'A') return window.chart || null;

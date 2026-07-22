@@ -565,22 +565,86 @@ const dashTradeDisciplineAccent = (label, palette) => {
   if (lower.includes("out of")) return palette.rd;
   return palette.acL;
 };
+/** Tag option identity — never key selection by display label (duplicate names collide). */
+const dashTagOptionLabel = (opt) => {
+  if (opt == null) return "";
+  if (typeof opt === "string" || typeof opt === "number") return String(opt).trim();
+  if (typeof opt === "object") return String(opt.label || opt.name || opt.value || opt.text || "").trim();
+  return "";
+};
+const dashTagOptionId = (opt, defId, index) => {
+  if (opt && typeof opt === "object" && opt.id != null && String(opt.id).trim()) {
+    return String(opt.id).trim();
+  }
+  return `${defId || "tag"}-opt-${index}`;
+};
+const normalizeDashTagOption = (opt, defId, index) => {
+  const label = dashTagOptionLabel(opt);
+  if (!label) return null;
+  return { id: dashTagOptionId(opt, defId, index), label };
+};
+const normalizeDashTagDef = (def) => {
+  if (!def || typeof def !== "object") return def;
+  if (def.type === "bool") return def;
+  const options = (Array.isArray(def.options) ? def.options : [])
+    .map((opt, i) => normalizeDashTagOption(opt, def.id, i))
+    .filter(Boolean);
+  return { ...def, options };
+};
+const dashTagSelectedIds = (selected, def) => {
+  const nd = normalizeDashTagDef(def);
+  const list = Array.isArray(selected) ? selected : (selected != null && selected !== "" ? [selected] : []);
+  const out = [];
+  list.forEach((item) => {
+    if (item == null || item === "") return;
+    if (typeof item === "object") {
+      const id = item.id != null ? String(item.id).trim() : "";
+      if (id) { out.push(id); return; }
+      const label = dashTagOptionLabel(item);
+      const byLabel = (nd.options || []).find((o) => o.label === label);
+      if (byLabel) out.push(byLabel.id);
+      return;
+    }
+    const s = String(item);
+    const byId = (nd.options || []).find((o) => o.id === s);
+    if (byId) { out.push(byId.id); return; }
+    const byLabel = (nd.options || []).find((o) => o.label === s);
+    if (byLabel) out.push(byLabel.id);
+    else out.push(s);
+  });
+  return out;
+};
+const dashTagSelectionIncludes = (selected, option, def) => {
+  const optId = typeof option === "object" && option != null
+    ? dashTagOptionId(option, def?.id, 0)
+    : String(option);
+  return dashTagSelectedIds(selected, def).includes(optId);
+};
+const dashTagIdsToLabels = (selected, def) => {
+  const nd = normalizeDashTagDef(def);
+  return dashTagSelectedIds(selected, nd).map((id) => {
+    const opt = (nd.options || []).find((o) => o.id === id);
+    return opt ? opt.label : id;
+  }).filter(Boolean);
+};
 const hydrateTradeCardTagState = (flatTags, defs) => {
   const remaining = [...(Array.isArray(flatTags) ? flatTags : [])];
   const state = {};
   (Array.isArray(defs) ? defs : []).forEach(def => {
-    if (!def?.id) return;
-    if (def.type === "bool") {
-      if (remaining.includes(def.label)) {
-        state[def.id] = true;
-        remaining.splice(remaining.indexOf(def.label), 1);
+    const nd = normalizeDashTagDef(def);
+    if (!nd?.id) return;
+    if (nd.type === "bool") {
+      if (remaining.includes(nd.label)) {
+        state[nd.id] = true;
+        remaining.splice(remaining.indexOf(nd.label), 1);
       }
       return;
     }
-    const match = (def.options || []).find(opt => remaining.includes(opt));
-    if (match != null) {
-      state[def.id] = [match];
-      remaining.splice(remaining.indexOf(match), 1);
+    // Match legacy flat label → first option id (duplicate labels: first wins).
+    const match = (nd.options || []).find(opt => remaining.includes(opt.label));
+    if (match) {
+      state[nd.id] = [match.id];
+      remaining.splice(remaining.indexOf(match.label), 1);
     }
   });
   return state;
@@ -588,33 +652,34 @@ const hydrateTradeCardTagState = (flatTags, defs) => {
 const flattenTradeCardTagState = (state, defs) => {
   const out = [];
   (Array.isArray(defs) ? defs : []).forEach(def => {
-    if (!def?.id) return;
-    const val = state?.[def.id];
-    if (def.type === "bool") {
-      if (val === true) out.push(def.label);
+    const nd = normalizeDashTagDef(def);
+    if (!nd?.id) return;
+    const val = state?.[nd.id];
+    if (nd.type === "bool") {
+      if (val === true) out.push(nd.label);
       return;
     }
-    const list = Array.isArray(val) ? val : (val ? [val] : []);
-    list.forEach(item => {
-      const text = String(item || "").trim();
-      if (text) out.push(text);
-    });
+    dashTagIdsToLabels(val, nd).forEach((label) => out.push(label));
   });
   return out;
 };
 const toggleTradeCardTagSelection = (state, def, option) => {
   const next = {...(state || {})};
-  if (def.type === "bool") {
+  const nd = normalizeDashTagDef(def);
+  if (nd.type === "bool") {
     const wantYes = option === true;
-    const active = wantYes ? next[def.id] === true : next[def.id] === false;
-    if (active) delete next[def.id];
-    else next[def.id] = wantYes;
+    const active = wantYes ? next[nd.id] === true : next[nd.id] === false;
+    if (active) delete next[nd.id];
+    else next[nd.id] = wantYes;
     return next;
   }
-  const cur = Array.isArray(next[def.id]) ? next[def.id] : [];
-  const active = cur.includes(option);
-  if (active) delete next[def.id];
-  else next[def.id] = [option];
+  const optId = typeof option === "object" && option != null
+    ? dashTagOptionId(option, nd.id, 0)
+    : String(option);
+  const curIds = dashTagSelectedIds(next[nd.id], nd);
+  const active = curIds.includes(optId);
+  if (active) delete next[nd.id];
+  else next[nd.id] = [optId];
   return next;
 };
 const DASH_DISCIPLINE_NOTE_KEYS = new Set([
@@ -8115,7 +8180,9 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
     setStratBVariables(prev=>(prev||[]).map(v=>{
       if(v.id!==id) return v;
       if((v.options||[]).length >= MAX_TAG_VALUES) return v;
-      return {...v,options:[...(v.options||[]),val]};
+      // Stable per-option id so duplicate labels stay independently selectable.
+      const optId = `${v.id}-opt-${Date.now().toString(36)}-${(v.options||[]).length}`;
+      return {...v, options:[...(v.options||[]), { id: optId, label: val }]};
     }));
     setValueDrafts(prev=>({...prev,[id]:''}));
   };
@@ -8124,6 +8191,11 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
     const next = (v.options||[]).filter((_,i)=>i!==idx);
     return {...v, options:next};
   }));
+  const optionDisplayLabel = (opt) => {
+    if (opt == null) return '';
+    if (typeof opt === 'string' || typeof opt === 'number') return String(opt).trim();
+    return String(opt.label || opt.name || opt.value || opt.text || '').trim();
+  };
 
   const iconBtn = {
     width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',
@@ -8175,8 +8247,8 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
         {v.vtype==='multi'?(
           <div ref={openValueMenu===v.id?valueMenuRef:null} style={{position:'relative'}}>
             {(()=>{
-              const values = (v.options||[]).map((opt,idx)=>({opt,idx})).filter(item=>String(item.opt||'').trim());
-              const label = values.length ? values.map(item=>item.opt).join(', ') : 'None';
+              const values = (v.options||[]).map((opt,idx)=>({opt,idx,label:optionDisplayLabel(opt)})).filter(item=>item.label);
+              const label = values.length ? values.map(item=>item.label).join(', ') : 'None';
               return (
                 <>
                   <button type="button" onClick={(e)=>toggleValueMenu(v.id, e.currentTarget)}
@@ -8191,8 +8263,8 @@ function VariablesStepContent({ c, F, stratBVariables, setStratBVariables }) {
                           <div style={{padding:'8px 6px',fontSize:11,fontWeight:650,color:c.tm,fontFamily:F}}>No values yet</div>
                         )}
                         {values.map(item=>(
-                          <div key={item.idx} style={{height:28,display:'grid',gridTemplateColumns:'minmax(0,1fr) 24px',alignItems:'center',gap:5,background:'rgba(255,255,255,0.035)',border:`1px solid ${c.br}`}}>
-                            <div style={{padding:'0 8px',fontSize:12,fontWeight:700,color:c.ts,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.opt}</div>
+                          <div key={(item.opt && item.opt.id) || item.idx} style={{height:28,display:'grid',gridTemplateColumns:'minmax(0,1fr) 24px',alignItems:'center',gap:5,background:'rgba(255,255,255,0.035)',border:`1px solid ${c.br}`}}>
+                            <div style={{padding:'0 8px',fontSize:12,fontWeight:700,color:c.ts,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.label}</div>
                             <button type="button" onClick={()=>deleteOptionField(v.id,item.idx)} style={{...iconBtn,width:24,height:24}}
                               onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.08)';e.currentTarget.style.color=c.rd;}}
                               onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color=c.tm;}}>
@@ -8375,7 +8447,11 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   const renderTradeTagRows = (items, accent) => (
     <div style={{display:'grid',gap:0}}>
       {items.length===0 ? <div style={emptyText}>No tags defined.</div> : items.map((v,i)=>{
-        const values = (v.options||[]).filter(Boolean);
+        const values = (v.options||[]).map(opt => (
+          typeof opt === 'object' && opt != null
+            ? String(opt.label || opt.name || opt.value || opt.text || '').trim()
+            : String(opt || '').trim()
+        )).filter(Boolean);
         return (
           <div key={v.id||i} style={{display:'grid',gridTemplateColumns:'32px minmax(180px,1fr) minmax(180px,1.2fr)',gap:10,alignItems:'center',padding:'8px 0',borderBottom:i===items.length-1?'none':`1px solid ${c.br}`}}>
             <div style={{fontSize:11,fontWeight:900,color:accent,fontFamily:F,fontVariantNumeric:'tabular-nums',textAlign:'center'}}>{i+1}</div>
@@ -11553,6 +11629,18 @@ const TalariaV8b = () => {
     if (parseStratApiId(row?.id) != null) return [];
     return sessionsForStrategyBankName(row?.name);
   }, [strategyBacktestSessionsIndex, sessionsForStrategyBankName]);
+  /** True when any session (including unused) is linked to this strategy — blocks editing. */
+  const strategyIsLinkedToSession = useCallback((row) => {
+    if (!row) return false;
+    const stratKey = strategyRowKey(row);
+    const nameKey = normalizeStrategyBankNameKey(row?.name);
+    const isApi = parseStratApiId(row?.id) != null;
+    for (const sess of strategyReviewSessions || []) {
+      if (stratKey && sessionBacktestStrategyKey(sess) === stratKey) return true;
+      if (!isApi && nameKey && normalizeStrategyBankNameKey(sess?.strategyName) === nameKey) return true;
+    }
+    return false;
+  }, [strategyReviewSessions]);
   const [newSessName, setNewSessName] = useState("");
   const [newSessSymbol, setNewSessSymbol] = useState("NQ");
   const [newSessTf, setNewSessTf] = useState("1H");
@@ -40683,7 +40771,8 @@ const TalariaV8b = () => {
               if (state[def.id] === false) return ["NO"];
               return [];
             }
-            return Array.isArray(state[def.id]) ? state[def.id] : [];
+            // Return display labels; selection itself is stored as option ids.
+            return dashTagIdsToLabels(state[def.id], def);
           };
           const countDashAddTradeTagSelections = (defs, state) => (defs || []).reduce((sum, def) => sum + getDashAddTradeTagValues(state, def).length, 0);
           const normalizeDashAddTradeSingleTagState = (defs, state) => {
@@ -40732,6 +40821,16 @@ const TalariaV8b = () => {
           const toggleDashAddTradeTag = (slot, def, option=null) => {
             const setter = slot === "pre" ? setDashAddTradePreTags : setDashAddTradePostTags;
             const control = getDashAddTradeTagControl(slot, def);
+            const nd = normalizeDashTagDef(def);
+            const optLabel = typeof option === "object" && option != null
+              ? dashTagOptionLabel(option)
+              : String(option ?? "");
+            const optId = typeof option === "object" && option != null
+              ? dashTagOptionId(option, nd.id, 0)
+              : (() => {
+                  const hit = (nd.options || []).find(o => o.id === String(option) || o.label === String(option));
+                  return hit ? hit.id : String(option ?? "");
+                })();
             setter(prev => {
               const next = {...prev};
               markDashAddTradeTagManual(next, def.id);
@@ -40740,11 +40839,13 @@ const TalariaV8b = () => {
                 else if (option === "NO") next[def.id] = false;
                 else next[def.id] = !next[def.id];
               } else {
-                const current = Array.isArray(next[def.id]) ? next[def.id] : [];
+                const currentIds = dashTagSelectedIds(next[def.id], nd);
                 if (control === "single" || control === "rating") {
-                  next[def.id] = [option];
+                  next[def.id] = [optId];
                 } else {
-                  next[def.id] = current.includes(option) ? current.filter(item => item !== option) : [...current, option];
+                  next[def.id] = currentIds.includes(optId)
+                    ? currentIds.filter(item => item !== optId)
+                    : [...currentIds, optId];
                 }
               }
               return next;
@@ -40755,7 +40856,7 @@ const TalariaV8b = () => {
                 "Out of Plan":"out_of_plan",
                 "Missed Trade":"missed_trade",
               };
-              const planId = planIdByLabel[option];
+              const planId = planIdByLabel[optLabel] || planIdByLabel[option];
               if (planId) setDashAddTradeDraft(prev => prev ? {...prev, planReview:planId} : prev);
             }
           };
@@ -40767,21 +40868,25 @@ const TalariaV8b = () => {
             if (!item || item.type === "divider") return null;
             const label = String(item.name || item.label || item.title || item.id || `${slot === "pre" ? "Pre" : "Post"} Tag ${index + 1}`).trim();
             if (!label) return null;
-            const options = (Array.isArray(item.options) ? item.options : Array.isArray(item.values) ? item.values : [])
-              .map(value => {
-                if (value == null) return "";
-                if (typeof value === "string" || typeof value === "number") return String(value).trim();
-                if (typeof value === "object") return String(value.label || value.name || value.value || value.text || "").trim();
-                return "";
-              })
+            const defId = String(item.id || `${slot}-${label}`).replace(/[^a-zA-Z0-9_-]/g, "-");
+            const rawOptions = (Array.isArray(item.options) ? item.options : Array.isArray(item.values) ? item.values : [])
+              .map((value, oi) => normalizeDashTagOption(value, defId, oi))
               .filter(Boolean)
               .slice(0, 10);
+            const fallbackYes = dashTxt("Yes","نعم");
+            const fallbackNo = dashTxt("No","لا");
+            const options = rawOptions.length
+              ? rawOptions
+              : [
+                  { id: `${defId}-opt-0`, label: fallbackYes },
+                  { id: `${defId}-opt-1`, label: fallbackNo },
+                ];
             return {
-              id:String(item.id || `${slot}-${label}`).replace(/[^a-zA-Z0-9_-]/g, "-"),
+              id: defId,
               label,
               type:"multi",
               single:item.single === true || item.vtype === "single" || item.vtype === "yesno" || item.vtype === "boolean",
-              options:options.length ? options : [dashTxt("Yes","نعم"), dashTxt("No","لا")],
+              options,
             };
           };
           const splitDashAddTradeVariableDefs = (variables, slot) => {
@@ -40973,7 +41078,7 @@ const TalariaV8b = () => {
             const effectiveStrategy = resolveDashAddTradeEffectiveStrategy(dashAddTradeDraft, dashAddTradeEditorSource);
             const flattenTags = (defs, state, excludeIds=[]) => defs.filter(def => !excludeIds.includes(def.id)).flatMap(def => def.type === "bool"
               ? (state[def.id] === true ? [def.label] : [])
-              : (Array.isArray(state[def.id]) ? state[def.id] : [])
+              : dashTagIdsToLabels(state[def.id], def)
             );
             const resolvedPreTagState = normalizeDashAddTradeSingleTagState(addTradePreTagDefs, dashAddTradePreTags);
             const resolvedPostTagState = normalizeDashAddTradeSingleTagState(addTradePostTagDefs, dashAddTradePostTags);
@@ -40990,16 +41095,19 @@ const TalariaV8b = () => {
               missed_trade:"Missed Trade",
             };
             const draftPlanReviewKey = String(dashAddTradeDraft.planReview || "").trim();
+            const planReviewDef = addTradePostTagDefs.find(def => def.id === "planReview") || { id: "planReview", options: Object.values(planReviewLabels).map((lbl, i) => ({ id: `planReview-opt-${i}`, label: lbl })) };
+            const planReviewLabelsFromState = dashTagIdsToLabels(resolvedPostTagState.planReview, planReviewDef);
             const selectedPlanReview = isJournalManualTrade
-              ? (planReviewLabels[draftPlanReviewKey] || (Array.isArray(resolvedPostTagState.planReview) && resolvedPostTagState.planReview.length ? resolvedPostTagState.planReview[0] : null))
-              : (Array.isArray(resolvedPostTagState.planReview) && resolvedPostTagState.planReview.length ? resolvedPostTagState.planReview[0] : null);
+              ? (planReviewLabels[draftPlanReviewKey] || planReviewLabelsFromState[0] || null)
+              : (planReviewLabelsFromState[0] || null);
             const planOutcome = selectedPlanReview === "According to Plan" ? "followed" : selectedPlanReview === "Out of Plan" ? "deviated" : selectedPlanReview === "Missed Trade" ? "missed" : null;
             const rulesFollowedFromPlan = planOutcome ? planOutcome === "followed" : true;
-            const selectedSession = Array.isArray(resolvedPreTagState.session) && resolvedPreTagState.session.length
-              ? resolvedPreTagState.session[0]
-              : deriveDashSessionFromTime(dashAddTradeDraft.time);
+            const sessionDef = addTradePreTagDefs.find(def => def.id === "session") || { id: "session", options: [] };
+            const selectedSession = dashTagIdsToLabels(resolvedPreTagState.session, sessionDef)[0]
+              || deriveDashSessionFromTime(dashAddTradeDraft.time);
             const exitReasonMap = {"TP Hit":"TP_HIT","Manual":"MANUAL","SL Hit":"SL_HIT","Trailing":"TRAILING"};
-            const selectedExitReasonLabel = Array.isArray(resolvedPostTagState.exitRsn) && resolvedPostTagState.exitRsn.length ? resolvedPostTagState.exitRsn[0] : null;
+            const exitRsnDef = addTradePostTagDefs.find(def => def.id === "exitRsn") || { id: "exitRsn", options: Object.keys(exitReasonMap).map((lbl, i) => ({ id: `exitRsn-opt-${i}`, label: lbl })) };
+            const selectedExitReasonLabel = dashTagIdsToLabels(resolvedPostTagState.exitRsn, exitRsnDef)[0] || null;
             const exitReason = closed ? (exitReasonMap[selectedExitReasonLabel] || deriveDashExitReason(dashAddTradeDraft, calculated)) : null;
             const sourceSessions = Array.isArray(dashAddTradeEditorSource.sessions) ? dashAddTradeEditorSource.sessions : [];
             const sourceSessionId = dashAddTradeEditorSource.sourceSessionId
@@ -45476,13 +45584,17 @@ const TalariaV8b = () => {
                 const renderTagValueButton = (slot, def, option, active, accent, disabled=false, meta={}) => {
                   const control = meta.control || getDashAddTradeTagControl(slot, def);
                   const connected = control === "single" || control === "rating";
+                  const optLabel = typeof option === "object" && option != null ? dashTagOptionLabel(option) : String(option ?? "");
+                  const optKey = typeof option === "object" && option != null
+                    ? (option.id || optLabel)
+                    : String(option ?? "");
                   const ratingColorMap = {
                     Perfect:c.gn,
                     Good:"#69DFAE",
                     OK:c.gold,
                     Poor:c.rd,
                   };
-                  const activeAccent = control === "rating" ? (ratingColorMap[option] || accent) : (meta.accent || accent);
+                  const activeAccent = control === "rating" ? (ratingColorMap[optLabel] || accent) : (meta.accent || accent);
                   const tint = slot === "pre"
                     ? {bg:"rgba(255,140,66,0.10)", hover:"rgba(255,140,66,0.15)", press:"rgba(255,140,66,0.20)", border:"rgba(255,140,66,0.48)", borderHover:"rgba(255,140,66,0.66)", shadow:"rgba(255,140,66,0.22)"}
                     : {bg:"rgba(180,140,255,0.10)", hover:"rgba(180,140,255,0.15)", press:"rgba(180,140,255,0.20)", border:"rgba(180,140,255,0.46)", borderHover:"rgba(180,140,255,0.66)", shadow:"rgba(180,140,255,0.22)"};
@@ -45496,10 +45608,10 @@ const TalariaV8b = () => {
                   };
                   const chipTint = control === "rating" ? ratingTint : tint;
                   return (
-                    <div key={`${slot}-${def.id}-${option}`} className={disabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={disabled ? "presentation" : "button"} tabIndex={disabled ? -1 : 0}
+                    <div key={`${slot}-${def.id}-${optKey}`} className={disabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={disabled ? "presentation" : "button"} tabIndex={disabled ? -1 : 0}
                       aria-pressed={active} onPointerDown={disabled ? undefined : libraryPointerActivate(() => toggleDashAddTradeTag(slot, def, option))} onKeyDown={disabled ? undefined : libraryKeyActivate(() => toggleDashAddTradeTag(slot, def, option))}
                       style={{position:"relative",minHeight:24,maxWidth:connected?"none":190,padding:"5px 8px",display:"flex",alignItems:"center",justifyContent:"center",gap:5,background:active?chipTint.bg:"rgba(255,255,255,0.018)",border:`1px solid ${active?chipTint.border:c.br}`,color:active?activeAccent:c.ts,opacity:disabled?0.5:1,fontSize:connected?8.2:8.9,fontWeight:900,letterSpacing:"0.035em",textTransform:"uppercase",fontFamily:F,lineHeight:1.18,textAlign:"center",whiteSpace:"normal",overflowWrap:"anywhere",wordBreak:"break-word",boxSizing:"border-box",minWidth:0,"--tlr-add-hover-bg":active?chipTint.hover:"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeAccent:c.tx,"--tlr-add-hover-border":active?chipTint.borderHover:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":`0 0 10px ${chipTint.shadow}`,"--tlr-add-active-bg":chipTint.press,"--tlr-add-active-color":active?activeAccent:c.tx,"--tlr-add-active-border":chipTint.borderHover}}>
-                      {option}
+                      {optLabel}
                       {active && <span style={{position:"absolute",left:6,right:6,bottom:-1,height:1,background:`linear-gradient(90deg,transparent,${activeAccent},transparent)`,boxShadow:`0 0 7px ${chipTint.shadow}`,pointerEvents:"none"}}/>}
                     </div>
                   );
@@ -45529,8 +45641,10 @@ const TalariaV8b = () => {
                   return (
                     <div style={{display:"flex",flexDirection:"column",gap:9,opacity:disabled?0.42:1}}>
                       {defs.map(def => {
-                        const selectedValues = getDashAddTradeTagValues(state, def).slice(0, 1);
-                        const options = def.type === "bool" ? ["YES","NO"] : (def.options || []);
+                        const nd = normalizeDashTagDef(def);
+                        const selectedValues = getDashAddTradeTagValues(state, nd).slice(0, 1);
+                        const selectedIds = def.type === "bool" ? [] : dashTagSelectedIds(state?.[def.id], nd);
+                        const options = def.type === "bool" ? ["YES","NO"] : (nd.options || []);
                         const selectedCount = def.type === "bool" ? (state?.[def.id] == null ? 0 : 1) : selectedValues.length;
                         const menuKey = `tag-${slot}-${def.id}`;
                         const isOpen = dashAddTradeTradeMenuOpen === menuKey;
@@ -45547,7 +45661,7 @@ const TalariaV8b = () => {
                         };
                         const chooseOption = option => {
                           if (disabled) return;
-                          toggleDashAddTradeTag(slot, def, option);
+                          toggleDashAddTradeTag(slot, nd, option);
                           setDashAddTradeTradeMenuOpen(null);
                         };
                         return (
@@ -45589,11 +45703,13 @@ const TalariaV8b = () => {
                               {isOpen && (
                                 <div onPointerDown={e=>e.stopPropagation()} style={{position:"absolute",left:0,top:34,width:"100%",zIndex:100040,background:"rgba(7,10,19,0.99)",border:`1px solid rgba(100,118,168,0.56)`,borderTop:`2px solid ${accent}`,boxShadow:"0 14px 28px rgba(0,0,0,0.66), inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden",padding:"3px 0"}}>
                                   {options.length ? options.map((option, index) => {
+                                    const optLabel = typeof option === "object" && option != null ? option.label : option;
+                                    const optId = typeof option === "object" && option != null ? option.id : option;
                                     const active = def.type === "bool"
                                       ? (option === "YES" ? state?.[def.id] === true : state?.[def.id] === false)
-                                      : selectedValues[0] === option;
+                                      : selectedIds[0] === optId || selectedValues[0] === optLabel;
                                     return (
-                                      <div key={`${menuKey}-${option}-${index}`} className="tlr-library-action tlr-add-trade-soft-action" role="option" aria-selected={active} tabIndex={0}
+                                      <div key={`${menuKey}-${optId || optLabel}-${index}`} className="tlr-library-action tlr-add-trade-soft-action" role="option" aria-selected={active} tabIndex={0}
                                         onPointerDown={libraryPointerActivate(()=>chooseOption(option))}
                                         onKeyDown={libraryKeyActivate(()=>chooseOption(option))}
                                         style={{position:"relative",height:28,display:"grid",gridTemplateColumns:"16px minmax(0,1fr)",alignItems:"center",gap:8,padding:"0 10px",background:active?`${accent}10`:"rgba(255,255,255,0.012)",borderTop:"none",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?`${accent}12`:"rgba(255,255,255,0.06)","--tlr-add-hover-color":active?accent:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?`${accent}16`:"rgba(74,106,255,0.12)"}}>
@@ -45601,7 +45717,7 @@ const TalariaV8b = () => {
                                           {libraryCornerCheckbox(active, accent, {width:11,height:11})}
                                         </span>
                                         <span style={{minWidth:0,fontSize:10.2,fontWeight:850,color:active?accent:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>
-                                          {option}
+                                          {optLabel}
                                         </span>
                                       </div>
                                     );
@@ -46780,6 +46896,29 @@ const TalariaV8b = () => {
             }
           };
 
+          /** Block edit when the strategy is already linked to a session; offer create-new instead. */
+          const requestEditStrategy = (editStrat) => {
+            if (!editStrat) {
+              openBuilder(null);
+              return;
+            }
+            if (!strategyIsLinkedToSession(editStrat)) {
+              openBuilder(editStrat);
+              return;
+            }
+            openAppConfirm({
+              title: st("Cannot edit strategy", "لا يمكن تعديل الاستراتيجية"),
+              message: st(
+                "You cannot edit the strategy. Do you want to add a new strategy?",
+                "لا يمكنك تعديل الاستراتيجية. هل تريد إضافة استراتيجية جديدة؟"
+              ),
+              cancelLabel: st("Cancel", "إلغاء"),
+              confirmLabel: st("Add new strategy", "إضافة استراتيجية جديدة"),
+              danger: false,
+              onConfirm: () => openBuilder(null),
+            });
+          };
+
           const applyTemplateToBuilder = (tpl) => {
             fillStrategyBuilderFromTemplate(
               normalizeCommunityTemplateForBuilder(tpl),
@@ -47307,7 +47446,7 @@ const TalariaV8b = () => {
                     ):(
                       effectiveStratLayoutMode==="rows"?(
                         renderStrategyRows({items:filteredMine,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
-                          onEdit:s=>openBuilder(s),
+                          onEdit:s=>requestEditStrategy(s),
                           onDelete:s=>deleteStrategyFromBank(s),
                           onDuplicate:s=>copyStrategyIntoBank(s),
                           onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
@@ -47317,7 +47456,7 @@ const TalariaV8b = () => {
                           {filteredMine.map(strat=>(
                             <React.Fragment key={strategyRowKey(strat)||strat.id}>
                               {renderStratCard({strat,isMine:!minePreviewMode,metricsLoading:stratDataLoading,
-                                onEdit:s=>openBuilder(s),
+                                onEdit:s=>requestEditStrategy(s),
                                 onDelete:s=>deleteStrategyFromBank(s),
                                 onDuplicate:s=>copyStrategyIntoBank(s),
                                 onSave:s=>minePreviewMode?saveTemplateReference(s):undefined,
@@ -47448,7 +47587,7 @@ const TalariaV8b = () => {
                     {label:st("Duplicate","نسخ"),handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     {label:st("Hide","إخفاء"),handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isMineMenu?[
-                    {label:st("Edit","تعديل"),handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+                    {label:st("Edit","تعديل"),handler:()=>requestEditStrategy(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:st("Duplicate","نسخ"),handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     {label:st("Delete","حذف"),handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isSavedMenu?[
@@ -56522,22 +56661,23 @@ const TalariaV8b = () => {
                                           );
                                         } else {
                                           const keyedTags=hydrateTradeCardTagState(editTags, defs);
+                                          const nd=normalizeDashTagDef(def);
                                           const selected=(Array.isArray(keyedTags[def.id])?keyedTags[def.id]:[]);
                                           return(
                                             <div key={def.id}>
                                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.07em",display:"block",marginBottom:4}}>{def.label.toUpperCase()}</span>
                                               <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-                                                {def.options.map(opt=>{
-                                                  const active=selected.includes(opt);
-                                                  const isH=swHov===`td-opt-${r.id}-${def.id}-${opt}`;
+                                                {(nd.options||[]).map((opt, oi)=>{
+                                                  const active=dashTagSelectionIncludes(selected, opt, nd);
+                                                  const isH=swHov===`td-opt-${r.id}-${def.id}-${opt.id}`;
                                                   return(
-                                                    <div key={opt} onClick={()=>updTags(r.id, flattenTradeCardTagState(toggleTradeCardTagSelection(keyedTags, def, opt), defs))}
-                                                      onMouseEnter={()=>setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
+                                                    <div key={opt.id || `${def.id}-opt-${oi}`} onClick={()=>updTags(r.id, flattenTradeCardTagState(toggleTradeCardTagSelection(keyedTags, nd, opt), defs))}
+                                                      onMouseEnter={()=>setSwHov(`td-opt-${r.id}-${def.id}-${opt.id}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:"default",transition:"all 0.12s",
                                                         color:active?accentCol:isH?c.tx:c.ts,
                                                         background:active?accentBg:"transparent",
                                                         border:`1px solid ${active?accentBorder:c.br}`}}>
-                                                      {opt}
+                                                      {opt.label}
                                                     </div>
                                                   );
                                                 })}
@@ -59025,24 +59165,25 @@ const TalariaV8b = () => {
               </div>
             );
           } else {
+            const nd=normalizeDashTagDef(def);
             const selOpts=Array.isArray(tags[def.id])?tags[def.id]:[];
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
                 <span style={{fontSize:11,color:c.ts,flexShrink:0}}>{def.label}</span>
                 <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                  {def.options.map(opt=>{
-                    const sel=selOpts.includes(opt);
+                  {(nd.options||[]).map((opt, oi)=>{
+                    const sel=dashTagSelectionIncludes(selOpts, opt, nd);
                     const pillColor=sel?accent:canEdit?c.ts:c.tm;
                     const pillBg=sel?accentBg:"transparent";
                     const pillBd=sel?accentBd:c.br;
                     return(
-                      <div key={opt}
-                        onClick={canEdit?()=>setTags(pt=>toggleTradeCardTagSelection(pt, def, opt)):undefined}
+                      <div key={opt.id || `${def.id}-opt-${oi}`}
+                        onClick={canEdit?()=>setTags(pt=>toggleTradeCardTagSelection(pt, nd, opt)):undefined}
                         className={canEdit?`tc-opt${sel?" tc-opt-act":""}`:undefined}
                         style={{padding:"2px 7px",fontSize:11,fontWeight:sel?700:400,cursor:"default",
                           color:pillColor,background:pillBg,border:`1px solid ${pillBd}`,
                           transition:"color 0.1s,background 0.1s"}}>
-                        {opt}
+                        {opt.label}
                       </div>
                     );
                   })}

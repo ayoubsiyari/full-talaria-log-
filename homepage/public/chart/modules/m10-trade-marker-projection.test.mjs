@@ -76,8 +76,19 @@ function wireProductionPanSync(chart, om) {
   const sync = loadProductionSyncOrderOverlaysDuringPan();
   chart.orderManager = om;
   chart._syncOrderOverlaysDuringPan = sync;
-  // Production sync may call updateOrderLines; keep that path honest about
-  // skipTradeMarkers while still using real marker reposition helpers.
+  om.__markerUpdateCount = 0;
+  const origEntry = om._updateEntryMarkersForChart.bind(om);
+  const origExit = om._updateExitAndPartialMarkersOnMain.bind(om);
+  om._updateEntryMarkersForChart = function countedEntry(ch) {
+    this.__markerUpdateCount += 1;
+    return origEntry(ch);
+  };
+  om._updateExitAndPartialMarkersOnMain = function countedExit() {
+    this.__markerUpdateCount += 1;
+    return origExit();
+  };
+  // Production panLite always passes skipTradeMarkers:true so markers are
+  // glued exactly once via the dedicated helpers (not via updateOrderLines).
   om.updateOrderLines = function updateOrderLines(ch, opts) {
     if (opts && opts.skipTradeMarkers) return;
     this._updateEntryMarkersForChart(ch);
@@ -85,6 +96,8 @@ function wireProductionPanSync(chart, om) {
   };
   om.updateMfeMaeMarkers = () => {};
   om.updatePreviewLinePositions = () => {};
+  // Node unit harness has no DOM; production still calls this at end of sync.
+  om._scheduleDraftPreviewRedrawIfNeeded = () => {};
   return sync;
 }
 
@@ -383,7 +396,14 @@ test('pan repositions markers via chart.js::_syncOrderOverlaysDuringPan (with or
   const yScale2 = (p) => baseY(p) + 40;
   chart.yScale = yScale2;
   chart.scales.yScale = yScale2;
+  om.__markerUpdateCount = 0;
   sync.call(chart, true);
+  // Exactly one entry + one exit helper pass per pan frame (not double via updateOrderLines).
+  if (!LIVE_PAN_KILL) {
+    assert.equal(om.__markerUpdateCount, 2, 'markers updated exactly once per pan frame (entry+exit)');
+  } else {
+    assert.equal(om.__markerUpdateCount, 0, 'live-pan kill: zero marker updates');
+  }
 
   // Live-pan glue kill-switch is separate from canonical-projection kill.
   if (LIVE_PAN_KILL) {
@@ -397,6 +417,17 @@ test('pan repositions markers via chart.js::_syncOrderOverlaysDuringPan (with or
     if (!KILL) {
       assert.equal(om.exitMarkers[0].exitMarkerTimeMs, EXIT_T, 'pan must not mutate canonical exit');
     }
+  }
+
+  // Pre/post "mouse-up": measure X immediately before and after release sync.
+  const xBeforeUp = Number(entryTick._state.x1);
+  sync.call(chart, false);
+  const xAfterUp = Number(entryTick._state.x1);
+  if (LIVE_PAN_KILL) {
+    // Stuck during pan → full updateOrderLines on release snaps to new viewport.
+    assert.ok(Math.abs(xAfterUp - xBeforeUp) > 2, 'live-pan kill: release snap (>2px)');
+  } else {
+    assert.ok(Math.abs(xAfterUp - xBeforeUp) <= 2, 'no release jump (>2px)');
   }
 });
 
@@ -423,7 +454,7 @@ test('different-symbol chart stays independent', () => {
 
 test('three stable repetitions: production pan sync glue', () => {
   installWindow();
-  if (KILL) {
+  if (KILL || LIVE_PAN_KILL) {
     assert.ok(true, 'skip stability under kill-switch');
     return;
   }

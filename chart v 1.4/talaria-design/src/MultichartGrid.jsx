@@ -36,6 +36,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+    createHostPnlFanoutScheduler,
     fanOutHostOrderSnapshotToIframes,
     primeReadyPanelsWithHostOrders,
 } from "../../chart/modules/order-host-store.mjs";
@@ -3863,6 +3864,17 @@ export default function MultichartGrid({
                 if (!c || c.host) continue;
                 sendPanelCmd(mgr, c.id, cmd, { timestamp: ts });
             }
+            // Pause/scrub: host-owned coalesced runtime P&L fan-out (no iframe ticks).
+            if (orderMcPnlHubV1Enabled()) {
+                try {
+                    const hom = window.chart && window.chart.orderManager;
+                    const live = ((hom && hom.openPositions) || []).length
+                        + ((hom && hom.pendingOrders) || []).length;
+                    if (live > 0 && typeof window.__multichartScheduleHostPnlFanout === "function") {
+                        window.__multichartScheduleHostPnlFanout();
+                    }
+                } catch (_) { /* ignore */ }
+            }
         };
 
         window.addEventListener("replayVirtualTimeChanged", onReplayTick);
@@ -3907,6 +3919,9 @@ export default function MultichartGrid({
             }
             // Prefer manager fast path when chart bundle is updated; skip duplicate
             // React-grid broadcast to avoid double postMessage per frame.
+            // Manager flush also owns the ONE host P&L schedule() call
+            // (ReplaySystem → __multichartManagerBroadcastReplay). Fallback
+            // CustomEvent path schedules here only when manager is absent.
             if (typeof window.__multichartManagerBroadcastReplay === "function") {
                 coalescedFrameDetail = null;
                 window.__multichartManagerBroadcastReplay(detail);
@@ -3914,20 +3929,18 @@ export default function MultichartGrid({
                 coalescedFrameDetail = null;
                 lastReplayFrameBroadcastAt = performance.now();
                 broadcastReplayFrameToIframes(detail);
-            }
-            // Failure A: Play streams replayFrame, not replayTick. Host already
-            // updatePositions() in the play loop; fan runtimeOnly so B/C/D P&L
-            // labels track A continuously (no full journal rebuild).
-            // Kill-switch: __TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1
-            if (orderMcPnlReplayFrameHubV1Enabled() && detail.isPlaying === true) {
-                try {
-                    const hom = window.chart && window.chart.orderManager;
-                    const live = ((hom && hom.openPositions) || []).length
-                        + ((hom && hom.pendingOrders) || []).length;
-                    if (live > 0 && typeof window.__multichartScheduleHostPnlFanout === "function") {
-                        window.__multichartScheduleHostPnlFanout();
-                    }
-                } catch (_) { /* ignore */ }
+                // Host-owned coalesced runtime P&L fan-out (Play) — fallback only.
+                // Kill-switch: __TALARIA_DISABLE_ORDER_MC_PNL_REPLAY_FRAME_HUB_V1
+                if (orderMcPnlReplayFrameHubV1Enabled() && detail.isPlaying === true) {
+                    try {
+                        const hom = window.chart && window.chart.orderManager;
+                        const live = ((hom && hom.openPositions) || []).length
+                            + ((hom && hom.pendingOrders) || []).length;
+                        if (live > 0 && typeof window.__multichartScheduleHostPnlFanout === "function") {
+                            window.__multichartScheduleHostPnlFanout();
+                        }
+                    } catch (_) { /* ignore */ }
+                }
             }
         };
 
@@ -4366,7 +4379,6 @@ export default function MultichartGrid({
     // Sending replayEnter the moment B is ready closes that window.
     const orderSyncedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
     const hostOrderSnapshotVersionRef = useRef(0);
-    const hostPnlFanoutTimerRef = useRef(null);
     const fanOutHostOrderSnapshotImpl = useCallback((options = {}) => {
         if (!orderMcSnapshotProjectionV1Enabled()) return { ok: false, reason: "snapshot-off" };
         const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
@@ -4385,18 +4397,27 @@ export default function MultichartGrid({
             runtimeOnly: options.runtimeOnly === true,
         });
     }, []);
-    // Coalesced runtimeOnly fan-out for Play (replayFrame) + order-pnl-tick.
+    const fanOutHostOrderSnapshotRef = useRef(fanOutHostOrderSnapshotImpl);
+    fanOutHostOrderSnapshotRef.current = fanOutHostOrderSnapshotImpl;
+    // Single host-owned coalesced runtimeOnly P&L fan-out (Play + pause/scrub).
+    const hostPnlSchedulerRef = useRef(null);
+    if (!hostPnlSchedulerRef.current) {
+        hostPnlSchedulerRef.current = createHostPnlFanoutScheduler(
+            (args) => fanOutHostOrderSnapshotRef.current(args),
+            { coalesceMs: 50 },
+        );
+    }
     const scheduleHostPnlSnapshotFanout = useCallback(() => {
         if (!orderMcPnlHubV1Enabled()) return;
-        if (hostPnlFanoutTimerRef.current != null) return;
-        hostPnlFanoutTimerRef.current = setTimeout(() => {
-            hostPnlFanoutTimerRef.current = null;
-            try { fanOutHostOrderSnapshotImpl({ runtimeOnly: true }); } catch (_) { /* ignore */ }
-        }, 50);
-    }, [fanOutHostOrderSnapshotImpl]);
+        try {
+            hostPnlSchedulerRef.current.schedule();
+            window.__m10HostPnlFanoutCounts = hostPnlSchedulerRef.current.getCounts();
+        } catch (_) { /* ignore */ }
+    }, []);
     useEffect(() => {
         try {
             window.__multichartScheduleHostPnlFanout = scheduleHostPnlSnapshotFanout;
+            window.__m10HostPnlFanoutCounts = hostPnlSchedulerRef.current.getCounts();
         } catch (_) { /* ignore */ }
         return () => {
             try {
@@ -4404,10 +4425,7 @@ export default function MultichartGrid({
                     delete window.__multichartScheduleHostPnlFanout;
                 }
             } catch (_) { /* ignore */ }
-            if (hostPnlFanoutTimerRef.current != null) {
-                clearTimeout(hostPnlFanoutTimerRef.current);
-                hostPnlFanoutTimerRef.current = null;
-            }
+            try { hostPnlSchedulerRef.current.dispose(); } catch (_) { /* ignore */ }
         };
     }, [scheduleHostPnlSnapshotFanout]);
     // Peer pair switch: iframe OM only holds the last filtered snapshot. After
@@ -7885,14 +7903,10 @@ export default function MultichartGrid({
                 return;
             }
             if (msg.type !== "iframe-order") {
-                if (msg.type === "order-pnl-tick" && orderMcPnlHubV1Enabled()) {
-                    const hom = window.chart && window.chart.orderManager;
-                    if (hom && typeof hom.updatePositions === "function") {
-                        const hadLive = (hom.openPositions || []).length + (hom.pendingOrders || []).length;
-                        try { hom.updatePositions(); } catch (_) {}
-                        const hasLive = (hom.openPositions || []).length + (hom.pendingOrders || []).length;
-                        if (hadLive > 0 || hasLive > 0) scheduleHostPnlSnapshotFanout();
-                    }
+                if (msg.type === "order-pnl-tick") {
+                    // Deprecated: runtime P&L is host-owned coalesced fan-out on
+                    // replayFrame / pause scrub. Ignore iframe ticks — do not
+                    // call updatePositions or fan-out from peer messages.
                     return;
                 }
                 if (msg.type === "order-command" && msg.cmd === "patch-open-leg") {
