@@ -1369,6 +1369,156 @@ class OrderManager {
         return tf || '1m';
     }
 
+    /**
+     * Money-path replay must keep the finest retained market feed even when the
+     * user changes only the display timeframe (for example 1m -> 1D).
+     */
+    _orderExecutionSeriesContext(chart = null) {
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return null;
+        const ch = chart || this._getOrderContextChart() || this.chart;
+        const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
+        if (!ch || !rs || !rs.isActive || !ch.currentFileId) return null;
+
+        const isLiveRecord = (record, pending = false) => {
+            if (!record || typeof record !== 'object') return false;
+            const status = String(record.status || '').toUpperCase();
+            if (pending) return !['CANCELLED', 'CANCELED', 'FILLED', 'EXECUTED', 'CLOSED'].includes(status);
+            return !['CANCELLED', 'CANCELED', 'CLOSED'].includes(status);
+        };
+        const ownsMoneyPath = (this.pendingOrders || []).some((o) => isLiveRecord(o, true))
+            || (this.openPositions || []).some((o) => isLiveRecord(o, false))
+            || (this.mfeMaeTrackingPositions || []).some((o) => isLiveRecord(o, false));
+        if (!ownsMoneyPath || typeof ch._getBtTfDataCache !== 'function') return null;
+
+        const parseTf = (tf) => {
+            if (typeof ch.parseTimeframe === 'function') {
+                const parsed = Number(ch.parseTimeframe(tf));
+                if (Number.isFinite(parsed) && parsed > 0) return parsed;
+            }
+            const match = String(tf || '').toLowerCase().match(/^(\d+)(m|h|d|w)$/);
+            if (!match) return null;
+            const unit = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[match[2]];
+            return Number(match[1]) * unit;
+        };
+        const raw = Array.isArray(rs.fullRawData) ? rs.fullRawData : [];
+        const measuredRawMs = raw.length > 1
+            ? Number(raw[1]?.t) - Number(raw[0]?.t)
+            : NaN;
+        const nativeRawMs = typeof ch._getNativeRawStepMs === 'function'
+            ? Number(ch._getNativeRawStepMs())
+            : NaN;
+        const displayMs = parseTf(ch.currentTimeframe);
+        const coarseMs = Number.isFinite(measuredRawMs) && measuredRawMs > 0
+            ? measuredRawMs
+            : (Number.isFinite(nativeRawMs) && nativeRawMs > 0 ? nativeRawMs : displayMs);
+        if (!Number.isFinite(coarseMs) || coarseMs <= 0) return null;
+
+        const candidates = ['1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m', '1h', '2h', '4h'];
+        for (let i = 0; i < candidates.length; i++) {
+            const timeframe = candidates[i];
+            const cadenceMs = parseTf(timeframe);
+            if (!Number.isFinite(cadenceMs) || cadenceMs <= 0 || cadenceMs >= coarseMs * 0.92) continue;
+            const retained = this._orderExecutionSeriesByFileId
+                ?.get(String(ch.currentFileId))
+                ?.get(timeframe);
+            const entry = ch._getBtTfDataCache(ch.currentFileId, timeframe);
+            const retainedSeries = retained && Array.isArray(retained.series) ? retained.series : null;
+            const cachedSeries = entry && Array.isArray(entry.rawData) ? entry.rawData : null;
+            const playhead = Number(rs.replayTimestamp);
+            const candidatesForTf = [retainedSeries, cachedSeries];
+            for (let si = 0; si < candidatesForTf.length; si++) {
+                const series = candidatesForTf[si];
+                if (!series || !series.length) continue;
+                const firstT = Number(series[0]?.t);
+                const lastT = Number(series[series.length - 1]?.t);
+                if (Number.isFinite(playhead)
+                    && Number.isFinite(firstT) && Number.isFinite(lastT)
+                    && (playhead < firstT || playhead > lastT + cadenceMs)) {
+                    continue;
+                }
+                return { chart: ch, replay: rs, timeframe, cadenceMs, series };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Keep the placement feed by reference before a display-TF hot swap replaces
+     * replay.fullRawData. This avoids relying on the bounded display cache to
+     * retain the user's exact 1m playhead window.
+     */
+    _retainCurrentOrderExecutionSeries() {
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return;
+        const ch = this._getOrderContextChart() || this.chart;
+        const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
+        const series = rs && Array.isArray(rs.fullRawData) ? rs.fullRawData : null;
+        if (!ch || !ch.currentFileId || !series || series.length < 2) return;
+        const cadenceMs = Number(series[1]?.t) - Number(series[0]?.t);
+        if (!Number.isFinite(cadenceMs) || cadenceMs <= 0) return;
+
+        const rawTf = String(rs.rawTimeframe || ch._nativeRawFetchTf || ch.currentTimeframe || '')
+            .toLowerCase().trim();
+        const timeframe = rawTf || (cadenceMs === 60_000 ? '1m' : '');
+        if (!timeframe) return;
+        if (!this._orderExecutionSeriesByFileId) this._orderExecutionSeriesByFileId = new Map();
+        const fileId = String(ch.currentFileId);
+        const perFile = this._orderExecutionSeriesByFileId.get(fileId) || new Map();
+        perFile.set(timeframe, { cadenceMs, series });
+        this._orderExecutionSeriesByFileId.delete(fileId);
+        this._orderExecutionSeriesByFileId.set(fileId, perFile);
+        while (this._orderExecutionSeriesByFileId.size > 8) {
+            const oldest = this._orderExecutionSeriesByFileId.keys().next().value;
+            this._orderExecutionSeriesByFileId.delete(oldest);
+        }
+    }
+
+    /** Finest retained cadence which must own pending fills and SL/TP evaluation. */
+    getOrderExecutionCadenceMs() {
+        const ctx = this._orderExecutionSeriesContext();
+        return ctx ? ctx.cadenceMs : null;
+    }
+
+    /**
+     * Resolve the exact fine-feed bar at the replay clock. Returning this instead
+     * of a resampled 1D candle prevents daily low/high ordering from fabricating
+     * a limit fill followed by a gap TP at the next day's open.
+     */
+    _getOrderExecutionCandleForChart(chart) {
+        const ctx = this._orderExecutionSeriesContext(chart);
+        if (!ctx) return null;
+        const playhead = Number(ctx.replay.replayTimestamp);
+        if (!Number.isFinite(playhead)) return null;
+
+        let lo = 0;
+        let hi = ctx.series.length - 1;
+        let found = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const t = Number(ctx.series[mid]?.t);
+            if (Number.isFinite(t) && t <= playhead) {
+                found = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (found < 0) return null;
+        const source = ctx.series[found];
+        const close = Number.parseFloat(source?.c ?? source?.close);
+        if (!Number.isFinite(close)) return null;
+        const candle = Object.assign({}, source, { c: close });
+        try {
+            Object.defineProperty(candle, '_orderLifecycleEventKey', {
+                value: `replay:${Number(source.t)}`,
+                configurable: true,
+                enumerable: false,
+            });
+        } catch (_e) {
+            candle._orderLifecycleEventKey = `replay:${Number(source.t)}`;
+        }
+        return candle;
+    }
+
     _miBackgroundSeriesKey(fileId, timeframe) {
         const fid = String(fileId);
         const tf = String(timeframe || '1m').toLowerCase().trim() || '1m';
@@ -2729,6 +2879,9 @@ class OrderManager {
      */
     _currentOrderLifecycleEventKey(candle) {
         if (!_orderLifecycleEventOwnershipV1Enabled()) return null;
+        if (candle && typeof candle._orderLifecycleEventKey === 'string') {
+            return candle._orderLifecycleEventKey;
+        }
         const rs = this.replaySystem || this._playbackReplaySystem();
         if (!rs || !rs.isActive) return null;
 
@@ -2770,6 +2923,7 @@ class OrderManager {
 
     _seedOrderLifecycleEvent(record, candle) {
         if (!_orderLifecycleEventOwnershipV1Enabled() || !record || typeof record !== 'object') return;
+        this._retainCurrentOrderExecutionSeries();
         const key = this._currentOrderLifecycleEventKey(candle);
         if (key != null) this._writeOrderLifecycleEventKey(record, key);
     }
@@ -28315,6 +28469,9 @@ class OrderManager {
         const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
 
         if (rs && rs.isActive) {
+            const executionCandle = this._getOrderExecutionCandleForChart(ch);
+            if (executionCandle) return executionCandle;
+
             if (rs.animatingCandle) {
                 const anim = rs.animatingCandle;
                 let c = Number.parseFloat(anim.close ?? anim.c);

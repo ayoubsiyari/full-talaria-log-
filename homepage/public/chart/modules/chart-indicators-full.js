@@ -8263,8 +8263,49 @@
     Chart.prototype._ensureIndicatorLayerCache = function() {
         if (!this._indLayerCanvas) {
             this._indLayerCanvas = document.createElement('canvas');
-            this._indLayerCtx = this._indLayerCanvas.getContext('2d', { alpha: true, desynchronized: true });
+            // Prefer crisp compositing when blitting onto the HiDPI main canvas.
+            this._indLayerCtx = this._indLayerCanvas.getContext('2d', {
+                alpha: true,
+                desynchronized: true,
+                willReadFrequently: false
+            });
         }
+    };
+
+    function _indicatorLayerDevicePixelRatio() {
+        try {
+            var dpr = (typeof window !== 'undefined') ? Number(window.devicePixelRatio) : 1;
+            return (Number.isFinite(dpr) && dpr > 0) ? dpr : 1;
+        } catch (_) {
+            return 1;
+        }
+    }
+
+    /**
+     * Size the idle indicator cache at physical pixels and scale its ctx like the
+     * main chart canvas. Previously the cache was CSS-pixel sized (1×); on HiDPI
+     * idle frames looked soft while pan (direct draw) stayed sharp.
+     */
+    Chart.prototype._syncIndicatorLayerCanvasSize = function() {
+        this._ensureIndicatorLayerCache();
+        var dpr = _indicatorLayerDevicePixelRatio();
+        var cssW = Math.max(1, Math.floor(Number(this.w) || 1));
+        var cssH = Math.max(1, Math.floor(Number(this.h) || 1));
+        var physW = Math.max(1, Math.floor(cssW * dpr));
+        var physH = Math.max(1, Math.floor(cssH * dpr));
+        var canvas = this._indLayerCanvas;
+        var ctx = this._indLayerCtx;
+        if (canvas.width !== physW || canvas.height !== physH || this._indLayerDpr !== dpr) {
+            canvas.width = physW;
+            canvas.height = physH;
+            this._indLayerDpr = dpr;
+            this._indLayerCssW = cssW;
+            this._indLayerCssH = cssH;
+            this._indLayerCacheKey = null;
+        }
+        // Logical coords match main chart (CSS pixels); DPR scale applied below.
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        return { dpr: dpr, cssW: cssW, cssH: cssH, physW: physW, physH: physH };
     };
 
     function _indicatorDataFingerprint(chart) {
@@ -8360,14 +8401,16 @@
     };
 
     /**
-     * Main-thread O(n) overlays (Sessions/ICT + Talaria). Recomputing them every
-     * replay play frame freezes the chart — especially with all 3 Talaria on.
+     * Replay play perf: do not recompute indicators every forming-candle frame.
+     * Same bar-advance gate formerly limited to Sessions/ICT/Talaria — now applies
+     * to ALL active indicators (SMA/EMA/RSI/… included). Pause still full-syncs.
      * Kill-switch: window.__TALARIA_FIX_SESSION_REPLAY_PERF = false
      */
     var SESSION_REPLAY_HEAVY_TYPES = [
         'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
-        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-        'talariafvg', 'talariaratiogap', 'talariaweeklymap'
+        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'ictliquidity',
+        'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap',
+        'seasonality', 'cotnet', 'supertrend', 'adr'
     ];
 
     function _sessionReplayPerfFixEnabled() {
@@ -8375,40 +8418,44 @@
             || window.__TALARIA_FIX_SESSION_REPLAY_PERF !== false;
     }
 
-    function _sessionReplayHeavyFingerprint(chart) {
+    function _replayIndicatorBarFingerprint(chart) {
         const data = chart && chart.data;
         if (!Array.isArray(data) || !data.length) return null;
         const last = data[data.length - 1] || {};
         // Bar-advance only (length + open time). Do NOT include OHLC — forming-candle
-        // animation would otherwise force a full Talaria/Sessions scan every frame.
+        // animation would otherwise force a full indicator pass every paint frame.
         return [
             data.length,
             last.t,
-            // Invalidate when heavy indicators are added/removed.
-            (chart.indicators.active || []).filter(function(ind) {
-                return SESSION_REPLAY_HEAVY_TYPES.indexOf(String(ind.type || '').toLowerCase()) >= 0;
-            }).map(function(ind) {
+            (chart.indicators.active || []).map(function(ind) {
                 return String(ind.id || '') + ':' + String(ind.type || '').toLowerCase();
             }).join(',')
         ].join('|');
     }
 
-    function _sessionReplayHeavyReady(chart) {
+    function _replayIndicatorsReady(chart) {
         if (!chart || !chart.indicators || !Array.isArray(chart.indicators.active)) return false;
+        if (!chart.indicators.active.length) return false;
         const dataMap = chart.indicators.data || {};
         for (let i = 0; i < chart.indicators.active.length; i++) {
             const ind = chart.indicators.active[i];
-            const t = String(ind && ind.type || '').toLowerCase();
-            if (SESSION_REPLAY_HEAVY_TYPES.indexOf(t) < 0) continue;
+            if (!ind || !ind.id) continue;
             if (!dataMap[ind.id]) return false;
         }
         return true;
     }
 
+    // Back-compat aliases (older call sites / probes).
+    function _sessionReplayHeavyFingerprint(chart) {
+        return _replayIndicatorBarFingerprint(chart);
+    }
+    function _sessionReplayHeavyReady(chart) {
+        return _replayIndicatorsReady(chart);
+    }
+
     /**
-     * Replay playback: one synchronous full recalc per animation frame (same path as DEMA/TEMA/HMA).
-     * Worker/incremental paths lag behind at 60x — sync-on-rAF keeps every overlay aligned with candles.
-     * Session/ICT/Talaria types are skipped mid-tick until the bar advances (pause still full).
+     * Replay playback: coalesce to one rAF. Full sync only when the candle advances
+     * (or on pause). Mid-bar forming OHLC no longer recomputes every indicator.
      */
     Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
@@ -8453,33 +8500,31 @@
             chart._indicatorWorkerSeq++;
             chart._indicatorWorkerCoalesce = false;
 
-            // Skip O(n) Intl session scans until the candle actually advances.
-            let skipSessionHeavy = false;
+            // Same bar → keep prior indicator arrays; only re-render / legend.
+            // Applies to ALL indicators (not only Sessions/Talaria).
+            let skipAllRecalc = false;
             if (_sessionReplayPerfFixEnabled()) {
-                const hasSessionHeavy = chart.indicators.active.some(function(ind) {
-                    return SESSION_REPLAY_HEAVY_TYPES.indexOf(String(ind.type || '').toLowerCase()) >= 0;
-                });
-                if (hasSessionHeavy) {
-                    const fp = _sessionReplayHeavyFingerprint(chart);
-                    if (fp
-                        && fp === chart._sessionIndReplayFp
-                        && _sessionReplayHeavyReady(chart)) {
-                        skipSessionHeavy = true;
-                    } else if (fp) {
-                        chart._sessionIndReplayFp = fp;
-                    }
+                const fp = _replayIndicatorBarFingerprint(chart);
+                if (fp
+                    && fp === chart._sessionIndReplayFp
+                    && _replayIndicatorsReady(chart)) {
+                    skipAllRecalc = true;
+                } else if (fp) {
+                    chart._sessionIndReplayFp = fp;
                 }
             }
 
-            try {
-                if (typeof chart.recalculateIndicators === 'function') {
-                    chart._recalcSkipTypes = skipSessionHeavy ? SESSION_REPLAY_HEAVY_TYPES : null;
-                    try { chart.recalculateIndicators(); } finally {
+            if (!skipAllRecalc) {
+                try {
+                    if (typeof chart.recalculateIndicators === 'function') {
                         chart._recalcSkipTypes = null;
+                        try { chart.recalculateIndicators(); } finally {
+                            chart._recalcSkipTypes = null;
+                        }
                     }
+                } catch (_) {
+                    chart._recalcSkipTypes = null;
                 }
-            } catch (_) {
-                chart._recalcSkipTypes = null;
             }
             pinReplayLegendHoverBeforeRecalc(chart);
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
@@ -8597,6 +8642,7 @@
             return;
         }
 
+        const layerSize = this._syncIndicatorLayerCanvasSize();
         const y0 = this.yDomain && this.yDomain[0];
         const y1 = this.yDomain && this.yDomain[1];
         const key = [
@@ -8605,24 +8651,33 @@
             typeof this._indicatorParamsHash === 'function' ? this._indicatorParamsHash() : '',
             typeof this._indicatorVisibilityKey === 'function' ? this._indicatorVisibilityKey() : '',
             String(this.currentTimeframe || ''),
-            this.w, this.h,
+            this.w, this.h, layerSize.dpr,
             this.candleWidth, this.offsetX, this.priceZoom, this.priceOffset,
             this.visibleStartIndex, this.visibleEndIndex,
             y0, y1
         ].join('|');
 
+        const blitLayer = (destCtx) => {
+            // Dest ctx is DPR-scaled (CSS space). Explicit dest size keeps a 1:1
+            // device-pixel blit instead of stretching a 1× bitmap.
+            const prevSmooth = destCtx.imageSmoothingEnabled;
+            destCtx.imageSmoothingEnabled = false;
+            destCtx.drawImage(
+                this._indLayerCanvas,
+                0, 0, layerSize.physW, layerSize.physH,
+                0, 0, layerSize.cssW, layerSize.cssH
+            );
+            destCtx.imageSmoothingEnabled = prevSmooth;
+        };
+
         if (this._indLayerCacheKey === key && this._indLayerCanvas) {
-            this.ctx.drawImage(this._indLayerCanvas, 0, 0);
+            blitLayer(this.ctx);
             return;
         }
 
-        this._ensureIndicatorLayerCache();
-        if (this._indLayerCanvas.width !== this.w || this._indLayerCanvas.height !== this.h) {
-            this._indLayerCanvas.width = this.w;
-            this._indLayerCanvas.height = this.h;
-        }
         const layerCtx = this._indLayerCtx;
-        layerCtx.clearRect(0, 0, this.w, this.h);
+        // clearRect uses current transform (dpr); clear the CSS viewport.
+        layerCtx.clearRect(0, 0, layerSize.cssW, layerSize.cssH);
         const prevCtx = this.ctx;
         this.ctx = layerCtx;
         try {
@@ -8630,7 +8685,7 @@
         } finally {
             this.ctx = prevCtx;
         }
-        prevCtx.drawImage(this._indLayerCanvas, 0, 0);
+        blitLayer(prevCtx);
         this._indLayerCacheKey = key;
     };
 

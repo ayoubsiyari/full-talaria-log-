@@ -12369,16 +12369,8 @@ class Chart {
             } else {
                 this._clearSessionPatchBackoff();
                 this._markSessionStateSyncedToServer(sessionId);
-                try {
-                    const body = await res.json();
-                    if (body && body.warning && typeof this.showNotification === 'function') {
-                        this.showNotification(
-                            'Session storage nearly full — consider archiving old sessions',
-                            'warning',
-                            4500
-                        );
-                    }
-                } catch (_) { /* ignore */ }
+                // Drain JSON body (may include optional size_bytes); no soft-cap toast.
+                try { await res.json(); } catch (_) { /* ignore */ }
             }
         } catch (e) {
             let patchUrl = '';
@@ -12403,13 +12395,7 @@ class Chart {
 
     _notifySessionStateSaveFailed(status) {
         this._notifyJournalSaveFailed(status);
-        if (status === 413 && typeof this.showNotification === 'function') {
-            this.showNotification(
-                'Session save too large — journal may not sync until you free space',
-                'warning',
-                5000
-            );
-        }
+        // Session JSON size caps are off by default; keep generic journal failure UX.
     }
     
     /**

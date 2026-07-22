@@ -935,13 +935,11 @@ APP_ROLE = (os.getenv("APP_ROLE", "api").strip().lower() or "api")
 CSV_ARCHIVE_DIR = UPLOAD_DIR / "archive"
 CSV_ARCHIVE_DIR.mkdir(exist_ok=True)
 
-# Trading-session state guardrails (protects the 200 GB VPS disk from runaway
-# drawings / journals stored in the single `TradingSessionState.state_json`
-# column). Enforced by PATCH /api/sessions/:id/state — SOFT returns a warning
-# in the response, HARD 413s the write (but only if the payload is also
-# larger than the previous version, so an oversize user can still shrink).
-SESSION_STATE_SOFT_LIMIT_BYTES = int(os.getenv("SESSION_STATE_SOFT_LIMIT_BYTES", str(4 * 1024 * 1024)))
-SESSION_STATE_HARD_LIMIT_BYTES = int(os.getenv("SESSION_STATE_HARD_LIMIT_BYTES", str(16 * 1024 * 1024)))
+# Trading-session state size caps (optional). Default OFF (0 = unlimited) —
+# session JSON saves are free-size. Set SESSION_STATE_*_LIMIT_BYTES > 0 to
+# re-enable: SOFT adds a response warning; HARD 413s growing writes.
+SESSION_STATE_SOFT_LIMIT_BYTES = int(os.getenv("SESSION_STATE_SOFT_LIMIT_BYTES", "0"))
+SESSION_STATE_HARD_LIMIT_BYTES = int(os.getenv("SESSION_STATE_HARD_LIMIT_BYTES", "0"))
 # Directory for compressed, admin-triggered archives of stale trading-session
 # state (see /api/admin/system/archive-stale-sessions).
 SESSION_ARCHIVE_DIR = UPLOAD_DIR / "session_archive"
@@ -23147,23 +23145,27 @@ async def admin_system_disk_health(request: Request, sample_limit: int = 10):
         for r in rows:
             sz = int(r[2] or 0)
             total_state_bytes += sz
-            if sz > SESSION_STATE_HARD_LIMIT_BYTES:
+            if SESSION_STATE_HARD_LIMIT_BYTES > 0 and sz > SESSION_STATE_HARD_LIMIT_BYTES:
                 oversize_hard += 1
-            elif sz > SESSION_STATE_SOFT_LIMIT_BYTES:
+            elif SESSION_STATE_SOFT_LIMIT_BYTES > 0 and sz > SESSION_STATE_SOFT_LIMIT_BYTES:
                 oversize_soft += 1
         # Top-N largest rows
         rows_sorted = sorted(rows, key=lambda r: int(r[2] or 0), reverse=True)[:sample_limit]
         for r in rows_sorted:
             sz = int(r[2] or 0)
+            if SESSION_STATE_HARD_LIMIT_BYTES > 0 and sz > SESSION_STATE_HARD_LIMIT_BYTES:
+                bucket = "hard"
+            elif SESSION_STATE_SOFT_LIMIT_BYTES > 0 and sz > SESSION_STATE_SOFT_LIMIT_BYTES:
+                bucket = "soft"
+            else:
+                bucket = "ok"
             top_session_states.append({
                 "session_id": int(r[0]),
                 "user_id": int(r[1]),
                 "bytes": sz,
                 "human": _human_bytes(sz),
                 "updated_at": r[3].isoformat() + "Z" if r[3] else None,
-                "bucket": "hard" if sz > SESSION_STATE_HARD_LIMIT_BYTES
-                          else "soft" if sz > SESSION_STATE_SOFT_LIMIT_BYTES
-                          else "ok",
+                "bucket": bucket,
             })
 
         # Journal-trade mirror row count (informational; expected to scale
@@ -24542,7 +24544,11 @@ async def import_trading_session_journal_csv(
         new_state_json = json.dumps(state, separators=(",", ":"))
         new_size = len(new_state_json.encode("utf-8"))
         prev_size = len((st.state_json or "").encode("utf-8"))
-        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+        if (
+            SESSION_STATE_HARD_LIMIT_BYTES > 0
+            and new_size > SESSION_STATE_HARD_LIMIT_BYTES
+            and new_size > prev_size
+        ):
             raise HTTPException(
                 status_code=413,
                 detail=(
@@ -24558,7 +24564,7 @@ async def import_trading_session_journal_csv(
         chart_redis.dashboard_bump_version(s.user_id)
         journal_len = len(merged)
         warning = None
-        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+        if SESSION_STATE_SOFT_LIMIT_BYTES > 0 and new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
             warning = (
                 f"Session state is {new_size / 1_048_576:.1f} MB (soft limit "
                 f"{SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB)."
@@ -24668,7 +24674,11 @@ async def seed_trading_session_demo_trades(
         new_state_json = json.dumps(state, separators=(",", ":"))
         new_size = len(new_state_json.encode("utf-8"))
         prev_size = len((st.state_json or "").encode("utf-8"))
-        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+        if (
+            SESSION_STATE_HARD_LIMIT_BYTES > 0
+            and new_size > SESSION_STATE_HARD_LIMIT_BYTES
+            and new_size > prev_size
+        ):
             raise HTTPException(
                 status_code=413,
                 detail=(
@@ -24683,7 +24693,7 @@ async def seed_trading_session_demo_trades(
         db.refresh(st)
         chart_redis.dashboard_bump_version(s.user_id)
         warning = None
-        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+        if SESSION_STATE_SOFT_LIMIT_BYTES > 0 and new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
             warning = (
                 f"Session state is {new_size / 1_048_576:.1f} MB (soft limit "
                 f"{SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB)."
@@ -24888,26 +24898,26 @@ async def patch_trading_session_state(session_id: int, request: Request):
     # IMPORTANT: We deliberately DO NOT declare `payload: TradingSessionStateUpdateIn`
     # in the signature — if we did, FastAPI would eagerly read + JSON-parse the
     # body before entering this function, defeating the Content-Length guard.
-    # nginx allows up to 100 MB, so a malicious caller can POST a huge JSON
-    # that would otherwise burn RAM/CPU before our 16 MB limit rejects it.
+    # Optional hard-cap via SESSION_STATE_HARD_LIMIT_BYTES (>0). Default: unlimited
+    # (nginx client_max_body_size still applies at the proxy).
     try:
         cl = int(request.headers.get("content-length", "0") or 0)
     except Exception:
         cl = 0
-    # Allow some headroom over the hard limit for JSON overhead / re-encoding.
-    _state_max_body = max(SESSION_STATE_HARD_LIMIT_BYTES * 2, 32 * 1024 * 1024)
-    if cl > _state_max_body:
-        raise HTTPException(
-            status_code=413,
-            detail=(
-                f"Request body too large ({cl / 1_048_576:.1f} MB). "
-                f"Session state is capped at {SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB."
-            ),
-        )
-    # Read the body now that we know it's within a sane bound. If the client
-    # lied about Content-Length and streams more, we also truncate-check here.
+    _state_max_body = None
+    if SESSION_STATE_HARD_LIMIT_BYTES > 0:
+        # Allow some headroom over the hard limit for JSON overhead / re-encoding.
+        _state_max_body = max(SESSION_STATE_HARD_LIMIT_BYTES * 2, 32 * 1024 * 1024)
+        if cl > _state_max_body:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Request body too large ({cl / 1_048_576:.1f} MB). "
+                    f"Session state is capped at {SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB."
+                ),
+            )
     raw = await request.body()
-    if len(raw) > _state_max_body:
+    if _state_max_body is not None and len(raw) > _state_max_body:
         raise HTTPException(status_code=413, detail="Request body too large")
     try:
         body_dict = json.loads(raw or b"{}")
@@ -24985,22 +24995,16 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if payload.propfirm_challenge is not None:
             state["propfirm_challenge"] = payload.propfirm_challenge
 
-        # Size guard: `TradingSessionState.state_json` is the only per-user row
-        # that can grow unbounded (drawings + journal + per-instrument stats all
-        # live inside it). Without a cap a single user with thousands of
-        # drawings can balloon the row to tens of MB and eventually push
-        # Postgres / our 200 GB VPS disk over the edge. We enforce:
-        #   * HARD cap — reject any write that both exceeds the hard limit AND
-        #     grows the payload (shrinking saves always pass so a user who is
-        #     already over the line isn't locked out and can recover by
-        #     deleting drawings / trades).
-        #   * SOFT cap — pass-through, but surface `warning` in the response
-        #     so the UI can nudge the user before they hit the hard wall.
+        # Optional size caps (SESSION_STATE_*_LIMIT_BYTES > 0). Default: unlimited.
         new_state_json = json.dumps(state, separators=(",", ":"))
         new_size = len(new_state_json.encode("utf-8"))
         prev_size = len((st.state_json or "").encode("utf-8"))
         warning = None
-        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+        if (
+            SESSION_STATE_HARD_LIMIT_BYTES > 0
+            and new_size > SESSION_STATE_HARD_LIMIT_BYTES
+            and new_size > prev_size
+        ):
             raise HTTPException(
                 status_code=413,
                 detail=(
@@ -25010,7 +25014,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
                     "Remove some drawings or archive old trades, then try again."
                 ),
             )
-        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+        if SESSION_STATE_SOFT_LIMIT_BYTES > 0 and new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
             warning = (
                 f"Session state is {new_size / 1_048_576:.1f} MB. "
                 f"Soft limit is {SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB — "

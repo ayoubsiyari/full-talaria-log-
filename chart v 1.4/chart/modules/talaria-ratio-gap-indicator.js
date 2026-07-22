@@ -6,9 +6,19 @@
     'use strict';
 
     function parseHm(str) {
-        if (!str) return 0;
-        var parts = String(str).split(':');
-        return parseInt(parts[0], 10) + (parseInt(parts[1] || '0', 10) / 60);
+        var s = String(str || '').trim();
+        if (!s) return 0;
+        if (s.indexOf(':') >= 0) {
+            var parts = s.split(':');
+            return parseInt(parts[0], 10) + (parseInt(parts[1] || '0', 10) / 60);
+        }
+        // Pine-style "0930" / "1645"
+        if (/^\d{3,4}$/.test(s)) {
+            var padded = s.length === 3 ? ('0' + s) : s;
+            return parseInt(padded.slice(0, 2), 10) + parseInt(padded.slice(2), 10) / 60;
+        }
+        var n = parseFloat(s);
+        return Number.isFinite(n) ? n : 0;
     }
 
     // Reuse Intl formatters — creating one per bar freezes the UI on large datasets.
@@ -131,7 +141,10 @@
     }
 
     function parseSessionRange(str) {
-        var parts = String(str || '09:30-16:00').split('-');
+        var s = String(str || '09:30-16:00').trim();
+        var m = s.match(/^(\d{1,2}:?\d{2})\s*-\s*(\d{1,2}:?\d{2})$/);
+        if (m) return { start: parseHm(m[1]), end: parseHm(m[2]) };
+        var parts = s.split('-');
         return { start: parseHm(parts[0]), end: parseHm(parts[1] || parts[0]) };
     }
 
@@ -154,6 +167,7 @@
         var todayOpen = null;
         var ibHi = null; var ibLo = null; var orHi = null; var orLo = null;
         var sessStartIdx = null;
+        var sessEndIdx = null; // last bar inside the trading session (Pine drawLvl xy2)
         var prevSessDate = null;
         var prevInSess = false;
         var ibDone = false; var orDone = false;
@@ -183,7 +197,12 @@
             var newSess = inSess && (!prevInSess || newDate);
 
             if (newSess) {
-                if (curSess) { curSess.endIdx = i - 1; sessions.push(curSess); }
+                if (curSess) {
+                    if (curSess.endIdx == null || curSess.endIdx < curSess.startIdx) {
+                        curSess.endIdx = Math.max(curSess.startIdx, i - 1);
+                    }
+                    sessions.push(curSess);
+                }
                 if (curHi != null && curLo != null) ranges.push(curHi - curLo);
                 if (ranges.length > (Number(p.avgLen) || 14) + 1) ranges.shift();
                 prevHi = curHi;
@@ -193,11 +212,12 @@
                 ibHi = null; ibLo = null; orHi = null; orLo = null;
                 ibDone = false; orDone = false;
                 sessStartIdx = i;
+                sessEndIdx = i;
                 curHi = bars[i].h;
                 curLo = bars[i].l;
                 curCl = bars[i].c;
                 curSess = {
-                    startIdx: i, endIdx: n - 1,
+                    startIdx: i, endIdx: i,
                     prevHi: prevHi, prevLo: prevLo, prevCl: prevCl,
                     todayOpen: todayOpen, orHi: null, orLo: null, ibHi: null, ibLo: null
                 };
@@ -210,6 +230,14 @@
                     curLo = Math.min(curLo, bars[i].l);
                 }
                 curCl = bars[i].c;
+                sessEndIdx = i;
+                if (curSess) curSess.endIdx = i;
+            } else if (prevInSess && curSess) {
+                // Left the trading window — freeze span at last in-session bar.
+                curSess.endIdx = i - 1;
+                if (sessEndIdx == null || sessEndIdx < curSess.startIdx) {
+                    sessEndIdx = curSess.endIdx;
+                }
             }
 
             if (inIB && inSess) {
@@ -232,7 +260,10 @@
             prevInSess = inSess;
             prevSessDate = sd;
         }
-        if (curSess) sessions.push(curSess);
+        if (curSess) {
+            if (curSess.endIdx == null) curSess.endIdx = sessEndIdx != null ? sessEndIdx : curSess.startIdx;
+            sessions.push(curSess);
+        }
 
         var avgLen = Math.max(5, Number(p.avgLen) || 14);
         var yRange = ranges.length ? ranges[ranges.length - 1] : null;
@@ -254,15 +285,20 @@
         var orRatio = orDone && avgR > 0 && orHi != null && orLo != null ? (orHi - orLo) / avgR : null;
         var ibRatio = ibDone && avgR > 0 && ibHi != null && ibLo != null ? (ibHi - ibLo) / avgR : null;
 
-        var endIdx = n - 1;
+        // Pine drawLvl only extends while `inSess` — freeze at last in-session bar.
+        // Previously endIdx = n-1 drew levels through after-hours past session end.
         var startIdx = sessStartIdx != null ? sessStartIdx : 0;
+        var endIdx = sessEndIdx != null ? sessEndIdx : startIdx;
+        if (endIdx < startIdx) endIdx = startIdx;
+        // No active/completed session window in the data → do not paint orphan levels.
+        var sessionActive = sessStartIdx != null && sessEndIdx != null;
 
-        if (p.showPDR && p.pdrLines && prevHi != null) {
+        if (sessionActive && p.showPDR && p.pdrLines && prevHi != null) {
             pushLine(prevHi, p.cPDHi, p.sPDHi, p.wPrev, startIdx, endIdx, 'PDH');
             pushLine(prevLo, p.cPDLi, p.sPDLi, p.wPrev, startIdx, endIdx, 'PDL');
             pushLine(midPx, p.cMidi, p.sMidi, p.wPrev, startIdx, endIdx, 'MID');
         }
-        if (p.showPDR && p.showDead && prevHi != null && midPx != null) {
+        if (sessionActive && p.showPDR && p.showDead && prevHi != null && midPx != null) {
             var pdrR = prevHi - prevLo;
             var half = pdrR * (Number(p.deadPct) || 10) / 200;
             boxes.push({
@@ -271,36 +307,36 @@
                 fill: p.cDeadi
             });
         }
-        if (p.showGapSect && p.gapLines && prevCl != null) {
+        if (sessionActive && p.showGapSect && p.gapLines && prevCl != null) {
             pushLine(prevCl, p.cPCi, p.sPCi, p.wGap, startIdx, endIdx, 'Y-CLOSE (fill)');
             pushLine(g50Px, p.cG50i, p.sG50i, p.wGap, startIdx, endIdx, 'GAP 50%');
         }
-        if (p.showGapSect && p.showOpen && todayOpen != null) {
+        if (sessionActive && p.showGapSect && p.showOpen && todayOpen != null) {
             pushLine(todayOpen, p.cOPi, p.sOPi, p.wGap, startIdx, endIdx, 'OPEN');
         }
-        if (p.showOR && p.orLines && orDone && orHi != null) {
+        if (sessionActive && p.showOR && p.orLines && orDone && orHi != null) {
             pushLine(orHi, p.cORi, p.sORi, p.wOR, startIdx, endIdx, 'OR-H');
             pushLine(orLo, p.cORi, p.sORi, p.wOR, startIdx, endIdx, 'OR-L');
         }
-        if (p.showOR && p.showORTg && orDone && orHi != null) {
+        if (sessionActive && p.showOR && p.showORTg && orDone && orHi != null) {
             var orR = orHi - orLo;
             pushLine(orHi + 0.3 * orR, p.cOTgi, p.sOTgi, p.wOR, startIdx, endIdx, '+0.3× OR');
             pushLine(orHi + 0.5 * orR, p.cOTgi, p.sOTgi, p.wOR, startIdx, endIdx, '+0.5× OR');
             pushLine(orLo - 0.3 * orR, p.cOTgi, p.sOTgi, p.wOR, startIdx, endIdx, '−0.3× OR');
             pushLine(orLo - 0.5 * orR, p.cOTgi, p.sOTgi, p.wOR, startIdx, endIdx, '−0.5× OR');
         }
-        if (p.showIB && p.ibLines && ibDone && ibHi != null) {
+        if (sessionActive && p.showIB && p.ibLines && ibDone && ibHi != null) {
             pushLine(ibHi, p.cIBi, p.sIBi, p.wIB, startIdx, endIdx, 'IB-H');
             pushLine(ibLo, p.cIBi, p.sIBi, p.wIB, startIdx, endIdx, 'IB-L');
         }
-        if (p.showIB && p.showIBTg && ibDone && ibHi != null) {
+        if (sessionActive && p.showIB && p.showIBTg && ibDone && ibHi != null) {
             var ibR = ibHi - ibLo;
             pushLine(ibHi + 0.3 * ibR, p.cTgti, p.sTgti, p.wIB, startIdx, endIdx, '+0.3× IB');
             pushLine(ibHi + 0.5 * ibR, p.cTgti, p.sTgti, p.wIB, startIdx, endIdx, '+0.5× IB');
             pushLine(ibLo - 0.3 * ibR, p.cTgti, p.sTgti, p.wIB, startIdx, endIdx, '−0.3× IB');
             pushLine(ibLo - 0.5 * ibR, p.cTgti, p.sTgti, p.wIB, startIdx, endIdx, '−0.5× IB');
         }
-        if (p.showPDR && p.showPDRTg && openInside && prevHi != null) {
+        if (sessionActive && p.showPDR && p.showPDRTg && openInside && prevHi != null) {
             var pdrR2 = prevHi - prevLo;
             pushLine(prevHi + 0.3 * pdrR2, p.cPTgi, p.sPTgi, p.wPrev, startIdx, endIdx, '+0.3× PDR');
             pushLine(prevHi + 0.5 * pdrR2, p.cPTgi, p.sPTgi, p.wPrev, startIdx, endIdx, '+0.5× PDR');
@@ -413,6 +449,9 @@
             lines: lines.concat(histLines),
             boxes: boxes,
             labels: labels,
+            // Place labels at session end (not chart last bar) so after-hours
+            // doesn't drag text into the empty post-session area.
+            labelAnchorIndex: endIdx,
             labelMeta: {
                 size: p.lblSizeS,
                 lblOff: Number(p.lblOff) || 0,
@@ -523,11 +562,9 @@
                 }
                 var offBars = Number(lm.lblOff);
                 if (!Number.isFinite(offBars)) offBars = 2;
-                var staggerBars = Number(lm.stagger);
-                if (!Number.isFinite(staggerBars) || staggerBars < 1) staggerBars = 10;
                 var mergeK = Number(lm.mergeK) || 0;
                 var avgR = Number(lm.avgR) || 0;
-                // Price proximity → pixel band: labels closer than mergeK×avgR stagger.
+                // Price proximity → pixel band used only for vertical overlap pad.
                 var mergePx = 0;
                 if (mergeK > 0 && avgR > 0) {
                     mergePx = Math.abs(this.yScale(0) - this.yScale(mergeK * avgR));
@@ -539,46 +576,51 @@
                     placed.push({ text: lb.text, color: lb.color, y: y, tw: ctx.measureText(lb.text).width });
                 }, this);
                 placed.sort(function (a, b) { return a.y - b.y; });
-                // Anchor labels to the RIGHT of the last bar + lblOff bars (TradingView-like).
-                var lastBarX = Math.min(this.dataIndexToPixel(n - 1), plotR);
+                // Fixed X column at session end (+ lblOff), not the chart's last bar —
+                // otherwise after-hours bars drag labels past the trading session.
+                var anchorIdx = Number.isFinite(data.labelAnchorIndex)
+                    ? data.labelAnchorIndex
+                    : (n - 1);
+                anchorIdx = Math.max(0, Math.min(n - 1, Math.floor(anchorIdx)));
+                var lastBarX = this.dataIndexToPixel(anchorIdx);
+                if (!Number.isFinite(lastBarX)) lastBarX = plotR;
                 var maxTw = 0;
                 for (var mi = 0; mi < placed.length; mi++) maxTw = Math.max(maxTw, placed[mi].tw);
-                var anchorX = Math.min(lastBarX + 8 + offBars * candleSp, plotR - 2 - maxTw);
+                var anchorX = lastBarX + 8 + offBars * candleSp;
+                // Only pull left to stay inside the plot — never push further right
+                // just because margin.r / plotR grew.
+                if (anchorX + maxTw > plotR - 2) {
+                    anchorX = plotR - 2 - maxTw;
+                }
                 if (anchorX < plotL + 2) anchorX = plotL + 2;
-                var gap = Math.max(4, staggerBars * candleSp);
                 var lineH = fontSize + 4;
                 var vPad = Math.max(lineH / 2, mergePx / 2);
-                // Greedy 2-D placement: stagger right by lblStagger bars, then wrap down.
-                var rects = [];
-                function findConflict(x, y, tw) {
-                    for (var r = 0; r < rects.length; r++) {
-                        var q = rects[r];
-                        var vOverlap = Math.abs(y - (q.top + q.bottom) / 2) < (vPad + lineH / 2);
-                        var hOverlap = !(x >= q.right || x + tw <= q.left);
-                        if (vOverlap && hOverlap) return q;
+                // Vertical-only deconflict (same X for every label).
+                var usedYs = [];
+                function findFreeY(y0) {
+                    var y = y0;
+                    var guard = 0;
+                    while (guard++ < 80) {
+                        var clash = false;
+                        for (var u = 0; u < usedYs.length; u++) {
+                            if (Math.abs(y - usedYs[u]) < vPad + lineH / 2) {
+                                clash = true;
+                                break;
+                            }
+                        }
+                        if (!clash) {
+                            return Math.max(plotTop + 2, Math.min(plotBottom - 2, y));
+                        }
+                        y += lineH;
                     }
-                    return null;
+                    return Math.max(plotTop + 2, Math.min(plotBottom - 2, y0));
                 }
                 for (var li = 0; li < placed.length; li++) {
                     var it = placed[li];
-                    var tw = it.tw;
-                    var x = anchorX;
-                    var y = it.y;
-                    var guard = 0;
-                    while (guard++ < 60) {
-                        var c = findConflict(x, y, tw);
-                        if (!c) {
-                            if (x + tw <= plotR - 2) break;
-                            y += lineH; x = anchorX;
-                        } else {
-                            x = c.right + gap;
-                            if (x + tw > plotR - 2) { y += lineH; x = anchorX; }
-                        }
-                    }
-                    if (y > plotBottom - 2) y = plotBottom - 2;
+                    var y = findFreeY(it.y);
+                    usedYs.push(y);
                     ctx.fillStyle = it.color || '#ffffff';
-                    ctx.fillText(it.text, x, y);
-                    rects.push({ left: x, right: x + tw, top: y - lineH / 2, bottom: y + lineH / 2 });
+                    ctx.fillText(it.text, anchorX, y);
                 }
             }
 

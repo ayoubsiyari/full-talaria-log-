@@ -709,6 +709,14 @@ class ReplaySystem {
     /** D-009 (A): tick persists when an explicit interval is set; interval bounds step size only. */
     _shouldUseTickAnimation() {
         if (this.getPlaybackMode() !== 'tick') return false;
+        const orderCadenceMs = this._getOrderExecutionCadenceMs();
+        const rawMs = this._getRawBarPeriodMs();
+        if (Number.isFinite(orderCadenceMs) && Number.isFinite(rawMs)
+            && orderCadenceMs < rawMs * 0.92) {
+            // A synthetic 1D tick path cannot preserve the real ordering of retained
+            // 1m fills/SL/TP. Route this money path through exact fine bars instead.
+            return false;
+        }
         if (this._isReplayModePlayRoutingFixEnabled()) return true;
         return !this._hasExplicitReplayStepInterval();
     }
@@ -865,8 +873,21 @@ class ReplaySystem {
         return !!(o && String(o).trim() && String(o).toLowerCase() !== 'sync');
     }
 
+    /** Money-path cadence retained by OrderManager across display-TF switches. */
+    _getOrderExecutionCadenceMs() {
+        try {
+            const om = this.chart && this.chart.orderManager;
+            if (!om || typeof om.getOrderExecutionCadenceMs !== 'function') return null;
+            const ms = Number(om.getOrderExecutionCadenceMs());
+            return Number.isFinite(ms) && ms > 0 ? ms : null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
     /** D-016 / T8: unified finest-TF multichart replay cadence (default ON). */
     _isFinestTfReplayCadenceEnabled() {
+        if (this._getOrderExecutionCadenceMs() != null) return true;
         if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_FINEST_TF_REPLAY_CADENCE) {
             return false;
         }
@@ -885,17 +906,20 @@ class ReplaySystem {
     /** Milliseconds of market time per finest-TF clock tick (min TF across panels). */
     _getFinestReplayCadenceMs() {
         if (!this._isFinestTfReplayCadenceEnabled()) return null;
+        let minMs = this._getOrderExecutionCadenceMs();
         try {
-            if (typeof window.__multichartGrid.getFinestReplayCadenceMs === 'function') {
+            if (typeof window !== 'undefined' && window.__multichartGrid
+                && typeof window.__multichartGrid.getFinestReplayCadenceMs === 'function') {
                 const ms = Number(window.__multichartGrid.getFinestReplayCadenceMs());
-                if (Number.isFinite(ms) && ms > 0) return ms;
+                if (Number.isFinite(ms) && ms > 0) {
+                    minMs = minMs == null ? ms : Math.min(minMs, ms);
+                }
             }
         } catch (_e) { /* ignore */ }
         // Harness / pre-React fallback: enumerate MultichartManager charts.
         try {
             const mgr = typeof window !== 'undefined' ? window.__multichartManagerRef : null;
             if (mgr && mgr.charts && typeof mgr.charts.values === 'function') {
-                let minMs = null;
                 for (const entry of mgr.charts.values()) {
                     let ch = null;
                     if (entry && entry.host) {
@@ -911,10 +935,9 @@ class ReplaySystem {
                         minMs = minMs == null ? tfMs : Math.min(minMs, tfMs);
                     }
                 }
-                if (minMs != null) return minMs;
             }
         } catch (_e3) { /* ignore */ }
-        return this._getRawBarPeriodMs();
+        return minMs != null ? minMs : this._getRawBarPeriodMs();
     }
 
     /** Selected-panel speed anchor (explicit INTERVAL, focused tile TF, or host display TF). */
@@ -4355,6 +4378,11 @@ class ReplaySystem {
         const MIN_INTERVAL_MS = 16;
         let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
         let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
+        // Pending fills and SL/TP are money-path events. Never batch away fine
+        // source bars merely because the visible chart is coarse (1m order on 1D).
+        if (this.isPlaying && this._getOrderExecutionCadenceMs() != null) {
+            return { intervalMs, stepsPerTick: 1 };
+        }
         if (this.isPlaying
             && this._isFinestTfCandleCadenceFixEnabled()
             && this._isFinestTfCadenceSubStepActive()) {
