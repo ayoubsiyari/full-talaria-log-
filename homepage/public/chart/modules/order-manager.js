@@ -749,6 +749,9 @@ class OrderManager {
         this._draggingManagedOpenLineKind = null;
         this._draggingManagedOpenOrderId = null;
         this._dragFixedOpenLabelX = null;
+        if (typeof this._clearAllPreviewLabelXFreezes === 'function') {
+            this._clearAllPreviewLabelXFreezes();
+        }
         this._multichartPostDraftDragBusy(false);
 
         if (st.phase === 'open' && ctx?.line && ctx.chartCtx?.scales?.yScale && Number.isFinite(revert)) {
@@ -14935,14 +14938,8 @@ class OrderManager {
                         ? pending.chart.scales.yScale(entryPrice)
                         : null);
                 if (Number.isFinite(entryPrice) && entryPrice > 0 && Number.isFinite(entryY)) {
-                    // Temporarily allow full X reflow for the re-anchor pass.
-                    const wasDragging = this.isDraggingPreviewLine;
-                    this.isDraggingPreviewLine = false;
-                    try {
-                        this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryY);
-                    } finally {
-                        this.isDraggingPreviewLine = wasDragging;
-                    }
+                    // Keep isDraggingPreviewLine on so badge X stays frozen (Y-only).
+                    this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryY);
                 }
             }
             if (typeof this._syncPendingLimitStopConnector === 'function') {
@@ -15020,6 +15017,39 @@ class OrderManager {
      */
     _useEntryAnchoredTpSlBadges() {
         return !!(this.previewLines?.entry && !this.isMultiEntryMode);
+    }
+
+    /** Flatten every preview line/badge that owns a label group. */
+    _iterPreviewLabelLineData() {
+        if (!this.previewLines) return [];
+        return Object.values(this.previewLines)
+            .flatMap((v) => (Array.isArray(v) ? v : (v ? [v] : [])))
+            .filter((v) => v && typeof v === 'object' && v.labelGroup);
+    }
+
+    /**
+     * Capture left-edge X for every preview toast at drag start. Mid-drag lot/P&L text
+     * width changes otherwise recompute `ch.w - maxW` and shove Entry/SL right, then
+     * snap back on release — the "glitching" labels.
+     */
+    _freezeAllPreviewLabelXs() {
+        this._iterPreviewLabelLineData().forEach((ld) => {
+            try {
+                const tr = ld.labelGroup.attr('transform') || '';
+                const m = /translate\(([^,\s)]+)/.exec(tr);
+                const x0 = m ? parseFloat(m[1]) : NaN;
+                if (Number.isFinite(x0)) ld._dragFixedLabelX = x0;
+            } catch (_) { /* ignore */ }
+        });
+    }
+
+    _clearAllPreviewLabelXFreezes() {
+        this._iterPreviewLabelLineData().forEach((ld) => {
+            try {
+                delete ld._dragFixedLabelX;
+                delete ld._dragFixedYAxisX;
+            } catch (_) { /* ignore */ }
+        });
     }
 
     /** Y-axis price for multi-entry TP/SL badges (weighted avg across legs). */
@@ -20511,14 +20541,18 @@ class OrderManager {
                 self.isDraggingPreviewLine = true;
                 self._multichartPostDraftDragBusy(true);
 
-                // Freeze label X for the whole drag (same pattern as makePendingTargetDraggable).
-                try {
-                    const tr = lineData.labelGroup?.attr('transform') || '';
-                    const m = /translate\(([^,\s)]+)/.exec(tr);
-                    const x0 = m ? parseFloat(m[1]) : NaN;
-                    lineData._dragFixedLabelX = Number.isFinite(x0) ? x0 : null;
-                } catch (_) {
-                    lineData._dragFixedLabelX = null;
+                // Freeze EVERY preview toast X (not only the dragged line). Sibling Entry/SL
+                // labels were still right-edge realigned when lot/P&L text width changed.
+                self._freezeAllPreviewLabelXs();
+                if (!Number.isFinite(Number(lineData._dragFixedLabelX))) {
+                    try {
+                        const tr = lineData.labelGroup?.attr('transform') || '';
+                        const m = /translate\(([^,\s)]+)/.exec(tr);
+                        const x0 = m ? parseFloat(m[1]) : NaN;
+                        lineData._dragFixedLabelX = Number.isFinite(x0) ? x0 : null;
+                    } catch (_) {
+                        lineData._dragFixedLabelX = null;
+                    }
                 }
 
                 if (_orderSltpApplyOnReleaseFixEnabled()) {
@@ -21136,16 +21170,12 @@ class OrderManager {
                         } else if (self.previewLines.entry) {
                             const entryY = ch.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
+                            // Keep drag-freeze on — do not clear isDraggingPreviewLine for
+                            // badge reflow (that was recomputing Entry/SL X from live width).
                             if (self._useEntryAnchoredTpSlBadges()) {
                                 const ep = Number(self.previewLines.entry.price);
                                 if (Number.isFinite(ep) && ep > 0 && Number.isFinite(entryY)) {
-                                    const wasDraggingEntry = self.isDraggingPreviewLine;
-                                    self.isDraggingPreviewLine = false;
-                                    try {
-                                        self._syncEntryAnchoredPreviewBadgesWithEntry(ep, entryY);
-                                    } finally {
-                                        self.isDraggingPreviewLine = wasDraggingEntry;
-                                    }
+                                    self._syncEntryAnchoredPreviewBadgesWithEntry(ep, entryY);
                                 }
                             }
                         }
@@ -21311,10 +21341,7 @@ class OrderManager {
 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-                try {
-                    delete lineData._dragFixedLabelX;
-                    delete lineData._dragFixedYAxisX;
-                } catch (_) { /* ignore */ }
+                self._clearAllPreviewLabelXFreezes();
 
                 self._oiCommitPreviewSltpFromDragEnd(lineData);
                 if (lineData.label === 'SL' && _orderSltpApplyOnReleaseFixEnabled()) {
@@ -25994,6 +26021,43 @@ class OrderManager {
         // Separate badges from full lines - badges don't need horizontal alignment
         const badges = activeLines.filter(line => line.isBadge);
         const lines = activeLines.filter(line => !line.isBadge);
+
+        // During drag: Y-only. Recomputing sharedBaseX from live text widths shoves
+        // Entry/SL right when lot/P&L digits change, then snaps back on release.
+        if (this.isDraggingPreviewLine) {
+            lines.forEach((lineData) => {
+                const bbox = lineData.labelGroup?.node()?.getBBox?.();
+                if (bbox) {
+                    lineData.labelDimensions = { width: bbox.width + 10, height: bbox.height };
+                }
+                const height = lineData.labelDimensions?.height || 0;
+                const width = lineData.labelDimensions?.width || 0;
+                let fixedX = Number(lineData._dragFixedLabelX);
+                if (!Number.isFinite(fixedX)) {
+                    const tr = lineData.labelGroup.attr('transform') || '';
+                    const m = /translate\(([^,\s)]+)/.exec(tr);
+                    fixedX = m ? parseFloat(m[1]) : NaN;
+                    if (Number.isFinite(fixedX)) lineData._dragFixedLabelX = fixedX;
+                }
+                if (!Number.isFinite(fixedX)) return;
+                const stackYPx = (_orderEntryCloseHitTargetFixEnabled() && lineData.multiEntryLevelId != null)
+                    ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
+                    : (lineData._stackOffsetY || 0);
+                const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const translateY = yPixel - (height / 2);
+                lineData.labelGroup.attr('transform', `translate(${fixedX}, ${translateY})`);
+                if (lineData.line) {
+                    lineData.line.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (lineData.hitLine) {
+                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (stackYPx) lineData._stackOffsetY = stackYPx;
+                this.adjustPreviewLineForLabel(lineData, fixedX, width, height);
+            });
+            this._syncPendingLimitStopConnector();
+            return;
+        }
 
         const buckets = [];
         const bucketMap = new Map();

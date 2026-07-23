@@ -3290,7 +3290,14 @@ class ReplaySystem {
             0,
             Math.floor(numVisibleCandles * (Number.isFinite(this.replayRightPaddingRatio) ? this.replayRightPaddingRatio : 0.2))
         );
-        const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
+        const desiredGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
+        // Cap the reserved right gap to a fraction of the visible window.
+        // Without this, default rightOffsetCandles=15 can exceed numVisibleCandles
+        // when Place Order narrows the plot (or zoom is tight): targetVisibleCandles
+        // collapses to 1 → offsetX≈minOffset → playhead pinned LEFT with empty
+        // future to the right (the "open trade / order rail shifts chart left" bug).
+        const maxGapCandles = Math.max(0, Math.floor(numVisibleCandles * 0.35));
+        const rightGapCandles = Math.min(desiredGapCandles, maxGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
         // Anchor so the LAST loaded bar (the replay playhead — `data` is sliced to it)
