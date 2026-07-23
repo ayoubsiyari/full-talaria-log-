@@ -12385,7 +12385,7 @@ const TalariaV8bLive = () => {
   const [gotoItems, setGotoItems] = useState(() => loadGotoState().pinned);
   const [gotoAddType, setGotoAddType] = useState("datetime");
   const [gotoTab, setGotoTab] = useState("pinned");
-  const [gotoNewDate, setGotoNewDate] = useState("2009-01-09");
+  const [gotoNewDate, setGotoNewDate] = useState("");
   const [gotoNewTime, setGotoNewTime] = useState("07:00");
   const [gotoNewRepeat, setGotoNewRepeat] = useState("none");
   const [gotoNewPrice, setGotoNewPrice] = useState("");
@@ -12399,7 +12399,7 @@ const TalariaV8bLive = () => {
   const [gotoCalViewM, setGotoCalViewM] = useState(0);
   const [gotoCalMode,  setGotoCalMode]  = useState("days"); // "days" | "months" | "years"
   const [gotoCalYearBase, setGotoCalYearBase] = useState(2004); // start of 12-year grid
-  const [gotoDateInput, setGotoDateInput] = useState("09-Jan-2009");
+  const [gotoDateInput, setGotoDateInput] = useState("");
   const [gotoTimeInput, setGotoTimeInput] = useState("07:00");
   const [gotoPresets, setGotoPresets] = useState(() => loadGotoState().presets);
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
@@ -37476,7 +37476,7 @@ const TalariaV8bLive = () => {
                       const accent=tabAccentGoto(id);
                       const cnt=id==="pinned"?gotoItems.filter(x=>x.pinned).length:id==="preset"?gotoPresets.length:null;
                       return(
-                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
+                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const base=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";const d=new Date(base+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
                           style={{flex:1,padding:"9px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                             color:isA?accent:id==="pinned"?c.gold:c.ts,
                             fontSize:14,fontWeight:isA?700:500,
@@ -37603,7 +37603,17 @@ const TalariaV8bLive = () => {
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
                       const buildGotoPayload=(extra)=>{
-                        if(extra.type==="datetime") return {...extra,dateIso:gotoNewDate,repeat:gotoNewRepeat};
+                        if(extra.type==="datetime"||extra.type==="session"){
+                          const time=extra.time||gotoNewTime||"00:00";
+                          const hasDate=!!(gotoNewDate&&String(gotoNewDate).trim());
+                          // Time-only (no date): jump to this clock time on every use
+                          // (next occurrence from playhead), same as session presets.
+                          if(!hasDate){
+                            const repeat=gotoNewRepeat&&gotoNewRepeat!=="none"?gotoNewRepeat:"daily";
+                            return {type:"session",label:extra.label||time,time,repeat};
+                          }
+                          return {type:"datetime",label:extra.label,time,repeat:gotoNewRepeat,dateIso:gotoNewDate};
+                        }
                         if(extra.type==="price"){
                           const decimals=(settings.precision||"0.00000").split(".")[1]?.length||5;
                           const p=parseFloat(gotoNewPrice);
@@ -37623,7 +37633,7 @@ const TalariaV8bLive = () => {
                         setGotoItems(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId(),pinned:true}]);
                         setGotoNewName("");setGotoNewColor("#4A6AFF");
                         closePopup(setGotoOpen,"goto");
-                        executeGotoItem(payload,{fallbackDateIso:gotoNewDate});
+                        executeGotoItem(payload,payload.type==="session"?{}:{fallbackDateIso:gotoNewDate});
                       };
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
@@ -37637,7 +37647,7 @@ const TalariaV8bLive = () => {
                           {crTabs.map(({t,l})=>{
                             const isA=gotoAddType===t;
                             return(
-                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
+                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const base=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";const d=new Date(base+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
                                 style={{flex:1,padding:"8px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                                   color:isA?c.acL:c.ts,fontSize:13,fontWeight:isA?700:500,
                                   transition:"color 0.15s",whiteSpace:"nowrap"}}>
@@ -37675,18 +37685,22 @@ const TalariaV8bLive = () => {
                             const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                             const MONS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
                             const use12=settings.timeFormat==="12h";
+                            const timeOnly=!gotoNewDate;
                             // Format helpers
-                            const fmtDate=()=>{const d=new Date(gotoNewDate+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;};
+                            const fmtDate=()=>{if(!gotoNewDate)return "";const d=new Date(gotoNewDate+"T00:00:00");if(Number.isNaN(d.getTime()))return "";return `${String(d.getDate()).padStart(2,"0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;};
                             const fmtTime=(h,m)=>use12?`${String(h%12||12).padStart(2,"0")}:${String(m).padStart(2,"0")} ${h>=12?"PM":"AM"}`:`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
                             // Parse "DD-Mon-YYYY" → "YYYY-MM-DD", clamping day to valid range
                             const applyDate=(raw)=>{
-                              const m=raw.trim().match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
+                              const trimmed=raw.trim();
+                              if(!trimmed){setGotoNewDate("");return;}
+                              const m=trimmed.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                               if(!m)return;
                               const moIdx=MONS.indexOf(m[2].toLowerCase());
                               if(moIdx<0)return;
                               const yr4=parseInt(m[3]);
                               if(isNaN(yr4)||yr4<100)return; // need at least 3 digits to start reasoning
-                              const safeYr=yr4>=1900&&yr4<=2100?yr4:parseInt(gotoNewDate.split("-")[0]);
+                              const fallbackYr=parseInt((gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09").split("-")[0],10);
+                              const safeYr=yr4>=1900&&yr4<=2100?yr4:fallbackYr;
                               const maxDay=new Date(safeYr,moIdx+1,0).getDate();
                               const dayNum=Math.max(1,Math.min(parseInt(m[1])||1,maxDay));
                               const iso=`${safeYr}-${String(moIdx+1).padStart(2,"0")}-${String(dayNum).padStart(2,"0")}`;
@@ -37712,17 +37726,22 @@ const TalariaV8bLive = () => {
                             const inSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                             const chevSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                             return(<>
-                              {/* Date + Time on one row */}
+                              {/* Date + Time on one row — date optional (empty = time-only jump) */}
                               <div style={{display:"flex",gap:6,marginBottom:10}}>
                                 {/* Date field */}
                                 <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>DATE</div>
+                                  <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>DATE <span style={{fontWeight:500,opacity:0.75}}>(optional)</span></div>
                                   <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${gotoCalOpen?c.acL:c.brH}`,transition:"border-color 0.12s"}}>
-                                    <input value={gotoDateInput}
+                                    <input value={gotoDateInput} placeholder="Any day"
                                       onChange={e=>{setGotoDateInput(e.target.value);applyDate(e.target.value);}}
                                       onBlur={()=>setGotoDateInput(fmtDate())}
                                       onClick={e=>e.stopPropagation()}
                                       style={inSx}/>
+                                    {!!gotoNewDate&&(
+                                      <div onClick={e=>{e.stopPropagation();setGotoNewDate("");setGotoDateInput("");}}
+                                        title="Clear date (time only)"
+                                        style={{padding:"0 6px",cursor:"default",color:c.ts,fontSize:12,lineHeight:1,userSelect:"none"}}>×</div>
+                                    )}
                                     <div onClick={e=>{e.stopPropagation();if(gotoCalOpen){setGotoCalOpen(false);}else{const r=e.currentTarget.parentElement.getBoundingClientRect();const calW=224,calH=220;const rawL=r.left/Z,rawT=r.bottom/Z+6;setGotoCalPos({top:Math.min(rawT,window.innerHeight/Z-calH-8),left:Math.max(8,Math.min(rawL,window.innerWidth/Z-calW-8))});setGotoCalOpen(true);setGotoCalMode("days");setGotoTimeOpen(false);}}} style={chevSx}>
                                       <Chevron open={gotoCalOpen}/>
                                     </div>
@@ -37743,6 +37762,11 @@ const TalariaV8bLive = () => {
                                   </div>
                                 </div>
                               </div>
+                              {timeOnly&&(
+                                <div style={{fontSize:10,color:c.ts,marginBottom:8,lineHeight:1.35}}>
+                                  No date → jump to this time from the playhead (daily).
+                                </div>
+                              )}
                               {/* Repeat */}
                               <div style={{marginBottom:10}}>
                                 <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:5}}>REPEAT</div>
@@ -37759,11 +37783,11 @@ const TalariaV8bLive = () => {
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const auto=timeOnly?gotoNewTime:(()=>{const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});return `${d.getDate()} ${mon} ${d.getFullYear()}`;})();doAdd({type:timeOnly?"session":"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const auto=timeOnly?gotoNewTime:(()=>{const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});return `${d.getDate()} ${mon} ${d.getFullYear()}`;})();doAddAndGo({type:timeOnly?"session":"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -41510,8 +41534,9 @@ const TalariaV8bLive = () => {
       })()}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
-        const selDate=new Date(gotoNewDate+"T00:00:00");
-        const selY=selDate.getFullYear(), selMo=selDate.getMonth(), selD=selDate.getDate();
+        const calBase=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";
+        const selDate=new Date(calBase+"T00:00:00");
+        const selY=selDate.getFullYear(), selMo=selDate.getMonth(), selD=gotoNewDate?selDate.getDate():-1;
         const MON_LONG=["January","February","March","April","May","June","July","August","September","October","November","December"];
         const MON_SHORT=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         const DOW=["Su","Mo","Tu","We","Th","Fr","Sa"];

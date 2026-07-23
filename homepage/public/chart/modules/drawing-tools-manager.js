@@ -1288,6 +1288,27 @@ class DrawingToolsManager {
         // second copy parked at the pre-drag origin while points re-render.
         this._clearDrawingDragTransform(drawing);
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
+
+        // Fib: patch levels/zones/trend in the same frame as handles (rAF full
+        // re-render left levels frozen while only resize points moved).
+        const scales = {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale,
+            chart: this.chart,
+            labelsGroup: this.labelsGroup,
+        };
+        if (typeof drawing.patchPanZoomGeometry === 'function'
+            && (drawing.type === 'fibonacci-retracement'
+                || drawing.type === 'fibonacci-extension'
+                || drawing.type === 'fib-channel'
+                || drawing.type === 'trend-fib-extension')
+            && drawing.patchPanZoomGeometry(scales)) {
+            if (typeof drawing.updateHandlePositions === 'function') {
+                try { drawing.updateHandlePositions(scales); } catch (_) { /* ignore */ }
+            }
+            this._raiseResizeHandles(drawing);
+            return;
+        }
         this.scheduleRenderDrawing(drawing);
     }
 
@@ -13104,12 +13125,19 @@ class DrawingToolsManager {
             && CoordinateUtils.allowsExtrabarBarIndex(drawing.type);
         const hasExtrabarPoint = allowsExtrabar
             && Array.isArray(drawing.points)
-            && drawing.points.some((p) => p && Number.isFinite(p.x) && p.x > lastIdx + 0.001);
+            && drawing.points.some((p) => p && Number.isFinite(p.x)
+                && (p.x > lastIdx + 0.001 || p.x < -0.001));
         const hasFutureTimestamp = allowsExtrabar && this._drawingHasFutureTimestampAnchor(drawing);
         // After viewing a finer TF (e.g. 1m), bar indices are larger than the coarser
         // series length (e.g. 15m). Do not treat that as intentional extrabar placement —
         // always re-resolve from stored timestamps when anchors exist.
         if (!hasTimestampAnchors && hasExtrabarPoint) {
+            return;
+        }
+        // Local drag/place already authored extrabar corners + timestamps. Re-resolving
+        // against the short playhead prefix glues fib/line corners back on mouseup.
+        // TF switches pass tfRefresh and still re-resolve.
+        if (!options.tfRefresh && hasExtrabarPoint) {
             return;
         }
         // Replay extrabar: future timestamps resolve against the full-session series
