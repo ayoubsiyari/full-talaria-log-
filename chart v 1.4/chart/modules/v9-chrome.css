@@ -84,12 +84,11 @@ body {
     box-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
-/* V9 live top chrome: swipe/slide horizontally on phones & narrow tablets. */
+/* V9 live top chrome: desktop stays left/right aligned; swipe only when content overflows. */
 [data-v9-topbar="1"] {
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+    overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -99,8 +98,15 @@ body {
     height: 0;
     width: 0;
 }
-[data-v9-topbar="1"] > * {
+/* Keep controls full-width; the flex spacer collapses first so overflow can scroll. */
+[data-v9-topbar="1"] > *:not([aria-hidden="true"]) {
     flex-shrink: 0;
+}
+@media (pointer: fine) and (min-width: 900px) {
+    [data-v9-topbar="1"] {
+        overflow-x: hidden;
+        touch-action: manipulation;
+    }
 }
 
 .toolbar-support-link {

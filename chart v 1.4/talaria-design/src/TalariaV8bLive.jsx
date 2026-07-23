@@ -36214,7 +36214,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4, overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+      <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -36532,8 +36532,8 @@ const TalariaV8bLive = () => {
             <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }} />
           )}
         </button>
-        {/* Fixed gap (not flex:1) so the top bar can scroll horizontally on narrow devices. */}
-        <div style={{ width: 16, minWidth: 16, flex: "0 0 16px" }} aria-hidden="true"/>
+        {/* Grows on desktop (keeps Place Order / icons right-aligned); collapses on narrow so the bar can slide. */}
+        <div style={{ flex: "1 1 0", minWidth: 0 }} aria-hidden="true"/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}
           onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
