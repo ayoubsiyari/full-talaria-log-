@@ -9,6 +9,9 @@
  * Fix-A kill-switch (reconstruct per-tick full panel rebuilds):
  *   TALARIA_DISABLE_M19_PANEL_DIRTY_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  *
+ * Fix-B kill-switch (restore unbounded excursion arrays / today's persist bytes):
+ *   TALARIA_DISABLE_M19_EXCURSION_TAIL_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ *
  * Switches:
  *   (a) __TALARIA_DISABLE_M19_PANEL_DIRTY_V1
  *   (b) __TALARIA_DISABLE_M19_EXCURSION_TAIL_V1
@@ -31,18 +34,24 @@ const RS_PATH = path.join(__dirname, 'replay-system.js');
 const CHART_PATH = path.join(__dirname, '../chart.js');
 const FIXTURE_PATH = path.join(__dirname, 'm19-legacy-uncapped-session.fixture.json');
 const PANEL_KILL = String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
+const EXCURSION_KILL = String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
 const EVIDENCE_PATH = path.join(
   ROOT,
   PANEL_KILL
     ? 'docs/plan3/evidence/L2-M19-fix-a-panel-dirty-kill.json'
-    : 'docs/plan3/evidence/L2-M19-fix-a-panel-dirty-on.json',
+    : (EXCURSION_KILL
+      ? 'docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json'
+      : 'docs/plan3/evidence/L2-M19-fix-b-excursion-tail-on.json'),
 );
 const REPORT_PATH = path.join(
   ROOT,
   PANEL_KILL
     ? 'docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-KILL.md'
-    : 'docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-ON.md',
+    : (EXCURSION_KILL
+      ? 'docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-KILL.md'
+      : 'docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-ON.md'),
 );
+const EXCURSION_TAIL_MAX = 256;
 const BASELINE_BEFORE = {
   // Captured pre-Fix-A at HEAD 3eaa127bf / evidence L2-M19-progressive-session-soak-red.json
   panelRebuilds: 5500,
@@ -236,10 +245,11 @@ function installDomAndStorage() {
     requestAnimationFrame: global.requestAnimationFrame,
     cancelAnimationFrame: global.cancelAnimationFrame,
   };
-  // Kill-switch (a) from env for Fix-A discrimination; others default OFF.
+  // Kill-switches from env for Fix-A / Fix-B discrimination; others default OFF.
   window.__TALARIA_DISABLE_M19_PANEL_DIRTY_V1 =
     String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
-  window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 = false;
+  window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 =
+    String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
   window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 = false;
   window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = false;
   window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
@@ -1041,6 +1051,26 @@ async function runSoak({
         && counters.runtimePanelLite > 0),
   };
 
+  const excursionKill = !!window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1;
+  const maxOpenExcursion = Math.max(
+    0,
+    ...((endExcursion || []).map((e) => Math.max(
+      e.bar_close_r || 0,
+      e.bar_high_r || 0,
+      e.bar_low_r || 0,
+    ))),
+  );
+  const fixB = {
+    excursionKill,
+    maxOpenExcursion,
+    tailMax: EXCURSION_TAIL_MAX,
+    arraysBounded: !excursionKill && maxOpenExcursion > 0 && maxOpenExcursion <= EXCURSION_TAIL_MAX,
+    arraysUnbounded: excursionKill && maxOpenExcursion >= (warmup + measured) * 0.95,
+    pass: excursionKill
+      ? (maxOpenExcursion >= (warmup + measured) * 0.95)
+      : (maxOpenExcursion > 0 && maxOpenExcursion <= EXCURSION_TAIL_MAX),
+  };
+
   return {
     label,
     playing,
@@ -1059,6 +1089,7 @@ async function runSoak({
     persistFail,
     allFivePaths,
     fixA,
+    fixB,
     counters,
     startExcursion,
     windowExcursion,
@@ -1250,6 +1281,7 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
   }
 
   const fixAAllPass = canonicalRuns.every((r) => r.fixA && r.fixA.pass);
+  const fixBAllPass = canonicalRuns.every((r) => r.fixB && r.fixB.pass);
   const persistFails = canonicalRuns.filter((r) => r.persistFail).length;
   const slopeFails = canonicalRuns.filter((r) => r.frameSlopeFail && !(r.fixA && r.fixA.absFlat)).length;
 
@@ -1266,23 +1298,36 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
     };
   }
 
-  if (fixAAllPass && persistFails === CANONICAL_REPEATS) {
+  if (EXCURSION_KILL) {
+    if (fixBAllPass && fixAAllPass) {
+      return {
+        verdict: 'FIX-B-KILL-RED',
+        detail: `kill reconstructs unbounded open excursion max=${canonicalRuns[0]?.fixB?.maxOpenExcursion} (tailMax=${EXCURSION_TAIL_MAX})`,
+      };
+    }
     return {
-      verdict: 'FIX-A-GREEN',
-      detail: `M19-PERSIST-RED — Fix-A panel dirty pass 3/3; persist bound fail ${persistFails}/${CANONICAL_REPEATS} (b/c not in scope)`,
+      verdict: 'FIX-B-KILL-UNEXPECTED',
+      detail: `fixBAllPass=${fixBAllPass}; fixAAllPass=${fixAAllPass}; max=${canonicalRuns[0]?.fixB?.maxOpenExcursion}`,
+    };
+  }
+
+  if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
+    return {
+      verdict: 'FIX-B-GREEN',
+      detail: `M19-PERSIST-RED — Fix-A+B pass 3/3; open excursion ≤ ${EXCURSION_TAIL_MAX}; persist bound fail ${persistFails}/${CANONICAL_REPEATS} (c not in scope)`,
       persist: 'M19-PERSIST-RED',
     };
   }
-  if (fixAAllPass && persistFails === 0 && slopeFails === 0) {
+  if (fixAAllPass && fixBAllPass && persistFails === 0 && slopeFails === 0) {
     return {
-      verdict: 'FIX-A-GREEN',
-      detail: 'Fix-A and persist bounds both pass',
+      verdict: 'FIX-B-GREEN',
+      detail: 'Fix-A+B and persist bounds both pass',
       persist: 'M19-PERSIST-GREEN',
     };
   }
   return {
-    verdict: 'FIX-A-FAIL',
-    detail: `fixAAllPass=${fixAAllPass}; frameSlopeFails=${slopeFails}; persistFails=${persistFails}`,
+    verdict: 'FIX-B-FAIL',
+    detail: `fixAAllPass=${fixAAllPass}; fixBAllPass=${fixBAllPass}; frameSlopeFails=${slopeFails}; persistFails=${persistFails}; maxExcursion=${canonicalRuns[0]?.fixB?.maxOpenExcursion}`,
   };
 }
 
@@ -1382,8 +1427,10 @@ async function main() {
 
   const evidence = {
     row: 'L2-M19',
-    title: 'Progressive session degradation — Fix A panel dirty',
-    task: PANEL_KILL ? 'FIX-A-KILL-DISCRIMINATOR' : 'FIX-A-ON',
+    title: 'Progressive session degradation — Fix B excursion tail',
+    task: PANEL_KILL
+      ? 'FIX-A-KILL-DISCRIMINATOR'
+      : (EXCURSION_KILL ? 'FIX-B-KILL-DISCRIMINATOR' : 'FIX-B-ON'),
     startedAt: started,
     finishedAt,
     wallClock: { startedWallMs, finishedWallMs },
@@ -1404,6 +1451,7 @@ async function main() {
       RUNTIME_ABS_MAX,
       SESSION_ABS_MAX,
       FROZEN_NOW,
+      EXCURSION_TAIL_MAX,
       screenshotSentinelBytes: SCREENSHOT_SENTINEL.length,
     },
     futureSwitchesEncodedOnly: [
@@ -1449,10 +1497,18 @@ async function main() {
       canonical: canonicalRuns.map((r) => r.fixA),
       allPass: canonicalRuns.every((r) => r.fixA && r.fixA.pass),
     },
-    persist: verdict.persist || (PANEL_KILL ? null : 'M19-PERSIST-RED'),
+    fixB: {
+      kill: EXCURSION_KILL,
+      tailMax: EXCURSION_TAIL_MAX,
+      canonical: canonicalRuns.map((r) => r.fixB),
+      allPass: canonicalRuns.every((r) => r.fixB && r.fixB.pass),
+    },
+    persist: verdict.persist || (PANEL_KILL || EXCURSION_KILL ? null : 'M19-PERSIST-RED'),
     note: PANEL_KILL
       ? 'FIX-A kill-switch ON — expect ~5500 full panel rebuilds (discriminator RED). Persist not claimed.'
-      : 'FIX-A-GREEN — panel rebuilds bounded (0 full rebuilds on play ticks); M19-PERSIST-RED until fixes (b)/(c). UI contract proofs in m19-panel-dirty-runtime-contract.test.mjs.',
+      : (EXCURSION_KILL
+        ? 'FIX-B kill-switch ON — expect unbounded open excursion (~5500). D-030 OFF path; persist not claimed GREEN.'
+        : 'FIX-B-GREEN — open excursion arrays ≤ 256 with exact MFE/MAE peaks; Fix A held; M19-PERSIST-RED until Fix C. Contract: m19-excursion-tail-contract.test.mjs.'),
   };
 
   fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
@@ -1468,6 +1524,7 @@ async function main() {
     `- steady growth runtime/session: ${r.asserts.runtimeSteadyGrowth.growth} / ${r.asserts.sessionSteadyGrowth.growth}`,
     `- paths a–e exercised: ${r.allFivePaths}`,
     `- panel invocations: ${r.counters.updatePositionsPanel}; Fix-A bounded=${r.fixA?.panelBoundedByStructural} reconstruct=${r.fixA?.panelReconstructsPerTick}; marker redraws: ${r.counters.markerRedraw}; journal rows visited: ${r.counters.journalRowsVisited}`,
+    `- Fix-B excursion max=${r.fixB?.maxOpenExcursion} bounded=${r.fixB?.arraysBounded} unbounded=${r.fixB?.arraysUnbounded} (tailMax=${EXCURSION_TAIL_MAX})`,
     `- excursion end: ${JSON.stringify(r.endExcursion)}`,
     `- console calls/bytes: ${r.consoleCalls} / ${r.consoleArgBytes}`,
     `- base64 persist/innerHTML bytes: ${r.base64PersistBytes} / ${r.base64InnerHtmlBytes}`,
@@ -1475,20 +1532,21 @@ async function main() {
     `- frameSlopeFail=${r.frameSlopeFail} persistFail=${r.persistFail}`,
   ].join('\n')).join('\n\n');
 
-  const report = `# L2-M19 — Fix A panel dirty (${PANEL_KILL ? 'KILL' : 'ON'})
+  const report = `# L2-M19 — Fix B excursion tail (${EXCURSION_KILL ? 'KILL' : 'ON'})
 
 **Verdict:** ${verdict.verdict} — ${verdict.detail}
 
-**Persist:** ${verdict.persist || (PANEL_KILL ? 'n/a (kill discriminator)' : 'M19-PERSIST-RED')}
+**Persist:** ${verdict.persist || (PANEL_KILL || EXCURSION_KILL ? 'n/a (kill discriminator)' : 'M19-PERSIST-RED')}
 
-**Scope:** Fix A product path + soak acceptance. UI-contract proofs: \`m19-panel-dirty-runtime-contract.test.mjs\`. Not a live I15 UI verdict. Mechanisms B–E untouched.
+**Scope:** Fix B product path on Fix A base \`250086d7c\`. D-030/I16 contract: \`m19-excursion-tail-contract.test.mjs\`. No D/E or Fix C edits. Not a live I15 UI verdict.
 
 ## Commands / runtime
 
 \`\`\`
 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
-TALARIA_DISABLE_M19_PANEL_DIRTY_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
-node --test "chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs"
+TALARIA_DISABLE_M19_EXCURSION_TAIL_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+node --test --test-concurrency=1 "chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs"
+node "chart v 1.4/chart/modules/order-runtime-persist.test.mjs"
 \`\`\`
 
 - startedAt (wall): ${started}
@@ -1532,26 +1590,29 @@ ${neighbors.map((n) => `| ${n.label} | ${n.restore ? (n.pass ? 'RESTORE-PASS' : 
 - JSON: \`${path.relative(ROOT, EVIDENCE_PATH).replace(/\\\\/g, '/')}\`
 - Report: \`${path.relative(ROOT, REPORT_PATH).replace(/\\\\/g, '/')}\`
 - Fixture: \`chart v 1.4/chart/modules/m19-legacy-uncapped-session.fixture.json\`
-- UI contract: \`chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs\`
+- Fix B contract: \`chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs\`
 
 ## Switches
 
-(a) PANEL_DIRTY — Fix A (this run). (b)–(e) untouched / not claimed GREEN.
+(a) PANEL_DIRTY — held from Fix A. (b) EXCURSION_TAIL — this run. (c)–(e) untouched / not claimed GREEN.
 
 ## Binding
 
-I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 will bind (b)/(c).
+I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
 `;
 
   fs.writeFileSync(REPORT_PATH, report);
 
   // stdout summary for relay (console was redirected — use process.stdout)
   const fixAAllPass = canonicalRuns.every((r) => r.fixA && r.fixA.pass);
+  const fixBAllPass = canonicalRuns.every((r) => r.fixB && r.fixB.pass);
   const summary = {
     verdict: verdict.verdict,
     detail: verdict.detail,
     fixAAllPass,
+    fixBAllPass,
     panelKill: PANEL_KILL,
+    excursionKill: EXCURSION_KILL,
     baselineBeforeFixA: BASELINE_BEFORE,
     elapsedMs: Math.round(elapsedMs),
     headSha,
@@ -1570,19 +1631,23 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 will bind (b)/(c).
       allFivePaths: r.allFivePaths,
       journalCount: r.journalCount,
       panelRebuilds: r.counters.updatePositionsPanel,
+      maxOpenExcursion: r.fixB?.maxOpenExcursion,
+      fixB: r.fixB,
       fixA: r.fixA,
     })),
   };
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 
   restoreDate();
-  // Fix-A gate owns exit code when not in SETUP/PREMISE failure.
+  // Fix-A/B gates own exit code when not in SETUP/PREMISE failure.
   if (verdict.verdict === 'SETUP-FAIL' || verdict.verdict === 'BLOCKED' || verdict.verdict === 'PREMISE-MISMATCH') {
     process.exitCode = 2;
   } else if (PANEL_KILL) {
     process.exitCode = fixAAllPass ? 1 : 2; // kill reconstruct expected → exit 1 (RED-EXPECTED)
+  } else if (EXCURSION_KILL) {
+    process.exitCode = fixBAllPass ? 1 : 2; // kill unbounded expected → exit 1 (RED-EXPECTED)
   } else {
-    process.exitCode = fixAAllPass ? 0 : 1;
+    process.exitCode = (fixAAllPass && fixBAllPass) ? 0 : 1;
   }
 }
 

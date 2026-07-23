@@ -3718,6 +3718,243 @@ class OrderManager {
         };
     }
 
+    /**
+     * M19-B — excursion-array tail bound enabled unless kill-switch is set.
+     * Kill (restore unbounded append / today's persist bytes):
+     *   window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 = true
+     */
+    _m19ExcursionTailV1Enabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** Max retained samples per excursion series (in-trade and post-exit). */
+    _m19ExcursionTailMaxV1() {
+        return 256;
+    }
+
+    /**
+     * Authoritative sample count for bar_close_r (survives tail trim).
+     * Additive field bar_r_count; falls back to array length for legacy rows.
+     */
+    _m19ExcursionSampleCount(position) {
+        if (!position) return 0;
+        const n = Number(position.bar_r_count);
+        if (Number.isFinite(n) && n >= 0) return n;
+        return Array.isArray(position.bar_close_r) ? position.bar_close_r.length : 0;
+    }
+
+    _m19BumpPeak(position, peakKey, value) {
+        const v = Number.parseFloat(value);
+        if (!Number.isFinite(v)) return;
+        const prev = Number.parseFloat(position[peakKey]);
+        position[peakKey] = Number.isFinite(prev) ? Math.max(prev, v) : v;
+    }
+
+    /** Max of a numeric array (empty → -Infinity so peaks can win). */
+    _m19MaxNumericArray(arr) {
+        if (!Array.isArray(arr) || !arr.length) return Number.NEGATIVE_INFINITY;
+        let m = Number.NEGATIVE_INFINITY;
+        for (let i = 0; i < arr.length; i++) {
+            const v = Number.parseFloat(arr[i]);
+            if (Number.isFinite(v) && v > m) m = v;
+        }
+        return m;
+    }
+
+    /**
+     * Authoritative series max: max(live tail, additive peak, lossless archive).
+     * Post-exit and in-trade metric consumers must use this (not bare Math.max(tail)).
+     */
+    _m19MaxExcursionR(position, seriesKey, peakKey) {
+        if (!position) return 0;
+        const tailMax = this._m19MaxNumericArray(position[seriesKey]);
+        const archiveMax = this._m19MaxNumericArray(position[`${seriesKey}_archive`]);
+        const peak = Number.parseFloat(position[peakKey]);
+        const peakMax = Number.isFinite(peak) ? peak : Number.NEGATIVE_INFINITY;
+        const m = Math.max(tailMax, archiveMax, peakMax);
+        return Number.isFinite(m) && m !== Number.NEGATIVE_INFINITY ? m : 0;
+    }
+
+    /**
+     * Live-tail slice only (canonical bar_* storage — never archive‖tail).
+     */
+    _m19LiveExcursionTail(position, seriesKey) {
+        return Array.isArray(position?.[seriesKey]) ? position[seriesKey].slice() : [];
+    }
+
+    /**
+     * Reconstruct archive ‖ live tail (disjoint partition — no dups).
+     * While legacy_pending > 0 this equals full history; after the legacy
+     * boundary is exhausted, archive is frozen and only the live tail rolls.
+     */
+    _m19ReconstructExcursionSeries(position, seriesKey) {
+        const archive = Array.isArray(position?.[`${seriesKey}_archive`])
+            ? position[`${seriesKey}_archive`]
+            : [];
+        const tail = Array.isArray(position?.[seriesKey]) ? position[seriesKey] : [];
+        return archive.concat(tail);
+    }
+
+    /**
+     * Trade-path read: full series for a single consumer call (charts/export).
+     * Does not mutate storage. Prefer `_m19ProjectTradeExcursionFields` when
+     * projecting a whole row (idempotent, strips archives from the view).
+     */
+    _m19ExtractExcursionSeries(position, seriesKey) {
+        if (!position) return [];
+        if (Array.isArray(position[`${seriesKey}_archive`]) && position[`${seriesKey}_archive`].length) {
+            return this._m19ReconstructExcursionSeries(position, seriesKey);
+        }
+        return this._m19LiveExcursionTail(position, seriesKey);
+    }
+
+    /**
+     * Persist / journal canonical shape: bar_* = live tail only; *_archive =
+     * preserved prefix. Never writes reconstructed arrays into bar_*.
+     */
+    _m19AssignCanonicalExcursionStorage(target, source) {
+        if (!target || !source || typeof target !== 'object') return target;
+        const seriesKeys = [
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        ];
+        for (let i = 0; i < seriesKeys.length; i++) {
+            const k = seriesKeys[i];
+            if (Array.isArray(source[k])) {
+                target[k] = source[k].slice();
+            } else if (target[k] == null) {
+                target[k] = [];
+            }
+            const archKey = `${k}_archive`;
+            if (source[archKey] != null && target[archKey] == null) {
+                target[archKey] = Array.isArray(source[archKey])
+                    ? source[archKey].slice()
+                    : source[archKey];
+            }
+        }
+        [
+            'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+            'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak',
+            'post_exit_bar_r_count', 'post_exit_bar_r_legacy_pending',
+        ].forEach((k) => {
+            if (source[k] != null && target[k] == null) {
+                target[k] = source[k];
+            }
+        });
+        return target;
+    }
+
+    /**
+     * Consumer projection (export/modal): reconstruct archive ‖ tail into bar_*
+     * exactly once and drop *_archive from the view so P(P(row)) === P(row).
+     * Never used for persist — storage stays disjoint (live + archive).
+     */
+    _m19ProjectTradeExcursionFields(trade) {
+        if (!trade || typeof trade !== 'object') return trade;
+        const keys = [
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+        ];
+        const out = { ...trade };
+        for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            const archKey = `${k}_archive`;
+            if (Array.isArray(trade[k]) || Array.isArray(trade[archKey])) {
+                out[k] = this._m19ExtractExcursionSeries(trade, k);
+            }
+            // Disjoint consumer view: never keep reconstructed bar_* next to archive.
+            if (Object.prototype.hasOwnProperty.call(out, archKey)) {
+                delete out[archKey];
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Keep only the newest `max` samples on the live arrays.
+     *
+     * First activation: archive the dropped prefix and set `pendingKey` to the
+     * count of pre-activation (legacy) samples still sitting in the live tail.
+     *
+     * While pending > 0: continue archiving only those legacy-tail samples as
+     * they roll off (no dups). After pending hits 0: archive growth stops and
+     * further drops update peaks only — live tail rolls at 256.
+     */
+    _m19ArchiveAndBoundExcursionSeries(position, keys, peakHighKey, peakLowKey, max, pendingKey) {
+        if (!position || !Number.isFinite(max) || max < 1) return;
+        const primary = position[keys[0]];
+        if (!Array.isArray(primary) || primary.length <= max) return;
+        const drop = primary.length - max;
+        const archiveKey0 = `${keys[0]}_archive`;
+        const firstActivation = !Array.isArray(position[archiveKey0]);
+
+        if (firstActivation) {
+            // Samples that existed before this append (exclude the brand-new tip).
+            const preCount = Math.max(0, primary.length - 1);
+            for (let k = 0; k < keys.length; k++) {
+                const liveKey = keys[k];
+                const archiveKey = `${liveKey}_archive`;
+                const arr = position[liveKey];
+                position[archiveKey] = [];
+                if (!Array.isArray(arr) || arr.length <= max) continue;
+                for (let i = 0; i < drop; i++) {
+                    position[archiveKey].push(arr[i]);
+                }
+            }
+            // Legacy still in the live tail after this trim.
+            position[pendingKey] = Math.max(0, preCount - drop);
+        } else {
+            let pending = Number(position[pendingKey]);
+            if (!Number.isFinite(pending) || pending < 0) pending = 0;
+            const archiveLegacy = Math.min(drop, pending);
+
+            if (archiveLegacy > 0) {
+                for (let k = 0; k < keys.length; k++) {
+                    const arr = position[keys[k]];
+                    const archiveKey = `${keys[k]}_archive`;
+                    if (!Array.isArray(position[archiveKey])) position[archiveKey] = [];
+                    if (!Array.isArray(arr)) continue;
+                    for (let i = 0; i < archiveLegacy && i < arr.length; i++) {
+                        position[archiveKey].push(arr[i]);
+                    }
+                }
+                pending -= archiveLegacy;
+                position[pendingKey] = pending;
+            }
+
+            // Non-legacy drops (or all drops once pending is exhausted) → peaks only.
+            const peakFrom = archiveLegacy;
+            const highArr = position[keys[1]];
+            const lowArr = position[keys[2]];
+            if (Array.isArray(highArr)) {
+                for (let i = peakFrom; i < drop && i < highArr.length; i++) {
+                    this._m19BumpPeak(position, peakHighKey, highArr[i]);
+                }
+            }
+            if (Array.isArray(lowArr)) {
+                for (let i = peakFrom; i < drop && i < lowArr.length; i++) {
+                    this._m19BumpPeak(position, peakLowKey, lowArr[i]);
+                }
+            }
+        }
+
+        for (let k = 0; k < keys.length; k++) {
+            const arr = position[keys[k]];
+            if (Array.isArray(arr) && arr.length > max) {
+                position[keys[k]] = arr.slice(arr.length - max);
+            }
+        }
+        this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[`${keys[1]}_archive`]));
+        this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[keys[1]]));
+        this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[`${keys[2]}_archive`]));
+        this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[keys[2]]));
+    }
+
     _appendExcursionSnapshot(position, candle, isPostExit = false) {
         const rValues = this._calculateExcursionRValues(position, candle);
         if (!rValues) return;
@@ -3736,6 +3973,46 @@ class OrderManager {
             position.post_exit_bar_close_r.push(rValues.bar_close_r);
             position.post_exit_bar_high_r.push(rValues.bar_high_r);
             position.post_exit_bar_low_r.push(rValues.bar_low_r);
+        }
+
+        // M19-B: archive+bound tails + running peaks/counts (kill-switch = no-op).
+        if (!this._m19ExcursionTailV1Enabled()) return;
+        if (Number.isFinite(Number(position.bar_r_count))) {
+            position.bar_r_count = Number(position.bar_r_count) + 1;
+        } else {
+            // After push / before bound: archive + live == full lossless history.
+            const archLen = Array.isArray(position.bar_close_r_archive)
+                ? position.bar_close_r_archive.length : 0;
+            position.bar_r_count = archLen + position.bar_close_r.length;
+        }
+        this._m19BumpPeak(position, 'bar_high_r_peak', rValues.bar_high_r);
+        this._m19BumpPeak(position, 'bar_low_r_peak', rValues.bar_low_r);
+        this._m19ArchiveAndBoundExcursionSeries(
+            position,
+            ['bar_close_r', 'bar_high_r', 'bar_low_r'],
+            'bar_high_r_peak',
+            'bar_low_r_peak',
+            this._m19ExcursionTailMaxV1(),
+            'bar_r_legacy_pending',
+        );
+        if (isPostExit) {
+            if (Number.isFinite(Number(position.post_exit_bar_r_count))) {
+                position.post_exit_bar_r_count = Number(position.post_exit_bar_r_count) + 1;
+            } else {
+                const peArch = Array.isArray(position.post_exit_bar_close_r_archive)
+                    ? position.post_exit_bar_close_r_archive.length : 0;
+                position.post_exit_bar_r_count = peArch + position.post_exit_bar_close_r.length;
+            }
+            this._m19BumpPeak(position, 'post_exit_bar_high_r_peak', rValues.bar_high_r);
+            this._m19BumpPeak(position, 'post_exit_bar_low_r_peak', rValues.bar_low_r);
+            this._m19ArchiveAndBoundExcursionSeries(
+                position,
+                ['post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r'],
+                'post_exit_bar_high_r_peak',
+                'post_exit_bar_low_r_peak',
+                this._m19ExcursionTailMaxV1(),
+                'post_exit_bar_r_legacy_pending',
+            );
         }
     }
 
@@ -3832,12 +4109,36 @@ class OrderManager {
             if (bc?.length) target.bar_close_r = bc;
         }
 
-        const maxBar = (arr) => {
-            if (!Array.isArray(arr) || !arr.length) return 0;
-            return Math.max(...arr.map((v) => Number.parseFloat(v)).filter(Number.isFinite));
+        // M19-B: max(live tail, peak, lossless archive) — never drop history from scalars.
+        const seriesMax = (seriesKey, peakKey) => {
+            const src = {
+                [seriesKey]: target[seriesKey]?.length ? target[seriesKey] : position[seriesKey],
+                [`${seriesKey}_archive`]: target[`${seriesKey}_archive`]?.length
+                    ? target[`${seriesKey}_archive`]
+                    : position[`${seriesKey}_archive`],
+                [peakKey]: target[peakKey] != null ? target[peakKey] : position[peakKey],
+            };
+            return this._m19MaxExcursionR(src, seriesKey, peakKey);
         };
-        const mfeFromBars = maxBar(target.bar_high_r);
-        const maeMagFromBars = maxBar(target.bar_low_r);
+        const mfeFromBars = seriesMax('bar_high_r', 'bar_high_r_peak');
+        const maeMagFromBars = seriesMax('bar_low_r', 'bar_low_r_peak');
+        const copyIfMissing = (key) => {
+            if (target[key] == null && position[key] != null) target[key] = position[key];
+        };
+        copyIfMissing('bar_high_r_peak');
+        copyIfMissing('bar_low_r_peak');
+        copyIfMissing('bar_r_count');
+        copyIfMissing('bar_r_legacy_pending');
+        copyIfMissing('bar_close_r_archive');
+        copyIfMissing('bar_high_r_archive');
+        copyIfMissing('bar_low_r_archive');
+        copyIfMissing('post_exit_bar_high_r_peak');
+        copyIfMissing('post_exit_bar_low_r_peak');
+        copyIfMissing('post_exit_bar_r_count');
+        copyIfMissing('post_exit_bar_r_legacy_pending');
+        copyIfMissing('post_exit_bar_close_r_archive');
+        copyIfMissing('post_exit_bar_high_r_archive');
+        copyIfMissing('post_exit_bar_low_r_archive');
         const priceSource = inTradeOnly ? {
             ...position,
             mfe: position.in_trade_mfe ?? position.mfe,
@@ -5486,31 +5787,9 @@ class OrderManager {
             }
         }
 
-        const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
-        if (!entry.bar_close_r) {
-            const bc = copyArr(position.bar_close_r);
-            if (bc) entry.bar_close_r = bc;
-        }
-        if (!entry.bar_high_r) {
-            const bh = copyArr(position.bar_high_r);
-            if (bh) entry.bar_high_r = bh;
-        }
-        if (!entry.bar_low_r) {
-            const bl = copyArr(position.bar_low_r);
-            if (bl) entry.bar_low_r = bl;
-        }
-        if (!entry.post_exit_bar_close_r) {
-            const pec = copyArr(position.post_exit_bar_close_r);
-            if (pec) entry.post_exit_bar_close_r = pec;
-        }
-        if (!entry.post_exit_bar_high_r) {
-            const peh = copyArr(position.post_exit_bar_high_r);
-            if (peh) entry.post_exit_bar_high_r = peh;
-        }
-        if (!entry.post_exit_bar_low_r) {
-            const pel = copyArr(position.post_exit_bar_low_r);
-            if (pel) entry.post_exit_bar_low_r = pel;
-        }
+        // Canonical disjoint storage: bar_* = live tail; *_archive = prefix.
+        // Never materialize reconstructed series into bar_* for persist.
+        this._m19AssignCanonicalExcursionStorage(entry, position);
 
         this._finalizeExcursionScalars(entry, position);
 
@@ -8685,7 +8964,8 @@ class OrderManager {
             instruments,
             per_instrument_stats: this.buildPerInstrumentStats(),
             journal_by_ticker: this.groupJournalByTicker(),
-            trades: this.tradeJournal
+            // Archive-aware projection so historical excursion charts/export see full series.
+            trades: (this.tradeJournal || []).map((t) => this._m19ProjectTradeExcursionFields(t)),
         };
     }
 
@@ -9322,9 +9602,9 @@ class OrderManager {
             }
         }
         const _modalExcursion = closeData ? this._finalizeExcursionScalars({
-            bar_high_r: order.bar_high_r,
-            bar_low_r: order.bar_low_r,
-            bar_close_r: order.bar_close_r
+            bar_high_r: this._m19ExtractExcursionSeries(order, 'bar_high_r'),
+            bar_low_r: this._m19ExtractExcursionSeries(order, 'bar_low_r'),
+            bar_close_r: this._m19ExtractExcursionSeries(order, 'bar_close_r'),
         }, order) : null;
         const modalMfeR = _modalExcursion?.mfe_r != null ? `${Number(_modalExcursion.mfe_r).toFixed(2)}R` : '—';
         const modalMaeR = _modalExcursion?.mae_r != null ? `${Number(_modalExcursion.mae_r).toFixed(2)}R` : '—';
@@ -9926,12 +10206,13 @@ class OrderManager {
             maeTime: order.maeTime || order.openTime, // Timestamp when MAE occurred
             highestPrice: order.highestPrice || order.openPrice,
             lowestPrice: order.lowestPrice || order.openPrice,
-            bar_close_r: Array.isArray(order.bar_close_r) ? order.bar_close_r.slice() : [],
-            bar_high_r: Array.isArray(order.bar_high_r) ? order.bar_high_r.slice() : [],
-            bar_low_r: Array.isArray(order.bar_low_r) ? order.bar_low_r.slice() : [],
-            post_exit_bar_close_r: Array.isArray(order.post_exit_bar_close_r) ? order.post_exit_bar_close_r.slice() : [],
-            post_exit_bar_high_r: Array.isArray(order.post_exit_bar_high_r) ? order.post_exit_bar_high_r.slice() : [],
-            post_exit_bar_low_r: Array.isArray(order.post_exit_bar_low_r) ? order.post_exit_bar_low_r.slice() : [],
+            // Canonical storage: live tails only (archives/peaks via enrich assign).
+            bar_close_r: this._m19LiveExcursionTail(order, 'bar_close_r'),
+            bar_high_r: this._m19LiveExcursionTail(order, 'bar_high_r'),
+            bar_low_r: this._m19LiveExcursionTail(order, 'bar_low_r'),
+            post_exit_bar_close_r: this._m19LiveExcursionTail(order, 'post_exit_bar_close_r'),
+            post_exit_bar_high_r: this._m19LiveExcursionTail(order, 'post_exit_bar_high_r'),
+            post_exit_bar_low_r: this._m19LiveExcursionTail(order, 'post_exit_bar_low_r'),
             
             // Position Details
             quantity: order.quantity,
@@ -28254,8 +28535,8 @@ class OrderManager {
                 post_exit_bar_close_r: [],
                 post_exit_bar_high_r: [],
                 post_exit_bar_low_r: [],
-                mfe_r: Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0 ? Math.max(...position.bar_high_r) : 0,
-                mae_r: Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0 ? Math.max(...position.bar_low_r) : 0,
+                mfe_r: this._m19MaxExcursionR(position, 'bar_high_r', 'bar_high_r_peak'),
+                mae_r: this._m19MaxExcursionR(position, 'bar_low_r', 'bar_low_r_peak'),
                 rMultiple: position.riskAmount ? (pnl / position.riskAmount) : null,
                 riskAmount: position.riskAmount || 0,
                 riskPerTrade: position.riskAmount || 0,
@@ -28632,10 +28913,13 @@ class OrderManager {
                 const _cpBars = [5, 10, 15, 20, 25, 30, 40, 50];
                 if (_cpBars.includes(position.postExitProcessedCandles)) {
                     if (!Array.isArray(position.post_checkpoints)) position.post_checkpoints = [];
-                    const _peHighR = Array.isArray(position.post_exit_bar_high_r) && position.post_exit_bar_high_r.length
-                        ? Math.max(...position.post_exit_bar_high_r) : null;
-                    const _peLowR = Array.isArray(position.post_exit_bar_low_r) && position.post_exit_bar_low_r.length
-                        ? Math.max(...position.post_exit_bar_low_r) : null;
+                    // M19-B: max(live post-exit tail, peak[, archive]) — early peaks must survive trim.
+                    const _peHighR = this._m19MaxExcursionR(
+                        position, 'post_exit_bar_high_r', 'post_exit_bar_high_r_peak',
+                    );
+                    const _peLowR = this._m19MaxExcursionR(
+                        position, 'post_exit_bar_low_r', 'post_exit_bar_low_r_peak',
+                    );
                     const _peCloseR = Array.isArray(position.post_exit_bar_close_r) && position.post_exit_bar_close_r.length
                         ? position.post_exit_bar_close_r[position.post_exit_bar_close_r.length - 1] : null;
                     position.post_checkpoints.push({
@@ -28700,18 +28984,33 @@ class OrderManager {
                 this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
+                // M19-B additive archive/peaks (I16 — lossless history alongside bounded tails).
+                [
+                    'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+                    'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+                    'bar_high_r_peak', 'bar_low_r_peak', 'bar_r_count', 'bar_r_legacy_pending',
+                    'post_exit_bar_high_r_peak', 'post_exit_bar_low_r_peak', 'post_exit_bar_r_count',
+                    'post_exit_bar_r_legacy_pending',
+                ].forEach((k) => {
+                    if (position[k] != null) {
+                        this.tradeJournal[journalIndex][k] = Array.isArray(position[k])
+                            ? position[k].slice()
+                            : position[k];
+                    }
+                });
                 this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position, { inTradeOnly: true });
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_anchor_time = position.post_exit_anchor_time ?? null;
 
-                // M4-3: derived metrics
-                const _inTradeMfeR = Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0
-                    ? Math.max(...position.bar_high_r) : 0;
-                const _postMfeR = Array.isArray(position.post_exit_bar_high_r) && position.post_exit_bar_high_r.length > 0
-                    ? Math.max(...position.post_exit_bar_high_r) : 0;
-                const _postMaeR = Array.isArray(position.post_exit_bar_low_r) && position.post_exit_bar_low_r.length > 0
-                    ? Math.max(...position.post_exit_bar_low_r) : 0;
+                // M4-3: derived metrics — M19-B max(tail, peak[, archive]) for every post-exit consumer.
+                const _inTradeMfeR = this._m19MaxExcursionR(position, 'bar_high_r', 'bar_high_r_peak');
+                const _postMfeR = this._m19MaxExcursionR(
+                    position, 'post_exit_bar_high_r', 'post_exit_bar_high_r_peak',
+                );
+                const _postMaeR = this._m19MaxExcursionR(
+                    position, 'post_exit_bar_low_r', 'post_exit_bar_low_r_peak',
+                );
                 const _totalMfeR = Math.max(_inTradeMfeR, _postMfeR); // best R across full in-trade + post window
                 const _actualRR = this.tradeJournal[journalIndex].rMultiple ?? this.tradeJournal[journalIndex].actual_rr_net ?? null;
                 const _captureRatio = (Number.isFinite(_actualRR) && _totalMfeR > 0)
@@ -30673,7 +30972,7 @@ class OrderManager {
 
             const _exitReasonMap = { 'TP-PARTIAL': 'TP_HIT', 'TP': 'TP_HIT', 'SL': 'SL_HIT', 'BE': 'BE_HIT', 'MANUAL': 'MANUAL', 'STOP_OUT': 'STOP_OUT' };
             const _exitReason = _exitReasonMap[hitType] || String(hitType || 'MANUAL');
-            const _barAtExit = Array.isArray(position.bar_close_r) ? position.bar_close_r.length : 0;
+            const _barAtExit = this._m19ExcursionSampleCount(position);
             position.partialCloses.push({
                 closePrice: closePrice,
                 closeTime: closeTime,
@@ -31369,9 +31668,9 @@ class OrderManager {
                     // R-ARRAY ACCURACY DATA
                     array_base_price: position.array_base_price ?? position.openPrice,
                     entry_offset_r: position.entry_offset_r ?? 0,
-                    // M5 SCHEMA FIELDS
-                    final_exit_bar: Array.isArray(position.bar_close_r) ? position.bar_close_r.length : null,
-                    total_bars_held: Array.isArray(position.bar_close_r) ? position.bar_close_r.length : null,
+                    // M5 SCHEMA FIELDS (M19-B: prefer bar_r_count so trim does not shrink held bars)
+                    final_exit_bar: this._m19ExcursionSampleCount(position) || null,
+                    total_bars_held: this._m19ExcursionSampleCount(position) || null,
                     balance_at_exit: this.balance,
                     balance_at_creation: position.balance_at_creation ?? null,
                     planned_risk_pct: (() => {

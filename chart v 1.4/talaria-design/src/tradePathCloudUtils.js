@@ -16,21 +16,82 @@ export function parseNumArray(val) {
   return [];
 }
 
+function pickRawField(j, snake, camel) {
+  if (!j || typeof j !== "object") return undefined;
+  if (j[snake] != null && j[snake] !== "") return j[snake];
+  if (j[camel] != null && j[camel] !== "") return j[camel];
+  return undefined;
+}
+
+/**
+ * Six excursion series keys: snake + camel for live tail and archive prefix.
+ * Consumer reconstructs archive ‖ tail exactly once when archive is present.
+ */
+export const EXCURSION_SERIES_KEYS = [
+  {
+    snake: "bar_close_r",
+    camel: "barCloseR",
+    archSnake: "bar_close_r_archive",
+    archCamel: "barCloseRArchive",
+  },
+  {
+    snake: "bar_high_r",
+    camel: "barHighR",
+    archSnake: "bar_high_r_archive",
+    archCamel: "barHighRArchive",
+  },
+  {
+    snake: "bar_low_r",
+    camel: "barLowR",
+    archSnake: "bar_low_r_archive",
+    archCamel: "barLowRArchive",
+  },
+  {
+    snake: "post_exit_bar_close_r",
+    camel: "postExitBarCloseR",
+    archSnake: "post_exit_bar_close_r_archive",
+    archCamel: "postExitBarCloseRArchive",
+  },
+  {
+    snake: "post_exit_bar_high_r",
+    camel: "postExitBarHighR",
+    archSnake: "post_exit_bar_high_r_archive",
+    archCamel: "postExitBarHighRArchive",
+  },
+  {
+    snake: "post_exit_bar_low_r",
+    camel: "postExitBarLowR",
+    archSnake: "post_exit_bar_low_r_archive",
+    archCamel: "postExitBarLowRArchive",
+  },
+];
+
+/**
+ * Resolve one excursion series: archive ‖ live tail when archive present;
+ * otherwise live/projected/legacy bar_* unchanged. Never mutates `j`.
+ */
+export function resolveExcursionSeries(j, keySpec) {
+  const { snake, camel, archSnake, archCamel } = keySpec;
+  const tail = parseNumArray(pickRawField(j, snake, camel));
+  const archive = parseNumArray(pickRawField(j, archSnake, archCamel));
+  if (archive.length) return archive.concat(tail);
+  return tail;
+}
+
 /** Path fields stored on session journal / payload_json — kept on analytics list rows. */
 export function extractPathFieldsFromJournal(j) {
   if (!j || typeof j !== "object") return {};
-  return {
-    bar_close_r: parseNumArray(j.bar_close_r ?? j.barCloseR),
-    bar_high_r: parseNumArray(j.bar_high_r ?? j.barHighR),
-    bar_low_r: parseNumArray(j.bar_low_r ?? j.barLowR),
-    post_exit_bar_close_r: parseNumArray(j.post_exit_bar_close_r ?? j.postExitBarCloseR),
-    post_exit_bar_high_r: parseNumArray(j.post_exit_bar_high_r ?? j.postExitBarHighR),
-    post_exit_bar_low_r: parseNumArray(j.post_exit_bar_low_r ?? j.postExitBarLowR),
+  const out = {
     trail_sl_path: parseNumArray(j.trail_sl_path ?? j.trailSlPath),
     mfe_r: Number.isFinite(Number(j.mfe_r ?? j.mfeR)) ? Number(j.mfe_r ?? j.mfeR) : undefined,
     mae_r: Number.isFinite(Number(j.mae_r ?? j.maeR)) ? Number(j.mae_r ?? j.maeR) : undefined,
     rMultiple: Number.isFinite(Number(j.rMultiple ?? j.rr)) ? Number(j.rMultiple ?? j.rr) : undefined,
   };
+  for (let i = 0; i < EXCURSION_SERIES_KEYS.length; i += 1) {
+    const spec = EXCURSION_SERIES_KEYS[i];
+    out[spec.snake] = resolveExcursionSeries(j, spec);
+  }
+  return out;
 }
 
 export function tradeHasPathData(trade) {

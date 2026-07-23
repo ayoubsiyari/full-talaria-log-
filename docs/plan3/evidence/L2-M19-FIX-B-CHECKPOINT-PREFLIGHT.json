@@ -1,0 +1,149 @@
+{
+  "row": "L2-M19-FIX-B",
+  "task": "CHECKPOINT-PREFLIGHT",
+  "buildIdProposed": "20260723b02",
+  "status": "READY-CHECKPOINT-CANDIDATE",
+  "finishedAt": "2026-07-23T00:25:00.000Z",
+  "baseSha": "250086d7c0e0bb4bedd8441e8038da3f4d971681",
+  "baseNote": "Fix A checkpoint commit (panel dirty)",
+  "worktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-fixb-ckpt-preflight-250086d7c",
+  "sourceWorktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-fixb-250086d7c",
+  "kill": "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1",
+  "excluded": {
+    "D": "FROZEN — not transplanted",
+    "E": "FROZEN — not transplanted",
+    "C": "not started — PERSIST_TRIM / Fix C excluded"
+  },
+  "transplantedPaths": [
+    "chart v 1.4/chart/modules/order-manager.js",
+    "homepage/public/chart/modules/order-manager.js",
+    "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+    "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+    "chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs",
+    "homepage/public/chart/modules/m19-excursion-tail-contract.test.mjs",
+    "chart v 1.4/talaria-design/src/tradePathCloudUtils.js",
+    "chart v 1.4/talaria-design/src/tradePathCloudUtils.test.mjs"
+  ],
+  "evidencePaths": [
+    "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-on.json",
+    "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json",
+    "docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-ON.md",
+    "docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-KILL.md",
+    "docs/plan3/evidence/L2-M19-FIX-B-CHECKPOINT-PREFLIGHT.json"
+  ],
+  "mirrorHashesSha256": {
+    "order-manager.js": "a54d54d2189495b9d0339cb26888d82f0c70048e11a7b2200d1359ab615684b0",
+    "m19-progressive-session-soak.test.mjs": "19516c22f6b56f2b0b4b3aee1ca31d098a2612c7f3801e8977ba5efed08c71ce",
+    "m19-excursion-tail-contract.test.mjs": "e9b5c1c6b2755d3d9d770beef968dfdaf666a79d26bd2ffb82ba7514f2351db6",
+    "tradePathCloudUtils.js": "61b5b51a2579e512999936fd8f6f09982335d20d0108a4b8fe2d9bc68e644fe2",
+    "tradePathCloudUtils.test.mjs": "feffa0b5d4d600a70dfcc90e79d02f375688a3c32f11b4f6dbdea3af0f2830c9",
+    "mirrorParity": {
+      "orderManager": true,
+      "soak": true,
+      "excursionContract": true
+    }
+  },
+  "untouchedProvenanceHashes": {
+    "replay-system.js": "e5bc68dc8fff190daf2186ca0b3e406199f9b0be511a5639d55809c0efd6c37c",
+    "chart.js": "c00ca02989bd5d1ddc87dab850fdf9d61fbded55ee0bc58b287214164a1e9e3e"
+  },
+  "exactDiffArtifacts": {
+    "orderManager": "docs/plan3/queued-hunks/M19-B-fix-b.order-manager.diff",
+    "soak": "docs/plan3/queued-hunks/M19-B-fix-b.soak.diff",
+    "tradePath": "docs/plan3/queued-hunks/M19-B-fix-b.tradePathCloudUtils.diff",
+    "diffstat": "docs/plan3/queued-hunks/M19-B-fix-b.diffstat.txt",
+    "diffstatSummary": "tracked ±962/−173 across OM×2 + soak×2 + tradePathCloudUtils; +untracked excursion contract×2 + tradePath test"
+  },
+  "scopeGuard": {
+    "noPersistTrimProduct": true,
+    "noMarkerDeltaProduct": true,
+    "noHotpathLogProduct": true,
+    "productPathsDirtyCount": 8
+  },
+  "gateResults": {
+    "fixBOnSoak": {
+      "verdict": "FIX-B-GREEN",
+      "exitCode": 0,
+      "fixAAllPass": true,
+      "fixBAllPass": true,
+      "maxOpenExcursion": 256,
+      "panelRebuilds": 0,
+      "endRuntimeBytes": 67810,
+      "persist": "M19-PERSIST-RED (c out of scope)",
+      "evidence": "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-on.json"
+    },
+    "fixBKillSoak": {
+      "verdict": "FIX-B-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "fixAAllPass": true,
+      "fixBAllPass": true,
+      "maxOpenExcursion": 5500,
+      "endRuntimeBytes": 706962,
+      "evidence": "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json"
+    },
+    "i16ExcursionContract": {
+      "command": "node --test --test-concurrency=1 chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs",
+      "pass": "11/11",
+      "exitCode": 0
+    },
+    "i16OrderRuntimePersist": {
+      "command": "node --test chart v 1.4/chart/modules/order-runtime-persist.test.mjs",
+      "pass": "25/25",
+      "exitCode": 0
+    },
+    "fixAUiContract": {
+      "command": "node --test chart v 1.4/chart/modules/m19-panel-dirty-runtime-contract.test.mjs",
+      "pass": "4/4",
+      "exitCode": 0,
+      "note": "Fix A remains green on Fix B transplant"
+    },
+    "tradePath": {
+      "command": "node --test chart v 1.4/talaria-design/src/tradePathCloudUtils.test.mjs",
+      "pass": "8/8",
+      "exitCode": 0
+    }
+  },
+  "proposedCheckpointManifest": {
+    "title": "M19 Fix B — excursion-array tail bound (independent checkpoint)",
+    "buildId": "20260723b02",
+    "base": "250086d7c0e0bb4bedd8441e8038da3f4d971681",
+    "kill": "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1",
+    "include": [
+      "chart v 1.4/chart/modules/order-manager.js",
+      "homepage/public/chart/modules/order-manager.js",
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+      "chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs",
+      "homepage/public/chart/modules/m19-excursion-tail-contract.test.mjs",
+      "chart v 1.4/talaria-design/src/tradePathCloudUtils.js",
+      "chart v 1.4/talaria-design/src/tradePathCloudUtils.test.mjs",
+      "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-on.json",
+      "docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json",
+      "docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-ON.md",
+      "docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-KILL.md",
+      "docs/plan3/evidence/L2-M19-FIX-B-CHECKPOINT-PREFLIGHT.json"
+    ],
+    "exclude": [
+      "M19-D/E",
+      "M19-C / PERSIST_TRIM",
+      "build bump / publish / deploy"
+    ],
+    "acceptanceGates": [
+      "FIX-B-GREEN soak ON (maxOpenExcursion 5500→256; Fix-A still pass)",
+      "FIX-B-KILL-RED discriminator (maxOpenExcursion 5500 restored; exit 1)",
+      "I16 excursion contract 11/11",
+      "I16 order-runtime-persist 25/25",
+      "Fix-A UI contract 4/4",
+      "trade-path 8/8"
+    ],
+    "persistNote": "Overall M19 persist remains RED until (c); Fix B checkpoint must not claim persist GREEN",
+    "nextStepsNotDone": [
+      "commit",
+      "push",
+      "build bump / D-031/D-034",
+      "publish",
+      "deploy"
+    ]
+  }
+}
