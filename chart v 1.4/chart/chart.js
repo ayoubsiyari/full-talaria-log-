@@ -26912,30 +26912,22 @@ class Chart {
                 const dm = this.drawingManager;
                 if (dm) {
                     dm._touchPointerActive = true;
-                    if (typeof dm._rememberPlacementCrosshair === 'function') {
-                        dm._rememberPlacementCrosshair(e);
-                    }
                     this._drawingTouchPointerId = e.pointerId;
-                    // TradingView tap-place: aim on down, place on up (handled in onPointerUp).
+                    // TradingView: relative aim (no snap). Tap places at blue crosshair.
                     if (typeof dm._touchTapPlaceEnabled === 'function' && dm._touchTapPlaceEnabled()
                         && dm.currentTool
                         && !dm.isDrawingPath
                         && !(typeof dm._isLiveHandleEditing === 'function' && dm._isLiveHandleEditing())
                         && !(typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive())) {
-                        this._touchTapPlace = {
-                            pointerId: e.pointerId,
-                            x: e.clientX,
-                            y: e.clientY,
-                            moved: false,
-                        };
-                        dm._placementCrosshairPinned = true;
-                        if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
-                        if (dm.drawingState && dm.drawingState.isDrawing
-                            && typeof dm.handleMouseMove === 'function') {
-                            dm.handleMouseMove(e);
+                        if (typeof dm._beginTouchAimGesture === 'function') {
+                            dm._beginTouchAimGesture(e);
                         }
+                        this._touchTapPlace = { pointerId: e.pointerId };
                         try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
                         return;
+                    }
+                    if (typeof dm._rememberPlacementCrosshair === 'function') {
+                        dm._rememberPlacementCrosshair(e);
                     }
                     if (typeof dm.handleMouseDown === 'function') {
                         dm.handleMouseDown(e);
@@ -26969,17 +26961,8 @@ class Chart {
                 const dm = this.drawingManager;
                 const tap = this._touchTapPlace;
                 if (tap && tap.pointerId === e.pointerId) {
-                    if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 14) {
-                        tap.moved = true;
-                    }
-                    if (dm && typeof dm._rememberPlacementCrosshair === 'function') {
-                        dm._rememberPlacementCrosshair(e);
-                    }
-                    if (dm) dm._placementCrosshairPinned = true;
-                    if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
-                    if (dm && dm.drawingState && dm.drawingState.isDrawing
-                        && typeof dm.handleMouseMove === 'function') {
-                        dm.handleMouseMove(e);
+                    if (dm && typeof dm._updateTouchAimGesture === 'function') {
+                        dm._updateTouchAimGesture(e);
                     }
                     return;
                 }
@@ -26995,8 +26978,12 @@ class Chart {
                 return;
             }
 
+            // Placement aiming: do not snap blue crosshair to a floating finger.
             if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) {
                 const dm = this.drawingManager;
+                if (dm && typeof dm._touchTapPlaceEnabled === 'function' && dm._touchTapPlaceEnabled()) {
+                    return;
+                }
                 if (dm && typeof dm._rememberPlacementCrosshair === 'function') {
                     dm._rememberPlacementCrosshair(e);
                 }
@@ -27035,18 +27022,18 @@ class Chart {
                 const dm = this.drawingManager;
                 const tap = this._touchTapPlace;
                 if (tap && tap.pointerId === e.pointerId) {
-                    const isTap = !tap.moved;
                     this._touchTapPlace = null;
                     this._drawingTouchPointerId = null;
                     if (dm) dm._touchPointerActive = false;
-                    if (isTap && dm && typeof dm._placeTouchTapAtEvent === 'function') {
+                    const aim = dm && typeof dm._endTouchAimGesture === 'function'
+                        ? dm._endTouchAimGesture()
+                        : null;
+                    if (aim && !aim.moved && dm && typeof dm._placeTouchTapAtEvent === 'function') {
                         dm._placeTouchTapAtEvent(e);
-                    } else if (dm) {
-                        if (typeof dm._rememberPlacementCrosshair === 'function') {
-                            dm._rememberPlacementCrosshair(e);
-                        }
+                    } else if (dm && typeof dm._eventAtPlacementCrosshair === 'function') {
+                        const pinEv = dm._eventAtPlacementCrosshair(e);
                         dm._placementCrosshairPinned = true;
-                        if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+                        if (typeof this.updateCrosshair === 'function') this.updateCrosshair(pinEv);
                     }
                     if (this._touchGesture) {
                         this._touchGesture.mode = 'idle';

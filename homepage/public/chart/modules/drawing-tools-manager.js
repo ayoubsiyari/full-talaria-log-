@@ -3200,28 +3200,150 @@ class DrawingToolsManager {
         this._placementCrosshairClient = { clientX: event.clientX, clientY: event.clientY };
     }
 
+    /** Ensure a pinned placement crosshair exists (plot center if none yet). */
+    _ensurePlacementCrosshairClient() {
+        if (this._placementCrosshairClient
+            && Number.isFinite(this._placementCrosshairClient.clientX)
+            && Number.isFinite(this._placementCrosshairClient.clientY)) {
+            return this._placementCrosshairClient;
+        }
+        this._showInitialPlacementCrosshair();
+        return this._placementCrosshairClient;
+    }
+
+    /** Client-space plot bounds for clamping the aiming crosshair. */
+    _placementCrosshairClientBounds() {
+        const c = this.chart;
+        if (!c) return null;
+        const rect = typeof c._pointerLayoutRect === 'function'
+            ? c._pointerLayoutRect()
+            : (c.canvas && c.canvas.getBoundingClientRect ? c.canvas.getBoundingClientRect() : null);
+        if (!rect) return null;
+        const z = typeof c._v9LayoutZoom === 'function' ? c._v9LayoutZoom() : 1;
+        const m = c.margin || { l: 60, r: 60, t: 5, b: 30 };
+        const w = c.w || rect.width / z;
+        const h = c.h || rect.height / z;
+        return {
+            left: rect.left + m.l * z,
+            right: rect.left + (w - m.r) * z,
+            top: rect.top + m.t * z,
+            bottom: rect.top + (h - m.b) * z,
+        };
+    }
+
     /**
-     * Place one drawing point from a touch tap (pointerup with small movement).
+     * Synthetic pointer event at the pinned blue crosshair (place/preview there,
+     * not under the finger). TradingView: tap confirms crosshair location.
+     */
+    _eventAtPlacementCrosshair(sourceEvent) {
+        const pin = this._ensurePlacementCrosshairClient();
+        if (!pin) return sourceEvent;
+        const src = sourceEvent || {};
+        return {
+            clientX: pin.clientX,
+            clientY: pin.clientY,
+            screenX: typeof src.screenX === 'number' ? src.screenX : pin.clientX,
+            screenY: typeof src.screenY === 'number' ? src.screenY : pin.clientY,
+            button: typeof src.button === 'number' ? src.button : 0,
+            buttons: typeof src.buttons === 'number' ? src.buttons : 0,
+            pointerType: src.pointerType || 'touch',
+            pointerId: src.pointerId,
+            shiftKey: !!src.shiftKey,
+            ctrlKey: !!src.ctrlKey,
+            altKey: !!src.altKey,
+            metaKey: !!src.metaKey,
+            preventDefault() {},
+            stopPropagation() {},
+            target: src.target,
+            currentTarget: src.currentTarget,
+        };
+    }
+
+    /**
+     * Begin a touch aim gesture: do NOT snap crosshair to finger.
+     * Finger drag moves the crosshair relatively from its current pin.
+     */
+    _beginTouchAimGesture(event) {
+        const pin = this._ensurePlacementCrosshairClient();
+        if (!pin || !event) return null;
+        this._touchAimGesture = {
+            pointerId: event.pointerId,
+            fingerStartX: event.clientX,
+            fingerStartY: event.clientY,
+            originX: pin.clientX,
+            originY: pin.clientY,
+            moved: false,
+        };
+        this._placementCrosshairPinned = true;
+        // Keep crosshair where it was — refresh only, no snap.
+        if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+            try { this.chart.updateCrosshair(this._eventAtPlacementCrosshair(event)); } catch (_) { /* ignore */ }
+        }
+        return this._touchAimGesture;
+    }
+
+    /** Relative-drag the pinned crosshair (TradingView aim, no snap-to-finger). */
+    _updateTouchAimGesture(event) {
+        const g = this._touchAimGesture;
+        if (!g || !event || g.pointerId !== event.pointerId) return null;
+        const dx = event.clientX - g.fingerStartX;
+        const dy = event.clientY - g.fingerStartY;
+        if (Math.hypot(dx, dy) > 10) g.moved = true;
+
+        let clientX = g.originX + dx;
+        let clientY = g.originY + dy;
+        const bounds = this._placementCrosshairClientBounds();
+        if (bounds) {
+            clientX = Math.max(bounds.left, Math.min(bounds.right, clientX));
+            clientY = Math.max(bounds.top, Math.min(bounds.bottom, clientY));
+        }
+        this._placementCrosshairClient = { clientX, clientY };
+        this._placementCrosshairPinned = true;
+        const aimEv = this._eventAtPlacementCrosshair(event);
+        if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+            try { this.chart.updateCrosshair(aimEv); } catch (_) { /* ignore */ }
+        }
+        if (this.drawingState && this.drawingState.isDrawing
+            && typeof this.handleMouseMove === 'function') {
+            this.handleMouseMove(aimEv);
+        }
+        return g;
+    }
+
+    _endTouchAimGesture() {
+        const g = this._touchAimGesture;
+        this._touchAimGesture = null;
+        return g;
+    }
+
+    /**
+     * Place one drawing point from a touch tap at the pinned blue crosshair.
      * Mimics a desktop mouse click: first tap = point 1, second tap = point 2, …
      */
     _placeTouchTapAtEvent(event) {
-        if (!event || !this.currentTool) return false;
+        if (!this.currentTool) return false;
+        // Always place at the blue crosshair, never under the finger offset.
+        const placeEvent = this._eventAtPlacementCrosshair(event);
+        if (!placeEvent) return false;
         const toolInfo = this.toolRegistry[this.currentTool];
         const wasDrawing = !!(this.drawingState && this.drawingState.isDrawing);
 
         // Long/short position: 1st tap arms entry, 2nd tap finalizes (desktop mouseup).
         if (wasDrawing && toolInfo && toolInfo.dragPreview) {
             this._lastTouchSynthAt = performance.now();
-            this.handleMouseUp(event);
-            this._rememberPlacementCrosshair(event);
+            this.handleMouseUp(placeEvent);
+            this._rememberPlacementCrosshair(placeEvent);
             if (this._isPlacementModeActive()) {
-                this._showInitialPlacementCrosshair();
+                this._placementCrosshairPinned = true;
+                if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                    try { this.chart.updateCrosshair(placeEvent); } catch (_) { /* ignore */ }
+                }
             }
             return true;
         }
 
         this._lastTouchSynthAt = performance.now();
-        this.handleMouseDown(event);
+        this.handleMouseDown(placeEvent);
 
         // After first tap on dragFirstTwo tools, do not require a drag-release for point 2 —
         // the next tap places it (TradingView click-click).
@@ -3231,13 +3353,10 @@ class DrawingToolsManager {
             this.dragFirstTwoStartScreen = null;
         }
 
-        this._rememberPlacementCrosshair(event);
+        this._rememberPlacementCrosshair(placeEvent);
+        this._placementCrosshairPinned = true;
         if (this.chart && typeof this.chart.updateCrosshair === 'function') {
-            try { this.chart.updateCrosshair(event); } catch (_) { /* ignore */ }
-        }
-        if (this._isPlacementModeActive()) {
-            this._placementCrosshairPinned = true;
-            this._showInitialPlacementCrosshair();
+            try { this.chart.updateCrosshair(placeEvent); } catch (_) { /* ignore */ }
         }
         return true;
     }
@@ -6426,6 +6545,7 @@ class DrawingToolsManager {
     _releaseTouchGestureOwnership(options = {}) {
         const keepPlacement = options.keepPlacement !== false;
         this._touchPointerActive = false;
+        this._touchAimGesture = null;
         this.isDragging = false;
         this.isResizing = false;
         this.isCustomHandleDrag = false;
@@ -6505,10 +6625,6 @@ class DrawingToolsManager {
 
         const opts = { passive: false };
         let activePointerId = null;
-        let tapPlacePointerId = null;
-        let tapPlaceStart = null;
-        let tapPlaceMoved = false;
-        const TAP_SLOP_PX = 14;
 
         const isGeometryActive = () => !!(
             this.isDragging
@@ -6525,15 +6641,9 @@ class DrawingToolsManager {
         const isPlacementMode = () => !!(this.currentTool || (this.drawingState && this.drawingState.isDrawing));
 
         const shouldTrackPointer = (e) => activePointerId === e.pointerId
-            || tapPlacePointerId === e.pointerId
+            || (this._touchAimGesture && this._touchAimGesture.pointerId === e.pointerId)
             || isGeometryActive()
             || isPlacementMode();
-
-        const clearTapPlace = () => {
-            tapPlacePointerId = null;
-            tapPlaceStart = null;
-            tapPlaceMoved = false;
-        };
 
         svgNode.addEventListener('pointerdown', (e) => {
             if (!this._isTouchLikePointer(e)) return;
@@ -6544,25 +6654,13 @@ class DrawingToolsManager {
             this._touchPointerActive = true;
             activePointerId = e.pointerId;
 
-            // TradingView touch: finger-down aims the blue crosshair; tap (up) places.
+            // TradingView: no snap-to-finger. Drag moves crosshair relatively; tap places at pin.
             if (this._touchTapPlaceEnabled()
                 && this.currentTool
                 && !this.isDrawingPath
                 && !this._isLiveHandleEditing()
                 && !this._isDrawingGeometryMoveActive()) {
-                tapPlacePointerId = e.pointerId;
-                tapPlaceStart = { x: e.clientX, y: e.clientY };
-                tapPlaceMoved = false;
-                this._rememberPlacementCrosshair(e);
-                this._placementCrosshairPinned = true;
-                if (this.chart && typeof this.chart.updateCrosshair === 'function') {
-                    this.chart.updateCrosshair(e);
-                }
-                // Already placing: move preview with the finger before the confirming tap.
-                if (this.drawingState && this.drawingState.isDrawing
-                    && typeof this.handleMouseMove === 'function') {
-                    this.handleMouseMove(e);
-                }
+                this._beginTouchAimGesture(e);
                 try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
                 return;
             }
@@ -6579,23 +6677,18 @@ class DrawingToolsManager {
                     activePointerId = null;
                     this._touchPointerActive = false;
                 }
-                clearTapPlace();
+                this._endTouchAimGesture();
                 return;
             }
             e.preventDefault();
 
-            if (tapPlacePointerId === e.pointerId && tapPlaceStart) {
-                const dist = Math.hypot(e.clientX - tapPlaceStart.x, e.clientY - tapPlaceStart.y);
-                if (dist > TAP_SLOP_PX) tapPlaceMoved = true;
-                this._rememberPlacementCrosshair(e);
-                this._placementCrosshairPinned = true;
-                if (this.chart && typeof this.chart.updateCrosshair === 'function') {
-                    this.chart.updateCrosshair(e);
-                }
-                // Preview rubber-band after point 1; before that only move the crosshair.
-                if (this.drawingState && this.drawingState.isDrawing) {
-                    this.handleMouseMove(e);
-                }
+            if (this._touchAimGesture && this._touchAimGesture.pointerId === e.pointerId) {
+                this._updateTouchAimGesture(e);
+                return;
+            }
+
+            // Placement mode without an active aim gesture: keep pin, do not snap to finger.
+            if (this._touchTapPlaceEnabled()) {
                 return;
             }
 
@@ -6614,24 +6707,23 @@ class DrawingToolsManager {
                     activePointerId = null;
                     this._touchPointerActive = false;
                 }
-                clearTapPlace();
+                this._endTouchAimGesture();
                 return;
             }
             e.preventDefault();
 
-            if (tapPlacePointerId === e.pointerId) {
-                const isTap = !tapPlaceMoved;
-                clearTapPlace();
+            if (this._touchAimGesture && this._touchAimGesture.pointerId === e.pointerId) {
+                const aim = this._endTouchAimGesture();
                 if (activePointerId === e.pointerId) activePointerId = null;
                 this._touchPointerActive = false;
-                if (isTap) {
+                if (aim && !aim.moved) {
+                    // Tap → place at blue crosshair (not under finger).
                     this._placeTouchTapAtEvent(e);
                 } else {
-                    // Drag aimed the crosshair — leave it pinned; no point placed.
-                    this._rememberPlacementCrosshair(e);
-                    this._placementCrosshairPinned = true;
+                    // Drag finished aiming — leave pin; preview already at crosshair.
+                    const pinEv = this._eventAtPlacementCrosshair(e);
                     if (this.chart && typeof this.chart.updateCrosshair === 'function') {
-                        this.chart.updateCrosshair(e);
+                        try { this.chart.updateCrosshair(pinEv); } catch (_) { /* ignore */ }
                     }
                 }
                 return;
@@ -6649,14 +6741,14 @@ class DrawingToolsManager {
             if (!this._isTouchLikePointer(e)) return;
             activePointerId = null;
             this._touchPointerActive = false;
-            clearTapPlace();
+            this._endTouchAimGesture();
         }, opts);
         document.addEventListener('pointerup', onPointerUp, opts);
         document.addEventListener('pointercancel', (e) => {
             if (!this._isTouchLikePointer(e)) return;
             activePointerId = null;
             this._touchPointerActive = false;
-            clearTapPlace();
+            this._endTouchAimGesture();
         }, opts);
 
         const canvas = this.chart && this.chart.canvas;
@@ -6665,6 +6757,8 @@ class DrawingToolsManager {
             chartWrapper.__drawingTouchProximityBridge = true;
             chartWrapper.addEventListener('pointermove', (e) => {
                 if (!this._isTouchLikePointer(e)) return;
+                // Never snap the blue pin to a stray finger move outside the aim gesture.
+                if (this._touchTapPlaceEnabled()) return;
                 if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
                     this._rememberPlacementCrosshair(e);
                     if (this.chart && typeof this.chart.updateCrosshair === 'function') {
