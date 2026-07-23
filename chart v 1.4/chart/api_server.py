@@ -11605,6 +11605,8 @@ class TradingSessionStateUpdateIn(BaseModel):
     toolDefaults: dict | None = None
     indicators: list | None = None
     propfirm_challenge: dict | None = None
+    # M19-C: explicitly marks slim hot autosave patches (prefer-richer merge).
+    m19_hot_persist_trim_v1: bool | None = None
 
 
 class JournalTradeUpsertIn(BaseModel):
@@ -12326,8 +12328,14 @@ def _next_user_trade_id(db, user_id: int) -> int:
         return 1
 
 
-def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, journal: list) -> None:
-    """Upsert one DB row per chart journal trade; remove rows no longer present in the canonical journal array."""
+def _sync_trading_session_journal_trades(
+    db, session_id: int, user_id: int, journal: list, *, prefer_richer_heavy: bool = False
+) -> None:
+    """Upsert one DB row per chart journal trade; remove rows no longer present in the canonical journal array.
+
+    prefer_richer_heavy=True only for explicitly marked M19-C slim hot patches.
+    Full / kill journal updates keep B-era replace semantics.
+    """
     if not isinstance(journal, list):
         return
     uid = int(user_id)
@@ -12361,6 +12369,15 @@ def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, jour
                 break
         row = by_client.get(tid)
         if row:
+            if prefer_richer_heavy:
+                try:
+                    prev_payload = json.loads(row.payload_json) if row.payload_json else {}
+                except Exception:
+                    prev_payload = {}
+                if not isinstance(prev_payload, dict):
+                    prev_payload = {}
+                raw = sjs.merge_trade_prefer_richer(prev_payload, raw)
+            # else: B-era full replace of payload_json from incoming raw
             row.payload_json = json.dumps(raw, separators=(",", ":"))
             row.user_id = uid
             if row.user_trade_id is None or int(row.user_trade_id or 0) <= 0:
@@ -25084,12 +25101,19 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if payload.drawings is not None:
             # Legacy: drawings live in chart_drawings (per symbol). Drop from state_json to save space.
             state.pop("drawings", None)
+        slim_marked = sjs.is_hot_persist_trim_marked(body_dict) or bool(payload.m19_hot_persist_trim_v1)
         if payload.journal is not None:
             try:
                 sjs.enforce_journal_trade_limit(payload.journal)
             except sjs.JournalTradeLimitExceeded as exc:
                 raise HTTPException(status_code=413, detail=str(exc)) from exc
-            _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=payload.journal)
+            _sync_trading_session_journal_trades(
+                db,
+                session_id=s.id,
+                user_id=s.user_id,
+                journal=payload.journal,
+                prefer_richer_heavy=slim_marked,
+            )
             if sjs.strip_journal_from_state_json_enabled():
                 sjs.strip_journal_from_persisted_state(state)
             else:
@@ -25099,9 +25123,18 @@ async def patch_trading_session_state(session_id: int, request: Request):
         if payload.per_instrument_stats is not None:
             state["per_instrument_stats"] = payload.per_instrument_stats
         if payload.pending_orders is not None:
-            state["pending_orders"] = payload.pending_orders
+            if slim_marked:
+                prev_pending = state.get("pending_orders") if isinstance(state.get("pending_orders"), list) else []
+                state["pending_orders"] = sjs.merge_order_rows_prefer_richer(prev_pending, payload.pending_orders)
+            else:
+                # B-era / kill / full: replace (allows clear).
+                state["pending_orders"] = payload.pending_orders
         if payload.open_positions is not None:
-            state["open_positions"] = payload.open_positions
+            if slim_marked:
+                prev_open = state.get("open_positions") if isinstance(state.get("open_positions"), list) else []
+                state["open_positions"] = sjs.merge_order_rows_prefer_richer(prev_open, payload.open_positions)
+            else:
+                state["open_positions"] = payload.open_positions
         if payload.account_runtime is not None:
             state["account_runtime"] = payload.account_runtime
         if payload.order_counters is not None:

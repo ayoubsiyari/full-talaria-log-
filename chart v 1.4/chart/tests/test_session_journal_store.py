@@ -92,6 +92,96 @@ def test_upsert_trade_in_journal_replaces_by_id():
     assert appended[-1]["tradeId"] == "t3"
 
 
+def test_merge_trade_prefer_richer_keeps_screenshots_and_arrays():
+    prev = {
+        "tradeId": "t1",
+        "pnl": 10,
+        "entryScreenshot": "data:image/png;base64,AAA",
+        "bar_close_r": [0.1, 0.2, 0.3],
+        "bar_close_r_archive": [0.01],
+    }
+    slim = {"tradeId": "t1", "pnl": 99, "symbol": "EURUSD"}
+    merged = sjs.merge_trade_prefer_richer(prev, slim)
+    assert merged["pnl"] == 99
+    assert merged["symbol"] == "EURUSD"
+    assert merged["entryScreenshot"] == prev["entryScreenshot"]
+    assert merged["bar_close_r"] == prev["bar_close_r"]
+    assert merged["bar_close_r_archive"] == prev["bar_close_r_archive"]
+
+
+def test_merge_trade_prefer_richer_keeps_nested_heavy_fields():
+    """Symmetric with omit-before-clone nesting (metadata / journalEntry)."""
+    prev = {
+        "tradeId": "t1",
+        "pnl": 10,
+        "metadata": {
+            "entryScreenshot": "data:image/png;base64,META_ENTRY",
+            "bar_close_r": [0.1, 0.2],
+            "note": "keep-me",
+        },
+        "journalEntry": {
+            "exitScreenshot": "data:image/png;base64,JRN_EXIT",
+            "comment": "old",
+        },
+    }
+    slim = {
+        "tradeId": "t1",
+        "pnl": 99,
+        "metadata": {"note": "updated", "tag": "hot"},
+        "journalEntry": {"comment": "new"},
+    }
+    merged = sjs.merge_trade_prefer_richer(prev, slim)
+    assert merged["pnl"] == 99
+    assert merged["metadata"]["note"] == "updated"
+    assert merged["metadata"]["tag"] == "hot"
+    assert merged["metadata"]["entryScreenshot"] == prev["metadata"]["entryScreenshot"]
+    assert merged["metadata"]["bar_close_r"] == prev["metadata"]["bar_close_r"]
+    assert merged["journalEntry"]["comment"] == "new"
+    assert merged["journalEntry"]["exitScreenshot"] == prev["journalEntry"]["exitScreenshot"]
+
+
+def test_upsert_unmarked_uses_bera_replace_semantics():
+    journal = [{
+        "tradeId": "t1",
+        "pnl": 10,
+        "exitScreenshot": "data:image/png;base64,BBB",
+        "bar_high_r": [1.0, 2.0],
+    }]
+    # Unmarked full/kill update may clear heavy fields (B-era replace).
+    merged = sjs.upsert_trade_in_journal(journal, {"tradeId": "t1", "pnl": 11, "exitScreenshot": None})
+    assert merged[0]["pnl"] == 11
+    assert merged[0]["exitScreenshot"] is None
+
+
+def test_upsert_prefer_richer_keeps_heavy_when_marked_slim():
+    journal = [{
+        "tradeId": "t1",
+        "pnl": 10,
+        "exitScreenshot": "data:image/png;base64,BBB",
+        "bar_high_r": [1.0, 2.0],
+    }]
+    merged = sjs.upsert_trade_in_journal(
+        journal, {"tradeId": "t1", "pnl": 11}, prefer_richer=True
+    )
+    assert merged[0]["pnl"] == 11
+    assert merged[0]["exitScreenshot"].startswith("data:image")
+    assert merged[0]["bar_high_r"] == [1.0, 2.0]
+
+
+def test_is_hot_persist_trim_marked():
+    assert sjs.is_hot_persist_trim_marked({"m19_hot_persist_trim_v1": True}) is True
+    assert sjs.is_hot_persist_trim_marked({"journal": []}) is False
+
+
+def test_merge_order_rows_prefer_richer_by_id():
+    prev = [{"id": 1, "bar_close_r": [1, 2, 3], "entryScreenshot": "data:x"}]
+    incoming = [{"id": 1, "unrealizedPnL": 4.5}]
+    out = sjs.merge_order_rows_prefer_richer(prev, incoming)
+    assert out[0]["unrealizedPnL"] == 4.5
+    assert out[0]["bar_close_r"] == [1, 2, 3]
+    assert out[0]["entryScreenshot"] == "data:x"
+
+
 def test_enrich_journal_trade_from_sql_row_adds_global_id():
     class Row:
         id = 42

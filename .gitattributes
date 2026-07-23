@@ -1,0 +1,2 @@
+# Historically-CRLF chart replay-system: treat CR as line terminator for whitespace checks.
+**/chart/modules/replay-system.js whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

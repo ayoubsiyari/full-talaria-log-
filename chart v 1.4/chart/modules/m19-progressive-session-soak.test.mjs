@@ -12,6 +12,9 @@
  * Fix-B kill-switch (restore unbounded excursion arrays / today's persist bytes):
  *   TALARIA_DISABLE_M19_EXCURSION_TAIL_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  *
+ * Fix-C kill-switch (restore B-era full hot session/runtime payloads):
+ *   TALARIA_DISABLE_M19_PERSIST_TRIM_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ *
  * Switches:
  *   (a) __TALARIA_DISABLE_M19_PANEL_DIRTY_V1
  *   (b) __TALARIA_DISABLE_M19_EXCURSION_TAIL_V1
@@ -35,13 +38,16 @@ const CHART_PATH = path.join(__dirname, '../chart.js');
 const FIXTURE_PATH = path.join(__dirname, 'm19-legacy-uncapped-session.fixture.json');
 const PANEL_KILL = String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
 const EXCURSION_KILL = String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
+const PERSIST_KILL = String(process.env.TALARIA_DISABLE_M19_PERSIST_TRIM_V1 || '').trim() === '1';
 const EVIDENCE_PATH = path.join(
   ROOT,
   PANEL_KILL
     ? 'docs/plan3/evidence/L2-M19-fix-a-panel-dirty-kill.json'
     : (EXCURSION_KILL
       ? 'docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json'
-      : 'docs/plan3/evidence/L2-M19-fix-b-excursion-tail-on.json'),
+      : (PERSIST_KILL
+        ? 'docs/plan3/evidence/L2-M19-fix-c-persist-trim-kill.json'
+        : 'docs/plan3/evidence/L2-M19-fix-c-persist-trim-on.json')),
 );
 const REPORT_PATH = path.join(
   ROOT,
@@ -49,7 +55,9 @@ const REPORT_PATH = path.join(
     ? 'docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-KILL.md'
     : (EXCURSION_KILL
       ? 'docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-KILL.md'
-      : 'docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-ON.md'),
+      : (PERSIST_KILL
+        ? 'docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-KILL.md'
+        : 'docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-ON.md')),
 );
 const EXCURSION_TAIL_MAX = 256;
 const BASELINE_BEFORE = {
@@ -250,7 +258,8 @@ function installDomAndStorage() {
     String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
   window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 =
     String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
-  window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 = false;
+  window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 =
+    String(process.env.TALARIA_DISABLE_M19_PERSIST_TRIM_V1 || '').trim() === '1';
   window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = false;
   window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
 }
@@ -506,6 +515,7 @@ function createChartSurface(candles, replay, { multichart = false } = {}) {
     _localBackupIdleIntervalMs: 0,
     _flushBodies: [],
     _flushBytes: 0,
+    _criticalFlushBytes: 0,
     _base64PersistBytes: 0,
     _base64InnerHtmlBytes: 0,
     getActiveTradingSessionId: () => 'm19-soak',
@@ -515,8 +525,14 @@ function createChartSurface(candles, replay, { multichart = false } = {}) {
       this._pendingSessionStatePatch = mergeSessionPatches(this._pendingSessionStatePatch, patch);
       this._countBase64In(patch, 'persist');
     },
+    // Production keeps critical durable journal on a separate pending queue.
     queueCriticalSessionStateSave(patch) {
-      this.scheduleSessionStateSave(patch);
+      if (!patch || typeof patch !== 'object') return;
+      this._pendingCriticalSessionStatePatch = mergeSessionPatches(
+        this._pendingCriticalSessionStatePatch,
+        patch,
+      );
+      this._countBase64In(patch, 'persist');
     },
     _countBase64In(obj, sink) {
       const walk = (v) => {
@@ -529,7 +545,7 @@ function createChartSurface(candles, replay, { multichart = false } = {}) {
       walk(obj);
     },
     async flushSessionStateSave() {
-      // Production path body (chart.js flushSessionStateSave): serialize pending patch + network sink.
+      // Production path body (chart.js flushSessionStateSave): serialize hot pending patch.
       const sessionId = this.getActiveTradingSessionId();
       if (!sessionId) return;
       const patch = this._pendingSessionStatePatch;
@@ -539,6 +555,20 @@ function createChartSurface(candles, replay, { multichart = false } = {}) {
       this._flushBodies.push(body.length);
       this._flushBytes = body.length;
       this._countBase64In(patch, 'persist');
+      await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    },
+    async flushCriticalSessionStateSave() {
+      const sessionId = this.getActiveTradingSessionId();
+      if (!sessionId) return;
+      const patch = this._pendingCriticalSessionStatePatch;
+      if (!patch) return;
+      this._pendingCriticalSessionStatePatch = null;
+      const body = JSON.stringify(patch);
+      this._criticalFlushBytes = body.length;
       await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -774,8 +804,12 @@ function accumulateClosedTrade(om, candles, tickIdx, tradeSeq) {
 function samplePayloads(om, chart) {
   const runtime = OrderManager.prototype._buildRuntimeOrderPersistPatch.call(om);
   const runtimeBytes = byteLen(runtime);
+  // Hot autosave shape (M19-C): trimmed journal when persist-trim ON — not the durable critical clone.
+  const hotJournal = typeof om._m19CloneJournalForHotSessionPersist === 'function'
+    ? OrderManager.prototype._m19CloneJournalForHotSessionPersist.call(om)
+    : om.tradeJournal;
   const sessionPatch = mergeSessionPatches(chart._pendingSessionStatePatch, {
-    journal: om.tradeJournal,
+    journal: hotJournal,
     per_instrument_stats: OrderManager.prototype.buildPerInstrumentStats.call(om),
     ...runtime,
   });
@@ -1071,6 +1105,29 @@ async function runSoak({
       : (maxOpenExcursion > 0 && maxOpenExcursion <= EXCURSION_TAIL_MAX),
   };
 
+  const persistKill = !!window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1;
+  const hotJournalHasScreenshots = Array.isArray(endPayloads.sessionPatch?.journal)
+    && endPayloads.sessionPatch.journal.some((t) => t && (t.entryScreenshot || t.exitScreenshot));
+  const inMemoryJournalHasScreenshots = Array.isArray(driver.tradeJournal)
+    && driver.tradeJournal.some((t) => t && (t.entryScreenshot || t.exitScreenshot));
+  const fixC = {
+    persistKill,
+    sessionAbsMax: SESSION_ABS_MAX,
+    endSessionBytes: endPayloads.sessionBytes,
+    sessionBounded: !persistKill && endPayloads.sessionBytes <= SESSION_ABS_MAX,
+    sessionUnbounded: persistKill && endPayloads.sessionBytes > SESSION_ABS_MAX,
+    hotJournalHasScreenshots,
+    inMemoryJournalHasScreenshots,
+    pass: persistKill
+      ? (endPayloads.sessionBytes > SESSION_ABS_MAX)
+      : (asserts.sessionAbs.pass
+        && asserts.runtimeAbs.pass
+        && asserts.sessionSteadyGrowth.pass
+        && asserts.runtimeSteadyGrowth.pass
+        && inMemoryJournalHasScreenshots
+        && !hotJournalHasScreenshots),
+  };
+
   return {
     label,
     playing,
@@ -1090,6 +1147,7 @@ async function runSoak({
     allFivePaths,
     fixA,
     fixB,
+    fixC,
     counters,
     startExcursion,
     windowExcursion,
@@ -1219,12 +1277,18 @@ function runRestoreCell({ multichart = false } = {}) {
     && om.orderIdCounter === fixture.order_counters.orderIdCounter;
 
   // Restore may schedule a panel/runtime persist (production updatePositionsPanel tail).
-  // Destructive write-back = trim/normalize that shrinks or rewrites uncapped arrays.
+  // Destructive write-back = shrink/rewrite uncapped arrays in-memory.
+  // M19-C hot trim may omit heavy fields from the pending patch (not a destructive restore).
   const pending = chart._pendingSessionStatePatch;
   const pendingOpen = Array.isArray(pending?.open_positions) ? pending.open_positions : null;
+  const trimOn = !window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1;
   const pendingUntrimmed = !pendingOpen || beforeOpen.every((b) => {
     const row = pendingOpen.find((p) => p && p.id === b.id);
-    return row && Array.isArray(row.bar_close_r) && row.bar_close_r.length === b.close.len
+    if (!row) return false;
+    if (!Array.isArray(row.bar_close_r)) {
+      return trimOn; // omitted under Fix-C hot trim — in-memory restore arrays stay intact
+    }
+    return row.bar_close_r.length === b.close.len
       && row.bar_close_r[0] === b.close.first
       && row.bar_close_r[b.close.len - 1] === b.close.last;
   });
@@ -1311,22 +1375,37 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
     };
   }
 
-  if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
+  if (PERSIST_KILL) {
+    if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
+      return {
+        verdict: 'FIX-C-KILL-RED',
+        detail: `kill restores B-era hot payloads; persist bound fail ${persistFails}/${CANONICAL_REPEATS}; endSession=${canonicalRuns[0]?.endSessionBytes}`,
+        persist: 'M19-PERSIST-KILL-RED',
+      };
+    }
     return {
-      verdict: 'FIX-B-GREEN',
-      detail: `M19-PERSIST-RED — Fix-A+B pass 3/3; open excursion ≤ ${EXCURSION_TAIL_MAX}; persist bound fail ${persistFails}/${CANONICAL_REPEATS} (c not in scope)`,
-      persist: 'M19-PERSIST-RED',
+      verdict: 'FIX-C-KILL-UNEXPECTED',
+      detail: `fixAAllPass=${fixAAllPass}; fixBAllPass=${fixBAllPass}; persistFails=${persistFails}; endSession=${canonicalRuns[0]?.endSessionBytes}`,
     };
   }
-  if (fixAAllPass && fixBAllPass && persistFails === 0 && slopeFails === 0) {
+
+  const fixCAllPass = canonicalRuns.every((r) => r.fixC && r.fixC.pass);
+  if (fixAAllPass && fixBAllPass && fixCAllPass && persistFails === 0 && slopeFails === 0) {
     return {
-      verdict: 'FIX-B-GREEN',
-      detail: 'Fix-A+B and persist bounds both pass',
+      verdict: 'FIX-C-GREEN',
+      detail: `Fix-A+B held; hot session ≤ ${SESSION_ABS_MAX}; open excursion ≤ ${EXCURSION_TAIL_MAX}`,
       persist: 'M19-PERSIST-GREEN',
     };
   }
+  if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
+    return {
+      verdict: 'FIX-C-FAIL',
+      detail: `M19-PERSIST-RED — Fix-A+B pass; persist bound fail ${persistFails}/${CANONICAL_REPEATS}`,
+      persist: 'M19-PERSIST-RED',
+    };
+  }
   return {
-    verdict: 'FIX-B-FAIL',
+    verdict: 'FIX-C-FAIL',
     detail: `fixAAllPass=${fixAAllPass}; fixBAllPass=${fixBAllPass}; frameSlopeFails=${slopeFails}; persistFails=${persistFails}; maxExcursion=${canonicalRuns[0]?.fixB?.maxOpenExcursion}`,
   };
 }
@@ -1427,10 +1506,12 @@ async function main() {
 
   const evidence = {
     row: 'L2-M19',
-    title: 'Progressive session degradation — Fix B excursion tail',
+    title: 'Progressive session degradation — Fix C persist trim',
     task: PANEL_KILL
       ? 'FIX-A-KILL-DISCRIMINATOR'
-      : (EXCURSION_KILL ? 'FIX-B-KILL-DISCRIMINATOR' : 'FIX-B-ON'),
+      : (EXCURSION_KILL
+        ? 'FIX-B-KILL-DISCRIMINATOR'
+        : (PERSIST_KILL ? 'FIX-C-KILL-DISCRIMINATOR' : 'FIX-C-ON')),
     startedAt: started,
     finishedAt,
     wallClock: { startedWallMs, finishedWallMs },
@@ -1503,12 +1584,20 @@ async function main() {
       canonical: canonicalRuns.map((r) => r.fixB),
       allPass: canonicalRuns.every((r) => r.fixB && r.fixB.pass),
     },
-    persist: verdict.persist || (PANEL_KILL || EXCURSION_KILL ? null : 'M19-PERSIST-RED'),
+    fixC: {
+      kill: PERSIST_KILL,
+      sessionAbsMax: SESSION_ABS_MAX,
+      canonical: canonicalRuns.map((r) => r.fixC),
+      allPass: canonicalRuns.every((r) => r.fixC && r.fixC.pass),
+    },
+    persist: verdict.persist || (PANEL_KILL || EXCURSION_KILL ? null : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN')),
     note: PANEL_KILL
       ? 'FIX-A kill-switch ON — expect ~5500 full panel rebuilds (discriminator RED). Persist not claimed.'
       : (EXCURSION_KILL
         ? 'FIX-B kill-switch ON — expect unbounded open excursion (~5500). D-030 OFF path; persist not claimed GREEN.'
-        : 'FIX-B-GREEN — open excursion arrays ≤ 256 with exact MFE/MAE peaks; Fix A held; M19-PERSIST-RED until Fix C. Contract: m19-excursion-tail-contract.test.mjs.'),
+        : (PERSIST_KILL
+          ? 'FIX-C kill-switch ON — expect B-era hot session payloads > 512 KiB (discriminator RED).'
+          : 'FIX-C-GREEN — hot session/runtime patches trimmed (no screenshots/excursion arrays); durable journal+export unchanged; Fix A/B held. Contract: m19-persist-trim-contract.test.mjs.')),
   };
 
   fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
@@ -1532,19 +1621,20 @@ async function main() {
     `- frameSlopeFail=${r.frameSlopeFail} persistFail=${r.persistFail}`,
   ].join('\n')).join('\n\n');
 
-  const report = `# L2-M19 — Fix B excursion tail (${EXCURSION_KILL ? 'KILL' : 'ON'})
+  const report = `# L2-M19 — Fix C persist trim (${PERSIST_KILL ? 'KILL' : 'ON'})
 
 **Verdict:** ${verdict.verdict} — ${verdict.detail}
 
-**Persist:** ${verdict.persist || (PANEL_KILL || EXCURSION_KILL ? 'n/a (kill discriminator)' : 'M19-PERSIST-RED')}
+**Persist:** ${verdict.persist || (PANEL_KILL || EXCURSION_KILL ? 'n/a (kill discriminator)' : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN'))}
 
-**Scope:** Fix B product path on Fix A base \`250086d7c\`. D-030/I16 contract: \`m19-excursion-tail-contract.test.mjs\`. No D/E or Fix C edits. Not a live I15 UI verdict.
+**Scope:** Fix C hot session/runtime trim on Fix B checkpoint \`5c9d0fbd1\`. Kill \`__TALARIA_DISABLE_M19_PERSIST_TRIM_V1\`. No D/E. Not a live I15 UI verdict.
 
 ## Commands / runtime
 
 \`\`\`
 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
-TALARIA_DISABLE_M19_EXCURSION_TAIL_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+TALARIA_DISABLE_M19_PERSIST_TRIM_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+node --test --test-concurrency=1 "chart v 1.4/chart/modules/m19-persist-trim-contract.test.mjs"
 node --test --test-concurrency=1 "chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs"
 node "chart v 1.4/chart/modules/order-runtime-persist.test.mjs"
 \`\`\`
@@ -1594,7 +1684,7 @@ ${neighbors.map((n) => `| ${n.label} | ${n.restore ? (n.pass ? 'RESTORE-PASS' : 
 
 ## Switches
 
-(a) PANEL_DIRTY — held from Fix A. (b) EXCURSION_TAIL — this run. (c)–(e) untouched / not claimed GREEN.
+(a) PANEL_DIRTY — held from Fix A. (b) EXCURSION_TAIL — held from Fix B. (c) PERSIST_TRIM — this run. (d)–(e) untouched.
 
 ## Binding
 
@@ -1606,13 +1696,16 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
   // stdout summary for relay (console was redirected — use process.stdout)
   const fixAAllPass = canonicalRuns.every((r) => r.fixA && r.fixA.pass);
   const fixBAllPass = canonicalRuns.every((r) => r.fixB && r.fixB.pass);
+  const fixCAllPass = canonicalRuns.every((r) => r.fixC && r.fixC.pass);
   const summary = {
     verdict: verdict.verdict,
     detail: verdict.detail,
     fixAAllPass,
     fixBAllPass,
+    fixCAllPass,
     panelKill: PANEL_KILL,
     excursionKill: EXCURSION_KILL,
+    persistKill: PERSIST_KILL,
     baselineBeforeFixA: BASELINE_BEFORE,
     elapsedMs: Math.round(elapsedMs),
     headSha,
@@ -1634,20 +1727,23 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
       maxOpenExcursion: r.fixB?.maxOpenExcursion,
       fixB: r.fixB,
       fixA: r.fixA,
+      fixC: r.fixC,
     })),
   };
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 
   restoreDate();
-  // Fix-A/B gates own exit code when not in SETUP/PREMISE failure.
+  // Fix-A/B/C gates own exit code when not in SETUP/PREMISE failure.
   if (verdict.verdict === 'SETUP-FAIL' || verdict.verdict === 'BLOCKED' || verdict.verdict === 'PREMISE-MISMATCH') {
     process.exitCode = 2;
   } else if (PANEL_KILL) {
     process.exitCode = fixAAllPass ? 1 : 2; // kill reconstruct expected → exit 1 (RED-EXPECTED)
   } else if (EXCURSION_KILL) {
     process.exitCode = fixBAllPass ? 1 : 2; // kill unbounded expected → exit 1 (RED-EXPECTED)
+  } else if (PERSIST_KILL) {
+    process.exitCode = (fixAAllPass && fixBAllPass && fixCAllPass) ? 1 : 2; // kill oversize expected → exit 1
   } else {
-    process.exitCode = (fixAAllPass && fixBAllPass) ? 0 : 1;
+    process.exitCode = (fixAAllPass && fixBAllPass && fixCAllPass && verdict.verdict === 'FIX-C-GREEN') ? 0 : 1;
   }
 }
 

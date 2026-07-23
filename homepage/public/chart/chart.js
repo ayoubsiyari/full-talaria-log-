@@ -10757,8 +10757,149 @@ class Chart {
         }
     }
 
+    /** Legacy / kill single-path local backup key (B-era). */
     _tradingSessionLocalBackupKey(sessionId) {
         return `talaria_bt_sess_v1_${String(sessionId)}`;
+    }
+
+    /** M19-C hot tier: slim, bounded, frequent. */
+    _tradingSessionLocalBackupHotKey(sessionId) {
+        return `talaria_bt_sess_hot_v1_${String(sessionId)}`;
+    }
+
+    /** M19-C durable tier: rich, critical boundaries only. */
+    _tradingSessionLocalBackupDurableKey(sessionId) {
+        return `talaria_bt_sess_durable_v1_${String(sessionId)}`;
+    }
+
+    _m19LocalBackupTrimOn() {
+        const om = this._getOrderManagerForSessionPersistence
+            ? this._getOrderManagerForSessionPersistence()
+            : this.orderManager;
+        return !!(om && typeof om._m19PersistTrimV1Enabled === 'function' && om._m19PersistTrimV1Enabled());
+    }
+
+    /**
+     * One-time migration: copy legacy single-key raw blob → durable key when trim ON.
+     * Does not re-stringify. Never called from hot writes.
+     */
+    _m19MigrateLegacyLocalBackupIfNeeded(sessionId) {
+        if (!sessionId || !this._m19LocalBackupTrimOn()) return;
+        try {
+            const durableKey = this._tradingSessionLocalBackupDurableKey(sessionId);
+            if (userStorage.getItem(durableKey)) return;
+            const legacyRaw = userStorage.getItem(this._tradingSessionLocalBackupKey(sessionId));
+            if (!legacyRaw) return;
+            userStorage.setItem(durableKey, legacyRaw);
+        } catch (_e) { /* ignore */ }
+    }
+
+    /** UTF-8 byte length for keepalive body budget (not JS string length). */
+    _m19Utf8ByteLength(str) {
+        const s = str == null ? '' : String(str);
+        try {
+            if (typeof TextEncoder !== 'undefined') {
+                return new TextEncoder().encode(s).byteLength;
+            }
+        } catch (_e) { /* fall through */ }
+        try {
+            return unescape(encodeURIComponent(s)).length;
+        } catch (_e2) {
+            return s.length;
+        }
+    }
+
+    /**
+     * Restore merge: overlay hot onto durable ONLY when hot.savedAt is strictly newer.
+     * Equal / older hot → durable wins (stale hot cannot resurrect closed orders).
+     * Kill / trim OFF: not used (single legacy key).
+     */
+    _m19MergeLocalBackupTiers(durable, hot, om) {
+        if (!durable && !hot) return null;
+        if (!durable) return hot;
+        if (!hot) return durable;
+        const da = Number(durable.savedAt) || 0;
+        const ha = Number(hot.savedAt) || 0;
+        // Strictly newer hot only. Equal timestamp/generation → durable wins.
+        if (!(ha > da)) return durable;
+        const out = Object.assign({}, durable, hot);
+        if (typeof this._m19MergePreferRicherRecordLists === 'function' && om) {
+            out.journal = this._m19MergePreferRicherRecordLists(durable.journal, hot.journal, om);
+            out.pending_orders = this._m19MergePreferRicherRecordLists(
+                durable.pending_orders, hot.pending_orders, om
+            );
+            out.open_positions = this._m19MergePreferRicherRecordLists(
+                durable.open_positions, hot.open_positions, om
+            );
+            out.closed_positions = this._m19MergePreferRicherRecordLists(
+                durable.closed_positions, hot.closed_positions, om
+            );
+        }
+        out.savedAt = ha;
+        // Prefer more advanced replay playhead when both present.
+        if (durable.replay && hot.replay
+            && typeof durable.replay === 'object' && typeof hot.replay === 'object') {
+            const dt = Number(durable.replay.replayTimestamp);
+            const ht = Number(hot.replay.replayTimestamp);
+            if (Number.isFinite(dt) && Number.isFinite(ht) && dt > ht) {
+                out.replay = durable.replay;
+            }
+        }
+        // Merged restore view is not a slim PATCH — drop hot-tier mark.
+        if (om && typeof om._m19HotPersistTrimMarkKey === 'function') {
+            delete out[om._m19HotPersistTrimMarkKey()];
+        }
+        return out;
+    }
+
+    /**
+     * Keepalive unload budget (~64 KiB browser limit). Slim heavy blobs for network only;
+     * full durable snapshot stays on the durable local key.
+     * Budget is UTF-8 byte length (TextEncoder), not JS string length.
+     */
+    _m19KeepaliveSafeSessionPatch(patch) {
+        const BUDGET = 60 * 1024;
+        if (!patch || typeof patch !== 'object') return patch;
+        const om = this._getOrderManagerForSessionPersistence
+            ? this._getOrderManagerForSessionPersistence()
+            : this.orderManager;
+        let out = patch;
+        if (om && typeof om._m19PersistTrimV1Enabled === 'function' && om._m19PersistTrimV1Enabled()
+            && typeof om._m19TrimRecordsForHotPersist === 'function') {
+            out = Object.assign({}, patch);
+            if (Array.isArray(patch.journal)) {
+                out.journal = om._m19TrimRecordsForHotPersist(patch.journal);
+            }
+            if (Array.isArray(patch.pending_orders)) {
+                out.pending_orders = om._m19TrimRecordsForHotPersist(patch.pending_orders);
+            }
+            if (Array.isArray(patch.open_positions)) {
+                out.open_positions = om._m19TrimRecordsForHotPersist(patch.open_positions);
+            }
+            if (Array.isArray(patch.closed_positions)) {
+                out.closed_positions = om._m19TrimRecordsForHotPersist(patch.closed_positions);
+            }
+            delete out.journal_by_ticker;
+            delete out.per_instrument_stats;
+            if (typeof om._m19HotPersistTrimMarkKey === 'function') {
+                out[om._m19HotPersistTrimMarkKey()] = true;
+            }
+        }
+        let body = '';
+        try { body = JSON.stringify(out); } catch (_e) { return out; }
+        if (this._m19Utf8ByteLength(body) <= BUDGET) return out;
+        // Last resort: drop heavy collections; keep playhead / account / counters.
+        const minimal = {
+            savedAt: out.savedAt || Date.now(),
+            account_runtime: out.account_runtime,
+            order_counters: out.order_counters,
+            replay: out.replay,
+            chartView: out.chartView,
+        };
+        if (typeof om?._m19HotPersistTrimMarkKey === 'function') {
+            minimal[om._m19HotPersistTrimMarkKey()] = true;
+        }
+        return minimal;
     }
 
     _backtestLastTimeframeStorageKey(sessionId) {
@@ -10957,6 +11098,14 @@ class Chart {
      */
     _slimJournalRowForLocalBackup(trade) {
         if (!trade || typeof trade !== 'object') return trade;
+        const om = this._getOrderManagerForSessionPersistence
+            ? this._getOrderManagerForSessionPersistence()
+            : this.orderManager;
+        // M19-C trim ON: omit heavy keys before any copy (never read screenshot/array values).
+        if (om && typeof om._m19PersistTrimV1Enabled === 'function' && om._m19PersistTrimV1Enabled()
+            && typeof om._m19StripHeavyFieldsForHotPersist === 'function') {
+            return om._m19StripHeavyFieldsForHotPersist(trade);
+        }
         const heavyKeys = [
             'screenshot', 'screenshotBase64', 'image', 'chartImage',
             'entryScreenshot', 'exitScreenshot', 'thumbnail', 'preview',
@@ -10973,8 +11122,42 @@ class Chart {
 
     _slimJournalForLocalBackup(journal, maxRows = 80) {
         const arr = Array.isArray(journal) ? journal : [];
+        const om = this._getOrderManagerForSessionPersistence
+            ? this._getOrderManagerForSessionPersistence()
+            : this.orderManager;
+        if (om && typeof om._m19PersistTrimV1Enabled === 'function' && om._m19PersistTrimV1Enabled()
+            && typeof om._m19TrimRecordsForHotPersist === 'function') {
+            const trimmed = om._m19TrimRecordsForHotPersist(arr);
+            return trimmed.length > maxRows ? trimmed.slice(-maxRows) : trimmed;
+        }
         const tail = arr.length > maxRows ? arr.slice(-maxRows) : arr;
         return tail.map((t) => this._slimJournalRowForLocalBackup(t));
+    }
+
+    /**
+     * Prefer-richer merge of record lists by id/tradeId (local backup slim writes).
+     * Keeps nested heavy fields from a richer prior backup when the hot write omitted them.
+     */
+    _m19MergePreferRicherRecordLists(prevList, nextList, om) {
+        const incoming = Array.isArray(nextList) ? nextList : [];
+        if (!om || typeof om._m19MergePreferRicherTradeRow !== 'function') return incoming;
+        const prevArr = Array.isArray(prevList) ? prevList : [];
+        if (!prevArr.length) return incoming;
+        const byId = new Map();
+        for (let i = 0; i < prevArr.length; i++) {
+            const row = prevArr[i];
+            if (!row || typeof row !== 'object') continue;
+            const id = row.tradeId != null ? row.tradeId : row.id;
+            if (id != null) byId.set(String(id), row);
+        }
+        return incoming.map((row) => {
+            if (!row || typeof row !== 'object') return row;
+            const id = row.tradeId != null ? row.tradeId : row.id;
+            const prev = id != null ? byId.get(String(id)) : null;
+            return prev
+                ? om._m19MergePreferRicherTradeRow(prev, row, { slimMarked: true })
+                : row;
+        });
     }
 
     /** Compact indicator list for session backup + server PATCH (mirrors persistIndicators). */
@@ -11088,6 +11271,8 @@ class Chart {
         const om = this._getOrderManagerForSessionPersistence();
         const minimal = !!options.minimal;
         const slim = options.slim !== false;
+        const trimFeatureOn = !!(om && typeof om._m19PersistTrimV1Enabled === 'function'
+            && om._m19PersistTrimV1Enabled());
         try {
             const safeClone = (arr) => {
                 try {
@@ -11100,14 +11285,24 @@ class Chart {
                 savedAt: Date.now(),
             };
             if (om && !minimal) {
-                const journalSource = slim
+                // Hot tier (trim ON + slim): omit heavy fields before stringify.
+                // Durable tier / kill: B-era safeClone (may read heavy values).
+                const hotTier = trimFeatureOn && slim
+                    && typeof om._m19TrimRecordsForHotPersist === 'function';
+                const journalSource = hotTier
                     ? this._slimJournalForLocalBackup(om.tradeJournal)
                     : safeClone(om.tradeJournal);
                 Object.assign(payload, {
                     journal: journalSource,
-                    pending_orders: safeClone(om.pendingOrders),
-                    open_positions: safeClone(om.openPositions),
-                    closed_positions: safeClone(om.closedPositions),
+                    pending_orders: hotTier
+                        ? om._m19TrimRecordsForHotPersist(om.pendingOrders)
+                        : safeClone(om.pendingOrders),
+                    open_positions: hotTier
+                        ? om._m19TrimRecordsForHotPersist(om.openPositions)
+                        : safeClone(om.openPositions),
+                    closed_positions: hotTier
+                        ? om._m19TrimRecordsForHotPersist(om.closedPositions)
+                        : safeClone(om.closedPositions),
                     account_runtime: {
                         balance: om.balance,
                         equity: om.equity,
@@ -11122,7 +11317,10 @@ class Chart {
                         tradeGroupIdCounter: om.tradeGroupIdCounter,
                     },
                 });
-                if (!slim) {
+                if (hotTier && typeof om._m19HotPersistTrimMarkKey === 'function') {
+                    payload[om._m19HotPersistTrimMarkKey()] = true;
+                }
+                if (!slim || !trimFeatureOn) {
                     if (typeof om.buildPerInstrumentStats === 'function') {
                         try {
                             payload.per_instrument_stats = om.buildPerInstrumentStats();
@@ -11138,6 +11336,7 @@ class Chart {
                         }
                     }
                 }
+                // Hot writes never parse/stringify the durable tier (restore merges tiers).
             } else if (om && minimal) {
                 payload.account_runtime = {
                     balance: om.balance,
@@ -11166,9 +11365,25 @@ class Chart {
             if (payload.indicators.length === 0 && this._indicatorsClearedAt) {
                 payload.indicatorsClearedAt = this._indicatorsClearedAt;
             }
+            // Dual-tier (trim ON): hot key ↔ slim frequent; durable key ↔ critical only.
+            // Kill / trim OFF: exact B-era single legacy key.
+            let storageKey;
+            if (!trimFeatureOn) {
+                storageKey = this._tradingSessionLocalBackupKey(sessionId);
+            } else if (slim) {
+                storageKey = this._tradingSessionLocalBackupHotKey(sessionId);
+            } else {
+                storageKey = this._tradingSessionLocalBackupDurableKey(sessionId);
+            }
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
-            userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
+            userStorage.setItem(storageKey, JSON.stringify(payload));
+            // Successful durable write clears older hot tier so stale open state cannot resurrect.
+            if (trimFeatureOn && !slim) {
+                try {
+                    userStorage.removeItem(this._tradingSessionLocalBackupHotKey(sessionId));
+                } catch (_clearHot) { /* ignore */ }
+            }
             this._localBackupQuotaWarned = false;
         } catch (e) {
             if (e && e.name === 'QuotaExceededError' && !options.minimalRetry) {
@@ -11182,11 +11397,35 @@ class Chart {
         }
     }
 
+    /**
+     * Restore reader. Trim ON: migrate legacy → durable, then merge durable + hot.
+     * Kill: exact B-era single legacy key. Hot writes never call this.
+     */
     _readTradingSessionLocalBackup(sessionId) {
         try {
-            const raw = userStorage.getItem(this._tradingSessionLocalBackupKey(sessionId));
-            if (!raw) return null;
-            return JSON.parse(raw);
+            if (!sessionId) return null;
+            const om = this._getOrderManagerForSessionPersistence
+                ? this._getOrderManagerForSessionPersistence()
+                : this.orderManager;
+            const trimOn = !!(om && typeof om._m19PersistTrimV1Enabled === 'function'
+                && om._m19PersistTrimV1Enabled());
+            if (!trimOn) {
+                const raw = userStorage.getItem(this._tradingSessionLocalBackupKey(sessionId));
+                if (!raw) return null;
+                return JSON.parse(raw);
+            }
+            this._m19MigrateLegacyLocalBackupIfNeeded(sessionId);
+            let durable = null;
+            let hot = null;
+            try {
+                const dRaw = userStorage.getItem(this._tradingSessionLocalBackupDurableKey(sessionId));
+                if (dRaw) durable = JSON.parse(dRaw);
+            } catch (_e) { durable = null; }
+            try {
+                const hRaw = userStorage.getItem(this._tradingSessionLocalBackupHotKey(sessionId));
+                if (hRaw) hot = JSON.parse(hRaw);
+            } catch (_e) { hot = null; }
+            return this._m19MergeLocalBackupTiers(durable, hot, om);
         } catch (e) {
             return null;
         }
@@ -11568,14 +11807,35 @@ class Chart {
                     const k = tradeKey(t);
                     if (k) {
                         const prev = merged.get(k);
-                        merged.set(k, prev ? { ...prev, ...t } : t);
+                        // GET/server journal is durable (unmarked) → B-era replace semantics.
+                        // Prefer-richer only when the incoming state itself is an explicitly marked slim patch.
+                        const slimMarked = state && this.orderManager
+                            && typeof this.orderManager._m19IsHotPersistTrimMarked === 'function'
+                            && this.orderManager._m19IsHotPersistTrimMarked(state);
+                        if (prev && slimMarked
+                            && typeof this.orderManager._m19MergePreferRicherTradeRow === 'function') {
+                            merged.set(k, this.orderManager._m19MergePreferRicherTradeRow(prev, t, { slimMarked: true }));
+                        } else {
+                            merged.set(k, prev ? { ...prev, ...t } : t);
+                        }
                     }
                 });
                 const backupSnap = this._readTradingSessionLocalBackup(sessionId);
                 const backupJournal = backupSnap && Array.isArray(backupSnap.journal) ? backupSnap.journal.map(normalizeJournalTrade) : [];
+                const backupSlim = !!(backupSnap && this.orderManager
+                    && typeof this.orderManager._m19IsHotPersistTrimMarked === 'function'
+                    && this.orderManager._m19IsHotPersistTrimMarked(backupSnap));
                 backupJournal.forEach((t) => {
                     const k = tradeKey(t);
-                    if (k && !merged.has(k)) merged.set(k, t);
+                    if (!k) return;
+                    const prev = merged.get(k);
+                    if (!prev) {
+                        merged.set(k, t);
+                    } else if (backupSlim
+                        && typeof this.orderManager._m19MergePreferRicherTradeRow === 'function') {
+                        // Marked slim local backup must not clobber richer hydrated rows.
+                        merged.set(k, this.orderManager._m19MergePreferRicherTradeRow(prev, t, { slimMarked: true }));
+                    }
                 });
                 this.orderManager.tradeJournal = Array.from(merged.values());
                 if (typeof this.orderManager.normalizeJournalRowsInPlace === 'function') {
@@ -12216,7 +12476,8 @@ class Chart {
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingCriticalSessionStatePatch = this._mergeSessionStatePatches(this._pendingCriticalSessionStatePatch, patch);
-        this._writeTradingSessionLocalBackupThrottled({ force: true });
+        // Critical boundary: full unmarked local backup (not hot slim).
+        this._writeTradingSessionLocalBackupThrottled({ force: true, slim: false });
         if (this._criticalSessionStateSaveTimer) {
             clearTimeout(this._criticalSessionStateSaveTimer);
             this._criticalSessionStateSaveTimer = null;
@@ -12241,13 +12502,19 @@ class Chart {
 
         this._sessionStatePatchInFlight = true;
         try {
-            this._writeTradingSessionLocalBackupThrottled({ force: true });
+            // Critical flush: durable full local backup before/alongside server PATCH.
+            this._writeTradingSessionLocalBackupThrottled({ force: true, slim: false });
+            // Unload keepalive must stay within the browser ~64 KiB body budget.
+            // Full rich snapshot lives on the durable local key only.
+            const networkPatch = useKeepalive
+                ? this._m19KeepaliveSafeSessionPatch(patch)
+                : patch;
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 keepalive: useKeepalive,
-                body: JSON.stringify(patch)
+                body: JSON.stringify(networkPatch)
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
@@ -12369,12 +12636,15 @@ class Chart {
             }
             this._pendingSessionStatePatch = null;
             try {
+                const lateBody = this._m19KeepaliveSafeSessionPatch
+                    ? this._m19KeepaliveSafeSessionPatch(latePatch)
+                    : latePatch;
                 void fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     keepalive: true,
-                    body: JSON.stringify(latePatch),
+                    body: JSON.stringify(lateBody),
                 });
             } catch (_) { /* unload best-effort */ }
             return;
@@ -12389,12 +12659,15 @@ class Chart {
         this._sessionStatePatchInFlight = true;
         try {
             this._writeTradingSessionLocalBackupThrottled({ force: true });
+            const networkPatch = useKeepalive && this._m19KeepaliveSafeSessionPatch
+                ? this._m19KeepaliveSafeSessionPatch(patch)
+                : patch;
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 keepalive: useKeepalive,
-                body: JSON.stringify(patch)
+                body: JSON.stringify(networkPatch)
             });
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
@@ -12529,9 +12802,10 @@ class Chart {
                                 this._sessionStateSaveTimer = null;
                             }
                             this._replaySessionStateLastPatchAt = 0;
-                            // Always force a local snapshot BEFORE the network flush so a
-                            // dropped keepalive / in-flight race still restores on re-open.
-                            this._writeTradingSessionLocalBackupThrottled({ force: true });
+                            // Full rich snapshot locally (durable tier); hot slim for light state.
+                            // Network unload uses keepalive-budget patches only (not the full blob).
+                            this._writeTradingSessionLocalBackupThrottled({ force: true, slim: false });
+                            this._writeTradingSessionLocalBackupThrottled({ force: true, slim: true });
                             // keepalive so the browser doesn't abort the request when the
                             // page is torn down by a refresh/close — this is what makes the
                             // advanced playhead actually reach the server on refresh.

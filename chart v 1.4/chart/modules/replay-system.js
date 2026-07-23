@@ -6123,7 +6123,22 @@ class ReplaySystem {
             try { this.chart.render(); } catch (_e) { /* ignore */ }
         }
 
+        // Multichart projected iframe: host alone owns hot/critical persistence.
+        // Embed pause/pagehide must perform zero serialization.
+        const om = this.chart && this.chart.orderManager;
+        const skipMcPersist = !!(om
+            && typeof om._shouldSkipMcIframeRuntimePersist === 'function'
+            && om._shouldSkipMcIframeRuntimePersist());
+        if (skipMcPersist) return;
+
         this._flushReplayStateToSession();
+        // Critical boundary (pause): unmarked full durable runtime snapshot.
+        // Hot autosave stays slim; pause must not leave open-position history only in memory.
+        try {
+            if (om && typeof om.persistRuntimeOrderState === 'function') {
+                om.persistRuntimeOrderState({ critical: true });
+            }
+        } catch (_e) { /* ignore */ }
     }
 
     /**

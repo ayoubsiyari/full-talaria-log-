@@ -3738,6 +3738,217 @@ class OrderManager {
     }
 
     /**
+     * M19-C — strip heavy blobs from hot runtime/session patches unless kill-switch is set.
+     * Kill (B-era full hot payloads):
+     *   window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 = true
+     */
+    _m19PersistTrimV1Enabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /** Patch-level mark: prefer-richer merge applies only when this is true. */
+    _m19HotPersistTrimMarkKey() {
+        return 'm19_hot_persist_trim_v1';
+    }
+
+    /** Heavy fields omitted from hot session/runtime patches (never read when trim ON). */
+    _m19HotPersistHeavyFieldKeys() {
+        return [
+            'entryScreenshot', 'exitScreenshot', 'entryScreenshots', 'railScreenshots',
+            'screenshot', 'screenshotBase64', 'image', 'chartImage', 'thumbnail', 'preview',
+            'screenshots',
+            'bar_close_r', 'bar_high_r', 'bar_low_r',
+            'post_exit_bar_close_r', 'post_exit_bar_high_r', 'post_exit_bar_low_r',
+            'bar_close_r_archive', 'bar_high_r_archive', 'bar_low_r_archive',
+            'post_exit_bar_close_r_archive', 'post_exit_bar_high_r_archive', 'post_exit_bar_low_r_archive',
+            'post_checkpoints', 'trail_sl_path',
+        ];
+    }
+
+    _m19HotPersistHeavyKeySet() {
+        if (!this.__m19HotPersistHeavyKeySet) {
+            this.__m19HotPersistHeavyKeySet = new Set(this._m19HotPersistHeavyFieldKeys());
+        }
+        return this.__m19HotPersistHeavyKeySet;
+    }
+
+    /**
+     * Deep-clone omitting heavy keys without ever reading their values (trim ON).
+     * Object.keys listing does not invoke getters; heavy keys are skipped before access.
+     */
+    _m19CloneOmittingHeavyFields(value, heavySet) {
+        if (value == null || typeof value !== 'object') return value;
+        const heavy = heavySet || this._m19HotPersistHeavyKeySet();
+        if (Array.isArray(value)) {
+            const out = [];
+            for (let i = 0; i < value.length; i++) {
+                out.push(this._m19CloneOmittingHeavyFields(value[i], heavy));
+            }
+            return out;
+        }
+        const out = {};
+        const keys = Object.keys(value);
+        for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            if (heavy.has(k)) continue; // never read value[k]
+            out[k] = this._m19CloneOmittingHeavyFields(value[k], heavy);
+        }
+        return out;
+    }
+
+    /**
+     * Clone one order/journal row for hot persist.
+     * Trim ON: omit heavy keys before any serialize (never reads screenshot/array values).
+     * Kill: deep-clone entire row (B-era — may read heavy fields).
+     */
+    _m19StripHeavyFieldsForHotPersist(row) {
+        if (!row || typeof row !== 'object') return row;
+        if (!this._m19PersistTrimV1Enabled()) {
+            try {
+                return JSON.parse(JSON.stringify(row));
+            } catch (_) {
+                return { ...row };
+            }
+        }
+        return this._m19CloneOmittingHeavyFields(row);
+    }
+
+    _m19TrimRecordsForHotPersist(arr) {
+        const src = Array.isArray(arr) ? arr : [];
+        if (!this._m19PersistTrimV1Enabled()) {
+            try {
+                return JSON.parse(JSON.stringify(src));
+            } catch (_) {
+                return src.slice();
+            }
+        }
+        const heavy = this._m19HotPersistHeavyKeySet();
+        const out = [];
+        for (let i = 0; i < src.length; i++) {
+            out.push(this._m19CloneOmittingHeavyFields(src[i], heavy));
+        }
+        return out;
+    }
+
+    /** Hot session journal clone (slim when trim ON). In-memory tradeJournal stays full. */
+    _m19CloneJournalForHotSessionPersist() {
+        return this._m19TrimRecordsForHotPersist(this.tradeJournal);
+    }
+
+    _m19IsHotPersistTrimMarked(patchOrRow) {
+        if (!patchOrRow || typeof patchOrRow !== 'object') return false;
+        const k = this._m19HotPersistTrimMarkKey();
+        return patchOrRow[k] === true || patchOrRow._m19_hot_persist_trim_v1 === true;
+    }
+
+    /**
+     * Recursive prefer-richer value merge (symmetric with omit-before-clone nesting).
+     * Preserves heavy keys at every object depth (metadata.*, journalEntry.*, …).
+     */
+    _m19MergePreferRicherValue(prev, next, heavySet) {
+        if (next == null || next === '') {
+            return prev !== undefined ? prev : next;
+        }
+        if (prev == null || typeof prev !== 'object' || typeof next !== 'object') {
+            return next;
+        }
+        const heavy = heavySet || this._m19HotPersistHeavyKeySet();
+        if (Array.isArray(next)) {
+            if (Array.isArray(prev) && next.length === 0 && prev.length > 0) return prev.slice();
+            return next;
+        }
+        const out = { ...prev, ...next };
+        const keySet = new Set([...Object.keys(prev), ...Object.keys(next)]);
+        keySet.forEach((k) => {
+            const p = prev[k];
+            const hasNext = Object.prototype.hasOwnProperty.call(next, k);
+            const n = hasNext ? next[k] : undefined;
+            if (heavy.has(k)) {
+                if (!hasNext || n == null || n === '') {
+                    if (p !== undefined) out[k] = p;
+                    else delete out[k];
+                    return;
+                }
+                if (Array.isArray(n) && n.length === 0 && Array.isArray(p) && p.length > 0) {
+                    out[k] = p;
+                    return;
+                }
+                if (typeof n === 'string' && n.length === 0 && typeof p === 'string' && p.length > 0) {
+                    out[k] = p;
+                    return;
+                }
+                out[k] = n;
+                return;
+            }
+            if (
+                p && n
+                && typeof p === 'object' && typeof n === 'object'
+                && !Array.isArray(p) && !Array.isArray(n)
+            ) {
+                out[k] = this._m19MergePreferRicherValue(p, n, heavy);
+            }
+        });
+        return out;
+    }
+
+    /**
+     * Prefer-richer merge ONLY when `next` / opts marks a slim hot patch.
+     * Unmarked (full / kill / B-era) → plain replace semantics `{...prev, ...next}`.
+     * Marked: recursive — nested metadata/journalEntry heavy fields survive omit.
+     */
+    _m19MergePreferRicherTradeRow(prev, next, opts = {}) {
+        if (!next || typeof next !== 'object') return prev;
+        if (!prev || typeof prev !== 'object') return next;
+        const slimMarked = opts.slimMarked === true
+            || this._m19IsHotPersistTrimMarked(opts)
+            || this._m19IsHotPersistTrimMarked(next);
+        if (!slimMarked) {
+            return { ...prev, ...next };
+        }
+        return this._m19MergePreferRicherValue(prev, next);
+    }
+
+    /**
+     * Unmarked full runtime patch (B-era deep clone). Used at critical boundaries
+     * (pause / pagehide / close) so open-position excursion history stays durable.
+     * Never used for regular hot autosave when trim is ON.
+     */
+    _buildDurableRuntimeOrderPersistPatch() {
+        const safeClone = (arr) => {
+            try {
+                return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+            } catch (e) {
+                return [];
+            }
+        };
+        const account_runtime = {
+            balance: this.balance,
+            equity: this.equity,
+            initialBalance: this.initialBalance,
+            session_current_time:
+                this.orderService && this.orderService.multiInstrumentSession
+                    ? this.orderService.multiInstrumentSession.current_time
+                    : undefined,
+        };
+        const order_counters = {
+            orderIdCounter: this.orderIdCounter,
+            tradeGroupIdCounter: this.tradeGroupIdCounter,
+        };
+        return {
+            pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
+            open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
+            account_runtime,
+            order_counters,
+            savedAt: Date.now(),
+        };
+    }
+
+    /**
      * Authoritative sample count for bar_close_r (survives tail trim).
      * Additive field bar_r_count; falls back to array length for legacy rows.
      */
@@ -5148,16 +5359,36 @@ class OrderManager {
             console.warn('📔 Trade journal cannot persist: no active trading session (open the chart with ?sessionId=… or assigned session).');
         }
 
+        // Hot autosave: slim journal when M19-C trim ON (omit-before-clone; marked for prefer-richer).
+        // Critical path: unmarked full durable clone (B-era replace/clear semantics on server).
+        const trimOn = this._m19PersistTrimV1Enabled();
+        const hotJournal = this._m19CloneJournalForHotSessionPersist();
+        let durableJournal = this.tradeJournal;
+        if (trimOn) {
+            try {
+                durableJournal = JSON.parse(JSON.stringify(Array.isArray(this.tradeJournal) ? this.tradeJournal : []));
+            } catch (_) {
+                durableJournal = Array.isArray(this.tradeJournal) ? this.tradeJournal.slice() : [];
+            }
+        }
+
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave({
-                journal: this.tradeJournal,
+            const hotPatch = {
+                journal: hotJournal,
                 per_instrument_stats: perInstrumentStats,
-                journal_by_ticker: journalByTicker
-            });
+            };
+            if (trimOn) {
+                hotPatch[this._m19HotPersistTrimMarkKey()] = true;
+            } else {
+                // Kill / B-era: include nested journal_by_ticker (may contain heavy fields).
+                hotPatch.journal_by_ticker = journalByTicker;
+            }
+            this.chart.scheduleSessionStateSave(hotPatch);
         }
         if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            // Unmarked full journal — server must replace, not prefer-richer.
             this.chart.queueCriticalSessionStateSave({
-                journal: this.tradeJournal,
+                journal: durableJournal,
                 per_instrument_stats: perInstrumentStats,
                 journal_by_ticker: journalByTicker
             });
@@ -5166,10 +5397,18 @@ class OrderManager {
 
     /**
      * @param {{ critical?: boolean }} [opts] - If critical, also PATCH immediately (with journal-related saves) so balance/positions match the close in the same moment.
+     * Hot path: slim marked patch (trim ON). Critical: unmarked full durable snapshot
+     * (pause / pagehide / close) — heavy serialization stays off regular hot autosave.
      */
     persistRuntimeOrderState(opts = {}) {
         if (!_orderPersistenceV1Enabled()) {
             this._persistRuntimeOrderStateLegacy(opts);
+            return;
+        }
+
+        // Multichart projected iframe: host owns all hot/critical persistence.
+        // Zero serialization on embed pause/pagehide/hot paths.
+        if (this._shouldSkipMcIframeRuntimePersist && this._shouldSkipMcIframeRuntimePersist()) {
             return;
         }
 
@@ -5178,23 +5417,30 @@ class OrderManager {
                 ? this.chart.getActiveTradingSessionId()
                 : null;
 
-        const patch = this._buildRuntimeOrderPersistPatch();
-        this._writeRuntimeOrderStateToSessionStorage(patch);
+        const hotPatch = this._buildRuntimeOrderPersistPatch();
+        const trimOn = this._m19PersistTrimV1Enabled();
+        const durablePatch = (opts.critical && trimOn)
+            ? this._buildDurableRuntimeOrderPersistPatch()
+            : hotPatch;
+
+        // Hot autosave keeps slim sessionStorage; critical boundaries write full durable.
+        this._writeRuntimeOrderStateToSessionStorage(opts.critical ? durablePatch : hotPatch);
 
         if (!sessionId) {
             console.log('[orders-persist] no session → sessionStorage save:',
-                'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
+                'pending=', durablePatch.pending_orders.length, 'open=', durablePatch.open_positions.length);
             return;
         }
 
         console.log('[orders-persist] session save (sessionId=' + sessionId + '):',
-            'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
+            'pending=', hotPatch.pending_orders.length, 'open=', hotPatch.open_positions.length,
+            opts.critical ? '(critical durable)' : '(hot)');
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave(patch);
+            this.chart.scheduleSessionStateSave(hotPatch);
         }
         if (opts.critical && this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
-            this.chart.queueCriticalSessionStateSave(patch);
+            this.chart.queueCriticalSessionStateSave(durablePatch);
         }
     }
 
@@ -6242,13 +6488,26 @@ class OrderManager {
             orderIdCounter: this.orderIdCounter,
             tradeGroupIdCounter: this.tradeGroupIdCounter,
         };
-        return {
-            pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
-            open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
+        // Kill → exact B-era deep-clone path (may read heavy fields).
+        if (!this._m19PersistTrimV1Enabled()) {
+            return {
+                pending_orders: _stampPersistedOrderRecords(safeClone(this.pendingOrders)),
+                open_positions: _stampPersistedOrderRecords(safeClone(this.openPositions)),
+                account_runtime,
+                order_counters,
+                savedAt: Date.now(),
+            };
+        }
+        // Trim ON: omit heavy keys before clone/serialize; mark for prefer-richer merge.
+        const patch = {
+            pending_orders: _stampPersistedOrderRecords(this._m19TrimRecordsForHotPersist(this.pendingOrders)),
+            open_positions: _stampPersistedOrderRecords(this._m19TrimRecordsForHotPersist(this.openPositions)),
             account_runtime,
             order_counters,
             savedAt: Date.now(),
         };
+        patch[this._m19HotPersistTrimMarkKey()] = true;
+        return patch;
     }
 
     _writeRuntimeOrderStateToSessionStorage(patch) {
@@ -6343,9 +6602,30 @@ class OrderManager {
             try {
                 const om = window.chart && window.chart.orderManager;
                 if (!om || !_orderPersistenceV1Enabled()) return;
+                // Projected iframe: host owns critical snapshot — zero serialize here.
                 if (om._shouldSkipMcIframeRuntimePersist && om._shouldSkipMcIframeRuntimePersist()) return;
-                const patch = om._buildRuntimeOrderPersistPatch();
-                om._writeRuntimeOrderStateToSessionStorage(patch);
+                // Trim ON unload: persist full durable locally only. Do not kick a full
+                // non-keepalive critical PATCH (chart.js pagehide owns keepalive-budget network).
+                if (typeof om._m19PersistTrimV1Enabled === 'function' && om._m19PersistTrimV1Enabled()
+                    && typeof om._buildDurableRuntimeOrderPersistPatch === 'function') {
+                    const durable = om._buildDurableRuntimeOrderPersistPatch();
+                    om._writeRuntimeOrderStateToSessionStorage(durable);
+                    if (om.chart && typeof om.chart._writeTradingSessionLocalBackupThrottled === 'function') {
+                        om.chart._writeTradingSessionLocalBackupThrottled({ force: true, slim: false });
+                    }
+                    if (om.chart && typeof om.chart.scheduleSessionStateSave === 'function'
+                        && typeof om._buildRuntimeOrderPersistPatch === 'function') {
+                        om.chart.scheduleSessionStateSave(om._buildRuntimeOrderPersistPatch());
+                    }
+                    return;
+                }
+                // Kill / B-era: single-path critical persist.
+                if (typeof om.persistRuntimeOrderState === 'function') {
+                    om.persistRuntimeOrderState({ critical: true });
+                } else {
+                    const patch = om._buildRuntimeOrderPersistPatch();
+                    om._writeRuntimeOrderStateToSessionStorage(patch);
+                }
             } catch (_e) { /* ignore */ }
         };
         window.addEventListener('pagehide', flush);

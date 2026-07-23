@@ -1,0 +1,158 @@
+{
+  "row": "L2-M19-FIX-C",
+  "task": "CHECKPOINT-PREFLIGHT",
+  "buildIdProposed": "20260723b03",
+  "status": "READY-CHECKPOINT-CANDIDATE",
+  "finishedAt": "2026-07-23T09:00:00.000Z",
+  "baseSha": "5c9d0fbd1a84ae5bb056700e5e3e5b7cf5b4776b",
+  "baseNote": "Fix B checkpoint commit",
+  "worktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-fixc-ckpt-preflight-5c9d0fbd1",
+  "sourceWorktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-fixc-5c9d0fbd1",
+  "kill": "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1",
+  "excluded": {
+    "D": "FROZEN — not transplanted",
+    "E": "FROZEN — not transplanted"
+  },
+  "gitattributes": {
+    "correctedBeforeIntegrate": true,
+    "rule": "**/chart/modules/replay-system.js whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol",
+    "sha256": "131924ff5359e2be42e1f65e0a566ef95f83827f5a14b8653bec8921cf310356"
+  },
+  "transplantedPaths": [
+    ".gitattributes",
+    "chart v 1.4/chart/api_server.py",
+    "chart v 1.4/chart/chart.js",
+    "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+    "chart v 1.4/chart/modules/order-manager.js",
+    "chart v 1.4/chart/modules/replay-system.js",
+    "chart v 1.4/chart/session_journal_store.py",
+    "chart v 1.4/chart/tests/test_session_journal_store.py",
+    "homepage/public/chart/chart.js",
+    "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+    "homepage/public/chart/modules/order-manager.js",
+    "homepage/public/chart/modules/replay-system.js",
+    "chart v 1.4/chart/modules/m19-persist-trim-contract.test.mjs",
+    "homepage/public/chart/modules/m19-persist-trim-contract.test.mjs"
+  ],
+  "pathCount": 14,
+  "replaySystemNumstat": {
+    "chart": { "insertions": 15, "deletions": 0 },
+    "homepage": { "insertions": 15, "deletions": 0 },
+    "ok": true
+  },
+  "mirrorPairsSha256": {
+    "chart.js": "f2a4c4de2aa9f3f32ae4afd57cea307560e43fc4b4e4315fde728e034fac353a",
+    "order-manager.js": "69b37910488947602f5157fcd80f2d9fa897f36864f0fb72081c0076db348617",
+    "replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "m19-progressive-session-soak.test.mjs": "2a3031b87f7c011102df96b9cff0474e6d8c85cb8a04a4b81a131cf479df695e",
+    "m19-persist-trim-contract.test.mjs": "ba71971c84e246509ac0be832900ccc6801a547ab7abd5f4ebf877467db4cb30",
+    "allFiveMatch": true
+  },
+  "hashesSha256": {
+    ".gitattributes": "131924ff5359e2be42e1f65e0a566ef95f83827f5a14b8653bec8921cf310356",
+    "chart v 1.4/chart/api_server.py": "9e67c81f3891c02285a1e6e787b8648000642e55ad9dfdad6bb14635a05322dc",
+    "chart v 1.4/chart/chart.js": "f2a4c4de2aa9f3f32ae4afd57cea307560e43fc4b4e4315fde728e034fac353a",
+    "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs": "2a3031b87f7c011102df96b9cff0474e6d8c85cb8a04a4b81a131cf479df695e",
+    "chart v 1.4/chart/modules/order-manager.js": "69b37910488947602f5157fcd80f2d9fa897f36864f0fb72081c0076db348617",
+    "chart v 1.4/chart/modules/replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "chart v 1.4/chart/session_journal_store.py": "d4cfb1f6a44beb56a0b87fc103ec297c906255212e68e11c4b0377c8302113f5",
+    "chart v 1.4/chart/tests/test_session_journal_store.py": "2c98fd8e693d381c1c99170fe3d2f619b8b7791132024c924371f1c6c8bc12a3",
+    "homepage/public/chart/chart.js": "f2a4c4de2aa9f3f32ae4afd57cea307560e43fc4b4e4315fde728e034fac353a",
+    "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs": "2a3031b87f7c011102df96b9cff0474e6d8c85cb8a04a4b81a131cf479df695e",
+    "homepage/public/chart/modules/order-manager.js": "69b37910488947602f5157fcd80f2d9fa897f36864f0fb72081c0076db348617",
+    "homepage/public/chart/modules/replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "chart v 1.4/chart/modules/m19-persist-trim-contract.test.mjs": "ba71971c84e246509ac0be832900ccc6801a547ab7abd5f4ebf877467db4cb30",
+    "homepage/public/chart/modules/m19-persist-trim-contract.test.mjs": "ba71971c84e246509ac0be832900ccc6801a547ab7abd5f4ebf877467db4cb30"
+  },
+  "scopeGuard": {
+    "noMarkerDeltaProduct": true,
+    "noHotpathLogProduct": true,
+    "productPathsDirtyCount": 14,
+    "deUntouched": true
+  },
+  "evidencePaths": [
+    "docs/plan3/evidence/L2-M19-fix-c-persist-trim-on.json",
+    "docs/plan3/evidence/L2-M19-fix-c-persist-trim-kill.json",
+    "docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-ON.md",
+    "docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-KILL.md",
+    "docs/plan3/evidence/L2-M19-FIX-C-CHECKPOINT-PREFLIGHT.json"
+  ],
+  "gateResults": {
+    "fixCOnSoak": {
+      "verdict": "FIX-C-GREEN",
+      "exitCode": 0,
+      "fixAAllPass": true,
+      "fixBAllPass": true,
+      "fixCAllPass": true,
+      "endSessionBytes": 64623,
+      "maxOpenExcursion": 256,
+      "panelRebuilds": 0,
+      "persist": "M19-PERSIST-GREEN"
+    },
+    "fixCKillSoak": {
+      "verdict": "FIX-C-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "endSessionBytes": 1123730,
+      "fixCAllPass": true
+    },
+    "fixCContract": {
+      "pass": "20/20",
+      "skipped": 2,
+      "exitCode": 0,
+      "note": "kill cases skipped when kill env unset"
+    },
+    "fixAUiContract": { "pass": "4/4", "exitCode": 0 },
+    "fixBExcursionI16": { "pass": "11/11", "exitCode": 0 },
+    "i16OrderRuntimePersist": { "pass": "25/25", "exitCode": 0 },
+    "pythonMerge": {
+      "fullSuite": "11/12",
+      "fixCPreferRicher": "5/5 PASS",
+      "preexistingFail": "test_upsert_trade_in_journal_replaces_by_id (also fails on Fix B base 5c9d0fbd1 — append keeps id key, no tradeId normalize)",
+      "exitCodeFixCSubset": 0
+    },
+    "syntax": {
+      "nodeCheck": "10/10 PASS",
+      "pyCompile": "3/3 PASS",
+      "exitCode": 0
+    },
+    "lint": {
+      "readLints": "clean",
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "note": "CRLF warnings only; no whitespace errors under corrected .gitattributes"
+    }
+  },
+  "proposedCheckpointManifest": {
+    "title": "M19 Fix C — persist trim / dual-tier hot session (independent checkpoint)",
+    "buildId": "20260723b03",
+    "base": "5c9d0fbd1a84ae5bb056700e5e3e5b7cf5b4776b",
+    "kill": "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1",
+    "include": [
+      ".gitattributes",
+      "chart v 1.4/chart/api_server.py",
+      "chart v 1.4/chart/chart.js",
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "chart v 1.4/chart/modules/order-manager.js",
+      "chart v 1.4/chart/modules/replay-system.js",
+      "chart v 1.4/chart/session_journal_store.py",
+      "chart v 1.4/chart/tests/test_session_journal_store.py",
+      "homepage/public/chart/chart.js",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/order-manager.js",
+      "homepage/public/chart/modules/replay-system.js",
+      "chart v 1.4/chart/modules/m19-persist-trim-contract.test.mjs",
+      "homepage/public/chart/modules/m19-persist-trim-contract.test.mjs",
+      "docs/plan3/evidence/L2-M19-fix-c-persist-trim-on.json",
+      "docs/plan3/evidence/L2-M19-fix-c-persist-trim-kill.json",
+      "docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-ON.md",
+      "docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-KILL.md",
+      "docs/plan3/evidence/L2-M19-FIX-C-CHECKPOINT-PREFLIGHT.json"
+    ],
+    "exclude": ["M19-D/E", "build bump / publish / deploy"],
+    "nextStepsNotDone": ["commit", "push", "build bump", "publish", "deploy"]
+  }
+}

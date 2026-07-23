@@ -454,8 +454,113 @@ def normalize_manual_trade_payload(raw: dict) -> dict:
     return out
 
 
-def upsert_trade_in_journal(journal: list, trade: dict) -> list:
-    """Replace trade with same client id or append."""
+# Heavy blobs omitted from M19-C hot session patches — never let empty/missing
+# values clobber richer durable SQL/payload rows on upsert.
+_HOT_PERSIST_HEAVY_KEYS = (
+    "entryScreenshot",
+    "exitScreenshot",
+    "entryScreenshots",
+    "railScreenshots",
+    "screenshot",
+    "screenshotBase64",
+    "image",
+    "chartImage",
+    "thumbnail",
+    "preview",
+    "screenshots",
+    "bar_close_r",
+    "bar_high_r",
+    "bar_low_r",
+    "post_exit_bar_close_r",
+    "post_exit_bar_high_r",
+    "post_exit_bar_low_r",
+    "bar_close_r_archive",
+    "bar_high_r_archive",
+    "bar_low_r_archive",
+    "post_exit_bar_close_r_archive",
+    "post_exit_bar_high_r_archive",
+    "post_exit_bar_low_r_archive",
+    "post_checkpoints",
+    "trail_sl_path",
+)
+
+
+_HOT_PERSIST_HEAVY_KEY_SET = frozenset(_HOT_PERSIST_HEAVY_KEYS)
+
+
+def _merge_prefer_richer_value(prev, incoming, heavy: frozenset | None = None):
+    """Recursive prefer-richer merge — symmetric with JS omit-before-clone nesting."""
+    heavy_keys = heavy if heavy is not None else _HOT_PERSIST_HEAVY_KEY_SET
+    if incoming is None or incoming == "":
+        return prev if prev is not None else incoming
+    if not isinstance(prev, dict) or not isinstance(incoming, dict):
+        if isinstance(incoming, list) and isinstance(prev, list):
+            if len(incoming) == 0 and len(prev) > 0:
+                return list(prev)
+        return incoming
+    out = {**prev, **incoming}
+    for key in set(prev) | set(incoming):
+        p = prev.get(key)
+        has_next = key in incoming
+        n = incoming.get(key) if has_next else None
+        if key in heavy_keys:
+            if not has_next or n is None or n == "":
+                if key in prev:
+                    out[key] = prev[key]
+                else:
+                    out.pop(key, None)
+                continue
+            if isinstance(n, list) and len(n) == 0 and isinstance(p, list) and len(p) > 0:
+                out[key] = p
+            elif isinstance(n, str) and len(n) == 0 and isinstance(p, str) and len(p) > 0:
+                out[key] = p
+            else:
+                out[key] = n
+            continue
+        if isinstance(p, dict) and isinstance(n, dict):
+            out[key] = _merge_prefer_richer_value(p, n, heavy_keys)
+    return out
+
+
+def merge_trade_prefer_richer(prev: dict | None, incoming: dict | None) -> dict:
+    """Merge trade rows; slim/empty heavy fields do not overwrite richer durable data.
+
+    Recursive: nested metadata.*/journalEntry.* heavy keys survive omit-before-clone
+    the same way top-level heavy keys do.
+    """
+    if not isinstance(incoming, dict):
+        return dict(prev) if isinstance(prev, dict) else {}
+    if not isinstance(prev, dict):
+        return dict(incoming)
+    return _merge_prefer_richer_value(prev, incoming)
+
+
+def merge_order_rows_prefer_richer(prev_list: list | None, incoming_list: list | None) -> list:
+    """Merge open/pending order arrays by id; slim heavy fields do not clobber richer rows."""
+    if not isinstance(incoming_list, list):
+        return list(prev_list) if isinstance(prev_list, list) else []
+    if not isinstance(prev_list, list) or not prev_list:
+        return list(incoming_list)
+    by_id: dict[str, dict] = {}
+    for row in prev_list:
+        if isinstance(row, dict) and row.get("id") is not None:
+            by_id[str(row.get("id"))] = row
+    out: list[dict] = []
+    for row in incoming_list:
+        if not isinstance(row, dict):
+            continue
+        rid = row.get("id")
+        prev = by_id.get(str(rid)) if rid is not None else None
+        out.append(merge_trade_prefer_richer(prev, row) if prev else row)
+    return out
+
+
+def upsert_trade_in_journal(journal: list, trade: dict, *, prefer_richer: bool = False) -> list:
+    """Replace trade with same client id or append.
+
+    prefer_richer=True only for explicitly marked M19-C slim hot patches.
+    Full / kill updates keep B-era replace semantics ({**prev, **trade}).
+    """
     merged = list(journal) if isinstance(journal, list) else []
     tid = journal_trade_client_id(trade)
     if not tid:
@@ -466,7 +571,17 @@ def upsert_trade_in_journal(journal: list, trade: dict) -> list:
             idx = i
             break
     if idx >= 0:
-        merged[idx] = {**merged[idx], **trade}
+        if prefer_richer:
+            merged[idx] = merge_trade_prefer_richer(merged[idx], trade)
+        else:
+            merged[idx] = {**merged[idx], **trade}
     else:
         merged.append(trade)
     return merged
+
+
+def is_hot_persist_trim_marked(payload: dict | None) -> bool:
+    """True when a session PATCH is an explicitly marked M19-C slim hot patch."""
+    if not isinstance(payload, dict):
+        return False
+    return payload.get("m19_hot_persist_trim_v1") is True or payload.get("_m19_hot_persist_trim_v1") is True
