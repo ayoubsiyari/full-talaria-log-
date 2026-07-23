@@ -1,0 +1,37 @@
+{
+  "row": "L2-M19-E",
+  "title": "Hot-path log guard",
+  "task": "M19-E-GREEN",
+  "startedAt": "2024-07-03T09:46:40.000Z",
+  "finishedAt": "2024-07-03T09:46:40.000Z",
+  "elapsedMs": 9166.2965,
+  "headSha": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+  "fileHashes": {
+    "order-manager.js": "b3d8ce89bba7972d323364e184c36e83cd3f9dfe5ffa3ec9705ce9bebb2c44ba",
+    "replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "chart.js": "da12556863debdfe4953c8f19ed1275037df903a201a3509029d59d453dfc763"
+  },
+  "kill": "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1",
+  "targets": {
+    "consoleOnApprox": 0,
+    "consoleOnMax": 50,
+    "consoleOff": 165000,
+    "debugRestoresLogs": true,
+    "warnErrorUntouched": "see m19-e-hotpath-log.green.test.mjs",
+    "lazyFactories": "see m19-e-hotpath-log.green.test.mjs"
+  },
+  "on": {
+    "consoleCalls": 0,
+    "e_hotpathConsole": false
+  },
+  "off": {
+    "consoleCalls": 165000,
+    "e_hotpathConsole": true
+  },
+  "debugRestore": {
+    "consoleCalls": 7500,
+    "ok": true
+  },
+  "verdict": "E-GREEN",
+  "note": "Isolated M19-E evidence on A–E base. forcePanelLogSites exercises panel hot-path logs without disabling Fix A production dirty path."
+}

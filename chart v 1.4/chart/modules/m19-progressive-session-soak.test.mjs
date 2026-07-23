@@ -39,25 +39,37 @@ const FIXTURE_PATH = path.join(__dirname, 'm19-legacy-uncapped-session.fixture.j
 const PANEL_KILL = String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
 const EXCURSION_KILL = String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
 const PERSIST_KILL = String(process.env.TALARIA_DISABLE_M19_PERSIST_TRIM_V1 || '').trim() === '1';
+const MARKER_KILL = String(process.env.TALARIA_DISABLE_M19_MARKER_DELTA_V1 || '').trim() === '1';
+const HOTPATH_KILL = String(process.env.TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 || '').trim() === '1';
+// Fresh A–E checkpoint paths (do not overwrite prior A/B/C checkpoint evidence).
+const AE_BUILD = '20260723b04';
 const EVIDENCE_PATH = path.join(
   ROOT,
   PANEL_KILL
-    ? 'docs/plan3/evidence/L2-M19-fix-a-panel-dirty-kill.json'
+    ? `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-kill-a.json`
     : (EXCURSION_KILL
-      ? 'docs/plan3/evidence/L2-M19-fix-b-excursion-tail-kill.json'
+      ? `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-kill-b.json`
       : (PERSIST_KILL
-        ? 'docs/plan3/evidence/L2-M19-fix-c-persist-trim-kill.json'
-        : 'docs/plan3/evidence/L2-M19-fix-c-persist-trim-on.json')),
+        ? `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-kill-c.json`
+        : (MARKER_KILL
+          ? `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-kill-d.json`
+          : (HOTPATH_KILL
+            ? `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-kill-e.json`
+            : `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-on.json`)))),
 );
 const REPORT_PATH = path.join(
   ROOT,
   PANEL_KILL
-    ? 'docs/plan3/worker-reports/L2-M19-FIX-A-PANEL-DIRTY-KILL.md'
+    ? `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-KILL-A.md`
     : (EXCURSION_KILL
-      ? 'docs/plan3/worker-reports/L2-M19-FIX-B-EXCURSION-TAIL-KILL.md'
+      ? `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-KILL-B.md`
       : (PERSIST_KILL
-        ? 'docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-KILL.md'
-        : 'docs/plan3/worker-reports/L2-M19-FIX-C-PERSIST-TRIM-ON.md')),
+        ? `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-KILL-C.md`
+        : (MARKER_KILL
+          ? `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-KILL-D.md`
+          : (HOTPATH_KILL
+            ? `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-KILL-E.md`
+            : `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-ON.md`)))),
 );
 const EXCURSION_TAIL_MAX = 256;
 const BASELINE_BEFORE = {
@@ -76,6 +88,8 @@ const WINDOW_SIZE = MEASURED_TICKS / WINDOWS;
 const CANONICAL_REPEATS = 3;
 const TARGET_CLOSED_TRADES = 50;
 const SENTINEL_OPEN = 2;
+/** Accepted D ON visit bound (matches M19_FOCUS=D). */
+const D_VISITS_ON_MAX = 80;
 
 const FRAME_RATIO_MAX = 1.25;
 const SLOPE_PER_1K_MAX_FRAC = 0.05;
@@ -253,15 +267,17 @@ function installDomAndStorage() {
     requestAnimationFrame: global.requestAnimationFrame,
     cancelAnimationFrame: global.cancelAnimationFrame,
   };
-  // Kill-switches from env for Fix-A / Fix-B discrimination; others default OFF.
+  // Kill-switches from env for A–E discrimination; unset → fix ON.
   window.__TALARIA_DISABLE_M19_PANEL_DIRTY_V1 =
     String(process.env.TALARIA_DISABLE_M19_PANEL_DIRTY_V1 || '').trim() === '1';
   window.__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 =
     String(process.env.TALARIA_DISABLE_M19_EXCURSION_TAIL_V1 || '').trim() === '1';
   window.__TALARIA_DISABLE_M19_PERSIST_TRIM_V1 =
     String(process.env.TALARIA_DISABLE_M19_PERSIST_TRIM_V1 || '').trim() === '1';
-  window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = false;
-  window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
+  window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 =
+    String(process.env.TALARIA_DISABLE_M19_MARKER_DELTA_V1 || '').trim() === '1';
+  window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 =
+    String(process.env.TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 || '').trim() === '1';
 }
 
 installConsoleSink();
@@ -712,9 +728,15 @@ function wrapCounters(om, chart) {
   const realMarkers = OrderManager.prototype._redrawJournalMarkersForReplayPlayhead;
   om._redrawJournalMarkersForReplayPlayhead = function (...args) {
     counters.markerRedraw += 1;
-    counters.journalRowsVisited += (this.tradeJournal || []).length;
-    counters.paths.d_markerFullScan = true;
-    return realMarkers.apply(this, args);
+    const ret = realMarkers.apply(this, args);
+    const visited = Number(this._m19LastJournalRowsVisited);
+    const jLen = (this.tradeJournal || []).length;
+    // Prefer product-reported visit count (M19-D); fall back to full length (RED baseline).
+    counters.journalRowsVisited += Number.isFinite(visited) ? visited : jLen;
+    if (!Number.isFinite(visited) || visited >= jLen) {
+      counters.paths.d_markerFullScan = true;
+    }
+    return ret;
   };
 
   const realPersistJ = OrderManager.prototype.persistJournal;
@@ -826,6 +848,12 @@ async function runSoak({
   measured = MEASURED_TICKS,
   seedJournal = 0,
   accumulateTarget = TARGET_CLOSED_TRADES,
+  // D/E focus evidence uses sync per-tick marker redraw (accepted DE discriminator).
+  // Default A/B/C soak keeps production-like debounce.
+  syncMarkers = false,
+  // E focus: call full updatePositionsPanel each tick so panel hot-path logs
+  // (guarded by M19-E) are exercised even while Fix A keeps production rebuilds at 0.
+  forcePanelLogSites = false,
 }) {
   consoleSink.calls = 0;
   consoleSink.argBytes = 0;
@@ -907,6 +935,10 @@ async function runSoak({
   };
 
   const scheduleMarkerRedraw = () => {
+    if (syncMarkers) {
+      try { driver._redrawJournalMarkersForReplayPlayhead(); } catch (_) { /* ignore */ }
+      return;
+    }
     // Match production replay-system debounce (not a sync full-journal walk every tick).
     clearTimeout(driver._replayMarkerSyncDebounce);
     driver._replayMarkerSyncDebounce = setTimeout(() => {
@@ -918,10 +950,13 @@ async function runSoak({
   for (let i = 1; i <= warmup; i++) {
     advance(i);
     OrderManager.prototype.updatePositions.call(driver);
+    if (forcePanelLogSites) {
+      try { OrderManager.prototype.updatePositionsPanel.call(driver); } catch (_) { /* ignore */ }
+    }
     scheduleMarkerRedraw();
     if (typeof global.__m19FlushRaf === 'function') global.__m19FlushRaf();
     if (i % 100 === 0) {
-      await new Promise((r) => setTimeout(r, 0)); // flush debounced marker work
+      if (!syncMarkers) await new Promise((r) => setTimeout(r, 0)); // flush debounced marker work
       await chart.flushSessionStateSave();
     }
   }
@@ -929,6 +964,7 @@ async function runSoak({
   const startExcursion = excursionLens(driver);
   const startPayloads = samplePayloads(driver, chart);
   const consoleAtMeasureStart = consoleSink.calls;
+  const visitsAtMeasureStart = counters.journalRowsVisited;
 
   // Measured
   for (let m = 0; m < measured; m++) {
@@ -947,14 +983,17 @@ async function runSoak({
 
     const t0 = performance.now();
     OrderManager.prototype.updatePositions.call(driver);
-    // Production: updatePositions every tick; marker redraw is debounced (replay-system).
+    if (forcePanelLogSites) {
+      try { OrderManager.prototype.updatePositionsPanel.call(driver); } catch (_) { /* ignore */ }
+    }
+    // Production default: debounced marker redraw. D/E focus: sync every tick.
     scheduleMarkerRedraw();
     if (typeof global.__m19FlushRaf === 'function') global.__m19FlushRaf();
     const dt = performance.now() - t0;
     frameCosts.push(dt);
     if (m % 25 === 0) {
       // Flush debounced marker work + session outside the per-tick cost sample.
-      await new Promise((r) => setTimeout(r, 0));
+      if (!syncMarkers) await new Promise((r) => setTimeout(r, 0));
       await chart.flushSessionStateSave();
     }
 
@@ -966,11 +1005,22 @@ async function runSoak({
     }
   }
 
+  if (!syncMarkers) await new Promise((r) => setTimeout(r, 0));
   await chart.flushSessionStateSave();
   const endPayloads = samplePayloads(driver, chart);
   const endExcursion = excursionLens(driver);
 
-  if (consoleSink.calls > consoleAtMeasureStart) counters.paths.e_hotpathConsole = true;
+  // Path (d): full-scan if mean visits per redraw ≈ journal size (baseline RED / D-kill).
+  {
+    const redraws = Math.max(1, counters.markerRedraw);
+    const meanVisits = counters.journalRowsVisited / redraws;
+    const jLen = Math.max(1, (driver.tradeJournal || []).length);
+    counters.paths.d_markerFullScan = meanVisits >= jLen * 0.85;
+  }
+  // Path (e): any measured-tick console growth (A–C soak). Focus-E uses stricter thresholds.
+  const consoleCallsMeasured = Math.max(0, consoleSink.calls - consoleAtMeasureStart);
+  if (consoleCallsMeasured > 0) counters.paths.e_hotpathConsole = true;
+  const journalRowsVisitedMeasured = Math.max(0, counters.journalRowsVisited - visitsAtMeasureStart);
 
   // Ten windows
   const windowMedians = [];
@@ -1051,7 +1101,27 @@ async function runSoak({
     || !asserts.runtimeAbs.pass
     || !asserts.sessionAbs.pass;
 
-  const allFivePaths = Object.values(counters.paths).every(Boolean);
+  // Progressive A–E: when a fix is integrated and kill is OFF, that path flag is expected
+  // CLEARED (GREEN). Kill-ON / not-yet-integrated still require the RED path to fire.
+  const dIntegrated = typeof OrderManager.prototype._invalidateM19MarkerDeltaCache === 'function';
+  const eIntegrated = typeof globalThis.__TALARIA_M19_HOTPATH_LOG === 'function';
+  const dKill = typeof window !== 'undefined' && window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 === true;
+  const eKill = typeof window !== 'undefined' && window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 === true;
+  // Kill-OFF full scans are triangular (~jLen/2 mean); accept absolute visit mass too.
+  if (dKill && counters.journalRowsVisited >= 100_000) {
+    counters.paths.d_markerFullScan = true;
+  }
+  const dPathOk = dIntegrated
+    ? (dKill ? !!counters.paths.d_markerFullScan : !counters.paths.d_markerFullScan)
+    : !!counters.paths.d_markerFullScan;
+  const ePathOk = eIntegrated
+    ? (eKill ? !!counters.paths.e_hotpathConsole : !counters.paths.e_hotpathConsole)
+    : !!counters.paths.e_hotpathConsole;
+  const allFivePaths = !!counters.paths.a_panelEveryTick
+    && !!counters.paths.b_excursionGrow
+    && !!counters.paths.c_persistHeavy
+    && dPathOk
+    && ePathOk;
   const panelKill = !!window.__TALARIA_DISABLE_M19_PANEL_DIRTY_V1;
   // Fix-A gate: full panel rebuilds must be bounded by structural events (~closed trades),
   // not by tick count. Kill-switch must reconstruct ~warmup+measured rebuilds.
@@ -1128,6 +1198,31 @@ async function runSoak({
         && !hotJournalHasScreenshots),
   };
 
+  // Explicit canonical Fix D / Fix E ON-path pass (kill OFF required).
+  // D visit bound uses measured-phase visits (warmup excluded).
+  const fixD = {
+    integrated: dIntegrated,
+    kill: dKill,
+    d_markerFullScan: !!counters.paths.d_markerFullScan,
+    journalRowsVisited: counters.journalRowsVisited,
+    journalRowsVisitedMeasured,
+    visitsOnMax: D_VISITS_ON_MAX,
+    pass: dIntegrated
+      && !dKill
+      && !counters.paths.d_markerFullScan
+      && journalRowsVisitedMeasured <= D_VISITS_ON_MAX,
+  };
+  const fixE = {
+    integrated: eIntegrated,
+    kill: eKill,
+    e_hotpathConsole: !!counters.paths.e_hotpathConsole,
+    consoleCalls: consoleCallsMeasured,
+    pass: eIntegrated
+      && !eKill
+      && !counters.paths.e_hotpathConsole
+      && consoleCallsMeasured === 0,
+  };
+
   return {
     label,
     playing,
@@ -1148,6 +1243,8 @@ async function runSoak({
     fixA,
     fixB,
     fixC,
+    fixD,
+    fixE,
     counters,
     startExcursion,
     windowExcursion,
@@ -1157,6 +1254,7 @@ async function runSoak({
     startSessionBytes: startPayloads.sessionBytes,
     endSessionBytes: endPayloads.sessionBytes,
     consoleCalls: consoleSink.calls,
+    consoleCallsMeasured,
     consoleArgBytes: consoleSink.argBytes,
     base64PersistBytes: chart._base64PersistBytes,
     base64InnerHtmlBytes: chart._base64InnerHtmlBytes,
@@ -1330,15 +1428,19 @@ function runRestoreCell({ multichart = false } = {}) {
   };
 }
 
-function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
+function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors, forceNoKill = false }) {
   if (!anchors.ok) {
     return { verdict: 'SETUP-FAIL', detail: 'anchor verification failed' };
   }
   if (canonicalRuns.some((r) => r.openCount !== SENTINEL_OPEN)) {
     return { verdict: 'SETUP-FAIL', detail: 'sentinel open positions not held' };
   }
-  if (canonicalRuns.some((r) => !r.allFivePaths)) {
-    return { verdict: 'PREMISE-MISMATCH', detail: 'not all five suspected paths exercised' };
+  // Paths a–c must still be exercised (D/E are explicit fixD/fixE gates).
+  const abcPathsOk = canonicalRuns.every((r) => r.counters?.paths?.a_panelEveryTick
+    && r.counters?.paths?.b_excursionGrow
+    && r.counters?.paths?.c_persistHeavy);
+  if (!abcPathsOk) {
+    return { verdict: 'PREMISE-MISMATCH', detail: 'paths a–c not exercised' };
   }
   if (restoreCells.some((r) => !r.pass)) {
     return { verdict: 'PREMISE-MISMATCH', detail: 'restore assertions failed' };
@@ -1346,10 +1448,15 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
 
   const fixAAllPass = canonicalRuns.every((r) => r.fixA && r.fixA.pass);
   const fixBAllPass = canonicalRuns.every((r) => r.fixB && r.fixB.pass);
+  const fixCAllPass = canonicalRuns.every((r) => r.fixC && r.fixC.pass);
+  const fixDAllPass = canonicalRuns.every((r) => r.fixD && r.fixD.pass);
+  const fixEAllPass = canonicalRuns.every((r) => r.fixE && r.fixE.pass);
+  const allFivePaths = canonicalRuns.every((r) => !!r.allFivePaths);
   const persistFails = canonicalRuns.filter((r) => r.persistFail).length;
   const slopeFails = canonicalRuns.filter((r) => r.frameSlopeFail && !(r.fixA && r.fixA.absFlat)).length;
 
-  if (PANEL_KILL) {
+  // Synthetic negative self-test must evaluate ON-path gates regardless of live kill env.
+  if (!forceNoKill && PANEL_KILL) {
     if (fixAAllPass && slopeFails === CANONICAL_REPEATS) {
       return {
         verdict: 'FIX-A-KILL-RED',
@@ -1362,7 +1469,7 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
     };
   }
 
-  if (EXCURSION_KILL) {
+  if (!forceNoKill && EXCURSION_KILL) {
     if (fixBAllPass && fixAAllPass) {
       return {
         verdict: 'FIX-B-KILL-RED',
@@ -1375,7 +1482,7 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
     };
   }
 
-  if (PERSIST_KILL) {
+  if (!forceNoKill && PERSIST_KILL) {
     if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
       return {
         verdict: 'FIX-C-KILL-RED',
@@ -1389,28 +1496,487 @@ function classifyVerdict({ canonicalRuns, neighbors, restoreCells, anchors }) {
     };
   }
 
-  const fixCAllPass = canonicalRuns.every((r) => r.fixC && r.fixC.pass);
-  if (fixAAllPass && fixBAllPass && fixCAllPass && persistFails === 0 && slopeFails === 0) {
+  if (!forceNoKill && MARKER_KILL) {
+    // Sync marker ticks inflate frame cost; D kill is path/visit based (not Fix-A slope).
+    const panelHeld = canonicalRuns.every((r) => (r.fixA?.panelRebuilds || 0) <= Math.max(TARGET_CLOSED_TRADES * 3, 200));
+    const dFull = canonicalRuns.every((r) => !!r.counters?.paths?.d_markerFullScan
+      || (r.counters?.journalRowsVisited || 0) >= 100_000);
+    if (panelHeld && fixBAllPass && dFull) {
+      return {
+        verdict: 'M19-D-KILL-RED',
+        detail: `kill restores full marker journal scans; visits=${canonicalRuns[0]?.counters?.journalRowsVisited}`,
+      };
+    }
     return {
-      verdict: 'FIX-C-GREEN',
-      detail: `Fix-A+B held; hot session ≤ ${SESSION_ABS_MAX}; open excursion ≤ ${EXCURSION_TAIL_MAX}`,
+      verdict: 'M19-D-KILL-UNEXPECTED',
+      detail: `panelHeld=${panelHeld}; fixBAllPass=${fixBAllPass}; dFull=${dFull}; visits=${canonicalRuns[0]?.counters?.journalRowsVisited}`,
+    };
+  }
+
+  if (!forceNoKill && HOTPATH_KILL) {
+    // Sync ticks may fail Fix-A absFlat; E kill is console-flood based.
+    const panelHeld = canonicalRuns.every((r) => (r.fixA?.panelRebuilds || 0) <= Math.max(TARGET_CLOSED_TRADES * 3, 200));
+    const eFlood = canonicalRuns.every((r) => !!r.counters?.paths?.e_hotpathConsole
+      || (r.consoleCalls || 0) > MEASURED_TICKS);
+    if (panelHeld && fixBAllPass && eFlood) {
+      return {
+        verdict: 'M19-E-KILL-RED',
+        detail: `kill restores hot-path console flood; consoleCalls=${canonicalRuns[0]?.consoleCalls}`,
+      };
+    }
+    return {
+      verdict: 'M19-E-KILL-UNEXPECTED',
+      detail: `panelHeld=${panelHeld}; fixBAllPass=${fixBAllPass}; eFlood=${eFlood}; console=${canonicalRuns[0]?.consoleCalls}`,
+    };
+  }
+
+  // Controlled negative: A/B/C green but D or E absent/failing → M19-FAIL (not GREEN).
+  if (fixAAllPass && fixBAllPass && fixCAllPass && (!fixDAllPass || !fixEAllPass)) {
+    return {
+      verdict: 'M19-FAIL',
+      detail: `A/B/C green but D/E failing: fixDAllPass=${fixDAllPass}; fixEAllPass=${fixEAllPass}; d=${JSON.stringify(canonicalRuns[0]?.fixD)}; e=${JSON.stringify(canonicalRuns[0]?.fixE)}`,
+      fixDAllPass,
+      fixEAllPass,
+    };
+  }
+
+  if (fixAAllPass && fixBAllPass && fixCAllPass && fixDAllPass && fixEAllPass
+    && allFivePaths && persistFails === 0 && slopeFails === 0) {
+    return {
+      verdict: 'M19-GREEN',
+      detail: `A–E held; hot session ≤ ${SESSION_ABS_MAX}; open excursion ≤ ${EXCURSION_TAIL_MAX}; panel rebuilds 0; D/E cleared`,
       persist: 'M19-PERSIST-GREEN',
+      fixDAllPass,
+      fixEAllPass,
     };
   }
   if (fixAAllPass && fixBAllPass && persistFails === CANONICAL_REPEATS) {
     return {
-      verdict: 'FIX-C-FAIL',
+      verdict: 'M19-FAIL',
       detail: `M19-PERSIST-RED — Fix-A+B pass; persist bound fail ${persistFails}/${CANONICAL_REPEATS}`,
       persist: 'M19-PERSIST-RED',
+      fixDAllPass,
+      fixEAllPass,
     };
   }
   return {
-    verdict: 'FIX-C-FAIL',
-    detail: `fixAAllPass=${fixAAllPass}; fixBAllPass=${fixBAllPass}; frameSlopeFails=${slopeFails}; persistFails=${persistFails}; maxExcursion=${canonicalRuns[0]?.fixB?.maxOpenExcursion}`,
+    verdict: 'M19-FAIL',
+    detail: `fixA=${fixAAllPass}; fixB=${fixBAllPass}; fixC=${fixCAllPass}; fixD=${fixDAllPass}; fixE=${fixEAllPass}; allFivePaths=${allFivePaths}; slopeFails=${slopeFails}; persistFails=${persistFails}`,
+    fixDAllPass,
+    fixEAllPass,
+  };
+}
+
+/**
+ * Controlled negative self-test: A/B/C GREEN with D or E absent/failing must yield M19-FAIL.
+ */
+function runNegativeSelfTest() {
+  const mkAbcGreen = (fixD, fixE) => ({
+    openCount: SENTINEL_OPEN,
+    allFivePaths: true,
+    frameSlopeFail: false,
+    persistFail: false,
+    counters: {
+      paths: {
+        a_panelEveryTick: true,
+        b_excursionGrow: true,
+        c_persistHeavy: true,
+        d_markerFullScan: false,
+        e_hotpathConsole: false,
+      },
+      journalRowsVisited: 0,
+    },
+    fixA: { pass: true, absFlat: true, panelRebuilds: 0 },
+    fixB: { pass: true, maxOpenExcursion: EXCURSION_TAIL_MAX },
+    fixC: { pass: true, endSessionBytes: 64_623 },
+    fixD,
+    fixE,
+    consoleCalls: 0,
+    consoleCallsMeasured: 0,
+  });
+  const eOk = {
+    integrated: true,
+    kill: false,
+    e_hotpathConsole: false,
+    consoleCalls: 0,
+    pass: true,
+  };
+  const dOk = {
+    integrated: true,
+    kill: false,
+    d_markerFullScan: false,
+    journalRowsVisited: 50,
+    visitsOnMax: D_VISITS_ON_MAX,
+    pass: true,
+  };
+  const dAbsent = {
+    integrated: false,
+    kill: false,
+    d_markerFullScan: false,
+    journalRowsVisited: 0,
+    visitsOnMax: D_VISITS_ON_MAX,
+    pass: false,
+  };
+  const eFail = {
+    integrated: true,
+    kill: false,
+    e_hotpathConsole: true,
+    consoleCalls: 100,
+    pass: false,
+  };
+  const anchors = { ok: true };
+  const restoreCells = [{ pass: true }, { pass: true }];
+  const cases = [
+    {
+      name: 'abc-green-d-absent',
+      runs: [mkAbcGreen(dAbsent, eOk), mkAbcGreen(dAbsent, eOk), mkAbcGreen(dAbsent, eOk)],
+    },
+    {
+      name: 'abc-green-e-failing',
+      runs: [mkAbcGreen(dOk, eFail), mkAbcGreen(dOk, eFail), mkAbcGreen(dOk, eFail)],
+    },
+  ];
+  const results = [];
+  for (const c of cases) {
+    const v = classifyVerdict({
+      canonicalRuns: c.runs,
+      neighbors: [],
+      restoreCells,
+      anchors,
+      forceNoKill: true,
+    });
+    const pass = v.verdict === 'M19-FAIL';
+    results.push({ name: c.name, pass, verdict: v.verdict, detail: v.detail });
+  }
+  return {
+    pass: results.every((r) => r.pass),
+    results,
+  };
+}
+
+function headShaOrNull() {
+  if (!fs.existsSync(path.join(ROOT, '.git'))) return null;
+  try {
+    return require('node:child_process')
+      .execSync('git rev-parse HEAD', { cwd: ROOT })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+function sortedMarkerKeys(om) {
+  return [...(om._m19DrawnClosedMarkerKeys || [])].map(String).sort();
+}
+
+/**
+ * Focused D/E evidence (separate GREEN artifacts; overall M19 may stay RED).
+ *   M19_FOCUS=D|E node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ */
+async function runFocusEvidence(focus) {
+  const started = new Date().toISOString();
+  const headSha = headShaOrNull();
+  const fileHashes = {
+    'order-manager.js': sha256File(OM_PATH),
+    'replay-system.js': sha256File(RS_PATH),
+    'chart.js': sha256File(CHART_PATH),
+  };
+  const t0 = performance.now();
+  const VISITS_ON_MAX = 80; // ~50–80 inspections across 5500 ticks (incl. all inspect work)
+  const VISITS_OFF_TARGET = 127_500;
+  const VISITS_OFF_TOL = 0.02;
+  const CONSOLE_ON_MAX = 50; // ~0 steady; allow tiny noise
+  const CONSOLE_OFF_TARGET = 165_000;
+  const CONSOLE_OFF_TOL = 0.05;
+
+  if (focus === 'D') {
+    window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = false;
+    window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
+    const onRun = await runSoak({
+      label: 'm19-d-on-canonical',
+      playing: true,
+      accumulateTarget: TARGET_CLOSED_TRADES,
+      syncMarkers: true,
+    });
+
+    // Controlled capture for ON/OFF compound-key parity (identical journal progression).
+    const capture = await runSoakMarkerCapture({ deltaDisabled: false });
+    const captureOff = await runSoakMarkerCapture({ deltaDisabled: true });
+
+    window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = true;
+    const offRun = await runSoak({
+      label: 'm19-d-off-canonical',
+      playing: true,
+      accumulateTarget: TARGET_CLOSED_TRADES,
+      syncMarkers: true,
+    });
+
+    const visitsOn = onRun.counters.journalRowsVisited;
+    const visitsOff = offRun.counters.journalRowsVisited;
+    const keysMatch = capture.keysJoin === captureOff.keysJoin
+      && capture.keysJoin.length > 0;
+    // Path flag uses end journal length; OFF mean visits are triangular (~jLen/2), so
+    // focus GREEN is gated on absolute visit targets + marker parity.
+    const onOk = visitsOn <= VISITS_ON_MAX && visitsOn <= TARGET_CLOSED_TRADES + 5;
+    const offOk = Math.abs(visitsOff - VISITS_OFF_TARGET) / VISITS_OFF_TARGET <= VISITS_OFF_TOL;
+    const pass = onOk && offOk && keysMatch;
+
+    const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-D-GREEN.json`);
+    const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-D-GREEN.md`);
+    const evidence = {
+      row: 'L2-M19-D',
+      title: 'Marker delta (compound key)',
+      task: 'M19-D-GREEN',
+      startedAt: started,
+      finishedAt: new Date().toISOString(),
+      elapsedMs: performance.now() - t0,
+      headSha,
+      fileHashes,
+      kill: '__TALARIA_DISABLE_M19_MARKER_DELTA_V1',
+      targets: {
+        visitsOnApprox: 50,
+        visitsOnMax: VISITS_ON_MAX,
+        visitsOff: VISITS_OFF_TARGET,
+        identicalMarkers: true,
+      },
+      on: {
+        journalRowsVisited: visitsOn,
+        d_markerFullScan: onRun.counters.paths.d_markerFullScan,
+        markerRedraw: onRun.counters.markerRedraw,
+        journalCount: onRun.journalCount,
+      },
+      off: {
+        journalRowsVisited: visitsOff,
+        d_markerFullScan: offRun.counters.paths.d_markerFullScan,
+        markerRedraw: offRun.counters.markerRedraw,
+        journalCount: offRun.journalCount,
+      },
+      markerParity: {
+        onKeyCount: capture.keyCount,
+        offKeyCount: captureOff.keyCount,
+        keysMatch,
+        sampleOn: capture.keys.slice(0, 5),
+        sampleOff: captureOff.keys.slice(0, 5),
+      },
+      verdict: pass ? 'D-GREEN' : 'D-RED',
+      note: 'Isolated M19-D evidence. Overall M19 may remain RED from A/B/C.',
+    };
+    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+    fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+    fs.writeFileSync(reportPath, [
+      '# L2-M19-D — Marker delta GREEN',
+      '',
+      `**Verdict:** ${evidence.verdict}`,
+      '',
+      `- D ON journal visits: ${visitsOn} (target ~50, max ${VISITS_ON_MAX})`,
+      `- D OFF journal visits: ${visitsOff} (target ~${VISITS_OFF_TARGET})`,
+      `- identical compound marker keys: ${keysMatch}`,
+      `- evidence: \`${evidencePath}\``,
+      '',
+    ].join('\n'));
+    process.stdout.write(`${JSON.stringify({
+      verdict: evidence.verdict,
+      visitsOn,
+      visitsOff,
+      keysMatch,
+      evidence: evidencePath,
+    }, null, 2)}\n`);
+    process.exitCode = pass ? 0 : 1;
+    restoreDate();
+    return;
+  }
+
+  if (focus === 'E') {
+    window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = false;
+    window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
+    window.__TALARIA_DEBUG = false;
+    window.__TALARIA_M19_HOTPATH_LOGS = false;
+    window.__ORDER_MANAGER_DEBUG__ = false;
+    const onRun = await runSoak({
+      label: 'm19-e-on-canonical',
+      playing: true,
+      accumulateTarget: TARGET_CLOSED_TRADES,
+      syncMarkers: true,
+      forcePanelLogSites: true,
+    });
+
+    window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = true;
+    const offRun = await runSoak({
+      label: 'm19-e-off-canonical',
+      playing: true,
+      accumulateTarget: TARGET_CLOSED_TRADES,
+      syncMarkers: true,
+      forcePanelLogSites: true,
+    });
+
+    // Debug flags restore logs (guard ON + debug)
+    window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
+    window.__TALARIA_M19_HOTPATH_LOGS = true;
+    const debugProbe = await runSoak({
+      label: 'm19-e-debug-restore',
+      playing: true,
+      warmup: 50,
+      measured: 200,
+      accumulateTarget: 5,
+      syncMarkers: true,
+      forcePanelLogSites: true,
+    });
+    window.__TALARIA_M19_HOTPATH_LOGS = false;
+
+    const consoleOn = onRun.consoleCalls;
+    const consoleOff = offRun.consoleCalls;
+    const onOk = consoleOn <= CONSOLE_ON_MAX && !onRun.counters.paths.e_hotpathConsole;
+    const offOk = Math.abs(consoleOff - CONSOLE_OFF_TARGET) / CONSOLE_OFF_TARGET <= CONSOLE_OFF_TOL
+      && offRun.counters.paths.e_hotpathConsole;
+    const debugOk = debugProbe.consoleCalls > 50;
+
+    const pass = onOk && offOk && debugOk;
+    const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-AE-${AE_BUILD}-E-GREEN.json`);
+    const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-AE-${AE_BUILD}-E-GREEN.md`);
+    const evidence = {
+      row: 'L2-M19-E',
+      title: 'Hot-path log guard',
+      task: 'M19-E-GREEN',
+      startedAt: started,
+      finishedAt: new Date().toISOString(),
+      elapsedMs: performance.now() - t0,
+      headSha,
+      fileHashes,
+      kill: '__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1',
+      targets: {
+        consoleOnApprox: 0,
+        consoleOnMax: CONSOLE_ON_MAX,
+        consoleOff: CONSOLE_OFF_TARGET,
+        debugRestoresLogs: true,
+        warnErrorUntouched: 'see m19-e-hotpath-log.green.test.mjs',
+        lazyFactories: 'see m19-e-hotpath-log.green.test.mjs',
+      },
+      on: {
+        consoleCalls: consoleOn,
+        e_hotpathConsole: onRun.counters.paths.e_hotpathConsole,
+      },
+      off: {
+        consoleCalls: consoleOff,
+        e_hotpathConsole: offRun.counters.paths.e_hotpathConsole,
+      },
+      debugRestore: {
+        consoleCalls: debugProbe.consoleCalls,
+        ok: debugOk,
+      },
+      verdict: pass ? 'E-GREEN' : 'E-RED',
+      note: 'Isolated M19-E evidence on A–E base. forcePanelLogSites exercises panel hot-path logs without disabling Fix A production dirty path.',
+    };
+    fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+    fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+    fs.writeFileSync(reportPath, [
+      '# L2-M19-E — Hot-path log guard GREEN',
+      '',
+      `**Verdict:** ${evidence.verdict}`,
+      '',
+      `- E ON console calls: ${consoleOn} (target ~0, max ${CONSOLE_ON_MAX})`,
+      `- E OFF console calls: ${consoleOff} (target ~${CONSOLE_OFF_TARGET})`,
+      `- debug restore calls: ${debugProbe.consoleCalls}`,
+      `- evidence: \`${evidencePath}\``,
+      '',
+    ].join('\n'));
+    process.stdout.write(`${JSON.stringify({
+      verdict: evidence.verdict,
+      consoleOn,
+      consoleOff,
+      debugCalls: debugProbe.consoleCalls,
+      evidence: evidencePath,
+    }, null, 2)}\n`);
+    process.exitCode = pass ? 0 : 1;
+    restoreDate();
+    return;
+  }
+
+  throw new Error(`unknown M19_FOCUS=${focus}`);
+}
+
+/** Controlled soak that returns final compound marker key set for ON/OFF parity. */
+async function runSoakMarkerCapture({ deltaDisabled }) {
+  window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 = !!deltaDisabled;
+  window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 = false;
+  const warmup = 100;
+  const measured = 1000;
+  const accumulateTarget = 20;
+  const totalCandles = warmup + measured + 40;
+  const candles = makeCandles(totalCandles);
+  let idx = 0;
+  const replay = {
+    isActive: true,
+    isPlaying: true,
+    playbackMode: 'candle',
+    getPlaybackMode: () => 'candle',
+    replayTimestamp: candles[0].t,
+    currentIndex: 0,
+    fullRawData: candles,
+    animatingCandle: null,
+    tickProgress: 0,
+  };
+  const chart = createChartSurface(candles, replay, { multichart: false });
+  const driver = createOrderManager(chart, replay, { embedIframe: false, projected: false });
+  driver.openPositions = [
+    makeSentinelPosition(1, candles[0], 'BUY'),
+    makeSentinelPosition(2, candles[0], 'SELL'),
+  ];
+  let closedAccumulated = 0;
+  const tradeEvery = Math.max(1, Math.floor(measured / accumulateTarget));
+  const advance = (toIdx) => {
+    idx = toIdx;
+    const c = candles[idx];
+    chart._candleAt = c;
+    chart.latestCandle = c;
+    replay.replayTimestamp = c.t;
+    replay.currentIndex = idx;
+  };
+  for (let i = 1; i <= warmup; i++) {
+    advance(i);
+    OrderManager.prototype.updatePositions.call(driver);
+    driver._redrawJournalMarkersForReplayPlayhead();
+  }
+  for (let m = 0; m < measured; m++) {
+    advance(warmup + 1 + m);
+    if ((m % tradeEvery === 0) && closedAccumulated < accumulateTarget) {
+      if (accumulateClosedTrade(driver, candles, warmup + 1 + m, closedAccumulated + 1)) {
+        closedAccumulated = driver.tradeJournal.length;
+      }
+    }
+    OrderManager.prototype.updatePositions.call(driver);
+    driver._redrawJournalMarkersForReplayPlayhead();
+  }
+  // Force one full/delta settle pass then read keys
+  driver._redrawClosedJournalTradeMarkers(undefined, { forceFull: true });
+  const keys = sortedMarkerKeys(driver);
+  return {
+    keyCount: keys.length,
+    keys,
+    keysJoin: keys.join('|'),
+    journalCount: driver.tradeJournal.length,
   };
 }
 
 async function main() {
+  const focus = String(process.env.M19_FOCUS || '').trim().toUpperCase();
+  if (focus === 'D' || focus === 'E') {
+    await runFocusEvidence(focus);
+    return;
+  }
+
+  // Controlled negative self-test (harness-only): A/B/C green + D/E fail ⇒ M19-FAIL.
+  const negativeSelfTest = runNegativeSelfTest();
+  if (!negativeSelfTest.pass) {
+    process.stdout.write(`${JSON.stringify({
+      verdict: 'SETUP-FAIL',
+      detail: 'negative self-test did not produce M19-FAIL for A/B/C green + D/E fail',
+      negativeSelfTest,
+    }, null, 2)}\n`);
+    process.exitCode = 2;
+    return;
+  }
+
   // Wall-clock evidence timestamps (product Date is frozen for soak determinism).
   const wallMs = () => {
     try {
@@ -1452,6 +2018,8 @@ async function main() {
       multichart: false,
       projected: false,
       accumulateTarget: TARGET_CLOSED_TRADES,
+      // D/E kill discriminators need sync marker ticks; E flood from updatePositions alone.
+      syncMarkers: MARKER_KILL || HOTPATH_KILL,
     });
     canonicalRuns.push(r);
   }
@@ -1505,13 +2073,17 @@ async function main() {
   const persistedFormatHash = restoreCells[0]?.persistedFormatHash || null;
 
   const evidence = {
-    row: 'L2-M19',
-    title: 'Progressive session degradation — Fix C persist trim',
+    row: 'L2-M19-AE',
+    title: 'M19 A–E progressive session — checkpoint 20260723b04',
     task: PANEL_KILL
-      ? 'FIX-A-KILL-DISCRIMINATOR'
+      ? 'M19-A-KILL-DISCRIMINATOR'
       : (EXCURSION_KILL
-        ? 'FIX-B-KILL-DISCRIMINATOR'
-        : (PERSIST_KILL ? 'FIX-C-KILL-DISCRIMINATOR' : 'FIX-C-ON')),
+        ? 'M19-B-KILL-DISCRIMINATOR'
+        : (PERSIST_KILL
+          ? 'M19-C-KILL-DISCRIMINATOR'
+          : (MARKER_KILL
+            ? 'M19-D-KILL-DISCRIMINATOR'
+            : (HOTPATH_KILL ? 'M19-E-KILL-DISCRIMINATOR' : 'M19-AE-ON')))),
     startedAt: started,
     finishedAt,
     wallClock: { startedWallMs, finishedWallMs },
@@ -1567,6 +2139,12 @@ async function main() {
       base64InnerHtmlBytes: r.base64InnerHtmlBytes,
       openCount: r.openCount,
       journalCount: r.journalCount,
+      fixA: r.fixA,
+      fixB: r.fixB,
+      fixC: r.fixC,
+      fixD: r.fixD,
+      fixE: r.fixE,
+      consoleCallsMeasured: r.consoleCallsMeasured,
     })),
     neighborMatrix: neighbors,
     restoreCells,
@@ -1590,14 +2168,34 @@ async function main() {
       canonical: canonicalRuns.map((r) => r.fixC),
       allPass: canonicalRuns.every((r) => r.fixC && r.fixC.pass),
     },
-    persist: verdict.persist || (PANEL_KILL || EXCURSION_KILL ? null : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN')),
+    fixD: {
+      kill: MARKER_KILL,
+      visitsOnMax: D_VISITS_ON_MAX,
+      canonical: canonicalRuns.map((r) => r.fixD),
+      allPass: canonicalRuns.every((r) => r.fixD && r.fixD.pass),
+    },
+    fixE: {
+      kill: HOTPATH_KILL,
+      canonical: canonicalRuns.map((r) => r.fixE),
+      allPass: canonicalRuns.every((r) => r.fixE && r.fixE.pass),
+    },
+    fixDAllPass: canonicalRuns.every((r) => r.fixD && r.fixD.pass),
+    fixEAllPass: canonicalRuns.every((r) => r.fixE && r.fixE.pass),
+    negativeSelfTest,
+    persist: verdict.persist || (PANEL_KILL || EXCURSION_KILL || MARKER_KILL || HOTPATH_KILL
+      ? null
+      : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN')),
     note: PANEL_KILL
-      ? 'FIX-A kill-switch ON — expect ~5500 full panel rebuilds (discriminator RED). Persist not claimed.'
+      ? 'M19-A kill ON — expect ~5500 full panel rebuilds (discriminator RED).'
       : (EXCURSION_KILL
-        ? 'FIX-B kill-switch ON — expect unbounded open excursion (~5500). D-030 OFF path; persist not claimed GREEN.'
+        ? 'M19-B kill ON — expect unbounded open excursion (discriminator RED).'
         : (PERSIST_KILL
-          ? 'FIX-C kill-switch ON — expect B-era hot session payloads > 512 KiB (discriminator RED).'
-          : 'FIX-C-GREEN — hot session/runtime patches trimmed (no screenshots/excursion arrays); durable journal+export unchanged; Fix A/B held. Contract: m19-persist-trim-contract.test.mjs.')),
+          ? 'M19-C kill ON — expect B-era hot session payloads > 512 KiB (discriminator RED).'
+          : (MARKER_KILL
+            ? 'M19-D kill ON — expect full marker journal scans (discriminator RED).'
+            : (HOTPATH_KILL
+              ? 'M19-E kill ON — expect hot-path console flood (discriminator RED).'
+              : 'M19-GREEN — A–E held: panel dirty, excursion tail, persist trim, marker delta, hotpath log guard.')))),
   };
 
   fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
@@ -1613,30 +2211,40 @@ async function main() {
     `- steady growth runtime/session: ${r.asserts.runtimeSteadyGrowth.growth} / ${r.asserts.sessionSteadyGrowth.growth}`,
     `- paths a–e exercised: ${r.allFivePaths}`,
     `- panel invocations: ${r.counters.updatePositionsPanel}; Fix-A bounded=${r.fixA?.panelBoundedByStructural} reconstruct=${r.fixA?.panelReconstructsPerTick}; marker redraws: ${r.counters.markerRedraw}; journal rows visited: ${r.counters.journalRowsVisited}`,
+    `- Fix-D pass=${r.fixD?.pass} integrated=${r.fixD?.integrated} fullScan=${r.fixD?.d_markerFullScan} visits=${r.fixD?.journalRowsVisited} (max ${D_VISITS_ON_MAX})`,
+    `- Fix-E pass=${r.fixE?.pass} integrated=${r.fixE?.integrated} hotConsole=${r.fixE?.e_hotpathConsole} measuredConsole=${r.fixE?.consoleCalls}`,
     `- Fix-B excursion max=${r.fixB?.maxOpenExcursion} bounded=${r.fixB?.arraysBounded} unbounded=${r.fixB?.arraysUnbounded} (tailMax=${EXCURSION_TAIL_MAX})`,
     `- excursion end: ${JSON.stringify(r.endExcursion)}`,
-    `- console calls/bytes: ${r.consoleCalls} / ${r.consoleArgBytes}`,
+    `- console calls/bytes (total/measured): ${r.consoleCalls} / ${r.consoleCallsMeasured} (argBytes ${r.consoleArgBytes})`,
     `- base64 persist/innerHTML bytes: ${r.base64PersistBytes} / ${r.base64InnerHtmlBytes}`,
     `- open/journal: ${r.openCount}/${r.journalCount}`,
     `- frameSlopeFail=${r.frameSlopeFail} persistFail=${r.persistFail}`,
   ].join('\n')).join('\n\n');
 
-  const report = `# L2-M19 — Fix C persist trim (${PERSIST_KILL ? 'KILL' : 'ON'})
+  const reportMode = PANEL_KILL ? 'KILL-A'
+    : (EXCURSION_KILL ? 'KILL-B'
+      : (PERSIST_KILL ? 'KILL-C'
+        : (MARKER_KILL ? 'KILL-D'
+          : (HOTPATH_KILL ? 'KILL-E' : 'ON'))));
+  const report = `# L2-M19 — A–E checkpoint ${AE_BUILD} (${reportMode})
 
 **Verdict:** ${verdict.verdict} — ${verdict.detail}
 
-**Persist:** ${verdict.persist || (PANEL_KILL || EXCURSION_KILL ? 'n/a (kill discriminator)' : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN'))}
+**Persist:** ${verdict.persist || (PANEL_KILL || EXCURSION_KILL || MARKER_KILL || HOTPATH_KILL ? 'n/a (kill discriminator)' : (PERSIST_KILL ? 'M19-PERSIST-KILL-RED' : 'M19-PERSIST-GREEN'))}
 
-**Scope:** Fix C hot session/runtime trim on Fix B checkpoint \`5c9d0fbd1\`. Kill \`__TALARIA_DISABLE_M19_PERSIST_TRIM_V1\`. No D/E. Not a live I15 UI verdict.
+**Scope:** Final A–E progressive session on Fix C base \`c9700ebc8\`. Fresh evidence paths for ${AE_BUILD}. Not a live I15 UI verdict.
 
 ## Commands / runtime
 
 \`\`\`
 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+TALARIA_DISABLE_M19_PANEL_DIRTY_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+TALARIA_DISABLE_M19_EXCURSION_TAIL_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
 TALARIA_DISABLE_M19_PERSIST_TRIM_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
-node --test --test-concurrency=1 "chart v 1.4/chart/modules/m19-persist-trim-contract.test.mjs"
-node --test --test-concurrency=1 "chart v 1.4/chart/modules/m19-excursion-tail-contract.test.mjs"
-node "chart v 1.4/chart/modules/order-runtime-persist.test.mjs"
+TALARIA_DISABLE_M19_MARKER_DELTA_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1=1 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+M19_FOCUS=D node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+M19_FOCUS=E node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
 \`\`\`
 
 - startedAt (wall): ${started}
@@ -1684,7 +2292,7 @@ ${neighbors.map((n) => `| ${n.label} | ${n.restore ? (n.pass ? 'RESTORE-PASS' : 
 
 ## Switches
 
-(a) PANEL_DIRTY — held from Fix A. (b) EXCURSION_TAIL — held from Fix B. (c) PERSIST_TRIM — this run. (d)–(e) untouched.
+(a) PANEL_DIRTY (b) EXCURSION_TAIL (c) PERSIST_TRIM (d) MARKER_DELTA (e) HOTPATH_LOG_GUARD — A–E combined.
 
 ## Binding
 
@@ -1697,15 +2305,22 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
   const fixAAllPass = canonicalRuns.every((r) => r.fixA && r.fixA.pass);
   const fixBAllPass = canonicalRuns.every((r) => r.fixB && r.fixB.pass);
   const fixCAllPass = canonicalRuns.every((r) => r.fixC && r.fixC.pass);
+  const fixDAllPass = canonicalRuns.every((r) => r.fixD && r.fixD.pass);
+  const fixEAllPass = canonicalRuns.every((r) => r.fixE && r.fixE.pass);
   const summary = {
     verdict: verdict.verdict,
     detail: verdict.detail,
     fixAAllPass,
     fixBAllPass,
     fixCAllPass,
+    fixDAllPass,
+    fixEAllPass,
+    negativeSelfTest,
     panelKill: PANEL_KILL,
     excursionKill: EXCURSION_KILL,
     persistKill: PERSIST_KILL,
+    markerKill: MARKER_KILL,
+    hotpathKill: HOTPATH_KILL,
     baselineBeforeFixA: BASELINE_BEFORE,
     elapsedMs: Math.round(elapsedMs),
     headSha,
@@ -1728,6 +2343,8 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
       fixB: r.fixB,
       fixA: r.fixA,
       fixC: r.fixC,
+      fixD: r.fixD,
+      fixE: r.fixE,
     })),
   };
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -1742,8 +2359,14 @@ I1/I2/I3/I5/I8/I10/I14/I16 · P1/P2/P3 · D-030 binds (b)/(c).
     process.exitCode = fixBAllPass ? 1 : 2; // kill unbounded expected → exit 1 (RED-EXPECTED)
   } else if (PERSIST_KILL) {
     process.exitCode = (fixAAllPass && fixBAllPass && fixCAllPass) ? 1 : 2; // kill oversize expected → exit 1
+  } else if (MARKER_KILL) {
+    process.exitCode = verdict.verdict === 'M19-D-KILL-RED' ? 1 : 2;
+  } else if (HOTPATH_KILL) {
+    process.exitCode = verdict.verdict === 'M19-E-KILL-RED' ? 1 : 2;
   } else {
-    process.exitCode = (fixAAllPass && fixBAllPass && fixCAllPass && verdict.verdict === 'FIX-C-GREEN') ? 0 : 1;
+    process.exitCode = (fixAAllPass && fixBAllPass && fixCAllPass
+      && fixDAllPass && fixEAllPass
+      && verdict.verdict === 'M19-GREEN') ? 0 : 1;
   }
 }
 

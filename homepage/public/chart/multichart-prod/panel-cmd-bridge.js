@@ -284,7 +284,12 @@
         // journal and the red exit dash lands on a different price than A.
         if (orderMcJournalSnapshotV1EnabledBridge()) {
             var journalAll = snapshot.tradeJournal || [];
-            om.tradeJournal = cloneOrderList(journalAll.filter(matchRow));
+            var journalProj = cloneOrderList(journalAll.filter(matchRow));
+            if (typeof om._m19CommitJournalArray === 'function') {
+                om._m19CommitJournalArray(journalProj, 'host-journal-projection');
+            } else {
+                om.tradeJournal = journalProj; // M19-D-JOURNAL-WRITE:legacy-fallback
+            }
             var closedAll = snapshot.closedPositions || [];
             om.closedPositions = cloneOrderList(closedAll.filter(matchRow));
         }

@@ -11593,7 +11593,11 @@ class Chart {
             const k = tradeKey(t);
             if (k) merged.set(k, t);
         });
-        om.tradeJournal = Array.from(merged.values());
+        if (typeof om._m19CommitJournalArray === 'function') {
+            om._m19CommitJournalArray(Array.from(merged.values()), 'local-backup-hydrate');
+        } else {
+            om.tradeJournal = Array.from(merged.values()); // M19-D-JOURNAL-WRITE:legacy-fallback
+        }
         if (typeof om.normalizeJournalRowsInPlace === 'function') {
             om.normalizeJournalRowsInPlace();
         }
@@ -11837,7 +11841,14 @@ class Chart {
                         merged.set(k, this.orderManager._m19MergePreferRicherTradeRow(prev, t, { slimMarked: true }));
                     }
                 });
-                this.orderManager.tradeJournal = Array.from(merged.values());
+                if (typeof this.orderManager._m19CommitJournalArray === 'function') {
+                    this.orderManager._m19CommitJournalArray(
+                        Array.from(merged.values()),
+                        'session-state-hydrate',
+                    );
+                } else {
+                    this.orderManager.tradeJournal = Array.from(merged.values()); // M19-D-JOURNAL-WRITE:legacy-fallback
+                }
                 if (typeof this.orderManager.normalizeJournalRowsInPlace === 'function') {
                     this.orderManager.normalizeJournalRowsInPlace();
                 }

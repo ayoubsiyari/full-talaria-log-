@@ -1,0 +1,305 @@
+{
+  "schema": "talaria.checkpoint-preflight/v1",
+  "row": "L2-M19-AE",
+  "checkpoint": "M19-AE",
+  "buildId": "20260723b04",
+  "status": "PREFLIGHT-GREEN-LOCAL",
+  "createdAt": "2026-07-23T09:50:28.497Z",
+  "harnessRevision": "20260723b04-fixDE-gates",
+  "base": {
+    "sha": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+    "shortSha": "c9700ebc8",
+    "note": "Fix C checkpoint 20260723b03"
+  },
+  "worktree": "C:\\Users\\user\\Desktop\\talaria1\\closure-worktrees\\m19-ae-ckpt-preflight-c9700ebc8",
+  "sourceIntegrateWorktree": "C:\\\\Users\\\\user\\\\Desktop\\\\talaria1\\\\closure-worktrees\\\\m19-de-integrate-c9700ebc8",
+  "forbidden": [
+    "commit",
+    "build",
+    "push",
+    "publish",
+    "deploy"
+  ],
+  "productChangesThisRevision": false,
+  "scope": {
+    "harnessOnlyThisRevision": [
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs"
+    ],
+    "productAndMirrors": [
+      "chart v 1.4/chart/modules/order-manager.js",
+      "chart v 1.4/chart/chart.js",
+      "chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js",
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/order-manager.js",
+      "homepage/public/chart/chart.js",
+      "homepage/public/chart/multichart-prod/panel-cmd-bridge.js",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs"
+    ],
+    "testsAdded": [
+      "chart v 1.4/chart/modules/m19-d-journal-write-gate.test.mjs",
+      "chart v 1.4/chart/modules/m19-d-marker-delta.green.test.mjs",
+      "chart v 1.4/chart/modules/m19-e-hotpath-log.green.test.mjs"
+    ],
+    "pathCount": 11,
+    "note": "Harness revision only: explicit fixD/fixE ON-pass, M19-GREEN requires A–E+allFivePaths+bounds, negative self-test, fixDAllPass/fixEAllPass in evidence. Fresh AE 20260723b04 evidence regenerated."
+  },
+  "priorAbcEvidenceUntouched": true,
+  "mirrorHashesSha256": {
+    "order-manager.js": "b3d8ce89bba7972d323364e184c36e83cd3f9dfe5ffa3ec9705ce9bebb2c44ba",
+    "chart.js": "da12556863debdfe4953c8f19ed1275037df903a201a3509029d59d453dfc763",
+    "panel-cmd-bridge.js": "59e4ad1d884a7ee44790a080c45d643593988f1d5ee1b4b7e74d13144b87eeda",
+    "m19-progressive-session-soak.test.mjs": "d338c6648ff3c6ab4fd43299169fd5f9c91a71cd249e56580e54df8fcb5537cf",
+    "m19-d-journal-write-gate.test.mjs": "596017e46e03219d63c2373e57377211758fb2a0f83db07017f9f3dbb6a2d515",
+    "m19-d-marker-delta.green.test.mjs": "07cc7adbb73318223e36134958c40fd68e45c774325bbba65432ea557be731cc",
+    "m19-e-hotpath-log.green.test.mjs": "6549c887182e685e2457512fa3a3676928983f7a027dc1f5bcb20742a9bda0c4",
+    "chartHomepageParity": true
+  },
+  "metrics": {
+    "canonicalVerdict": "M19-GREEN",
+    "startedAt": "2026-07-23T09:49:31.803Z",
+    "finishedAt": "2026-07-23T09:49:36.480Z",
+    "endSessionBytes": 64623,
+    "sessionApproxKB": 64.6,
+    "panelRebuilds": 0,
+    "maxOpenExcursion": 256,
+    "fixDAllPass": true,
+    "fixEAllPass": true,
+    "negativeSelfTestPass": true,
+    "fixD": {
+      "kill": false,
+      "visitsOnMax": 80,
+      "canonical": [
+        {
+          "integrated": true,
+          "kill": false,
+          "d_markerFullScan": false,
+          "journalRowsVisited": 50,
+          "journalRowsVisitedMeasured": 50,
+          "visitsOnMax": 80,
+          "pass": true
+        },
+        {
+          "integrated": true,
+          "kill": false,
+          "d_markerFullScan": false,
+          "journalRowsVisited": 50,
+          "journalRowsVisitedMeasured": 50,
+          "visitsOnMax": 80,
+          "pass": true
+        },
+        {
+          "integrated": true,
+          "kill": false,
+          "d_markerFullScan": false,
+          "journalRowsVisited": 50,
+          "journalRowsVisitedMeasured": 50,
+          "visitsOnMax": 80,
+          "pass": true
+        }
+      ],
+      "allPass": true
+    },
+    "fixE": {
+      "kill": false,
+      "canonical": [
+        {
+          "integrated": true,
+          "kill": false,
+          "e_hotpathConsole": false,
+          "consoleCalls": 0,
+          "pass": true
+        },
+        {
+          "integrated": true,
+          "kill": false,
+          "e_hotpathConsole": false,
+          "consoleCalls": 0,
+          "pass": true
+        },
+        {
+          "integrated": true,
+          "kill": false,
+          "e_hotpathConsole": false,
+          "consoleCalls": 0,
+          "pass": true
+        }
+      ],
+      "allPass": true
+    },
+    "D_visits": {
+      "on": 50,
+      "off": 127500
+    },
+    "E_console": {
+      "on": 0,
+      "off": 165000,
+      "debugRestore": 7500
+    }
+  },
+  "gateResults": {
+    "canonicalSoakOn": {
+      "verdict": "M19-GREEN",
+      "exitCode": 0,
+      "fixDAllPass": true,
+      "fixEAllPass": true,
+      "negativeSelfTest": true,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-on.json",
+      "report": "docs/plan3/worker-reports/L2-M19-AE-20260723b04-ON.md"
+    },
+    "killA": {
+      "verdict": "FIX-A-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "fixDAllPass": true,
+      "fixEAllPass": true,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-a.json"
+    },
+    "killB": {
+      "verdict": "FIX-B-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-b.json"
+    },
+    "killC": {
+      "verdict": "FIX-C-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-c.json"
+    },
+    "killD": {
+      "verdict": "M19-D-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "fixDAllPass": false,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-d.json"
+    },
+    "killE": {
+      "verdict": "M19-E-KILL-RED",
+      "exitCode": 1,
+      "exitCodeMeaning": "RED-EXPECTED",
+      "fixEAllPass": false,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-e.json"
+    },
+    "D_focus": {
+      "verdict": "D-GREEN",
+      "exitCode": 0,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-D-GREEN.json"
+    },
+    "E_focus": {
+      "verdict": "E-GREEN",
+      "exitCode": 0,
+      "evidence": "docs/plan3/evidence/L2-M19-AE-20260723b04-E-GREEN.json"
+    },
+    "negativeSelfTest": {
+      "pass": true,
+      "results": [
+        {
+          "name": "abc-green-d-absent",
+          "pass": true,
+          "verdict": "M19-FAIL",
+          "detail": "A/B/C green but D/E failing: fixDAllPass=false; fixEAllPass=true; d={\"integrated\":false,\"kill\":false,\"d_markerFullScan\":false,\"journalRowsVisited\":0,\"visitsOnMax\":80,\"pass\":false}; e={\"integrated\":true,\"kill\":false,\"e_hotpathConsole\":false,\"consoleCalls\":0,\"pass\":true}"
+        },
+        {
+          "name": "abc-green-e-failing",
+          "pass": true,
+          "verdict": "M19-FAIL",
+          "detail": "A/B/C green but D/E failing: fixDAllPass=true; fixEAllPass=false; d={\"integrated\":true,\"kill\":false,\"d_markerFullScan\":false,\"journalRowsVisited\":50,\"visitsOnMax\":80,\"pass\":true}; e={\"integrated\":true,\"kill\":false,\"e_hotpathConsole\":true,\"consoleCalls\":100,\"pass\":false}"
+        }
+      ]
+    },
+    "homepageMirrors": {
+      "pass": true
+    },
+    "harnessRevisionGates": [
+      "fixD pass = integrated + kill OFF + no full-scan + visits<=80",
+      "fixE pass = integrated + kill OFF + no hot-console + consoleCalls===0",
+      "M19-GREEN = A+B+C+D+E + allFivePaths + slope/payload bounds",
+      "negative self-test: ABC green + D/E fail => M19-FAIL",
+      "evidence exposes fixDAllPass/fixEAllPass"
+    ]
+  },
+  "freshEvidencePaths": [
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-on.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-a.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-b.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-c.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-d.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-e.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-D-GREEN.json",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-E-GREEN.json",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-ON.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-A.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-B.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-C.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-D.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-E.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-D-GREEN.md",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-E-GREEN.md",
+    "docs/plan3/evidence/L2-M19-AE-20260723b04-CHECKPOINT-PREFLIGHT.json",
+    "docs/plan3/worker-reports/L2-M19-AE-20260723b04-CHECKPOINT-PREFLIGHT.md"
+  ],
+  "proposedCheckpointManifest": {
+    "title": "M19 A–E final progressive session (checkpoint 20260723b04)",
+    "buildId": "20260723b04",
+    "base": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+    "kills": [
+      "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1",
+      "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1",
+      "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1",
+      "__TALARIA_DISABLE_M19_MARKER_DELTA_V1",
+      "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1"
+    ],
+    "include": [
+      "chart v 1.4/chart/modules/order-manager.js",
+      "chart v 1.4/chart/chart.js",
+      "chart v 1.4/chart/multichart-prod/panel-cmd-bridge.js",
+      "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs",
+      "homepage/public/chart/modules/order-manager.js",
+      "homepage/public/chart/chart.js",
+      "homepage/public/chart/multichart-prod/panel-cmd-bridge.js",
+      "homepage/public/chart/modules/m19-progressive-session-soak.test.mjs",
+      "chart v 1.4/chart/modules/m19-d-journal-write-gate.test.mjs",
+      "chart v 1.4/chart/modules/m19-d-marker-delta.green.test.mjs",
+      "chart v 1.4/chart/modules/m19-e-hotpath-log.green.test.mjs",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-on.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-a.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-b.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-c.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-d.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-kill-e.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-D-GREEN.json",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-E-GREEN.json",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-ON.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-A.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-B.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-C.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-D.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-KILL-E.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-D-GREEN.md",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-E-GREEN.md",
+      "docs/plan3/evidence/L2-M19-AE-20260723b04-CHECKPOINT-PREFLIGHT.json",
+      "docs/plan3/worker-reports/L2-M19-AE-20260723b04-CHECKPOINT-PREFLIGHT.md"
+    ],
+    "exclude": [
+      "prior A/B/C checkpoint evidence/reports (untouched)",
+      "build bump / GHCR publish / deploy",
+      "shared-tree merge until authorized"
+    ],
+    "acceptanceGates": [
+      "M19-GREEN = A+B+C+D+E pass + allFivePaths + slope/payload bounds",
+      "fixD/fixE explicit ON-pass criteria",
+      "negative self-test ABC-green + D/E-fail => M19-FAIL",
+      "evidence exposes fixDAllPass/fixEAllPass",
+      "five kill discriminators RED-EXPECTED",
+      "D-GREEN / E-GREEN focus"
+    ],
+    "nextStepsNotDone": [
+      "commit",
+      "push",
+      "build bump",
+      "publish",
+      "deploy"
+    ]
+  }
+}

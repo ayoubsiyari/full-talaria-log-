@@ -1,0 +1,54 @@
+{
+  "row": "L2-M19-D",
+  "title": "Marker delta (compound key)",
+  "task": "M19-D-GREEN",
+  "startedAt": "2024-07-03T09:46:40.000Z",
+  "finishedAt": "2024-07-03T09:46:40.000Z",
+  "elapsedMs": 976.8562999999999,
+  "headSha": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+  "fileHashes": {
+    "order-manager.js": "b3d8ce89bba7972d323364e184c36e83cd3f9dfe5ffa3ec9705ce9bebb2c44ba",
+    "replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "chart.js": "da12556863debdfe4953c8f19ed1275037df903a201a3509029d59d453dfc763"
+  },
+  "kill": "__TALARIA_DISABLE_M19_MARKER_DELTA_V1",
+  "targets": {
+    "visitsOnApprox": 50,
+    "visitsOnMax": 80,
+    "visitsOff": 127500,
+    "identicalMarkers": true
+  },
+  "on": {
+    "journalRowsVisited": 50,
+    "d_markerFullScan": false,
+    "markerRedraw": 5500,
+    "journalCount": 50
+  },
+  "off": {
+    "journalRowsVisited": 127500,
+    "d_markerFullScan": true,
+    "markerRedraw": 5500,
+    "journalCount": 50
+  },
+  "markerParity": {
+    "onKeyCount": 40,
+    "offKeyCount": 40,
+    "keysMatch": true,
+    "sampleOn": [
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10001\u001f1700006060000\u001fentry",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10001\u001f1700006060000\u001fexit",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10002\u001f1700009060000\u001fentry",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10002\u001f1700009060000\u001fexit",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10003\u001f1700012060000\u001fentry"
+    ],
+    "sampleOff": [
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10001\u001f1700006060000\u001fentry",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10001\u001f1700006060000\u001fexit",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10002\u001f1700009060000\u001fentry",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10002\u001f1700009060000\u001fexit",
+      "m19-soak\u001fEURUSD/file-eurusd\u001f10003\u001f1700012060000\u001fentry"
+    ]
+  },
+  "verdict": "D-GREEN",
+  "note": "Isolated M19-D evidence. Overall M19 may remain RED from A/B/C."
+}

@@ -78,6 +78,50 @@ function _orderLifecycleEventOwnershipV1Enabled() {
         || !window.__TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1;
 }
 
+
+/** M19-D: marker redraw processes newly-visible/delta trades only — default ON. */
+function _m19MarkerDeltaV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_MARKER_DELTA_V1 !== true;
+}
+
+
+/** M19-E: guard hot-path console.log behind debug mode — default ON. warn/error untouched. */
+function _m19HotpathLogGuardV1Enabled() {
+    return typeof window === 'undefined' || window.__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1 !== true;
+}
+
+function _m19HotpathDebugLogsEnabled() {
+    if (typeof window === 'undefined') return false;
+    return window.__TALARIA_DEBUG === true
+        || window.__TALARIA_M19_HOTPATH_LOGS === true
+        || window.__ORDER_MANAGER_DEBUG__ === true;
+}
+
+/**
+ * Hot-path log helper (M19-E).
+ * - Kill switch ON → always logs (legacy).
+ * - Guard ON + no debug → no-op (does not evaluate lazy factories).
+ * - Pass a factory () => string | any[] to avoid building expensive strings/arrays when disabled.
+ * warn/error must continue to use console.warn / console.error directly.
+ */
+function _m19HotpathLog(first, ...rest) {
+    if (_m19HotpathLogGuardV1Enabled() && !_m19HotpathDebugLogsEnabled()) return;
+    if (typeof first === 'function' && rest.length === 0) {
+        let out;
+        try { out = first(); } catch (_) { return; }
+        if (out == null) return;
+        if (Array.isArray(out)) console.log(...out);
+        else console.log(out);
+        return;
+    }
+    console.log(first, ...rest);
+}
+
+// Test/harness surface (M19-E green); not used by product call sites.
+if (typeof globalThis !== 'undefined') {
+    globalThis.__TALARIA_M19_HOTPATH_LOG = _m19HotpathLog;
+}
+
 /** D-030 Step 0: mark/close from owning panel feed only — never focused peer (default ON). */
 function _orderOwningPanelPriceV1Enabled() {
     return typeof window === 'undefined' || !window.__TALARIA_DISABLE_ORDER_OWNING_PANEL_PRICE_V1;
@@ -484,7 +528,7 @@ class OrderManager {
             this.breakevenMode = 'rr';
             this.mfeMaeTrackingHours = 4;
             this.mfeMaeTrackingEnabled = true;
-            this.tradeJournal = [];
+            this.tradeJournal = []; // M19-D-JOURNAL-WRITE:ctor-legacy-state
             this.mfeMaeTrackingPositions = [];
             this.symbolPrecision = 5;
 
@@ -5427,12 +5471,12 @@ class OrderManager {
         this._writeRuntimeOrderStateToSessionStorage(opts.critical ? durablePatch : hotPatch);
 
         if (!sessionId) {
-            console.log('[orders-persist] no session → sessionStorage save:',
+            _m19HotpathLog('[orders-persist] no session → sessionStorage save:',
                 'pending=', durablePatch.pending_orders.length, 'open=', durablePatch.open_positions.length);
             return;
         }
 
-        console.log('[orders-persist] session save (sessionId=' + sessionId + '):',
+        _m19HotpathLog('[orders-persist] session save (sessionId=' + sessionId + '):',
             'pending=', hotPatch.pending_orders.length, 'open=', hotPatch.open_positions.length,
             opts.critical ? '(critical durable)' : '(hot)');
 
@@ -5487,7 +5531,7 @@ class OrderManager {
             this._persistRuntimeOrderStateLocalFallback(patch);
             return;
         }
-        console.log('[orders-persist] session save (sessionId=' + sessionId + '):',
+        _m19HotpathLog('[orders-persist] session save (sessionId=' + sessionId + '):',
             'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
@@ -6137,6 +6181,7 @@ class OrderManager {
 
     upsertJournalEntry(journalEntry, options = {}) {
         if (!journalEntry) return { index: -1, inserted: false, entry: null };
+        this._m19EnsureJournalArray();
         const { skipIfExists = false } = options;
         const tradeId = journalEntry.tradeId || journalEntry.id;
         const existingIndex = this.tradeJournal.findIndex(t => (t.tradeId || t.id) === tradeId);
@@ -6145,15 +6190,22 @@ class OrderManager {
             if (skipIfExists) {
                 return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
             }
-            this.tradeJournal[existingIndex] = _stampPersistedOrderRecord({
-                ...this.tradeJournal[existingIndex],
+            const prev = this.tradeJournal[existingIndex];
+            const next = _stampPersistedOrderRecord({
+                ...prev,
                 ...journalEntry
             }, { onlyIfMissing: true });
-            return { index: existingIndex, inserted: false, entry: this.tradeJournal[existingIndex] };
+            // Structural only when marker-relevant fields change (partials/times/prices/id).
+            const markerChanged = this._m19JournalRowFingerprint(prev) !== this._m19JournalRowFingerprint(next);
+            this.tradeJournal[existingIndex] = next;
+            if (markerChanged) {
+                this._m19NoteJournalStructuralMutation('journal-upsert-replace');
+            }
+            return { index: existingIndex, inserted: false, entry: next };
         }
 
-        this.tradeJournal.push(_stampPersistedOrderRecord(journalEntry));
-        const index = this.tradeJournal.length - 1;
+        const stamped = _stampPersistedOrderRecord(journalEntry);
+        const index = this._m19AppendJournalRecord(stamped);
         return { index, inserted: true, entry: this.tradeJournal[index] };
     }
 
@@ -6203,10 +6255,11 @@ class OrderManager {
      */
     normalizeJournalRowsInPlace() {
         if (!Array.isArray(this.tradeJournal)) {
-            this.tradeJournal = [];
+            this._m19CommitJournalArray([], 'normalize-empty');
             return;
         }
-        this.tradeJournal = this.tradeJournal.map((trade) => {
+        const originalLength = this.tradeJournal.length;
+        const mapped = this.tradeJournal.map((trade) => {
             const normalizedTicker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
             return {
                 ...trade,
@@ -6215,8 +6268,7 @@ class OrderManager {
             };
         });
         const seenIds = new Set();
-        const originalLength = this.tradeJournal.length;
-        this.tradeJournal = this.tradeJournal.filter((trade) => {
+        const filtered = mapped.filter((trade) => {
             const id = trade.tradeId || trade.id;
             if (seenIds.has(id)) {
                 console.warn(`🧹 Removing duplicate trade #${id} from journal`);
@@ -6225,8 +6277,23 @@ class OrderManager {
             seenIds.add(id);
             return true;
         });
-        if (this.tradeJournal.length < originalLength) {
-            console.log(`🧹 Cleaned ${originalLength - this.tradeJournal.length} duplicate(s) from journal`);
+        let markerChanged = filtered.length !== originalLength;
+        if (!markerChanged) {
+            for (let i = 0; i < filtered.length; i++) {
+                if (this._m19JournalRowFingerprint(this.tradeJournal[i])
+                    !== this._m19JournalRowFingerprint(filtered[i])) {
+                    markerChanged = true;
+                    break;
+                }
+            }
+        }
+        if (markerChanged) {
+            this._m19CommitJournalArray(filtered, 'normalize-journal');
+        } else {
+            this.tradeJournal = filtered; // M19-D-JOURNAL-WRITE:normalize-noop
+        }
+        if (filtered.length < originalLength) {
+            console.log(`🧹 Cleaned ${originalLength - filtered.length} duplicate(s) from journal`);
         }
     }
 
@@ -6282,7 +6349,7 @@ class OrderManager {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // Trade journal: loaded from API (GET /api/sessions/:id/state) — not localStorage.
-        this.tradeJournal = [];
+        this._m19CommitJournalArray([], 'init');
 
         if (typeof window !== 'undefined' && !OrderManager._closedJournalDataHookInstalled) {
             OrderManager._closedJournalDataHookInstalled = true;
@@ -29973,7 +30040,7 @@ class OrderManager {
                 // Update MFE/MAE price extremes for full in-trade duration
                 this._updatePositionPriceExtremes(position, high, low, currentCandle.t);
                 
-                console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
+                _m19HotpathLog(() => `   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
                 // Check for auto breakeven trigger (skip if trailing stop is already activated)
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
@@ -30291,7 +30358,7 @@ class OrderManager {
                 // Update MFE/MAE price extremes for full in-trade duration
                 this._updatePositionPriceExtremes(position, high, low, currentCandle.t);
                 
-                console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
+                _m19HotpathLog(() => `   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
                 // Check for auto breakeven trigger (skip if trailing stop is already activated)
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
@@ -30651,7 +30718,7 @@ class OrderManager {
         
         // Log current state
         if (this.openPositions.length > 0) {
-            console.log(`💰 Total Unrealized P&L: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)} | Balance: $${this.balance.toFixed(2)} | Equity: $${this.equity.toFixed(2)}`);
+            _m19HotpathLog(() => `💰 Total Unrealized P&L: ${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)} | Balance: $${this.balance.toFixed(2)} | Equity: $${this.equity.toFixed(2)}`);
         }
 
         // M19-A: per-tick path must not full-rebuild the positions panel (innerHTML /
@@ -34360,7 +34427,7 @@ class OrderManager {
         if (legSet.size === 0) return;
         const aggregateId = `split_${splitGroupId}`;
         const n0 = this.tradeJournal.length;
-        this.tradeJournal = this.tradeJournal.filter((t) => {
+        const next = this.tradeJournal.filter((t) => {
             const tid = t.tradeId ?? t.id;
             if (tid === aggregateId) return true;
             if (typeof tid === 'string' && tid.startsWith('split_split_')) return true;
@@ -34368,8 +34435,9 @@ class OrderManager {
             if (Number.isFinite(n) && legSet.has(n) && t.splitGroupId === splitGroupId) return false;
             return true;
         });
-        const removed = n0 - this.tradeJournal.length;
+        const removed = n0 - next.length;
         if (removed > 0) {
+            this._m19CommitJournalArray(next, 'split-leg-dedupe');
             console.log(`📔 Merged ${removed} per-leg journal row(s) into aggregate ${aggregateId}`);
         }
     }
@@ -37367,11 +37435,12 @@ class OrderManager {
         let removedJournalCount = 0;
         if (selective) {
             const j0 = (this.tradeJournal || []).length;
-            this.tradeJournal = (this.tradeJournal || []).filter((trade) => {
+            const kept = (this.tradeJournal || []).filter((trade) => {
                 return this._classifyTradeAtReplayCutoff(trade, cutoffMs) === 'keepClosed';
             });
-            removedJournalCount = j0 - this.tradeJournal.length;
+            removedJournalCount = j0 - kept.length;
             if (removedJournalCount > 0) {
+                this._m19CommitJournalArray(kept, 'selective-rewind');
                 this.persistJournal();
                 if (this.orderService && typeof this.orderService.addJournalEntries === 'function') {
                     try {
@@ -37445,6 +37514,7 @@ class OrderManager {
         }
 
         if (selective) {
+            this._invalidateM19MarkerDeltaCache('selective-rewind');
             this._preservedClosedForRedraw = preservedClosed;
             const removedCount = removedClosedIds.size + removedOpen.length;
             if (removedCount > 0 || removedJournalCount > 0) {
@@ -37518,36 +37588,318 @@ class OrderManager {
         };
     }
 
+    _invalidateM19MarkerDeltaCache(reason) {
+        this._m19DrawnClosedMarkerKeys = new Set();
+        this._m19MarkerDeltaLastPlayheadMs = null;
+        this._m19MarkerDeltaScanFrom = 0;
+        this._m19MarkerDeltaForceFull = true;
+        this._m19OpenMarkersSyncedPlayheadMs = null;
+        this._m19MarkerCtx = null;
+        this._m19MarkerCtxSig = null;
+        // Drop closed-trade visuals so a subsequent forceFull rebuild cannot leave stale markers.
+        try { this._m19StripClosedTradeMarkers(); } catch (_) {}
+        if (typeof window !== 'undefined' && window.__ORDER_MARKER_DEBUG__ === true) {
+            try { console.log('[M19-D] invalidate marker delta', reason || ''); } catch (_) {}
+        }
+    }
+
+    /** Count a journal row inspection (marker scan OR mutation fingerprint work). */
+    _m19CountJournalInspect(n = 1) {
+        const add = Number(n);
+        if (!Number.isFinite(add) || add <= 0) return;
+        this._m19JournalInspectAccum = (this._m19JournalInspectAccum || 0) + add;
+    }
+
+    /**
+     * M19-D journal mutation contract — append preserves delta cursor; structural
+     * mutations bump epoch + invalidate once. Steady-frame context checks are O(1).
+     */
+    _m19NoteJournalAppend() {
+        // O(1): length growth with unchanged structural epoch keeps the scan cursor.
+        this._m19JournalLenSeen = (this.tradeJournal || []).length;
+    }
+
+    _m19NoteJournalStructuralMutation(reason) {
+        this._m19JournalStructuralEpoch = (this._m19JournalStructuralEpoch | 0) + 1;
+        this._m19JournalLenSeen = (this.tradeJournal || []).length;
+        this._invalidateM19MarkerDeltaCache(reason || 'journal-structural');
+    }
+
+    /** Cold-init empty journal array without bumping structural epoch. */
+    _m19EnsureJournalArray() {
+        if (!Array.isArray(this.tradeJournal)) {
+            this.tradeJournal = []; // M19-D-JOURNAL-WRITE:ensure-array
+        }
+        return this.tradeJournal;
+    }
+
+    /** Replace the journal array (restore / truncate / reorder / filter / hydrate / project). */
+    _m19CommitJournalArray(next, reason) {
+        this.tradeJournal = Array.isArray(next) ? next : []; // M19-D-JOURNAL-WRITE:commit
+        this._m19NoteJournalStructuralMutation(reason || 'journal-replace');
+        return this.tradeJournal;
+    }
+
+    /** Push one closed row (forward append — no invalidate). */
+    _m19AppendJournalRecord(entry) {
+        this._m19EnsureJournalArray();
+        this.tradeJournal.push(entry);
+        this._m19NoteJournalAppend();
+        return this.tradeJournal.length - 1;
+    }
+
+    /**
+     * In-place row update. Invalidates only when marker-relevant fingerprint changes
+     * (id/times/prices/partials). Excursion-only edits do not invalidate.
+     */
+    _m19UpdateJournalRow(index, updater, reason) {
+        const journal = this.tradeJournal || [];
+        if (index < 0 || index >= journal.length) return false;
+        const prev = journal[index];
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (!next) return false;
+        const changed = this._m19JournalRowFingerprint(prev) !== this._m19JournalRowFingerprint(next);
+        journal[index] = next;
+        if (changed) this._m19NoteJournalStructuralMutation(reason || 'journal-row-update');
+        return changed;
+    }
+
+    /**
+     * Remove closed-trade marker DOM/registries (keep open-position entry markers).
+     * Used on M19-D invalidation so replacements/reorders do not leave orphans.
+     */
+    _m19StripClosedTradeMarkers() {
+        const removeDom = (m) => {
+            try {
+                if (m?.marker?.remove) m.marker.remove();
+                else if (m?.line?.remove) m.line.remove();
+            } catch (_) {}
+        };
+        const openIds = new Set((this.openPositions || []).map((p) => String(p.id)));
+        if (this.entryMarkers?.length) {
+            this.entryMarkers = this.entryMarkers.filter((m) => {
+                if (openIds.has(String(m.orderId))) return true;
+                removeDom(m);
+                return false;
+            });
+        }
+        (this.exitMarkers || []).forEach(removeDom);
+        (this.partialCloseMarkers || []).forEach(removeDom);
+        (this.tradeConnectors || []).forEach(removeDom);
+        this.exitMarkers = [];
+        this.partialCloseMarkers = [];
+        this.tradeConnectors = [];
+    }
+
+    /**
+     * Per-row fingerprint for M19-D mutation compare (structural paths only).
+     * Includes partial-close identity. Each call counts as one row inspection.
+     */
+    _m19JournalRowFingerprint(t) {
+        this._m19CountJournalInspect(1);
+        if (!t) return '';
+        const id = t.tradeId != null ? t.tradeId : t.id;
+        const ticker = String(t.ticker || t.symbol || '').replace('/', '').toUpperCase();
+        const file = t.sourceFileId ?? t.source_file_id ?? '';
+        const ot = t.openTime != null ? t.openTime : t.entryTime;
+        const ct = t.closeTime != null ? t.closeTime : t.exitTime;
+        const op = t.openPrice != null ? t.openPrice : t.entryPrice;
+        const cp = t.closePrice != null ? t.closePrice : t.exitPrice;
+        let pcs = '';
+        if (Array.isArray(t.partialCloses) && t.partialCloses.length) {
+            pcs = t.partialCloses.map((pc, i) => [
+                pc && pc.id != null ? pc.id : i,
+                pc && (pc.closeTime != null ? pc.closeTime : ''),
+                pc && (pc.closePrice != null ? pc.closePrice : ''),
+                pc && (pc.type != null ? pc.type : ''),
+                pc && (pc.percentage != null ? pc.percentage : ''),
+                pc && (pc.pnl != null ? pc.pnl : ''),
+            ].join(':')).join(',');
+        }
+        return [id, ticker, file, ot, op, ct, cp, pcs].join('@');
+    }
+
+    /**
+     * O(1) marker context — meta + structural epoch + length. No journal hashing.
+     */
+    _m19CaptureMarkerContext() {
+        const ch = this.chart;
+        let session = '';
+        try {
+            if (ch && typeof ch.getActiveTradingSessionId === 'function') {
+                session = String(ch.getActiveTradingSessionId() || '');
+            } else if (ch && ch.activeTradingSessionId != null) {
+                session = String(ch.activeTradingSessionId);
+            } else if (typeof window !== 'undefined' && window.__TALARIA_ACTIVE_SESSION_ID != null) {
+                session = String(window.__TALARIA_ACTIVE_SESSION_ID);
+            }
+        } catch (_) {}
+        const fileId = ch && ch.currentFileId != null ? String(ch.currentFileId) : '';
+        const symbol = String((ch && (ch.currentSymbol || ch.symbol)) || '')
+            .replace('/', '')
+            .toUpperCase();
+        const tf = String((ch && ch.currentTimeframe) || '').toLowerCase().trim();
+        let layout = 'single';
+        try {
+            if (ch && ch.mcLayout != null) layout = String(ch.mcLayout);
+            else if (ch && ch._mcLayout != null) layout = String(ch._mcLayout);
+            else if (typeof window !== 'undefined' && window.__TALARIA_MC_LAYOUT != null) {
+                layout = String(window.__TALARIA_MC_LAYOUT);
+            }
+        } catch (_) {}
+        const jLen = (this.tradeJournal || []).length;
+        const structuralEpoch = this._m19JournalStructuralEpoch | 0;
+        const sep = '\u001f';
+        const ctx = { session, fileId, symbol, tf, layout, jLen, structuralEpoch };
+        ctx.sig = [session, fileId, symbol, tf, layout].join(sep);
+        return ctx;
+    }
+
+    /**
+     * Compound marker key: session + symbol/file + order/trade id + closeTime + target/partial id.
+     */
+    _m19CompoundMarkerKey(trade, closeTime, targetPartialId) {
+        const ctx = this._m19MarkerCtx || this._m19CaptureMarkerContext();
+        const id = trade && (trade.tradeId != null ? trade.tradeId : trade.id);
+        const file = (trade && (trade.sourceFileId ?? trade.source_file_id)) != null
+            ? String(trade.sourceFileId ?? trade.source_file_id)
+            : String(ctx.fileId || '');
+        const sym = String((trade && (trade.ticker || trade.symbol)) || ctx.symbol || '')
+            .replace('/', '')
+            .toUpperCase();
+        const sep = '\u001f';
+        return [
+            String(ctx.session || ''),
+            sym + '/' + file,
+            String(id),
+            String(closeTime),
+            String(targetPartialId != null ? targetPartialId : 'exit'),
+        ].join(sep);
+    }
+
+    /** O(1) steady-frame check — invalidation is mutation/version driven. */
+    _m19EnsureMarkerDeltaContext() {
+        const ctx = this._m19CaptureMarkerContext();
+        const prev = this._m19MarkerCtx;
+        if (prev) {
+            if (prev.sig !== ctx.sig) {
+                this._invalidateM19MarkerDeltaCache('context-meta');
+            } else if ((ctx.structuralEpoch | 0) !== (prev.structuralEpoch | 0)) {
+                // Writer already invalidated; keep forceFull if somehow cleared.
+                if (!this._m19MarkerDeltaForceFull) {
+                    this._invalidateM19MarkerDeltaCache('journal-epoch');
+                }
+            } else if (ctx.jLen < prev.jLen) {
+                // Defensive: truncate that bypassed the mutation contract.
+                this._m19NoteJournalStructuralMutation('journal-len-shrink');
+            }
+            // jLen > prev with same epoch ⇒ append (preserve delta cursor).
+        }
+        this._m19MarkerCtx = ctx;
+        this._m19MarkerCtxSig = ctx.sig;
+        return ctx;
+    }
+
     /**
      * Redraw entry/exit markers for closed trades loaded from the persisted journal.
      * Chart markers are in-memory only; journal rows survive refresh but were never repainted.
-     * @param {Set<string|number>} [skipIds] - trades already redrawn (e.g. replay preserve pass)
+     * M19-D: compound-key delta set; kill __TALARIA_DISABLE_M19_MARKER_DELTA_V1 restores full scans.
+     * @param {Set<string|number>} [skipIds]
+     * @param {{ forceFull?: boolean }} [opts]
      */
-    _redrawClosedJournalTradeMarkers(skipIds) {
+    _redrawClosedJournalTradeMarkers(skipIds, opts = {}) {
+        this._m19JournalInspectAccum = 0;
+        this._m19LastJournalRowsVisited = 0;
         if (!this._ensureChartReadyForOrderMarkers()) return 0;
 
+        this._m19EnsureMarkerDeltaContext();
         const skip = skipIds || new Set();
         const openIds = new Set((this.openPositions || []).map((p) => p.id));
         const pendingIds = new Set((this.pendingOrders || []).map((p) => p.id));
         let redrawn = 0;
+        const journal = this.tradeJournal || [];
+        const deltaOn = _m19MarkerDeltaV1Enabled() && !opts.forceFull && !this._m19MarkerDeltaForceFull;
+        if (!this._m19DrawnClosedMarkerKeys) this._m19DrawnClosedMarkerKeys = new Set();
+        const drawn = this._m19DrawnClosedMarkerKeys;
 
-        (this.tradeJournal || []).forEach((trade) => {
+        let playheadMs = null;
+        try {
+            const rsUse = typeof this._playbackReplaySystem === 'function' ? this._playbackReplaySystem() : null;
+            if (rsUse && Number.isFinite(Number(rsUse.replayTimestamp))) {
+                playheadMs = Number(rsUse.replayTimestamp);
+            } else if (Number.isFinite(Number(this._lastMarkerRedrawPlayhead))) {
+                playheadMs = Number(this._lastMarkerRedrawPlayhead);
+            }
+        } catch (_) {}
+
+        if (deltaOn && playheadMs != null && this._m19MarkerDeltaLastPlayheadMs != null
+            && playheadMs < this._m19MarkerDeltaLastPlayheadMs) {
+            this._invalidateM19MarkerDeltaCache('rewind');
+            return this._redrawClosedJournalTradeMarkers(skipIds, { forceFull: true });
+        }
+
+        const startIdx = deltaOn ? Math.max(0, Number(this._m19MarkerDeltaScanFrom) || 0) : 0;
+        let nextScanFrom = startIdx;
+        // Single-pass key collection for !deltaOn (forceFull or kill-switch OFF) — no second walk.
+        const passKeys = !deltaOn ? new Set() : null;
+        let firstFutureIdx = null;
+
+        for (let i = startIdx; i < journal.length; i++) {
+            const trade = journal[i];
+            this._m19CountJournalInspect(1);
             const id = trade.tradeId != null ? trade.tradeId : trade.id;
-            if (id == null || skip.has(id) || openIds.has(id) || pendingIds.has(id)) return;
+            if (id == null || skip.has(id) || openIds.has(id) || pendingIds.has(id)) {
+                if (deltaOn) nextScanFrom = i + 1;
+                continue;
+            }
 
             const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
             const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
             const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
-            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
-            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) return;
+            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) {
+                if (deltaOn) nextScanFrom = i + 1;
+                continue;
+            }
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) {
+                if (deltaOn) {
+                    nextScanFrom = i;
+                    break;
+                }
+                if (firstFutureIdx == null) firstFutureIdx = i;
+                continue;
+            }
 
             const pos = this._positionLikeFromJournalTrade(trade);
-            if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) return;
+            if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) {
+                if (deltaOn) nextScanFrom = i + 1;
+                continue;
+            }
 
-            try { this.drawEntryMarker(pos); } catch (_) {}
+            const exitKey = this._m19CompoundMarkerKey(trade, closeTime, 'exit');
+            const entryKey = this._m19CompoundMarkerKey(trade, closeTime, 'entry');
+            const needExit = !deltaOn || !drawn.has(exitKey);
+            const needEntry = !deltaOn || !drawn.has(entryKey);
+
+            if (needEntry) {
+                try { this.drawEntryMarker(pos); } catch (_) {}
+                if (deltaOn) drawn.add(entryKey);
+            }
+            if (passKeys) passKeys.add(entryKey);
 
             if (Array.isArray(pos.partialCloses)) {
-                pos.partialCloses.forEach((pc) => {
+                pos.partialCloses.forEach((pc, pcIndex) => {
+                    const pcTime = this._normalizeMarkerTimestamp(
+                        pc.closeTime != null ? pc.closeTime : closeTime,
+                    );
+                    const partialId = pc.id != null
+                        ? ('partial:' + pc.id)
+                        : ('partial:' + pcIndex + ':' + (pc.type || 'TP') + ':' + pcTime);
+                    const pKey = this._m19CompoundMarkerKey(
+                        trade,
+                        pcTime != null ? pcTime : closeTime,
+                        partialId,
+                    );
+                    if (deltaOn && drawn.has(pKey)) return;
                     try {
                         this.drawPartialCloseMarker(pos, {
                             closePrice: pc.closePrice,
@@ -37558,23 +37910,49 @@ class OrderManager {
                             type: pc.type || 'TP',
                         });
                     } catch (_) {}
+                    if (deltaOn) drawn.add(pKey);
+                    if (passKeys) passKeys.add(pKey);
+                    redrawn += 1;
                 });
             }
 
-            try {
-                this.drawExitMarker(pos, {
-                    closePrice: Number(closePrice),
-                    closeTime: Number(closeTime),
-                    exitMarkerTimeMs: pos.exitMarkerTimeMs,
-                    pnl: pos.pnl || 0,
-                    type: pos.closeType || 'MANUAL',
-                });
-            } catch (_) {}
+            if (needExit) {
+                try {
+                    this.drawExitMarker(pos, {
+                        closePrice: Number(closePrice),
+                        closeTime: Number(closeTime),
+                        exitMarkerTimeMs: pos.exitMarkerTimeMs,
+                        pnl: pos.pnl || 0,
+                        type: pos.closeType || 'MANUAL',
+                    });
+                } catch (_) {}
+                if (deltaOn) drawn.add(exitKey);
+                redrawn += 1;
+            }
+            if (passKeys) passKeys.add(exitKey);
 
-            redrawn += 1;
-        });
+            if (deltaOn) nextScanFrom = i + 1;
+        }
 
-        this._lastJournalClosedMarkersDrawn = redrawn;
+        if (!deltaOn) {
+            this._m19DrawnClosedMarkerKeys = passKeys;
+            this._m19MarkerDeltaScanFrom = _m19MarkerDeltaV1Enabled()
+                ? (firstFutureIdx != null ? firstFutureIdx : journal.length)
+                : journal.length;
+            this._m19MarkerDeltaForceFull = false;
+        } else {
+            this._m19MarkerDeltaScanFrom = nextScanFrom;
+            this._m19MarkerDeltaForceFull = false;
+        }
+
+        if (playheadMs != null) this._m19MarkerDeltaLastPlayheadMs = playheadMs;
+        this._m19LastJournalRowsVisited = this._m19JournalInspectAccum || 0;
+        this._lastJournalClosedMarkersDrawn = deltaOn
+            ? [...(this._m19DrawnClosedMarkerKeys || [])].filter((k) => {
+                const parts = String(k).split('\u001f');
+                return parts[parts.length - 1] === 'exit';
+            }).length
+            : redrawn;
         return redrawn;
     }
 
@@ -37617,6 +37995,7 @@ class OrderManager {
      * @returns {boolean}
      */
     _syncJournalMarkersAfterSessionRestore() {
+        this._invalidateM19MarkerDeltaCache('session-restore');
         if (!this._ensureChartReadyForOrderMarkers()) return false;
         if (!this._replayReadyForJournalMarkerSync()) return false;
 
@@ -43229,7 +43608,7 @@ class OrderManager {
             return;
         }
         this._isUpdatingPanels = true;
-        console.log('🔄 updatePositionsPanel() called');
+        _m19HotpathLog('🔄 updatePositionsPanel() called');
         const normalizeTickerSymbol = (item) => {
             const raw = String(item?.symbol || item?.ticker || '').trim();
             if (!raw) return 'UNKNOWN';
@@ -43241,13 +43620,13 @@ class OrderManager {
         if (!this.pendingOrders) this.pendingOrders = [];
         if (!this.openPositions) this.openPositions = [];
         if (!this.closedPositions) this.closedPositions = [];
-        if (!this.tradeJournal) this.tradeJournal = [];
+        if (!this.tradeJournal) this._m19CommitJournalArray([], 'panel-init');
         
-        console.log('📊 Current data state:');
-        console.log('   - Pending Orders:', this.pendingOrders.length);
-        console.log('   - Open Positions:', this.openPositions.length);
-        console.log('   - Closed Positions:', this.closedPositions.length);
-        console.log('   - Trade Journal:', this.tradeJournal.length);
+        _m19HotpathLog('📊 Current data state:');
+        _m19HotpathLog('   - Pending Orders:', this.pendingOrders.length);
+        _m19HotpathLog('   - Open Positions:', this.openPositions.length);
+        _m19HotpathLog('   - Closed Positions:', this.closedPositions.length);
+        _m19HotpathLog('   - Trade Journal:', this.tradeJournal.length);
         
         // Update Details tab - Account info
         const balanceEl = document.getElementById('accountBalance');
@@ -43337,9 +43716,9 @@ class OrderManager {
 
         // Update bottom panel pending orders table
         const bottomPendingBodyEl = document.getElementById('bottomPendingOrdersBody');
-        console.log('🔍 Bottom Pending Orders Body element:', bottomPendingBodyEl ? 'FOUND' : 'NOT FOUND');
+        _m19HotpathLog('🔍 Bottom Pending Orders Body element:', bottomPendingBodyEl ? 'FOUND' : 'NOT FOUND');
         if (bottomPendingBodyEl) {
-            console.log('📝 Updating bottom pending orders with', this.pendingOrders.length, 'orders');
+            _m19HotpathLog('📝 Updating bottom pending orders with', this.pendingOrders.length, 'orders');
             if (this.pendingOrders.length === 0) {
                 bottomPendingBodyEl.innerHTML = `
                     <tr class="replay-empty-row">
@@ -43434,7 +43813,7 @@ class OrderManager {
             }
         });
         
-        console.log(`📊 Panel Updated: Initial=$${this.initialBalance.toFixed(2)} | Balance=$${this.balance.toFixed(2)} | Equity=$${this.equity.toFixed(2)} | Unrealized=${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)} | Realized=${realizedPnL >= 0 ? '+' : ''}$${realizedPnL.toFixed(2)}`);
+        _m19HotpathLog(() => `📊 Panel Updated: Initial=$${this.initialBalance.toFixed(2)} | Balance=$${this.balance.toFixed(2)} | Equity=$${this.equity.toFixed(2)} | Unrealized=${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)} | Realized=${realizedPnL >= 0 ? '+' : ''}$${realizedPnL.toFixed(2)}`);
         
         // Update bottom panel positions count in meta
         const bottomPositionsCountMetaEl = document.getElementById('bottomPositionsCountMeta');
@@ -43535,9 +43914,9 @@ class OrderManager {
 
         // Update bottom panel open positions table
         const bottomPositionsBodyEl = document.getElementById('bottomOpenPositionsBody');
-        console.log('🔍 Bottom Open Positions Body element:', bottomPositionsBodyEl ? 'FOUND' : 'NOT FOUND');
+        _m19HotpathLog('🔍 Bottom Open Positions Body element:', bottomPositionsBodyEl ? 'FOUND' : 'NOT FOUND');
         if (bottomPositionsBodyEl) {
-            console.log('📝 Updating bottom open positions with', this.openPositions.length, 'positions');
+            _m19HotpathLog('📝 Updating bottom open positions with', this.openPositions.length, 'positions');
             if (this.openPositions.length === 0) {
                 bottomPositionsBodyEl.innerHTML = `
                     <tr class="replay-empty-row">
@@ -43582,11 +43961,11 @@ class OrderManager {
 
         // Update "All Trades" tab - combines pending, open, and closed
         const allTradesBodyEl = document.getElementById('allTradesBody');
-        console.log('🔍 All Trades Tab - Element found:', !!allTradesBodyEl);
-        console.log('🔍 Pending Orders:', this.pendingOrders ? this.pendingOrders.length : 'UNDEFINED');
-        console.log('🔍 Open Positions:', this.openPositions ? this.openPositions.length : 'UNDEFINED');
-        console.log('🔍 Trade Journal:', this.tradeJournal ? this.tradeJournal.length : 'UNDEFINED');
-        console.log('🔍 Closed Positions:', this.closedPositions ? this.closedPositions.length : 'UNDEFINED');
+        _m19HotpathLog('🔍 All Trades Tab - Element found:', !!allTradesBodyEl);
+        _m19HotpathLog('🔍 Pending Orders:', this.pendingOrders ? this.pendingOrders.length : 'UNDEFINED');
+        _m19HotpathLog('🔍 Open Positions:', this.openPositions ? this.openPositions.length : 'UNDEFINED');
+        _m19HotpathLog('🔍 Trade Journal:', this.tradeJournal ? this.tradeJournal.length : 'UNDEFINED');
+        _m19HotpathLog('🔍 Closed Positions:', this.closedPositions ? this.closedPositions.length : 'UNDEFINED');
         if (allTradesBodyEl) {
             const allTrades = [];
             
@@ -43672,8 +44051,8 @@ class OrderManager {
             }
             if (balanceAllEl) balanceAllEl.textContent = `$${this.balance.toFixed(2)}`;
             
-            console.log('🔍 All Trades array length:', allTrades.length);
-            console.log('🔍 All Trades data:', allTrades);
+            _m19HotpathLog('🔍 All Trades array length:', allTrades.length);
+            _m19HotpathLog(() => ['🔍 All Trades data:', allTrades]);
             
             if (allTrades.length === 0) {
                 allTradesBodyEl.innerHTML = `
@@ -43749,10 +44128,10 @@ class OrderManager {
         const replayMetaOpenCount = document.getElementById('replayMetaOpenCount');
         const replayMetaClosedCount = document.getElementById('replayMetaClosedCount');
         
-        console.log('🔍 History Tab Body element:', replayPositionsBodyEl ? 'FOUND' : 'NOT FOUND');
+        _m19HotpathLog('🔍 History Tab Body element:', replayPositionsBodyEl ? 'FOUND' : 'NOT FOUND');
         
         if (replayPositionsBodyEl) {
-            console.log('📝 Updating History tab with', this.tradeJournal.length, 'closed trades');
+            _m19HotpathLog('📝 Updating History tab with', this.tradeJournal.length, 'closed trades');
             
             if (this.tradeJournal.length === 0) {
                 replayPositionsBodyEl.innerHTML = `
@@ -43823,12 +44202,12 @@ class OrderManager {
             replayMetaClosedCount.textContent = this.tradeJournal.length;
         }
         
-        console.log('✅ updatePositionsPanel() completed successfully');
-        console.log('   📊 All 4 tabs synchronized:');
-        console.log('      1. All Trades: ', (this.pendingOrders?.length || 0) + (this.openPositions?.length || 0) + (this.tradeJournal?.length || 0), 'total');
-        console.log('      2. Pending Orders:', this.pendingOrders?.length || 0);
-        console.log('      3. Open Positions:', this.openPositions?.length || 0);
-        console.log('      4. History:', this.tradeJournal?.length || 0);
+        _m19HotpathLog('✅ updatePositionsPanel() completed successfully');
+        _m19HotpathLog('   📊 All 4 tabs synchronized:');
+        _m19HotpathLog('      1. All Trades: ', (this.pendingOrders?.length || 0) + (this.openPositions?.length || 0) + (this.tradeJournal?.length || 0), 'total');
+        _m19HotpathLog('      2. Pending Orders:', this.pendingOrders?.length || 0);
+        _m19HotpathLog('      3. Open Positions:', this.openPositions?.length || 0);
+        _m19HotpathLog('      4. History:', this.tradeJournal?.length || 0);
         
         // Update scaling checkbox availability when positions change
         this.updateScalingCheckboxAvailability();

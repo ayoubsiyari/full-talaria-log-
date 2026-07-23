@@ -1,0 +1,2495 @@
+{
+  "row": "L2-M19-AE",
+  "title": "M19 A–E progressive session — checkpoint 20260723b04",
+  "task": "M19-B-KILL-DISCRIMINATOR",
+  "startedAt": "2026-07-23T09:49:54.776Z",
+  "finishedAt": "2026-07-23T09:49:58.638Z",
+  "wallClock": {
+    "startedWallMs": 1784800194776,
+    "finishedWallMs": 1784800198638
+  },
+  "elapsedMs": 3725.6177,
+  "headSha": "c9700ebc881ef0080f770537f5ee5dbd8c863ef7",
+  "fileHashes": {
+    "order-manager.js": "b3d8ce89bba7972d323364e184c36e83cd3f9dfe5ffa3ec9705ce9bebb2c44ba",
+    "replay-system.js": "075c89220377c01a2500dd24ebe08aea2a754d61a5720c11a4913a7a60da091e",
+    "chart.js": "da12556863debdfe4953c8f19ed1275037df903a201a3509029d59d453dfc763"
+  },
+  "anchors": {
+    "ok": true,
+    "anchors": {
+      "order-manager.js:updatePositions": 29836,
+      "order-manager.js:updatePositions→updatePositionsPanel": null,
+      "order-manager.js:updatePositions→scheduleRuntimePanel": 30730,
+      "order-manager.js:updatePositionsPanel": 43596,
+      "order-manager.js:_updatePositionsPanelRuntimeOnly": 30892,
+      "order-manager.js:_appendExcursionSnapshot": 4211,
+      "order-manager.js:persistJournal": 5394,
+      "order-manager.js:_buildRuntimeOrderPersistPatch": 6535,
+      "order-manager.js:_redrawClosedJournalTradeMarkers": 37809,
+      "order-manager.js:_redrawJournalMarkersForReplayPlayhead": 37971,
+      "order-manager.js:hotpath-console-updatePositions": 30721,
+      "order-manager.js:hotpath-console-updatePositionsPanel": 43611,
+      "replay-system.js:updatePositions#1": [
+        3805,
+        5430,
+        5873,
+        7197,
+        8369
+      ],
+      "chart.js:flushSessionStateSave": 12614
+    }
+  },
+  "constants": {
+    "WARMUP_TICKS": 500,
+    "MEASURED_TICKS": 5000,
+    "WINDOWS": 10,
+    "CANONICAL_REPEATS": 3,
+    "TARGET_CLOSED_TRADES": 50,
+    "FRAME_RATIO_MAX": 1.25,
+    "SLOPE_PER_1K_MAX_FRAC": 0.05,
+    "STEADY_GROWTH_FRAC": 0.05,
+    "STEADY_GROWTH_ABS": 16384,
+    "RUNTIME_ABS_MAX": 262144,
+    "SESSION_ABS_MAX": 524288,
+    "FROZEN_NOW": 1720000000000,
+    "EXCURSION_TAIL_MAX": 256,
+    "screenshotSentinelBytes": 8214
+  },
+  "futureSwitchesEncodedOnly": [
+    "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1",
+    "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1",
+    "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1",
+    "__TALARIA_DISABLE_M19_MARKER_DELTA_V1",
+    "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1"
+  ],
+  "canonicalRuns": [
+    {
+      "label": "canonical-playing-single#1",
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": true,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.011400000000008959,
+          "lastMed": 0.00760000000002492,
+          "ratio": 0.6666666666683287,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": -0.0014400000000080126,
+          "slopeFracOfFirst": -0.12631578947428782,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 3,
+          "limit": 16384,
+          "start": 1634,
+          "end": 1637
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 10324,
+          "limit": 16384,
+          "start": 43209,
+          "end": 53533
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1637,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53533,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "windowMedians": [
+        0.014500000000026603,
+        0.008499999999969532,
+        0.015100000000018099,
+        0.010349999999988313,
+        0.007699999999999818,
+        0.007599999999968077,
+        0.013699999999971624,
+        0.007699999999999818,
+        0.00945000000001528,
+        0.0072999999999865395
+      ],
+      "firstMed": 0.011400000000008959,
+      "lastMed": 0.00760000000002492,
+      "ratio": 0.6666666666683287,
+      "slopePer1k": -0.0014400000000080126,
+      "slopeFracOfFirst": -0.12631578947428782,
+      "startRuntimeBytes": 1646,
+      "endRuntimeBytes": 1637,
+      "startSessionBytes": 1685,
+      "endSessionBytes": 53533,
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 11000,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": true,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false
+        }
+      },
+      "consoleCalls": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "openCount": 2,
+      "journalCount": 50,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "consoleCallsMeasured": 0
+    },
+    {
+      "label": "canonical-playing-single#2",
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": true,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.010699999999928878,
+          "lastMed": 0.005599999999958527,
+          "ratio": 0.5233644859809112,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": -0.0012600000000020373,
+          "slopeFracOfFirst": -0.11775700934676751,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 3,
+          "limit": 16384,
+          "start": 1634,
+          "end": 1637
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 10324,
+          "limit": 16384,
+          "start": 43209,
+          "end": 53533
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1637,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53533,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "windowMedians": [
+        0.011799999999993815,
+        0.009500000000002728,
+        0.005999999999971806,
+        0.009299999999939246,
+        0.005799999999965166,
+        0.009549999999990177,
+        0.005800000000135697,
+        0.007949999999937063,
+        0.005600000000185901,
+        0.005499999999983629
+      ],
+      "firstMed": 0.010699999999928878,
+      "lastMed": 0.005599999999958527,
+      "ratio": 0.5233644859809112,
+      "slopePer1k": -0.0012600000000020373,
+      "slopeFracOfFirst": -0.11775700934676751,
+      "startRuntimeBytes": 1646,
+      "endRuntimeBytes": 1637,
+      "startSessionBytes": 1685,
+      "endSessionBytes": 53533,
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 11000,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": true,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false
+        }
+      },
+      "consoleCalls": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "openCount": 2,
+      "journalCount": 50,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "consoleCallsMeasured": 0
+    },
+    {
+      "label": "canonical-playing-single#3",
+      "frameSlopeFail": true,
+      "persistFail": false,
+      "allFivePaths": true,
+      "asserts": {
+        "frameRatio": {
+          "pass": false,
+          "firstMed": 0.005199999999945248,
+          "lastMed": 0.00680000000011205,
+          "ratio": 1.3076923077276246,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": 0.00018000000004576578,
+          "slopeFracOfFirst": 0.034615384624550195,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 3,
+          "limit": 16384,
+          "start": 1634,
+          "end": 1637
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 10324,
+          "limit": 16384,
+          "start": 43209,
+          "end": 53533
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1637,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53533,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "windowMedians": [
+        0.004999999999881766,
+        0.005600000000185901,
+        0.008699999999976171,
+        0.005100000000084037,
+        0.00479999999993197,
+        0.005000000000109139,
+        0.008700000000089858,
+        0.008699999999862484,
+        0.00860000000011496,
+        0.0059000000001105946
+      ],
+      "firstMed": 0.005199999999945248,
+      "lastMed": 0.00680000000011205,
+      "ratio": 1.3076923077276246,
+      "slopePer1k": 0.00018000000004576578,
+      "slopeFracOfFirst": 0.034615384624550195,
+      "startRuntimeBytes": 1646,
+      "endRuntimeBytes": 1637,
+      "startSessionBytes": 1685,
+      "endSessionBytes": 53533,
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 11000,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": true,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false
+        }
+      },
+      "consoleCalls": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "openCount": 2,
+      "journalCount": 50,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "consoleCallsMeasured": 0
+    }
+  ],
+  "neighborMatrix": [
+    {
+      "label": "neighbor-single-playing",
+      "playing": true,
+      "multichart": false,
+      "projected": false,
+      "warmup": 500,
+      "measured": 5000,
+      "windowMedians": [
+        0.004700000000070759,
+        0.00839999999993779,
+        0.00565000000017335,
+        0.008199999999987995,
+        0.008199999999987995,
+        0.008200000000215368,
+        0.005350000000134969,
+        0.005400000000008731,
+        0.00709999999980937,
+        0.0048000000001593435
+      ],
+      "firstMed": 0.008199999999987995,
+      "lastMed": 0.005200000000058935,
+      "ratio": 0.6341463414715303,
+      "slopePer1k": 0.000020000000017716956,
+      "slopeFracOfFirst": 0.0024390243924080775,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.008199999999987995,
+          "lastMed": 0.005200000000058935,
+          "ratio": 0.6341463414715303,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": 0.000020000000017716956,
+          "slopeFracOfFirst": 0.0024390243924080775,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 3,
+          "limit": 16384,
+          "start": 1634,
+          "end": 1637
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 10324,
+          "limit": 16384,
+          "start": 43209,
+          "end": 53533
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1637,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53533,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": true,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 11000,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": true,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false
+        }
+      },
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "windowExcursion": [
+        [
+          {
+            "id": 1,
+            "bar_close_r": 1000,
+            "bar_high_r": 1000,
+            "bar_low_r": 1000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 1000,
+            "bar_high_r": 1000,
+            "bar_low_r": 1000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 1500,
+            "bar_high_r": 1500,
+            "bar_low_r": 1500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 1500,
+            "bar_high_r": 1500,
+            "bar_low_r": 1500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 2000,
+            "bar_high_r": 2000,
+            "bar_low_r": 2000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 2000,
+            "bar_high_r": 2000,
+            "bar_low_r": 2000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 2500,
+            "bar_high_r": 2500,
+            "bar_low_r": 2500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 2500,
+            "bar_high_r": 2500,
+            "bar_low_r": 2500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 3000,
+            "bar_high_r": 3000,
+            "bar_low_r": 3000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 3000,
+            "bar_high_r": 3000,
+            "bar_low_r": 3000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 3500,
+            "bar_high_r": 3500,
+            "bar_low_r": 3500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 3500,
+            "bar_high_r": 3500,
+            "bar_low_r": 3500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 4000,
+            "bar_high_r": 4000,
+            "bar_low_r": 4000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 4000,
+            "bar_high_r": 4000,
+            "bar_low_r": 4000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 4500,
+            "bar_high_r": 4500,
+            "bar_low_r": 4500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 4500,
+            "bar_high_r": 4500,
+            "bar_low_r": 4500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 5000,
+            "bar_high_r": 5000,
+            "bar_low_r": 5000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 5000,
+            "bar_high_r": 5000,
+            "bar_low_r": 5000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 5500,
+            "bar_high_r": 5500,
+            "bar_low_r": 5500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 5500,
+            "bar_high_r": 5500,
+            "bar_low_r": 5500,
+            "post_exit_bar_close_r": 0
+          }
+        ]
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "startRuntimeBytes": 1646,
+      "endRuntimeBytes": 1637,
+      "startSessionBytes": 1685,
+      "endSessionBytes": 53533,
+      "consoleCalls": 0,
+      "consoleCallsMeasured": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "flushBytesFinal": 51928,
+      "openCount": 2,
+      "journalCount": 50,
+      "futureSwitchesPresent": {
+        "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1": false,
+        "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1": true,
+        "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1": false,
+        "__TALARIA_DISABLE_M19_MARKER_DELTA_V1": false,
+        "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1": false
+      }
+    },
+    {
+      "label": "neighbor-single-paused",
+      "playing": false,
+      "multichart": false,
+      "projected": false,
+      "warmup": 500,
+      "measured": 5000,
+      "windowMedians": [
+        0.007450000000062573,
+        0.010449999999764259,
+        0.010800000000017462,
+        0.0061000000000603904,
+        0.00860000000011496,
+        0.009399999999914144,
+        0.008900000000039654,
+        0.005200000000058935,
+        0.009199999999964348,
+        0.009399999999914144
+      ],
+      "firstMed": 0.00924999999983811,
+      "lastMed": 0.009199999999964348,
+      "ratio": 0.9945945946081474,
+      "slopePer1k": 0.0003899999999703141,
+      "slopeFracOfFirst": 0.042162162159690784,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.00924999999983811,
+          "lastMed": 0.009199999999964348,
+          "ratio": 0.9945945946081474,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": 0.0003899999999703141,
+          "slopeFracOfFirst": 0.042162162159690784,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 0,
+          "limit": 16384,
+          "start": 1256,
+          "end": 1256
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 0,
+          "limit": 16384,
+          "start": 53149,
+          "end": 53149
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1256,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53149,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": false,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 0,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": false,
+        "pass": false
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53149,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 0,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 0,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": false,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false
+        }
+      },
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "windowExcursion": [
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ]
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "startRuntimeBytes": 1256,
+      "endRuntimeBytes": 1256,
+      "startSessionBytes": 53149,
+      "endSessionBytes": 53149,
+      "consoleCalls": 0,
+      "consoleCallsMeasured": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "flushBytesFinal": 51925,
+      "openCount": 2,
+      "journalCount": 50,
+      "futureSwitchesPresent": {
+        "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1": false,
+        "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1": true,
+        "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1": false,
+        "__TALARIA_DISABLE_M19_MARKER_DELTA_V1": false,
+        "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1": false
+      }
+    },
+    {
+      "label": "neighbor-multichart-host+projected-playing",
+      "playing": true,
+      "multichart": true,
+      "projected": true,
+      "warmup": 500,
+      "measured": 5000,
+      "windowMedians": [
+        0.01145000000019536,
+        0.010200000000168075,
+        0.007100000000036744,
+        0.010249999999814463,
+        0.010300000000142973,
+        0.01069999999981519,
+        0.010600000000067666,
+        0.01069999999981519,
+        0.009149999999863212,
+        0.007849999999962165
+      ],
+      "firstMed": 0.010800000000017462,
+      "lastMed": 0.008499999999912689,
+      "ratio": 0.7870370370276801,
+      "slopePer1k": -0.0007200000000466388,
+      "slopeFracOfFirst": -0.06666666667087728,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.010800000000017462,
+          "lastMed": 0.008499999999912689,
+          "ratio": 0.7870370370276801,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": -0.0007200000000466388,
+          "slopeFracOfFirst": -0.06666666667087728,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 3,
+          "limit": 16384,
+          "start": 1634,
+          "end": 1637
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 10324,
+          "limit": 16384,
+          "start": 43209,
+          "end": 53533
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1637,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53533,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": true,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 11000,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": true,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false,
+          "projectedEarlyReturn": true
+        }
+      },
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 500,
+          "bar_high_r": 500,
+          "bar_low_r": 500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "windowExcursion": [
+        [
+          {
+            "id": 1,
+            "bar_close_r": 1000,
+            "bar_high_r": 1000,
+            "bar_low_r": 1000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 1000,
+            "bar_high_r": 1000,
+            "bar_low_r": 1000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 1500,
+            "bar_high_r": 1500,
+            "bar_low_r": 1500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 1500,
+            "bar_high_r": 1500,
+            "bar_low_r": 1500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 2000,
+            "bar_high_r": 2000,
+            "bar_low_r": 2000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 2000,
+            "bar_high_r": 2000,
+            "bar_low_r": 2000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 2500,
+            "bar_high_r": 2500,
+            "bar_low_r": 2500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 2500,
+            "bar_high_r": 2500,
+            "bar_low_r": 2500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 3000,
+            "bar_high_r": 3000,
+            "bar_low_r": 3000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 3000,
+            "bar_high_r": 3000,
+            "bar_low_r": 3000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 3500,
+            "bar_high_r": 3500,
+            "bar_low_r": 3500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 3500,
+            "bar_high_r": 3500,
+            "bar_low_r": 3500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 4000,
+            "bar_high_r": 4000,
+            "bar_low_r": 4000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 4000,
+            "bar_high_r": 4000,
+            "bar_low_r": 4000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 4500,
+            "bar_high_r": 4500,
+            "bar_low_r": 4500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 4500,
+            "bar_high_r": 4500,
+            "bar_low_r": 4500,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 5000,
+            "bar_high_r": 5000,
+            "bar_low_r": 5000,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 5000,
+            "bar_high_r": 5000,
+            "bar_low_r": 5000,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 5500,
+            "bar_high_r": 5500,
+            "bar_low_r": 5500,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 5500,
+            "bar_high_r": 5500,
+            "bar_low_r": 5500,
+            "post_exit_bar_close_r": 0
+          }
+        ]
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 5500,
+          "bar_high_r": 5500,
+          "bar_low_r": 5500,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "startRuntimeBytes": 1646,
+      "endRuntimeBytes": 1637,
+      "startSessionBytes": 1685,
+      "endSessionBytes": 53533,
+      "consoleCalls": 0,
+      "consoleCallsMeasured": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "flushBytesFinal": 51928,
+      "openCount": 2,
+      "journalCount": 50,
+      "futureSwitchesPresent": {
+        "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1": false,
+        "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1": true,
+        "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1": false,
+        "__TALARIA_DISABLE_M19_MARKER_DELTA_V1": false,
+        "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1": false
+      }
+    },
+    {
+      "label": "neighbor-multichart-host+projected-paused",
+      "playing": false,
+      "multichart": true,
+      "projected": true,
+      "warmup": 500,
+      "measured": 5000,
+      "windowMedians": [
+        0.010199999999713327,
+        0.009700000000066211,
+        0.0052999999998064595,
+        0.008149999999886859,
+        0.008100000000013097,
+        0.004400000000259752,
+        0.006900000000086948,
+        0.004699999999957072,
+        0.007550000000037471,
+        0.008000000000265572
+      ],
+      "firstMed": 0.009900000000016007,
+      "lastMed": 0.007999999999810825,
+      "ratio": 0.808080808060393,
+      "slopePer1k": -0.000439999999889551,
+      "slopeFracOfFirst": -0.044444444433216115,
+      "asserts": {
+        "frameRatio": {
+          "pass": true,
+          "firstMed": 0.009900000000016007,
+          "lastMed": 0.007999999999810825,
+          "ratio": 0.808080808060393,
+          "limit": 1.25
+        },
+        "frameSlope": {
+          "pass": true,
+          "slopePer1k": -0.000439999999889551,
+          "slopeFracOfFirst": -0.044444444433216115,
+          "limitFrac": 0.05
+        },
+        "runtimeSteadyGrowth": {
+          "pass": true,
+          "growth": 0,
+          "limit": 16384,
+          "start": 1256,
+          "end": 1256
+        },
+        "sessionSteadyGrowth": {
+          "pass": true,
+          "growth": 0,
+          "limit": 16384,
+          "start": 53149,
+          "end": 53149
+        },
+        "runtimeAbs": {
+          "pass": true,
+          "bytes": 1256,
+          "limit": 262144
+        },
+        "sessionAbs": {
+          "pass": true,
+          "bytes": 53149,
+          "limit": 524288
+        },
+        "sentinelsOpen": {
+          "pass": true,
+          "count": 2
+        },
+        "closedApprox50": {
+          "pass": true,
+          "count": 50
+        }
+      },
+      "frameSlopeFail": false,
+      "persistFail": false,
+      "allFivePaths": false,
+      "fixA": {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      "fixB": {
+        "excursionKill": true,
+        "maxOpenExcursion": 0,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": false,
+        "pass": false
+      },
+      "fixC": {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53149,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      "fixD": {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 0,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      "fixE": {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      "counters": {
+        "updatePositionsPanel": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "appendExcursion": 0,
+        "markerRedraw": 206,
+        "journalRowsVisited": 50,
+        "persistJournal": 0,
+        "runtimePatchBuilds": 0,
+        "flushSession": 206,
+        "paths": {
+          "a_panelEveryTick": true,
+          "b_excursionGrow": false,
+          "c_persistHeavy": true,
+          "d_markerFullScan": false,
+          "e_hotpathConsole": false,
+          "projectedEarlyReturn": true
+        }
+      },
+      "startExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "windowExcursion": [
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ],
+        [
+          {
+            "id": 1,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          },
+          {
+            "id": 2,
+            "bar_close_r": 0,
+            "bar_high_r": 0,
+            "bar_low_r": 0,
+            "post_exit_bar_close_r": 0
+          }
+        ]
+      ],
+      "endExcursion": [
+        {
+          "id": 1,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        },
+        {
+          "id": 2,
+          "bar_close_r": 0,
+          "bar_high_r": 0,
+          "bar_low_r": 0,
+          "post_exit_bar_close_r": 0
+        }
+      ],
+      "startRuntimeBytes": 1256,
+      "endRuntimeBytes": 1256,
+      "startSessionBytes": 53149,
+      "endSessionBytes": 53149,
+      "consoleCalls": 0,
+      "consoleCallsMeasured": 0,
+      "consoleArgBytes": 0,
+      "base64PersistBytes": 41891400,
+      "base64InnerHtmlBytes": 0,
+      "flushBytesFinal": 51925,
+      "openCount": 2,
+      "journalCount": 50,
+      "futureSwitchesPresent": {
+        "__TALARIA_DISABLE_M19_PANEL_DIRTY_V1": false,
+        "__TALARIA_DISABLE_M19_EXCURSION_TAIL_V1": true,
+        "__TALARIA_DISABLE_M19_PERSIST_TRIM_V1": false,
+        "__TALARIA_DISABLE_M19_MARKER_DELTA_V1": false,
+        "__TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1": false
+      }
+    },
+    {
+      "label": "session-restore-legacy-uncapped",
+      "restore": true,
+      "pass": true,
+      "persistedFormatHash": "66a27cd803731306aedbd79e7db6de9b7801b8daf3d63d3adf65e1ca05fc4e10",
+      "bookendsOk": true,
+      "journalOk": true,
+      "noDestructiveWriteBack": true
+    },
+    {
+      "label": "multichart-restore-legacy-uncapped",
+      "restore": true,
+      "pass": true,
+      "persistedFormatHash": "66a27cd803731306aedbd79e7db6de9b7801b8daf3d63d3adf65e1ca05fc4e10",
+      "bookendsOk": true,
+      "journalOk": true,
+      "noDestructiveWriteBack": true
+    }
+  ],
+  "restoreCells": [
+    {
+      "label": "session-restore-legacy-uncapped",
+      "multichart": false,
+      "bookendsOk": true,
+      "journalOk": true,
+      "balanceOk": true,
+      "openCount": 2,
+      "journalCount": 1,
+      "balance": 12345.67,
+      "counters": {
+        "orderIdCounter": 900,
+        "tradeGroupIdCounter": 40
+      },
+      "noDestructiveWriteBack": true,
+      "persistSpy": {
+        "schedule": 1,
+        "flush": 0
+      },
+      "persistedFormatHash": "66a27cd803731306aedbd79e7db6de9b7801b8daf3d63d3adf65e1ca05fc4e10",
+      "beforeOpen": [
+        {
+          "id": 501,
+          "close": {
+            "len": 4800,
+            "first": 1012,
+            "middle": 2012,
+            "last": 3012
+          },
+          "high": {
+            "len": 4800,
+            "first": 1013,
+            "middle": 2013,
+            "last": 3013
+          },
+          "low": {
+            "len": 4800,
+            "first": 1014,
+            "middle": 2014,
+            "last": 3014
+          }
+        },
+        {
+          "id": 502,
+          "close": {
+            "len": 4800,
+            "first": 1023,
+            "middle": 2023,
+            "last": 3023
+          },
+          "high": {
+            "len": 4800,
+            "first": 1024,
+            "middle": 2024,
+            "last": 3024
+          },
+          "low": {
+            "len": 4800,
+            "first": 1025,
+            "middle": 2025,
+            "last": 3025
+          }
+        }
+      ],
+      "afterOpen": [
+        {
+          "id": 501,
+          "close": {
+            "len": 4800,
+            "first": 1012,
+            "middle": 2012,
+            "last": 3012
+          },
+          "high": {
+            "len": 4800,
+            "first": 1013,
+            "middle": 2013,
+            "last": 3013
+          },
+          "low": {
+            "len": 4800,
+            "first": 1014,
+            "middle": 2014,
+            "last": 3014
+          }
+        },
+        {
+          "id": 502,
+          "close": {
+            "len": 4800,
+            "first": 1023,
+            "middle": 2023,
+            "last": 3023
+          },
+          "high": {
+            "len": 4800,
+            "first": 1024,
+            "middle": 2024,
+            "last": 3024
+          },
+          "low": {
+            "len": 4800,
+            "first": 1025,
+            "middle": 2025,
+            "last": 3025
+          }
+        }
+      ],
+      "pass": true
+    },
+    {
+      "label": "multichart-restore-legacy-uncapped",
+      "multichart": true,
+      "bookendsOk": true,
+      "journalOk": true,
+      "balanceOk": true,
+      "openCount": 2,
+      "journalCount": 1,
+      "balance": 12345.67,
+      "counters": {
+        "orderIdCounter": 900,
+        "tradeGroupIdCounter": 40
+      },
+      "noDestructiveWriteBack": true,
+      "persistSpy": {
+        "schedule": 0,
+        "flush": 0
+      },
+      "persistedFormatHash": "66a27cd803731306aedbd79e7db6de9b7801b8daf3d63d3adf65e1ca05fc4e10",
+      "beforeOpen": [
+        {
+          "id": 501,
+          "close": {
+            "len": 4800,
+            "first": 1012,
+            "middle": 2012,
+            "last": 3012
+          },
+          "high": {
+            "len": 4800,
+            "first": 1013,
+            "middle": 2013,
+            "last": 3013
+          },
+          "low": {
+            "len": 4800,
+            "first": 1014,
+            "middle": 2014,
+            "last": 3014
+          }
+        },
+        {
+          "id": 502,
+          "close": {
+            "len": 4800,
+            "first": 1023,
+            "middle": 2023,
+            "last": 3023
+          },
+          "high": {
+            "len": 4800,
+            "first": 1024,
+            "middle": 2024,
+            "last": 3024
+          },
+          "low": {
+            "len": 4800,
+            "first": 1025,
+            "middle": 2025,
+            "last": 3025
+          }
+        }
+      ],
+      "afterOpen": [
+        {
+          "id": 501,
+          "close": {
+            "len": 4800,
+            "first": 1012,
+            "middle": 2012,
+            "last": 3012
+          },
+          "high": {
+            "len": 4800,
+            "first": 1013,
+            "middle": 2013,
+            "last": 3013
+          },
+          "low": {
+            "len": 4800,
+            "first": 1014,
+            "middle": 2014,
+            "last": 3014
+          }
+        },
+        {
+          "id": 502,
+          "close": {
+            "len": 4800,
+            "first": 1023,
+            "middle": 2023,
+            "last": 3023
+          },
+          "high": {
+            "len": 4800,
+            "first": 1024,
+            "middle": 2024,
+            "last": 3024
+          },
+          "low": {
+            "len": 4800,
+            "first": 1025,
+            "middle": 2025,
+            "last": 3025
+          }
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "persistedFormatHash": "66a27cd803731306aedbd79e7db6de9b7801b8daf3d63d3adf65e1ca05fc4e10",
+  "verdict": {
+    "verdict": "FIX-B-KILL-RED",
+    "detail": "kill reconstructs unbounded open excursion max=5500 (tailMax=256)"
+  },
+  "baselineBeforeFixA": {
+    "panelRebuilds": 5500,
+    "ratio": [
+      5.159,
+      5.371,
+      5.44
+    ],
+    "slopeFrac": [
+      0.884,
+      0.988,
+      0.999
+    ],
+    "endRuntimeBytes": 706962,
+    "endSessionBytes": 1752034
+  },
+  "fixA": {
+    "kill": false,
+    "canonical": [
+      {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      },
+      {
+        "panelKill": false,
+        "panelRebuilds": 0,
+        "runtimePanelSchedules": 5500,
+        "runtimePanelLite": 5500,
+        "dockStructuralRenders": 0,
+        "dockInnerHtmlWritesDuringLite": 0,
+        "dockLiteClean": true,
+        "panelBoundedByStructural": true,
+        "panelReconstructsPerTick": false,
+        "frameSlopePass": true,
+        "absFlat": true,
+        "pass": true
+      }
+    ],
+    "allPass": true
+  },
+  "fixB": {
+    "kill": true,
+    "tailMax": 256,
+    "canonical": [
+      {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      },
+      {
+        "excursionKill": true,
+        "maxOpenExcursion": 5500,
+        "tailMax": 256,
+        "arraysBounded": false,
+        "arraysUnbounded": true,
+        "pass": true
+      }
+    ],
+    "allPass": true
+  },
+  "fixC": {
+    "kill": false,
+    "sessionAbsMax": 524288,
+    "canonical": [
+      {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      },
+      {
+        "persistKill": false,
+        "sessionAbsMax": 524288,
+        "endSessionBytes": 53533,
+        "sessionBounded": true,
+        "sessionUnbounded": false,
+        "hotJournalHasScreenshots": false,
+        "inMemoryJournalHasScreenshots": true,
+        "pass": true
+      }
+    ],
+    "allPass": true
+  },
+  "fixD": {
+    "kill": false,
+    "visitsOnMax": 80,
+    "canonical": [
+      {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      },
+      {
+        "integrated": true,
+        "kill": false,
+        "d_markerFullScan": false,
+        "journalRowsVisited": 50,
+        "journalRowsVisitedMeasured": 50,
+        "visitsOnMax": 80,
+        "pass": true
+      }
+    ],
+    "allPass": true
+  },
+  "fixE": {
+    "kill": false,
+    "canonical": [
+      {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      },
+      {
+        "integrated": true,
+        "kill": false,
+        "e_hotpathConsole": false,
+        "consoleCalls": 0,
+        "pass": true
+      }
+    ],
+    "allPass": true
+  },
+  "fixDAllPass": true,
+  "fixEAllPass": true,
+  "negativeSelfTest": {
+    "pass": true,
+    "results": [
+      {
+        "name": "abc-green-d-absent",
+        "pass": true,
+        "verdict": "M19-FAIL",
+        "detail": "A/B/C green but D/E failing: fixDAllPass=false; fixEAllPass=true; d={\"integrated\":false,\"kill\":false,\"d_markerFullScan\":false,\"journalRowsVisited\":0,\"visitsOnMax\":80,\"pass\":false}; e={\"integrated\":true,\"kill\":false,\"e_hotpathConsole\":false,\"consoleCalls\":0,\"pass\":true}"
+      },
+      {
+        "name": "abc-green-e-failing",
+        "pass": true,
+        "verdict": "M19-FAIL",
+        "detail": "A/B/C green but D/E failing: fixDAllPass=true; fixEAllPass=false; d={\"integrated\":true,\"kill\":false,\"d_markerFullScan\":false,\"journalRowsVisited\":50,\"visitsOnMax\":80,\"pass\":true}; e={\"integrated\":true,\"kill\":false,\"e_hotpathConsole\":true,\"consoleCalls\":100,\"pass\":false}"
+      }
+    ]
+  },
+  "persist": null,
+  "note": "M19-B kill ON — expect unbounded open excursion (discriminator RED)."
+}
