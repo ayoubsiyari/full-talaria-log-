@@ -2353,7 +2353,26 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
 
-        const showDetails = this.selected;
+        // Order-level chrome (STOP BUY / SL / TP toasts) must stay painted while the
+        // Long/Short Position tool is armed or Place Order is open. setTool() deselects
+        // the drawing, and gating on `selected` alone made the order vanish until click.
+        const showDetails = (() => {
+            if (this.selected || isPreview) return true;
+            try {
+                const dm = (typeof this._drawingManager === 'function' ? this._drawingManager() : null)
+                    || this.chart?.drawingManager
+                    || (typeof window !== 'undefined' ? window.chart?.drawingManager : null);
+                if (dm && (dm.currentTool === 'long-position' || dm.currentTool === 'short-position')) {
+                    return true;
+                }
+                const omShow = (typeof window !== 'undefined' ? window.chart?.orderManager : null) || null;
+                if (omShow && typeof omShow._isDraftOrderPreviewActive === 'function'
+                    && omShow._isDraftOrderPreviewActive()) {
+                    return true;
+                }
+            } catch (_e) { /* ignore */ }
+            return false;
+        })();
 
         if (showDetails) {
             const self = this;

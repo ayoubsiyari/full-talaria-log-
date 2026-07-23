@@ -3469,6 +3469,19 @@ class DrawingToolsManager {
         if (toolName) {
             this._applyPlacementModePointerEvents();
         }
+
+        // Long/Short Position: deselectAll redraws RR without selection chrome; refresh the
+        // Place Order draft so STOP BUY / SL / TP lines stay on the chart while armed.
+        if ((toolName === 'long-position' || toolName === 'short-position')
+            && this.chart?.orderManager
+            && typeof this.chart.orderManager._isDraftOrderPreviewActive === 'function'
+            && this.chart.orderManager._isDraftOrderPreviewActive()
+            && typeof this.chart.orderManager.updatePreviewLines === 'function') {
+            const omRefresh = this.chart.orderManager;
+            requestAnimationFrame(() => {
+                try { omRefresh.updatePreviewLines(); } catch (_e) { /* ignore */ }
+            });
+        }
         
         // Sync with favorites toolbar
         if (this.favoritesManager && typeof this.favoritesManager.syncActiveState === 'function') {
@@ -11292,7 +11305,17 @@ class DrawingToolsManager {
         }
         const omDeselect = this.chart?.orderManager;
         if (omDeselect && typeof omDeselect.disarmRiskRewardToolExecute === 'function') {
-            omDeselect.disarmRiskRewardToolExecute();
+            // Arming Long/Short Position calls deselectAll({ forSelectionChange }) with
+            // currentTool already set. Keep the draft order / Execute link so STOP/SL/TP
+            // preview lines are not cleared until the user truly leaves the draft.
+            const armingPositionTool = forSelectionChange
+                && (this.currentTool === 'long-position' || this.currentTool === 'short-position');
+            const keepOrderDraft = armingPositionTool
+                && typeof omDeselect._isDraftOrderPreviewActive === 'function'
+                && omDeselect._isDraftOrderPreviewActive();
+            if (!keepOrderDraft) {
+                omDeselect.disarmRiskRewardToolExecute();
+            }
         }
         dispatchDrawingSelectionChanged(this);
     }

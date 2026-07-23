@@ -185,10 +185,10 @@
         if (n < 5) return empty;
 
         var replayPlaying = !!(ctx && ctx.replayPlaying);
-        // During play: fewer primitives + skip labels (legend still works; canvas stays smooth).
+        // During play: fewer primitives so 60x stays smooth — keep labels visible.
         var maxLines = replayPlaying ? 40 : MAX_LINES;
         var maxBoxes = replayPlaying ? 50 : MAX_BOXES;
-        var maxLabels = replayPlaying ? 0 : MAX_LABELS;
+        var maxLabels = replayPlaying ? 40 : MAX_LABELS;
         var maxMarkers = replayPlaying ? 60 : MAX_MARKERS;
         var maxBands = replayPlaying ? 30 : MAX_BANDS;
         var maxBars = replayPlaying ? 2000 : MAX_CALC_BARS;
@@ -589,9 +589,11 @@
                 }
             }
 
-            // Labels (skipped while replay is playing)
-            if (!lite && data.labels && data.labels.length) {
-                ctx.font = '500 11px Roboto, system-ui, sans-serif';
+            // Labels (Swept / MSS) — always draw when present; lite only skips FVG borders
+            if (data.labels && data.labels.length) {
+                ctx.font = lite
+                    ? '500 10px Roboto, system-ui, sans-serif'
+                    : '500 11px Roboto, system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 for (var ti = 0; ti < data.labels.length; ti++) {
                     var lb = data.labels[ti];
