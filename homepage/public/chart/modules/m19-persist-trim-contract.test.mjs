@@ -519,6 +519,79 @@ test('local-only restore: durable+hot tiers merge; hot never reads durable', { s
   assert.equal(om.tradeJournal[0].journalEntry.exitScreenshot, full.journalEntry.exitScreenshot);
 });
 
+test('deletion survives slim save then full save: trade and screenshot stay deleted', { skip: ENV_KILL }, () => {
+  const om = seedOm(false);
+  const survivor = richRow(601);
+  const removed = richRow(602);
+  om.tradeJournal = [
+    JSON.parse(JSON.stringify(survivor)),
+    JSON.parse(JSON.stringify(removed)),
+  ];
+  om.openPositions = [];
+  om.pendingOrders = [];
+  om.closedPositions = [];
+  om.balance = 10000;
+  om.equity = 10000;
+  om.initialBalance = 10000;
+  om.orderIdCounter = 603;
+  om.tradeGroupIdCounter = 1;
+  om.orderService = null;
+
+  const sessionId = 'm19-c-deletion-durability';
+  const chart = makeChartWithRealLocalBackup(om, sessionId);
+  userStorage._m.clear();
+  const hotKey = chart._tradingSessionLocalBackupHotKey(sessionId);
+  const durableKey = chart._tradingSessionLocalBackupDurableKey(sessionId);
+
+  // Seed the rich durable state.
+  chart._writeTradingSessionLocalBackup({ slim: false });
+  const seeded = JSON.parse(userStorage.getItem(durableKey));
+  assert.deepEqual(seeded.journal.map((row) => row.id), [601, 602]);
+  assert.equal(seeded.journal[0].entryScreenshot, survivor.entryScreenshot);
+
+  // User deletes one trade and explicitly clears the surviving trade screenshot.
+  om.tradeJournal = [{
+    ...JSON.parse(JSON.stringify(survivor)),
+    entryScreenshot: null,
+    exitScreenshot: null,
+  }];
+
+  // A marked slim save cannot carry heavy-field deletion, but it must carry the
+  // authoritative row set and must not mutate the in-memory explicit null.
+  chart._writeTradingSessionLocalBackup({ slim: true });
+  const hot = JSON.parse(userStorage.getItem(hotKey));
+  assert.equal(hot.m19_hot_persist_trim_v1, true);
+  assert.deepEqual(hot.journal.map((row) => row.id), [601]);
+  assert.equal(hot.journal[0].entryScreenshot, undefined);
+  assert.equal(om.tradeJournal[0].entryScreenshot, null);
+
+  // The next full/unmarked save is authoritative: null and row deletion win,
+  // and clearing the hot tier prevents a later restore from resurrecting either.
+  chart._writeTradingSessionLocalBackup({ slim: false });
+  assert.equal(userStorage.getItem(hotKey), null);
+  const durable = JSON.parse(userStorage.getItem(durableKey));
+  assert.deepEqual(durable.journal.map((row) => row.id), [601]);
+  assert.equal(durable.journal[0].entryScreenshot, null);
+  assert.equal(durable.journal[0].exitScreenshot, null);
+
+  const restored = chart._readTradingSessionLocalBackup(sessionId);
+  assert.deepEqual(restored.journal.map((row) => row.id), [601]);
+  assert.equal(restored.journal[0].entryScreenshot, null);
+  assert.equal(restored.journal[0].exitScreenshot, null);
+
+  // Restore-side richer merge is selected by the slim-patch mark, not directly
+  // by the C switch. Marked slim preserves omitted rich data; unmarked full clears it.
+  const afterSlim = om._m19MergePreferRicherTradeRow(
+    survivor,
+    hot.journal[0],
+    { slimMarked: true },
+  );
+  assert.equal(afterSlim.entryScreenshot, survivor.entryScreenshot);
+  const afterFull = om._m19MergePreferRicherTradeRow(afterSlim, durable.journal[0]);
+  assert.equal(afterFull.entryScreenshot, null);
+  assert.equal(afterFull.exitScreenshot, null);
+});
+
 test('I16 e2e: full restore → slim save → hydrate → export keeps screenshots + excursions', { skip: ENV_KILL }, () => {
   const om = seedOm(false);
   const full = richRow(100);

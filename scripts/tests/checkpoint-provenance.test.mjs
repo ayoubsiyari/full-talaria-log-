@@ -255,6 +255,7 @@ test('Docker and deploy wiring preserve separate SHA/build ids and copy generate
     assert.match(content, /ARG CHART_BUILD_ID/);
     assert.match(content, /ARG SOURCE_COMMIT_SHA/);
     assert.match(content, /checkpoint-build-assert\.mjs inputs/);
+    assert.match(content, /node \/build\/chart\/modules\/m19-progressive-session-soak\.test\.mjs/);
     assert.match(content, /io\.talaria\.checkpoint\.strict/);
     assert.match(content, /\/build\/chart\/sw\.js/);
     assert.doesNotMatch(content, /ENV BUILD_ID=\$\{GIT_COMMIT\}/);

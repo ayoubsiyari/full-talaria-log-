@@ -36,6 +36,9 @@ RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       echo "CHART_BUILD_ID requires CHECKPOINT_BUILD=1" >&2; exit 1; \
     fi \
     && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
+      node /build/chart/modules/m19-progressive-session-soak.test.mjs; \
+    fi \
+    && if [ "$CHECKPOINT_BUILD" = "1" ]; then \
       BUILD_ID="$CHART_BUILD_ID" node /build/chart/scripts/bump-chart-engine-build.mjs; \
     fi \
     && npm run build:live:chart \
