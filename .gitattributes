@@ -1,2 +1,4 @@
-# Historically-CRLF chart replay-system: treat CR as line terminator for whitespace checks.
-**/chart/modules/replay-system.js whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Mirrored checkpoint modules must have byte-identical blobs on every checkout.
+**/chart/modules/drawing-tools-extended.js text eol=lf
+**/chart/modules/drawing-tools-lines.js text eol=lf
+**/chart/modules/replay-system.js text eol=lf whitespace=blank-at-eol,blank-at-eof,space-before-tab
