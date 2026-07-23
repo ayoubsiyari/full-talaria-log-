@@ -5172,9 +5172,19 @@ class Chart {
             && this._isMultichartHostPanel();
         const masterTf = displayTfMasterHost ? displayTf : '1m';
 
-        const replayTs = Number.isFinite(Number(o.replayTimestamp))
+        // Capture playhead BEFORE switchingPair clears animatingCandle / fullRawData.
+        // Host toolbar pair switches often omit replayTimestamp; without this fallback
+        // enterReplayMode uses startAtBeginning and the date jumps back to session start.
+        let replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
             : null;
+        if (!Number.isFinite(replayTs) && typeof this._resolveMultichartReplayPlayheadMs === 'function') {
+            const captured = this._resolveMultichartReplayPlayheadMs();
+            if (Number.isFinite(captured)) {
+                replayTs = captured;
+                o.replayTimestamp = captured;
+            }
+        }
         const tfMs = this.parseTimeframe(displayTf) || 60_000;
 
         const sameFile = String(this.currentFileId || '') === fileId;
@@ -5373,10 +5383,13 @@ class Chart {
                     let range;
                     if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
-                    } else if (independentPair && Number.isFinite(replayTs)) {
+                    } else if (Number.isFinite(replayTs)) {
+                        // Host (and independent) pair switch mid-replay: keep the loaded
+                        // window centered on the playhead. Session-start initial range +
+                        // bar limit clamps goToReplayTimestamp back to the early slice.
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else {
-                        // Same-pair fallback: full session window (single-chart parity), not playhead island.
+                        // No active playhead: full session window (single-chart parity).
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
                     result = await this._fetchSmartWindow(
@@ -5518,6 +5531,23 @@ class Chart {
                             this._applyIndependentPanelReplaySlice(restoreTs);
                         } else if (typeof replay.goToReplayTimestamp === 'function') {
                             replay.goToReplayTimestamp(restoreTs, { centerOnCandle: false });
+                        }
+                        // Safety net: if the first window still missed the playhead
+                        // (limit/clamp), refetch a covering slice after pair-switch UI ends.
+                        if (typeof this.ensureReplayDataCoversTimestamp === 'function') {
+                            const coverTs = restoreTs;
+                            const coverReplay = replay;
+                            Promise.resolve().then(async () => {
+                                try {
+                                    const ok = await this.ensureReplayDataCoversTimestamp(coverTs);
+                                    if (ok && coverReplay && coverReplay.isActive
+                                        && typeof coverReplay.goToReplayTimestamp === 'function') {
+                                        coverReplay.goToReplayTimestamp(coverTs, {
+                                            centerOnCandle: false,
+                                        });
+                                    }
+                                } catch (_cover) { /* ignore */ }
+                            });
                         }
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
