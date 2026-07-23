@@ -1453,6 +1453,15 @@ class Chart {
                 };
                 this._handleVisibilityRefresh = () => {
                     if (document.hidden) return;
+                    // Tab return / GPU canvas discard: if bars aren't ready yet, paint
+                    // "Loading chart…" immediately so users never see the CSV empty flash.
+                    if ((!this.data || this.data.length === 0)
+                        && typeof this._isAwaitingChartData === 'function'
+                        && this._isAwaitingChartData()
+                        && typeof this._paintEmptyChartPlaceholder === 'function'
+                        && this.w >= 200 && this.h >= 150) {
+                        try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+                    }
                     this._handleViewportRefresh();
                     // Run a follow-up pass after layout settles post-restore.
                     setTimeout(() => this._handleViewportRefresh(), 120);
@@ -23366,6 +23375,60 @@ class Chart {
         });
     }
 
+    /**
+     * True when empty bars are a temporary load gap (session/file/TF/pair), not a
+     * real "please upload CSV" idle state. Used so slow networks / tab-return
+     * never flash the CSV empty message over EUR/JPY (etc.) while data catches up.
+     */
+    _isAwaitingChartData() {
+        if (this.isLoading
+            || this._timeframeSwitching
+            || this._pairSwitchLoading
+            || this._isLoadingOwnPairData
+            || this._tfRevealHold
+            || this._panLoading
+            || this.isLoadingChunk) {
+            return true;
+        }
+        if (this.currentFileId) return true;
+        if (this.isBacktestMode || this.backtestingSession || this.activeTradingSessionId) {
+            return true;
+        }
+        try {
+            if (typeof window !== 'undefined' && window.location) {
+                const p = new URLSearchParams(window.location.search || '');
+                const mode = String(p.get('mode') || '').toLowerCase();
+                if (mode === 'backtest' || mode === 'propfirm') return true;
+                if (p.get('sessionId') || p.get('fileId')) return true;
+            }
+        } catch (_) { /* ignore */ }
+        return false;
+    }
+
+    /** Paint empty-canvas placeholder: loading vs true no-data CSV prompt. */
+    _paintEmptyChartPlaceholder() {
+        const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
+        this.ctx.fillStyle = bg;
+        this.ctx.fillRect(0, 0, this.w, this.h);
+        const awaiting = this._isAwaitingChartData();
+        this.ctx.fillStyle = awaiting ? '#9598a1' : '#787b86';
+        this.ctx.font = awaiting ? '14px Roboto, sans-serif' : '16px Roboto, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(
+            awaiting
+                ? 'Loading chart…'
+                : 'No data to display. Please upload or select a CSV file.',
+            this.w / 2,
+            this.h / 2
+        );
+        if (awaiting) {
+            try { this._showChartCenterLoadingDots(); } catch (_) { /* ignore */ }
+        } else {
+            try { this._hideChartCenterLoadingDots(); } catch (_) { /* ignore */ }
+        }
+    }
+
     /** Centered 3-dot loader on the chart pane (multichart embed pair switch). */
     _showChartCenterLoadingDots() {
         const wrap = (this.canvas && this.canvas.parentElement)
@@ -28133,7 +28196,16 @@ class Chart {
 
     render() {
         this._mcDiag && this._mcDiag.renders++;
-        if (this.isLoading && !this._canBypassLoadingRenderFreeze()) return;
+        if (this.isLoading && !this._canBypassLoadingRenderFreeze()) {
+            // Tab discard / slow load can wipe the canvas while isLoading is still true.
+            // Paint a loading placeholder instead of leaving a blank white pane.
+            if ((!this.data || this.data.length === 0)
+                && this.w >= 200 && this.h >= 150
+                && typeof this._paintEmptyChartPlaceholder === 'function') {
+                try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+            }
+            return;
+        }
 
         // TradingView-style timeframe switch: freeze the previously-rendered frame while
         // we wait for the new bars. Without this freeze the canvas would clear and either
@@ -28144,6 +28216,16 @@ class Chart {
         // committed and the currentTimeframe matches the destination TF.
         if ((this._timeframeSwitching || this._pairSwitchLoading)
             && !this._canBypassDataSwitchRenderFreeze()) {
+            if ((!this.data || this.data.length === 0)
+                && this.w >= 200 && this.h >= 150
+                && typeof this._paintEmptyChartPlaceholder === 'function') {
+                const parent = this.canvas && this.canvas.parentElement;
+                const freeze = parent && parent.querySelector(':scope > .tf-freeze-overlay');
+                const freezeVisible = !!(freeze && freeze.style.display !== 'none' && freeze.getAttribute('src'));
+                if (!freezeVisible) {
+                    try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+                }
+            }
             return;
         }
 
@@ -28170,14 +28252,16 @@ class Chart {
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
-        // If no data, show message
+        // If no data: session/file loads → "Loading chart…"; idle → CSV prompt
         if (!this.data || this.data.length === 0) {
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '16px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
+            this._paintEmptyChartPlaceholder();
             return;
         }
+        try {
+            if (!this._pairSwitchLoading && !this._timeframeSwitching) {
+                this._hideChartCenterLoadingDots();
+            }
+        } catch (_) { /* ignore */ }
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
@@ -28254,12 +28338,9 @@ class Chart {
             ? this._resolveVisibleBarsForPaint(startIdx, endIdx)
             : this.data.slice(startIdx, endIdx);
         
-        // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
+        // Better check: Only show empty placeholder if we truly have no data
         if (visible.length === 0 && this.data.length === 0) {
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '16px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
+            this._paintEmptyChartPlaceholder();
             return;
         }
         
