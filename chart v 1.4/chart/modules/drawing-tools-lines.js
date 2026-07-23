@@ -281,10 +281,9 @@ function patchTwoPointLineElements(group, x1, y1, x2, y2) {
     });
 }
 
-/** Extend / centered label split cannot be patched with a single segment — needs full re-render. */
+/** Centered label split needs a full re-render; extensions are patched in place. */
 function trendlineNeedsFullLivePatch(style, drawing) {
     if (!style) return true;
-    if (style.extendLeft || style.extendRight) return true;
     const hasText = drawing && drawing.text && String(drawing.text).trim();
     const textVAlign = style.textVAlign || style.textPosition || 'top';
     if (hasText && textVAlign === 'middle') return true;
@@ -887,7 +886,53 @@ class TrendlineTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
 
-        patchTwoPointLineElements(this.group, x1, y1, x2, y2);
+        let lineX1 = x1;
+        let lineY1 = y1;
+        let lineX2 = x2;
+        let lineY2 = y2;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const leftIsFirst = x1 < x2;
+        const leftX = leftIsFirst ? x1 : x2;
+        const leftY = leftIsFirst ? y1 : y2;
+        const rightX = leftIsFirst ? x2 : x1;
+        const rightY = leftIsFirst ? y2 : y1;
+        const svgNode = this.group.node()?.ownerSVGElement;
+        const chartWidth = svgNode
+            ? (svgNode.clientWidth || svgNode.width?.baseVal?.value || 1000)
+            : 1000;
+        if (this.style.extendLeft && dx !== 0) {
+            const extendedY = leftY + (dy / dx) * (0 - leftX);
+            if (leftIsFirst) {
+                lineX1 = 0;
+                lineY1 = extendedY;
+            } else {
+                lineX2 = 0;
+                lineY2 = extendedY;
+            }
+        } else if (this.style.extendLeft && dx === 0) {
+            const yRange = scales.yScale.range();
+            const topY = Math.min(yRange[0], yRange[1]);
+            if (y1 < y2) lineY1 = topY;
+            else lineY2 = topY;
+        }
+        if (this.style.extendRight && dx !== 0) {
+            const extendedY = rightY + (dy / dx) * (chartWidth - rightX);
+            if (leftIsFirst) {
+                lineX2 = chartWidth;
+                lineY2 = extendedY;
+            } else {
+                lineX1 = chartWidth;
+                lineY1 = extendedY;
+            }
+        } else if (this.style.extendRight && dx === 0) {
+            const yRange = scales.yScale.range();
+            const bottomY = Math.max(yRange[0], yRange[1]);
+            if (y1 > y2) lineY1 = bottomY;
+            else lineY2 = bottomY;
+        }
+
+        patchTwoPointLineElements(this.group, lineX1, lineY1, lineX2, lineY2);
 
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';

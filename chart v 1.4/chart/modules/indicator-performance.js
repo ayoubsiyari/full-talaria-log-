@@ -79,6 +79,28 @@
         return packed;
     }
 
+    /** Restore [t,o,h,l,c,v] worker payloads to the chart's canonical bar shape. */
+    function unpackBarsCompact(packed) {
+        if (packed == null) return [];
+        const values = packed instanceof Float64Array
+            ? packed
+            : new Float64Array(packed.buffer || packed);
+        const n = Math.floor(values.length / 6);
+        const bars = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const offset = i * 6;
+            bars[i] = {
+                t: values[offset],
+                o: values[offset + 1],
+                h: values[offset + 2],
+                l: values[offset + 3],
+                c: values[offset + 4],
+                v: values[offset + 5],
+            };
+        }
+        return bars;
+    }
+
     /** Merge freshly computed tail into an existing indicator result. */
     function mergeIndicatorTail(existing, fresh, fromIndex) {
         if (fresh == null) return existing;
@@ -144,6 +166,7 @@
         rollingSmaFast: rollingSmaFast,
         rollingWmaFast: rollingWmaFast,
         packBarsCompact: packBarsCompact,
+        unpackBarsCompact: unpackBarsCompact,
         mergeIndicatorTail: mergeIndicatorTail,
         estimateTailLookback: estimateTailLookback,
         hashIndicatorParams: hashIndicatorParams

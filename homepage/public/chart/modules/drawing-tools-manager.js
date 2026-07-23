@@ -86,6 +86,12 @@ function multichartQuickbarSettingsFixEnabled() {
     return true;
 }
 
+/** M19-H: coalesce replay-TF drawing work and release superseded caches. */
+function m19hTimeframeCoalesceEnabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
+}
+
 /** D-024: parent chrome ready only after DOM commit (TalariaV8bLive). Default ON; I13 kill-switch. */
 function multichartChromeDomReadyV4Enabled() {
     if (typeof window === 'undefined') return true;
@@ -1006,7 +1012,7 @@ class DrawingToolsManager {
         return true;
     }
 
-    /** Two-point line tools that support in-place geometry patch during handle drag. */
+    /** Two-point line / fib tools that support in-place geometry patch during handle drag. */
     _supportsLiveHandleGeometryPatch(drawing) {
         if (!drawing || !drawing.type) return false;
         if (drawing.text && String(drawing.text).trim()) {
@@ -1014,7 +1020,9 @@ class DrawingToolsManager {
         }
         return [
             'trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray',
-            'extended-line', 'cross-line'
+            'extended-line', 'cross-line',
+            // Horizontal fibs implement patchPanZoomGeometry → patchTwoPointHorizontalFib
+            'fibonacci-retracement', 'fibonacci-extension'
         ].includes(drawing.type);
     }
 
@@ -1276,6 +1284,11 @@ class DrawingToolsManager {
         if (!previewPoints) return;
         this._ensureDrawingsPlotClip();
         drawing.points = previewPoints.map((p) => ({ ...p }));
+        // Keep timestamp anchors aligned with preview points so any path that
+        // still resolves from timestamps (and live peer broadcast) tracks the drag.
+        if (Array.isArray(drawing.points)) {
+            drawing.points.forEach((_, i) => this._refreshLiveTimestampForPoint(drawing, i));
+        }
         this._syncRRToolExtrasDuringLiveDrag(drawing, startPoints, previewPoints);
         // Clear group + labels translate so a stale CSS offset cannot leave a
         // second copy parked at the pre-drag origin while points re-render.
@@ -3869,7 +3882,9 @@ class DrawingToolsManager {
     /** Full geometry + handle rebuild after a committed whole-shape move (not live skipHandles path). */
     _renderDrawingAfterGeometryCommit(drawing) {
         if (!drawing) return;
-        this.renderDrawing(drawing, { liveRender: false });
+        // Timestamps were just refreshed from the committed points — do not
+        // re-resolve against the playhead prefix (that snaps extrabar corners back).
+        this.renderDrawing(drawing, { liveRender: false, skipTimestampSync: true });
         this._syncResizeHandleChrome(drawing);
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
@@ -7967,7 +7982,10 @@ class DrawingToolsManager {
         }
         
         this.drawings.push(drawing);
-        this.renderDrawing(drawing, fromClonePayload ? { skipTimestampSync: true } : undefined);
+        // Fresh placement already has points + timestamps aligned. Re-resolving
+        // against the short replay prefix on the first paint snaps empty-space
+        // / future-bar corners back to the playhead.
+        this.renderDrawing(drawing, { skipTimestampSync: true });
         if (fromClonePayload) {
             delete drawing._fromClonePayload;
         }
@@ -12690,6 +12708,142 @@ class DrawingToolsManager {
         const wasRendering = this.chart._isRendering;
         this.chart._isRendering = true;
 
+        // M19-H replay hot path: retain each root group and patch geometry in place.
+        // A full TF resync still uses forceFull above/below, so timestamp conversion,
+        // visibility, interactions, and current-main drawing fixes remain authoritative.
+        const replay = this.chart && this.chart.replaySystem;
+        const replayPatch = options.panFast
+            && replay
+            && replay.isActive
+            && replay.isPlaying
+            && !this._drawingsTfResyncPending;
+        const retainedGroupPatch = m19hTimeframeCoalesceEnabled()
+            && !options.forceFull
+            && (replayPatch || options.timeframeReuse === true);
+        if (retainedGroupPatch) {
+            const now = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (replayPatch && this._m19hReplayDrawingPaintAt != null) {
+                const replaySpeed = Number(replay.speed) || 1;
+                const minIntervalMs = this.drawings.length >= 80
+                    ? (replaySpeed >= 50 ? 750 : 250)
+                    : (this.drawings.length >= 40 ? 180 : 80);
+                if (now - this._m19hReplayDrawingPaintAt < minIntervalMs) {
+                    if (!this._m19hReplayPatchStats) {
+                        this._m19hReplayPatchStats = {
+                            patched: 0, fallback: 0, skippedFrames: 0, fullFrames: 0,
+                        };
+                    }
+                    this._m19hReplayPatchStats.skippedFrames += 1;
+                    const baseOffset = Number(this._m19hReplayDrawingBaseOffsetX);
+                    const currentOffset = Number(this.chart.offsetX);
+                    const dx = Number.isFinite(baseOffset) && Number.isFinite(currentOffset)
+                        ? currentOffset - baseOffset
+                        : 0;
+                    const transform = dx ? `translate(${dx},0)` : null;
+                    if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                        this.drawingsGroup.attr('transform', transform);
+                    }
+                    if (this.labelsGroup && !this.labelsGroup.empty()) {
+                        this.labelsGroup.attr('transform', transform);
+                    }
+                    this.chart._isRendering = wasRendering;
+                    return;
+                }
+            }
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('transform', null);
+            }
+            if (this.labelsGroup && !this.labelsGroup.empty()) {
+                this.labelsGroup.attr('transform', null);
+            }
+            const data = this.chart.data;
+            const lastBar = Array.isArray(data) && data.length ? data[data.length - 1] : null;
+            let yDomain = null;
+            try { yDomain = this.chart.yScale.domain(); } catch (_) { yDomain = null; }
+            const geometryFingerprint = [
+                this.chart.currentTimeframe || '',
+                Array.isArray(data) ? data.length : 0,
+                lastBar && lastBar.t,
+                Number(this.chart.offsetX) || 0,
+                Number(this.chart.candleWidth) || 0,
+                Number(this.chart.priceOffset) || 0,
+                Number(this.chart.priceZoom) || 0,
+                yDomain && yDomain[0],
+                yDomain && yDomain[1],
+                this.chart.w,
+                this.chart.h,
+                this.drawings.length,
+            ].join('|');
+            if (geometryFingerprint === this._m19hReplayDrawingFingerprint) {
+                if (!this._m19hReplayPatchStats) {
+                    this._m19hReplayPatchStats = {
+                        patched: 0, fallback: 0, skippedFrames: 0, fullFrames: 0,
+                    };
+                }
+                this._m19hReplayPatchStats.skippedFrames += 1;
+                this.chart._isRendering = wasRendering;
+                return;
+            }
+            this._m19hReplayDrawingFingerprint = geometryFingerprint;
+            const scales = {
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale,
+                chart: this.chart,
+                labelsGroup: this.labelsGroup,
+            };
+            if (!this._m19hReplayPatchStats) {
+                this._m19hReplayPatchStats = {
+                    patched: 0, fallback: 0, skippedFrames: 0, fullFrames: 0,
+                };
+            }
+            this.drawings.forEach((drawing) => {
+                if (!drawing) return;
+                drawing.chart = this.chart;
+                const hidden = drawing.visible === false
+                    || drawing.hidden === true
+                    || this._isHiddenByGlobalVisibility(drawing)
+                    || !this._isVisibleForCurrentTimeframe(drawing);
+                let patched = false;
+                if (!hidden && drawing.group && !drawing.group.empty()
+                    && typeof drawing.patchPanZoomGeometry === 'function') {
+                    try { patched = drawing.patchPanZoomGeometry(scales) === true; } catch (_) { patched = false; }
+                }
+                if (patched) this._m19hReplayPatchStats.patched += 1;
+                if (!patched) {
+                    this._m19hReplayPatchStats.fallback += 1;
+                    this.renderDrawing(drawing, {
+                        skipInteraction: true,
+                        skipTimestampSync: true,
+                        drawingRenderOpts: {
+                            reuseGroup: !hidden && !!(drawing.group && !drawing.group.empty()),
+                            skipHandles: true,
+                        },
+                    });
+                    if (!hidden && typeof drawing.updateHandlePositions === 'function') {
+                        try { drawing.updateHandlePositions(scales); } catch (_) { /* ignore */ }
+                    }
+                }
+            });
+            this.raiseDrawingLayersAboveOrderPreviews();
+            this._m19hReplayDrawingPaintAt = now;
+            this._m19hReplayDrawingBaseOffsetX = Number(this.chart.offsetX) || 0;
+            this.chart._isRendering = wasRendering;
+            return;
+        }
+        this._m19hReplayDrawingFingerprint = null;
+        this._m19hReplayDrawingPaintAt = null;
+        this._m19hReplayDrawingBaseOffsetX = null;
+        if (m19hTimeframeCoalesceEnabled()) {
+            if (!this._m19hReplayPatchStats) {
+                this._m19hReplayPatchStats = {
+                    patched: 0, fallback: 0, skippedFrames: 0, fullFrames: 0,
+                };
+            }
+            this._m19hReplayPatchStats.fullFrames += 1;
+        }
+
         // Full (non-pan) redraw recomputes every drawing from the current scales,
         // so the drawings/labels/temp groups must NOT carry a leftover pan-layer
         // CSS translate. A stale translate(dx,…) — e.g. left on the group when an
@@ -14093,17 +14247,29 @@ class DrawingToolsManager {
                     this._tfRefreshScheduled = false;
                     // Last-chance apply even if a flag stuck — better than frozen shapes.
                     if (dataReady) {
-                        try { this.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
-                        try { this.redrawAll({ forceFull: true }); } catch (_) { /* ignore */ }
+                        try {
+                            this.refreshDrawingsForTimeframe({
+                                syncOnly: m19hTimeframeCoalesceEnabled(),
+                            });
+                        } catch (_) { /* ignore */ }
+                        try {
+                            this.redrawAll(m19hTimeframeCoalesceEnabled()
+                                ? { timeframeReuse: true }
+                                : { forceFull: true });
+                        } catch (_) { /* ignore */ }
                     }
                     return;
                 }
 
                 this._tfRefreshScheduled = false;
                 try {
-                    this.refreshDrawingsForTimeframe();
+                    this.refreshDrawingsForTimeframe({
+                        syncOnly: m19hTimeframeCoalesceEnabled(),
+                    });
                     if (chart.xScale && chart.yScale) {
-                        this.redrawAll({ forceFull: true });
+                        this.redrawAll(m19hTimeframeCoalesceEnabled()
+                            ? { timeframeReuse: true }
+                            : { forceFull: true });
                     }
                     if (typeof chart.render === 'function') {
                         chart.render();
@@ -14131,22 +14297,49 @@ class DrawingToolsManager {
      * Sets `_drawingsTfResyncPending` so the next PLAY paint also refreshes indices
      * (PLAY uses panFast redraw and may race before chart.data settles).
      */
-    resyncDrawingsAfterReplayTimeframeChange() {
+    resyncDrawingsAfterReplayTimeframeChange(options = {}) {
         try {
             if (typeof window !== 'undefined'
                 && window.__TALARIA_DISABLE_DRAWING_TF_PLAY_RESYNC_V1 === true) {
                 return;
             }
         } catch (_) { /* ignore */ }
+        const coalesce = m19hTimeframeCoalesceEnabled();
+        const tokenValue = options.changeSeq != null
+            ? `replay:${options.changeSeq}`
+            : (options.generation != null ? `chart:${options.generation}` : null);
+        if (coalesce && tokenValue != null && this._lastReplayTfResyncToken === tokenValue) {
+            return;
+        }
+        if (coalesce) {
+            this._replayFullDisplayCache = null;
+            this._m19hReplayDrawingFingerprint = null;
+            // Invalidate timeframeChanged/chartDataLoaded retries already queued for
+            // this same transition. The synchronous path below is authoritative.
+            this._tfRefreshToken = (this._tfRefreshToken || 0) + 1;
+            this._tfRefreshScheduled = false;
+            if (tokenValue != null) this._lastReplayTfResyncToken = tokenValue;
+        }
         if (!this.chart || !Array.isArray(this.drawings) || this.drawings.length === 0) return;
         this._drawingsTfResyncPending = true;
+        const dataReady = Array.isArray(this.chart.data)
+            && this.chart.data.length > 0
+            && this.chart.xScale
+            && this.chart.yScale;
+        if (coalesce && !dataReady) {
+            try { this.scheduleRefreshAfterTimeframe({ force: true }); } catch (_) { /* ignore */ }
+            return;
+        }
         try {
-            this.refreshDrawingsForTimeframe();
+            this.refreshDrawingsForTimeframe({ syncOnly: coalesce });
             if (this.chart.xScale && this.chart.yScale) {
-                this.redrawAll({ forceFull: true });
+                this.redrawAll(coalesce
+                    ? { timeframeReuse: true }
+                    : { forceFull: true });
             }
             this._drawingsTfResyncPending = false;
         } catch (_) { /* ignore */ }
+        if (coalesce) return;
         // Also schedule the debounced path in case data/scales settle a frame later.
         try {
             this.scheduleRefreshAfterTimeframe({ force: true });
@@ -14157,10 +14350,14 @@ class DrawingToolsManager {
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
-    refreshDrawingsForTimeframe() {
+    refreshDrawingsForTimeframe(options = {}) {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
+        }
+        const syncOnly = options.syncOnly === true;
+        if (syncOnly && m19hTimeframeCoalesceEnabled()) {
+            this._m19hReplayDrawingFingerprint = null;
         }
 
         this.drawings.forEach((drawing) => {
@@ -14181,12 +14378,14 @@ class DrawingToolsManager {
                 this._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
             }
 
-            if (drawing.group) {
-                try { drawing.group.remove(); } catch (_) { /* ignore */ }
-                drawing.group = null;
-            }
+            if (!syncOnly) {
+                if (drawing.group) {
+                    try { drawing.group.remove(); } catch (_) { /* ignore */ }
+                    drawing.group = null;
+                }
 
-            this.renderDrawing(drawing, { skipTimestampSync: true });
+                this.renderDrawing(drawing, { skipTimestampSync: true });
+            }
         });
 
         if (this.chart && typeof this.chart._clearPanDrawingsLayerTransform === 'function') {

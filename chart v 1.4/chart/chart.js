@@ -442,7 +442,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260723b56';
+const CHART_ENGINE_BUILD = '20260723b57';
 
 /**
  * CB-01 mount/symbol diagnostic signature logger.
@@ -8418,15 +8418,31 @@ class Chart {
         } catch (_) { /* ignore */ }
     }
 
+    _m19hTimeframeCoalesceEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
+    }
+
     /**
      * Debounced post-TF-switch indicator refresh (mirrors drawing scheduleRefreshAfterTimeframe).
      * Recalculates all active indicators against the current chart.data so overlays stay
      * correct on every timeframe, including replay paths that skip heavy recalc mid-switch.
      */
-    _scheduleIndicatorsAfterTimeframe() {
+    _scheduleIndicatorsAfterTimeframe(options = {}) {
         if (typeof this.recalculateIndicators !== 'function') return;
-        if (this._tfIndicatorRefreshScheduled) return;
+        const generation = options.generation != null
+            ? options.generation
+            : (this._tfSwitchGeneration || 0);
+        if (this._tfIndicatorRefreshScheduled
+            && this._tfIndicatorRefreshGeneration === generation) {
+            return;
+        }
+        if (this._tfIndicatorRefreshRaf != null) {
+            cancelAnimationFrame(this._tfIndicatorRefreshRaf);
+            this._tfIndicatorRefreshRaf = null;
+        }
         this._tfIndicatorRefreshScheduled = true;
+        this._tfIndicatorRefreshGeneration = generation;
 
         this._indCalcSnapshot = null;
         if (typeof this._invalidateIndicatorLayerCache === 'function') {
@@ -8437,9 +8453,19 @@ class Chart {
         }
 
         const attempt = (retriesLeft) => {
-            requestAnimationFrame(() => {
+            this._tfIndicatorRefreshRaf = requestAnimationFrame(() => {
+                this._tfIndicatorRefreshRaf = null;
+                if (generation !== (this._tfSwitchGeneration || 0)) {
+                    if (this._tfIndicatorRefreshGeneration === generation) {
+                        this._tfIndicatorRefreshScheduled = false;
+                    }
+                    return;
+                }
                 const dataReady = Array.isArray(this.data) && this.data.length > 0;
-                if (!dataReady) {
+                const replay = this.replaySystem;
+                const switching = !!this._timeframeSwitching
+                    || !!(replay && replay._timeframeChanging);
+                if (!dataReady || switching) {
                     if (retriesLeft > 0) {
                         attempt(retriesLeft - 1);
                         return;
@@ -8450,9 +8476,19 @@ class Chart {
 
                 this._tfIndicatorRefreshScheduled = false;
                 try {
-                    // TF switch: one synchronous pass — covers worker + ICT/session types reliably.
-                    this.recalculateIndicators();
-                    if (typeof this.render === 'function') this.render();
+                    if (typeof this._invalidateIndicatorAsyncWork === 'function') {
+                        this._invalidateIndicatorAsyncWork('timeframe-ready');
+                    }
+                    const preferAsync = this._m19hTimeframeCoalesceEnabled()
+                        && Array.isArray(this.data)
+                        && this.data.length >= 2000
+                        && typeof this.recalculateIndicatorsAsync === 'function';
+                    if (preferAsync) {
+                        this.recalculateIndicatorsAsync();
+                    } else {
+                        this.recalculateIndicators();
+                        if (typeof this.render === 'function') this.render();
+                    }
                 } catch (_) { /* ignore */ }
             });
         };
@@ -8585,10 +8621,15 @@ class Chart {
      */
     _applyClientResampleTimeframeSwitch(normalizedTf, options = {}) {
         const replayPath = !!options.replayPath;
+        const switchGeneration = this._tfSwitchGeneration || 0;
         this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
-        this.data = this.resampleData(this.rawData, normalizedTf);
-        if (this.currentFileId) {
+        // ReplaySystem.updateChartData installs the canonical playhead prefix below.
+        // Building the same resample here first doubled O(history) work per switch.
+        if (!replayPath || !this._m19hTimeframeCoalesceEnabled()) {
+            this.data = this.resampleData(this.rawData, normalizedTf);
+        }
+        if (this.currentFileId && (!replayPath || !this._m19hTimeframeCoalesceEnabled())) {
             this._saveTfDataCache(this.currentFileId, normalizedTf);
         }
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -8597,8 +8638,12 @@ class Chart {
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
             this.replaySystem.onTimeframeChange(this, {
                 onReady: () => {
+                    if (this._m19hTimeframeCoalesceEnabled()
+                        && switchGeneration !== (this._tfSwitchGeneration || 0)) {
+                        return;
+                    }
                     this._finishTfSwitchViewportRestore();
-                    this._endTimeframeSwitching();
+                    this._endTimeframeSwitching(switchGeneration);
                 },
             });
             requestAnimationFrame(() => {
@@ -22831,7 +22876,9 @@ class Chart {
             return;
         }
 
-        if (this.drawingManager && this.drawings && this.drawings.length > 0) {
+        const replaySwitch = !!(this.replaySystem && this.replaySystem.isActive);
+        if (this.drawingManager && this.drawings && this.drawings.length > 0
+            && !(replaySwitch && this._m19hTimeframeCoalesceEnabled())) {
             this.drawingManager.saveDrawings();
         }
 
@@ -23022,8 +23069,13 @@ class Chart {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
             let replayTfEnded = false;
+            const replaySwitchGeneration = this._tfSwitchGeneration || 0;
             const finishReplayTfSwitch = () => {
                 if (replayTfEnded) return;
+                if (this._m19hTimeframeCoalesceEnabled()
+                    && replaySwitchGeneration !== (this._tfSwitchGeneration || 0)) {
+                    return;
+                }
                 replayTfEnded = true;
                 if (this._replayTfSwitchWatchdog) {
                     clearTimeout(this._replayTfSwitchWatchdog);
@@ -23032,7 +23084,7 @@ class Chart {
                 if (this.data && this.data.length > 0) {
                     this._finishTfSwitchViewportRestore();
                 }
-                this._endTimeframeSwitching();
+                this._endTimeframeSwitching(replaySwitchGeneration);
             };
             this._replayTfSwitchWatchdog = setTimeout(finishReplayTfSwitch, 3000);
             try {
@@ -23259,6 +23311,24 @@ class Chart {
     }
 
     _beginTimeframeSwitching(fromTf, toTf) {
+        const coalesce = this._m19hTimeframeCoalesceEnabled();
+        const alreadySwitching = !!this._timeframeSwitching;
+        this._tfSwitchGeneration = (this._tfSwitchGeneration || 0) + 1;
+        if (coalesce) {
+            if (this._replayTfSwitchWatchdog) {
+                clearTimeout(this._replayTfSwitchWatchdog);
+                this._replayTfSwitchWatchdog = null;
+            }
+            if (typeof this._invalidateIndicatorAsyncWork === 'function') {
+                this._invalidateIndicatorAsyncWork('timeframe-start');
+            }
+            const dm = this.drawingManager;
+            if (dm) {
+                dm._tfRefreshToken = (dm._tfRefreshToken || 0) + 1;
+                dm._tfRefreshScheduled = false;
+                dm._replayFullDisplayCache = null;
+            }
+        }
         // A new switch supersedes any in-flight reveal hold from a prior switch.
         try { this._clearTfRevealHold(); } catch (_e) { /* ignore */ }
         this._tfSwitchPreservePriceLock = !!(this.priceScale && this.priceScale.locked);
@@ -23286,10 +23356,12 @@ class Chart {
         if (typeof this._clearPanDrawingsLayerTransform === 'function') {
             this._clearPanDrawingsLayerTransform();
         }
-        // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
-        // the live canvas, which must still hold the previous frame's pixels.
-        try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
-        try { this._captureTfSwitchViewport(); } catch (_vp) { /* ignore */ }
+        // Capture only the first frame in a rapid switch burst. Re-encoding the same
+        // full-size PNG for every superseding click caused large allocation spikes.
+        if (!coalesce || !alreadySwitching) {
+            try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
+            try { this._captureTfSwitchViewport(); } catch (_vp) { /* ignore */ }
+        }
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
@@ -23359,7 +23431,13 @@ class Chart {
         return Number.isFinite(minGap) ? minGap : NaN;
     }
 
-    _endTimeframeSwitching() {
+    _endTimeframeSwitching(expectedGeneration = null) {
+        if (this._m19hTimeframeCoalesceEnabled()
+            && expectedGeneration != null
+            && expectedGeneration !== (this._tfSwitchGeneration || 0)) {
+            return;
+        }
+        const completedGeneration = this._tfSwitchGeneration || 0;
         const wasSwitching = !!this._timeframeSwitching;
         // Did the switch path actually install bars for the destination TF? Some
         // replay / multichart tiles commit currentTimeframe (so the axis/grid repaint
@@ -23415,7 +23493,9 @@ class Chart {
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
+        this._m19hTfRevealRender = this._m19hTimeframeCoalesceEnabled();
         try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
+        finally { this._m19hTfRevealRender = false; }
         this._emitMultichartHostDataCommit();
         // Compare legend / loading state: keep in sync once main data is committed so
         // compare OHLC does not drop before the main 3-dot indicator hides.
@@ -23423,9 +23503,16 @@ class Chart {
             try { this.compareOverlay.onMainChartTimeframeReady(); } catch (_e) { /* ignore */ }
         }
         requestAnimationFrame(() => {
+            if (this._m19hTimeframeCoalesceEnabled()
+                && (completedGeneration !== (this._tfSwitchGeneration || 0)
+                    || this._timeframeSwitching)) {
+                return;
+            }
             try {
+                this._m19hTfRevealRender = this._m19hTimeframeCoalesceEnabled();
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
+            finally { this._m19hTfRevealRender = false; }
             // TradingView-style reveal: for multichart panels whose new-TF window
             // isn't filled yet, KEEP the frozen frame + 3-dot loaders up and reveal
             // the finished chart in one step once the viewport is covered — instead
@@ -23445,13 +23532,16 @@ class Chart {
                     if (typeof this.drawingManager.resyncDrawingsAfterReplayTimeframeChange === 'function'
                         && this.replaySystem
                         && this.replaySystem.isActive) {
-                        this.drawingManager.resyncDrawingsAfterReplayTimeframeChange();
+                        this.drawingManager.resyncDrawingsAfterReplayTimeframeChange({
+                            changeSeq: this.replaySystem._tfChangeSeq,
+                            generation: completedGeneration,
+                        });
                     } else if (typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
                         this.drawingManager.scheduleRefreshAfterTimeframe({ force: true });
                     }
                 } catch (_dr) { /* ignore */ }
             }
-            this._scheduleIndicatorsAfterTimeframe();
+            this._scheduleIndicatorsAfterTimeframe({ generation: completedGeneration });
         });
     }
 
@@ -36798,6 +36888,19 @@ class Chart {
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
+            const replay = this.replaySystem;
+            const atomicReplayTfPaint = this._m19hTimeframeCoalesceEnabled()
+                && replay
+                && replay.isActive
+                && (replay.isPlayStarting
+                    || replay._timeframeChanging
+                    || replay._tfChangeWasPlaying
+                    || this._timeframeSwitching
+                    || this._m19hTfRevealRender);
+            if (atomicReplayTfPaint) {
+                this.drawingManager.redrawAll({ timeframeReuse: true });
+                return;
+            }
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
             const touchPinchActive = !!this._pinchActive;
@@ -36808,7 +36911,9 @@ class Chart {
                 const forceTf = !!(this.drawingManager && this.drawingManager._drawingsTfResyncPending);
                 if (forceTf && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
                     try {
-                        this.drawingManager.refreshDrawingsForTimeframe();
+                        this.drawingManager.refreshDrawingsForTimeframe({
+                            syncOnly: this._m19hTimeframeCoalesceEnabled(),
+                        });
                         this.drawingManager._drawingsTfResyncPending = false;
                     } catch (_) { /* ignore */ }
                 }

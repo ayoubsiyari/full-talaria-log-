@@ -1497,27 +1497,73 @@ class BaseDrawing {
 
     /**
      * Resolve tool anchor points for label/level layout (Phase 6).
-     * When switch ON, prefers timestamp-resolved indices over raw points[].x.
+     * When switch ON, prefers timestamp-resolved indices over raw points[].x —
+     * except during live edit / extrabar / fib geometry, where points must match
+     * handles (timestamp re-resolve against the short replay prefix snaps back).
      */
     static resolveLabelAnchorPoints(tool, scales) {
         if (!tool) return [];
-        if (!_isRc3LabelAnchorEnabled()) {
-            return tool.points || [];
-        }
+        const points = tool.points || [];
         const chart = scales?.chart || tool.chart;
+        const mgr = chart && chart.drawingManager;
+
+        // Fib SVG geometry must track the same anchors as resize handles.
+        // Handles always read tool.points; re-resolving timestamps here left levels
+        // frozen during drag and snapped extrabar corners on mouseup.
+        const fibGeometryTypes = {
+            'fibonacci-retracement': true,
+            'fibonacci-extension': true,
+            'trend-fib-extension': true,
+            'fib-channel': true,
+            'fib-timezone': true,
+            'trend-fib-time': true,
+        };
+        if (fibGeometryTypes[tool.type]) {
+            return points;
+        }
+
+        const liveOwnsPoints = !!(mgr && (
+            (typeof mgr._isDrawingLiveEditing === 'function' && mgr._isDrawingLiveEditing(tool))
+            || (mgr.resizingDrawing === tool)
+            || (mgr.customHandleDrawing === tool)
+            || (mgr.draggingDrawing === tool)
+            || (Array.isArray(mgr._bodyDragActiveDrawings) && mgr._bodyDragActiveDrawings.includes(tool))
+            || (mgr.drawingState && mgr.drawingState.isDrawing
+                && mgr.drawingState.currentDrawing === tool)
+        ));
+        if (liveOwnsPoints) {
+            return points;
+        }
+
+        // Keep intentional empty-space / future-bar corners. chart.data is only the
+        // playhead prefix — resolving those timestamps against it glues corners back.
+        if (points.length && chart && Array.isArray(chart.data) && chart.data.length) {
+            const lastIdx = chart.data.length - 1;
+            const allowsExtrabar = typeof CoordinateUtils !== 'undefined'
+                && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+                && CoordinateUtils.allowsExtrabarBarIndex(tool.type);
+            if (allowsExtrabar && points.some((p) => p && Number.isFinite(p.x)
+                && (p.x > lastIdx + 0.001 || p.x < -0.001))) {
+                return points;
+            }
+        }
+
+        if (!_isRc3LabelAnchorEnabled()) {
+            return points;
+        }
         if (chart && typeof CoordinateUtils !== 'undefined'
             && typeof CoordinateUtils.resolveDrawingPoints === 'function') {
             const resolved = CoordinateUtils.resolveDrawingPoints(tool, chart);
             if (Array.isArray(resolved) && resolved.length > 0) return resolved;
         }
-        return tool.points || [];
+        return points;
     }
 
     static computeTwoPointHorizontalFibLayout(tool, scales) {
         if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 2) return null;
-        const anchorPts = BaseDrawing.resolveLabelAnchorPoints(tool, scales);
-        const p1 = anchorPts[0] || tool.points[0];
-        const p2 = anchorPts[1] || tool.points[1];
+        // Always use live points — same source as updateHandlePositions.
+        const p1 = tool.points[0];
+        const p2 = tool.points[1];
         if (!p1 || !p2) return null;
 
         const x1 = BaseDrawing.fibIndexToPixel(scales, p1.x);

@@ -9,6 +9,12 @@ function _mcCanonicalReplayMarkV1Enabled() {
         || !window.__TALARIA_MC_DISABLE_CANONICAL_REPLAY_MARK_V1;
 }
 
+/** M19-H: one replay loop and one heavy refresh per committed TF generation. */
+function _m19hTimeframeCoalesceEnabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -50,6 +56,7 @@ class ReplaySystem {
         /** Pending onTimeframeChange restore timer (cancelled on rapid TF toggles). */
         this._tfChangeRestoreTimer = null;
         this._tfChangeSeq = 0;
+        this._tfChangeWasPlaying = false;
 
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
@@ -3786,7 +3793,16 @@ class ReplaySystem {
         
         // Slice rawData to current position (minimum 1 candle)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
-        this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
+        const currentRaw = this.chart.rawData;
+        const reuseTfSwitchPrefix = _m19hTimeframeCoalesceEnabled()
+            && this._timeframeChanging
+            && Array.isArray(currentRaw)
+            && currentRaw.length === sliceEnd
+            && Number(currentRaw[0]?.t) === Number(this.fullRawData[0]?.t)
+            && Number(currentRaw[sliceEnd - 1]?.t) === Number(this.fullRawData[sliceEnd - 1]?.t);
+        if (!reuseTfSwitchPrefix) {
+            this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
+        }
         
         if (this.chart.rawData.length === 0) {
             console.error('❌ Sliced data is empty! Restoring full data...');
@@ -3818,7 +3834,12 @@ class ReplaySystem {
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
             if (!panning && !this.isPlaying) {
-                this.chart.drawingManager.redrawAll();
+                this.chart.drawingManager.redrawAll(
+                    _m19hTimeframeCoalesceEnabled()
+                        && (this._timeframeChanging || this._tfChangeWasPlaying)
+                        ? { timeframeReuse: true }
+                        : undefined
+                );
             }
         }
         
@@ -8263,8 +8284,11 @@ class ReplaySystem {
         this._timeframeChanging = true;
         this._tfSwitchSkipHeavyIndicators = true;
 
-        const wasPlaying = this.isPlaying;
+        // A rapid second TF click can arrive during play()'s two-rAF startup,
+        // before isPlaying flips true. Preserve that pending playback intent too.
+        const wasPlaying = !!(this.isPlaying || this.isPlayStarting || this._tfChangeWasPlaying);
         const savedSpeed = this.speed;
+        this._tfChangeWasPlaying = wasPlaying;
 
         const savedCurrentIndex = this.currentIndex;
         const savedTickProgress = this.tickProgress;
@@ -8281,6 +8305,21 @@ class ReplaySystem {
         if (this.tickInterval) {
             clearTimeout(this.tickInterval);
             this.tickInterval = null;
+        }
+        if (_m19hTimeframeCoalesceEnabled()) {
+            if (typeof this._cancelDeferredPlayStart === 'function') {
+                this._cancelDeferredPlayStart();
+            }
+            this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+            this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
+            if (this._nextCandleTimer) {
+                clearTimeout(this._nextCandleTimer);
+                this._nextCandleTimer = null;
+            }
+            if (this.playInterval) {
+                clearInterval(this.playInterval);
+                this.playInterval = null;
+            }
         }
         this.isPlaying = false;
         this.animatingCandle = null;
@@ -8397,19 +8436,23 @@ class ReplaySystem {
         } catch (e) {
             console.warn('replay onTimeframeChange:', e);
         } finally {
-            this._tfSwitchSkipHeavyIndicators = false;
-            this._timeframeChanging = false;
-            signalReady();
-            // Shapes are timestamp-anchored; TF change rebuilds bar indices. Do this
-            // even when PLAY will resume (updateChartData skips redrawAll while playing).
-            try {
-                const dm = this.chart && this.chart.drawingManager;
-                if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
-                    dm.resyncDrawingsAfterReplayTimeframeChange();
-                } else if (dm && typeof dm.scheduleRefreshAfterTimeframe === 'function') {
-                    dm.scheduleRefreshAfterTimeframe({ force: true });
-                }
-            } catch (_dr) { /* ignore */ }
+            const latestChange = changeSeq === this._tfChangeSeq;
+            if (latestChange || !_m19hTimeframeCoalesceEnabled()) {
+                this._tfSwitchSkipHeavyIndicators = false;
+                this._timeframeChanging = false;
+                // Shapes are timestamp-anchored; TF change rebuilds bar indices.
+                // Complete this before lifting the freeze so the reveal render never
+                // performs a second full SVG teardown against stale indices.
+                try {
+                    const dm = this.chart && this.chart.drawingManager;
+                    if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
+                        dm.resyncDrawingsAfterReplayTimeframeChange({ changeSeq });
+                    } else if (dm && typeof dm.scheduleRefreshAfterTimeframe === 'function') {
+                        dm.scheduleRefreshAfterTimeframe({ force: true });
+                    }
+                } catch (_dr) { /* ignore */ }
+                signalReady();
+            }
         }
 
         // Order checks only after playhead + walk-forward slice are restored (paused replay).
@@ -8426,6 +8469,7 @@ class ReplaySystem {
                 if (omAfter && typeof omAfter.updatePositions === 'function') {
                     try { omAfter.updatePositions(); } catch (_u) { /* ignore */ }
                 }
+                this._tfChangeWasPlaying = false;
             };
             if (typeof queueMicrotask === 'function') queueMicrotask(runPostTfFinalize);
             else setTimeout(runPostTfFinalize, 0);
@@ -8439,14 +8483,15 @@ class ReplaySystem {
             try {
                 restoreSavedPlayhead();
 
-                // One more drawing resync after playhead restore, before PLAY ticks
-                // resume (those ticks intentionally skip redrawAll for perf).
-                try {
-                    const dm = this.chart && this.chart.drawingManager;
-                    if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
-                        dm.resyncDrawingsAfterReplayTimeframeChange();
-                    }
-                } catch (_dr2) { /* ignore */ }
+                if (!_m19hTimeframeCoalesceEnabled()) {
+                    // Legacy diagnostic path: repeat the pre-PLAY resync.
+                    try {
+                        const dm = this.chart && this.chart.drawingManager;
+                        if (dm && typeof dm.resyncDrawingsAfterReplayTimeframeChange === 'function') {
+                            dm.resyncDrawingsAfterReplayTimeframeChange();
+                        }
+                    } catch (_dr2) { /* ignore */ }
+                }
 
                 const nextCandle = this.fullRawData[this.currentIndex + 1];
                 if (nextCandle && savedTickProgress > 0) {
@@ -8480,6 +8525,7 @@ class ReplaySystem {
                 this._preserveTickProgress = true;
                 this.speed = this.normalizeSpeed(savedSpeed);
                 this.play();
+                this._tfChangeWasPlaying = false;
             } catch (e) {
                 console.warn('replay onTimeframeChange resume:', e);
             }

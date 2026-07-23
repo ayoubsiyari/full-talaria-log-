@@ -5,7 +5,7 @@
  * Extracted from chart-indicators-full.js.
  *
  * Messages IN:
- *   { type: 'CALCULATE_ALL', id, payload: { bars, indicators } }
+ *   { type: 'CALCULATE_ALL', id, payload: { bars, barsPacked, indicators } }
  *   { type: 'CANCEL', id }
  *
  * Messages OUT:
@@ -14,6 +14,27 @@
  */
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
+
+function unpackBarsCompact(packed) {
+    if (packed == null) return [];
+    const values = packed instanceof Float64Array
+        ? packed
+        : new Float64Array(packed.buffer || packed);
+    const count = Math.floor(values.length / 6);
+    const bars = new Array(count);
+    for (let i = 0; i < count; i++) {
+        const offset = i * 6;
+        bars[i] = {
+            t: values[offset],
+            o: values[offset + 1],
+            h: values[offset + 2],
+            l: values[offset + 3],
+            c: values[offset + 4],
+            v: values[offset + 5],
+        };
+    }
+    return bars;
+}
 
 function resolveOhlcSourceValue(candle, source) {
     if (!candle) return NaN;
@@ -1229,7 +1250,10 @@ self.onmessage = function(e) {
     const { type, id, payload } = e.data;
 
     if (type === 'CALCULATE_ALL') {
-        const { indicators, bars } = payload;
+        const { indicators, barsPacked } = payload;
+        const bars = Array.isArray(payload.bars)
+            ? payload.bars
+            : unpackBarsCompact(barsPacked);
         try {
             const results = {};
             for (const [indId, cfg] of Object.entries(indicators)) {

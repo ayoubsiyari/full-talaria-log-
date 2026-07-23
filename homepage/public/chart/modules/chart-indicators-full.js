@@ -8116,6 +8116,7 @@
 
         if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
         var mySeq = ++chart._indicatorWorkerSeq;
+        var calcToken = _indicatorAsyncDataToken(chart);
 
         function finishWorkerPass() {
             chart._indicatorWorkerBusy = false;
@@ -8196,7 +8197,7 @@
             : null;
         new Promise(function(resolve, reject) {
             _workerPending.set(id, { resolve: resolve, reject: reject });
-            worker.postMessage({
+            var message = {
                 type: 'CALCULATE_ALL',
                 id: id,
                 payload: {
@@ -8204,14 +8205,21 @@
                     barsPacked: packed,
                     indicators: indicators
                 }
-            });
+            };
+            if (packed && packed.buffer) {
+                worker.postMessage(message, [packed.buffer]);
+            } else {
+                worker.postMessage(message);
+            }
         }).then(function(results) {
-            if (chart._indicatorWorkerSeq !== mySeq) {
+            if (chart._indicatorWorkerSeq !== mySeq
+                || !_indicatorAsyncTokenMatches(chart, calcToken)) {
+                chart._indicatorWorkerCoalesce = true;
                 finishWorkerPass();
                 return;
             }
             if (typeof chart._applyIndicatorWorkerResults === 'function') {
-                chart._applyIndicatorWorkerResults(results, mySeq);
+                chart._applyIndicatorWorkerResults(results, mySeq, calcToken);
             } else {
                 if (!chart.indicators.data) chart.indicators.data = {};
                 Object.assign(chart.indicators.data, results);
@@ -8219,7 +8227,9 @@
             }
             finishWorkerPass();
         }).catch(function(err) {
-            if (chart._indicatorWorkerSeq !== mySeq) {
+            if (chart._indicatorWorkerSeq !== mySeq
+                || !_indicatorAsyncTokenMatches(chart, calcToken)) {
+                chart._indicatorWorkerCoalesce = true;
                 finishWorkerPass();
                 return;
             }
@@ -8342,6 +8352,47 @@
             last.t, last.o, last.h, last.l, last.c, last.v
         ].join('|');
     }
+
+    function _indicatorAsyncDataToken(chart) {
+        return {
+            dataVersion: chart && chart.dataVersion != null ? chart.dataVersion : 0,
+            timeframe: String((chart && chart.currentTimeframe) || ''),
+            dataFp: _indicatorDataFingerprint(chart),
+        };
+    }
+
+    function _indicatorAsyncTokenMatches(chart, token) {
+        if (!token) return true;
+        const current = _indicatorAsyncDataToken(chart);
+        return current.dataVersion === token.dataVersion
+            && current.timeframe === token.timeframe
+            && current.dataFp === token.dataFp;
+    }
+
+    /**
+     * M19-H: invalidate every delayed indicator result when a timeframe transaction
+     * starts. Workers may finish, but their sequence/token can no longer commit.
+     */
+    Chart.prototype._invalidateIndicatorAsyncWork = function() {
+        if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
+        this._indicatorWorkerSeq++;
+        this._indicatorWorkerCoalesce = false;
+        this._indicatorPendingResults = null;
+        this._sessionIndReplayFp = null;
+        if (this._replayIndRecalcRaf != null) {
+            cancelAnimationFrame(this._replayIndRecalcRaf);
+            this._replayIndRecalcRaf = null;
+        }
+        if (this._indRecalcTimer) {
+            clearTimeout(this._indRecalcTimer);
+            this._indRecalcTimer = null;
+        }
+        if (this._tfIndicatorRefreshRaf != null) {
+            cancelAnimationFrame(this._tfIndicatorRefreshRaf);
+            this._tfIndicatorRefreshRaf = null;
+        }
+        this._tfIndicatorRefreshScheduled = false;
+    };
 
     Chart.prototype._markIndicatorRecalcComplete = function() {
         if (!Array.isArray(this.data)) return;
@@ -8594,9 +8645,10 @@
         }
     };
 
-    Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq) {
+    Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq, calcToken) {
         const chart = this;
         if (chart._indicatorWorkerSeq !== mySeq) return;
+        if (!_indicatorAsyncTokenMatches(chart, calcToken)) return;
         if (!chart.indicators) chart.indicators = {};
         if (!chart.indicators.data) chart.indicators.data = {};
 
