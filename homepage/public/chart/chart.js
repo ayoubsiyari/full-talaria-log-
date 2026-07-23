@@ -37281,25 +37281,30 @@ class Chart {
             this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive || touchPlacement
         ) && (this.cursorType !== 'dot' || touchPlacement);
         const showCrosshairUi = showLines || this.cursorType === 'dot' || this.cursorType === 'eraser' || touchPlacement;
-        // Touch placement: TradingView-style blue aiming crosshair while a draw tool is armed.
+        // Touch placement: TradingView dashed blue + center dot while a draw tool is armed.
         let crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         if (touchPlacement && _dm && typeof _dm._touchPlacementCrosshairColor === 'function') {
             try { crossColor = _dm._touchPlacementCrosshairColor() || crossColor; } catch (_) { /* ignore */ }
         }
         const crossPattern = touchPlacement
-            ? 'solid'
+            ? 'dashed'
             : ((this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed');
-        const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
+        const crossWidth = touchPlacement
+            ? 1
+            : Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
+        // TV mobile placement: short even dashes (~4 on / 4 off).
+        const dashOn = touchPlacement ? 4 : 6;
+        const dashOff = touchPlacement ? 8 : 10;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} ${dashOn}px,transparent ${dashOn}px,transparent ${dashOff}px)`;
         const hBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} ${dashOn}px,transparent ${dashOn}px,transparent ${dashOff}px)`;
         // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
         const plotW = Math.max(0, this.w - m.l - m.r);
         if (vLine) {
@@ -37309,6 +37314,7 @@ class Chart {
             vLine.style.height = 'calc(100% - 30px)';
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
+            vLine.classList.toggle('touch-placement-crosshair', !!touchPlacement);
         }
         const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
         if (hLine) {
@@ -37319,6 +37325,37 @@ class Chart {
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
+            hLine.classList.toggle('touch-placement-crosshair', !!touchPlacement);
+        }
+
+        // TradingView placement: solid blue center dot at the crosshair intersection.
+        let placementDot = container.querySelector('.touch-placement-crosshair-dot');
+        if (!placementDot && touchPlacement) {
+            placementDot = document.createElement('div');
+            placementDot.className = 'touch-placement-crosshair-dot';
+            placementDot.style.cssText = [
+                'position:absolute',
+                'width:7px',
+                'height:7px',
+                'border-radius:50%',
+                'background:#2962FF',
+                'pointer-events:none',
+                'z-index:10001',
+                'transform:translate(-50%,-50%)',
+                'display:none',
+                'box-shadow:0 0 0 1px rgba(255,255,255,0.35)',
+            ].join(';');
+            container.appendChild(placementDot);
+        }
+        if (placementDot) {
+            if (touchPlacement && showLines) {
+                placementDot.style.left = lineX + 'px';
+                placementDot.style.top = safeHLineY + 'px';
+                placementDot.style.background = crossColor;
+                placementDot.style.display = 'block';
+            } else {
+                placementDot.style.display = 'none';
+            }
         }
         
         // Show dot indicator for 'dot' cursor type
@@ -37331,7 +37368,7 @@ class Chart {
             appendTarget.appendChild(dotIndicator);
         }
         if (dotIndicator) {
-            if (this.cursorType === 'dot' && !this.tool) {
+            if (this.cursorType === 'dot' && !this.tool && !touchPlacement) {
                 // lineX/lineY are already in container (layout) space
                 dotIndicator.style.left = lineX + 'px';
                 dotIndicator.style.top = lineY + 'px';
@@ -37573,12 +37610,20 @@ class Chart {
         const priceLabel = container.querySelector('.price-label');
         const timeLabel = container.querySelector('.time-label');
         const dotIndicator = container.querySelector('.cursor-dot-indicator');
+        const placementDot = container.querySelector('.touch-placement-crosshair-dot');
         
-        if (vLine) vLine.style.display = 'none';
-        if (hLine) hLine.style.display = 'none';
+        if (vLine) {
+            vLine.style.display = 'none';
+            vLine.classList.remove('touch-placement-crosshair');
+        }
+        if (hLine) {
+            hLine.style.display = 'none';
+            hLine.classList.remove('touch-placement-crosshair');
+        }
         if (priceLabel) priceLabel.style.display = 'none';
         if (timeLabel) timeLabel.style.display = 'none';
         if (dotIndicator) dotIndicator.style.display = 'none';
+        if (placementDot) placementDot.style.display = 'none';
     }
     
     updateTooltip(e) {

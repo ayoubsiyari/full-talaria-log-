@@ -3192,7 +3192,7 @@ class DrawingToolsManager {
 
     /** Blue placement crosshair color (TradingView-like) while a tool is armed on touch. */
     _touchPlacementCrosshairColor() {
-        return 'rgba(41, 98, 255, 0.9)';
+        return '#2962FF';
     }
 
     _rememberPlacementCrosshair(event) {
