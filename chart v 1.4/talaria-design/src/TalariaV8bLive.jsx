@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, mergeOrderManagerForMultichartTrades, mcReplayPnlHostAggV1Enabled, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, mergeOrderManagerForMultichartTrades, mcReplayPnlHostAggV1Enabled, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv, extractOrderManagerTradePnl } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -10380,10 +10380,16 @@ function normalizeRemoteJournalListEntry(e) {
 function analyticsEntryKey(e) {
   const id = e?.trade_id ?? e?.tradeId ?? e?.id;
   if (id != null && Number.isFinite(Number(id))) return `id:${Number(id)}`;
+  return analyticsFingerprintKey(e);
+}
+
+/** Soft match for remote vs session rows (DB id ≠ OM tradeId). */
+function analyticsFingerprintKey(e) {
   const sym = String(e?.symbol || "").replace(/\//g, "").toUpperCase();
-  const t = e?.date || e?.close_time || "";
   const p = Number(e?.pnl);
-  return `h:${sym}_${t}_${Number.isFinite(p) ? p.toFixed(4) : "x"}`;
+  const ms = coalesceAnalyticsTimeMs(e?.date, e?.close_time, e?.closed_at);
+  const minute = Number.isFinite(ms) ? Math.floor(ms / 60000) : "x";
+  return `fp:${sym}_${minute}_${Number.isFinite(p) ? p.toFixed(2) : "x"}`;
 }
 
 /**
@@ -10504,7 +10510,7 @@ function strategyBucketsFromNormalizedList(list) {
     .sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
 }
 
-/** Closed P&amp;L from persisted `tradeJournal` + in-memory `closedPositions` (saved session trades). */
+/** Closed P&amp;L from the same session rows as History / All Trade (saved trades). */
 function buildJournalAnalyticsFromOrderManager(om) {
   if (!om) {
     return {
@@ -10525,37 +10531,36 @@ function buildJournalAnalyticsFromOrderManager(om) {
     };
   }
 
-  const normalized = [];
-  const seenIds = new Set();
-
+  // Match History tab exactly: closedPositions + journal-only closed rows.
+  const closedRows = buildLiveTradeRowsFromOrderManager(om, { gn: "", rd: "", tm: "" }).filter(
+    (r) => r.status === "closed"
+  );
+  const journalById = new Map();
   for (const j of Array.isArray(om.tradeJournal) ? om.tradeJournal : []) {
-    const tidRaw = j.tradeId ?? j.id;
-    const idNum = tidRaw != null ? Number(tidRaw) : NaN;
-    const pnl = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? NaN);
-    if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = j.ticker || j.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(j.closeTime, j.exitTime, j.closedAt);
-    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
-    normalized.push({
-      trade_id: Number.isFinite(idNum) ? idNum : undefined,
-      symbol: sym,
-      pnl,
-      date: iso || undefined,
-      close_time: iso || undefined,
-      strategy: inferStrategyLabelFromJournal(j),
-      ...extractPathFieldsFromJournal(j),
-    });
+    const tid = Number(j.tradeId ?? j.id);
+    if (Number.isFinite(tid)) journalById.set(tid, j);
+  }
+  const closedById = new Map();
+  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
+    const tid = Number(p.id);
+    if (Number.isFinite(tid)) closedById.set(tid, p);
   }
 
-  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
-    const idNum = Number(p.id);
-    if (Number.isFinite(idNum) && seenIds.has(idNum)) continue;
-    const pnl = Number.parseFloat(p.netPnL ?? p.realizedPnL ?? p.pnl ?? NaN);
+  const normalized = [];
+  for (const row of closedRows) {
+    const idNum = Number(row.omId);
+    const j = Number.isFinite(idNum) ? journalById.get(idNum) : null;
+    const p = Number.isFinite(idNum) ? closedById.get(idNum) : null;
+    const src = j || p || null;
+    const pnl = src != null ? extractOrderManagerTradePnl(src, om) : Number.NaN;
     if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = p.ticker || p.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(p.closeTime, p.closedAt);
+    const sym = row.sym || src?.ticker || src?.symbol || "UNKNOWN";
+    const closeMs = coalesceAnalyticsTimeMs(
+      src?.closeTime,
+      src?.exitTime,
+      src?.closedAt,
+      row._sortMs
+    );
     const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
     normalized.push({
       trade_id: Number.isFinite(idNum) ? idNum : undefined,
@@ -10563,8 +10568,8 @@ function buildJournalAnalyticsFromOrderManager(om) {
       pnl,
       date: iso || undefined,
       close_time: iso || undefined,
-      strategy: String(p.strategy || "").trim() || "Other",
-      ...extractPathFieldsFromJournal(p),
+      strategy: j ? inferStrategyLabelFromJournal(j) : String(p?.strategy || "").trim() || "Other",
+      ...extractPathFieldsFromJournal(src || {}),
     });
   }
 
@@ -10595,48 +10600,37 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
     .map(normalizeRemoteJournalListEntry)
     .filter(Boolean);
 
-  const byKey = new Map();
-  for (const e of remNorm) {
-    byKey.set(analyticsEntryKey(e), { ...e });
-  }
-  for (const e of locList) {
-    const k = analyticsEntryKey(e);
-    const prev = byKey.get(k);
-    if (prev) {
-      const pathFrom = extractPathFieldsFromJournal(e);
-      const pathPrev = extractPathFieldsFromJournal(prev);
-      const mergedPath = {};
-      for (const key of [
-        "bar_close_r",
-        "bar_high_r",
-        "bar_low_r",
-        "post_exit_bar_close_r",
-        "post_exit_bar_high_r",
-        "post_exit_bar_low_r",
-        "trail_sl_path",
-      ]) {
-        mergedPath[key] =
-          (Array.isArray(pathFrom[key]) && pathFrom[key].length ? pathFrom[key] : null) ||
-          (Array.isArray(pathPrev[key]) && pathPrev[key].length ? pathPrev[key] : null) ||
-          [];
-      }
-      byKey.set(k, {
-        ...prev,
-        ...e,
-        ...mergedPath,
-        pnl: Number.isFinite(Number(e.pnl)) ? Number(e.pnl) : Number(prev.pnl),
-        symbol: e.symbol || prev.symbol,
-        strategy: e.strategy || prev.strategy,
-        mfe_r: pathFrom.mfe_r ?? pathPrev.mfe_r,
-        mae_r: pathFrom.mae_r ?? pathPrev.mae_r,
-        rMultiple: pathFrom.rMultiple ?? pathPrev.rMultiple,
-      });
-    } else {
-      byKey.set(k, { ...e, ...extractPathFieldsFromJournal(e) });
-    }
+  // Replay-bar journal: session-saved closed trades (`tradeJournal` / `closedPositions`)
+  // are the source of truth. Merging the full remote profile /list inflated Total Trades
+  // (e.g. 159) above History / All Trade (e.g. 83) because DB ids ≠ OM tradeIds.
+  if (locList.length > 0) {
+    const stats = computeJournalStatsFromNormalizedList(locList);
+    const bal = Number(loc.stats?.balance);
+    const eq = Number(loc.stats?.equity);
+    const ini = Number(loc.stats?.initial_balance);
+    if (Number.isFinite(bal)) stats.balance = bal;
+    if (Number.isFinite(eq)) stats.equity = eq;
+    if (Number.isFinite(ini)) stats.initial_balance = ini;
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    reconcileJournalBalanceEquityStats(stats, locList, om);
+    return {
+      stats,
+      symbols: symbolBucketsFromNormalizedList(locList),
+      strategies: strategyBucketsFromNormalizedList(locList),
+      list: locList,
+      source: "session",
+    };
   }
 
-  const mergedList = [...byKey.values()].filter((x) => Number.isFinite(Number(x.pnl)));
+  // No session-saved closed trades yet — show remote journal history if available.
+  const seenFp = new Set();
+  const mergedList = [];
+  for (const e of remNorm) {
+    const fp = analyticsFingerprintKey(e);
+    if (seenFp.has(fp)) continue;
+    seenFp.add(fp);
+    mergedList.push(e);
+  }
   const stats = computeJournalStatsFromNormalizedList(mergedList);
   const bal = Number(loc.stats?.balance);
   const eq = Number(loc.stats?.equity);
@@ -10653,7 +10647,7 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
     symbols: symbolBucketsFromNormalizedList(mergedList),
     strategies: strategyBucketsFromNormalizedList(mergedList),
     list: mergedList,
-    source: remNorm.length ? "merged" : "session",
+    source: remNorm.length ? "remote" : "session",
   };
 }
 
@@ -37995,7 +37989,8 @@ const TalariaV8bLive = () => {
                 const jAvgLoss = jSt.avg_loss != null && Number(jSt.avg_loss) > 0 ? `-$${Number(jSt.avg_loss).toFixed(0)}` : "—";
                 const jNWins = Number(jSt.winning_trades) || 0;
                 const jNLoss = Number(jSt.losing_trades) || 0;
-                const jNTot = Math.max(1, jNWins + jNLoss);
+                // Denominator matches Total Trades (includes breakevens), not wins+losses only.
+                const jNTot = Math.max(1, Number(jSt.total_trades) || jNWins + jNLoss);
                 const jBw = bestWorstJournalTrades(ja?.list || []);
                 const jSymRows = (ja?.symbols || []).slice(0, 12);
                 const jMaxSymT = Math.max(1, ...jSymRows.map((s) => Number(s.total_trades) || 0));
