@@ -37178,8 +37178,8 @@ const TalariaV8bLive = () => {
           </div>
           {/* V9 mock time axis row removed — chart.js draws times at the
               bottom of the canvas. */}
-          {/* Status + Replay bar */}
-          <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          {/* Status + Replay bar — desktop keeps 1fr|auto|1fr placement; narrow screens swipe horizontally. */}
+          <div data-v9-chrome="1" data-v9-replaybar="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
@@ -37231,7 +37231,7 @@ const TalariaV8bLive = () => {
               </div>
             </div>
             {/* Replay controls — grid column 2, auto-width, truly centered */}
-            <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center"}}>
+            <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center",flexShrink:0}}>
             {/* Left separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}

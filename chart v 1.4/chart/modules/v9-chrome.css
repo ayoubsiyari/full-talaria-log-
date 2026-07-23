@@ -109,6 +109,37 @@ body {
     }
 }
 
+/* V9 live replay bar: desktop keeps left | center | right; swipe only when narrow. */
+[data-v9-replaybar="1"] {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+[data-v9-replaybar="1"]::-webkit-scrollbar {
+    display: none;
+    height: 0;
+    width: 0;
+}
+@media (max-width: 899px) {
+    [data-v9-replaybar="1"] {
+        display: flex !important;
+        align-items: center;
+        touch-action: pan-x;
+    }
+    [data-v9-replaybar="1"] > * {
+        flex-shrink: 0;
+    }
+}
+@media (pointer: fine) and (min-width: 900px) {
+    [data-v9-replaybar="1"] {
+        overflow-x: hidden;
+        touch-action: manipulation;
+    }
+}
+
 .toolbar-support-link {
     color: var(--v9-tm) !important;
     font-size: 10px !important;
