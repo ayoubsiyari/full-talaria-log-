@@ -2413,9 +2413,16 @@ class PanelManager {
 
     _doSavePanelState() {
         try {
+            let sessionId = null;
+            try {
+                const p = new URLSearchParams(window.location.search || '');
+                const sid = p.get('sessionId') || p.get('session_id');
+                if (sid != null && String(sid).trim() !== '') sessionId = String(sid).trim();
+            } catch (_e) { /* ignore */ }
             const state = {
                 layout: this.currentLayout,
                 selectedPanelIndex: this.selectedPanelIndex,
+                sessionId,
                 panels: this.panels.map((panel, idx) => {
                     const pc = panel.chartInstance;
                     if (!pc) return { index: idx, isMainChart: panel.isMainChart };

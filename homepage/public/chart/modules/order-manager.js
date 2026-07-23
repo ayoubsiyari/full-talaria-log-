@@ -13913,15 +13913,21 @@ class OrderManager {
      */
     _applyPrecisionToInputs() {
         const prec = this.getPricePrecision();
-        const step = Math.pow(10, -prec).toFixed(prec);
+        const tick = (this.chart && typeof this.chart.getTickSize === 'function')
+            ? Number(this.chart.getTickSize())
+            : NaN;
+        const stepNum = (Number.isFinite(tick) && tick > 0) ? tick : Math.pow(10, -prec);
+        const step = stepNum.toFixed(prec);
+        // Re-bind when precision OR tick step changes (e.g. NQ 0.25 vs forex 0.00001).
+        const precKey = `${prec}:${step}`;
 
         const attachPrecision = (el) => {
             if (!el) return;
             el.setAttribute('step', step);
 
             // Remove stale handlers by replacing with fresh ones keyed to current prec
-            if (el._precApplied === prec) return; // already up-to-date for this precision
-            el._precApplied = prec;
+            if (el._precApplied === precKey) return; // already up-to-date for this precision
+            el._precApplied = precKey;
 
             // Remove old listeners if stored
             if (el._precInputHandler) el.removeEventListener('input', el._precInputHandler);
@@ -13948,10 +13954,10 @@ class OrderManager {
                 }
             };
 
-            // Blur handler: format to exact decimal places on leave
+            // Blur handler: snap to tick grid, then format to exact decimal places
             el._precBlurHandler = () => {
                 const v = parseFloat(el.value);
-                if (Number.isFinite(v) && v > 0) el.value = v.toFixed(prec);
+                if (Number.isFinite(v) && v > 0) el.value = this.formatPrice(v, prec);
             };
 
             el.addEventListener('input', el._precInputHandler);
@@ -13987,10 +13993,13 @@ class OrderManager {
             precision = 5; // fallback to default
         }
         
-        const numeric = Number.parseFloat(value);
+        let numeric = Number.parseFloat(value);
         if (!Number.isFinite(numeric)) {
             return (0).toFixed(precision);
         }
+        // Futures (and other tick-registry markets): always land on exchange increments
+        // so Place Order / preview never show NQ-style .22 / .33 / .98 leftovers.
+        numeric = this._snapOrderPriceToTick(numeric);
         return numeric.toFixed(precision);
     }
 
@@ -17700,8 +17709,11 @@ class OrderManager {
                 if (cfgTP.showPips) {
                     distText = `${(dist / pipTP).toFixed(2)} pips`;
                 } else if (cfgTP.showTicks) {
-                    // Price points + tick count (dist/pip is ticks, not "pts").
-                    distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 2)} pts (${(dist / pipTP).toFixed(0)} ticks)`;
+                    // Futures: pts on tick grid (ES/NQ 0.25), not raw float distance.
+                    const ticks = Math.max(0, Math.round(dist / pipTP));
+                    const pts = ticks * pipTP;
+                    const prec = cfgTP.symbolPrecision ?? 2;
+                    distText = `${parseFloat(pts.toFixed(8)).toFixed(prec)} pts (${ticks} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
                 }
@@ -17760,8 +17772,11 @@ class OrderManager {
                 if (cfg.showPips) {
                     distText = `${(dist / pip).toFixed(2)} pips`;
                 } else if (cfg.showTicks) {
-                    // Price points + tick count (dist/pip is ticks, not "pts").
-                    distText = `${dist.toFixed(cfg.symbolPrecision ?? 2)} pts (${(dist / pip).toFixed(0)} ticks)`;
+                    // Futures: pts on tick grid (ES/NQ 0.25), not raw float distance.
+                    const ticks = Math.max(0, Math.round(dist / pip));
+                    const pts = ticks * pip;
+                    const prec = cfg.symbolPrecision ?? 2;
+                    distText = `${parseFloat(pts.toFixed(8)).toFixed(prec)} pts (${ticks} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
@@ -18711,11 +18726,12 @@ class OrderManager {
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
 
-        const newPrice = currentCandle.c;
+        const rawNewPrice = Number(currentCandle.c);
         const priceInput = document.getElementById('orderEntryPrice');
         if (!priceInput) return;
 
         const oldPrice = parseFloat(priceInput.value || 0);
+        const newPrice = this._snapOrderPriceToTick(rawNewPrice);
         if (!(oldPrice > 0) || !(newPrice > 0)) return;
 
         const delta = newPrice - oldPrice;
@@ -18725,9 +18741,7 @@ class OrderManager {
         if (this._lastPreviewSyncTs && (now - this._lastPreviewSyncTs) < 80) return;
         this._lastPreviewSyncTs = now;
 
-        const precision = this.getPricePrecision(newPrice);
-
-        priceInput.value = newPrice.toFixed(precision);
+        priceInput.value = this.formatPrice(newPrice);
 
         // Shift TP/SL with entry only when not pinned by RR tool or manual drag.
         const tpEnabled = document.getElementById('enableTP')?.checked;
@@ -18735,7 +18749,7 @@ class OrderManager {
             const tpInput = document.getElementById('tpPrice');
             if (tpInput) {
                 const oldTP = parseFloat(tpInput.value || 0);
-                if (oldTP > 0) tpInput.value = (oldTP + delta).toFixed(precision);
+                if (oldTP > 0) tpInput.value = this.formatPrice(oldTP + delta);
             }
         }
 
@@ -18744,7 +18758,7 @@ class OrderManager {
             const slInput = document.getElementById('slPrice');
             if (slInput) {
                 const oldSL = parseFloat(slInput.value || 0);
-                if (oldSL > 0) slInput.value = (oldSL + delta).toFixed(precision);
+                if (oldSL > 0) slInput.value = this.formatPrice(oldSL + delta);
             }
         }
 
@@ -18752,20 +18766,20 @@ class OrderManager {
         if (multipleTPEnabled && !this.tpManuallyPositioned && this.tpTargets && this.tpTargets.length > 0) {
             this.tpTargets.forEach(target => {
                 if (target.price > 0) {
-                    target.price = parseFloat((target.price + delta).toFixed(precision));
+                    target.price = this._snapOrderPriceToTick(target.price + delta);
                 }
             });
         }
 
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach(se => {
-                if (se.price > 0) se.price = parseFloat((se.price + delta).toFixed(precision));
+                if (se.price > 0) se.price = this._snapOrderPriceToTick(se.price + delta);
             });
         }
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             this.multiEntryLevels.forEach(lv => {
-                if (lv.price > 0) lv.price = parseFloat((lv.price + delta).toFixed(precision));
+                if (lv.price > 0) lv.price = this._snapOrderPriceToTick(lv.price + delta);
             });
         }
 
@@ -24669,25 +24683,41 @@ class OrderManager {
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         const preserveEntry = this._shouldPreservePreviewEntryOverRiskReward(drawing, opts);
+        const snapPx = (px) => {
+            let y = Number(px);
+            if (!Number.isFinite(y)) return y;
+            if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+                const s = this.chart.snapPriceToTick(y);
+                if (Number.isFinite(s)) y = s;
+            } else if (typeof drawing.snapPriceToTick === 'function') {
+                const s = drawing.snapPriceToTick(y);
+                if (Number.isFinite(s)) y = s;
+            }
+            return y;
+        };
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
-        if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
+        if (Number.isFinite(slPx)) {
+            let y = snapPx(slPx);
+            if (typeof drawing.sanitizeStopPrice === 'function') y = drawing.sanitizeStopPrice(y);
+            drawing.points[1] = { ...drawing.points[1], y };
+        }
 
         if (!preserveEntry) {
         // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
             const lv = [...this.multiEntryLevels].filter((l) => l.price > 0);
             if (lv.length) {
-                drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
+                drawing.points[0] = { ...drawing.points[0], y: snapPx(lv[0].price) };
                 if (lv.length > 1) {
                     if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
-                    drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+                    drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: snapPx(l.price) }));
                 } else {
                     drawing.meta.extraEntries = [];
                 }
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
-            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
+            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: snapPx(e) };
             drawing.meta.extraEntries = [];
         }
         }
@@ -24696,12 +24726,18 @@ class OrderManager {
         if (mtOn && this.tpTargets && this.tpTargets.length > 1) {
             const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
             const last = sorted[sorted.length - 1];
-            drawing.points[2] = { ...drawing.points[2], y: last.price };
+            let ty = snapPx(last.price);
+            if (typeof drawing.sanitizeTargetPrice === 'function') ty = drawing.sanitizeTargetPrice(ty);
+            drawing.points[2] = { ...drawing.points[2], y: ty };
             if (!drawing.meta.extraTargets) drawing.meta.extraTargets = [];
-            drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: t.price }));
+            drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: snapPx(t.price) }));
         } else {
             const tpPx = parseFloat(document.getElementById('tpPrice')?.value || '');
-            if (Number.isFinite(tpPx)) drawing.points[2] = { ...drawing.points[2], y: tpPx };
+            if (Number.isFinite(tpPx)) {
+                let ty = snapPx(tpPx);
+                if (typeof drawing.sanitizeTargetPrice === 'function') ty = drawing.sanitizeTargetPrice(ty);
+                drawing.points[2] = { ...drawing.points[2], y: ty };
+            }
             drawing.meta.extraTargets = [];
         }
 
@@ -25253,14 +25289,25 @@ class OrderManager {
      */
     riskRewardSyncTpDragFromTool(drawing, sortedTargetIndex, newY) {
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        const prec = this.getPricePrecision();
+        let p = parseFloat(parseFloat(newY).toFixed(prec));
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(p);
+            if (Number.isFinite(snapped)) p = snapped;
+        } else if (drawing && typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(p);
+            if (Number.isFinite(snapped)) p = snapped;
+        }
+        if (drawing && typeof drawing.sanitizeTargetPrice === 'function') {
+            p = drawing.sanitizeTargetPrice(p);
+        }
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            if (drawing?.points?.[2]) drawing.points[2] = { ...drawing.points[2], y: p };
             const tpp = document.getElementById('tpPrice');
-            if (tpp) tpp.value = this.formatPrice(newY);
+            if (tpp) tpp.value = this.formatPrice(p);
             this.pullRiskRewardToolFromManager(drawing);
             return;
         }
-        const prec = this.getPricePrecision();
-        const p = parseFloat(parseFloat(newY).toFixed(prec));
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
         if (sortedTargetIndex >= 0 && sortedTargetIndex < sorted.length) {
@@ -25280,16 +25327,28 @@ class OrderManager {
      */
     riskRewardSyncPrimaryTpDragFromTool(drawing, newY) {
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        let y = Number(newY);
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(y);
+            if (Number.isFinite(snapped)) y = snapped;
+        } else if (drawing && typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(y);
+            if (Number.isFinite(snapped)) y = snapped;
+        }
+        if (drawing && typeof drawing.sanitizeTargetPrice === 'function') {
+            y = drawing.sanitizeTargetPrice(y);
+        }
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            if (drawing?.points?.[2]) drawing.points[2] = { ...drawing.points[2], y };
             const tpp = document.getElementById('tpPrice');
-            if (tpp) tpp.value = this.formatPrice(newY);
+            if (tpp) tpp.value = this.formatPrice(y);
             this.pullRiskRewardToolFromManager(drawing);
             return;
         }
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
         const lastIdx = sorted.length - 1;
-        this.riskRewardSyncTpDragFromTool(drawing, lastIdx, newY);
+        this.riskRewardSyncTpDragFromTool(drawing, lastIdx, y);
     }
 
     /**
@@ -25305,10 +25364,24 @@ class OrderManager {
             : { rrToolInternal: true, forceEntry: true };
         this.pushRiskRewardToolToManager(drawing, entryOpts);
         const prec = this.getPricePrecision();
-        const raw = parseFloat(parseFloat(newY).toFixed(prec));
-        const clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
+        let raw = parseFloat(parseFloat(newY).toFixed(prec));
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        } else if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        }
+        let clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
             ? drawing.clampPrimaryEntryPrice(raw)
             : raw;
+        if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(clamped);
+            if (Number.isFinite(snapped)) clamped = snapped;
+        } else if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(clamped);
+            if (Number.isFinite(snapped)) clamped = snapped;
+        }
         if (!Number.isFinite(clamped) || Math.abs(clamped - drawing.points[0].y) < 1e-12) {
             this.pullRiskRewardToolFromManager(drawing, entryOpts);
             return;
@@ -25339,7 +25412,15 @@ class OrderManager {
         if (!drawing || !drawing.points || drawing.points.length < 2) return;
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const prec = this.getPricePrecision();
-        const raw = parseFloat(parseFloat(newY).toFixed(prec));
+        let raw = parseFloat(parseFloat(newY).toFixed(prec));
+        // Futures: snap to tick (ES/NQ 0.25) so release matches the drag price label.
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        } else if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        }
         const sanitized = typeof drawing.sanitizeStopPrice === 'function'
             ? drawing.sanitizeStopPrice(raw)
             : raw;

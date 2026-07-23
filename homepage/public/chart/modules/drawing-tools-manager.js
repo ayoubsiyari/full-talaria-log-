@@ -4246,7 +4246,7 @@ class DrawingToolsManager {
 
         // Block iOS/Android ghost mouse events that follow a touch (not our active touch bridge).
         if (event && event.type === 'mousedown' && !this._isTouchLikePointer(event) && !this._touchPointerActive) {
-            if (this._lastTouchSynthAt && performance.now() - this._lastTouchSynthAt < 450) {
+            if (this._lastTouchSynthAt && performance.now() - this._lastTouchSynthAt < 700) {
                 return;
             }
         }
@@ -6336,12 +6336,21 @@ class DrawingToolsManager {
     }
 
     _coarsePointerHitSlop() {
-        if (this._touchPointerActive) return 14;
+        if (this._touchPointerActive) return 16;
         if (typeof window !== 'undefined' && window.matchMedia
             && window.matchMedia('(pointer: coarse)').matches) {
-            return 10;
+            return 14;
+        }
+        if (typeof window !== 'undefined' && window.matchMedia
+            && window.matchMedia('(hover: none)').matches) {
+            return 12;
         }
         return 0;
+    }
+
+    /** True when chart owns a two-finger pinch (drawing bridge must yield). */
+    _chartPinchActive() {
+        return !!(this.chart && this.chart._pinchActive);
     }
 
     _dispatchMouseEventOn(target, sourceEvent, mouseType) {
@@ -6419,7 +6428,7 @@ class DrawingToolsManager {
         svgNode.addEventListener('pointerdown', (e) => {
             if (!this._isTouchLikePointer(e)) return;
             if (typeof e.button === 'number' && e.button !== 0) return;
-            if (this.chart && this.chart._pinchActive) return;
+            if (this._chartPinchActive()) return;
             e.preventDefault();
             e.stopPropagation();
             this._touchPointerActive = true;
@@ -6430,6 +6439,14 @@ class DrawingToolsManager {
 
         const onPointerMove = (e) => {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
+            // Yield immediately when chart enters pinch (second finger).
+            if (this._chartPinchActive()) {
+                if (activePointerId === e.pointerId) {
+                    activePointerId = null;
+                    this._touchPointerActive = false;
+                }
+                return;
+            }
             e.preventDefault();
             if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
                 this._rememberPlacementCrosshair(e);
@@ -6441,6 +6458,13 @@ class DrawingToolsManager {
 
         const onPointerUp = (e) => {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
+            if (this._chartPinchActive()) {
+                if (activePointerId === e.pointerId) {
+                    activePointerId = null;
+                    this._touchPointerActive = false;
+                }
+                return;
+            }
             e.preventDefault();
             this._lastTouchSynthAt = performance.now();
             this.handleMouseUp(e);
@@ -6450,9 +6474,18 @@ class DrawingToolsManager {
             }
         };
         svgNode.addEventListener('pointerup', onPointerUp, opts);
-        svgNode.addEventListener('pointercancel', onPointerUp, opts);
+        svgNode.addEventListener('pointercancel', (e) => {
+            if (!this._isTouchLikePointer(e)) return;
+            activePointerId = null;
+            this._touchPointerActive = false;
+            try { this.handleMouseUp(e); } catch (_) { /* ignore */ }
+        }, opts);
         document.addEventListener('pointerup', onPointerUp, opts);
-        document.addEventListener('pointercancel', onPointerUp, opts);
+        document.addEventListener('pointercancel', (e) => {
+            if (!this._isTouchLikePointer(e)) return;
+            activePointerId = null;
+            this._touchPointerActive = false;
+        }, opts);
 
         const canvas = this.chart && this.chart.canvas;
         const chartWrapper = canvas && canvas.parentElement;
@@ -7354,19 +7387,32 @@ class DrawingToolsManager {
     }
 
     buildRiskRewardPoints(entry, current, isLong, rewardRatio = null) {
-        const magnitude = Math.max(Math.abs(current.y - entry.y), 0.0000001);
+        const snap = (y) => {
+            const n = Number(y);
+            if (!Number.isFinite(n)) return n;
+            if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+                const s = this.chart.snapPriceToTick(n);
+                if (Number.isFinite(s)) return s;
+            }
+            return n;
+        };
+        const entryY = snap(entry.y);
+        const currentY = snap(current.y);
+        const magnitude = Math.max(Math.abs(currentY - entryY), 0.0000001);
         const ratioSource = rewardRatio !== null && rewardRatio !== undefined ? rewardRatio : current && current.rewardRatio;
         const ratioValue = Number(ratioSource);
         const normalizedRatio = Number.isFinite(ratioValue) && ratioValue > 0 ? ratioValue : 2;
         const clampedRatio = Math.max(0.01, Math.min(100, normalizedRatio));
-        const stopY = isLong ? entry.y - magnitude : entry.y + magnitude;
-        const targetY = isLong
-            ? entry.y + (magnitude * clampedRatio)
-            : entry.y - (magnitude * clampedRatio);
+        const stopY = snap(isLong ? entryY - magnitude : entryY + magnitude);
+        const targetY = snap(
+            isLong
+                ? entryY + (magnitude * clampedRatio)
+                : entryY - (magnitude * clampedRatio)
+        );
         const entryX = entry.x;
 
         return [
-            { x: entryX, y: entry.y },
+            { x: entryX, y: entryY },
             { x: entryX, y: stopY },
             { x: entryX, y: targetY }
         ];

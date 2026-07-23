@@ -534,6 +534,27 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
 }
 *::-webkit-scrollbar-corner { background: transparent; }
 
+/* Fat-finger tap targets on tablets / phones (coarse pointer). */
+@media (hover: none) and (pointer: coarse) {
+    .left-sidebar .tool-group-btn,
+    .left-sidebar .tool-btn,
+    .tool-group-btn,
+    .tool-btn,
+    .toolbar-drawing-icons .toolbar-icon-btn {
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+    }
+    .left-sidebar .tool-group-btn svg,
+    .left-sidebar .tool-btn svg,
+    .tool-group-btn svg,
+    .tool-btn svg {
+        width: 22px !important;
+        height: 22px !important;
+    }
+}
+
 /* ============================================================================
  * End V9 chrome.
  * ============================================================================ */

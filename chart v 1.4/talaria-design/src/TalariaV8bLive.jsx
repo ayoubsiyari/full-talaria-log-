@@ -126,6 +126,19 @@ function chartSessionIdQuery() {
   return "";
 }
 
+/** Current ?sessionId= from the chart URL (empty when none). */
+function v9CurrentChartSessionId() {
+  try {
+    const p = new URLSearchParams(window.location.search || "");
+    const sid = p.get("sessionId") || p.get("session_id");
+    if (sid == null) return "";
+    const s = String(sid).trim();
+    return s || "";
+  } catch (_) {
+    return "";
+  }
+}
+
 /** Navigate to the user's entitled dashboard page (keeps chart sessionId when present). */
 async function goToEntitledDashboard() {
   let user = null;
@@ -11419,16 +11432,27 @@ function v9AddCompareSymbol(symbolId, fileId) {
   }
 }
 
+/** Snap a positive price string to the instrument tick for Place Order display. */
+function v9SnapPositivePriceStr(raw, om) {
+  const pos = v9PositivePriceStr(raw);
+  if (!pos) return "";
+  const n = parseFloat(pos);
+  if (!(n > 0)) return "";
+  return v9FormatSnappedOrderPrice(n, om || (typeof window !== "undefined" ? window.chart?.orderManager : null));
+}
+
 /** Keep React ENTRY row price aligned with hidden #orderEntryPrice (single entry only). */
 function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
   if (!entryPriceStr) return;
+  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  const snapped = v9SnapPositivePriceStr(entryPriceStr, om) || String(entryPriceStr);
   setEntryRows((rows) => {
     if (!rows.length || rows.length > 1) return rows;
     const cur = parseFloat(rows[0].price || "0");
-    const next = parseFloat(entryPriceStr);
+    const next = parseFloat(snapped);
     if (!Number.isFinite(next) || next <= 0) return rows;
     if (Math.abs(cur - next) < 1e-8) return rows;
-    return [{ ...rows[0], price: entryPriceStr }];
+    return [{ ...rows[0], price: snapped }];
   });
 }
 
@@ -11648,12 +11672,41 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
   return String(capped);
 }
 
-function v9NormalizePriceInputOnBlur(raw) {
+/** Snap Place Order entry/SL/TP to the instrument tick (NQ/ES → .00/.25/.50/.75). */
+function v9SnapOrderPriceToTick(n, om) {
+  let px = Number(n);
+  if (!Number.isFinite(px)) return px;
+  const chart = typeof window !== "undefined" ? window.chart : null;
+  const orderOm = om || chart?.orderManager;
+  if (orderOm && typeof orderOm._snapOrderPriceToTick === "function") {
+    const snapped = orderOm._snapOrderPriceToTick(px);
+    if (Number.isFinite(snapped)) return snapped;
+  }
+  if (chart && typeof chart.snapPriceToTick === "function") {
+    const snapped = chart.snapPriceToTick(px);
+    if (Number.isFinite(snapped)) return snapped;
+  }
+  return px;
+}
+
+function v9FormatSnappedOrderPrice(n, om) {
+  const snapped = v9SnapOrderPriceToTick(n, om);
+  if (!Number.isFinite(snapped)) return "0";
+  if (om && typeof om.formatPrice === "function") return om.formatPrice(snapped);
+  const chart = typeof window !== "undefined" ? window.chart : null;
+  const orderOm = om || chart?.orderManager;
+  if (orderOm && typeof orderOm.formatPrice === "function") return orderOm.formatPrice(snapped);
+  return String(snapped);
+}
+
+function v9NormalizePriceInputOnBlur(raw, om) {
   const s = String(raw ?? "").trim();
   if (s === "" || s === ".") return "0";
   if (!/^\d*\.?\d*$/.test(s)) return "0";
   const n = parseFloat(s);
-  return Number.isFinite(n) ? String(n) : "0";
+  if (!Number.isFinite(n)) return "0";
+  if (!(n > 0)) return "0";
+  return v9FormatSnappedOrderPrice(n, om || (typeof window !== "undefined" ? window.chart?.orderManager : null));
 }
 
 /** One price increment for entry/SL/TP steppers — chart tick grid, then OM pip, then display precision. */
@@ -11685,8 +11738,10 @@ function v9StepOrderPrice(currentStr, dir, om, entryAnchor) {
       base = 0;
     }
   }
+  base = v9SnapOrderPriceToTick(base, om);
   let next = base + dir * step;
   if (!(next > 0)) next = 0;
+  else next = v9SnapOrderPriceToTick(next, om);
   if (om && typeof om.formatPrice === "function") {
     return om.formatPrice(next, prec);
   }
@@ -15312,12 +15367,31 @@ const TalariaV8bLive = () => {
   };
 
   // Row 13 (D-008): hydrate layout from existing chart_panel_state blob before URL defaults.
+  // Multi-panel is session-scoped: a new/different sessionId must not inherit another session's layout.
+  // Same session + refresh still restores multi (sessionIds match).
   useEffect(() => {
     if (!layoutPersistV2Enabled()) return;
     try {
       const raw = localStorage.getItem("chart_panel_state");
       if (!raw) return;
       const state = JSON.parse(raw);
+      const curSid = v9CurrentChartSessionId();
+      const savedSid = state && state.sessionId != null ? String(state.sessionId).trim() : "";
+      if (savedSid && curSid && savedSid !== curSid) {
+        try {
+          localStorage.setItem(
+            "chart_panel_state",
+            JSON.stringify({
+              ...state,
+              layout: "1",
+              selectedPanelIndex: 0,
+              panels: [],
+              sessionId: curSid,
+            })
+          );
+        } catch (_) { /* ignore */ }
+        return;
+      }
       const layoutId = state && state.layout != null ? String(state.layout) : null;
       if (!layoutId || layoutId === "1") return;
       const normalized = layoutId === "2" ? "2v" : layoutId;
@@ -15427,13 +15501,14 @@ const TalariaV8bLive = () => {
     if (!id) return;
     if (layoutPersistV2Enabled()) {
       try {
-        let blob = { layout: id, selectedPanelIndex: 0, panels: [] };
+        const sid = v9CurrentChartSessionId();
+        let blob = { layout: id, selectedPanelIndex: 0, panels: [], sessionId: sid || null };
         const raw = localStorage.getItem("chart_panel_state");
         if (raw) {
           try {
             const prev = JSON.parse(raw);
             if (prev && typeof prev === "object") {
-              blob = { ...prev, layout: id };
+              blob = { ...prev, layout: id, sessionId: sid || prev.sessionId || null };
             }
           } catch (_) { /* ignore corrupt */ }
         }
@@ -15703,9 +15778,11 @@ const TalariaV8bLive = () => {
         pnlStr: pnlStr.text,
         pnlNonNeg: pnlStr.nonNeg,
       });
-      const bal = Number(ledger?.balance ?? om?.balance);
+      // Place Order BAL/EQ: BAL = fixed session start (initial), EQ = live equity (start + P&L).
+      // Do not feed current `balance` into BAL — that moves with closed trades and matches EQ when flat.
+      const startBalNum = Number(ledger?.startingBalance ?? om?.initialBalance);
       const eqNum = Number(ledger?.equity ?? om?.equity);
-      setAccountBalance((prev) => (Number.isFinite(bal) ? bal : prev));
+      setAccountBalance((prev) => (Number.isFinite(startBalNum) ? startBalNum : prev));
       setAccountEquity((prev) => (Number.isFinite(eqNum) ? eqNum : prev));
     };
     tick();
@@ -18033,10 +18110,23 @@ const TalariaV8bLive = () => {
         const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
         if (ptab && !ptab.classList.contains("active")) ptab.click();
 
+        const om = window.chart?.orderManager;
+        const PRICE_INPUT_IDS = new Set(["orderEntryPrice", "slPrice", "tpPrice"]);
         const setIn = (id, val) => {
           const el = document.getElementById(id);
           if (!el) return;
-          const s = String(val ?? "");
+          let s = String(val ?? "");
+          // Futures tick grid: never push off-tick entry/SL/TP into hidden OM inputs
+          // (except while the user is mid-typing a partial decimal).
+          if (
+            PRICE_INPUT_IDS.has(id) &&
+            s !== "" &&
+            s !== "0" &&
+            !v9IsPartialDecimalInput(s)
+          ) {
+            const snapped = v9SnapPositivePriceStr(s, om);
+            if (snapped) s = snapped;
+          }
           if (el.value === s) return;
           el.value = s;
           el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -18051,7 +18141,6 @@ const TalariaV8bLive = () => {
           el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
-        const om = window.chart?.orderManager;
         const skipPosSync = !!om?.isDraggingPreviewLine || v9IsRrSelectedWithoutExecute(om);
 
         const fillLiveEntryFromFocusedMultichartTile = async () => {
@@ -18083,17 +18172,19 @@ const TalariaV8bLive = () => {
         } else if (sizeMode === "%") {
           if (!v9IsBlankOrPartialDecimalInput(riskVal)) {
           let pct = riskVal;
-          // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
+          // OM % risk uses initial/current balance only — not equity. BAL → initial as-is;
+          // EQ → scale so (initial × pct/100) equals (equity × risk%/100).
           if (riskBasis === "equity" && om) {
-            const b = Number(om.balance);
+            const init = Number(om.initialBalance);
             const eq = Number(om.equity);
-            if (b > 0 && Number.isFinite(eq)) {
-              pct = String((parseFloat(riskVal || "0") * eq) / b);
+            if (init > 0 && Number.isFinite(eq)) {
+              pct = String((parseFloat(riskVal || "0") * eq) / init);
             }
           }
           setIn("riskAmountPercent", pct);
           }
-          const wantBal = "current";
+          // BAL is fixed starting capital; EQ is scaled onto the same initial base above.
+          const wantBal = "initial";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
         } else {
@@ -18937,9 +19028,28 @@ const TalariaV8bLive = () => {
 
       const rrGatePanel = v9IsRrSelectedWithoutExecute(om);
       if (!rrGatePanel) {
-      const ep = document.getElementById("orderEntryPrice")?.value ?? "";
-      const slp = document.getElementById("slPrice")?.value ?? "";
-      const tpp = document.getElementById("tpPrice")?.value ?? "";
+      const snapDomPrice = (id, raw) => {
+        // Don't fight mid-edit typing in the React SL/TP wells.
+        if (id === "slPrice" && slTpPriceFocusedRef.current === "sl") {
+          return v9PositivePriceStr(raw) || "";
+        }
+        if (id === "tpPrice" && slTpPriceFocusedRef.current === "tp") {
+          return v9PositivePriceStr(raw) || "";
+        }
+        const snapped = v9SnapPositivePriceStr(raw, om);
+        if (!snapped) return "";
+        const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+        if (el && el.value !== snapped && !v9IsPartialDecimalInput(el.value)) {
+          el.value = snapped;
+        }
+        return snapped;
+      };
+      const ep = snapDomPrice("orderEntryPrice", document.getElementById("orderEntryPrice")?.value ?? "")
+        || (document.getElementById("orderEntryPrice")?.value ?? "");
+      const slp = snapDomPrice("slPrice", document.getElementById("slPrice")?.value ?? "")
+        || (document.getElementById("slPrice")?.value ?? "");
+      const tpp = snapDomPrice("tpPrice", document.getElementById("tpPrice")?.value ?? "")
+        || (document.getElementById("tpPrice")?.value ?? "");
       const omMultiEntry =
         !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
       const omMultiTp =
@@ -18950,7 +19060,7 @@ const TalariaV8bLive = () => {
       if (omMultiEntry) {
         const next = om.multiEntryLevels.map((l) => ({
           id: l.id,
-          price: String(l.price ?? "0"),
+          price: v9SnapPositivePriceStr(l.price, om) || String(l.price ?? "0"),
           risk: String(l.amount ?? "0"),
         }));
         const entrySame = (a, b) =>
@@ -19021,7 +19131,7 @@ const TalariaV8bLive = () => {
           pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
         const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
-          price: String(t.price ?? "0"),
+          price: v9SnapPositivePriceStr(t.price, om) || String(t.price ?? "0"),
           qty: v9OmTpTargetToReactQty(om, ti, mirrorSizeMode, om.marketType === "futures" ? "futures" : "forex"),
           enabled: true,
         }));
@@ -19091,10 +19201,11 @@ const TalariaV8bLive = () => {
         let rv = document.getElementById(rid)?.value;
         if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
           const omm = window.chart?.orderManager;
-          const b = Number(omm?.balance);
+          const init = Number(omm?.initialBalance);
           const eq = Number(omm?.equity);
-          if (b > 0 && Number.isFinite(eq)) {
-            rv = String((parseFloat(rv) * b) / eq);
+          if (init > 0 && Number.isFinite(eq)) {
+            // Inverse of forward EQ scale (hidden % was stored vs initial).
+            rv = String((parseFloat(rv) * init) / eq);
           }
         }
         if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsBlankOrPartialDecimalInput(riskVal)) {
@@ -25004,7 +25115,8 @@ const TalariaV8bLive = () => {
         if (fid == null || String(d.source || "") !== String(fid)) return;
         markOrderControlBridge();
         if (typeof d.orderEntryPrice === "number" && Number.isFinite(d.orderEntryPrice)) {
-          const ep = String(d.orderEntryPrice);
+          const omMsg = window.chart?.orderManager;
+          const ep = v9SnapPositivePriceStr(d.orderEntryPrice, omMsg) || String(d.orderEntryPrice);
           setEntryRows((rows) => {
             if (!rows.length) return [{ id: 0, price: ep, risk: "100" }];
             return [{ ...rows[0], price: ep }];
@@ -25014,18 +25126,29 @@ const TalariaV8bLive = () => {
         // Mirror TP: iframe chart SL drags post slPrice — without this, slRows stays "0" and the host
         // forwards setDraftPreview(slPrice: 0) into the iframe, snapping the SL badge back to entry.
         if (typeof d.slPrice === "number" && Number.isFinite(d.slPrice)) {
+          const omMsg = window.chart?.orderManager;
           setSlRows((rows) => {
             const r0 = rows[0] || { id: 0, price: "0" };
-            const next = { ...r0, price: d.slPrice > 0 ? String(d.slPrice) : "0" };
+            const next = {
+              ...r0,
+              price: d.slPrice > 0
+                ? (v9SnapPositivePriceStr(d.slPrice, omMsg) || String(d.slPrice))
+                : "0",
+            };
             return [next];
           });
         }
         if (typeof d.tpEnabled === "boolean" || (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice))) {
+          const omMsg = window.chart?.orderManager;
           setTpRows((rows) => {
             const r0 = rows[0] || { id: 0, price: "0", qty: "100", enabled: true };
             const next = { ...r0 };
             if (typeof d.tpEnabled === "boolean") next.enabled = d.tpEnabled;
-            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) next.price = String(d.tpPrice);
+            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) {
+              next.price = d.tpPrice > 0
+                ? (v9SnapPositivePriceStr(d.tpPrice, omMsg) || String(d.tpPrice))
+                : "0";
+            }
             return [next];
           });
         }
@@ -39205,7 +39328,8 @@ const TalariaV8bLive = () => {
                       {[["balance","BAL"],["equity","EQ"]].map(([val,label]) => {
                         const a=riskBasis===val; const isH=swHov===`rb-${val}`;
                         return (
-                          <div key={val} onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
+                          <div key={val} title={val==="balance"?"Fixed session starting balance":"Equity = start + open/closed P&L"}
+                            onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
                             onMouseEnter={()=>setSwHov(`rb-${val}`)} onMouseLeave={()=>setSwHov(null)}
                             style={{ padding:"1px 6px", fontSize:8, fontWeight:800, cursor:"default",
                                      color:a?c.acL:isH?c.ts:c.tm, background:a?c.acD:"transparent",

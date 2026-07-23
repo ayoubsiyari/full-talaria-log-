@@ -707,6 +707,24 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
           const uid = localStorage.getItem("_uid");
           if (uid) localStorage.setItem(`u${uid}_active_trading_session_id`, String(id));
         }
+        // New session starts single-chart — do not inherit prior session's multi-panel layout.
+        const sid = id != null ? String(id) : null;
+        let panelBlob: Record<string, unknown> = {
+          layout: "1",
+          selectedPanelIndex: 0,
+          panels: [],
+          sessionId: sid,
+        };
+        try {
+          const raw = localStorage.getItem("chart_panel_state");
+          if (raw) {
+            const prev = JSON.parse(raw);
+            if (prev && typeof prev === "object") {
+              panelBlob = { ...prev, layout: "1", selectedPanelIndex: 0, panels: [], sessionId: sid };
+            }
+          }
+        } catch { /* ignore corrupt */ }
+        localStorage.setItem("chart_panel_state", JSON.stringify(panelBlob));
       } catch { /* ignore */ }
       await onSaved?.();
       closeNewSess();
