@@ -8994,11 +8994,30 @@ class OrderManager {
                 sel.className = `order-input ${inputClass}`;
                 sel.setAttribute('data-var-id', id);
                 sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
-                const opts = Array.isArray(v.options) && v.options.length ? v.options : ['—'];
+                // Strategies Lab may store options as {label|value|name|text} objects —
+                // never coerce with String(obj) (shows "[object Object]").
+                const optsRaw = Array.isArray(v.options) ? v.options : [];
+                const opts = [];
+                const seenOpt = new Set();
+                for (const opt of optsRaw) {
+                    let label = '';
+                    if (opt == null) continue;
+                    if (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean') {
+                        label = String(opt).trim();
+                    } else if (typeof opt === 'object') {
+                        const raw = opt.label ?? opt.value ?? opt.name ?? opt.text ?? opt.title ?? null;
+                        if (raw != null && typeof raw !== 'object') label = String(raw).trim();
+                    }
+                    if (!label || label === '[object Object]' || seenOpt.has(label)) continue;
+                    seenOpt.add(label);
+                    opts.push(label);
+                }
+                // Empty multi choices → skip the row entirely (don't show blank Object pills).
+                if (!opts.length) return;
                 opts.forEach((opt) => {
                     const o = document.createElement('option');
-                    o.value = String(opt);
-                    o.textContent = String(opt);
+                    o.value = opt;
+                    o.textContent = opt;
                     sel.appendChild(o);
                 });
                 row.appendChild(sel);

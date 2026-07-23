@@ -10126,6 +10126,58 @@ function v9DeleteDrawingTemplate(drawing, templateId) {
   return true;
 }
 
+/** Flatten Strategies Lab option entries (string | {label|value|name|text|…}) to a display string. */
+function strategyVarOptionLabel(opt) {
+  if (opt == null) return "";
+  if (typeof opt === "string" || typeof opt === "number" || typeof opt === "boolean") {
+    const s = String(opt).trim();
+    return s === "[object Object]" ? "" : s;
+  }
+  if (typeof opt === "object") {
+    const candidates = [
+      opt.label,
+      opt.value,
+      opt.name,
+      opt.text,
+      opt.title,
+      opt.option,
+      opt.en,
+      opt.ar,
+      opt.color,
+      opt.hex,
+    ];
+    for (const raw of candidates) {
+      if (raw == null) continue;
+      if (typeof raw !== "object") {
+        const s = String(raw).trim();
+        if (s && s !== "[object Object]") return s;
+        continue;
+      }
+      const nested = raw.label ?? raw.value ?? raw.name ?? raw.text ?? null;
+      if (nested != null && typeof nested !== "object") {
+        const s = String(nested).trim();
+        if (s && s !== "[object Object]") return s;
+      }
+    }
+  }
+  return "";
+}
+
+/** Unique non-empty option labels — never emit "[object Object]". */
+function normalizeStrategyVarOptions(options) {
+  if (!Array.isArray(options)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const opt of options) {
+    const label = strategyVarOptionLabel(opt);
+    if (!label) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push(label);
+  }
+  return out;
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
@@ -10147,7 +10199,7 @@ function snapshotPreTradeStrategySig(chart) {
         name: v.name,
         vtype: v.vtype,
         timing: v.timing,
-        options: v.options,
+        options: normalizeStrategyVarOptions(v.options),
       }))
     );
   } catch (_) {
@@ -10158,22 +10210,23 @@ function snapshotPreTradeStrategySig(chart) {
 /** Maps Strategies Lab PRE vars to the rail tag shape (labels / bool vs multi — UI unchanged). */
 function sessionPreTradeVarsToTagDefs(chart) {
   const pre = getPreTradeVariablesFromSession(chart);
-  return pre.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
+  return pre
+    .map((v, idx) => {
+      const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
+      const label = String(v.name || '').trim();
+      if (!label) return null;
+      const isMulti = v.vtype === 'multi';
+      const options = isMulti ? normalizeStrategyVarOptions(v.options) : [];
+      // Empty multi choices → hide the row (don't flash "[object Object]" pills).
+      if (isMulti && !options.length) return null;
+      return {
+        id,
+        label,
+        type: isMulti ? 'multi' : 'bool',
+        options,
+      };
+    })
+    .filter(Boolean);
 }
 
 /** POST variables from session — same filter as order-manager `_getPostTradeVariableDefs`. */
@@ -10197,7 +10250,7 @@ function snapshotPostTradeStrategySig(chart) {
         name: v.name,
         vtype: v.vtype,
         timing: v.timing,
-        options: v.options,
+        options: normalizeStrategyVarOptions(v.options),
       }))
     );
   } catch (_) {
@@ -10208,22 +10261,22 @@ function snapshotPostTradeStrategySig(chart) {
 /** Maps Strategies Lab POST vars (filled at exit / trade card) to the same pill shape as PRE. */
 function sessionPostTradeVarsToTagDefs(chart) {
   const post = getPostTradeVariablesFromSession(chart);
-  return post.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
+  return post
+    .map((v, idx) => {
+      const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
+      const label = String(v.name || '').trim();
+      if (!label) return null;
+      const isMulti = v.vtype === 'multi';
+      const options = isMulti ? normalizeStrategyVarOptions(v.options) : [];
+      if (isMulti && !options.length) return null;
+      return {
+        id,
+        label,
+        type: isMulti ? 'multi' : 'bool',
+        options,
+      };
+    })
+    .filter(Boolean);
 }
 
 /** Match journal `symbol` strings to V9-style pair labels (e.g. EURUSD → EUR/USD). */
@@ -38259,11 +38312,13 @@ const TalariaV8bLive = () => {
                                             </div>
                                           );
                                         } else {
+                                          const opts=normalizeStrategyVarOptions(def.options);
+                                          if(!opts.length) return null;
                                           return(
                                             <div key={def.id}>
                                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.07em",display:"block",marginBottom:4}}>{def.label.toUpperCase()}</span>
                                               <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-                                                {def.options.map((opt,oi)=>{
+                                                {opts.map((opt,oi)=>{
                                                   const active=editTags.includes(opt);
                                                   const isH=swHov===`td-opt-${r.id}-${def.id}-${oi}`;
                                                   return(
@@ -38271,7 +38326,7 @@ const TalariaV8bLive = () => {
                                                       if(!canEdit) return;
                                                       // multi = single-choice per variable (not accumulate)
                                                       const isSel=editTags.includes(opt);
-                                                      const without=editTags.filter(x=>!def.options.includes(x));
+                                                      const without=editTags.filter(x=>!opts.includes(x));
                                                       updTags(r.id, isSel?without:[...without,opt]);
                                                     }}
                                                       onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${oi}`)} onMouseLeave={()=>setSwHov(null)}
@@ -41755,6 +41810,7 @@ const TalariaV8bLive = () => {
         const accentPost="rgba(180,140,255,0.9)", accentPostBg="rgba(180,140,255,0.1)", accentPostBd="rgba(180,140,255,0.4)";
         // TagRow — no swHov; read-only shows all tags but selected highlighted, unselected dimmed
         const TagRow=(def,tags,setTags,accent,accentBg,accentBd,canEdit)=>{
+          if(!def || !def.label) return null;
           if(def.type==="bool"){
             const active=tags.includes(def.label);
             return(
@@ -41782,12 +41838,14 @@ const TalariaV8bLive = () => {
               </div>
             );
           } else {
-            const selOpts=tags.filter(t=>def.options.includes(t));
+            const opts=normalizeStrategyVarOptions(def.options);
+            if(!opts.length) return null;
+            const selOpts=tags.filter(t=>opts.includes(t));
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
                 <span style={{fontSize:11,color:canEdit?c.ts:"rgba(255,255,255,0.3)",flexShrink:0}}>{def.label}</span>
                 <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                  {def.options.map((opt,oi)=>{
+                  {opts.map((opt,oi)=>{
                     const sel=selOpts.includes(opt);
                     const pillColor=sel?accent:canEdit?c.ts:c.trk;
                     const pillBg=sel?accentBg:"transparent";
@@ -41797,7 +41855,7 @@ const TalariaV8bLive = () => {
                         onClick={canEdit?()=>setTags(pt=>{
                           // multi = single-choice (same as order-panel <select>), not multi-select
                           const isSel=pt.includes(opt);
-                          const without=pt.filter(x=>!def.options.includes(x));
+                          const without=pt.filter(x=>!opts.includes(x));
                           return isSel?without:[...without,opt];
                         }):undefined}
                         className={canEdit?`tc-opt${sel?" tc-opt-act":""}`:undefined}
