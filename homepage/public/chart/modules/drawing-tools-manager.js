@@ -1006,7 +1006,7 @@ class DrawingToolsManager {
         return true;
     }
 
-    /** Two-point line tools that support in-place geometry patch during handle drag. */
+    /** Two-point line / fib tools that support in-place geometry patch during handle drag. */
     _supportsLiveHandleGeometryPatch(drawing) {
         if (!drawing || !drawing.type) return false;
         if (drawing.text && String(drawing.text).trim()) {
@@ -1014,7 +1014,9 @@ class DrawingToolsManager {
         }
         return [
             'trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray',
-            'extended-line', 'cross-line'
+            'extended-line', 'cross-line',
+            // Horizontal fibs implement patchPanZoomGeometry → patchTwoPointHorizontalFib
+            'fibonacci-retracement', 'fibonacci-extension'
         ].includes(drawing.type);
     }
 
@@ -1276,6 +1278,11 @@ class DrawingToolsManager {
         if (!previewPoints) return;
         this._ensureDrawingsPlotClip();
         drawing.points = previewPoints.map((p) => ({ ...p }));
+        // Keep timestamp anchors aligned with preview points so any path that
+        // still resolves from timestamps (and live peer broadcast) tracks the drag.
+        if (Array.isArray(drawing.points)) {
+            drawing.points.forEach((_, i) => this._refreshLiveTimestampForPoint(drawing, i));
+        }
         this._syncRRToolExtrasDuringLiveDrag(drawing, startPoints, previewPoints);
         // Clear group + labels translate so a stale CSS offset cannot leave a
         // second copy parked at the pre-drag origin while points re-render.
@@ -3869,7 +3876,9 @@ class DrawingToolsManager {
     /** Full geometry + handle rebuild after a committed whole-shape move (not live skipHandles path). */
     _renderDrawingAfterGeometryCommit(drawing) {
         if (!drawing) return;
-        this.renderDrawing(drawing, { liveRender: false });
+        // Timestamps were just refreshed from the committed points — do not
+        // re-resolve against the playhead prefix (that snaps extrabar corners back).
+        this.renderDrawing(drawing, { liveRender: false, skipTimestampSync: true });
         this._syncResizeHandleChrome(drawing);
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
@@ -7967,7 +7976,10 @@ class DrawingToolsManager {
         }
         
         this.drawings.push(drawing);
-        this.renderDrawing(drawing, fromClonePayload ? { skipTimestampSync: true } : undefined);
+        // Fresh placement already has points + timestamps aligned. Re-resolving
+        // against the short replay prefix on the first paint snaps empty-space
+        // / future-bar corners back to the playhead.
+        this.renderDrawing(drawing, { skipTimestampSync: true });
         if (fromClonePayload) {
             delete drawing._fromClonePayload;
         }
