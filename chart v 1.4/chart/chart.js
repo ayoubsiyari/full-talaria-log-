@@ -26693,6 +26693,9 @@ class Chart {
 
     _resetTouchGestureState(options = {}) {
         const soft = !!options.soft;
+        const wasPinch = this._pinchActive;
+        const wasPan = !!(this.drag && this.drag.active && this.drag.type === 'pan'
+            && this.drag.panCommitted);
         this._clearTouchLongPress();
         this._pinchActive = false;
         this._touchPinch = null;
@@ -26700,35 +26703,59 @@ class Chart {
         if (!soft) {
             this._drawingTouchPointerId = null;
             const dm = this.drawingManager;
-            if (dm) dm._touchPointerActive = false;
+            if (dm) {
+                dm._touchPointerActive = false;
+                if (typeof dm._releaseTouchGestureOwnership === 'function') {
+                    try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+                }
+            }
         }
         if (this._touchGesture) {
             this._touchGesture.mode = 'idle';
             this._touchGesture.pointerIds = [];
+        }
+        // Aborting mid-pan/pinch must re-glue shapes to the current viewport.
+        if (!options.skipDrawingResync && (wasPinch || wasPan)) {
+            try { this._clearPanDrawingsLayerTransform(); } catch (_) { /* ignore */ }
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
         }
     }
 
     /** Cancel one-finger pan/draw tracking when a second finger arrives (enter pinch). */
     _cancelOneFingerForPinch() {
         this._clearTouchLongPress();
+        const wasPan = !!(this.drag && this.drag.active && this.drag.type === 'pan'
+            && this.drag.panCommitted);
         if (this.drag && this.drag.active) {
             this.drag.active = false;
             this.drag.type = null;
             this.drag.panCommitted = false;
             this.movement.isDragging = false;
             this.isZooming = false;
+            try { this._cancelChartPanFrame(); } catch (_) { /* ignore */ }
+            try { this._stopChartPanRenderLoop(); } catch (_) { /* ignore */ }
             try { this._removeDragEndGuard(); } catch (_) { /* ignore */ }
             try { this._releaseDragPointerCapture(); } catch (_) { /* ignore */ }
             try { this._releaseDragCursor(); } catch (_) { /* ignore */ }
             try { this._clearPanDrawingsLayerTransform(); } catch (_) { /* ignore */ }
         }
         // Do not synthesize mouseup — that can finalize a draw point at (0,0).
-        // Drop pointer ownership; in-progress placement resumes after pinch ends.
+        // Drop pointer ownership; clear stuck move/resize so redrawAll is not blocked.
         const dm = this.drawingManager;
-        if (dm) dm._touchPointerActive = false;
+        if (dm) {
+            dm._touchPointerActive = false;
+            if (typeof dm._releaseTouchGestureOwnership === 'function') {
+                try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+            }
+        }
         this._drawingTouchPointerId = null;
         this._activeTouchPointerId = null;
         if (this._touchGesture) this._touchGesture.mode = 'pinch';
+        // If one-finger pan already moved the viewport, rebuild shapes immediately
+        // so they are not left at pre-pan pixels when pinch starts.
+        if (wasPan) {
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+        }
     }
 
     _fireTouchLongPress(clientX, clientY) {
@@ -26758,11 +26785,30 @@ class Chart {
     }
 
     _settleAfterTouchPinch() {
+        // Match wheel-burst settle: clear burst first, then one full-quality pass
+        // so shapes/labels re-anchor to final candleWidth/offset (not a lite panFast frame).
+        try {
+            if (this._wheelPostBurstTimer) {
+                clearTimeout(this._wheelPostBurstTimer);
+                this._wheelPostBurstTimer = null;
+            }
+        } catch (_) { /* ignore */ }
+        this._wheelBurstUntil = 0;
         try { this.constrainOffset(); } catch (_) { /* ignore */ }
         try { this.dispatchScrollSync(true); } catch (_) { /* ignore */ }
         try { this._scheduleIndicatorRecalcAfterInteraction(); } catch (_) { /* ignore */ }
+        const dm = this.drawingManager;
+        if (dm && typeof dm._releaseTouchGestureOwnership === 'function') {
+            try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+        }
+        if (typeof this._finishWheelBurstInteraction === 'function') {
+            try { this._finishWheelBurstInteraction(); } catch (_) { /* ignore */ }
+        } else {
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+            this.renderPending = false;
+            try { this.render(); } catch (_) { /* ignore */ }
+        }
         try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
-        this.scheduleRender();
     }
 
     /**
@@ -28252,8 +28298,12 @@ class Chart {
                 alwaysReplayDrawingSync = !(typeof window !== 'undefined'
                     && window.__TALARIA_DISABLE_REPLAY_PLAY_DRAWING_SYNC_V1 === true);
             } catch (_) { alwaysReplayDrawingSync = true; }
+            // Touch pinch uses the wheel-burst lite path; also key off _pinchActive so
+            // shapes never freeze if the burst timer is cleared a frame early.
+            const touchPinchActive = !!this._pinchActive;
             const syncDrawingsNow = chartViewPanning
                 || wheelBurstLight
+                || touchPinchActive
                 || axisZoomDragging
                 || !interactionLite
                 || (alwaysReplayDrawingSync && replayPlayback);
@@ -34689,7 +34739,11 @@ class Chart {
             // Handle pan end — stop immediately on release (no post-release slide)
             else             if (dragType === 'pan' && wasDragging) {
                 this._releasePanPointerCapture();
-                const panClickThresholdPx = 5;
+                // Match touch pan-commit slop so a fat-finger tap is not treated as a
+                // half-finished pan that skips drawing finalize.
+                const panClickThresholdPx = typeof this._panCommitThresholdPx === 'function'
+                    ? this._panCommitThresholdPx()
+                    : 5;
                 const zc = this._v9LayoutZoom();
                 const panDx = ((e.clientX - (this.drag.startX ?? e.clientX)) / zc);
                 const panDy = ((e.clientY - (this.drag.startY ?? e.clientY)) / zc);
@@ -35957,6 +36011,20 @@ class Chart {
             this._markScalesDirty?.();
             this._clearPanTimeTickCache?.();
             this._cachedInteractionTimeTicks = null;
+
+            // Re-anchor drawing bar indices once at pinch start (same as pan snapshot).
+            const dm = this.drawingManager;
+            if (dm && dm.drawings && dm.drawings.length > 0
+                && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+                try {
+                    dm.drawings.forEach((drawing) => {
+                        if (drawing) {
+                            dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                        }
+                    });
+                } catch (_) { /* ignore */ }
+            }
+            try { this._clearPanDrawingsLayerTransform(false); } catch (_) { /* ignore */ }
         };
 
         const applyPinchZoom = (touch1, touch2) => {
@@ -36045,7 +36113,6 @@ class Chart {
             }
             this._activeTouchPointerId = null;
             if (wasPinch) {
-                this._wheelBurstUntil = performance.now() + 120;
                 this._settleAfterTouchPinch();
             }
         };
@@ -36189,6 +36256,7 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
+            const touchPinchActive = !!this._pinchActive;
             // PLAY ticks are as hot as pan — use panFast (skip interaction setup) but
             // still rebuild SVG from current scales so shapes track auto-scroll/TF.
             if (typeof this._isReplayPlaybackRendering === 'function'
@@ -36211,7 +36279,7 @@ class Chart {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
             }
-            if (wheelActive && !this._wheelBurstFinalPass) {
+            if ((wheelActive || touchPinchActive) && !this._wheelBurstFinalPass) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();

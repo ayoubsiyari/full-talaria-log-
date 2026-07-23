@@ -6353,6 +6353,37 @@ class DrawingToolsManager {
         return !!(this.chart && this.chart._pinchActive);
     }
 
+    /**
+     * Drop stuck touch move/resize ownership without synthesizing a click at (0,0).
+     * Keeps an armed placement tool so the user can continue after pinch/pan.
+     */
+    _releaseTouchGestureOwnership(options = {}) {
+        const keepPlacement = options.keepPlacement !== false;
+        this._touchPointerActive = false;
+        this.isDragging = false;
+        this.isResizing = false;
+        this.isCustomHandleDrag = false;
+        this.isRectSelecting = false;
+        this.resizingDrawing = null;
+        this.customHandleDrawing = null;
+        this._directMoveMoveHandler = null;
+        this._bodyDragDepth = 0;
+        this._drawingLiveInteractionDepth = 0;
+        if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+            try { this.drawingsGroup.attr('transform', null); } catch (_) { /* ignore */ }
+        }
+        if (this.labelsGroup && !this.labelsGroup.empty()) {
+            try { this.labelsGroup.attr('transform', null); } catch (_) { /* ignore */ }
+        }
+        if (this.tempGroup && !this.tempGroup.empty()) {
+            try { this.tempGroup.attr('transform', null); } catch (_) { /* ignore */ }
+        }
+        try { this._clearDrawingGroupPanTransforms(); } catch (_) { /* ignore */ }
+        if (!keepPlacement && this.drawingState) {
+            this.drawingState.isDrawing = false;
+        }
+    }
+
     _dispatchMouseEventOn(target, sourceEvent, mouseType) {
         if (!target || !sourceEvent) return;
         const buttons = typeof sourceEvent.buttons === 'number'
@@ -12371,9 +12402,13 @@ class DrawingToolsManager {
         }
 
         // Never tear down SVG groups mid-handle-drag (causes snap-back / stuck handles).
+        // Touch pinch/pan must still re-glue shapes — chart clears ownership first, but
+        // if a stale flag remains during pinch, force the rebuild anyway.
         if (!options.panFast && !options.forceFull) {
             if (this._isLiveHandleEditing() || this._isDrawingGeometryMoveActive()) {
-                return;
+                if (!(this.chart && this.chart._pinchActive)) {
+                    return;
+                }
             }
         }
 
