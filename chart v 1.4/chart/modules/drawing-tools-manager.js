@@ -3171,9 +3171,75 @@ class DrawingToolsManager {
         return this._isPlacementModeActive() && this._isCoarsePointerDevice();
     }
 
+    /**
+     * TradingView touch: tap = mouse click (place next point); finger move only aims the
+     * blue crosshair / preview. Kill-switch:
+     *   window.__TALARIA_DISABLE_TOUCH_TAP_PLACE_V1 = true
+     */
+    _touchTapPlaceEnabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TOUCH_TAP_PLACE_V1 === true) {
+                return false;
+            }
+        } catch (_) { /* ignore */ }
+        if (!this._isPlacementModeActive() || !this._isCoarsePointerDevice()) return false;
+        // Freehand tools need press-drag, not tap-tap.
+        if (this.currentTool === 'brush' || this.currentTool === 'highlighter') return false;
+        if (this.isDrawingPath) return false;
+        return true;
+    }
+
+    /** Blue placement crosshair color (TradingView-like) while a tool is armed on touch. */
+    _touchPlacementCrosshairColor() {
+        return 'rgba(41, 98, 255, 0.9)';
+    }
+
     _rememberPlacementCrosshair(event) {
         if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return;
         this._placementCrosshairClient = { clientX: event.clientX, clientY: event.clientY };
+    }
+
+    /**
+     * Place one drawing point from a touch tap (pointerup with small movement).
+     * Mimics a desktop mouse click: first tap = point 1, second tap = point 2, …
+     */
+    _placeTouchTapAtEvent(event) {
+        if (!event || !this.currentTool) return false;
+        const toolInfo = this.toolRegistry[this.currentTool];
+        const wasDrawing = !!(this.drawingState && this.drawingState.isDrawing);
+
+        // Long/short position: 1st tap arms entry, 2nd tap finalizes (desktop mouseup).
+        if (wasDrawing && toolInfo && toolInfo.dragPreview) {
+            this._lastTouchSynthAt = performance.now();
+            this.handleMouseUp(event);
+            this._rememberPlacementCrosshair(event);
+            if (this._isPlacementModeActive()) {
+                this._showInitialPlacementCrosshair();
+            }
+            return true;
+        }
+
+        this._lastTouchSynthAt = performance.now();
+        this.handleMouseDown(event);
+
+        // After first tap on dragFirstTwo tools, do not require a drag-release for point 2 —
+        // the next tap places it (TradingView click-click).
+        if (this.isDraggingFirstTwo) {
+            this.isDraggingFirstTwo = false;
+            this.dragFirstTwoStart = null;
+            this.dragFirstTwoStartScreen = null;
+        }
+
+        this._rememberPlacementCrosshair(event);
+        if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+            try { this.chart.updateCrosshair(event); } catch (_) { /* ignore */ }
+        }
+        if (this._isPlacementModeActive()) {
+            this._placementCrosshairPinned = true;
+            this._showInitialPlacementCrosshair();
+        }
+        return true;
     }
 
     /**
@@ -6439,6 +6505,10 @@ class DrawingToolsManager {
 
         const opts = { passive: false };
         let activePointerId = null;
+        let tapPlacePointerId = null;
+        let tapPlaceStart = null;
+        let tapPlaceMoved = false;
+        const TAP_SLOP_PX = 14;
 
         const isGeometryActive = () => !!(
             this.isDragging
@@ -6454,7 +6524,16 @@ class DrawingToolsManager {
 
         const isPlacementMode = () => !!(this.currentTool || (this.drawingState && this.drawingState.isDrawing));
 
-        const shouldTrackPointer = (e) => activePointerId === e.pointerId || isGeometryActive() || isPlacementMode();
+        const shouldTrackPointer = (e) => activePointerId === e.pointerId
+            || tapPlacePointerId === e.pointerId
+            || isGeometryActive()
+            || isPlacementMode();
+
+        const clearTapPlace = () => {
+            tapPlacePointerId = null;
+            tapPlaceStart = null;
+            tapPlaceMoved = false;
+        };
 
         svgNode.addEventListener('pointerdown', (e) => {
             if (!this._isTouchLikePointer(e)) return;
@@ -6464,6 +6543,30 @@ class DrawingToolsManager {
             e.stopPropagation();
             this._touchPointerActive = true;
             activePointerId = e.pointerId;
+
+            // TradingView touch: finger-down aims the blue crosshair; tap (up) places.
+            if (this._touchTapPlaceEnabled()
+                && this.currentTool
+                && !this.isDrawingPath
+                && !this._isLiveHandleEditing()
+                && !this._isDrawingGeometryMoveActive()) {
+                tapPlacePointerId = e.pointerId;
+                tapPlaceStart = { x: e.clientX, y: e.clientY };
+                tapPlaceMoved = false;
+                this._rememberPlacementCrosshair(e);
+                this._placementCrosshairPinned = true;
+                if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                    this.chart.updateCrosshair(e);
+                }
+                // Already placing: move preview with the finger before the confirming tap.
+                if (this.drawingState && this.drawingState.isDrawing
+                    && typeof this.handleMouseMove === 'function') {
+                    this.handleMouseMove(e);
+                }
+                try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
+                return;
+            }
+
             this.handleMouseDown(e);
             try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
         }, opts);
@@ -6476,9 +6579,26 @@ class DrawingToolsManager {
                     activePointerId = null;
                     this._touchPointerActive = false;
                 }
+                clearTapPlace();
                 return;
             }
             e.preventDefault();
+
+            if (tapPlacePointerId === e.pointerId && tapPlaceStart) {
+                const dist = Math.hypot(e.clientX - tapPlaceStart.x, e.clientY - tapPlaceStart.y);
+                if (dist > TAP_SLOP_PX) tapPlaceMoved = true;
+                this._rememberPlacementCrosshair(e);
+                this._placementCrosshairPinned = true;
+                if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                    this.chart.updateCrosshair(e);
+                }
+                // Preview rubber-band after point 1; before that only move the crosshair.
+                if (this.drawingState && this.drawingState.isDrawing) {
+                    this.handleMouseMove(e);
+                }
+                return;
+            }
+
             if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
                 this._rememberPlacementCrosshair(e);
             }
@@ -6494,9 +6614,29 @@ class DrawingToolsManager {
                     activePointerId = null;
                     this._touchPointerActive = false;
                 }
+                clearTapPlace();
                 return;
             }
             e.preventDefault();
+
+            if (tapPlacePointerId === e.pointerId) {
+                const isTap = !tapPlaceMoved;
+                clearTapPlace();
+                if (activePointerId === e.pointerId) activePointerId = null;
+                this._touchPointerActive = false;
+                if (isTap) {
+                    this._placeTouchTapAtEvent(e);
+                } else {
+                    // Drag aimed the crosshair — leave it pinned; no point placed.
+                    this._rememberPlacementCrosshair(e);
+                    this._placementCrosshairPinned = true;
+                    if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                        this.chart.updateCrosshair(e);
+                    }
+                }
+                return;
+            }
+
             this._lastTouchSynthAt = performance.now();
             this.handleMouseUp(e);
             if (activePointerId === e.pointerId) {
@@ -6509,13 +6649,14 @@ class DrawingToolsManager {
             if (!this._isTouchLikePointer(e)) return;
             activePointerId = null;
             this._touchPointerActive = false;
-            try { this.handleMouseUp(e); } catch (_) { /* ignore */ }
+            clearTapPlace();
         }, opts);
         document.addEventListener('pointerup', onPointerUp, opts);
         document.addEventListener('pointercancel', (e) => {
             if (!this._isTouchLikePointer(e)) return;
             activePointerId = null;
             this._touchPointerActive = false;
+            clearTapPlace();
         }, opts);
 
         const canvas = this.chart && this.chart.canvas;
