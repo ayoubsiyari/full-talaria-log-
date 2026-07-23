@@ -8973,7 +8973,10 @@ class DrawingToolsManager {
                 ? '.volume-profile-boundary-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
                 : drawing.type === 'image'
                     ? '.image-content, .image-placeholder'
-                    : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                    // Include .fib-level-hit: fib tools put the fat invisible hit
+                    // stroke under dashed visible levels; excluding it left select
+                    // working but whole-shape move dead (filter already allows fib hits).
+                    : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : (drawing.type === 'image' ? 6 : 4);
         let textBodyDragOverflowActive = false;
