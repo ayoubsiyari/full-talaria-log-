@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, mergeOrderManagerForMultichartTrades, mcReplayPnlHostAggV1Enabled, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, mergeOrderManagerForMultichartTrades, mcReplayPnlHostAggV1Enabled, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv, extractOrderManagerTradePnl } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -10380,10 +10380,16 @@ function normalizeRemoteJournalListEntry(e) {
 function analyticsEntryKey(e) {
   const id = e?.trade_id ?? e?.tradeId ?? e?.id;
   if (id != null && Number.isFinite(Number(id))) return `id:${Number(id)}`;
+  return analyticsFingerprintKey(e);
+}
+
+/** Soft match for remote vs session rows (DB id ≠ OM tradeId). */
+function analyticsFingerprintKey(e) {
   const sym = String(e?.symbol || "").replace(/\//g, "").toUpperCase();
-  const t = e?.date || e?.close_time || "";
   const p = Number(e?.pnl);
-  return `h:${sym}_${t}_${Number.isFinite(p) ? p.toFixed(4) : "x"}`;
+  const ms = coalesceAnalyticsTimeMs(e?.date, e?.close_time, e?.closed_at);
+  const minute = Number.isFinite(ms) ? Math.floor(ms / 60000) : "x";
+  return `fp:${sym}_${minute}_${Number.isFinite(p) ? p.toFixed(2) : "x"}`;
 }
 
 /**
@@ -10504,7 +10510,7 @@ function strategyBucketsFromNormalizedList(list) {
     .sort((a, b) => Math.abs(b.total_pnl) - Math.abs(a.total_pnl));
 }
 
-/** Closed P&amp;L from persisted `tradeJournal` + in-memory `closedPositions` (saved session trades). */
+/** Closed P&amp;L from the same session rows as History / All Trade (saved trades). */
 function buildJournalAnalyticsFromOrderManager(om) {
   if (!om) {
     return {
@@ -10525,37 +10531,36 @@ function buildJournalAnalyticsFromOrderManager(om) {
     };
   }
 
-  const normalized = [];
-  const seenIds = new Set();
-
+  // Match History tab exactly: closedPositions + journal-only closed rows.
+  const closedRows = buildLiveTradeRowsFromOrderManager(om, { gn: "", rd: "", tm: "" }).filter(
+    (r) => r.status === "closed"
+  );
+  const journalById = new Map();
   for (const j of Array.isArray(om.tradeJournal) ? om.tradeJournal : []) {
-    const tidRaw = j.tradeId ?? j.id;
-    const idNum = tidRaw != null ? Number(tidRaw) : NaN;
-    const pnl = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? NaN);
-    if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = j.ticker || j.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(j.closeTime, j.exitTime, j.closedAt);
-    const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
-    normalized.push({
-      trade_id: Number.isFinite(idNum) ? idNum : undefined,
-      symbol: sym,
-      pnl,
-      date: iso || undefined,
-      close_time: iso || undefined,
-      strategy: inferStrategyLabelFromJournal(j),
-      ...extractPathFieldsFromJournal(j),
-    });
+    const tid = Number(j.tradeId ?? j.id);
+    if (Number.isFinite(tid)) journalById.set(tid, j);
+  }
+  const closedById = new Map();
+  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
+    const tid = Number(p.id);
+    if (Number.isFinite(tid)) closedById.set(tid, p);
   }
 
-  for (const p of Array.isArray(om.closedPositions) ? om.closedPositions : []) {
-    const idNum = Number(p.id);
-    if (Number.isFinite(idNum) && seenIds.has(idNum)) continue;
-    const pnl = Number.parseFloat(p.netPnL ?? p.realizedPnL ?? p.pnl ?? NaN);
+  const normalized = [];
+  for (const row of closedRows) {
+    const idNum = Number(row.omId);
+    const j = Number.isFinite(idNum) ? journalById.get(idNum) : null;
+    const p = Number.isFinite(idNum) ? closedById.get(idNum) : null;
+    const src = j || p || null;
+    const pnl = src != null ? extractOrderManagerTradePnl(src, om) : Number.NaN;
     if (!Number.isFinite(pnl)) continue;
-    if (Number.isFinite(idNum)) seenIds.add(idNum);
-    const sym = p.ticker || p.symbol || "UNKNOWN";
-    const closeMs = coalesceAnalyticsTimeMs(p.closeTime, p.closedAt);
+    const sym = row.sym || src?.ticker || src?.symbol || "UNKNOWN";
+    const closeMs = coalesceAnalyticsTimeMs(
+      src?.closeTime,
+      src?.exitTime,
+      src?.closedAt,
+      row._sortMs
+    );
     const iso = Number.isFinite(closeMs) ? new Date(closeMs).toISOString() : "";
     normalized.push({
       trade_id: Number.isFinite(idNum) ? idNum : undefined,
@@ -10563,8 +10568,8 @@ function buildJournalAnalyticsFromOrderManager(om) {
       pnl,
       date: iso || undefined,
       close_time: iso || undefined,
-      strategy: String(p.strategy || "").trim() || "Other",
-      ...extractPathFieldsFromJournal(p),
+      strategy: j ? inferStrategyLabelFromJournal(j) : String(p?.strategy || "").trim() || "Other",
+      ...extractPathFieldsFromJournal(src || {}),
     });
   }
 
@@ -10595,48 +10600,37 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
     .map(normalizeRemoteJournalListEntry)
     .filter(Boolean);
 
-  const byKey = new Map();
-  for (const e of remNorm) {
-    byKey.set(analyticsEntryKey(e), { ...e });
-  }
-  for (const e of locList) {
-    const k = analyticsEntryKey(e);
-    const prev = byKey.get(k);
-    if (prev) {
-      const pathFrom = extractPathFieldsFromJournal(e);
-      const pathPrev = extractPathFieldsFromJournal(prev);
-      const mergedPath = {};
-      for (const key of [
-        "bar_close_r",
-        "bar_high_r",
-        "bar_low_r",
-        "post_exit_bar_close_r",
-        "post_exit_bar_high_r",
-        "post_exit_bar_low_r",
-        "trail_sl_path",
-      ]) {
-        mergedPath[key] =
-          (Array.isArray(pathFrom[key]) && pathFrom[key].length ? pathFrom[key] : null) ||
-          (Array.isArray(pathPrev[key]) && pathPrev[key].length ? pathPrev[key] : null) ||
-          [];
-      }
-      byKey.set(k, {
-        ...prev,
-        ...e,
-        ...mergedPath,
-        pnl: Number.isFinite(Number(e.pnl)) ? Number(e.pnl) : Number(prev.pnl),
-        symbol: e.symbol || prev.symbol,
-        strategy: e.strategy || prev.strategy,
-        mfe_r: pathFrom.mfe_r ?? pathPrev.mfe_r,
-        mae_r: pathFrom.mae_r ?? pathPrev.mae_r,
-        rMultiple: pathFrom.rMultiple ?? pathPrev.rMultiple,
-      });
-    } else {
-      byKey.set(k, { ...e, ...extractPathFieldsFromJournal(e) });
-    }
+  // Replay-bar journal: session-saved closed trades (`tradeJournal` / `closedPositions`)
+  // are the source of truth. Merging the full remote profile /list inflated Total Trades
+  // (e.g. 159) above History / All Trade (e.g. 83) because DB ids ≠ OM tradeIds.
+  if (locList.length > 0) {
+    const stats = computeJournalStatsFromNormalizedList(locList);
+    const bal = Number(loc.stats?.balance);
+    const eq = Number(loc.stats?.equity);
+    const ini = Number(loc.stats?.initial_balance);
+    if (Number.isFinite(bal)) stats.balance = bal;
+    if (Number.isFinite(eq)) stats.equity = eq;
+    if (Number.isFinite(ini)) stats.initial_balance = ini;
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    reconcileJournalBalanceEquityStats(stats, locList, om);
+    return {
+      stats,
+      symbols: symbolBucketsFromNormalizedList(locList),
+      strategies: strategyBucketsFromNormalizedList(locList),
+      list: locList,
+      source: "session",
+    };
   }
 
-  const mergedList = [...byKey.values()].filter((x) => Number.isFinite(Number(x.pnl)));
+  // No session-saved closed trades yet — show remote journal history if available.
+  const seenFp = new Set();
+  const mergedList = [];
+  for (const e of remNorm) {
+    const fp = analyticsFingerprintKey(e);
+    if (seenFp.has(fp)) continue;
+    seenFp.add(fp);
+    mergedList.push(e);
+  }
   const stats = computeJournalStatsFromNormalizedList(mergedList);
   const bal = Number(loc.stats?.balance);
   const eq = Number(loc.stats?.equity);
@@ -10653,7 +10647,7 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
     symbols: symbolBucketsFromNormalizedList(mergedList),
     strategies: strategyBucketsFromNormalizedList(mergedList),
     list: mergedList,
-    source: remNorm.length ? "merged" : "session",
+    source: remNorm.length ? "remote" : "session",
   };
 }
 
@@ -12385,7 +12379,7 @@ const TalariaV8bLive = () => {
   const [gotoItems, setGotoItems] = useState(() => loadGotoState().pinned);
   const [gotoAddType, setGotoAddType] = useState("datetime");
   const [gotoTab, setGotoTab] = useState("pinned");
-  const [gotoNewDate, setGotoNewDate] = useState("2009-01-09");
+  const [gotoNewDate, setGotoNewDate] = useState("");
   const [gotoNewTime, setGotoNewTime] = useState("07:00");
   const [gotoNewRepeat, setGotoNewRepeat] = useState("none");
   const [gotoNewPrice, setGotoNewPrice] = useState("");
@@ -12399,7 +12393,7 @@ const TalariaV8bLive = () => {
   const [gotoCalViewM, setGotoCalViewM] = useState(0);
   const [gotoCalMode,  setGotoCalMode]  = useState("days"); // "days" | "months" | "years"
   const [gotoCalYearBase, setGotoCalYearBase] = useState(2004); // start of 12-year grid
-  const [gotoDateInput, setGotoDateInput] = useState("09-Jan-2009");
+  const [gotoDateInput, setGotoDateInput] = useState("");
   const [gotoTimeInput, setGotoTimeInput] = useState("07:00");
   const [gotoPresets, setGotoPresets] = useState(() => loadGotoState().presets);
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
@@ -37476,7 +37470,7 @@ const TalariaV8bLive = () => {
                       const accent=tabAccentGoto(id);
                       const cnt=id==="pinned"?gotoItems.filter(x=>x.pinned).length:id==="preset"?gotoPresets.length:null;
                       return(
-                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
+                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const base=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";const d=new Date(base+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
                           style={{flex:1,padding:"9px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                             color:isA?accent:id==="pinned"?c.gold:c.ts,
                             fontSize:14,fontWeight:isA?700:500,
@@ -37603,7 +37597,17 @@ const TalariaV8bLive = () => {
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
                       const buildGotoPayload=(extra)=>{
-                        if(extra.type==="datetime") return {...extra,dateIso:gotoNewDate,repeat:gotoNewRepeat};
+                        if(extra.type==="datetime"||extra.type==="session"){
+                          const time=extra.time||gotoNewTime||"00:00";
+                          const hasDate=!!(gotoNewDate&&String(gotoNewDate).trim());
+                          // Time-only (no date): jump to this clock time on every use
+                          // (next occurrence from playhead), same as session presets.
+                          if(!hasDate){
+                            const repeat=gotoNewRepeat&&gotoNewRepeat!=="none"?gotoNewRepeat:"daily";
+                            return {type:"session",label:extra.label||time,time,repeat};
+                          }
+                          return {type:"datetime",label:extra.label,time,repeat:gotoNewRepeat,dateIso:gotoNewDate};
+                        }
                         if(extra.type==="price"){
                           const decimals=(settings.precision||"0.00000").split(".")[1]?.length||5;
                           const p=parseFloat(gotoNewPrice);
@@ -37623,7 +37627,7 @@ const TalariaV8bLive = () => {
                         setGotoItems(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId(),pinned:true}]);
                         setGotoNewName("");setGotoNewColor("#4A6AFF");
                         closePopup(setGotoOpen,"goto");
-                        executeGotoItem(payload,{fallbackDateIso:gotoNewDate});
+                        executeGotoItem(payload,payload.type==="session"?{}:{fallbackDateIso:gotoNewDate});
                       };
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
@@ -37637,7 +37641,7 @@ const TalariaV8bLive = () => {
                           {crTabs.map(({t,l})=>{
                             const isA=gotoAddType===t;
                             return(
-                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
+                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const base=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";const d=new Date(base+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
                                 style={{flex:1,padding:"8px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                                   color:isA?c.acL:c.ts,fontSize:13,fontWeight:isA?700:500,
                                   transition:"color 0.15s",whiteSpace:"nowrap"}}>
@@ -37675,18 +37679,22 @@ const TalariaV8bLive = () => {
                             const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                             const MONS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
                             const use12=settings.timeFormat==="12h";
+                            const timeOnly=!gotoNewDate;
                             // Format helpers
-                            const fmtDate=()=>{const d=new Date(gotoNewDate+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;};
+                            const fmtDate=()=>{if(!gotoNewDate)return "";const d=new Date(gotoNewDate+"T00:00:00");if(Number.isNaN(d.getTime()))return "";return `${String(d.getDate()).padStart(2,"0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;};
                             const fmtTime=(h,m)=>use12?`${String(h%12||12).padStart(2,"0")}:${String(m).padStart(2,"0")} ${h>=12?"PM":"AM"}`:`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
                             // Parse "DD-Mon-YYYY" → "YYYY-MM-DD", clamping day to valid range
                             const applyDate=(raw)=>{
-                              const m=raw.trim().match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
+                              const trimmed=raw.trim();
+                              if(!trimmed){setGotoNewDate("");return;}
+                              const m=trimmed.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                               if(!m)return;
                               const moIdx=MONS.indexOf(m[2].toLowerCase());
                               if(moIdx<0)return;
                               const yr4=parseInt(m[3]);
                               if(isNaN(yr4)||yr4<100)return; // need at least 3 digits to start reasoning
-                              const safeYr=yr4>=1900&&yr4<=2100?yr4:parseInt(gotoNewDate.split("-")[0]);
+                              const fallbackYr=parseInt((gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09").split("-")[0],10);
+                              const safeYr=yr4>=1900&&yr4<=2100?yr4:fallbackYr;
                               const maxDay=new Date(safeYr,moIdx+1,0).getDate();
                               const dayNum=Math.max(1,Math.min(parseInt(m[1])||1,maxDay));
                               const iso=`${safeYr}-${String(moIdx+1).padStart(2,"0")}-${String(dayNum).padStart(2,"0")}`;
@@ -37712,17 +37720,22 @@ const TalariaV8bLive = () => {
                             const inSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                             const chevSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                             return(<>
-                              {/* Date + Time on one row */}
+                              {/* Date + Time on one row — date optional (empty = time-only jump) */}
                               <div style={{display:"flex",gap:6,marginBottom:10}}>
                                 {/* Date field */}
                                 <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>DATE</div>
+                                  <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>DATE <span style={{fontWeight:500,opacity:0.75}}>(optional)</span></div>
                                   <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${gotoCalOpen?c.acL:c.brH}`,transition:"border-color 0.12s"}}>
-                                    <input value={gotoDateInput}
+                                    <input value={gotoDateInput} placeholder="Any day"
                                       onChange={e=>{setGotoDateInput(e.target.value);applyDate(e.target.value);}}
                                       onBlur={()=>setGotoDateInput(fmtDate())}
                                       onClick={e=>e.stopPropagation()}
                                       style={inSx}/>
+                                    {!!gotoNewDate&&(
+                                      <div onClick={e=>{e.stopPropagation();setGotoNewDate("");setGotoDateInput("");}}
+                                        title="Clear date (time only)"
+                                        style={{padding:"0 6px",cursor:"default",color:c.ts,fontSize:12,lineHeight:1,userSelect:"none"}}>×</div>
+                                    )}
                                     <div onClick={e=>{e.stopPropagation();if(gotoCalOpen){setGotoCalOpen(false);}else{const r=e.currentTarget.parentElement.getBoundingClientRect();const calW=224,calH=220;const rawL=r.left/Z,rawT=r.bottom/Z+6;setGotoCalPos({top:Math.min(rawT,window.innerHeight/Z-calH-8),left:Math.max(8,Math.min(rawL,window.innerWidth/Z-calW-8))});setGotoCalOpen(true);setGotoCalMode("days");setGotoTimeOpen(false);}}} style={chevSx}>
                                       <Chevron open={gotoCalOpen}/>
                                     </div>
@@ -37743,6 +37756,11 @@ const TalariaV8bLive = () => {
                                   </div>
                                 </div>
                               </div>
+                              {timeOnly&&(
+                                <div style={{fontSize:10,color:c.ts,marginBottom:8,lineHeight:1.35}}>
+                                  No date → jump to this time from the playhead (daily).
+                                </div>
+                              )}
                               {/* Repeat */}
                               <div style={{marginBottom:10}}>
                                 <div style={{fontSize:10,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:5}}>REPEAT</div>
@@ -37759,11 +37777,11 @@ const TalariaV8bLive = () => {
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const auto=timeOnly?gotoNewTime:(()=>{const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});return `${d.getDate()} ${mon} ${d.getFullYear()}`;})();doAdd({type:timeOnly?"session":"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const auto=timeOnly?gotoNewTime:(()=>{const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});return `${d.getDate()} ${mon} ${d.getFullYear()}`;})();doAddAndGo({type:timeOnly?"session":"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -37971,7 +37989,8 @@ const TalariaV8bLive = () => {
                 const jAvgLoss = jSt.avg_loss != null && Number(jSt.avg_loss) > 0 ? `-$${Number(jSt.avg_loss).toFixed(0)}` : "—";
                 const jNWins = Number(jSt.winning_trades) || 0;
                 const jNLoss = Number(jSt.losing_trades) || 0;
-                const jNTot = Math.max(1, jNWins + jNLoss);
+                // Denominator matches Total Trades (includes breakevens), not wins+losses only.
+                const jNTot = Math.max(1, Number(jSt.total_trades) || jNWins + jNLoss);
                 const jBw = bestWorstJournalTrades(ja?.list || []);
                 const jSymRows = (ja?.symbols || []).slice(0, 12);
                 const jMaxSymT = Math.max(1, ...jSymRows.map((s) => Number(s.total_trades) || 0));
@@ -41510,8 +41529,9 @@ const TalariaV8bLive = () => {
       })()}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
-        const selDate=new Date(gotoNewDate+"T00:00:00");
-        const selY=selDate.getFullYear(), selMo=selDate.getMonth(), selD=selDate.getDate();
+        const calBase=gotoNewDate||defaultGotoDateIsoFromChart()||"2009-01-09";
+        const selDate=new Date(calBase+"T00:00:00");
+        const selY=selDate.getFullYear(), selMo=selDate.getMonth(), selD=gotoNewDate?selDate.getDate():-1;
         const MON_LONG=["January","February","March","April","May","June","July","August","September","October","November","December"];
         const MON_SHORT=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         const DOW=["Su","Mo","Tu","We","Th","Fr","Sa"];
