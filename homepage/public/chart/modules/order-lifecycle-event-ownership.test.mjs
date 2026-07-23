@@ -8,6 +8,10 @@
  * RED-again (kill-switch):
  *   TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1=1 node --test \
  *     "chart v 1.4/chart/modules/order-lifecycle-event-ownership.test.mjs"
+ *
+ * M19-F RED-again (restore order-present playback slowdown):
+ *   TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1=1 node --test \
+ *     "chart v 1.4/chart/modules/order-lifecycle-event-ownership.test.mjs"
  */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -18,11 +22,16 @@ const OrderManager = require('./order-manager.js');
 global.window = {};
 const ReplaySystem = require('./replay-system.js');
 const KILL_SWITCH = process.env.TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1 === '1';
+const MONEY_PATH_BATCH_KILL = process.env.TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 === '1';
 
 function defaultWindow() {
-    return KILL_SWITCH
+    const out = KILL_SWITCH
         ? { __TALARIA_DISABLE_ORDER_LIFECYCLE_EVENT_OWNERSHIP_V1: true }
         : {};
+    if (MONEY_PATH_BATCH_KILL) {
+        out.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 = true;
+    }
+    return out;
 }
 
 function orderManagerFor(replaySystem) {
@@ -253,7 +262,7 @@ test('placement retains its 1m execution feed before the display master is repla
         'bounded display caches may evict data, but an active order keeps its placement feed');
 });
 
-test('replay substeps at order cadence without batching away lifecycle events', () => {
+test('replay batches paint while retaining every fine order-lifecycle event', () => {
     global.window = defaultWindow();
     const replay = Object.create(ReplaySystem.prototype);
     replay.chart = {
@@ -281,8 +290,15 @@ test('replay substeps at order cadence without batching away lifecycle events', 
     assert.equal(replay._shouldUseTickAnimation(), false,
         'a synthetic daily tick path must not replace the retained chronological 1m feed');
     replay.playbackMode = 'candle';
-    assert.equal(replay.getCandlePlaybackCadence().stepsPerTick, 1,
-        'each 1m event must reach order evaluation; coarse batching would skip fills and TP');
+    for (const speed of [1, 60, 100]) {
+        replay.speed = speed;
+        const cadence = replay.getCandlePlaybackCadence();
+        const coarseCandlesPerSecond = (
+            cadence.stepsPerTick * (1000 / cadence.intervalMs)
+        ) / 1440;
+        assert.ok(Math.abs(coarseCandlesPerSecond - speed) / speed < 0.02,
+            `order path must retain ${speed} selected-TF candle(s)/sec; got ${coarseCandlesPerSecond}`);
+    }
     replay.currentIndex = 0;
     replay.replayTimestamp = replay.fullRawData[0].t;
     replay._advanceReplayPlayheadOneStep();
@@ -290,6 +306,81 @@ test('replay substeps at order cadence without batching away lifecycle events', 
         'one Play step advances the money path by one retained 1m event, not one day');
     assert.equal(replay.currentIndex, 0,
         'the 1D display candle remains forming while the 1m execution clock advances');
+});
+
+function batchedMoneyPathReplay({ stopAtStep = null } = {}) {
+    const t0 = 1_721_563_200_000;
+    const replay = Object.create(ReplaySystem.prototype);
+    const evaluated = [];
+    let paints = 0;
+    replay.chart = {
+        currentTimeframe: '1d',
+        orderManager: {
+            getOrderExecutionCadenceMs: () => 60_000,
+            updatePositions: () => {
+                evaluated.push(replay.replayTimestamp);
+                if (stopAtStep != null
+                    && replay.replayTimestamp === t0 + stopAtStep * 60_000) {
+                    replay.isPlaying = false;
+                }
+            },
+        },
+    };
+    replay.fullRawData = [
+        { t: t0 },
+        { t: t0 + 86_400_000 },
+    ];
+    replay.currentIndex = 0;
+    replay.replayTimestamp = t0;
+    replay.isPlaying = true;
+    replay.isActive = true;
+    replay.speed = 60;
+    replay.playbackMode = 'candle';
+    replay.getPlaybackMode = () => replay.playbackMode;
+    replay.stepTimeframeOverride = null;
+    replay.autoScrollEnabled = true;
+    replay._shouldAutoScrollChartUpdate = () => true;
+    replay.getCandlePlaybackCadence = () => ({
+        intervalMs: 16,
+        stepsPerTick: 4,
+        orderMoneyPath: true,
+    });
+    replay.updateChartData = (_autoScroll, options = {}) => {
+        paints++;
+        if (!options.skipOrderUpdate) replay.chart.orderManager.updatePositions();
+    };
+    return {
+        replay,
+        t0,
+        evaluated,
+        getPaints: () => paints,
+    };
+}
+
+test('batched order playback evaluates every hidden fine step and paints once', () => {
+    global.window = defaultWindow();
+    const run = batchedMoneyPathReplay();
+
+    run.replay._runCandlePlaybackTick();
+
+    assert.deepEqual(run.evaluated, [1, 2, 3, 4].map((step) => run.t0 + step * 60_000),
+        'every retained 1m bar must reach pending/active order evaluation');
+    assert.equal(run.getPaints(), 1,
+        'four money-path evaluations should produce one chart paint, not four');
+});
+
+test('batched order playback stops and paints on the exact lifecycle event', () => {
+    global.window = defaultWindow();
+    const run = batchedMoneyPathReplay({ stopAtStep: 2 });
+
+    run.replay._runCandlePlaybackTick();
+
+    assert.deepEqual(run.evaluated, [run.t0 + 60_000, run.t0 + 120_000],
+        'no fine event after the fill/SL/TP pause may be consumed');
+    assert.equal(run.replay.replayTimestamp, run.t0 + 120_000,
+        'playhead must stop on the exact triggering fine bar');
+    assert.equal(run.getPaints(), 1,
+        'a hidden lifecycle pause must force one final visible paint');
 });
 
 test('updatePositions closes only after canonical replay time advances', () => {

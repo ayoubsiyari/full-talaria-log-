@@ -62,9 +62,12 @@ class ReplaySystem {
         this.realTimeMode = true; // Real-time mode: 1min candle = 60 seconds at 1x speed
         
         // === DETERMINISTIC TICK PATH CACHE ===
-        // Pre-generated tick paths for each candle, keyed by timestamp
-        // This ensures consistent tick animation across all timeframes
+        // Paths are timestamp-seeded, generated on demand, and retained in a
+        // bounded FIFO. An evicted path regenerates byte-identically.
         this.tickPathCache = {};  // { timestamp: [price0, ... priceN-1] } length === ticksPerCandle
+        this._tickPathCacheRef = this.tickPathCache;
+        this._tickPathCacheKeys = [];
+        this._tickPathCacheHead = 0;
         this.tickPathCacheBuilt = false;
         this.stepTimeframeOverride = null; // 'sync' | '1m' | '5m' | ...
         this._prngSeed = 12345; // Seeded PRNG state
@@ -708,6 +711,12 @@ class ReplaySystem {
     /** D-016 V1: candle PLAY uses finest sub-step when host is coarser than a peer. */
     _isFinestTfCandleCadenceFixEnabled() {
         return typeof window === 'undefined' || window.__TALARIA_DISABLE_FINEST_TF_CANDLE_CADENCE_V1 !== true;
+    }
+
+    /** M19-F: batch chart paints without batching away exact order-lifecycle evaluation. */
+    _isOrderMoneyPathBatchEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_ORDER_MONEY_PATH_BATCH_V1 !== true;
     }
 
     /** D-016 MC-STEPFWD: manual step uses finest sub-step (replay-system; Grid snap deferred). */
@@ -2408,9 +2417,8 @@ class ReplaySystem {
         this.replayTimestamp = (startBar && Number.isFinite(startBar.t)) ? startBar.t : this.replayStartTimestamp;
         this.tickElapsedMs = 0;
         
-        // === BUILD DETERMINISTIC TICK PATH CACHE ===
-        // Pre-generate tick paths for all candles using seeded random
-        // This ensures consistent tick animation across all timeframes
+        // Initialize the deterministic on-demand tick-path cache. Pre-generating
+        // every loaded 1m candle made long replay sessions retain unnecessary MB.
         this.buildTickPathCache();
         
         // Apply any pending speed set before replay was entered
@@ -3698,8 +3706,9 @@ class ReplaySystem {
     /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
+     * @param {{skipOrderUpdate?: boolean}} [options] - Internal batched-money-path paint options
      */
-    updateChartData(autoScroll = true) {
+    updateChartData(autoScroll = true, options = {}) {
         if (!this.fullRawData || this.fullRawData.length === 0) {
             console.error('❌ No fullRawData available');
             return;
@@ -3850,7 +3859,9 @@ class ReplaySystem {
         }
         
         // Update order manager positions after each candle
-        if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
+        if (!options.skipOrderUpdate
+            && this.chart.orderManager
+            && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
         }
         
@@ -4448,10 +4459,11 @@ class ReplaySystem {
         const MIN_INTERVAL_MS = 16;
         let intervalMs = Math.max(MIN_INTERVAL_MS, Math.floor(1000 / speed));
         let stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
-        // Pending fills and SL/TP are money-path events. Never batch away fine
-        // source bars merely because the visible chart is coarse (1m order on 1D).
-        if (this.isPlaying && this._getOrderExecutionCadenceMs() != null) {
-            return { intervalMs, stepsPerTick: 1 };
+        const orderMoneyPath = this.isPlaying && this._getOrderExecutionCadenceMs() != null;
+        // Kill-switch restores the safe-but-slow legacy path: one exact fine event
+        // and one chart paint per timer tick whenever an order owns the money path.
+        if (orderMoneyPath && !this._isOrderMoneyPathBatchEnabled()) {
+            return { intervalMs, stepsPerTick: 1, orderMoneyPath };
         }
         if (this.isPlaying
             && this._isFinestTfCandleCadenceFixEnabled()
@@ -4460,7 +4472,15 @@ class ReplaySystem {
             if (sub > 1) {
                 // Prefer shorter wall-clock first; then batch remaining subdivisions.
                 const targetMs = Math.max(MIN_INTERVAL_MS, Math.floor(intervalMs / sub));
-                if (targetMs < intervalMs && stepsPerTick <= 1) {
+                if (orderMoneyPath) {
+                    // Keep the same selected-TF candles/sec as the no-order path.
+                    // Every sub-step is still evaluated below; only paints are coalesced.
+                    intervalMs = targetMs;
+                    stepsPerTick = Math.max(
+                        1,
+                        Math.round((speed * sub * intervalMs) / 1000),
+                    );
+                } else if (targetMs < intervalMs && stepsPerTick <= 1) {
                     intervalMs = targetMs;
                     stepsPerTick = Math.max(1, Math.round((speed * intervalMs) / 1000));
                 } else {
@@ -4468,7 +4488,7 @@ class ReplaySystem {
                 }
             }
         }
-        return { intervalMs, stepsPerTick };
+        return { intervalMs, stepsPerTick, orderMoneyPath };
     }
 
     /**
@@ -4479,15 +4499,41 @@ class ReplaySystem {
         return this.getCandlePlaybackCadence().intervalMs;
     }
 
+    /**
+     * A skipped chart paint must still evaluate its exact retained order bar.
+     * If a fill/SL/TP pauses replay, paint that triggering bar once without
+     * evaluating it twice.
+     */
+    _evaluateOrderMoneyPathForSkippedPaint(shouldAutoScroll, orderMoneyPathActive = false) {
+        if (!orderMoneyPathActive
+            || !this._isOrderMoneyPathBatchEnabled()
+            || !this.isPlaying) return false;
+        const om = this.chart && this.chart.orderManager;
+        if (!om || typeof om.updatePositions !== 'function') return false;
+
+        const wasPlaying = this.isPlaying;
+        om.updatePositions();
+        if (wasPlaying && !this.isPlaying) {
+            this.updateChartData(shouldAutoScroll, { skipOrderUpdate: true });
+            return true;
+        }
+        return false;
+    }
+
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
-        const { stepsPerTick } = this.getCandlePlaybackCadence();
+        const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
         const n = Math.max(1, stepsPerTick | 0);
+        const evaluateSkippedMoneyPath = orderMoneyPath === true
+            && this._isOrderMoneyPathBatchEnabled();
         for (let i = 0; i < n; i++) {
             if (!this.isPlaying || !this.isActive) break;
             if (this._nextCandleTimer) break;
             const skipChartUpdate = i < n - 1;
-            this.simpleStepForward({ skipChartUpdate });
+            this.simpleStepForward({
+                skipChartUpdate,
+                evaluateOrderMoneyPath: evaluateSkippedMoneyPath,
+            });
             // Stop batching if playback ended / waiting on forward edge.
             if (!this.isPlaying || this._nextCandleTimer) break;
         }
@@ -4552,7 +4598,13 @@ class ReplaySystem {
         if (this._timeframeChanging) return;
         const skipChartUpdate = !!(options && options.skipChartUpdate);
         const paint = (shouldAutoScroll) => {
-            if (skipChartUpdate) return;
+            if (skipChartUpdate) {
+                this._evaluateOrderMoneyPathForSkippedPaint(
+                    shouldAutoScroll,
+                    options.evaluateOrderMoneyPath === true,
+                );
+                return;
+            }
             this.updateChartData(shouldAutoScroll);
         };
         if (this._isSubBarStepMode()) {
@@ -5602,28 +5654,91 @@ class ReplaySystem {
         };
     }
     
+    /** M19-G: bound deterministic replay paths unless the diagnostic kill is set. */
+    _isTickPathCacheBoundEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 !== true;
+    }
+
+    _tickPathCacheMaxEntries() {
+        return 512;
+    }
+
+    _resetTickPathCache() {
+        this.tickPathCache = {};
+        this._tickPathCacheRef = this.tickPathCache;
+        this._tickPathCacheKeys = [];
+        this._tickPathCacheHead = 0;
+        this.tickPathCacheBuilt = false;
+    }
+
     /**
-     * Build tick path cache for all candles in fullRawData
-     * This pre-generates deterministic tick paths so they're consistent across timeframes
+     * chart.js and the panel bridge may replace tickPathCache directly. Rebind
+     * the FIFO index whenever that happens so those existing reset contracts
+     * continue to release every retained path.
+     */
+    _ensureTickPathCacheIndex() {
+        if (!this.tickPathCache
+            || typeof this.tickPathCache !== 'object'
+            || Array.isArray(this.tickPathCache)) {
+            this.tickPathCache = {};
+        }
+        if (this._tickPathCacheRef !== this.tickPathCache
+            || !Array.isArray(this._tickPathCacheKeys)) {
+            this._tickPathCacheRef = this.tickPathCache;
+            this._tickPathCacheKeys = Object.keys(this.tickPathCache);
+            this._tickPathCacheHead = 0;
+        }
+        if (!Number.isInteger(this._tickPathCacheHead) || this._tickPathCacheHead < 0) {
+            this._tickPathCacheHead = 0;
+        }
+        return this.tickPathCache;
+    }
+
+    _storeBoundedTickPath(timestamp, path) {
+        const cache = this._ensureTickPathCacheIndex();
+        const key = String(timestamp);
+        if (!Object.prototype.hasOwnProperty.call(cache, key)) {
+            this._tickPathCacheKeys.push(key);
+        }
+        cache[key] = path;
+        const max = this._tickPathCacheMaxEntries();
+        while (this._tickPathCacheKeys.length - this._tickPathCacheHead > max) {
+            const expired = this._tickPathCacheKeys[this._tickPathCacheHead++];
+            if (expired !== key) delete cache[expired];
+        }
+        // Compact occasionally; never shift the whole FIFO on every replay bar.
+        if (this._tickPathCacheHead >= max
+            && this._tickPathCacheHead * 2 >= this._tickPathCacheKeys.length) {
+            this._tickPathCacheKeys = this._tickPathCacheKeys.slice(this._tickPathCacheHead);
+            this._tickPathCacheHead = 0;
+        }
+        return path;
+    }
+
+    /**
+     * Initialize deterministic tick paths.
+     *
+     * M19-G ON is lazy and bounded. The kill-switch reconstructs the prior
+     * eager, all-history cache for diagnosis:
+     *   window.__TALARIA_DISABLE_M19_TICK_PATH_BOUND_V1 = true
      */
     buildTickPathCache() {
         if (!this.fullRawData || this.fullRawData.length === 0) {
             console.warn('⚠️ Cannot build tick path cache - no raw data');
             return;
         }
-        
-        const startTime = performance.now();
-        
-        this.tickPathCache = {};
-        
+
+        this._resetTickPathCache();
+        if (this._isTickPathCacheBoundEnabled()) return;
+
         const n = this.ticksPerCandle || 72;
         for (const candle of this.fullRawData) {
             const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
             this.tickPathCache[candle.t] = path;
         }
-        
+
         this.tickPathCacheBuilt = true;
-        const elapsed = performance.now() - startTime;
     }
     
     /**
@@ -5635,11 +5750,18 @@ class ReplaySystem {
         if (!candle || !candle.t) return null;
 
         const n = this.ticksPerCandle || 72;
-        const cached = this.tickPathCache[candle.t];
+        const cache = this._isTickPathCacheBoundEnabled()
+            ? this._ensureTickPathCacheIndex()
+            : (this.tickPathCache || (this.tickPathCache = {}));
+        const cached = cache[candle.t];
         if (cached && cached.length === n) return cached;
 
         const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
-        this.tickPathCache[candle.t] = path;
+        if (this._isTickPathCacheBoundEnabled()) {
+            this._storeBoundedTickPath(candle.t, path);
+        } else {
+            cache[candle.t] = path;
+        }
         return path;
     }
     

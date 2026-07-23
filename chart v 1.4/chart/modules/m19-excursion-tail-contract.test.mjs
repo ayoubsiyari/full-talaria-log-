@@ -138,7 +138,18 @@ test('kill-switch / enabled polarity', () => {
 
 test('ON: arrays bound; MFE/MAE scalars match full-history max', { skip: ENV_KILL }, () => {
   const om = seedOm(false);
+  const originalMaxNumericArray = om._m19MaxNumericArray;
+  let maxArrayScans = 0;
+  om._m19MaxNumericArray = function (...args) {
+    maxArrayScans += 1;
+    return originalMaxNumericArray.apply(this, args);
+  };
   const pos = makePos();
+  const initialArrays = {
+    close: pos.bar_close_r,
+    high: pos.bar_high_r,
+    low: pos.bar_low_r,
+  };
   const mfeBar = 10;
   const maeBar = 20;
   const n = 600;
@@ -157,6 +168,14 @@ test('ON: arrays bound; MFE/MAE scalars match full-history max', { skip: ENV_KIL
   assert.equal(pos.bar_r_legacy_pending, 0);
   // Memory bounded: archive + live == 2×cap after boundary exhausted.
   assert.equal(pos.bar_close_r_archive.length + pos.bar_close_r.length, cap * 2);
+  assert.strictEqual(pos.bar_close_r, initialArrays.close,
+    'bounded replay must trim close samples in place instead of allocating every bar');
+  assert.strictEqual(pos.bar_high_r, initialArrays.high,
+    'bounded replay must trim high samples in place instead of allocating every bar');
+  assert.strictEqual(pos.bar_low_r, initialArrays.low,
+    'bounded replay must trim low samples in place instead of allocating every bar');
+  assert.equal(maxArrayScans, 4,
+    'long replay must scan retained arrays only once to bootstrap legacy peaks');
 
   const finalized = om._finalizeExcursionScalars({}, pos);
   const ref = makePos();

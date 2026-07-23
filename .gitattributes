@@ -2,3 +2,7 @@
 **/chart/modules/drawing-tools-extended.js text eol=lf
 **/chart/modules/drawing-tools-lines.js text eol=lf
 **/chart/modules/replay-system.js text eol=lf whitespace=blank-at-eol,blank-at-eof,space-before-tab
+**/chart/dist-v9/index.html text eol=lf
+**/chart/legacy-index.html text eol=lf
+**/chart/multichart-prod/chart-embed.html text eol=lf
+**/talaria-design/live/index.html text eol=lf

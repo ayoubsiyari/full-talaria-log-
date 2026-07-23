@@ -4311,7 +4311,15 @@ class OrderManager {
      * they roll off (no dups). After pending hits 0: archive growth stops and
      * further drops update peaks only — live tail rolls at 256.
      */
-    _m19ArchiveAndBoundExcursionSeries(position, keys, peakHighKey, peakLowKey, max, pendingKey) {
+    _m19ArchiveAndBoundExcursionSeries(
+        position,
+        keys,
+        peakHighKey,
+        peakLowKey,
+        max,
+        pendingKey,
+        bootstrapPeaks = false,
+    ) {
         if (!position || !Number.isFinite(max) || max < 1) return;
         const primary = position[keys[0]];
         if (!Array.isArray(primary) || primary.length <= max) return;
@@ -4372,13 +4380,31 @@ class OrderManager {
         for (let k = 0; k < keys.length; k++) {
             const arr = position[keys[k]];
             if (Array.isArray(arr) && arr.length > max) {
-                position[keys[k]] = arr.slice(arr.length - max);
+                // M19-G: retain the array object and trim in place. Replacing
+                // three 256-value arrays on every fine order bar kept retained
+                // size bounded but created severe allocation/GC pressure.
+                const removeCount = arr.length - max;
+                if (removeCount === 1) {
+                    // Steady-state replay drops one sample. Native shift is far
+                    // cheaper than copying the full 256-value tail every minute.
+                    arr.shift();
+                } else {
+                    // One-time legacy activation may discard a large prefix;
+                    // avoid allocating that prefix as splice() would.
+                    arr.copyWithin(0, removeCount);
+                    arr.length = max;
+                }
             }
         }
-        this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[`${keys[1]}_archive`]));
-        this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[keys[1]]));
-        this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[`${keys[2]}_archive`]));
-        this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[keys[2]]));
+        // Fresh/legacy activation must seed peaks from all pre-existing samples.
+        // After that, _appendExcursionSnapshot updates running peaks per event;
+        // rescanning four 256-value arrays every minute is redundant hot work.
+        if (firstActivation || bootstrapPeaks) {
+            this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[`${keys[1]}_archive`]));
+            this._m19BumpPeak(position, peakHighKey, this._m19MaxNumericArray(position[keys[1]]));
+            this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[`${keys[2]}_archive`]));
+            this._m19BumpPeak(position, peakLowKey, this._m19MaxNumericArray(position[keys[2]]));
+        }
     }
 
     _appendExcursionSnapshot(position, candle, isPostExit = false) {
@@ -4403,6 +4429,8 @@ class OrderManager {
 
         // M19-B: archive+bound tails + running peaks/counts (kill-switch = no-op).
         if (!this._m19ExcursionTailV1Enabled()) return;
+        const bootstrapBarPeaks = !Number.isFinite(Number.parseFloat(position.bar_high_r_peak))
+            || !Number.isFinite(Number.parseFloat(position.bar_low_r_peak));
         if (Number.isFinite(Number(position.bar_r_count))) {
             position.bar_r_count = Number(position.bar_r_count) + 1;
         } else {
@@ -4420,8 +4448,12 @@ class OrderManager {
             'bar_low_r_peak',
             this._m19ExcursionTailMaxV1(),
             'bar_r_legacy_pending',
+            bootstrapBarPeaks,
         );
         if (isPostExit) {
+            const bootstrapPostExitPeaks =
+                !Number.isFinite(Number.parseFloat(position.post_exit_bar_high_r_peak))
+                || !Number.isFinite(Number.parseFloat(position.post_exit_bar_low_r_peak));
             if (Number.isFinite(Number(position.post_exit_bar_r_count))) {
                 position.post_exit_bar_r_count = Number(position.post_exit_bar_r_count) + 1;
             } else {
@@ -4438,6 +4470,7 @@ class OrderManager {
                 'post_exit_bar_low_r_peak',
                 this._m19ExcursionTailMaxV1(),
                 'post_exit_bar_r_legacy_pending',
+                bootstrapPostExitPeaks,
             );
         }
     }
@@ -30581,7 +30614,7 @@ class OrderManager {
                 
                 // Check for multiple TP hits (skip for the rest of the bar after AUTO_BE moved SL)
                 if (position.tpTargets && position.tpTargets.length > 0 && !this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
-                    console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
+                    _m19HotpathLog(() => `   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
                     // BUY: sort ascending (lowest price = closest to entry) so partial TPs fire closest-first
                     const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
                     _buyTpSorted.forEach((target, index) => {
@@ -30589,10 +30622,10 @@ class OrderManager {
                         const _slBuyTp = Number(position.stopLoss);
                         const _tpBuyRung = Number(target.price);
                         if (Number.isFinite(_slBuyTp) && Number.isFinite(_tpBuyRung) && _tpBuyRung > 0 && _tpBuyRung <= _slBuyTp) {
-                            console.log(`      skip TP rung ${_tpBuyRung.toFixed(5)} — stop ${_slBuyTp.toFixed(5)} already trailed past it`);
+                            _m19HotpathLog(() => `      skip TP rung ${_tpBuyRung.toFixed(5)} — stop ${_slBuyTp.toFixed(5)} already trailed past it`);
                             return;
                         }
-                        console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
+                        _m19HotpathLog(() => `      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
                         const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let tpTgtHit;
                         if (tpTgtGuarded) {
@@ -30894,7 +30927,7 @@ class OrderManager {
                 
                 // Check for multiple TP hits (skip SL/TP for the whole bar after AUTO_BE — survives tick replay)
                 if (position.tpTargets && position.tpTargets.length > 0 && !this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
-                    console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
+                    _m19HotpathLog(() => `   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
                     // SELL: sort descending (highest price = closest to entry) so partial TPs fire closest-first
                     const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
                     _sellTpSorted.forEach((target, index) => {
@@ -30902,10 +30935,10 @@ class OrderManager {
                         const _slSellTp = Number(position.stopLoss);
                         const _tpSellRung = Number(target.price);
                         if (Number.isFinite(_slSellTp) && Number.isFinite(_tpSellRung) && _tpSellRung > 0 && _tpSellRung >= _slSellTp) {
-                            console.log(`      skip TP rung ${_tpSellRung.toFixed(5)} — stop ${_slSellTp.toFixed(5)} already trailed past it`);
+                            _m19HotpathLog(() => `      skip TP rung ${_tpSellRung.toFixed(5)} — stop ${_slSellTp.toFixed(5)} already trailed past it`);
                             return;
                         }
-                        console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
+                        _m19HotpathLog(() => `      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
                         const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let sellTpTgtHit;
                         if (sellTpTgtGuarded) {
