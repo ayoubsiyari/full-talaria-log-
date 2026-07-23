@@ -36214,7 +36214,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4, overflowX: "auto", overflowY: "hidden", WebkitOverflowScrolling: "touch", touchAction: "pan-x", scrollbarWidth: "none", msOverflowStyle: "none" }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -36256,7 +36256,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" data-indicators-btn="1" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{if(indSettOpenRef.current) closeIndSett(); closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
-          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
+          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
           {hov==="indicators" && !indOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -36437,10 +36437,10 @@ const TalariaV8bLive = () => {
               );
             })()}
           </div>
-          <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
+          <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative", flexShrink: 0 }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
               <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); selectTimeframeWithCb01Signature(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
-                style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
+                style={{ padding: "4px 7px", position: "relative", flexShrink: 0, background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
               </button>
@@ -36532,12 +36532,13 @@ const TalariaV8bLive = () => {
             <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }} />
           )}
         </button>
-        <div style={{ flex: 1 }}/>
+        {/* Fixed gap (not flex:1) so the top bar can scroll horizontally on narrow devices. */}
+        <div style={{ width: 16, minWidth: 16, flex: "0 0 16px" }} aria-hidden="true"/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}
           onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
           onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
+          style={{ width:26, height:26, flexShrink: 0, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
           <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
           {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none", animation:"tlrSupportBadgePop 0.35s ease" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
@@ -36548,7 +36549,7 @@ const TalariaV8bLive = () => {
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
           style={{
-            height: 28, padding: "0 14px", marginRight: 6,
+            height: 28, padding: "0 14px", marginRight: 6, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", gap: 5,
             background: hov==="place-order_dn" ? `linear-gradient(135deg,${c.ac},#1F35D4)` : hov==="place-order" ? `linear-gradient(135deg,${c.acL},#6B8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
             border: `1px solid ${orderPanelOpen && !rightPanel ? "rgba(74,106,255,0.8)" : hov==="place-order" ? "rgba(74,106,255,0.75)" : "rgba(74,106,255,0.5)"}`,
@@ -36574,7 +36575,7 @@ const TalariaV8bLive = () => {
               if(id==="expand"){ e.stopPropagation(); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-            style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
+            style={{ width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
             {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return <>

@@ -84,6 +84,25 @@ body {
     box-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
+/* V9 live top chrome: swipe/slide horizontally on phones & narrow tablets. */
+[data-v9-topbar="1"] {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+[data-v9-topbar="1"]::-webkit-scrollbar {
+    display: none;
+    height: 0;
+    width: 0;
+}
+[data-v9-topbar="1"] > * {
+    flex-shrink: 0;
+}
+
 .toolbar-support-link {
     color: var(--v9-tm) !important;
     font-size: 10px !important;
