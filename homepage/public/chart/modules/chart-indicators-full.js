@@ -4097,6 +4097,17 @@
         });
     }
 
+    function calculateTalariaSimpleSmcIndicator(data, indicator, chartRef) {
+        var mod = global.TalariaSimpleSmcIndicator;
+        if (!mod || typeof mod.calculate !== 'function') {
+            return { bands: [], lines: [], boxes: [], markers: [], labels: [], lite: false };
+        }
+        var replay = chartRef && chartRef.replaySystem;
+        var replayPlaying = !!(replay && replay.isActive
+            && (replay.isPlaying || (chartRef && chartRef._multichartPassivePlayActive)));
+        return mod.calculate(data, indicator.params, { replayPlaying: replayPlaying });
+    }
+
     /**
      * Premium/discount vs previous completed session window (UTC), e.g. NY 13:00–21:00.
      * Looks back up to maxLookbackDays for the last day that had bars in that session (weekends).
@@ -6681,6 +6692,15 @@
                 this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
                 break;
 
+            case 'talariasmc':
+                indicator.overlay = true;
+                indicator.isTalariaSimpleSmc = true;
+                indicator.name = 'Talaria — Simple SMC';
+                indicator.params = indicator.params || {};
+                _applyIndicatorDefParams(indicator, 'talariasmc', params);
+                this.indicators.data[indicator.id] = calculateTalariaSimpleSmcIndicator(this.data, indicator, this);
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -7265,7 +7285,8 @@
         // Without this, Apply Changes recalculates against stale add-time defaults.
         if (indicator.type === 'talariafvg'
             || indicator.type === 'talariaratiogap'
-            || indicator.type === 'talariaweeklymap') {
+            || indicator.type === 'talariaweeklymap'
+            || indicator.type === 'talariasmc') {
             _applyIndicatorDefParams(indicator, indicator.type, newParams);
         }
 
@@ -7946,6 +7967,10 @@
                 indicator.name = 'Talaria — Weekly Map';
                 this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
                 break;
+            case 'talariasmc':
+                indicator.name = 'Talaria — Simple SMC';
+                this.indicators.data[indicator.id] = calculateTalariaSimpleSmcIndicator(this.data, indicator, this);
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -8110,7 +8135,7 @@
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-                'talariafvg', 'talariaratiogap', 'talariaweeklymap'
+                'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'
             ];
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
@@ -8138,7 +8163,7 @@
         }
 
         // Run sync fallback for skipped indicators immediately
-        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap'];
+        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'];
         var needsSyncOnly = chart.indicators.active.some(function(ind) {
             return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
         });
@@ -8409,7 +8434,7 @@
     var SESSION_REPLAY_HEAVY_TYPES = [
         'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
         'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'ictliquidity',
-        'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap',
+        'icteverything', 'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc',
         'seasonality', 'cotnet', 'supertrend', 'adr'
     ];
 
@@ -8736,7 +8761,7 @@
         var syncOnlyTypes = [
             'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
             'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-            'talariafvg', 'talariaratiogap', 'talariaweeklymap'
+            'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'
         ];
         var needsSyncOnly = chart.indicators.active.some(function(ind) {
             return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
@@ -8755,7 +8780,7 @@
                 'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-                'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'volume', 'custom'
+                'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc', 'volume', 'custom'
             ];
             const indType = String(ind.type || '').toLowerCase();
             if (workerSkip.indexOf(indType) >= 0) return;
@@ -9162,6 +9187,9 @@
                     break;
                 case 'talariaweeklymap':
                     this.indicators.data[indicator.id] = calculateTalariaWeeklyMapIndicator(this.data, indicator, this);
+                    break;
+                case 'talariasmc':
+                    this.indicators.data[indicator.id] = calculateTalariaSimpleSmcIndicator(this.data, indicator, this);
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -9637,6 +9665,10 @@
                     this.drawTalariaWeeklyMap(data, indicator.style, startIndex, endIndex);
                 } else if (typeof this.drawTalariaRatioGap === 'function') {
                     this.drawTalariaRatioGap(data, indicator.style, startIndex, endIndex);
+                }
+            } else if (indicator.type === 'talariasmc' || indicator.isTalariaSimpleSmc) {
+                if (typeof this.drawTalariaSimpleSmc === 'function') {
+                    this.drawTalariaSimpleSmc(data, indicator.style, startIndex, endIndex);
                 }
             } else if (indicator.type === 'adr' || indicator.isADR) {
                 this.drawADRBands(data, indicator.style, startIndex, endIndex);

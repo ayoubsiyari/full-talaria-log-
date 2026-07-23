@@ -30681,6 +30681,16 @@ class Chart {
                         }
                     }
                 } catch (_liveMark) { /* cross-origin / missing parent */ }
+                // Host (and any non-embed path): never trust a stamped mark alone.
+                // Manual step / paused replay skips multichart broadcast, so the stamp
+                // can freeze at an old price (price line stuck at the bottom).
+                if (typeof rs._resolveCanonicalReplayMark === 'function') {
+                    const live = rs._resolveCanonicalReplayMark();
+                    if (Number.isFinite(live)) {
+                        this._mcCanonicalReplayMark = live;
+                        return live;
+                    }
+                }
                 if (Number.isFinite(Number(this._mcCanonicalReplayMark))) {
                     return Number(this._mcCanonicalReplayMark);
                 }
@@ -30694,14 +30704,16 @@ class Chart {
                 return Number.isFinite(price) ? price : null;
             }
 
-            // Trust the painted last bar (includes walk-forward trim + tick patch on chart.data).
-            // Do not override with fullRawData[currentIndex] — that causes the price-line gap.
-            if (Number.isFinite(price)) return price;
-
+            // Prefer live animated / playhead mark before painted last close so the
+            // price line tracks Manual Forward Tick / pause instead of a stale bar close.
             if (typeof rs.getCurrentAnimatedPrice === 'function') {
                 const ap = rs.getCurrentAnimatedPrice();
                 if (Number.isFinite(ap)) return ap;
             }
+
+            // Trust the painted last bar (includes walk-forward trim + tick patch on chart.data).
+            // Do not override with fullRawData[currentIndex] — that causes the price-line gap.
+            if (Number.isFinite(price)) return price;
             const rb = rs.fullRawData && typeof rs.currentIndex === 'number'
                 ? rs.fullRawData[rs.currentIndex]
                 : null;

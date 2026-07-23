@@ -969,7 +969,16 @@ class OrderManager {
             else if (slStore > 0) this.previewLines.sl.price = slStore;
         }
 
-        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        // Single-TP provisional only — multi-TP drag also uses lineKind 'tp' with
+        // tpTargetIndex set; applying that price here would yank the wrong line.
+        const stTp = this._orderProvisionalEdit;
+        const provTpIsSingle = !(
+            stTp?.phase === 'preview'
+            && stTp.lineKind === 'tp'
+            && stTp.tpTargetIndex != null
+            && Number.isFinite(Number(stTp.tpTargetIndex))
+        );
+        const provTp = provTpIsSingle ? this._oiResolveProvisionalPreviewPrice('tp') : null;
         const tpStore = parseFloat(document.getElementById('tpPrice')?.value || 0);
         if (this.previewLines.tp) {
             if (provTp != null) this.previewLines.tp.price = provTp;
@@ -977,9 +986,47 @@ class OrderManager {
         }
 
         if (this.previewLines.multipleTPs && this.tpTargets?.length) {
+            // Apply-on-release multi-TP drag stores the live price in provisional
+            // edit only — tpTargets stay at the pre-drag value until mouseup.
+            // Viewport/replay refresh must not snap the dragged rung back to store
+            // (that fights the drag handler → jump between origin and cursor).
+            const stMulti = this._orderProvisionalEdit;
+            const dragTpIdx = (
+                _orderSltpApplyOnReleaseFixEnabled()
+                && stMulti?.phase === 'preview'
+                && stMulti.lineKind === 'tp'
+                && stMulti.tpTargetIndex != null
+                && Number.isFinite(Number(stMulti.tpTargetIndex))
+            ) ? Number(stMulti.tpTargetIndex) : NaN;
+            const provMultiTp = Number.isFinite(dragTpIdx)
+                ? this._oiResolveProvisionalPreviewPrice('tp')
+                : null;
+            const dragLine = this._oiProvisionalDragCtx?.lineData || null;
             this.previewLines.multipleTPs.forEach((tpLine, idx) => {
-                const tgt = this.tpTargets[idx];
-                if (!tpLine || !tgt) return;
+                if (!tpLine) return;
+                const targetIdx = Number.isFinite(Number(tpLine.targetIndex))
+                    ? Number(tpLine.targetIndex)
+                    : idx;
+                if (
+                    Number.isFinite(dragTpIdx)
+                    && targetIdx === dragTpIdx
+                    && provMultiTp != null
+                    && provMultiTp > 0
+                ) {
+                    tpLine.price = provMultiTp;
+                    return;
+                }
+                if (
+                    this.isDraggingPreviewLine
+                    && dragLine
+                    && (tpLine === dragLine || targetIdx === dragTpIdx)
+                    && Number.isFinite(Number(tpLine.price))
+                    && Number(tpLine.price) > 0
+                ) {
+                    return;
+                }
+                const tgt = this.tpTargets[targetIdx] || this.tpTargets[idx];
+                if (!tgt) return;
                 const p = Number(tgt.price);
                 if (p > 0) tpLine.price = p;
             });
@@ -1066,10 +1113,15 @@ class OrderManager {
         const lv = Number(level);
         if (!Number.isFinite(lv)) return false;
 
-        const tickProg = Number(rs.tickProgress) || 0;
+        // pause() zeroes tickProgress but keeps real progress in _savedTickState.
+        const saved = rs._savedTickState;
+        let tickProg = Number(rs.tickProgress) || 0;
+        if (tickProg <= 0 && saved && Number.isFinite(Number(saved.tickProgress))) {
+            tickProg = Number(saved.tickProgress);
+        }
         if (guardTick >= 0 && tickProg <= guardTick) return false;
 
-        const anim = rs.animatingCandle;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (!anim) return false;
 
         const tc = anim.target || anim;
@@ -2895,15 +2947,22 @@ class OrderManager {
      */
     _currentOrderLifecycleEventKey(candle) {
         if (!_orderLifecycleEventOwnershipV1Enabled()) return null;
-        if (candle && typeof candle._orderLifecycleEventKey === 'string') {
-            return candle._orderLifecycleEventKey;
-        }
         const rs = this.replaySystem || this._playbackReplaySystem();
-        if (!rs || !rs.isActive) return null;
+        if (!rs || !rs.isActive) {
+            if (candle && typeof candle._orderLifecycleEventKey === 'string') {
+                return candle._orderLifecycleEventKey;
+            }
+            const candleT = Number(candle?.t);
+            return Number.isFinite(candleT) ? `replay:${candleT}` : null;
+        }
 
         const mode = typeof rs.getPlaybackMode === 'function'
             ? rs.getPlaybackMode()
             : (rs.playbackMode || 'tick');
+        // Tick identity must win over `_orderLifecycleEventKey` stamped on the fine
+        // execution bar (`replay:<barT>`). That stamp is bar-stable, so claiming it
+        // first made every later tick on the piercing candle a no-op and deferred
+        // SL/TP until the next bar (Manual Forward Tick / tick playback).
         const saved = rs._savedTickState;
         const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (mode === 'tick' && anim && Number.isFinite(Number(anim.t))) {
@@ -2912,6 +2971,10 @@ class OrderManager {
                 tick = Number(saved.tickProgress);
             }
             return `tick:${Number(anim.t)}:${Number.isFinite(tick) ? tick : 0}`;
+        }
+
+        if (candle && typeof candle._orderLifecycleEventKey === 'string') {
+            return candle._orderLifecycleEventKey;
         }
 
         const replayTs = Number(rs.replayTimestamp);
@@ -3018,9 +3081,56 @@ class OrderManager {
             return Number.isFinite(l) && l <= lv;
         }
 
-        if (!rs.animatingCandle) return false;
-        if (guardTick >= 0 && (Number(rs.tickProgress) || 0) <= guardTick) return false;
-        return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
+        let tickProg = Number(rs.tickProgress) || 0;
+        if (tickProg <= 0 && saved && Number.isFinite(Number(saved.tickProgress))) {
+            tickProg = Number(saved.tickProgress);
+        }
+
+        if (anim) {
+            const prevAnim = rs.animatingCandle;
+            const prevProg = rs.tickProgress;
+            rs.animatingCandle = anim;
+            rs.tickProgress = tickProg;
+            try {
+                if (guardTick >= 0 && tickProg <= guardTick) return false;
+                return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+            } finally {
+                rs.animatingCandle = prevAnim;
+                rs.tickProgress = prevProg;
+            }
+        }
+
+        // Manual step / completed bar: anim cleared but same-bar guard still active.
+        // Only synthesize when we know the placement tick (guardTick >= 0) so we do
+        // not treat pre-entry wicks as post-guard touches (guardTick === -1).
+        if (!(guardTick >= 0) || !candle) return false;
+        const synth = {
+            t: candle.t,
+            open: Number.parseFloat(candle.o ?? candle.open),
+            high: Number.parseFloat(candle.h ?? candle.high),
+            low: Number.parseFloat(candle.l ?? candle.low),
+            close: Number.parseFloat(candle.c ?? candle.close),
+            target: candle,
+        };
+        let path = null;
+        if (typeof rs.getTickPath === 'function') {
+            try { path = rs.getTickPath(candle); } catch (_e) { path = null; }
+        }
+        if (path && path.length) synth.cachedPath = path;
+        const endProg = (path && path.length) ? path.length : (guardTick + 1);
+        const prevAnim2 = rs.animatingCandle;
+        const prevProg2 = rs.tickProgress;
+        rs.animatingCandle = synth;
+        rs.tickProgress = endProg;
+        try {
+            if (guardTick >= 0 && endProg <= guardTick) return false;
+            return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+        } finally {
+            rs.animatingCandle = prevAnim2;
+            rs.tickProgress = prevProg2;
+        }
     }
 
     /**
@@ -14089,7 +14199,10 @@ class OrderManager {
         
         if (label === 'Entry') {
             const quantity = document.getElementById('orderQuantity')?.value || '0';
-            const orderTypeRaw = this.orderType || 'market';
+            // Label from entry vs live price — never show MARKET when entry left the line.
+            const orderTypeRaw = (typeof this._resolveEffectiveDraftOrderType === 'function')
+                ? this._resolveEffectiveDraftOrderType(price, { fallback: this.orderType || 'market' })
+                : (this.orderType || 'market');
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
             const arrow = direction === 'BUY' ? '↑' : direction === 'SELL' ? '↓' : '↕';
 
@@ -16123,9 +16236,11 @@ class OrderManager {
                 });
                 btn.classList.add('active');
                 
-                // Show entry price warning for market orders
+                // Market tab: snap entry to the live price line. If something
+                // keeps entry off-market, auto-detect will leave Market.
                 if (this.orderType === 'market') {
                     this.updateOrderPanelPrice();
+                    this._autoDetectOrderTypeFromEntry({ skipPreviewUpdate: true });
                 }
                 
                 // Update preview lines when order type changes
@@ -18893,11 +19008,38 @@ class OrderManager {
     }
 
     /**
-     * Auto-detect order type (market / limit / stop) based on the entry price
-     * relative to the current market price. Called when the user edits the
-     * entry price input manually.
+     * Market only when entry is on the live price line (within 1 tick).
+     * Above/below → stop/limit by side. Used for labels, tabs, and place.
      */
-    _autoDetectOrderTypeFromEntry() {
+    _resolveEffectiveDraftOrderType(entryPrice, opts = {}) {
+        const entry = Number(entryPrice);
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = Number(
+            opts.currentPrice
+            ?? currentCandle?.c
+            ?? currentCandle?.close
+            ?? 0
+        );
+        const tickSize = (this.chart && typeof this.chart.getTickSize === 'function')
+            ? Number(this.chart.getTickSize())
+            : NaN;
+        const pipSize = Number.isFinite(tickSize) && tickSize > 0
+            ? tickSize
+            : (this.pipSize || this._getBreakevenUnitSize() || 0.0001);
+        return _classifyOrderTypeForPrice(this.orderSide, entry, currentPrice, {
+            tickSize: pipSize,
+            pipSize,
+            fallback: opts.fallback || this.orderType || 'limit',
+        });
+    }
+
+    /**
+     * Auto-detect order type (market / limit / stop) based on the entry price
+     * relative to the current market price. Market requires entry ≈ live line;
+     * any offset becomes Limit/Stop.
+     * @param {{ skipPreviewUpdate?: boolean }} [opts]
+     */
+    _autoDetectOrderTypeFromEntry(opts = {}) {
         const entryInput = document.getElementById('orderEntryPrice');
         if (!entryInput) return;
         const entryPrice = parseFloat(entryInput.value || '0');
@@ -18907,17 +19049,7 @@ class OrderManager {
         const currentPrice = currentCandle?.c || currentCandle?.close || 0;
         if (!currentPrice || currentPrice <= 0) return;
 
-        const pip = this._getBreakevenUnitSize();
-        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 0.5, Math.abs(currentPrice) * 1e-10);
-
-        let newType;
-        if (atMarket) {
-            newType = 'market';
-        } else if (this.orderSide === 'BUY') {
-            newType = entryPrice > currentPrice ? 'stop' : 'limit';
-        } else {
-            newType = entryPrice < currentPrice ? 'stop' : 'limit';
-        }
+        const newType = this._resolveEffectiveDraftOrderType(entryPrice, { currentPrice });
 
         if (this.orderType !== newType) {
             this.orderType = newType;
@@ -18925,7 +19057,8 @@ class OrderManager {
                 btn.classList.toggle('active', btn.dataset.type === newType);
             });
             this.updatePlaceButtonText();
-            this.updatePreviewLines();
+            // Avoid recursion when called from updatePreviewLines itself.
+            if (!opts.skipPreviewUpdate) this.updatePreviewLines();
             this._dispatchRrOrderPrefilledEvent();
         }
     }
@@ -19734,6 +19867,12 @@ class OrderManager {
             console.log(`⏸️ Skipping updatePreviewLines() - currently dragging`);
             return;
         }
+
+        // Keep Market/Limit/Stop aligned with entry vs the live price line BEFORE paint,
+        // so a drifted entry never keeps a stale "MARKET ORDER" badge/tab.
+        try {
+            this._autoDetectOrderTypeFromEntry({ skipPreviewUpdate: true });
+        } catch (_) { /* ignore */ }
         
         // Tear down local SVG before redraw. Do NOT fan-out multichart-clear-preview —
         // this runs on every SL/TP/entry tick; broadcasting would clear peer panels and
@@ -19808,13 +19947,16 @@ class OrderManager {
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
         
         // Draw entry price preview line (dashed blue/red) - now draggable!
-        const mainLegOrderType = this.orderType || 'market';
+        // Color/label type from entry vs live price (not a stale Market tab).
+        const mainLegOrderType = this._resolveEffectiveDraftOrderType(entryPrice, {
+            fallback: this.orderType || 'market',
+        });
         const entryColor = _resolvePreviewEntryColor(this.orderSide, mainLegOrderType);
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
             // Multi-entry mode: main entry is #1, same style as other levels
-            mainEntryLabel = `Entry#1:${this.orderType || 'market'}`;
+            mainEntryLabel = `Entry#1:${mainLegOrderType}`;
         } else if (this.splitEntriesEnabled) {
             mainEntryLabel = `Entry (${mainEntryPercent}%)`;
         }
@@ -26565,13 +26707,17 @@ class OrderManager {
 
                 const effectiveOrderType = (() => {
                     // Panel "Market" must only fill the MAIN leg at spot; every other ladder price
-                    // stays a pending limit/stop (by side) even if it is within a pip of current
-                    // price — otherwise a near-spot STOP/LIMIT leg gets silently turned into a
-                    // market fill, collapsing the ladder onto the market price.
+                    // stays a pending limit/stop (by side). Main leg is Market only when its
+                    // price still matches the live line — never force Market for an off-price entry.
                     const pip = pipSz || this.pipSize || 0.0001;
                     const isMainLeg = _mainLegPrice != null && Number.isFinite(level.price)
                         && Math.abs(level.price - _mainLegPrice) <= Math.max(pip * 0.25, Math.abs(_mainLegPrice) * 1e-10);
-                    if (this.orderType === 'market' && isMainLeg) return 'market';
+                    if (this.orderType === 'market' && isMainLeg) {
+                        return this._resolveEffectiveDraftOrderType(level.price, {
+                            currentPrice,
+                            fallback: 'limit',
+                        });
+                    }
                     if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
                     return level.price < currentPrice ? 'stop' : 'limit';
                 })();

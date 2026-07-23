@@ -165,3 +165,33 @@ test('paused mid-candle tick snapshot uses _savedTickState progress', () => {
 
     assert.deepEqual(manager._getCurrentTickSnapshot(), { t: 1_721_600_000_000, tick: 27 });
 });
+
+test('guarded BUY TP fires on piercing bar when anim was cleared', () => {
+    global.window = {};
+    const t0 = 1_721_600_000_000;
+    const candle = { t: t0, o: 1.086, h: 1.091, l: 1.084, c: 1.088 };
+    const path = new Array(72).fill(1.086);
+    for (let i = 0; i <= 10; i++) path[i] = 1.0865;
+    path[30] = 1.0905; // TP touch after guard
+    path[71] = 1.088;
+
+    const replay = {
+        isActive: true,
+        playbackMode: 'tick',
+        getPlaybackMode: () => 'tick',
+        animatingCandle: null, // cleared after pause/step bookkeeping
+        tickProgress: 0,
+        _savedTickState: null,
+        getTickPath: () => path,
+    };
+    const manager = Object.create(OrderManager.prototype);
+    manager._resolveTickAnimReplaySystem = () => replay;
+    manager._playbackReplaySystem = () => replay;
+    manager._sessionTradingCostsEnabled = () => false;
+
+    assert.equal(
+        manager._tickAnimOverridesGuard(10, candle, 1.09032, 'above', { type: 'BUY' }),
+        true,
+        'same-bar TP wick must count after guard even without a live animatingCandle',
+    );
+});

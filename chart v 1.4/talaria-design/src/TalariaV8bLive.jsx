@@ -11858,13 +11858,13 @@ function v9FlipSlTpRowsForSideChange(om, entryRows, slRows, tpRows) {
   return { nextSl, nextTp };
 }
 
-/** Tick-sized band: one step off live price → Limit/Stop (OM uses 1.5× pip for typed entry). */
+/** Market only within 1 tick of the live price line; otherwise Limit/Stop by side. */
 function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, om) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return "market";
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) return "market";
   const tick = v9OrderPriceTickStep(om);
   const atMarket =
-    Math.abs(entryPrice - currentPrice) <= Math.max(tick * 0.5, Math.abs(currentPrice) * 1e-10);
+    Math.abs(entryPrice - currentPrice) <= Math.max(tick, Math.abs(currentPrice) * 1e-10);
   if (atMarket) return "market";
   const side = String(orderSide || "buy").toLowerCase();
   if (side === "buy") return entryPrice > currentPrice ? "stop" : "limit";
@@ -16039,6 +16039,7 @@ const TalariaV8bLive = () => {
     { id:"TALARIA_FVG", type:"talariafvg", name:"Talaria — FVG", abbr:"FVG", cat:"talaria", desc:"Multi-timeframe fair value gaps with fpFVG session bias tags" },
     { id:"TALARIA_RG", type:"talariaratiogap", name:"Talaria — Ratio + Gap", abbr:"R+G", cat:"talaria", desc:"NY-session range/gap ratios, PDR levels, ORB-15 & IB-60 info box" },
     { id:"TALARIA_WM", type:"talariaweeklymap", name:"Talaria — Weekly Map", abbr:"WMAP", cat:"talaria", desc:"Week compass, relative regime, weekend gap, Friday range, OWR & info box" },
+    { id:"TALARIA_SMC", type:"talariasmc", name:"Talaria — Simple SMC", abbr:"SMC", cat:"talaria", desc:"Fractals, liquidity sweeps, MSS, FVG boxes, and NY session backgrounds" },
   ];
   const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
     acc[row.id] = row.type;
@@ -16916,7 +16917,7 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") first = "input";
+      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") first = "input";
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
@@ -16925,7 +16926,7 @@ const TalariaV8bLive = () => {
       v9SuppressNextChartDeselect();
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") ? 260 : 210;
+      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") ? 260 : 210;
       setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
       flushSync(() => {
         setIndSettDraft(draft);
@@ -29775,7 +29776,7 @@ const TalariaV8bLive = () => {
           ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
         if (!def || !ctx.indicator) return null;
         const isIctEverything = ctx.indicatorType === "icteverything";
-        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap" || ctx.indicatorType === "talariaweeklymap";
+        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap" || ctx.indicatorType === "talariaweeklymap" || ctx.indicatorType === "talariasmc";
         const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
@@ -39269,7 +39270,20 @@ const TalariaV8bLive = () => {
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
             {["Market","Limit","Stop"].map((t) => { const type=t.toLowerCase(); const a=orderType===type; const isH=swHov===`ot-${t}`; return (
-              <button type="button" key={t} onClick={()=>{ setOrderType(type); clickHiddenOrderType(type); }}
+              <button type="button" key={t} onClick={()=>{
+                setOrderType(type);
+                clickHiddenOrderType(type);
+                // Market = entry on the live price line. Snap React entry so the
+                // badge cannot stay MARKET at an off-price RR level.
+                if (type === "market") {
+                  const omMkt = window.chart?.orderManager;
+                  try { omMkt?.updateOrderPanelPrice?.(); } catch (_) {}
+                  const ep = document.getElementById("orderEntryPrice")?.value;
+                  if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+                  const ot = v9SyncOrderTypeFromEntryPrice(omMkt, buySell);
+                  setOrderType((prev) => (prev === ot ? prev : ot));
+                }
+              }}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
