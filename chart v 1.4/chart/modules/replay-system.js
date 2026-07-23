@@ -169,6 +169,9 @@ class ReplaySystem {
     }
 
     applyPersistedState(state) {
+        if (state && typeof state === 'object' && Number.isFinite(Number(state.playheadRewoundAt))) {
+            this._playheadRewoundAt = Number(state.playheadRewoundAt);
+        }
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
 
@@ -2757,10 +2760,20 @@ class ReplaySystem {
         } else {
             this.replayTimestamp = ts;
         }
+        // Mark intentional rewind so refresh restore + session merge prefer this
+        // playhead over monotonic furthest_replay_ts (dashboard progress).
+        this._playheadRewoundAt = Date.now();
+        this._persistedPlayheadApplied = true;
 
         this.updateChartData();
         if (typeof this.updateTimeDisplay === 'function') {
             this.updateTimeDisplay();
+        }
+
+        // Critical flush — pause/exit already flush; cut used to rely on a 2.5s
+        // throttle and lost the rewind on hard refresh.
+        if (typeof this._flushReplayStateToSession === 'function') {
+            try { this._flushReplayStateToSession(); } catch (_flush) { /* ignore */ }
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
@@ -5529,6 +5542,10 @@ class ReplaySystem {
             timeframe: this.chart.currentTimeframe,
             isActive: true,
         };
+        const rewoundAt = Number(this._playheadRewoundAt);
+        if (Number.isFinite(rewoundAt) && rewoundAt > 0) {
+            replay.playheadRewoundAt = rewoundAt;
+        }
         if (Number.isFinite(dash.furthest_replay_ts)) {
             replay.dashboard = dash;
         }

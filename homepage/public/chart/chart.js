@@ -11270,55 +11270,80 @@ class Chart {
     }
 
     /**
-     * Merge sync-local, hydrated server, and backup replay blobs — pick the most
-     * advanced wall-clock playhead so refresh never restarts at session start.
-     * Also considers dashboard furthest_replay_ts (progress) when playhead was lost.
+     * Merge sync-local, hydrated server, and backup replay blobs for refresh restore.
+     *
+     * Prefer an explicit saved playhead (`replay.replayTimestamp`). Dashboard
+     * `furthest_replay_ts` is progress-only — using it as a playhead candidate made
+     * go-back/crop rewinds lose on refresh (furthest stayed at the pre-crop clock).
+     * Furthest is only used when no explicit playhead exists at all.
      */
     _resolveReplayPlayheadRestoreState(localPending) {
         const sessionId = this.getActiveTradingSessionId();
-        const candidates = [];
-        if (localPending && typeof localPending === 'object') candidates.push(localPending);
+        const playheadCandidates = [];
+        const furthestTsList = [];
+
+        const pushPlayhead = (blob) => {
+            if (!blob || typeof blob !== 'object') return;
+            if (!Number.isFinite(this._parseReplayRestoreTimestamp(blob))) return;
+            playheadCandidates.push(blob);
+        };
+        const pushFurthest = (ts) => {
+            const n = Number(ts);
+            if (Number.isFinite(n)) furthestTsList.push(n);
+        };
+
+        if (localPending && typeof localPending === 'object') pushPlayhead(localPending);
         if (this._pendingReplayState && typeof this._pendingReplayState === 'object') {
-            candidates.push(this._pendingReplayState);
+            pushPlayhead(this._pendingReplayState);
+            const pd = this._pendingReplayState.dashboard;
+            if (pd && typeof pd === 'object') pushFurthest(pd.furthest_replay_ts);
         }
         if (sessionId) {
             const backup = this._readTradingSessionLocalBackup(sessionId);
             if (backup && backup.replay && typeof backup.replay === 'object') {
-                candidates.push(backup.replay);
+                pushPlayhead(backup.replay);
                 const bd = backup.replay.dashboard;
-                if (bd && typeof bd === 'object' && Number.isFinite(Number(bd.furthest_replay_ts))) {
-                    candidates.push({ replayTimestamp: Number(bd.furthest_replay_ts) });
-                }
+                if (bd && typeof bd === 'object') pushFurthest(bd.furthest_replay_ts);
             }
         }
-        const pendingDash = this._pendingReplayState
-            && this._pendingReplayState.dashboard
-            && typeof this._pendingReplayState.dashboard === 'object'
-            ? this._pendingReplayState.dashboard
-            : null;
-        if (pendingDash && Number.isFinite(Number(pendingDash.furthest_replay_ts))) {
-            candidates.push({ replayTimestamp: Number(pendingDash.furthest_replay_ts) });
-        }
-        if (Number.isFinite(this._dashboardFurthestReplayHydratedTs)) {
-            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayHydratedTs) });
-        }
-        if (Number.isFinite(this._dashboardFurthestReplayTs)) {
-            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayTs) });
-        }
+        pushFurthest(this._dashboardFurthestReplayHydratedTs);
+        pushFurthest(this._dashboardFurthestReplayTs);
+
+        // Prefer the newest intentional cut/rewind when present; else the most
+        // advanced explicit playhead (so refresh never jumps back to session start).
         let winner = null;
         let winTs = null;
-        for (const c of candidates) {
+        let winRewoundAt = null;
+        for (const c of playheadCandidates) {
             const ts = this._parseReplayRestoreTimestamp(c);
             if (!Number.isFinite(ts)) continue;
+            const rewoundAt = Number(c.playheadRewoundAt);
+            if (Number.isFinite(rewoundAt)) {
+                if (winRewoundAt == null || rewoundAt >= winRewoundAt) {
+                    winRewoundAt = rewoundAt;
+                    winTs = ts;
+                    winner = c;
+                }
+                continue;
+            }
+            if (winRewoundAt != null) continue; // cut already selected
             if (winTs == null || ts > winTs) {
                 winTs = ts;
                 winner = c;
             }
         }
+
         if (!winner || !Number.isFinite(winTs)) {
+            let furthest = null;
+            for (const ts of furthestTsList) {
+                if (furthest == null || ts > furthest) furthest = ts;
+            }
+            if (Number.isFinite(furthest)) {
+                return { replayTimestamp: furthest };
+            }
             return localPending && typeof localPending === 'object' ? localPending : null;
         }
-        return {
+        const out = {
             replayTimestamp: winTs,
             currentIndex: Number.isFinite(winner.currentIndex) ? winner.currentIndex : undefined,
             timeframe: this._normalizeBacktestTimeframe(winner.timeframe),
@@ -11326,6 +11351,11 @@ class Chart {
             playbackMode: winner.playbackMode,
             tickElapsedMs: winner.tickElapsedMs,
         };
+        if (Number.isFinite(winRewoundAt)) out.playheadRewoundAt = winRewoundAt;
+        else if (Number.isFinite(Number(winner.playheadRewoundAt))) {
+            out.playheadRewoundAt = Number(winner.playheadRewoundAt);
+        }
+        return out;
     }
 
     /** Wait until OrderManager exists so session hydrate can merge journal + playhead. */
@@ -11363,13 +11393,17 @@ class Chart {
             ts = Number.isFinite(n) ? n : (Number.isFinite(Date.parse(rawTs)) ? Date.parse(rawTs) : null);
         }
         if (!Number.isFinite(ts)) return null;
-        return {
+        const out = {
             replayTimestamp: ts,
             timeframe: this._normalizeBacktestTimeframe(replay.timeframe || backup.chartView?.timeframe),
             speed: typeof replay.speed === 'number' ? replay.speed : undefined,
             playbackMode: replay.playbackMode,
             tickElapsedMs: replay.tickElapsedMs,
         };
+        if (Number.isFinite(Number(replay.playheadRewoundAt))) {
+            out.playheadRewoundAt = Number(replay.playheadRewoundAt);
+        }
+        return out;
     }
 
     /**
@@ -11699,27 +11733,22 @@ class Chart {
                 }
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     const incomingTs = this._parseReplayRestoreTimestamp(state.replay);
-                    const dashTs = state.replay.dashboard
-                        && Number.isFinite(Number(state.replay.dashboard.furthest_replay_ts))
-                        ? Number(state.replay.dashboard.furthest_replay_ts)
-                        : null;
-                    const bestIncoming = Math.max(
-                        Number.isFinite(incomingTs) ? incomingTs : -Infinity,
-                        Number.isFinite(dashTs) ? dashTs : -Infinity,
-                    );
                     const currentTs = Number(this.replaySystem.replayTimestamp);
                     // Even if a default session-start playhead was marked "applied",
-                    // still accept a more advanced server/local timestamp.
+                    // still accept a more advanced server/local timestamp — but never
+                    // substitute dashboard furthest_replay_ts for the playhead (that
+                    // undoes go-back/crop on refresh).
                     const alreadyApplied = !!(this._replaySessionPlayheadRestoreEnabled()
                         && this.replaySystem._persistedPlayheadApplied);
-                    const incomingIsAhead = Number.isFinite(bestIncoming)
-                        && (!Number.isFinite(currentTs) || bestIncoming > currentTs + 500);
-                    if (!alreadyApplied || incomingIsAhead) {
+                    const incomingIsAhead = Number.isFinite(incomingTs)
+                        && (!Number.isFinite(currentTs) || incomingTs > currentTs + 500);
+                    const incomingRewoundAt = Number(state.replay.playheadRewoundAt);
+                    const incomingIsRewind = Number.isFinite(incomingRewoundAt)
+                        && Number.isFinite(incomingTs)
+                        && Number.isFinite(currentTs)
+                        && incomingTs + 500 < currentTs;
+                    if (!alreadyApplied || incomingIsAhead || incomingIsRewind) {
                         const applyBlob = Object.assign({}, state.replay);
-                        if (Number.isFinite(bestIncoming)
-                            && (!Number.isFinite(incomingTs) || bestIncoming > incomingTs)) {
-                            applyBlob.replayTimestamp = bestIncoming;
-                        }
                         this.replaySystem.applyPersistedState(applyBlob);
                         if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
                             try {
@@ -11748,8 +11777,13 @@ class Chart {
                     ? Number(localRestore.replayTimestamp)
                     : null;
                 const currentTs = Number(this.replaySystem.replayTimestamp);
+                const localIsRewind = localRestore
+                    && Number.isFinite(Number(localRestore.playheadRewoundAt))
+                    && Number.isFinite(localTs)
+                    && Number.isFinite(currentTs)
+                    && localTs + 500 < currentTs;
                 if (Number.isFinite(localTs)
-                    && (!Number.isFinite(currentTs) || localTs > currentTs + 500)
+                    && (!Number.isFinite(currentTs) || localTs > currentTs + 500 || localIsRewind)
                     && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(localRestore);
                     if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
@@ -12017,7 +12051,10 @@ class Chart {
         if (patch.replay && typeof patch.replay === 'object') {
             const rk = Object.keys(patch.replay);
             if (rk.length === 1 && rk[0] === 'dashboard') return true;
-            const allowedReplayKeys = ['replayTimestamp', 'currentIndex', 'tickElapsedMs', 'speed', 'playbackMode', 'timeframe', 'isActive', 'dashboard'];
+            const allowedReplayKeys = [
+                'replayTimestamp', 'currentIndex', 'tickElapsedMs', 'speed', 'playbackMode',
+                'timeframe', 'isActive', 'dashboard', 'playheadRewoundAt',
+            ];
             if (rk.every(k => allowedReplayKeys.includes(k))) return true;
         }
         return false;
@@ -12032,11 +12069,25 @@ class Chart {
             const ra = a.replay;
             const rb = b.replay;
             out.replay = Object.assign({}, ra, rb);
-            // Never let a stale session-start playhead overwrite a more advanced one.
             const ta = Number(ra.replayTimestamp);
             const tb = Number(rb.replayTimestamp);
+            const aCut = Number(ra.playheadRewoundAt);
+            const bCut = Number(rb.playheadRewoundAt);
             if (Number.isFinite(ta) && Number.isFinite(tb)) {
-                if (ta > tb) {
+                // Go-back/crop: intentional rewind must win even when earlier than
+                // a previously queued advanced playhead. Newest cut stamp wins.
+                if (Number.isFinite(bCut) && (!Number.isFinite(aCut) || bCut >= aCut)) {
+                    out.replay.replayTimestamp = tb;
+                    out.replay.playheadRewoundAt = bCut;
+                    if (Number.isFinite(rb.currentIndex)) out.replay.currentIndex = rb.currentIndex;
+                    if (typeof rb.tickElapsedMs === 'number') out.replay.tickElapsedMs = rb.tickElapsedMs;
+                } else if (Number.isFinite(aCut) && (!Number.isFinite(bCut) || aCut > bCut)) {
+                    out.replay.replayTimestamp = ta;
+                    out.replay.playheadRewoundAt = aCut;
+                    if (Number.isFinite(ra.currentIndex)) out.replay.currentIndex = ra.currentIndex;
+                    if (typeof ra.tickElapsedMs === 'number') out.replay.tickElapsedMs = ra.tickElapsedMs;
+                } else if (ta > tb) {
+                    // Never let a stale session-start playhead overwrite a more advanced one.
                     out.replay.replayTimestamp = ta;
                     if (Number.isFinite(ra.currentIndex)) out.replay.currentIndex = ra.currentIndex;
                     if (typeof ra.tickElapsedMs === 'number') out.replay.tickElapsedMs = ra.tickElapsedMs;
@@ -15988,9 +16039,14 @@ class Chart {
         if (vLine) vLine.style.width = `${crosshairWidth}px`;
         if (hLine) hLine.style.height = `${crosshairWidth}px`;
         
-        // Apply cursor label colors (price/time labels on crosshair)
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
+        // Apply cursor label colors (price/time labels on crosshair).
+        // Must be direct-child scoped — drawings own SVG `.price-label` groups.
+        const priceLabel = typeof targetChart._queryChartOverlayBadge === 'function'
+            ? targetChart._queryChartOverlayBadge(container, 'price-label')
+            : container.querySelector(':scope > .price-label');
+        const timeLabel = typeof targetChart._queryChartOverlayBadge === 'function'
+            ? targetChart._queryChartOverlayBadge(container, 'time-label')
+            : container.querySelector(':scope > .time-label');
         if (priceLabel) {
             priceLabel.style.color = targetChart.chartSettings.cursorLabelTextColor;
             priceLabel.style.background = targetChart.chartSettings.cursorLabelBgColor;
@@ -18010,6 +18066,42 @@ class Chart {
     }
     
     /**
+     * Crosshair axis badges are direct children of the chart wrapper.
+     * Drawings also use SVG `<g class="price-label">` inside `#drawingSvg`, so a bare
+     * `querySelector('.price-label')` hits the SVG first and leaves the real badge
+     * stuck at `display:none` while crosshair lines still update.
+     */
+    _queryChartOverlayBadge(container, className) {
+        if (!container || !className) return null;
+        try {
+            const scoped = container.querySelector(`:scope > .${className}`);
+            if (scoped) return scoped;
+        } catch (_e) { /* :scope unsupported */ }
+        const kids = container.children;
+        if (!kids || !kids.length) return null;
+        for (let i = 0; i < kids.length; i++) {
+            const el = kids[i];
+            if (el && el.classList && el.classList.contains(className)) return el;
+        }
+        return null;
+    }
+
+    /** Resolve crosshair lines + axis badges for this chart's canvas wrapper. */
+    _getCrosshairOverlayElements() {
+        const container = this.canvas?.parentElement || null;
+        if (!container) {
+            return { container: null, vLine: null, hLine: null, priceLabel: null, timeLabel: null };
+        }
+        return {
+            container,
+            vLine: container.querySelector('.crosshair-vertical'),
+            hLine: container.querySelector('.crosshair-horizontal'),
+            priceLabel: this._queryChartOverlayBadge(container, 'price-label'),
+            timeLabel: this._queryChartOverlayBadge(container, 'time-label'),
+        };
+    }
+
+    /**
      * Update crosshair visibility based on cursor type
      */
     updateCrosshairVisibility(type) {
@@ -18019,13 +18111,7 @@ class Chart {
         
         // Same wrapper as the canvas (main #chartWrapper or panel container). Never `document`
         // — the first .crosshair-vertical in the page can be a hidden multi-panel slot.
-        const container = this.canvas?.parentElement;
-        if (!container) return;
-        
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
+        const { vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         
         // Store preference - actual show/hide happens in updateCrosshair based on mouse position
         this.showCrosshairLines = showLines;
@@ -37251,12 +37337,9 @@ class Chart {
         // `this.canvas.parentElement` is required for V9 live: `#panels-container` comes
         // before `#chartWrapper` in the DOM, so `document.querySelector` would update a
         // panel's crosshair with coordinates computed for the main canvas.
-        const container = this.canvas.parentElement;
+        // Price/time badges must be direct children — drawings use SVG `.price-label`.
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         
         // Bar under cursor (for OHLC / lock). Lines & labels use raw (x,y) so the pointer
         // sits on the crosshair intersection (snap-to-bar caused visible offset vs cursor).
@@ -37545,6 +37628,8 @@ class Chart {
             priceLabel.style.textAlign = 'center';
             const showPanelCrosshairUi = showCrosshairUi;
             priceLabel.style.display = (inIndicatorSubPanel || !showPanelCrosshairUi) ? 'none' : 'block';
+            // Stay above separate-panel overlay (z~35) and match sync path (z~101).
+            if (priceLabel.style.display === 'block') priceLabel.style.zIndex = '101';
             if (labelBg) priceLabel.style.background = labelBg;
             if (labelTextColor) priceLabel.style.color = labelTextColor;
         }
@@ -37594,23 +37679,24 @@ class Chart {
                 crosshairTimestampMs = playheadMs;
             }
             
-            // Show time label if we have a valid timestamp
+            // Always toggle display — after hideCrosshair() the badge stays `none`
+            // unless every branch sets it (missing timestamp used to skip this).
+            timeLabel.style.left = lineX + 'px';
+            timeLabel.style.top = 'auto';
+            timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
+            timeLabel.style.transform = 'translateX(-50%)';
+            timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
+            if (showCrosshairUi) timeLabel.style.zIndex = '101';
+            if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
+            if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
             if (crosshairTimestampMs && crosshairTimestampMs > 0) {
                 const timeStr = this._formatCrosshairTimeLabel(crosshairTimestampMs, timeframeMs);
                 this._lastCrosshairTimeLabel = timeStr;
-                
                 timeLabel.textContent = timeStr;
-                timeLabel.style.left = lineX + 'px';
-                timeLabel.style.top = 'auto';
-                timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
-                timeLabel.style.transform = 'translateX(-50%)';
-                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
-                // Enforce label colors from settings
-                if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
-                if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
-            } else if (this.data.length === 0) {
-                // Even with no data, show the label (will be empty but visible)
-                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
+            } else if (this._lastCrosshairTimeLabel) {
+                timeLabel.textContent = this._lastCrosshairTimeLabel;
+            } else {
+                timeLabel.textContent = '—';
             }
             
             if (hasSnappedCandle) {
@@ -37726,12 +37812,8 @@ class Chart {
         if (typeof this._syncSeparatePanelCrosshairUi === 'function') {
             this._syncSeparatePanelCrosshairUi({ show: false });
         }
-        const container = this.canvas?.parentElement;
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         const dotIndicator = container.querySelector('.cursor-dot-indicator');
         const placementDot = container.querySelector('.touch-placement-crosshair-dot');
         
@@ -39957,12 +40039,8 @@ class Chart {
     receiveCrosshairSync(timestamp, price = null, sourceCandle = null, opts = {}) {
         if (!this._crosshairPanelSyncAllowed()) return;
         
-        const container = this.canvas.parentElement;
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         
         // If timestamp is null, hide crosshair
         if (timestamp === null) {

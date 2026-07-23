@@ -37104,8 +37104,8 @@ const TalariaV8bLive = () => {
                 {/* Crosshair elements — chart.js positions these on mousemove */}
                 <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
                 <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
-                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 101, display: "none" }} />
+                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 101, display: "none" }} />
 
                 {layoutPanels.n === 1 && <ChartBrandLink />}
 

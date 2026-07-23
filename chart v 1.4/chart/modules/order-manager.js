@@ -3014,6 +3014,52 @@ class OrderManager {
         if (key != null) this._writeOrderLifecycleEventKey(record, key);
     }
 
+    /**
+     * After a pending limit/stop FILLS on this bar, allow the same updatePositions
+     * pass to evaluate SL/TP once (fill first, then SL/TP on the fill candle).
+     *
+     * Placement still uses Infinity so a newly armed order cannot consume an
+     * already-complete bar. On fill, that bar IS the activation event — candle
+     * mode must not keep Infinity (it blocks all same-bar SL), and the lifecycle
+     * watermark must not equal the current event key (that would make
+     * `_claimOrderLifecycleEvent` early-return before SL runs).
+     */
+    _armPendingFillSameBarSltpGuards(order, currentCandle) {
+        if (!order || !currentCandle) return;
+        const snap = this._getCurrentTickSnapshot();
+        const rs = (typeof this._playbackReplaySystem === 'function'
+            ? this._playbackReplaySystem()
+            : null) || this.replaySystem;
+        const mode = rs && (typeof rs.getPlaybackMode === 'function'
+            ? rs.getPlaybackMode()
+            : (rs.playbackMode || 'tick'));
+        // Candle placement snapshot is Infinity; on FILL use -1 so guarded OHLC
+        // checks can see the fill candle's high/low. STOP false-positives remain
+        // blocked by `_shouldSkipSLOnFillCandle`.
+        const fillGuardTick = (mode === 'candle' && snap.tick === Infinity) ? -1 : snap.tick;
+        order._slNoTriggerBeforeTime = currentCandle.t;
+        order._slNoTriggerBeforeTick = fillGuardTick;
+        order._tpNoTriggerBeforeTime = currentCandle.t;
+        order._tpNoTriggerBeforeTick = fillGuardTick;
+        if (Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
+            order.tpTargets.forEach((t) => {
+                if (!t || typeof t !== 'object') return;
+                t._noTriggerBeforeTime = currentCandle.t;
+                t._noTriggerBeforeTick = fillGuardTick;
+            });
+        }
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return;
+        if (typeof this._retainCurrentOrderExecutionSeries === 'function') {
+            this._retainCurrentOrderExecutionSeries();
+        }
+        const key = this._currentOrderLifecycleEventKey(currentCandle);
+        if (key != null) {
+            this._writeOrderLifecycleEventKey(order, `__pre_fill__:${key}`);
+        } else {
+            this._seedOrderLifecycleEvent(order, currentCandle);
+        }
+    }
+
     _writeOrderLifecycleEventKey(record, key) {
         try {
             Object.defineProperty(record, '_lastOrderLifecycleEventKey', {
@@ -29310,11 +29356,6 @@ class OrderManager {
             // assumed price path shows the extreme happened BEFORE entry filled.
             _fillCandleTime: currentCandle.t,
             _fillOrderType: pendingOrder.orderType,
-            // Guard SL/TP against triggering on the fill candle's pre-existing price action
-            _slNoTriggerBeforeTime: currentCandle.t,
-            _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
-            _tpNoTriggerBeforeTime: currentCandle.t,
-            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             strategyVariables: pendingOrder.strategyVariables || null,
             railScreenshots: pendingOrder.railScreenshots || null,
             journalEntry: pendingOrder.journalEntry
@@ -29335,16 +29376,8 @@ class OrderManager {
             order.initial_takeProfit = pendingOrder.initial_takeProfit;
         }
         this._freezePlannedRRAtEntry(order);
-        this._seedOrderLifecycleEvent(order, currentCandle);
-
-        // Guard multi-TP targets against triggering on the fill candle
-        if (order.tpTargets && order.tpTargets.length > 0) {
-            const fillTick = this._getCurrentTickSnapshot().tick;
-            order.tpTargets.forEach(t => {
-                t._noTriggerBeforeTime = currentCandle.t;
-                t._noTriggerBeforeTick = fillTick;
-            });
-        }
+        // Fill first, then allow one same-bar SL/TP claim (not placement Infinity).
+        this._armPendingFillSameBarSltpGuards(order, currentCandle);
         
         // DEBUG: Log tpTargets to verify they're correct
         console.log(`📊 Order #${order.id} executed with tpTargets:`, order.tpTargets);
