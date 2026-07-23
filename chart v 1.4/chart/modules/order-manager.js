@@ -793,6 +793,9 @@ class OrderManager {
         this._draggingManagedOpenLineKind = null;
         this._draggingManagedOpenOrderId = null;
         this._dragFixedOpenLabelX = null;
+        if (typeof this._clearAllPreviewLabelXFreezes === 'function') {
+            this._clearAllPreviewLabelXFreezes();
+        }
         this._multichartPostDraftDragBusy(false);
 
         if (st.phase === 'open' && ctx?.line && ctx.chartCtx?.scales?.yScale && Number.isFinite(revert)) {
@@ -1013,7 +1016,16 @@ class OrderManager {
             else if (slStore > 0) this.previewLines.sl.price = slStore;
         }
 
-        const provTp = this._oiResolveProvisionalPreviewPrice('tp');
+        // Single-TP provisional only — multi-TP drag also uses lineKind 'tp' with
+        // tpTargetIndex set; applying that price here would yank the wrong line.
+        const stTp = this._orderProvisionalEdit;
+        const provTpIsSingle = !(
+            stTp?.phase === 'preview'
+            && stTp.lineKind === 'tp'
+            && stTp.tpTargetIndex != null
+            && Number.isFinite(Number(stTp.tpTargetIndex))
+        );
+        const provTp = provTpIsSingle ? this._oiResolveProvisionalPreviewPrice('tp') : null;
         const tpStore = parseFloat(document.getElementById('tpPrice')?.value || 0);
         if (this.previewLines.tp) {
             if (provTp != null) this.previewLines.tp.price = provTp;
@@ -1021,9 +1033,47 @@ class OrderManager {
         }
 
         if (this.previewLines.multipleTPs && this.tpTargets?.length) {
+            // Apply-on-release multi-TP drag stores the live price in provisional
+            // edit only — tpTargets stay at the pre-drag value until mouseup.
+            // Viewport/replay refresh must not snap the dragged rung back to store
+            // (that fights the drag handler → jump between origin and cursor).
+            const stMulti = this._orderProvisionalEdit;
+            const dragTpIdx = (
+                _orderSltpApplyOnReleaseFixEnabled()
+                && stMulti?.phase === 'preview'
+                && stMulti.lineKind === 'tp'
+                && stMulti.tpTargetIndex != null
+                && Number.isFinite(Number(stMulti.tpTargetIndex))
+            ) ? Number(stMulti.tpTargetIndex) : NaN;
+            const provMultiTp = Number.isFinite(dragTpIdx)
+                ? this._oiResolveProvisionalPreviewPrice('tp')
+                : null;
+            const dragLine = this._oiProvisionalDragCtx?.lineData || null;
             this.previewLines.multipleTPs.forEach((tpLine, idx) => {
-                const tgt = this.tpTargets[idx];
-                if (!tpLine || !tgt) return;
+                if (!tpLine) return;
+                const targetIdx = Number.isFinite(Number(tpLine.targetIndex))
+                    ? Number(tpLine.targetIndex)
+                    : idx;
+                if (
+                    Number.isFinite(dragTpIdx)
+                    && targetIdx === dragTpIdx
+                    && provMultiTp != null
+                    && provMultiTp > 0
+                ) {
+                    tpLine.price = provMultiTp;
+                    return;
+                }
+                if (
+                    this.isDraggingPreviewLine
+                    && dragLine
+                    && (tpLine === dragLine || targetIdx === dragTpIdx)
+                    && Number.isFinite(Number(tpLine.price))
+                    && Number(tpLine.price) > 0
+                ) {
+                    return;
+                }
+                const tgt = this.tpTargets[targetIdx] || this.tpTargets[idx];
+                if (!tgt) return;
                 const p = Number(tgt.price);
                 if (p > 0) tpLine.price = p;
             });
@@ -1110,10 +1160,15 @@ class OrderManager {
         const lv = Number(level);
         if (!Number.isFinite(lv)) return false;
 
-        const tickProg = Number(rs.tickProgress) || 0;
+        // pause() zeroes tickProgress but keeps real progress in _savedTickState.
+        const saved = rs._savedTickState;
+        let tickProg = Number(rs.tickProgress) || 0;
+        if (tickProg <= 0 && saved && Number.isFinite(Number(saved.tickProgress))) {
+            tickProg = Number(saved.tickProgress);
+        }
         if (guardTick >= 0 && tickProg <= guardTick) return false;
 
-        const anim = rs.animatingCandle;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (!anim) return false;
 
         const tc = anim.target || anim;
@@ -2917,9 +2972,17 @@ class OrderManager {
             const curBar = this.getCurrentCandle();
             return { t: curBar ? Number(curBar.t) : null, tick: Infinity };
         }
-        const anim = rs.animatingCandle;
+        // pause() zeroes tickProgress but keeps the frozen candle + real progress
+        // in _savedTickState. Placement / SL guards must use that saved tick, or a
+        // mid-candle pause+place arms guardTick=0 and step-forward skips the SL wick.
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (anim) {
-            return { t: Number(anim.t), tick: Number(rs.tickProgress) || 0 };
+            let tick = Number(rs.tickProgress);
+            if ((!Number.isFinite(tick) || tick <= 0) && saved && Number.isFinite(Number(saved.tickProgress))) {
+                tick = Number(saved.tickProgress);
+            }
+            return { t: Number(anim.t), tick: Number.isFinite(tick) ? tick : 0 };
         }
         const curBar = this.getCurrentCandle();
         return { t: curBar ? Number(curBar.t) : null, tick: -1 };
@@ -2931,19 +2994,34 @@ class OrderManager {
      */
     _currentOrderLifecycleEventKey(candle) {
         if (!_orderLifecycleEventOwnershipV1Enabled()) return null;
-        if (candle && typeof candle._orderLifecycleEventKey === 'string') {
-            return candle._orderLifecycleEventKey;
-        }
         const rs = this.replaySystem || this._playbackReplaySystem();
-        if (!rs || !rs.isActive) return null;
+        if (!rs || !rs.isActive) {
+            if (candle && typeof candle._orderLifecycleEventKey === 'string') {
+                return candle._orderLifecycleEventKey;
+            }
+            const candleT = Number(candle?.t);
+            return Number.isFinite(candleT) ? `replay:${candleT}` : null;
+        }
 
         const mode = typeof rs.getPlaybackMode === 'function'
             ? rs.getPlaybackMode()
             : (rs.playbackMode || 'tick');
-        const anim = rs.animatingCandle;
+        // Tick identity must win over `_orderLifecycleEventKey` stamped on the fine
+        // execution bar (`replay:<barT>`). That stamp is bar-stable, so claiming it
+        // first made every later tick on the piercing candle a no-op and deferred
+        // SL/TP until the next bar (Manual Forward Tick / tick playback).
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
         if (mode === 'tick' && anim && Number.isFinite(Number(anim.t))) {
-            const tick = Number(rs.tickProgress);
+            let tick = Number(rs.tickProgress);
+            if ((!Number.isFinite(tick) || tick <= 0) && saved && Number.isFinite(Number(saved.tickProgress))) {
+                tick = Number(saved.tickProgress);
+            }
             return `tick:${Number(anim.t)}:${Number.isFinite(tick) ? tick : 0}`;
+        }
+
+        if (candle && typeof candle._orderLifecycleEventKey === 'string') {
+            return candle._orderLifecycleEventKey;
         }
 
         const replayTs = Number(rs.replayTimestamp);
@@ -2978,6 +3056,52 @@ class OrderManager {
         this._retainCurrentOrderExecutionSeries();
         const key = this._currentOrderLifecycleEventKey(candle);
         if (key != null) this._writeOrderLifecycleEventKey(record, key);
+    }
+
+    /**
+     * After a pending limit/stop FILLS on this bar, allow the same updatePositions
+     * pass to evaluate SL/TP once (fill first, then SL/TP on the fill candle).
+     *
+     * Placement still uses Infinity so a newly armed order cannot consume an
+     * already-complete bar. On fill, that bar IS the activation event — candle
+     * mode must not keep Infinity (it blocks all same-bar SL), and the lifecycle
+     * watermark must not equal the current event key (that would make
+     * `_claimOrderLifecycleEvent` early-return before SL runs).
+     */
+    _armPendingFillSameBarSltpGuards(order, currentCandle) {
+        if (!order || !currentCandle) return;
+        const snap = this._getCurrentTickSnapshot();
+        const rs = (typeof this._playbackReplaySystem === 'function'
+            ? this._playbackReplaySystem()
+            : null) || this.replaySystem;
+        const mode = rs && (typeof rs.getPlaybackMode === 'function'
+            ? rs.getPlaybackMode()
+            : (rs.playbackMode || 'tick'));
+        // Candle placement snapshot is Infinity; on FILL use -1 so guarded OHLC
+        // checks can see the fill candle's high/low. STOP false-positives remain
+        // blocked by `_shouldSkipSLOnFillCandle`.
+        const fillGuardTick = (mode === 'candle' && snap.tick === Infinity) ? -1 : snap.tick;
+        order._slNoTriggerBeforeTime = currentCandle.t;
+        order._slNoTriggerBeforeTick = fillGuardTick;
+        order._tpNoTriggerBeforeTime = currentCandle.t;
+        order._tpNoTriggerBeforeTick = fillGuardTick;
+        if (Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
+            order.tpTargets.forEach((t) => {
+                if (!t || typeof t !== 'object') return;
+                t._noTriggerBeforeTime = currentCandle.t;
+                t._noTriggerBeforeTick = fillGuardTick;
+            });
+        }
+        if (!_orderLifecycleEventOwnershipV1Enabled()) return;
+        if (typeof this._retainCurrentOrderExecutionSeries === 'function') {
+            this._retainCurrentOrderExecutionSeries();
+        }
+        const key = this._currentOrderLifecycleEventKey(currentCandle);
+        if (key != null) {
+            this._writeOrderLifecycleEventKey(order, `__pre_fill__:${key}`);
+        } else {
+            this._seedOrderLifecycleEvent(order, currentCandle);
+        }
     }
 
     _writeOrderLifecycleEventKey(record, key) {
@@ -3050,9 +3174,56 @@ class OrderManager {
             return Number.isFinite(l) && l <= lv;
         }
 
-        if (!rs.animatingCandle) return false;
-        if (guardTick >= 0 && (Number(rs.tickProgress) || 0) <= guardTick) return false;
-        return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+        const saved = rs._savedTickState;
+        const anim = rs.animatingCandle || (saved && saved.animatingCandle) || null;
+        let tickProg = Number(rs.tickProgress) || 0;
+        if (tickProg <= 0 && saved && Number.isFinite(Number(saved.tickProgress))) {
+            tickProg = Number(saved.tickProgress);
+        }
+
+        if (anim) {
+            const prevAnim = rs.animatingCandle;
+            const prevProg = rs.tickProgress;
+            rs.animatingCandle = anim;
+            rs.tickProgress = tickProg;
+            try {
+                if (guardTick >= 0 && tickProg <= guardTick) return false;
+                return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+            } finally {
+                rs.animatingCandle = prevAnim;
+                rs.tickProgress = prevProg;
+            }
+        }
+
+        // Manual step / completed bar: anim cleared but same-bar guard still active.
+        // Only synthesize when we know the placement tick (guardTick >= 0) so we do
+        // not treat pre-entry wicks as post-guard touches (guardTick === -1).
+        if (!(guardTick >= 0) || !candle) return false;
+        const synth = {
+            t: candle.t,
+            open: Number.parseFloat(candle.o ?? candle.open),
+            high: Number.parseFloat(candle.h ?? candle.high),
+            low: Number.parseFloat(candle.l ?? candle.low),
+            close: Number.parseFloat(candle.c ?? candle.close),
+            target: candle,
+        };
+        let path = null;
+        if (typeof rs.getTickPath === 'function') {
+            try { path = rs.getTickPath(candle); } catch (_e) { path = null; }
+        }
+        if (path && path.length) synth.cachedPath = path;
+        const endProg = (path && path.length) ? path.length : (guardTick + 1);
+        const prevAnim2 = rs.animatingCandle;
+        const prevProg2 = rs.tickProgress;
+        rs.animatingCandle = synth;
+        rs.tickProgress = endProg;
+        try {
+            if (guardTick >= 0 && endProg <= guardTick) return false;
+            return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
+        } finally {
+            rs.animatingCandle = prevAnim2;
+            rs.tickProgress = prevProg2;
+        }
     }
 
     /**
@@ -9609,11 +9780,30 @@ class OrderManager {
                 sel.className = `order-input ${inputClass}`;
                 sel.setAttribute('data-var-id', id);
                 sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
-                const opts = Array.isArray(v.options) && v.options.length ? v.options : ['—'];
+                // Strategies Lab may store options as {label|value|name|text} objects —
+                // never coerce with String(obj) (shows "[object Object]").
+                const optsRaw = Array.isArray(v.options) ? v.options : [];
+                const opts = [];
+                const seenOpt = new Set();
+                for (const opt of optsRaw) {
+                    let label = '';
+                    if (opt == null) continue;
+                    if (typeof opt === 'string' || typeof opt === 'number' || typeof opt === 'boolean') {
+                        label = String(opt).trim();
+                    } else if (typeof opt === 'object') {
+                        const raw = opt.label ?? opt.value ?? opt.name ?? opt.text ?? opt.title ?? null;
+                        if (raw != null && typeof raw !== 'object') label = String(raw).trim();
+                    }
+                    if (!label || label === '[object Object]' || seenOpt.has(label)) continue;
+                    seenOpt.add(label);
+                    opts.push(label);
+                }
+                // Empty multi choices → skip the row entirely (don't show blank Object pills).
+                if (!opts.length) return;
                 opts.forEach((opt) => {
                     const o = document.createElement('option');
-                    o.value = String(opt);
-                    o.textContent = String(opt);
+                    o.value = opt;
+                    o.textContent = opt;
                     sel.appendChild(o);
                 });
                 row.appendChild(sel);
@@ -14529,15 +14719,21 @@ class OrderManager {
      */
     _applyPrecisionToInputs() {
         const prec = this.getPricePrecision();
-        const step = Math.pow(10, -prec).toFixed(prec);
+        const tick = (this.chart && typeof this.chart.getTickSize === 'function')
+            ? Number(this.chart.getTickSize())
+            : NaN;
+        const stepNum = (Number.isFinite(tick) && tick > 0) ? tick : Math.pow(10, -prec);
+        const step = stepNum.toFixed(prec);
+        // Re-bind when precision OR tick step changes (e.g. NQ 0.25 vs forex 0.00001).
+        const precKey = `${prec}:${step}`;
 
         const attachPrecision = (el) => {
             if (!el) return;
             el.setAttribute('step', step);
 
             // Remove stale handlers by replacing with fresh ones keyed to current prec
-            if (el._precApplied === prec) return; // already up-to-date for this precision
-            el._precApplied = prec;
+            if (el._precApplied === precKey) return; // already up-to-date for this precision
+            el._precApplied = precKey;
 
             // Remove old listeners if stored
             if (el._precInputHandler) el.removeEventListener('input', el._precInputHandler);
@@ -14564,10 +14760,10 @@ class OrderManager {
                 }
             };
 
-            // Blur handler: format to exact decimal places on leave
+            // Blur handler: snap to tick grid, then format to exact decimal places
             el._precBlurHandler = () => {
                 const v = parseFloat(el.value);
-                if (Number.isFinite(v) && v > 0) el.value = v.toFixed(prec);
+                if (Number.isFinite(v) && v > 0) el.value = this.formatPrice(v, prec);
             };
 
             el.addEventListener('input', el._precInputHandler);
@@ -14603,10 +14799,13 @@ class OrderManager {
             precision = 5; // fallback to default
         }
         
-        const numeric = Number.parseFloat(value);
+        let numeric = Number.parseFloat(value);
         if (!Number.isFinite(numeric)) {
             return (0).toFixed(precision);
         }
+        // Futures (and other tick-registry markets): always land on exchange increments
+        // so Place Order / preview never show NQ-style .22 / .33 / .98 leftovers.
+        numeric = this._snapOrderPriceToTick(numeric);
         return numeric.toFixed(precision);
     }
 
@@ -14677,7 +14876,10 @@ class OrderManager {
         
         if (label === 'Entry') {
             const quantity = document.getElementById('orderQuantity')?.value || '0';
-            const orderTypeRaw = this.orderType || 'market';
+            // Label from entry vs live price — never show MARKET when entry left the line.
+            const orderTypeRaw = (typeof this._resolveEffectiveDraftOrderType === 'function')
+                ? this._resolveEffectiveDraftOrderType(price, { fallback: this.orderType || 'market' })
+                : (this.orderType || 'market');
             const sideUpper = (this.orderSide || 'BUY').toUpperCase();
             const arrow = direction === 'BUY' ? '↑' : direction === 'SELL' ? '↓' : '↕';
 
@@ -15410,14 +15612,8 @@ class OrderManager {
                         ? pending.chart.scales.yScale(entryPrice)
                         : null);
                 if (Number.isFinite(entryPrice) && entryPrice > 0 && Number.isFinite(entryY)) {
-                    // Temporarily allow full X reflow for the re-anchor pass.
-                    const wasDragging = this.isDraggingPreviewLine;
-                    this.isDraggingPreviewLine = false;
-                    try {
-                        this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryY);
-                    } finally {
-                        this.isDraggingPreviewLine = wasDragging;
-                    }
+                    // Keep isDraggingPreviewLine on so badge X stays frozen (Y-only).
+                    this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryY);
                 }
             }
             if (typeof this._syncPendingLimitStopConnector === 'function') {
@@ -15495,6 +15691,39 @@ class OrderManager {
      */
     _useEntryAnchoredTpSlBadges() {
         return !!(this.previewLines?.entry && !this.isMultiEntryMode);
+    }
+
+    /** Flatten every preview line/badge that owns a label group. */
+    _iterPreviewLabelLineData() {
+        if (!this.previewLines) return [];
+        return Object.values(this.previewLines)
+            .flatMap((v) => (Array.isArray(v) ? v : (v ? [v] : [])))
+            .filter((v) => v && typeof v === 'object' && v.labelGroup);
+    }
+
+    /**
+     * Capture left-edge X for every preview toast at drag start. Mid-drag lot/P&L text
+     * width changes otherwise recompute `ch.w - maxW` and shove Entry/SL right, then
+     * snap back on release — the "glitching" labels.
+     */
+    _freezeAllPreviewLabelXs() {
+        this._iterPreviewLabelLineData().forEach((ld) => {
+            try {
+                const tr = ld.labelGroup.attr('transform') || '';
+                const m = /translate\(([^,\s)]+)/.exec(tr);
+                const x0 = m ? parseFloat(m[1]) : NaN;
+                if (Number.isFinite(x0)) ld._dragFixedLabelX = x0;
+            } catch (_) { /* ignore */ }
+        });
+    }
+
+    _clearAllPreviewLabelXFreezes() {
+        this._iterPreviewLabelLineData().forEach((ld) => {
+            try {
+                delete ld._dragFixedLabelX;
+                delete ld._dragFixedYAxisX;
+            } catch (_) { /* ignore */ }
+        });
     }
 
     /** Y-axis price for multi-entry TP/SL badges (weighted avg across legs). */
@@ -16711,9 +16940,11 @@ class OrderManager {
                 });
                 btn.classList.add('active');
                 
-                // Show entry price warning for market orders
+                // Market tab: snap entry to the live price line. If something
+                // keeps entry off-market, auto-detect will leave Market.
                 if (this.orderType === 'market') {
                     this.updateOrderPanelPrice();
+                    this._autoDetectOrderTypeFromEntry({ skipPreviewUpdate: true });
                 }
                 
                 // Update preview lines when order type changes
@@ -18316,8 +18547,11 @@ class OrderManager {
                 if (cfgTP.showPips) {
                     distText = `${(dist / pipTP).toFixed(2)} pips`;
                 } else if (cfgTP.showTicks) {
-                    // Price points + tick count (dist/pip is ticks, not "pts").
-                    distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 2)} pts (${(dist / pipTP).toFixed(0)} ticks)`;
+                    // Futures: pts on tick grid (ES/NQ 0.25), not raw float distance.
+                    const ticks = Math.max(0, Math.round(dist / pipTP));
+                    const pts = ticks * pipTP;
+                    const prec = cfgTP.symbolPrecision ?? 2;
+                    distText = `${parseFloat(pts.toFixed(8)).toFixed(prec)} pts (${ticks} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
                 }
@@ -18376,8 +18610,11 @@ class OrderManager {
                 if (cfg.showPips) {
                     distText = `${(dist / pip).toFixed(2)} pips`;
                 } else if (cfg.showTicks) {
-                    // Price points + tick count (dist/pip is ticks, not "pts").
-                    distText = `${dist.toFixed(cfg.symbolPrecision ?? 2)} pts (${(dist / pip).toFixed(0)} ticks)`;
+                    // Futures: pts on tick grid (ES/NQ 0.25), not raw float distance.
+                    const ticks = Math.max(0, Math.round(dist / pip));
+                    const pts = ticks * pip;
+                    const prec = cfg.symbolPrecision ?? 2;
+                    distText = `${parseFloat(pts.toFixed(8)).toFixed(prec)} pts (${ticks} ticks)`;
                 } else {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
@@ -19327,11 +19564,12 @@ class OrderManager {
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
 
-        const newPrice = currentCandle.c;
+        const rawNewPrice = Number(currentCandle.c);
         const priceInput = document.getElementById('orderEntryPrice');
         if (!priceInput) return;
 
         const oldPrice = parseFloat(priceInput.value || 0);
+        const newPrice = this._snapOrderPriceToTick(rawNewPrice);
         if (!(oldPrice > 0) || !(newPrice > 0)) return;
 
         const delta = newPrice - oldPrice;
@@ -19341,9 +19579,7 @@ class OrderManager {
         if (this._lastPreviewSyncTs && (now - this._lastPreviewSyncTs) < 80) return;
         this._lastPreviewSyncTs = now;
 
-        const precision = this.getPricePrecision(newPrice);
-
-        priceInput.value = newPrice.toFixed(precision);
+        priceInput.value = this.formatPrice(newPrice);
 
         // Shift TP/SL with entry only when not pinned by RR tool or manual drag.
         const tpEnabled = document.getElementById('enableTP')?.checked;
@@ -19351,7 +19587,7 @@ class OrderManager {
             const tpInput = document.getElementById('tpPrice');
             if (tpInput) {
                 const oldTP = parseFloat(tpInput.value || 0);
-                if (oldTP > 0) tpInput.value = (oldTP + delta).toFixed(precision);
+                if (oldTP > 0) tpInput.value = this.formatPrice(oldTP + delta);
             }
         }
 
@@ -19360,7 +19596,7 @@ class OrderManager {
             const slInput = document.getElementById('slPrice');
             if (slInput) {
                 const oldSL = parseFloat(slInput.value || 0);
-                if (oldSL > 0) slInput.value = (oldSL + delta).toFixed(precision);
+                if (oldSL > 0) slInput.value = this.formatPrice(oldSL + delta);
             }
         }
 
@@ -19368,20 +19604,20 @@ class OrderManager {
         if (multipleTPEnabled && !this.tpManuallyPositioned && this.tpTargets && this.tpTargets.length > 0) {
             this.tpTargets.forEach(target => {
                 if (target.price > 0) {
-                    target.price = parseFloat((target.price + delta).toFixed(precision));
+                    target.price = this._snapOrderPriceToTick(target.price + delta);
                 }
             });
         }
 
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach(se => {
-                if (se.price > 0) se.price = parseFloat((se.price + delta).toFixed(precision));
+                if (se.price > 0) se.price = this._snapOrderPriceToTick(se.price + delta);
             });
         }
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             this.multiEntryLevels.forEach(lv => {
-                if (lv.price > 0) lv.price = parseFloat((lv.price + delta).toFixed(precision));
+                if (lv.price > 0) lv.price = this._snapOrderPriceToTick(lv.price + delta);
             });
         }
 
@@ -19476,11 +19712,38 @@ class OrderManager {
     }
 
     /**
-     * Auto-detect order type (market / limit / stop) based on the entry price
-     * relative to the current market price. Called when the user edits the
-     * entry price input manually.
+     * Market only when entry is on the live price line (within 1 tick).
+     * Above/below → stop/limit by side. Used for labels, tabs, and place.
      */
-    _autoDetectOrderTypeFromEntry() {
+    _resolveEffectiveDraftOrderType(entryPrice, opts = {}) {
+        const entry = Number(entryPrice);
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = Number(
+            opts.currentPrice
+            ?? currentCandle?.c
+            ?? currentCandle?.close
+            ?? 0
+        );
+        const tickSize = (this.chart && typeof this.chart.getTickSize === 'function')
+            ? Number(this.chart.getTickSize())
+            : NaN;
+        const pipSize = Number.isFinite(tickSize) && tickSize > 0
+            ? tickSize
+            : (this.pipSize || this._getBreakevenUnitSize() || 0.0001);
+        return _classifyOrderTypeForPrice(this.orderSide, entry, currentPrice, {
+            tickSize: pipSize,
+            pipSize,
+            fallback: opts.fallback || this.orderType || 'limit',
+        });
+    }
+
+    /**
+     * Auto-detect order type (market / limit / stop) based on the entry price
+     * relative to the current market price. Market requires entry ≈ live line;
+     * any offset becomes Limit/Stop.
+     * @param {{ skipPreviewUpdate?: boolean }} [opts]
+     */
+    _autoDetectOrderTypeFromEntry(opts = {}) {
         const entryInput = document.getElementById('orderEntryPrice');
         if (!entryInput) return;
         const entryPrice = parseFloat(entryInput.value || '0');
@@ -19490,17 +19753,7 @@ class OrderManager {
         const currentPrice = currentCandle?.c || currentCandle?.close || 0;
         if (!currentPrice || currentPrice <= 0) return;
 
-        const pip = this._getBreakevenUnitSize();
-        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 0.5, Math.abs(currentPrice) * 1e-10);
-
-        let newType;
-        if (atMarket) {
-            newType = 'market';
-        } else if (this.orderSide === 'BUY') {
-            newType = entryPrice > currentPrice ? 'stop' : 'limit';
-        } else {
-            newType = entryPrice < currentPrice ? 'stop' : 'limit';
-        }
+        const newType = this._resolveEffectiveDraftOrderType(entryPrice, { currentPrice });
 
         if (this.orderType !== newType) {
             this.orderType = newType;
@@ -19508,7 +19761,8 @@ class OrderManager {
                 btn.classList.toggle('active', btn.dataset.type === newType);
             });
             this.updatePlaceButtonText();
-            this.updatePreviewLines();
+            // Avoid recursion when called from updatePreviewLines itself.
+            if (!opts.skipPreviewUpdate) this.updatePreviewLines();
             this._dispatchRrOrderPrefilledEvent();
         }
     }
@@ -20317,6 +20571,12 @@ class OrderManager {
             console.log(`⏸️ Skipping updatePreviewLines() - currently dragging`);
             return;
         }
+
+        // Keep Market/Limit/Stop aligned with entry vs the live price line BEFORE paint,
+        // so a drifted entry never keeps a stale "MARKET ORDER" badge/tab.
+        try {
+            this._autoDetectOrderTypeFromEntry({ skipPreviewUpdate: true });
+        } catch (_) { /* ignore */ }
         
         // Tear down local SVG before redraw. Do NOT fan-out multichart-clear-preview —
         // this runs on every SL/TP/entry tick; broadcasting would clear peer panels and
@@ -20391,13 +20651,16 @@ class OrderManager {
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
         
         // Draw entry price preview line (dashed blue/red) - now draggable!
-        const mainLegOrderType = this.orderType || 'market';
+        // Color/label type from entry vs live price (not a stale Market tab).
+        const mainLegOrderType = this._resolveEffectiveDraftOrderType(entryPrice, {
+            fallback: this.orderType || 'market',
+        });
         const entryColor = _resolvePreviewEntryColor(this.orderSide, mainLegOrderType);
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
             // Multi-entry mode: main entry is #1, same style as other levels
-            mainEntryLabel = `Entry#1:${this.orderType || 'market'}`;
+            mainEntryLabel = `Entry#1:${mainLegOrderType}`;
         } else if (this.splitEntriesEnabled) {
             mainEntryLabel = `Entry (${mainEntryPercent}%)`;
         }
@@ -20952,14 +21215,18 @@ class OrderManager {
                 self.isDraggingPreviewLine = true;
                 self._multichartPostDraftDragBusy(true);
 
-                // Freeze label X for the whole drag (same pattern as makePendingTargetDraggable).
-                try {
-                    const tr = lineData.labelGroup?.attr('transform') || '';
-                    const m = /translate\(([^,\s)]+)/.exec(tr);
-                    const x0 = m ? parseFloat(m[1]) : NaN;
-                    lineData._dragFixedLabelX = Number.isFinite(x0) ? x0 : null;
-                } catch (_) {
-                    lineData._dragFixedLabelX = null;
+                // Freeze EVERY preview toast X (not only the dragged line). Sibling Entry/SL
+                // labels were still right-edge realigned when lot/P&L text width changed.
+                self._freezeAllPreviewLabelXs();
+                if (!Number.isFinite(Number(lineData._dragFixedLabelX))) {
+                    try {
+                        const tr = lineData.labelGroup?.attr('transform') || '';
+                        const m = /translate\(([^,\s)]+)/.exec(tr);
+                        const x0 = m ? parseFloat(m[1]) : NaN;
+                        lineData._dragFixedLabelX = Number.isFinite(x0) ? x0 : null;
+                    } catch (_) {
+                        lineData._dragFixedLabelX = null;
+                    }
                 }
 
                 if (_orderSltpApplyOnReleaseFixEnabled()) {
@@ -21577,16 +21844,12 @@ class OrderManager {
                         } else if (self.previewLines.entry) {
                             const entryY = ch.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
+                            // Keep drag-freeze on — do not clear isDraggingPreviewLine for
+                            // badge reflow (that was recomputing Entry/SL X from live width).
                             if (self._useEntryAnchoredTpSlBadges()) {
                                 const ep = Number(self.previewLines.entry.price);
                                 if (Number.isFinite(ep) && ep > 0 && Number.isFinite(entryY)) {
-                                    const wasDraggingEntry = self.isDraggingPreviewLine;
-                                    self.isDraggingPreviewLine = false;
-                                    try {
-                                        self._syncEntryAnchoredPreviewBadgesWithEntry(ep, entryY);
-                                    } finally {
-                                        self.isDraggingPreviewLine = wasDraggingEntry;
-                                    }
+                                    self._syncEntryAnchoredPreviewBadgesWithEntry(ep, entryY);
                                 }
                             }
                         }
@@ -21752,10 +22015,7 @@ class OrderManager {
 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
-                try {
-                    delete lineData._dragFixedLabelX;
-                    delete lineData._dragFixedYAxisX;
-                } catch (_) { /* ignore */ }
+                self._clearAllPreviewLabelXFreezes();
 
                 self._oiCommitPreviewSltpFromDragEnd(lineData);
                 if (lineData.label === 'SL' && _orderSltpApplyOnReleaseFixEnabled()) {
@@ -25285,25 +25545,41 @@ class OrderManager {
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         const preserveEntry = this._shouldPreservePreviewEntryOverRiskReward(drawing, opts);
+        const snapPx = (px) => {
+            let y = Number(px);
+            if (!Number.isFinite(y)) return y;
+            if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+                const s = this.chart.snapPriceToTick(y);
+                if (Number.isFinite(s)) y = s;
+            } else if (typeof drawing.snapPriceToTick === 'function') {
+                const s = drawing.snapPriceToTick(y);
+                if (Number.isFinite(s)) y = s;
+            }
+            return y;
+        };
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
-        if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
+        if (Number.isFinite(slPx)) {
+            let y = snapPx(slPx);
+            if (typeof drawing.sanitizeStopPrice === 'function') y = drawing.sanitizeStopPrice(y);
+            drawing.points[1] = { ...drawing.points[1], y };
+        }
 
         if (!preserveEntry) {
         // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
             const lv = [...this.multiEntryLevels].filter((l) => l.price > 0);
             if (lv.length) {
-                drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
+                drawing.points[0] = { ...drawing.points[0], y: snapPx(lv[0].price) };
                 if (lv.length > 1) {
                     if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
-                    drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+                    drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: snapPx(l.price) }));
                 } else {
                     drawing.meta.extraEntries = [];
                 }
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
-            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
+            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: snapPx(e) };
             drawing.meta.extraEntries = [];
         }
         }
@@ -25312,12 +25588,18 @@ class OrderManager {
         if (mtOn && this.tpTargets && this.tpTargets.length > 1) {
             const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
             const last = sorted[sorted.length - 1];
-            drawing.points[2] = { ...drawing.points[2], y: last.price };
+            let ty = snapPx(last.price);
+            if (typeof drawing.sanitizeTargetPrice === 'function') ty = drawing.sanitizeTargetPrice(ty);
+            drawing.points[2] = { ...drawing.points[2], y: ty };
             if (!drawing.meta.extraTargets) drawing.meta.extraTargets = [];
-            drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: t.price }));
+            drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: snapPx(t.price) }));
         } else {
             const tpPx = parseFloat(document.getElementById('tpPrice')?.value || '');
-            if (Number.isFinite(tpPx)) drawing.points[2] = { ...drawing.points[2], y: tpPx };
+            if (Number.isFinite(tpPx)) {
+                let ty = snapPx(tpPx);
+                if (typeof drawing.sanitizeTargetPrice === 'function') ty = drawing.sanitizeTargetPrice(ty);
+                drawing.points[2] = { ...drawing.points[2], y: ty };
+            }
             drawing.meta.extraTargets = [];
         }
 
@@ -25869,14 +26151,25 @@ class OrderManager {
      */
     riskRewardSyncTpDragFromTool(drawing, sortedTargetIndex, newY) {
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        const prec = this.getPricePrecision();
+        let p = parseFloat(parseFloat(newY).toFixed(prec));
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(p);
+            if (Number.isFinite(snapped)) p = snapped;
+        } else if (drawing && typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(p);
+            if (Number.isFinite(snapped)) p = snapped;
+        }
+        if (drawing && typeof drawing.sanitizeTargetPrice === 'function') {
+            p = drawing.sanitizeTargetPrice(p);
+        }
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            if (drawing?.points?.[2]) drawing.points[2] = { ...drawing.points[2], y: p };
             const tpp = document.getElementById('tpPrice');
-            if (tpp) tpp.value = this.formatPrice(newY);
+            if (tpp) tpp.value = this.formatPrice(p);
             this.pullRiskRewardToolFromManager(drawing);
             return;
         }
-        const prec = this.getPricePrecision();
-        const p = parseFloat(parseFloat(newY).toFixed(prec));
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
         if (sortedTargetIndex >= 0 && sortedTargetIndex < sorted.length) {
@@ -25896,16 +26189,28 @@ class OrderManager {
      */
     riskRewardSyncPrimaryTpDragFromTool(drawing, newY) {
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
+        let y = Number(newY);
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(y);
+            if (Number.isFinite(snapped)) y = snapped;
+        } else if (drawing && typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(y);
+            if (Number.isFinite(snapped)) y = snapped;
+        }
+        if (drawing && typeof drawing.sanitizeTargetPrice === 'function') {
+            y = drawing.sanitizeTargetPrice(y);
+        }
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            if (drawing?.points?.[2]) drawing.points[2] = { ...drawing.points[2], y };
             const tpp = document.getElementById('tpPrice');
-            if (tpp) tpp.value = this.formatPrice(newY);
+            if (tpp) tpp.value = this.formatPrice(y);
             this.pullRiskRewardToolFromManager(drawing);
             return;
         }
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
         const lastIdx = sorted.length - 1;
-        this.riskRewardSyncTpDragFromTool(drawing, lastIdx, newY);
+        this.riskRewardSyncTpDragFromTool(drawing, lastIdx, y);
     }
 
     /**
@@ -25921,10 +26226,24 @@ class OrderManager {
             : { rrToolInternal: true, forceEntry: true };
         this.pushRiskRewardToolToManager(drawing, entryOpts);
         const prec = this.getPricePrecision();
-        const raw = parseFloat(parseFloat(newY).toFixed(prec));
-        const clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
+        let raw = parseFloat(parseFloat(newY).toFixed(prec));
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        } else if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        }
+        let clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
             ? drawing.clampPrimaryEntryPrice(raw)
             : raw;
+        if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(clamped);
+            if (Number.isFinite(snapped)) clamped = snapped;
+        } else if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(clamped);
+            if (Number.isFinite(snapped)) clamped = snapped;
+        }
         if (!Number.isFinite(clamped) || Math.abs(clamped - drawing.points[0].y) < 1e-12) {
             this.pullRiskRewardToolFromManager(drawing, entryOpts);
             return;
@@ -25955,7 +26274,15 @@ class OrderManager {
         if (!drawing || !drawing.points || drawing.points.length < 2) return;
         this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const prec = this.getPricePrecision();
-        const raw = parseFloat(parseFloat(newY).toFixed(prec));
+        let raw = parseFloat(parseFloat(newY).toFixed(prec));
+        // Futures: snap to tick (ES/NQ 0.25) so release matches the drag price label.
+        if (this.chart && typeof this.chart.snapPriceToTick === 'function') {
+            const snapped = this.chart.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        } else if (typeof drawing.snapPriceToTick === 'function') {
+            const snapped = drawing.snapPriceToTick(raw);
+            if (Number.isFinite(snapped)) raw = snapped;
+        }
         const sanitized = typeof drawing.sanitizeStopPrice === 'function'
             ? drawing.sanitizeStopPrice(raw)
             : raw;
@@ -26368,6 +26695,43 @@ class OrderManager {
         // Separate badges from full lines - badges don't need horizontal alignment
         const badges = activeLines.filter(line => line.isBadge);
         const lines = activeLines.filter(line => !line.isBadge);
+
+        // During drag: Y-only. Recomputing sharedBaseX from live text widths shoves
+        // Entry/SL right when lot/P&L digits change, then snaps back on release.
+        if (this.isDraggingPreviewLine) {
+            lines.forEach((lineData) => {
+                const bbox = lineData.labelGroup?.node()?.getBBox?.();
+                if (bbox) {
+                    lineData.labelDimensions = { width: bbox.width + 10, height: bbox.height };
+                }
+                const height = lineData.labelDimensions?.height || 0;
+                const width = lineData.labelDimensions?.width || 0;
+                let fixedX = Number(lineData._dragFixedLabelX);
+                if (!Number.isFinite(fixedX)) {
+                    const tr = lineData.labelGroup.attr('transform') || '';
+                    const m = /translate\(([^,\s)]+)/.exec(tr);
+                    fixedX = m ? parseFloat(m[1]) : NaN;
+                    if (Number.isFinite(fixedX)) lineData._dragFixedLabelX = fixedX;
+                }
+                if (!Number.isFinite(fixedX)) return;
+                const stackYPx = (_orderEntryCloseHitTargetFixEnabled() && lineData.multiEntryLevelId != null)
+                    ? this._multiEntryStackYOffsetPx(lineData.multiEntryLevelId)
+                    : (lineData._stackOffsetY || 0);
+                const yPixel = ch.scales.yScale(lineData.price) + stackYPx;
+                const translateY = yPixel - (height / 2);
+                lineData.labelGroup.attr('transform', `translate(${fixedX}, ${translateY})`);
+                if (lineData.line) {
+                    lineData.line.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (lineData.hitLine) {
+                    lineData.hitLine.attr('y1', yPixel).attr('y2', yPixel);
+                }
+                if (stackYPx) lineData._stackOffsetY = stackYPx;
+                this.adjustPreviewLineForLabel(lineData, fixedX, width, height);
+            });
+            this._syncPendingLimitStopConnector();
+            return;
+        }
 
         const buckets = [];
         const bucketMap = new Map();
@@ -27081,13 +27445,17 @@ class OrderManager {
 
                 const effectiveOrderType = (() => {
                     // Panel "Market" must only fill the MAIN leg at spot; every other ladder price
-                    // stays a pending limit/stop (by side) even if it is within a pip of current
-                    // price — otherwise a near-spot STOP/LIMIT leg gets silently turned into a
-                    // market fill, collapsing the ladder onto the market price.
+                    // stays a pending limit/stop (by side). Main leg is Market only when its
+                    // price still matches the live line — never force Market for an off-price entry.
                     const pip = pipSz || this.pipSize || 0.0001;
                     const isMainLeg = _mainLegPrice != null && Number.isFinite(level.price)
                         && Math.abs(level.price - _mainLegPrice) <= Math.max(pip * 0.25, Math.abs(_mainLegPrice) * 1e-10);
-                    if (this.orderType === 'market' && isMainLeg) return 'market';
+                    if (this.orderType === 'market' && isMainLeg) {
+                        return this._resolveEffectiveDraftOrderType(level.price, {
+                            currentPrice,
+                            fallback: 'limit',
+                        });
+                    }
                     if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
                     return level.price < currentPrice ? 'stop' : 'limit';
                 })();
@@ -29634,11 +30002,6 @@ class OrderManager {
             // assumed price path shows the extreme happened BEFORE entry filled.
             _fillCandleTime: currentCandle.t,
             _fillOrderType: pendingOrder.orderType,
-            // Guard SL/TP against triggering on the fill candle's pre-existing price action
-            _slNoTriggerBeforeTime: currentCandle.t,
-            _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
-            _tpNoTriggerBeforeTime: currentCandle.t,
-            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             strategyVariables: pendingOrder.strategyVariables || null,
             railScreenshots: pendingOrder.railScreenshots || null,
             journalEntry: pendingOrder.journalEntry
@@ -29659,16 +30022,8 @@ class OrderManager {
             order.initial_takeProfit = pendingOrder.initial_takeProfit;
         }
         this._freezePlannedRRAtEntry(order);
-        this._seedOrderLifecycleEvent(order, currentCandle);
-
-        // Guard multi-TP targets against triggering on the fill candle
-        if (order.tpTargets && order.tpTargets.length > 0) {
-            const fillTick = this._getCurrentTickSnapshot().tick;
-            order.tpTargets.forEach(t => {
-                t._noTriggerBeforeTime = currentCandle.t;
-                t._noTriggerBeforeTick = fillTick;
-            });
-        }
+        // Fill first, then allow one same-bar SL/TP claim (not placement Infinity).
+        this._armPendingFillSameBarSltpGuards(order, currentCandle);
         
         // DEBUG: Log tpTargets to verify they're correct
         console.log(`📊 Order #${order.id} executed with tpTargets:`, order.tpTargets);

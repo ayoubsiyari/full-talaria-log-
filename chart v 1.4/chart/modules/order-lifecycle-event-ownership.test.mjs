@@ -73,6 +73,43 @@ test('tick-mode placement owns price action after the current tick', () => {
     assert.deepEqual(snapshot, { t: 1_721_600_000_000, tick: 27 });
 });
 
+test('tick identity wins over fine-execution replay:<barT> stamp', () => {
+    global.window = defaultWindow();
+    const barT = 1_721_600_000_000;
+    const replay = {
+        isActive: true,
+        playbackMode: 'tick',
+        getPlaybackMode: () => 'tick',
+        animatingCandle: { t: barT },
+        tickProgress: 27,
+        replayTimestamp: barT,
+        currentIndex: 0,
+        fullRawData: [{ t: barT }],
+    };
+    const manager = orderManagerFor(replay);
+    manager.replaySystem = replay;
+    const executionCandle = {
+        t: barT,
+        o: 1.08,
+        h: 1.091,
+        l: 1.079,
+        c: 1.085,
+        _orderLifecycleEventKey: `replay:${barT}`,
+    };
+    const position = {};
+    manager._seedOrderLifecycleEvent(position, executionCandle);
+    assert.equal(
+        manager._currentOrderLifecycleEventKey(executionCandle),
+        `tick:${barT}:27`,
+        'tick playback must not collapse to a bar-stable replay key',
+    );
+    assert.equal(manager._claimOrderLifecycleEvent(position, executionCandle), false,
+        'seeded placement tick is not executable');
+    replay.tickProgress = 40;
+    assert.equal(manager._claimOrderLifecycleEvent(position, executionCandle), true,
+        'a later tick on the same bar is a new market event (TP/SL can fire)');
+});
+
 test('viewport and timeframe recomputes cannot replay one market event', () => {
     global.window = defaultWindow();
     const replay = {

@@ -40,8 +40,6 @@ import {
   loadIndicatorSettingsTemplates,
   saveNamedIndicatorSettingsTemplate,
   deleteIndicatorSettingsTemplate,
-  publishIndicatorSettingsTemplate,
-  importSharedIndicatorSettingsTemplate,
   snapshotIndicatorSettingsDraft,
 } from "./indicatorSettingsTemplates.js";
 
@@ -126,6 +124,19 @@ function chartSessionIdQuery() {
     if (Number.isFinite(n) && n > 0) return "sessionId=" + encodeURIComponent(String(Math.trunc(n)));
   } catch (_) {}
   return "";
+}
+
+/** Current ?sessionId= from the chart URL (empty when none). */
+function v9CurrentChartSessionId() {
+  try {
+    const p = new URLSearchParams(window.location.search || "");
+    const sid = p.get("sessionId") || p.get("session_id");
+    if (sid == null) return "";
+    const s = String(sid).trim();
+    return s || "";
+  } catch (_) {
+    return "";
+  }
 }
 
 /** Navigate to the user's entitled dashboard page (keeps chart sessionId when present). */
@@ -1669,26 +1680,39 @@ function v9OmTpTargetToReactQty(om, targetIndex, sizeMode, symbolType) {
 
 /** Share lots for one TP rung — same math as chart labels. */
 function v9OmTpShareLotsAt(om, targetIndex, symbolType) {
-  if (!om?.tpTargets?.[targetIndex]) return symbolType === "futures" ? "0" : "0.00";
+  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const fmtOq = () =>
+    symbolType === "futures"
+      ? String(Math.max(0, Math.round(oq)))
+      : (Number.isFinite(oq) ? oq.toFixed(2) : "0.00");
+  // Single-TP mode often leaves om.tpTargets empty — still show full order size, not "0 Contracts".
+  if (!om?.tpTargets?.[targetIndex]) {
+    return oq > 0 ? fmtOq() : symbolType === "futures" ? "0" : "0.00";
+  }
   const entryPx =
     typeof om._getReferenceEntryForOrderMath === "function"
       ? om._getReferenceEntryForOrderMath()
       : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
-  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
   const side = om.orderSide || "BUY";
   const eff =
     typeof om._computeEffectiveTPPercentages === "function"
       ? om._computeEffectiveTPPercentages(entryPx, oq, side, { tpTargets: om.tpTargets })
       : [];
   const lots = oq * ((eff[targetIndex] || 0) / 100);
-  if (!(lots > 0)) return symbolType === "futures" ? "0" : "0.00";
+  if (!(lots > 0)) {
+    // Ladder present but effective % not ready yet — fall back to full order qty for the sole rung.
+    if (om.tpTargets.length === 1 && oq > 0) return fmtOq();
+    return symbolType === "futures" ? "0" : "0.00";
+  }
   return symbolType === "futures" ? String(Math.round(lots)) : lots.toFixed(2);
 }
 
-function formatV9AccountNum(n) {
+function formatV9AccountNum(n, { fractionDigits = null } = {}) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
-  return x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const min = fractionDigits == null ? 0 : fractionDigits;
+  const max = fractionDigits == null ? 2 : fractionDigits;
+  return x.toLocaleString(undefined, { minimumFractionDigits: min, maximumFractionDigits: max });
 }
 
 const V9_BALANCE_VISIBLE_KEY = "v9BalanceVisible";
@@ -1708,14 +1732,21 @@ function maskV9AccountValue(visible, text) {
 
 function formatV9HudSessionPnl(om) {
   if (!om) return { text: "—", nonNeg: true };
+  const fmtSigned = (x) => {
+    const abs = Math.abs(x).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${x >= 0 ? "+" : "-"}${abs}`;
+  };
   const init = Number(om.initialBalance);
   const eq = Number(om.equity);
   if (Number.isFinite(init) && Number.isFinite(eq)) {
     const x = eq - init;
-    return { text: `${x >= 0 ? "+" : ""}${x.toFixed(2)}`, nonNeg: x >= 0 };
+    return { text: fmtSigned(x), nonNeg: x >= 0 };
   }
   const r = Number(om.realizedPnL);
-  if (Number.isFinite(r)) return { text: `${r >= 0 ? "+" : ""}${r.toFixed(2)}`, nonNeg: r >= 0 };
+  if (Number.isFinite(r)) return { text: fmtSigned(r), nonNeg: r >= 0 };
   return { text: "—", nonNeg: true };
 }
 
@@ -10095,6 +10126,58 @@ function v9DeleteDrawingTemplate(drawing, templateId) {
   return true;
 }
 
+/** Flatten Strategies Lab option entries (string | {label|value|name|text|…}) to a display string. */
+function strategyVarOptionLabel(opt) {
+  if (opt == null) return "";
+  if (typeof opt === "string" || typeof opt === "number" || typeof opt === "boolean") {
+    const s = String(opt).trim();
+    return s === "[object Object]" ? "" : s;
+  }
+  if (typeof opt === "object") {
+    const candidates = [
+      opt.label,
+      opt.value,
+      opt.name,
+      opt.text,
+      opt.title,
+      opt.option,
+      opt.en,
+      opt.ar,
+      opt.color,
+      opt.hex,
+    ];
+    for (const raw of candidates) {
+      if (raw == null) continue;
+      if (typeof raw !== "object") {
+        const s = String(raw).trim();
+        if (s && s !== "[object Object]") return s;
+        continue;
+      }
+      const nested = raw.label ?? raw.value ?? raw.name ?? raw.text ?? null;
+      if (nested != null && typeof nested !== "object") {
+        const s = String(nested).trim();
+        if (s && s !== "[object Object]") return s;
+      }
+    }
+  }
+  return "";
+}
+
+/** Unique non-empty option labels — never emit "[object Object]". */
+function normalizeStrategyVarOptions(options) {
+  if (!Array.isArray(options)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const opt of options) {
+    const label = strategyVarOptionLabel(opt);
+    if (!label) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push(label);
+  }
+  return out;
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
@@ -10116,7 +10199,7 @@ function snapshotPreTradeStrategySig(chart) {
         name: v.name,
         vtype: v.vtype,
         timing: v.timing,
-        options: v.options,
+        options: normalizeStrategyVarOptions(v.options),
       }))
     );
   } catch (_) {
@@ -10127,22 +10210,23 @@ function snapshotPreTradeStrategySig(chart) {
 /** Maps Strategies Lab PRE vars to the rail tag shape (labels / bool vs multi — UI unchanged). */
 function sessionPreTradeVarsToTagDefs(chart) {
   const pre = getPreTradeVariablesFromSession(chart);
-  return pre.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
+  return pre
+    .map((v, idx) => {
+      const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
+      const label = String(v.name || '').trim();
+      if (!label) return null;
+      const isMulti = v.vtype === 'multi';
+      const options = isMulti ? normalizeStrategyVarOptions(v.options) : [];
+      // Empty multi choices → hide the row (don't flash "[object Object]" pills).
+      if (isMulti && !options.length) return null;
+      return {
+        id,
+        label,
+        type: isMulti ? 'multi' : 'bool',
+        options,
+      };
+    })
+    .filter(Boolean);
 }
 
 /** POST variables from session — same filter as order-manager `_getPostTradeVariableDefs`. */
@@ -10166,7 +10250,7 @@ function snapshotPostTradeStrategySig(chart) {
         name: v.name,
         vtype: v.vtype,
         timing: v.timing,
-        options: v.options,
+        options: normalizeStrategyVarOptions(v.options),
       }))
     );
   } catch (_) {
@@ -10177,22 +10261,22 @@ function snapshotPostTradeStrategySig(chart) {
 /** Maps Strategies Lab POST vars (filled at exit / trade card) to the same pill shape as PRE. */
 function sessionPostTradeVarsToTagDefs(chart) {
   const post = getPostTradeVariablesFromSession(chart);
-  return post.map((v, idx) => {
-    const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
-    const isMulti = v.vtype === 'multi';
-    const options =
-      isMulti && Array.isArray(v.options) && v.options.length
-        ? v.options.map(String)
-        : isMulti
-          ? ['—']
-          : [];
-    return {
-      id,
-      label: v.name || 'Variable',
-      type: isMulti ? 'multi' : 'bool',
-      options,
-    };
-  });
+  return post
+    .map((v, idx) => {
+      const id = String(v.id || v.name || '').trim() || `post_var_${idx}`;
+      const label = String(v.name || '').trim();
+      if (!label) return null;
+      const isMulti = v.vtype === 'multi';
+      const options = isMulti ? normalizeStrategyVarOptions(v.options) : [];
+      if (isMulti && !options.length) return null;
+      return {
+        id,
+        label,
+        type: isMulti ? 'multi' : 'bool',
+        options,
+      };
+    })
+    .filter(Boolean);
 }
 
 /** Match journal `symbol` strings to V9-style pair labels (e.g. EURUSD → EUR/USD). */
@@ -11401,16 +11485,27 @@ function v9AddCompareSymbol(symbolId, fileId) {
   }
 }
 
+/** Snap a positive price string to the instrument tick for Place Order display. */
+function v9SnapPositivePriceStr(raw, om) {
+  const pos = v9PositivePriceStr(raw);
+  if (!pos) return "";
+  const n = parseFloat(pos);
+  if (!(n > 0)) return "";
+  return v9FormatSnappedOrderPrice(n, om || (typeof window !== "undefined" ? window.chart?.orderManager : null));
+}
+
 /** Keep React ENTRY row price aligned with hidden #orderEntryPrice (single entry only). */
 function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
   if (!entryPriceStr) return;
+  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  const snapped = v9SnapPositivePriceStr(entryPriceStr, om) || String(entryPriceStr);
   setEntryRows((rows) => {
     if (!rows.length || rows.length > 1) return rows;
     const cur = parseFloat(rows[0].price || "0");
-    const next = parseFloat(entryPriceStr);
+    const next = parseFloat(snapped);
     if (!Number.isFinite(next) || next <= 0) return rows;
     if (Math.abs(cur - next) < 1e-8) return rows;
-    return [{ ...rows[0], price: entryPriceStr }];
+    return [{ ...rows[0], price: snapped }];
   });
 }
 
@@ -11517,12 +11612,35 @@ function v9OmManualHiddenPriceWins(om, hiddenId, reactRowPx) {
   return !Number.isFinite(reactN) || reactN <= 0 || Math.abs(domN - reactN) >= 1e-8;
 }
 
-/** Mid-edit price strings ("", ".", "26.") — do not mirror/overwrite from hidden OM inputs. */
+/** Mid-edit price strings (".", "26.") — do not mirror/overwrite from hidden OM inputs.
+ *  Empty "" is NOT partial for SL/TP recovery (see v9ShouldHoldReactPriceAgainstOmMirror).
+ *  SIZE / risk fields still treat blank as mid-edit via v9IsBlankOrPartialDecimalInput. */
 function v9IsPartialDecimalInput(str) {
   const s = String(str ?? "").trim();
-  if (s === "" || s === ".") return true;
+  if (s === ".") return true;
   if (s.endsWith(".")) return true;
   return false;
+}
+
+/** Blank or mid-edit — use for SIZE/risk so clearing the field does not push "" into OM. */
+function v9IsBlankOrPartialDecimalInput(str) {
+  if (String(str ?? "").trim() === "") return true;
+  return v9IsPartialDecimalInput(str);
+}
+
+/** Skip OM→React price mirror while typing (partial decimals, or empty field that still has focus). */
+function v9ShouldHoldReactPriceAgainstOmMirror(reactPrice, focused) {
+  if (v9IsPartialDecimalInput(reactPrice)) return true;
+  if (focused && String(reactPrice ?? "").trim() === "") return true;
+  return false;
+}
+
+/** Valid positive price from hidden OM inputs — never treat blank/0 as a sync source that wipes React. */
+function v9PositivePriceStr(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? s : null;
 }
 
 /** SIZE rail input — allow free typing; cap fractional digits (default 3). */
@@ -11607,12 +11725,41 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
   return String(capped);
 }
 
-function v9NormalizePriceInputOnBlur(raw) {
+/** Snap Place Order entry/SL/TP to the instrument tick (NQ/ES → .00/.25/.50/.75). */
+function v9SnapOrderPriceToTick(n, om) {
+  let px = Number(n);
+  if (!Number.isFinite(px)) return px;
+  const chart = typeof window !== "undefined" ? window.chart : null;
+  const orderOm = om || chart?.orderManager;
+  if (orderOm && typeof orderOm._snapOrderPriceToTick === "function") {
+    const snapped = orderOm._snapOrderPriceToTick(px);
+    if (Number.isFinite(snapped)) return snapped;
+  }
+  if (chart && typeof chart.snapPriceToTick === "function") {
+    const snapped = chart.snapPriceToTick(px);
+    if (Number.isFinite(snapped)) return snapped;
+  }
+  return px;
+}
+
+function v9FormatSnappedOrderPrice(n, om) {
+  const snapped = v9SnapOrderPriceToTick(n, om);
+  if (!Number.isFinite(snapped)) return "0";
+  if (om && typeof om.formatPrice === "function") return om.formatPrice(snapped);
+  const chart = typeof window !== "undefined" ? window.chart : null;
+  const orderOm = om || chart?.orderManager;
+  if (orderOm && typeof orderOm.formatPrice === "function") return orderOm.formatPrice(snapped);
+  return String(snapped);
+}
+
+function v9NormalizePriceInputOnBlur(raw, om) {
   const s = String(raw ?? "").trim();
   if (s === "" || s === ".") return "0";
   if (!/^\d*\.?\d*$/.test(s)) return "0";
   const n = parseFloat(s);
-  return Number.isFinite(n) ? String(n) : "0";
+  if (!Number.isFinite(n)) return "0";
+  if (!(n > 0)) return "0";
+  return v9FormatSnappedOrderPrice(n, om || (typeof window !== "undefined" ? window.chart?.orderManager : null));
 }
 
 /** One price increment for entry/SL/TP steppers — chart tick grid, then OM pip, then display precision. */
@@ -11644,8 +11791,10 @@ function v9StepOrderPrice(currentStr, dir, om, entryAnchor) {
       base = 0;
     }
   }
+  base = v9SnapOrderPriceToTick(base, om);
   let next = base + dir * step;
   if (!(next > 0)) next = 0;
+  else next = v9SnapOrderPriceToTick(next, om);
   if (om && typeof om.formatPrice === "function") {
     return om.formatPrice(next, prec);
   }
@@ -11709,13 +11858,13 @@ function v9FlipSlTpRowsForSideChange(om, entryRows, slRows, tpRows) {
   return { nextSl, nextTp };
 }
 
-/** Tick-sized band: one step off live price → Limit/Stop (OM uses 1.5× pip for typed entry). */
+/** Market only within 1 tick of the live price line; otherwise Limit/Stop by side. */
 function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, om) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return "market";
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) return "market";
   const tick = v9OrderPriceTickStep(om);
   const atMarket =
-    Math.abs(entryPrice - currentPrice) <= Math.max(tick * 0.5, Math.abs(currentPrice) * 1e-10);
+    Math.abs(entryPrice - currentPrice) <= Math.max(tick, Math.abs(currentPrice) * 1e-10);
   if (atMarket) return "market";
   const side = String(orderSide || "buy").toLowerCase();
   if (side === "buy") return entryPrice > currentPrice ? "stop" : "limit";
@@ -14342,12 +14491,8 @@ const TalariaV8bLive = () => {
   const [indSettOpen, setIndSettOpen] = useState(false);
   const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
   const [indSettTplOpen, setIndSettTplOpen] = useState(false);
-  const [indSettTplMode, setIndSettTplMode] = useState(null); // null | "save" | "import" | "share-result"
+  const [indSettTplSaveAs, setIndSettTplSaveAs] = useState(false);
   const [indSettTplName, setIndSettTplName] = useState("");
-  const [indSettTplImportId, setIndSettTplImportId] = useState("");
-  const [indSettTplShareId, setIndSettTplShareId] = useState("");
-  const [indSettTplBusy, setIndSettTplBusy] = useState(false);
-  const [indSettTplMsg, setIndSettTplMsg] = useState("");
   const [indSettTplTick, setIndSettTplTick] = useState(0);
   tlSettOpenRef.current = tlSettOpen;
   txtSettOpenRef.current = txtSettOpen;
@@ -14503,6 +14648,8 @@ const TalariaV8bLive = () => {
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
   const sizeInputFocusedRef = useRef(false);
+  /** "sl" | "tp" | null — empty React price held only while that field is focused. */
+  const slTpPriceFocusedRef = useRef(null);
   /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
   const omHeaderRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
@@ -15273,12 +15420,31 @@ const TalariaV8bLive = () => {
   };
 
   // Row 13 (D-008): hydrate layout from existing chart_panel_state blob before URL defaults.
+  // Multi-panel is session-scoped: a new/different sessionId must not inherit another session's layout.
+  // Same session + refresh still restores multi (sessionIds match).
   useEffect(() => {
     if (!layoutPersistV2Enabled()) return;
     try {
       const raw = localStorage.getItem("chart_panel_state");
       if (!raw) return;
       const state = JSON.parse(raw);
+      const curSid = v9CurrentChartSessionId();
+      const savedSid = state && state.sessionId != null ? String(state.sessionId).trim() : "";
+      if (savedSid && curSid && savedSid !== curSid) {
+        try {
+          localStorage.setItem(
+            "chart_panel_state",
+            JSON.stringify({
+              ...state,
+              layout: "1",
+              selectedPanelIndex: 0,
+              panels: [],
+              sessionId: curSid,
+            })
+          );
+        } catch (_) { /* ignore */ }
+        return;
+      }
       const layoutId = state && state.layout != null ? String(state.layout) : null;
       if (!layoutId || layoutId === "1") return;
       const normalized = layoutId === "2" ? "2v" : layoutId;
@@ -15388,13 +15554,14 @@ const TalariaV8bLive = () => {
     if (!id) return;
     if (layoutPersistV2Enabled()) {
       try {
-        let blob = { layout: id, selectedPanelIndex: 0, panels: [] };
+        const sid = v9CurrentChartSessionId();
+        let blob = { layout: id, selectedPanelIndex: 0, panels: [], sessionId: sid || null };
         const raw = localStorage.getItem("chart_panel_state");
         if (raw) {
           try {
             const prev = JSON.parse(raw);
             if (prev && typeof prev === "object") {
-              blob = { ...prev, layout: id };
+              blob = { ...prev, layout: id, sessionId: sid || prev.sessionId || null };
             }
           } catch (_) { /* ignore corrupt */ }
         }
@@ -15647,20 +15814,28 @@ const TalariaV8bLive = () => {
       const eq = ledger?.equity ?? Number(om?.equity);
       const pnlDelta = Number.isFinite(startBal) && Number.isFinite(eq) ? eq - startBal : NaN;
       const pnlStr = Number.isFinite(pnlDelta)
-        ? { text: `${pnlDelta >= 0 ? "+" : ""}${pnlDelta.toFixed(2)}`, nonNeg: pnlDelta >= 0 }
+        ? (() => {
+            const abs = Math.abs(pnlDelta).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            });
+            return { text: `${pnlDelta >= 0 ? "+" : "-"}${abs}`, nonNeg: pnlDelta >= 0 };
+          })()
         : formatV9HudSessionPnl(om);
       setReplayHud({
         dateLine: formatV9HudDateLine(ms),
         clock: formatV9HudClock(ms, use12),
         tzLabel: v9HudTzShortLabel(s?.timezone),
-        balanceStr: formatV9AccountNum(ledger?.balance ?? om?.balance),
-        equityStr: formatV9AccountNum(ledger?.equity ?? om?.equity),
+        balanceStr: formatV9AccountNum(ledger?.balance ?? om?.balance, { fractionDigits: 2 }),
+        equityStr: formatV9AccountNum(ledger?.equity ?? om?.equity, { fractionDigits: 2 }),
         pnlStr: pnlStr.text,
         pnlNonNeg: pnlStr.nonNeg,
       });
-      const bal = Number(ledger?.balance ?? om?.balance);
+      // Place Order BAL/EQ: BAL = fixed session start (initial), EQ = live equity (start + P&L).
+      // Do not feed current `balance` into BAL — that moves with closed trades and matches EQ when flat.
+      const startBalNum = Number(ledger?.startingBalance ?? om?.initialBalance);
       const eqNum = Number(ledger?.equity ?? om?.equity);
-      setAccountBalance((prev) => (Number.isFinite(bal) ? bal : prev));
+      setAccountBalance((prev) => (Number.isFinite(startBalNum) ? startBalNum : prev));
       setAccountEquity((prev) => (Number.isFinite(eqNum) ? eqNum : prev));
     };
     tick();
@@ -15864,6 +16039,7 @@ const TalariaV8bLive = () => {
     { id:"TALARIA_FVG", type:"talariafvg", name:"Talaria — FVG", abbr:"FVG", cat:"talaria", desc:"Multi-timeframe fair value gaps with fpFVG session bias tags" },
     { id:"TALARIA_RG", type:"talariaratiogap", name:"Talaria — Ratio + Gap", abbr:"R+G", cat:"talaria", desc:"NY-session range/gap ratios, PDR levels, ORB-15 & IB-60 info box" },
     { id:"TALARIA_WM", type:"talariaweeklymap", name:"Talaria — Weekly Map", abbr:"WMAP", cat:"talaria", desc:"Week compass, relative regime, weekend gap, Friday range, OWR & info box" },
+    { id:"TALARIA_SMC", type:"talariasmc", name:"Talaria — Simple SMC", abbr:"SMC", cat:"talaria", desc:"Fractals, liquidity sweeps, MSS, FVG boxes, and NY session backgrounds" },
   ];
   const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
     acc[row.id] = row.type;
@@ -16391,12 +16567,8 @@ const TalariaV8bLive = () => {
   };
   const closeIndSett = () => {
     setIndSettTplOpen(false);
-    setIndSettTplMode(null);
+    setIndSettTplSaveAs(false);
     setIndSettTplName("");
-    setIndSettTplImportId("");
-    setIndSettTplShareId("");
-    setIndSettTplMsg("");
-    setIndSettTplBusy(false);
     clearSettingsPanelHover();
     setV9IndSelectMenu(null);
     setIndStyleDrop(null);
@@ -16745,7 +16917,7 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") first = "input";
+      if (indicatorType === "icteverything" || indicatorType === "cotnet" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") first = "input";
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
@@ -16754,7 +16926,7 @@ const TalariaV8bLive = () => {
       v9SuppressNextChartDeselect();
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
-      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap") ? 260 : 210;
+      const halfW = indicatorType === "custom" ? 270 : (indicatorType === "icteverything" || indicatorType === "talariafvg" || indicatorType === "talariaratiogap" || indicatorType === "talariaweeklymap" || indicatorType === "talariasmc") ? 260 : 210;
       setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
       flushSync(() => {
         setIndSettDraft(draft);
@@ -16994,6 +17166,13 @@ const TalariaV8bLive = () => {
       return [{ ...r0, risk: want }];
     });
   }, [orderPanelOpen, sizeMode, riskVal]);
+
+  /** % / # SIZE: drop the leftover $ default (100) so open/switch shows 1% or 1 contract. */
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    if (sizeMode !== "%" && sizeMode !== "#") return;
+    setRiskVal((prev) => (String(prev).trim() === "100" ? "1" : prev));
+  }, [orderPanelOpen, sizeMode]);
 
   /** Lot-size (#): when SIZE changes, scale multi-entry row lots to the new total. */
   useEffect(() => {
@@ -17985,10 +18164,23 @@ const TalariaV8bLive = () => {
         const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
         if (ptab && !ptab.classList.contains("active")) ptab.click();
 
+        const om = window.chart?.orderManager;
+        const PRICE_INPUT_IDS = new Set(["orderEntryPrice", "slPrice", "tpPrice"]);
         const setIn = (id, val) => {
           const el = document.getElementById(id);
           if (!el) return;
-          const s = String(val ?? "");
+          let s = String(val ?? "");
+          // Futures tick grid: never push off-tick entry/SL/TP into hidden OM inputs
+          // (except while the user is mid-typing a partial decimal).
+          if (
+            PRICE_INPUT_IDS.has(id) &&
+            s !== "" &&
+            s !== "0" &&
+            !v9IsPartialDecimalInput(s)
+          ) {
+            const snapped = v9SnapPositivePriceStr(s, om);
+            if (snapped) s = snapped;
+          }
           if (el.value === s) return;
           el.value = s;
           el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -18003,7 +18195,6 @@ const TalariaV8bLive = () => {
           el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
-        const om = window.chart?.orderManager;
         const skipPosSync = !!om?.isDraggingPreviewLine || v9IsRrSelectedWithoutExecute(om);
 
         const fillLiveEntryFromFocusedMultichartTile = async () => {
@@ -18031,21 +18222,23 @@ const TalariaV8bLive = () => {
         };
 
         if (sizeMode === "$") {
-          if (!v9IsPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
         } else if (sizeMode === "%") {
-          if (!v9IsPartialDecimalInput(riskVal)) {
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) {
           let pct = riskVal;
-          // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
+          // OM % risk uses initial/current balance only — not equity. BAL → initial as-is;
+          // EQ → scale so (initial × pct/100) equals (equity × risk%/100).
           if (riskBasis === "equity" && om) {
-            const b = Number(om.balance);
+            const init = Number(om.initialBalance);
             const eq = Number(om.equity);
-            if (b > 0 && Number.isFinite(eq)) {
-              pct = String((parseFloat(riskVal || "0") * eq) / b);
+            if (init > 0 && Number.isFinite(eq)) {
+              pct = String((parseFloat(riskVal || "0") * eq) / init);
             }
           }
           setIn("riskAmountPercent", pct);
           }
-          const wantBal = "current";
+          // BAL is fixed starting capital; EQ is scaled onto the same initial base above.
+          const wantBal = "initial";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
         } else {
@@ -18072,12 +18265,12 @@ const TalariaV8bLive = () => {
           } else if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
             lotStr = om._formatQty(om._roundQtyToStep(lotCore));
           }
-          if (!v9IsPartialDecimalInput(riskVal)) {
+          if (!v9IsBlankOrPartialDecimalInput(riskVal)) {
             setIn("lotSizeAmount", lotStr);
           }
           queueMicrotask(() => {
             try {
-              if (sizeInputFocusedRef.current || v9IsPartialDecimalInput(riskVal)) return;
+              if (sizeInputFocusedRef.current || v9IsBlankOrPartialDecimalInput(riskVal)) return;
               if (bridgeLead) return;
               const lsNum = parseFloat(lotStr || "0");
               if (rvNum > 0 && lsNum === 0) return;
@@ -18398,12 +18591,15 @@ const TalariaV8bLive = () => {
 
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
+        const slTyping =
+          slTpPriceFocusedRef.current === "sl" &&
+          (v9IsPartialDecimalInput(slRowPx) || String(slRowPx).trim() === "");
         const reactBridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
         if (!skipPosSync) {
-          if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
+          if (slEnabled && (slPx > 0 || slTyping || v9IsPartialDecimalInput(slRowPx))) {
             if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "slPrice", slRowPx)) {
-              const domSl = document.getElementById("slPrice")?.value ?? "";
-              if (domSl && !v9IsPartialDecimalInput(domSl)) {
+              const domSl = v9PositivePriceStr(document.getElementById("slPrice")?.value ?? "");
+              if (domSl) {
                 setSlRows((rows) => {
                   if (!rows.length) return rows;
                   const r0 = rows[0];
@@ -18411,8 +18607,9 @@ const TalariaV8bLive = () => {
                   return [{ ...r0, price: domSl }];
                 });
               }
-            } else {
-              setIn("slPrice", slRowPx);
+            } else if (slPx > 0 || slTyping) {
+              // Never push a blank unfocused React row into #slPrice (wipes chart-backed levels).
+              setIn("slPrice", slRowPx === "" ? "0" : slRowPx);
               if (om && slPx > 0) om.slManuallyPositioned = true;
             }
           } else if (!slEnabled) {
@@ -18422,15 +18619,18 @@ const TalariaV8bLive = () => {
           const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
           const tpPx = parseFloat(tp0?.price ?? "0");
           const tpRowPx = String(tp0?.price ?? "0");
+          const tpTyping =
+            slTpPriceFocusedRef.current === "tp" &&
+            (v9IsPartialDecimalInput(tpRowPx) || String(tpRowPx).trim() === "");
           if (
             !tpMultiActive &&
             tpActive.length <= 1 &&
             tp0?.enabled !== false &&
-            (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
+            (tpPx > 0 || tpTyping || v9IsPartialDecimalInput(tpRowPx))
           ) {
             if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "tpPrice", tpRowPx)) {
-              const domTp = document.getElementById("tpPrice")?.value ?? "";
-              if (domTp && !v9IsPartialDecimalInput(domTp)) {
+              const domTp = v9PositivePriceStr(document.getElementById("tpPrice")?.value ?? "");
+              if (domTp) {
                 setTpRows((rows) => {
                   if (!rows.length) return rows;
                   const r0 = rows[0];
@@ -18438,8 +18638,8 @@ const TalariaV8bLive = () => {
                   return [{ ...r0, price: domTp }];
                 });
               }
-            } else {
-              setIn("tpPrice", tpRowPx);
+            } else if (tpPx > 0 || tpTyping) {
+              setIn("tpPrice", tpRowPx === "" ? "0" : tpRowPx);
               if (om && tpPx > 0) om.tpManuallyPositioned = true;
             }
           } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
@@ -18882,9 +19082,28 @@ const TalariaV8bLive = () => {
 
       const rrGatePanel = v9IsRrSelectedWithoutExecute(om);
       if (!rrGatePanel) {
-      const ep = document.getElementById("orderEntryPrice")?.value ?? "";
-      const slp = document.getElementById("slPrice")?.value ?? "";
-      const tpp = document.getElementById("tpPrice")?.value ?? "";
+      const snapDomPrice = (id, raw) => {
+        // Don't fight mid-edit typing in the React SL/TP wells.
+        if (id === "slPrice" && slTpPriceFocusedRef.current === "sl") {
+          return v9PositivePriceStr(raw) || "";
+        }
+        if (id === "tpPrice" && slTpPriceFocusedRef.current === "tp") {
+          return v9PositivePriceStr(raw) || "";
+        }
+        const snapped = v9SnapPositivePriceStr(raw, om);
+        if (!snapped) return "";
+        const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+        if (el && el.value !== snapped && !v9IsPartialDecimalInput(el.value)) {
+          el.value = snapped;
+        }
+        return snapped;
+      };
+      const ep = snapDomPrice("orderEntryPrice", document.getElementById("orderEntryPrice")?.value ?? "")
+        || (document.getElementById("orderEntryPrice")?.value ?? "");
+      const slp = snapDomPrice("slPrice", document.getElementById("slPrice")?.value ?? "")
+        || (document.getElementById("slPrice")?.value ?? "");
+      const tpp = snapDomPrice("tpPrice", document.getElementById("tpPrice")?.value ?? "")
+        || (document.getElementById("tpPrice")?.value ?? "");
       const omMultiEntry =
         !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
       const omMultiTp =
@@ -18895,7 +19114,7 @@ const TalariaV8bLive = () => {
       if (omMultiEntry) {
         const next = om.multiEntryLevels.map((l) => ({
           id: l.id,
-          price: String(l.price ?? "0"),
+          price: v9SnapPositivePriceStr(l.price, om) || String(l.price ?? "0"),
           risk: String(l.amount ?? "0"),
         }));
         const entrySame = (a, b) =>
@@ -18921,15 +19140,19 @@ const TalariaV8bLive = () => {
           if (!rows.length) return rows;
           // Don't collapse while user just clicked "+" — OM is still single-entry until forward bridge runs (~80ms).
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) {
+            const epPos = v9PositivePriceStr(ep);
+            if (!epPos) return rows;
             const r0 = rows[0];
-            return [{ ...r0, price: ep, risk: r0.risk }];
+            return [{ ...r0, price: epPos, risk: r0.risk }];
           }
           if (v9IsPartialDecimalInput(rows[0].price)) return rows;
-          const epp = parseFloat(ep);
+          const epPos = v9PositivePriceStr(ep);
+          if (!epPos) return rows;
+          const epp = parseFloat(epPos);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
           const nex = [...rows];
-          nex[0] = { ...nex[0], price: ep };
+          nex[0] = { ...nex[0], price: epPos };
           return nex;
         });
       }
@@ -18939,12 +19162,16 @@ const TalariaV8bLive = () => {
       if (!rrLocked) {
         setSlRows((rows) => {
           if (!rows.length) return rows;
-          if (v9IsPartialDecimalInput(rows[0].price)) return rows;
-          const slpN = parseFloat(slp);
+          if (v9ShouldHoldReactPriceAgainstOmMirror(rows[0].price, slTpPriceFocusedRef.current === "sl")) {
+            return rows;
+          }
+          const slPos = v9PositivePriceStr(slp);
+          if (!slPos) return rows;
+          const slpN = parseFloat(slPos);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
           const next = [...rows];
-          next[0] = { ...next[0], price: slp };
+          next[0] = { ...next[0], price: slPos };
           return next;
         });
 
@@ -18958,7 +19185,7 @@ const TalariaV8bLive = () => {
           pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
         const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
-          price: String(t.price ?? "0"),
+          price: v9SnapPositivePriceStr(t.price, om) || String(t.price ?? "0"),
           qty: v9OmTpTargetToReactQty(om, ti, mirrorSizeMode, om.marketType === "futures" ? "futures" : "forex"),
           enabled: true,
         }));
@@ -18982,19 +19209,27 @@ const TalariaV8bLive = () => {
         setTpRows((rows) => {
           if (!rows.length) return rows;
           const tpOn = !!document.getElementById("enableTP")?.checked;
+          const tpPos = v9PositivePriceStr(tpp);
           if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
-            return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
+            if (!tpPos) return [{ ...r0, qty: r0.qty ?? "100", enabled: tpOn }];
+            return [{ ...r0, price: tpPos, qty: r0.qty ?? "100", enabled: tpOn }];
           }
           const r0 = rows[0];
-          if (v9IsPartialDecimalInput(r0.price)) return rows;
-          const tppN = parseFloat(tpp);
+          if (v9ShouldHoldReactPriceAgainstOmMirror(r0.price, slTpPriceFocusedRef.current === "tp")) {
+            const enChgHold = !!r0.enabled !== tpOn;
+            if (!enChgHold) return rows;
+            const nextHold = [...rows];
+            nextHold[0] = { ...r0, enabled: tpOn };
+            return nextHold;
+          }
+          const tppN = tpPos ? parseFloat(tpPos) : NaN;
           const curP = parseFloat(r0.price || "0");
-          const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
+          const priceChg = !!tpPos && (!Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8);
           const enChg = !!r0.enabled !== tpOn;
           if (!priceChg && !enChg) return rows;
           const next = [...rows];
-          next[0] = { ...r0, price: tpp, enabled: tpOn };
+          next[0] = { ...r0, ...(tpPos ? { price: tpPos } : {}), enabled: tpOn };
           return next;
         });
       }
@@ -19020,13 +19255,14 @@ const TalariaV8bLive = () => {
         let rv = document.getElementById(rid)?.value;
         if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
           const omm = window.chart?.orderManager;
-          const b = Number(omm?.balance);
+          const init = Number(omm?.initialBalance);
           const eq = Number(omm?.equity);
-          if (b > 0 && Number.isFinite(eq)) {
-            rv = String((parseFloat(rv) * b) / eq);
+          if (init > 0 && Number.isFinite(eq)) {
+            // Inverse of forward EQ scale (hidden % was stored vs initial).
+            rv = String((parseFloat(rv) * init) / eq);
           }
         }
-        if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsPartialDecimalInput(riskVal)) {
+        if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsBlankOrPartialDecimalInput(riskVal)) {
           const rvNum = parseFloat(riskVal || "0");
           const hidNum = parseFloat(rv || "0");
           if (!(rvNum > 0 && hidNum === 0)) {
@@ -24933,7 +25169,8 @@ const TalariaV8bLive = () => {
         if (fid == null || String(d.source || "") !== String(fid)) return;
         markOrderControlBridge();
         if (typeof d.orderEntryPrice === "number" && Number.isFinite(d.orderEntryPrice)) {
-          const ep = String(d.orderEntryPrice);
+          const omMsg = window.chart?.orderManager;
+          const ep = v9SnapPositivePriceStr(d.orderEntryPrice, omMsg) || String(d.orderEntryPrice);
           setEntryRows((rows) => {
             if (!rows.length) return [{ id: 0, price: ep, risk: "100" }];
             return [{ ...rows[0], price: ep }];
@@ -24943,18 +25180,29 @@ const TalariaV8bLive = () => {
         // Mirror TP: iframe chart SL drags post slPrice — without this, slRows stays "0" and the host
         // forwards setDraftPreview(slPrice: 0) into the iframe, snapping the SL badge back to entry.
         if (typeof d.slPrice === "number" && Number.isFinite(d.slPrice)) {
+          const omMsg = window.chart?.orderManager;
           setSlRows((rows) => {
             const r0 = rows[0] || { id: 0, price: "0" };
-            const next = { ...r0, price: d.slPrice > 0 ? String(d.slPrice) : "0" };
+            const next = {
+              ...r0,
+              price: d.slPrice > 0
+                ? (v9SnapPositivePriceStr(d.slPrice, omMsg) || String(d.slPrice))
+                : "0",
+            };
             return [next];
           });
         }
         if (typeof d.tpEnabled === "boolean" || (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice))) {
+          const omMsg = window.chart?.orderManager;
           setTpRows((rows) => {
             const r0 = rows[0] || { id: 0, price: "0", qty: "100", enabled: true };
             const next = { ...r0 };
             if (typeof d.tpEnabled === "boolean") next.enabled = d.tpEnabled;
-            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) next.price = String(d.tpPrice);
+            if (typeof d.tpPrice === "number" && Number.isFinite(d.tpPrice)) {
+              next.price = d.tpPrice > 0
+                ? (v9SnapPositivePriceStr(d.tpPrice, omMsg) || String(d.tpPrice))
+                : "0";
+            }
             return [next];
           });
         }
@@ -29528,7 +29776,7 @@ const TalariaV8bLive = () => {
           ? window.INDICATOR_DEFINITIONS[ctx.indicatorType] : null;
         if (!def || !ctx.indicator) return null;
         const isIctEverything = ctx.indicatorType === "icteverything";
-        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap" || ctx.indicatorType === "talariaweeklymap";
+        const isTalariaNative = ctx.indicatorType === "talariafvg" || ctx.indicatorType === "talariaratiogap" || ctx.indicatorType === "talariaweeklymap" || ctx.indicatorType === "talariasmc";
         const tabFnBase = typeof window.indicatorSettingsTabForParam === "function"
           ? window.indicatorSettingsTabForParam
           : (p) => (p.type === "checkbox" ? "visibility" : p.type === "color" ? "style" : "input");
@@ -30814,7 +31062,8 @@ const TalariaV8bLive = () => {
             setIndStyleDrop(null);
             setIndStyleDropAnchor(null);
             setIndSettTplOpen(false);
-            setIndSettTplMode(null);
+            setIndSettTplSaveAs(false);
+            setIndSettTplName("");
           }}
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
@@ -30839,32 +31088,59 @@ const TalariaV8bLive = () => {
             window.addEventListener("pointermove", onMove); window.addEventListener("pointerup", onUp);
           }} style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: c.tx, flex: 1 }}>{title} Settings</span>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
               <div
                 data-ind-sett-tpl="1"
-                {...modalPointerActivate(() => {
-                  setIndSettTplOpen((v) => !v);
-                  setIndSettTplMode(null);
-                  setIndSettTplMsg("");
-                  setIndSettTplTick((n) => n + 1);
-                })}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onMouseEnter={() => setHov("indtpl")}
                 onMouseLeave={() => setHov(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (indSettTplOpen) {
+                    setIndSettTplOpen(false);
+                    setIndSettTplSaveAs(false);
+                    setIndSettTplName("");
+                  } else {
+                    setIndSettTplOpen(true);
+                    setIndSettTplSaveAs(false);
+                    setIndSettTplName("");
+                    setIndSettTplTick((n) => n + 1);
+                  }
+                  setIndStyleDrop(null);
+                  setIndStyleDropAnchor(null);
+                  setColorPicker(null);
+                  cpBarAnchorRef.current = null;
+                }}
                 title="Templates"
                 style={{
-                  height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "default", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-                  color: indSettTplOpen || hov === "indtpl" ? c.acL : c.ts,
-                  background: indSettTplOpen ? "rgba(74,106,255,0.12)" : hov === "indtpl" ? "rgba(255,255,255,0.06)" : "transparent",
-                  transition: "background 0.12s, color 0.12s",
+                  width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "default", position: "relative",
+                  background: indSettTplOpen ? "rgba(74,106,255,0.10)" : hov === "indtpl" ? c.hv : "transparent",
+                  transition: "background 0.12s",
+                  color: indSettTplOpen ? c.acL : hov === "indtpl" ? c.tx : c.ts,
                 }}
               >
-                Template
-              </div>
-              <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
-                style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
-                  background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
-                <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
+                <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+                  <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                  <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
+                {indSettTplOpen && (
+                  <div style={{
+                    position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`,
+                    boxShadow: `0 0 6px ${c.acG}`,
+                  }} />
+                )}
+                {hov === "indtpl" && !indSettTplOpen && (
+                  <div style={{
+                    position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    width: "50%", height: 1, background: `linear-gradient(90deg,transparent,${c.hvLn},transparent)`,
+                  }} />
+                )}
               </div>
               {indSettTplOpen && (() => {
                 const indType = ctx.indicatorType;
@@ -30874,9 +31150,36 @@ const TalariaV8bLive = () => {
                   if (!params || typeof params !== "object") return;
                   patchIndSettDraftLive((d) => ({ ...d, ...snapshotIndicatorSettingsDraft(params) }));
                 };
-                const rowStyle = {
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "7px 10px", cursor: "default", color: c.tx, fontSize: 12, gap: 8,
+                const applyDefaultParams = () => {
+                  const next = {};
+                  (def.params || []).forEach((p) => {
+                    if (p.type === "heading" || p.type === "divider") return;
+                    if (p.type === "timeRange") {
+                      next[p.startId] = p.defaultStart;
+                      next[p.endId] = p.defaultEnd;
+                      return;
+                    }
+                    if (p.type === "sessionInput") {
+                      next[p.showId] = p.defaultShow !== false;
+                      next[p.nameId] = p.defaultName || p.label || "";
+                      next[p.startId] = p.defaultStart;
+                      next[p.endId] = p.defaultEnd;
+                      return;
+                    }
+                    next[p.id] = p.default;
+                  });
+                  Object.assign(next, v9DefaultIndicatorVisibilityDraftPatch());
+                  next.visible = true;
+                  if (indType === "cmf") next.hideFromContainer = false;
+                  patchIndSettDraftLive(() => next);
+                };
+                const saveCurrentAs = () => {
+                  const name = indSettTplName.trim();
+                  if (!name) return;
+                  saveNamedIndicatorSettingsTemplate(indType, name, indSettDraftRef.current || indSettDraft);
+                  setIndSettTplSaveAs(false);
+                  setIndSettTplName("");
+                  setIndSettTplTick((n) => n + 1);
                 };
                 return (
                   <div
@@ -30885,190 +31188,129 @@ const TalariaV8bLive = () => {
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      position: "absolute", top: "100%", right: 0, marginTop: 6, width: 260,
-                      background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 12px 36px rgba(0,0,0,0.55)",
-                      zIndex: 12000, padding: "4px 0",
+                      position: "absolute", top: "calc(100% + 4px)", right: -30, zIndex: 12000, width: 180,
+                      background: c.sf, border: "1px solid rgba(140,160,255,0.22)", fontFamily: F,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.5)", cursor: "default",
+                      animation: "tlrDropIn 0.15s ease",
                     }}
                   >
-                    {!indSettTplMode && (
-                      <>
-                        <div
-                          onMouseEnter={() => setHov("ist-save")} onMouseLeave={() => setHov(null)}
-                          onClick={() => { setIndSettTplMode("save"); setIndSettTplName(""); setIndSettTplMsg(""); }}
-                          style={{ ...rowStyle, background: hov === "ist-save" ? "rgba(255,255,255,0.05)" : "transparent" }}
-                        >Save as…</div>
-                        <div
-                          onMouseEnter={() => setHov("ist-share")} onMouseLeave={() => setHov(null)}
-                          onClick={async () => {
-                            if (indSettTplBusy) return;
-                            setIndSettTplBusy(true);
-                            setIndSettTplMsg("");
-                            try {
-                              const draft = indSettDraftRef.current || indSettDraft;
-                              const published = await publishIndicatorSettingsTemplate({
-                                indicatorType: indType,
-                                name: `${title} template`,
-                                params: draft,
-                              });
-                              setIndSettTplShareId(published.shareId);
-                              setIndSettTplMode("share-result");
-                              saveNamedIndicatorSettingsTemplate(indType, published.name, draft, { shareId: published.shareId });
-                              setIndSettTplTick((n) => n + 1);
-                              try { await navigator.clipboard.writeText(published.shareId); } catch (_e) { /* ignore */ }
-                            } catch (err) {
-                              setIndSettTplMsg(err?.message || "Could not create share ID (sign in required)");
-                            } finally {
-                              setIndSettTplBusy(false);
-                            }
-                          }}
-                          style={{ ...rowStyle, background: hov === "ist-share" ? "rgba(255,255,255,0.05)" : "transparent", opacity: indSettTplBusy ? 0.6 : 1 }}
-                        >{indSettTplBusy ? "Sharing…" : "Get share ID"}</div>
-                        <div
-                          onMouseEnter={() => setHov("ist-import")} onMouseLeave={() => setHov(null)}
-                          onClick={() => { setIndSettTplMode("import"); setIndSettTplImportId(""); setIndSettTplMsg(""); }}
-                          style={{ ...rowStyle, background: hov === "ist-import" ? "rgba(255,255,255,0.05)" : "transparent" }}
-                        >Load by ID…</div>
-                        {templates.length > 0 && <div style={{ height: 1, background: c.br, margin: "4px 0" }} />}
-                        {templates.map((t) => (
-                          <div
-                            key={t.id}
-                            onMouseEnter={() => setHov(`ist-${t.id}`)} onMouseLeave={() => setHov(null)}
-                            style={{ ...rowStyle, background: hov === `ist-${t.id}` ? "rgba(74,106,255,0.08)" : "transparent" }}
-                          >
-                            <div
-                              onClick={() => { applyTplParams(t.params); setIndSettTplOpen(false); setIndSettTplMode(null); }}
-                              style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                              title={t.shareId ? `${t.name} · ${t.shareId}` : t.name}
-                            >
-                              {t.name}
-                              {t.shareId ? <span style={{ color: c.tm, fontSize: 10, marginLeft: 6 }}>{t.shareId}</span> : null}
-                            </div>
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteIndicatorSettingsTemplate(indType, t.id);
-                                setIndSettTplTick((n) => n + 1);
-                              }}
-                              style={{ color: c.tm, fontSize: 14, padding: "0 2px" }}
-                              title="Delete"
-                            >×</div>
+                    <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+                    <div style={{ padding: "4px 0" }}>
+                      {[["Save as", () => { setIndSettTplSaveAs(true); setIndSettTplName(""); }],
+                        ["Apply default", () => {
+                          applyDefaultParams();
+                          setIndSettTplOpen(false);
+                          setIndSettTplSaveAs(false);
+                          setIndSettTplName("");
+                        }]].map(([lbl, action]) => {
+                        const isH = hov === `ist-${lbl}`;
+                        const isAct = lbl === "Save as" && indSettTplSaveAs;
+                        return (
+                          <div key={lbl} onClick={action}
+                            onMouseEnter={() => setHov(`ist-${lbl}`)} onMouseLeave={() => setHov(null)}
+                            style={{
+                              display: "flex", alignItems: "center", padding: "6px 12px", cursor: "default", position: "relative",
+                              background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition: "background 0.1s",
+                            }}>
+                            {isAct && (
+                              <div style={{
+                                position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2,
+                                background: `linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                boxShadow: `0 0 6px ${c.acG}`,
+                              }} />
+                            )}
+                            <span style={{ fontSize: 13, color: isAct ? c.acL : isH ? c.tx : c.ts, fontWeight: isAct ? 700 : 500 }}>{lbl}</span>
                           </div>
-                        ))}
-                        {templates.length === 0 && (
-                          <div style={{ padding: "8px 10px", fontSize: 11, color: c.tm }}>No saved templates yet.</div>
-                        )}
-                        {indSettTplMsg ? (
-                          <div style={{ padding: "6px 10px", fontSize: 11, color: c.rd }}>{indSettTplMsg}</div>
-                        ) : null}
-                      </>
-                    )}
-                    {indSettTplMode === "save" && (
-                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Save template name</div>
-                        <input
-                          autoFocus
-                          value={indSettTplName}
-                          onChange={(e) => setIndSettTplName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && indSettTplName.trim()) {
-                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
-                              setIndSettTplMode(null);
-                              setIndSettTplName("");
-                              setIndSettTplTick((n) => n + 1);
-                            }
-                          }}
-                          placeholder="e.g. My FVG setup"
-                          style={{
-                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
-                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
-                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
-                          }}
-                        />
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div onClick={() => setIndSettTplMode(null)} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
-                          <div
-                            onClick={() => {
-                              if (!indSettTplName.trim()) return;
-                              saveNamedIndicatorSettingsTemplate(indType, indSettTplName.trim(), indSettDraftRef.current || indSettDraft);
-                              setIndSettTplMode(null);
-                              setIndSettTplName("");
-                              setIndSettTplTick((n) => n + 1);
+                        );
+                      })}
+                      <div style={{ height: 1, margin: "4px 0", background: c.brH }} />
+                      {indSettTplSaveAs && (
+                        <div style={{ padding: "4px 8px 4px 12px", display: "flex", alignItems: "center", gap: 4, boxSizing: "border-box", width: "100%" }}
+                          onMouseDown={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            value={indSettTplName}
+                            onChange={(e) => setIndSettTplName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveCurrentAs();
+                              if (e.key === "Escape") { setIndSettTplSaveAs(false); setIndSettTplName(""); }
                             }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}
-                          >Save</div>
-                        </div>
-                      </div>
-                    )}
-                    {indSettTplMode === "import" && (
-                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Enter template ID</div>
-                        <input
-                          autoFocus
-                          value={indSettTplImportId}
-                          onChange={(e) => setIndSettTplImportId(e.target.value.toUpperCase())}
-                          placeholder="IST-XXXXXX"
-                          style={{
-                            height: 28, width: "100%", boxSizing: "border-box", padding: "0 8px",
-                            background: "rgba(140,160,255,0.05)", border: `1px solid ${c.brH}`,
-                            color: c.tx, fontSize: 12, fontFamily: F, outline: "none", borderRadius: 4,
-                            letterSpacing: "0.06em",
-                          }}
-                        />
-                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.rd }}>{indSettTplMsg}</div> : null}
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}>Back</div>
+                            placeholder="Template name…"
+                            style={{
+                              flex: 1, minWidth: 0, background: c.hv, border: "1px solid rgba(140,160,255,0.22)",
+                              outline: "none", color: c.tx, fontSize: 11, fontFamily: F, padding: "3px 6px",
+                              boxSizing: "border-box", cursor: "text",
+                            }}
+                          />
                           <div
-                            onClick={async () => {
-                              if (indSettTplBusy || !indSettTplImportId.trim()) return;
-                              setIndSettTplBusy(true);
-                              setIndSettTplMsg("");
-                              try {
-                                const remote = await importSharedIndicatorSettingsTemplate(indSettTplImportId.trim(), { saveToProfile: true });
-                                if (remote.indicatorType && remote.indicatorType !== String(indType).toLowerCase()) {
-                                  setIndSettTplMsg(`This ID is for ${remote.indicatorType}, not ${indType}`);
-                                  return;
-                                }
-                                applyTplParams(remote.params);
+                            onClick={saveCurrentAs}
+                            onMouseEnter={() => setHov("ist-save-ok")} onMouseLeave={() => setHov(null)}
+                            style={{
+                              padding: "2px 4px", display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: "default", flexShrink: 0, position: "relative",
+                              background: hov === "ist-save-ok" ? c.hv : "transparent", transition: "background 0.12s",
+                            }}
+                          >
+                            <I n="check" s={11} cl={indSettTplName.trim() ? c.acL : c.tm} />
+                            {hov === "ist-save-ok" && (
+                              <div style={{
+                                position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+                                width: "50%", height: 1, background: `linear-gradient(90deg,transparent,${c.hvLn},transparent)`,
+                                pointerEvents: "none",
+                              }} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {templates.length === 0 && !indSettTplSaveAs ? (
+                        <div style={{ padding: "6px 12px" }}>
+                          <span style={{ fontSize: 11, color: c.tm, fontStyle: "italic" }}>No saved templates</span>
+                        </div>
+                      ) : templates.map((tpl, idx) => (
+                        <div
+                          key={tpl.id || idx}
+                          onMouseEnter={() => setHov(`ist-${idx}`)} onMouseLeave={() => setHov(null)}
+                          style={{
+                            display: "flex", alignItems: "center", padding: "4px 8px 4px 12px", cursor: "default", position: "relative",
+                            background: hov === `ist-${idx}` ? c.hv2 : "transparent", transition: "background 0.1s",
+                          }}
+                        >
+                          <span
+                            onClick={() => {
+                              applyTplParams(tpl.params);
+                              setIndSettTplOpen(false);
+                              setIndSettTplSaveAs(false);
+                              setIndSettTplName("");
+                            }}
+                            style={{
+                              flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              fontSize: 12, color: hov === `ist-${idx}` ? c.tx : c.ts, fontWeight: 500,
+                            }}
+                          >{tpl.name}</span>
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (tpl.id) {
+                                deleteIndicatorSettingsTemplate(indType, tpl.id);
                                 setIndSettTplTick((n) => n + 1);
-                                setIndSettTplOpen(false);
-                                setIndSettTplMode(null);
-                              } catch (err) {
-                                setIndSettTplMsg(err?.message || "Could not load template");
-                              } finally {
-                                setIndSettTplBusy(false);
                               }
                             }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700, opacity: indSettTplBusy ? 0.6 : 1 }}
-                          >{indSettTplBusy ? "Loading…" : "Load & save"}</div>
+                            onMouseEnter={() => setHov(`ist-del-${idx}`)} onMouseLeave={() => setHov(`ist-${idx}`)}
+                            style={{ padding: "2px 4px", cursor: "default" }}
+                          >
+                            <I n="x" s={11} cl={hov === `ist-del-${idx}` ? c.rd : c.tm} />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {indSettTplMode === "share-result" && (
-                      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ fontSize: 11, color: c.tm, fontWeight: 700 }}>Share this ID with others</div>
-                        <div style={{
-                          fontSize: 14, fontWeight: 800, color: c.acL, letterSpacing: "0.08em",
-                          padding: "8px 10px", background: "rgba(74,106,255,0.10)", border: `1px solid ${c.brH}`,
-                          textAlign: "center", userSelect: "all",
-                        }}>{indSettTplShareId}</div>
-                        <div style={{ fontSize: 10, color: c.tm, lineHeight: 1.4 }}>
-                          Copied to clipboard when possible. Others: Template → Load by ID.
-                        </div>
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <div
-                            onClick={async () => {
-                              try { await navigator.clipboard.writeText(indSettTplShareId); setIndSettTplMsg("Copied"); } catch (_e) { setIndSettTplMsg("Copy failed"); }
-                            }}
-                            style={{ ...rowStyle, padding: "5px 10px", color: c.ts }}
-                          >Copy</div>
-                          <div onClick={() => { setIndSettTplMode(null); setIndSettTplMsg(""); }} style={{ ...rowStyle, padding: "5px 10px", color: c.acL, fontWeight: 700 }}>Done</div>
-                        </div>
-                        {indSettTplMsg ? <div style={{ fontSize: 11, color: c.gn || c.acL }}>{indSettTplMsg}</div> : null}
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
+            </div>
+            <div {...modalPointerActivate(closeIndSett)} onMouseEnter={() => setHov("indx")} onMouseLeave={() => setHov(null)}
+              style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default",
+                background: hov === "indx" ? "rgba(255,80,80,0.07)" : "transparent", transition: "background 0.12s" }}>
+              <I n="x" s={18} cl={hov === "indx" ? c.rd : c.ts} />
             </div>
           </div>
           <div style={{ height: 1, background: c.br, flexShrink: 0 }} />
@@ -36026,7 +36268,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div data-v9-chrome="1" data-v9-topbar="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -36068,7 +36310,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
         <button type="button" data-indicators-btn="1" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{if(indSettOpenRef.current) closeIndSett(); closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
-          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
+          style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, flexShrink: 0, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
           {hov==="indicators" && !indOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -36249,10 +36491,10 @@ const TalariaV8bLive = () => {
               );
             })()}
           </div>
-          <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
+          <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative", flexShrink: 0 }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
               <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); selectTimeframeWithCb01Signature(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
-                style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
+                style={{ padding: "4px 7px", position: "relative", flexShrink: 0, background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
               </button>
@@ -36344,12 +36586,13 @@ const TalariaV8bLive = () => {
             <div style={{ position: "absolute", bottom: 0, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, ${c.hvLn}, transparent)` }} />
           )}
         </button>
-        <div style={{ flex: 1 }}/>
+        {/* Grows on desktop (keeps Place Order / icons right-aligned); collapses on narrow so the bar can slide. */}
+        <div style={{ flex: "1 1 0", minWidth: 0 }} aria-hidden="true"/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}
           onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
           onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-          style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
+          style={{ width:26, height:26, flexShrink: 0, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
           <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="u-support" ? c.tx : c.ts}/>
           {supportUnread > 0 && <div style={{ position:"absolute", top:1, right:1, minWidth:14, height:14, borderRadius:7, background:"#e53935", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1, pointerEvents:"none", animation:"tlrSupportBadgePop 0.35s ease" }}>{supportUnread > 99 ? "99+" : supportUnread}</div>}
@@ -36360,7 +36603,7 @@ const TalariaV8bLive = () => {
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
           style={{
-            height: 28, padding: "0 14px", marginRight: 6,
+            height: 28, padding: "0 14px", marginRight: 6, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", gap: 5,
             background: hov==="place-order_dn" ? `linear-gradient(135deg,${c.ac},#1F35D4)` : hov==="place-order" ? `linear-gradient(135deg,${c.acL},#6B8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
             border: `1px solid ${orderPanelOpen && !rightPanel ? "rgba(74,106,255,0.8)" : hov==="place-order" ? "rgba(74,106,255,0.75)" : "rgba(74,106,255,0.5)"}`,
@@ -36386,7 +36629,7 @@ const TalariaV8bLive = () => {
               if(id==="expand"){ e.stopPropagation(); setSupportChatOpen(false); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }
             }}
             onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
-            style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
+            style={{ width: 26, height: 26, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
             {(() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return <>
@@ -36861,8 +37104,8 @@ const TalariaV8bLive = () => {
                 {/* Crosshair elements — chart.js positions these on mousemove */}
                 <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
                 <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
-                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 101, display: "none" }} />
+                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 101, display: "none" }} />
 
                 {layoutPanels.n === 1 && <ChartBrandLink />}
 
@@ -36989,8 +37232,8 @@ const TalariaV8bLive = () => {
           </div>
           {/* V9 mock time axis row removed — chart.js draws times at the
               bottom of the canvas. */}
-          {/* Status + Replay bar */}
-          <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          {/* Status + Replay bar — desktop keeps 1fr|auto|1fr placement; narrow screens swipe horizontally. */}
+          <div data-v9-chrome="1" data-v9-replaybar="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
@@ -37042,7 +37285,7 @@ const TalariaV8bLive = () => {
               </div>
             </div>
             {/* Replay controls — grid column 2, auto-width, truly centered */}
-            <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center"}}>
+            <div style={{display:"flex",alignItems:"center",height:"100%",justifyContent:"center",flexShrink:0}}>
             {/* Left separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}
@@ -37577,9 +37820,9 @@ const TalariaV8bLive = () => {
             {/* Right separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 0 0 4px",flexShrink:0}}/>
             </div>
-            {/* Balance + panel toggle — grid column 3, right-aligned */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px',minWidth:0,maxWidth:'100%'}}>
+            {/* Balance + panel toggle — grid column 3, right-aligned; fixed widths keep digits from shifting */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',minWidth:292,flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px',flexShrink:0}}>
                 {/* Eye visibility toggle — object-tree style */}
                 <button
                   type="button"
@@ -37606,20 +37849,20 @@ const TalariaV8bLive = () => {
                     </svg>
                   )}
                 </button>
-                {/* Label/value columns — flex so large numbers don't clip */}
-                <div style={{display:'flex',alignItems:'flex-end',gap:14,minWidth:0,flexShrink:1}}>
+                {/* Fixed-width columns so live P&L digit changes don't nudge the row */}
+                <div style={{display:'flex',alignItems:'flex-end',gap:14,flexShrink:0}}>
                   {[
-                    { label: 'BALANCE', value: replayHud.balanceStr, col: c.tx },
-                    { label: 'EQUITY', value: replayHud.equityStr, col: c.tx },
-                    { label: 'P&L', value: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
-                  ].map(({ label, value, col }) => (
-                    <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,minWidth:0,flex:'0 1 auto'}}>
+                    { label: 'BALANCE', value: replayHud.balanceStr, col: c.tx, width: 92 },
+                    { label: 'EQUITY', value: replayHud.equityStr, col: c.tx, width: 92 },
+                    { label: 'P&L', value: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd, width: 78 },
+                  ].map(({ label, value, col, width }) => (
+                    <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,width,flexShrink:0,boxSizing:'border-box'}}>
                       <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1,whiteSpace:'nowrap'}}>{label}</span>
                       <span style={{
                         fontSize:12,fontWeight:700,
                         color: balVis ? col : c.tm,
-                        fontVariantNumeric:'tabular-nums',lineHeight:1,
-                        whiteSpace:'nowrap',maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',
+                        fontVariantNumeric:'tabular-nums',fontFeatureSettings:'"tnum" 1',lineHeight:1,
+                        whiteSpace:'nowrap',width:'100%',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',
                       }}>{maskV9AccountValue(balVis, value)}</span>
                     </div>
                   ))}
@@ -38070,11 +38313,13 @@ const TalariaV8bLive = () => {
                                             </div>
                                           );
                                         } else {
+                                          const opts=normalizeStrategyVarOptions(def.options);
+                                          if(!opts.length) return null;
                                           return(
                                             <div key={def.id}>
                                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.07em",display:"block",marginBottom:4}}>{def.label.toUpperCase()}</span>
                                               <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-                                                {def.options.map((opt,oi)=>{
+                                                {opts.map((opt,oi)=>{
                                                   const active=editTags.includes(opt);
                                                   const isH=swHov===`td-opt-${r.id}-${def.id}-${oi}`;
                                                   return(
@@ -38082,7 +38327,7 @@ const TalariaV8bLive = () => {
                                                       if(!canEdit) return;
                                                       // multi = single-choice per variable (not accumulate)
                                                       const isSel=editTags.includes(opt);
-                                                      const without=editTags.filter(x=>!def.options.includes(x));
+                                                      const without=editTags.filter(x=>!opts.includes(x));
                                                       updTags(r.id, isSel?without:[...without,opt]);
                                                     }}
                                                       onMouseEnter={()=>canEdit&&setSwHov(`td-opt-${r.id}-${def.id}-${oi}`)} onMouseLeave={()=>setSwHov(null)}
@@ -39025,7 +39270,20 @@ const TalariaV8bLive = () => {
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
             {["Market","Limit","Stop"].map((t) => { const type=t.toLowerCase(); const a=orderType===type; const isH=swHov===`ot-${t}`; return (
-              <button type="button" key={t} onClick={()=>{ setOrderType(type); clickHiddenOrderType(type); }}
+              <button type="button" key={t} onClick={()=>{
+                setOrderType(type);
+                clickHiddenOrderType(type);
+                // Market = entry on the live price line. Snap React entry so the
+                // badge cannot stay MARKET at an off-price RR level.
+                if (type === "market") {
+                  const omMkt = window.chart?.orderManager;
+                  try { omMkt?.updateOrderPanelPrice?.(); } catch (_) {}
+                  const ep = document.getElementById("orderEntryPrice")?.value;
+                  if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+                  const ot = v9SyncOrderTypeFromEntryPrice(omMkt, buySell);
+                  setOrderType((prev) => (prev === ot ? prev : ot));
+                }
+              }}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -39140,7 +39398,8 @@ const TalariaV8bLive = () => {
                       {[["balance","BAL"],["equity","EQ"]].map(([val,label]) => {
                         const a=riskBasis===val; const isH=swHov===`rb-${val}`;
                         return (
-                          <div key={val} onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
+                          <div key={val} title={val==="balance"?"Fixed session starting balance":"Equity = start + open/closed P&L"}
+                            onClick={()=>{ markOrderControlBridge(); setRiskBasis(val); }}
                             onMouseEnter={()=>setSwHov(`rb-${val}`)} onMouseLeave={()=>setSwHov(null)}
                             style={{ padding:"1px 6px", fontSize:8, fontWeight:800, cursor:"default",
                                      color:a?c.acL:isH?c.ts:c.tm, background:a?c.acD:"transparent",
@@ -39770,8 +40029,12 @@ const TalariaV8bLive = () => {
                       <SlChk/>
                       <div style={{ flex:1, display:"flex", alignItems:"center", background:c.well, border:`1px solid ${slEnabled?"rgba(255,80,104,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 5px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", opacity:slEnabled?1:0.38, transition:"border-color 0.15s, opacity 0.15s" }}>
                         <input type="text" value={slRow.price} disabled={!slEnabled}
+                          onFocus={() => { slTpPriceFocusedRef.current = "sl"; }}
                           onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
-                          onBlur={e => { updSl(v9NormalizePriceInputOnBlur(e.target.value)); }}
+                          onBlur={e => {
+                            slTpPriceFocusedRef.current = null;
+                            updSl(v9NormalizePriceInputOnBlur(e.target.value));
+                          }}
                           style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:slEnabled?c.rd:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                         <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                           {arw(()=>stepSl(1),  true,  "sl-up")}
@@ -40382,8 +40645,12 @@ const TalariaV8bLive = () => {
                           {/* Price well */}
                           <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${row.enabled?"rgba(0,212,161,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}>
                             <input type="text" value={row.price} disabled={!row.enabled}
+                              onFocus={() => { slTpPriceFocusedRef.current = "tp"; }}
                               onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"price",e.target.value); }}
-                              onBlur={e => { updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value)); }}
+                              onBlur={e => {
+                                slTpPriceFocusedRef.current = null;
+                                updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value));
+                              }}
                               style={{ width:58, background:"transparent", border:"none", outline:"none", color:row.enabled?c.gn:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepTp(row.id,"price", 1), true,  `tp-${row.id}-up`)}
@@ -40887,7 +41154,14 @@ const TalariaV8bLive = () => {
               const isAct = sizeMode === m;
               const isH = swHov === `sz-drop-${m}`;
               return (
-                <div key={m} onClick={() => { setSizeMode(m); clickHiddenSizeMode(m); setOpSizeOpen(false); }}
+                <div key={m} onClick={() => {
+                    markOrderControlBridge();
+                    setSizeMode(m);
+                    // % / # default to 1 (not leftover $100 → 100% / 100 contracts). $ stays 100.
+                    setRiskVal(m === "$" ? "100" : "1");
+                    clickHiddenSizeMode(m);
+                    setOpSizeOpen(false);
+                  }}
                   onMouseEnter={()=>setSwHov(`sz-drop-${m}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
                            background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
@@ -41550,6 +41824,7 @@ const TalariaV8bLive = () => {
         const accentPost="rgba(180,140,255,0.9)", accentPostBg="rgba(180,140,255,0.1)", accentPostBd="rgba(180,140,255,0.4)";
         // TagRow — no swHov; read-only shows all tags but selected highlighted, unselected dimmed
         const TagRow=(def,tags,setTags,accent,accentBg,accentBd,canEdit)=>{
+          if(!def || !def.label) return null;
           if(def.type==="bool"){
             const active=tags.includes(def.label);
             return(
@@ -41577,12 +41852,14 @@ const TalariaV8bLive = () => {
               </div>
             );
           } else {
-            const selOpts=tags.filter(t=>def.options.includes(t));
+            const opts=normalizeStrategyVarOptions(def.options);
+            if(!opts.length) return null;
+            const selOpts=tags.filter(t=>opts.includes(t));
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
                 <span style={{fontSize:11,color:canEdit?c.ts:"rgba(255,255,255,0.3)",flexShrink:0}}>{def.label}</span>
                 <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                  {def.options.map((opt,oi)=>{
+                  {opts.map((opt,oi)=>{
                     const sel=selOpts.includes(opt);
                     const pillColor=sel?accent:canEdit?c.ts:c.trk;
                     const pillBg=sel?accentBg:"transparent";
@@ -41592,7 +41869,7 @@ const TalariaV8bLive = () => {
                         onClick={canEdit?()=>setTags(pt=>{
                           // multi = single-choice (same as order-panel <select>), not multi-select
                           const isSel=pt.includes(opt);
-                          const without=pt.filter(x=>!def.options.includes(x));
+                          const without=pt.filter(x=>!opts.includes(x));
                           return isSel?without:[...without,opt];
                         }):undefined}
                         className={canEdit?`tc-opt${sel?" tc-opt-act":""}`:undefined}

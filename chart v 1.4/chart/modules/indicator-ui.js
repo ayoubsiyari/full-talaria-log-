@@ -1578,6 +1578,44 @@ function __talariaWeeklyMapParamList() {
     ];
 }
 
+function __talariaSimpleSmcParamList() {
+    return [
+        { id: 'h1', type: 'heading', label: '1 · Price Action' },
+        { id: 'onlyDrawInSession', label: 'Only draw in session', type: 'checkbox', default: false },
+        { id: 'drawFractals', label: 'Draw fractal highs/lows', type: 'checkbox', default: true },
+        { id: 'fractalPeriod', label: 'Fractal periods', type: 'number', default: 2, min: 1, max: 20 },
+        { id: 'fractalHighColor', label: 'Fractal high color', type: 'color', default: 'rgba(255,255,255,0.5)' },
+        { id: 'fractalLowColor', label: 'Fractal low color', type: 'color', default: 'rgba(255,255,255,0.5)' },
+        { id: 'drawLQSweeps', label: 'Draw liquidity sweeps', type: 'checkbox', default: true },
+        { id: 'sweepColor', label: 'Sweep color', type: 'color', default: '#ffffff' },
+        { id: 'drawMSS', label: 'Draw MSS', type: 'checkbox', default: true },
+        { id: 'bullishMSSColor', label: 'Bullish MSS color', type: 'color', default: '#2962ff' },
+        { id: 'bearishMSSColor', label: 'Bearish MSS color', type: 'color', default: '#f23645' },
+        { id: 'drawFVG', label: 'Draw FVG', type: 'checkbox', default: true },
+        { id: 'bullishFVGColor', label: 'Bullish FVG color', type: 'color', default: 'rgba(255,255,255,0.5)' },
+        { id: 'bearishFVGColor', label: 'Bearish FVG color', type: 'color', default: 'rgba(255,255,255,0.5)' },
+        { id: 'h2', type: 'heading', label: '2 · Alerts' },
+        { id: 'alertName', label: 'Alert name', type: 'text', default: '1m XAUUSD' },
+        { id: 'sweepAlerts', label: 'Sweep alerts', type: 'checkbox', default: true },
+        { id: 'MSSAlerts', label: 'MSS alerts', type: 'checkbox', default: true },
+        { id: 'FVGAlerts', label: 'FVG alerts', type: 'checkbox', default: true },
+        { id: 'h3', type: 'heading', label: '3 · Sessions (America/New_York)' },
+        { id: 'tzStr', label: 'Timezone', type: 'text', default: 'America/New_York' },
+        { id: 'drawSession1', label: 'Draw session 1', type: 'checkbox', default: true },
+        { id: 'session1', label: 'Session 1', type: 'text', default: '2100-0100' },
+        { id: 'session1Color', label: 'Session 1 color', type: 'color', default: 'rgba(156,39,176,0.2)' },
+        { id: 'drawSession2', label: 'Draw session 2', type: 'checkbox', default: true },
+        { id: 'session2', label: 'Session 2', type: 'text', default: '0300-0600' },
+        { id: 'session2Color', label: 'Session 2 color', type: 'color', default: 'rgba(255,235,59,0.2)' },
+        { id: 'drawSession3', label: 'Draw session 3', type: 'checkbox', default: true },
+        { id: 'session3', label: 'Session 3', type: 'text', default: '0800-1000' },
+        { id: 'session3Color', label: 'Session 3 color', type: 'color', default: 'rgba(41,98,255,0.2)' },
+        { id: 'drawSession4', label: 'Draw session 4', type: 'checkbox', default: true },
+        { id: 'session4', label: 'Session 4', type: 'text', default: '1100-1300' },
+        { id: 'session4Color', label: 'Session 4 color', type: 'color', default: 'rgba(255,152,0,0.2)' }
+    ];
+}
+
 function __talariaRatioGapParamList() {
     const lineStyle = [{ value: 'solid', label: 'Solid' }, { value: 'dashed', label: 'Dashed' }, { value: 'dotted', label: 'Dotted' }];
     const tblPos = ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right']
@@ -2329,6 +2367,11 @@ const INDICATOR_DEFINITIONS = {
         name: 'Talaria — Weekly Map',
         type: 'overlay',
         params: __talariaWeeklyMapParamList()
+    },
+    talariasmc: {
+        name: 'Talaria — Simple SMC',
+        type: 'overlay',
+        params: __talariaSimpleSmcParamList()
     },
     custom: {
         name: 'Custom (sandboxed JS)',
@@ -3656,7 +3699,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         talaria: {
             name: 'Talaria',
             icon: '',
-            indicators: ['talariafvg', 'talariaratiogap', 'talariaweeklymap']
+            indicators: ['talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc']
         },
         script: {
             name: 'Custom',
@@ -4218,7 +4261,8 @@ function indicatorUpdateNeedsDataRecalc(indicatorType, merged, previous) {
     // treat every def field (including opacity/color-style ids) as a recalc input.
     const talariaBakeAll = indicatorType === 'talariafvg'
         || indicatorType === 'talariaratiogap'
-        || indicatorType === 'talariaweeklymap';
+        || indicatorType === 'talariaweeklymap'
+        || indicatorType === 'talariasmc';
     return def.params.some(function(param) {
         if (param.type === 'heading' || param.type === 'divider') return false;
         if (!talariaBakeAll && isIndicatorStyleOrThicknessParam(param)) return false;

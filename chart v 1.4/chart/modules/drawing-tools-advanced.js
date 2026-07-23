@@ -1009,10 +1009,29 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     getPriceStep() {
-        const inc = this.chart && Number.isFinite(this.chart.priceIncrement) && this.chart.priceIncrement > 0
-            ? this.chart.priceIncrement
+        const chart = this.chart || (typeof window !== 'undefined' ? window.chart : null);
+        if (chart && typeof chart.getTickSize === 'function') {
+            const tick = Number(chart.getTickSize());
+            if (Number.isFinite(tick) && tick > 0) return tick;
+        }
+        const inc = chart && Number.isFinite(chart.priceIncrement) && chart.priceIncrement > 0
+            ? chart.priceIncrement
             : 0.0001;
         return inc;
+    }
+
+    /** Snap RR entry/SL/TP to the instrument tick grid (futures ES/NQ = 0.25). */
+    snapPriceToTick(price) {
+        const p = Number(price);
+        if (!Number.isFinite(p)) return p;
+        const chart = this.chart || (typeof window !== 'undefined' ? window.chart : null);
+        if (chart && typeof chart.snapPriceToTick === 'function') {
+            const snapped = chart.snapPriceToTick(p);
+            if (Number.isFinite(snapped)) return snapped;
+        }
+        const tick = this.getPriceStep();
+        if (!Number.isFinite(tick) || tick <= 0) return p;
+        return Math.round(p / tick) * tick;
     }
 
     /** DrawingToolsManager instance — drawings only get `chart` set, not `manager`. */
@@ -1385,23 +1404,31 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     sanitizeStopPrice(price) {
-        if (!Array.isArray(this.points) || this.points.length === 0) return price;
-        const entryPrice = this.points[0].y;
-        const epsilon = 0.00001;
+        if (!Array.isArray(this.points) || this.points.length === 0) return this.snapPriceToTick(price);
+        const entryPrice = this.snapPriceToTick(this.points[0].y);
+        const tick = this.getPriceStep();
+        const minOff = Number.isFinite(tick) && tick > 0 ? tick : 0.00001;
+        let out = this.snapPriceToTick(price);
         if (this.isLong) {
-            return price < entryPrice - epsilon ? price : entryPrice - epsilon;
+            if (!(out <= entryPrice - minOff + 1e-12)) out = entryPrice - minOff;
+        } else if (!(out >= entryPrice + minOff - 1e-12)) {
+            out = entryPrice + minOff;
         }
-        return price > entryPrice + epsilon ? price : entryPrice + epsilon;
+        return this.snapPriceToTick(out);
     }
 
     sanitizeTargetPrice(price) {
-        if (!Array.isArray(this.points) || this.points.length === 0) return price;
-        const entryPrice = this.points[0].y;
-        const epsilon = 0.00001;
+        if (!Array.isArray(this.points) || this.points.length === 0) return this.snapPriceToTick(price);
+        const entryPrice = this.snapPriceToTick(this.points[0].y);
+        const tick = this.getPriceStep();
+        const minOff = Number.isFinite(tick) && tick > 0 ? tick : 0.00001;
+        let out = this.snapPriceToTick(price);
         if (this.isLong) {
-            return price > entryPrice + epsilon ? price : entryPrice + epsilon;
+            if (!(out >= entryPrice + minOff - 1e-12)) out = entryPrice + minOff;
+        } else if (!(out <= entryPrice - minOff + 1e-12)) {
+            out = entryPrice - minOff;
         }
-        return price < entryPrice - epsilon ? price : entryPrice - epsilon;
+        return this.snapPriceToTick(out);
     }
 
     /** BE trigger sits between entry and TP (not a second SL). */
@@ -1469,7 +1496,6 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     setStopPrice(price) {
         if (!Array.isArray(this.points) || this.points.length < 2) return;
-        const entry = this.points[0];
         const sanitized = this.sanitizeStopPrice(price);
         this.points[1] = { ...this.points[1], y: sanitized };
         this.ensureRiskSettings();
@@ -1478,7 +1504,6 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     setTargetPrice(price) {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
-        const entry = this.points[0];
         const sanitized = this.sanitizeTargetPrice(price);
         this.points[2] = { ...this.points[2], y: sanitized };
         this.ensureRiskSettings();
@@ -2328,7 +2353,26 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
 
-        const showDetails = this.selected;
+        // Order-level chrome (STOP BUY / SL / TP toasts) must stay painted while the
+        // Long/Short Position tool is armed or Place Order is open. setTool() deselects
+        // the drawing, and gating on `selected` alone made the order vanish until click.
+        const showDetails = (() => {
+            if (this.selected || isPreview) return true;
+            try {
+                const dm = (typeof this._drawingManager === 'function' ? this._drawingManager() : null)
+                    || this.chart?.drawingManager
+                    || (typeof window !== 'undefined' ? window.chart?.drawingManager : null);
+                if (dm && (dm.currentTool === 'long-position' || dm.currentTool === 'short-position')) {
+                    return true;
+                }
+                const omShow = (typeof window !== 'undefined' ? window.chart?.orderManager : null) || null;
+                if (omShow && typeof omShow._isDraftOrderPreviewActive === 'function'
+                    && omShow._isDraftOrderPreviewActive()) {
+                    return true;
+                }
+            } catch (_e) { /* ignore */ }
+            return false;
+        })();
 
         if (showDetails) {
             const self = this;
@@ -2362,12 +2406,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                     ? om.pipSize
                     : (Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : 0.0001);
                 if (cfg.showPips) return `${(distAbs / pip).toFixed(2)} pips`;
-                // showTicks: dist/pip is tick count — do not label as "pts" (NQ 78.25 pts
-                // was showing as "313.00 pts" and looking like a broken price distance).
+                // Futures: pts must step on the tick grid (ES/NQ 0.25), not raw float distance.
                 if (cfg.showTicks) {
-                    const ticks = distAbs / pip;
-                    const points = distAbs.toFixed(cfg.symbolPrecision ?? 2);
-                    return `${points} pts (${ticks.toFixed(0)} ticks)`;
+                    const ticks = Math.max(0, Math.round(distAbs / pip));
+                    const points = ticks * pip;
+                    const prec = cfg.symbolPrecision ?? 2;
+                    return `${parseFloat(points.toFixed(8)).toFixed(prec)} pts (${ticks} ticks)`;
                 }
                 return `${distAbs.toFixed(cfg.symbolPrecision ?? 5)} pts`;
             };
@@ -3740,7 +3784,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             this._afterRiskRewardOrderManagerSync();
             return true;
         }
-        const clamped = this.clampPrimaryEntryPrice(newY);
+        const clamped = this.snapPriceToTick(this.clampPrimaryEntryPrice(newY));
         if (!Number.isFinite(clamped) || Math.abs(clamped - this.points[0].y) < 1e-12) return true;
         this.points[0] = { ...this.points[0], y: clamped };
         this.ensureRiskSettings();

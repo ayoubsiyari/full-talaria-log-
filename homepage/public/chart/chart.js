@@ -1216,6 +1216,21 @@ class Chart {
         this._pendingCrosshairMoveEvent = null;
         this._wheelBurstRenderRaf = null;
         this._wheelBurstFinalPass = false;
+
+        // Touch / iPad gesture ownership (TradingView-like). Kill-switch:
+        //   window.__TALARIA_DISABLE_TOUCH_GESTURE_V1 = true
+        this._pinchActive = false;
+        this._activeTouchPointerId = null;
+        this._drawingTouchPointerId = null;
+        this._touchTapPlace = null;
+        this._touchGesture = {
+            mode: 'idle', // idle | oneFinger | pinch
+            pointerIds: [],
+            longPressTimer: null,
+            longPressClient: null,
+            longPressMoved: false,
+        };
+        this._touchPinch = null;
         
         // Performance metrics
         this.lastFrameTime = performance.now();
@@ -1438,6 +1453,15 @@ class Chart {
                 };
                 this._handleVisibilityRefresh = () => {
                     if (document.hidden) return;
+                    // Tab return / GPU canvas discard: if bars aren't ready yet, paint
+                    // "Loading chart…" immediately so users never see the CSV empty flash.
+                    if ((!this.data || this.data.length === 0)
+                        && typeof this._isAwaitingChartData === 'function'
+                        && this._isAwaitingChartData()
+                        && typeof this._paintEmptyChartPlaceholder === 'function'
+                        && this.w >= 200 && this.h >= 150) {
+                        try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+                    }
                     this._handleViewportRefresh();
                     // Run a follow-up pass after layout settles post-restore.
                     setTimeout(() => this._handleViewportRefresh(), 120);
@@ -5148,9 +5172,19 @@ class Chart {
             && this._isMultichartHostPanel();
         const masterTf = displayTfMasterHost ? displayTf : '1m';
 
-        const replayTs = Number.isFinite(Number(o.replayTimestamp))
+        // Capture playhead BEFORE switchingPair clears animatingCandle / fullRawData.
+        // Host toolbar pair switches often omit replayTimestamp; without this fallback
+        // enterReplayMode uses startAtBeginning and the date jumps back to session start.
+        let replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
             : null;
+        if (!Number.isFinite(replayTs) && typeof this._resolveMultichartReplayPlayheadMs === 'function') {
+            const captured = this._resolveMultichartReplayPlayheadMs();
+            if (Number.isFinite(captured)) {
+                replayTs = captured;
+                o.replayTimestamp = captured;
+            }
+        }
         const tfMs = this.parseTimeframe(displayTf) || 60_000;
 
         const sameFile = String(this.currentFileId || '') === fileId;
@@ -5349,10 +5383,13 @@ class Chart {
                     let range;
                     if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
-                    } else if (independentPair && Number.isFinite(replayTs)) {
+                    } else if (Number.isFinite(replayTs)) {
+                        // Host (and independent) pair switch mid-replay: keep the loaded
+                        // window centered on the playhead. Session-start initial range +
+                        // bar limit clamps goToReplayTimestamp back to the early slice.
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else {
-                        // Same-pair fallback: full session window (single-chart parity), not playhead island.
+                        // No active playhead: full session window (single-chart parity).
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
                     result = await this._fetchSmartWindow(
@@ -5494,6 +5531,23 @@ class Chart {
                             this._applyIndependentPanelReplaySlice(restoreTs);
                         } else if (typeof replay.goToReplayTimestamp === 'function') {
                             replay.goToReplayTimestamp(restoreTs, { centerOnCandle: false });
+                        }
+                        // Safety net: if the first window still missed the playhead
+                        // (limit/clamp), refetch a covering slice after pair-switch UI ends.
+                        if (typeof this.ensureReplayDataCoversTimestamp === 'function') {
+                            const coverTs = restoreTs;
+                            const coverReplay = replay;
+                            Promise.resolve().then(async () => {
+                                try {
+                                    const ok = await this.ensureReplayDataCoversTimestamp(coverTs);
+                                    if (ok && coverReplay && coverReplay.isActive
+                                        && typeof coverReplay.goToReplayTimestamp === 'function') {
+                                        coverReplay.goToReplayTimestamp(coverTs, {
+                                            centerOnCandle: false,
+                                        });
+                                    }
+                                } catch (_cover) { /* ignore */ }
+                            });
                         }
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
@@ -11455,55 +11509,80 @@ class Chart {
     }
 
     /**
-     * Merge sync-local, hydrated server, and backup replay blobs — pick the most
-     * advanced wall-clock playhead so refresh never restarts at session start.
-     * Also considers dashboard furthest_replay_ts (progress) when playhead was lost.
+     * Merge sync-local, hydrated server, and backup replay blobs for refresh restore.
+     *
+     * Prefer an explicit saved playhead (`replay.replayTimestamp`). Dashboard
+     * `furthest_replay_ts` is progress-only — using it as a playhead candidate made
+     * go-back/crop rewinds lose on refresh (furthest stayed at the pre-crop clock).
+     * Furthest is only used when no explicit playhead exists at all.
      */
     _resolveReplayPlayheadRestoreState(localPending) {
         const sessionId = this.getActiveTradingSessionId();
-        const candidates = [];
-        if (localPending && typeof localPending === 'object') candidates.push(localPending);
+        const playheadCandidates = [];
+        const furthestTsList = [];
+
+        const pushPlayhead = (blob) => {
+            if (!blob || typeof blob !== 'object') return;
+            if (!Number.isFinite(this._parseReplayRestoreTimestamp(blob))) return;
+            playheadCandidates.push(blob);
+        };
+        const pushFurthest = (ts) => {
+            const n = Number(ts);
+            if (Number.isFinite(n)) furthestTsList.push(n);
+        };
+
+        if (localPending && typeof localPending === 'object') pushPlayhead(localPending);
         if (this._pendingReplayState && typeof this._pendingReplayState === 'object') {
-            candidates.push(this._pendingReplayState);
+            pushPlayhead(this._pendingReplayState);
+            const pd = this._pendingReplayState.dashboard;
+            if (pd && typeof pd === 'object') pushFurthest(pd.furthest_replay_ts);
         }
         if (sessionId) {
             const backup = this._readTradingSessionLocalBackup(sessionId);
             if (backup && backup.replay && typeof backup.replay === 'object') {
-                candidates.push(backup.replay);
+                pushPlayhead(backup.replay);
                 const bd = backup.replay.dashboard;
-                if (bd && typeof bd === 'object' && Number.isFinite(Number(bd.furthest_replay_ts))) {
-                    candidates.push({ replayTimestamp: Number(bd.furthest_replay_ts) });
-                }
+                if (bd && typeof bd === 'object') pushFurthest(bd.furthest_replay_ts);
             }
         }
-        const pendingDash = this._pendingReplayState
-            && this._pendingReplayState.dashboard
-            && typeof this._pendingReplayState.dashboard === 'object'
-            ? this._pendingReplayState.dashboard
-            : null;
-        if (pendingDash && Number.isFinite(Number(pendingDash.furthest_replay_ts))) {
-            candidates.push({ replayTimestamp: Number(pendingDash.furthest_replay_ts) });
-        }
-        if (Number.isFinite(this._dashboardFurthestReplayHydratedTs)) {
-            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayHydratedTs) });
-        }
-        if (Number.isFinite(this._dashboardFurthestReplayTs)) {
-            candidates.push({ replayTimestamp: Number(this._dashboardFurthestReplayTs) });
-        }
+        pushFurthest(this._dashboardFurthestReplayHydratedTs);
+        pushFurthest(this._dashboardFurthestReplayTs);
+
+        // Prefer the newest intentional cut/rewind when present; else the most
+        // advanced explicit playhead (so refresh never jumps back to session start).
         let winner = null;
         let winTs = null;
-        for (const c of candidates) {
+        let winRewoundAt = null;
+        for (const c of playheadCandidates) {
             const ts = this._parseReplayRestoreTimestamp(c);
             if (!Number.isFinite(ts)) continue;
+            const rewoundAt = Number(c.playheadRewoundAt);
+            if (Number.isFinite(rewoundAt)) {
+                if (winRewoundAt == null || rewoundAt >= winRewoundAt) {
+                    winRewoundAt = rewoundAt;
+                    winTs = ts;
+                    winner = c;
+                }
+                continue;
+            }
+            if (winRewoundAt != null) continue; // cut already selected
             if (winTs == null || ts > winTs) {
                 winTs = ts;
                 winner = c;
             }
         }
+
         if (!winner || !Number.isFinite(winTs)) {
+            let furthest = null;
+            for (const ts of furthestTsList) {
+                if (furthest == null || ts > furthest) furthest = ts;
+            }
+            if (Number.isFinite(furthest)) {
+                return { replayTimestamp: furthest };
+            }
             return localPending && typeof localPending === 'object' ? localPending : null;
         }
-        return {
+        const out = {
             replayTimestamp: winTs,
             currentIndex: Number.isFinite(winner.currentIndex) ? winner.currentIndex : undefined,
             timeframe: this._normalizeBacktestTimeframe(winner.timeframe),
@@ -11511,6 +11590,11 @@ class Chart {
             playbackMode: winner.playbackMode,
             tickElapsedMs: winner.tickElapsedMs,
         };
+        if (Number.isFinite(winRewoundAt)) out.playheadRewoundAt = winRewoundAt;
+        else if (Number.isFinite(Number(winner.playheadRewoundAt))) {
+            out.playheadRewoundAt = Number(winner.playheadRewoundAt);
+        }
+        return out;
     }
 
     /** Wait until OrderManager exists so session hydrate can merge journal + playhead. */
@@ -11548,13 +11632,17 @@ class Chart {
             ts = Number.isFinite(n) ? n : (Number.isFinite(Date.parse(rawTs)) ? Date.parse(rawTs) : null);
         }
         if (!Number.isFinite(ts)) return null;
-        return {
+        const out = {
             replayTimestamp: ts,
             timeframe: this._normalizeBacktestTimeframe(replay.timeframe || backup.chartView?.timeframe),
             speed: typeof replay.speed === 'number' ? replay.speed : undefined,
             playbackMode: replay.playbackMode,
             tickElapsedMs: replay.tickElapsedMs,
         };
+        if (Number.isFinite(Number(replay.playheadRewoundAt))) {
+            out.playheadRewoundAt = Number(replay.playheadRewoundAt);
+        }
+        return out;
     }
 
     /**
@@ -11916,27 +12004,22 @@ class Chart {
                 }
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     const incomingTs = this._parseReplayRestoreTimestamp(state.replay);
-                    const dashTs = state.replay.dashboard
-                        && Number.isFinite(Number(state.replay.dashboard.furthest_replay_ts))
-                        ? Number(state.replay.dashboard.furthest_replay_ts)
-                        : null;
-                    const bestIncoming = Math.max(
-                        Number.isFinite(incomingTs) ? incomingTs : -Infinity,
-                        Number.isFinite(dashTs) ? dashTs : -Infinity,
-                    );
                     const currentTs = Number(this.replaySystem.replayTimestamp);
                     // Even if a default session-start playhead was marked "applied",
-                    // still accept a more advanced server/local timestamp.
+                    // still accept a more advanced server/local timestamp — but never
+                    // substitute dashboard furthest_replay_ts for the playhead (that
+                    // undoes go-back/crop on refresh).
                     const alreadyApplied = !!(this._replaySessionPlayheadRestoreEnabled()
                         && this.replaySystem._persistedPlayheadApplied);
-                    const incomingIsAhead = Number.isFinite(bestIncoming)
-                        && (!Number.isFinite(currentTs) || bestIncoming > currentTs + 500);
-                    if (!alreadyApplied || incomingIsAhead) {
+                    const incomingIsAhead = Number.isFinite(incomingTs)
+                        && (!Number.isFinite(currentTs) || incomingTs > currentTs + 500);
+                    const incomingRewoundAt = Number(state.replay.playheadRewoundAt);
+                    const incomingIsRewind = Number.isFinite(incomingRewoundAt)
+                        && Number.isFinite(incomingTs)
+                        && Number.isFinite(currentTs)
+                        && incomingTs + 500 < currentTs;
+                    if (!alreadyApplied || incomingIsAhead || incomingIsRewind) {
                         const applyBlob = Object.assign({}, state.replay);
-                        if (Number.isFinite(bestIncoming)
-                            && (!Number.isFinite(incomingTs) || bestIncoming > incomingTs)) {
-                            applyBlob.replayTimestamp = bestIncoming;
-                        }
                         this.replaySystem.applyPersistedState(applyBlob);
                         if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
                             try {
@@ -11965,8 +12048,13 @@ class Chart {
                     ? Number(localRestore.replayTimestamp)
                     : null;
                 const currentTs = Number(this.replaySystem.replayTimestamp);
+                const localIsRewind = localRestore
+                    && Number.isFinite(Number(localRestore.playheadRewoundAt))
+                    && Number.isFinite(localTs)
+                    && Number.isFinite(currentTs)
+                    && localTs + 500 < currentTs;
                 if (Number.isFinite(localTs)
-                    && (!Number.isFinite(currentTs) || localTs > currentTs + 500)
+                    && (!Number.isFinite(currentTs) || localTs > currentTs + 500 || localIsRewind)
                     && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(localRestore);
                     if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
@@ -12234,7 +12322,10 @@ class Chart {
         if (patch.replay && typeof patch.replay === 'object') {
             const rk = Object.keys(patch.replay);
             if (rk.length === 1 && rk[0] === 'dashboard') return true;
-            const allowedReplayKeys = ['replayTimestamp', 'currentIndex', 'tickElapsedMs', 'speed', 'playbackMode', 'timeframe', 'isActive', 'dashboard'];
+            const allowedReplayKeys = [
+                'replayTimestamp', 'currentIndex', 'tickElapsedMs', 'speed', 'playbackMode',
+                'timeframe', 'isActive', 'dashboard', 'playheadRewoundAt',
+            ];
             if (rk.every(k => allowedReplayKeys.includes(k))) return true;
         }
         return false;
@@ -12249,11 +12340,25 @@ class Chart {
             const ra = a.replay;
             const rb = b.replay;
             out.replay = Object.assign({}, ra, rb);
-            // Never let a stale session-start playhead overwrite a more advanced one.
             const ta = Number(ra.replayTimestamp);
             const tb = Number(rb.replayTimestamp);
+            const aCut = Number(ra.playheadRewoundAt);
+            const bCut = Number(rb.playheadRewoundAt);
             if (Number.isFinite(ta) && Number.isFinite(tb)) {
-                if (ta > tb) {
+                // Go-back/crop: intentional rewind must win even when earlier than
+                // a previously queued advanced playhead. Newest cut stamp wins.
+                if (Number.isFinite(bCut) && (!Number.isFinite(aCut) || bCut >= aCut)) {
+                    out.replay.replayTimestamp = tb;
+                    out.replay.playheadRewoundAt = bCut;
+                    if (Number.isFinite(rb.currentIndex)) out.replay.currentIndex = rb.currentIndex;
+                    if (typeof rb.tickElapsedMs === 'number') out.replay.tickElapsedMs = rb.tickElapsedMs;
+                } else if (Number.isFinite(aCut) && (!Number.isFinite(bCut) || aCut > bCut)) {
+                    out.replay.replayTimestamp = ta;
+                    out.replay.playheadRewoundAt = aCut;
+                    if (Number.isFinite(ra.currentIndex)) out.replay.currentIndex = ra.currentIndex;
+                    if (typeof ra.tickElapsedMs === 'number') out.replay.tickElapsedMs = ra.tickElapsedMs;
+                } else if (ta > tb) {
+                    // Never let a stale session-start playhead overwrite a more advanced one.
                     out.replay.replayTimestamp = ta;
                     if (Number.isFinite(ra.currentIndex)) out.replay.currentIndex = ra.currentIndex;
                     if (typeof ra.tickElapsedMs === 'number') out.replay.tickElapsedMs = ra.tickElapsedMs;
@@ -16219,9 +16324,14 @@ class Chart {
         if (vLine) vLine.style.width = `${crosshairWidth}px`;
         if (hLine) hLine.style.height = `${crosshairWidth}px`;
         
-        // Apply cursor label colors (price/time labels on crosshair)
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
+        // Apply cursor label colors (price/time labels on crosshair).
+        // Must be direct-child scoped — drawings own SVG `.price-label` groups.
+        const priceLabel = typeof targetChart._queryChartOverlayBadge === 'function'
+            ? targetChart._queryChartOverlayBadge(container, 'price-label')
+            : container.querySelector(':scope > .price-label');
+        const timeLabel = typeof targetChart._queryChartOverlayBadge === 'function'
+            ? targetChart._queryChartOverlayBadge(container, 'time-label')
+            : container.querySelector(':scope > .time-label');
         if (priceLabel) {
             priceLabel.style.color = targetChart.chartSettings.cursorLabelTextColor;
             priceLabel.style.background = targetChart.chartSettings.cursorLabelBgColor;
@@ -18241,6 +18351,42 @@ class Chart {
     }
     
     /**
+     * Crosshair axis badges are direct children of the chart wrapper.
+     * Drawings also use SVG `<g class="price-label">` inside `#drawingSvg`, so a bare
+     * `querySelector('.price-label')` hits the SVG first and leaves the real badge
+     * stuck at `display:none` while crosshair lines still update.
+     */
+    _queryChartOverlayBadge(container, className) {
+        if (!container || !className) return null;
+        try {
+            const scoped = container.querySelector(`:scope > .${className}`);
+            if (scoped) return scoped;
+        } catch (_e) { /* :scope unsupported */ }
+        const kids = container.children;
+        if (!kids || !kids.length) return null;
+        for (let i = 0; i < kids.length; i++) {
+            const el = kids[i];
+            if (el && el.classList && el.classList.contains(className)) return el;
+        }
+        return null;
+    }
+
+    /** Resolve crosshair lines + axis badges for this chart's canvas wrapper. */
+    _getCrosshairOverlayElements() {
+        const container = this.canvas?.parentElement || null;
+        if (!container) {
+            return { container: null, vLine: null, hLine: null, priceLabel: null, timeLabel: null };
+        }
+        return {
+            container,
+            vLine: container.querySelector('.crosshair-vertical'),
+            hLine: container.querySelector('.crosshair-horizontal'),
+            priceLabel: this._queryChartOverlayBadge(container, 'price-label'),
+            timeLabel: this._queryChartOverlayBadge(container, 'time-label'),
+        };
+    }
+
+    /**
      * Update crosshair visibility based on cursor type
      */
     updateCrosshairVisibility(type) {
@@ -18250,13 +18396,7 @@ class Chart {
         
         // Same wrapper as the canvas (main #chartWrapper or panel container). Never `document`
         // — the first .crosshair-vertical in the page can be a hidden multi-panel slot.
-        const container = this.canvas?.parentElement;
-        if (!container) return;
-        
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
+        const { vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         
         // Store preference - actual show/hide happens in updateCrosshair based on mouse position
         this.showCrosshairLines = showLines;
@@ -18834,8 +18974,9 @@ class Chart {
     /** Pointer position → cursor mode (price/time axis, plot, etc.). Used by events + order overlay. */
     _detectCursorModeAt(mx, my) {
         const m = this.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const axisPad = typeof this._touchAxisHitPad === 'function' ? this._touchAxisHitPad() : 0;
         this.cursor.separatePanelSlot = null;
-        if (mx > this.w - m.r && my > m.t && my < this.h - m.b) {
+        if (mx > this.w - m.r - axisPad && my > m.t && my < this.h - m.b) {
             const spi = this.separatePanelInfo;
             if (spi && Array.isArray(spi.panelSlots)) {
                 for (let si = 0; si < spi.panelSlots.length; si++) {
@@ -18848,7 +18989,7 @@ class Chart {
             }
             return 'priceAxis';
         }
-        if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
+        if (my > this.h - m.b - axisPad && mx > m.l && mx < this.w - m.r) {
             return 'timeAxis';
         }
         if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
@@ -18876,14 +19017,16 @@ class Chart {
     _syncDomAxisCursorZones() {
         if (typeof document === 'undefined' || this.isPanel) return;
         const m = this.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const axisPad = typeof this._touchAxisHitPad === 'function' ? this._touchAxisHitPad() : 0;
         const priceZone = document.getElementById('priceAxisZone');
         if (priceZone) {
-            const w = Math.max(14, Number(m.r) || 70);
+            const w = Math.max(14, (Number(m.r) || 70) + axisPad);
             priceZone.style.width = `${w}px`;
             priceZone.style.right = '0';
             priceZone.style.top = `${Number(m.t) || 0}px`;
             priceZone.style.bottom = `${Number(m.b) || 30}px`;
             priceZone.style.pointerEvents = 'auto';
+            priceZone.style.touchAction = 'none';
             priceZone.style.zIndex = '12';
         }
         const timeZone = document.getElementById('timeAxisZone');
@@ -18891,8 +19034,9 @@ class Chart {
             timeZone.style.left = `${Number(m.l) || 0}px`;
             timeZone.style.right = `${Number(m.r) || 70}px`;
             timeZone.style.bottom = '0';
-            timeZone.style.height = `${Math.max(10, Number(m.b) || 30)}px`;
+            timeZone.style.height = `${Math.max(10, (Number(m.b) || 30) + axisPad)}px`;
             timeZone.style.pointerEvents = 'auto';
+            timeZone.style.touchAction = 'none';
             timeZone.style.zIndex = '12';
         }
     }
@@ -23632,6 +23776,60 @@ class Chart {
         });
     }
 
+    /**
+     * True when empty bars are a temporary load gap (session/file/TF/pair), not a
+     * real "please upload CSV" idle state. Used so slow networks / tab-return
+     * never flash the CSV empty message over EUR/JPY (etc.) while data catches up.
+     */
+    _isAwaitingChartData() {
+        if (this.isLoading
+            || this._timeframeSwitching
+            || this._pairSwitchLoading
+            || this._isLoadingOwnPairData
+            || this._tfRevealHold
+            || this._panLoading
+            || this.isLoadingChunk) {
+            return true;
+        }
+        if (this.currentFileId) return true;
+        if (this.isBacktestMode || this.backtestingSession || this.activeTradingSessionId) {
+            return true;
+        }
+        try {
+            if (typeof window !== 'undefined' && window.location) {
+                const p = new URLSearchParams(window.location.search || '');
+                const mode = String(p.get('mode') || '').toLowerCase();
+                if (mode === 'backtest' || mode === 'propfirm') return true;
+                if (p.get('sessionId') || p.get('fileId')) return true;
+            }
+        } catch (_) { /* ignore */ }
+        return false;
+    }
+
+    /** Paint empty-canvas placeholder: loading vs true no-data CSV prompt. */
+    _paintEmptyChartPlaceholder() {
+        const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
+        this.ctx.fillStyle = bg;
+        this.ctx.fillRect(0, 0, this.w, this.h);
+        const awaiting = this._isAwaitingChartData();
+        this.ctx.fillStyle = awaiting ? '#9598a1' : '#787b86';
+        this.ctx.font = awaiting ? '14px Roboto, sans-serif' : '16px Roboto, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(
+            awaiting
+                ? 'Loading chart…'
+                : 'No data to display. Please upload or select a CSV file.',
+            this.w / 2,
+            this.h / 2
+        );
+        if (awaiting) {
+            try { this._showChartCenterLoadingDots(); } catch (_) { /* ignore */ }
+        } else {
+            try { this._hideChartCenterLoadingDots(); } catch (_) { /* ignore */ }
+        }
+    }
+
     /** Centered 3-dot loader on the chart pane (multichart embed pair switch). */
     _showChartCenterLoadingDots() {
         const wrap = (this.canvas && this.canvas.parentElement)
@@ -26892,6 +27090,44 @@ class Chart {
         }));
     }
 
+    /** Kill-switch for TradingView-like touch gesture V1. */
+    _touchGestureV1Disabled() {
+        try {
+            return typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_TOUCH_GESTURE_V1 === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _isTouchLikePointer(e) {
+        return !!(e && e.pointerType && e.pointerType !== 'mouse');
+    }
+
+    _isCoarsePointerDevice() {
+        if (this._pinchActive || this._activeTouchPointerId != null
+            || this._drawingTouchPointerId != null) {
+            return true;
+        }
+        try {
+            if (typeof window !== 'undefined' && window.matchMedia) {
+                if (window.matchMedia('(pointer: coarse)').matches) return true;
+                if (window.matchMedia('(hover: none)').matches) return true;
+            }
+        } catch (_) { /* ignore */ }
+        return false;
+    }
+
+    /** Pan-commit slop: desktop click filter stays tight; touch needs fat-finger room. */
+    _panCommitThresholdPx() {
+        return this._isCoarsePointerDevice() ? 14 : 5;
+    }
+
+    /** Extra axis hit pad (CSS px) for coarse/touch. */
+    _touchAxisHitPad() {
+        return this._isCoarsePointerDevice() ? 18 : 0;
+    }
+
     /** Route touch/pen pointer events through mousedown/mousemove/mouseup handlers. */
     _touchDrawingConsumesPointer(e) {
         const dm = this.drawingManager;
@@ -26909,30 +27145,257 @@ class Chart {
         return false;
     }
 
+    _clearTouchLongPress() {
+        const g = this._touchGesture;
+        if (!g) return;
+        if (g.longPressTimer) {
+            clearTimeout(g.longPressTimer);
+            g.longPressTimer = null;
+        }
+        g.longPressClient = null;
+        g.longPressMoved = false;
+    }
+
+    _resetTouchGestureState(options = {}) {
+        const soft = !!options.soft;
+        const wasPinch = this._pinchActive;
+        const wasPan = !!(this.drag && this.drag.active && this.drag.type === 'pan'
+            && this.drag.panCommitted);
+        this._clearTouchLongPress();
+        this._pinchActive = false;
+        this._touchPinch = null;
+        this._touchTapPlace = null;
+        this._activeTouchPointerId = null;
+        if (!soft) {
+            this._drawingTouchPointerId = null;
+            const dm = this.drawingManager;
+            if (dm) {
+                dm._touchPointerActive = false;
+                if (typeof dm._releaseTouchGestureOwnership === 'function') {
+                    try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+                }
+            }
+        }
+        if (this._touchGesture) {
+            this._touchGesture.mode = 'idle';
+            this._touchGesture.pointerIds = [];
+        }
+        // Aborting mid-pan/pinch must re-glue shapes to the current viewport.
+        if (!options.skipDrawingResync && (wasPinch || wasPan)) {
+            try { this._clearPanDrawingsLayerTransform(); } catch (_) { /* ignore */ }
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    /** Cancel one-finger pan/draw tracking when a second finger arrives (enter pinch). */
+    _cancelOneFingerForPinch() {
+        this._clearTouchLongPress();
+        const wasPan = !!(this.drag && this.drag.active && this.drag.type === 'pan'
+            && this.drag.panCommitted);
+        if (this.drag && this.drag.active) {
+            this.drag.active = false;
+            this.drag.type = null;
+            this.drag.panCommitted = false;
+            this.movement.isDragging = false;
+            this.isZooming = false;
+            try { this._cancelChartPanFrame(); } catch (_) { /* ignore */ }
+            try { this._stopChartPanRenderLoop(); } catch (_) { /* ignore */ }
+            try { this._removeDragEndGuard(); } catch (_) { /* ignore */ }
+            try { this._releaseDragPointerCapture(); } catch (_) { /* ignore */ }
+            try { this._releaseDragCursor(); } catch (_) { /* ignore */ }
+            try { this._clearPanDrawingsLayerTransform(); } catch (_) { /* ignore */ }
+        }
+        // Do not synthesize mouseup — that can finalize a draw point at (0,0).
+        // Drop pointer ownership; clear stuck move/resize so redrawAll is not blocked.
+        const dm = this.drawingManager;
+        if (dm) {
+            dm._touchPointerActive = false;
+            if (typeof dm._releaseTouchGestureOwnership === 'function') {
+                try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+            }
+        }
+        this._drawingTouchPointerId = null;
+        this._activeTouchPointerId = null;
+        if (this._touchGesture) this._touchGesture.mode = 'pinch';
+        // If one-finger pan already moved the viewport, rebuild shapes immediately
+        // so they are not left at pre-pan pixels when pinch starts.
+        if (wasPan) {
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    _fireTouchLongPress(clientX, clientY) {
+        this._clearTouchLongPress();
+        if (this._pinchActive || (this.drag && this.drag.active && this.drag.panCommitted)) return;
+        try {
+            const [mx, my] = this._eventCanvasLocalXY({ clientX, clientY });
+            const dm = this.drawingManager;
+            if (dm && typeof dm.findDrawingsAtPoint === 'function') {
+                const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
+                const hit = hits && hits.length ? hits[0] : null;
+                if (hit && typeof dm.showContextMenu === 'function') {
+                    if (typeof dm.selectDrawing === 'function') {
+                        try { dm.selectDrawing(hit); } catch (_) { /* ignore */ }
+                    }
+                    dm.showContextMenu(hit, clientX, clientY);
+                    return;
+                }
+            }
+            const found = typeof this.findDrawingAtPoint === 'function'
+                ? this.findDrawingAtPoint(mx, my)
+                : null;
+            if (found && typeof this.showContextMenu === 'function') {
+                this.showContextMenu(clientX, clientY, found, this.tool || null);
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    _settleAfterTouchPinch() {
+        // Match wheel-burst settle: clear burst first, then one full-quality pass
+        // so shapes/labels re-anchor to final candleWidth/offset (not a lite panFast frame).
+        try {
+            if (this._wheelPostBurstTimer) {
+                clearTimeout(this._wheelPostBurstTimer);
+                this._wheelPostBurstTimer = null;
+            }
+        } catch (_) { /* ignore */ }
+        this._wheelBurstUntil = 0;
+        try { this.constrainOffset(); } catch (_) { /* ignore */ }
+        try { this.dispatchScrollSync(true); } catch (_) { /* ignore */ }
+        try { this._scheduleIndicatorRecalcAfterInteraction(); } catch (_) { /* ignore */ }
+        const dm = this.drawingManager;
+        if (dm && typeof dm._releaseTouchGestureOwnership === 'function') {
+            try { dm._releaseTouchGestureOwnership({ keepPlacement: true }); } catch (_) { /* ignore */ }
+        }
+        if (typeof this._finishWheelBurstInteraction === 'function') {
+            try { this._finishWheelBurstInteraction(); } catch (_) { /* ignore */ }
+        } else {
+            try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+            this.renderPending = false;
+            try { this.render(); } catch (_) { /* ignore */ }
+        }
+        try { this._finishPanDrawingRedraw(); } catch (_) { /* ignore */ }
+    }
+
+    /**
+     * Block iOS Safari page-zoom / overscroll on the chart surface only.
+     * Does not set user-scalable=no on the whole document.
+     */
+    _installSafariTouchContainment() {
+        if (!this.canvas || this.canvas.__talariaTouchContainInstalled) return;
+        this.canvas.__talariaTouchContainInstalled = true;
+
+        const surfaces = [this.canvas];
+        try {
+            const svgNode = this.svg && typeof this.svg.node === 'function' ? this.svg.node() : null;
+            if (svgNode) surfaces.push(svgNode);
+            const wrap = this.canvas.parentElement;
+            if (wrap) surfaces.push(wrap);
+        } catch (_) { /* ignore */ }
+
+        for (const el of surfaces) {
+            try {
+                if (el.style) {
+                    el.style.touchAction = 'none';
+                    el.style.webkitUserSelect = 'none';
+                    el.style.userSelect = 'none';
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        const opts = { passive: false, capture: true };
+        const blockSafariGesture = (e) => {
+            if (this._touchGestureV1Disabled()) return;
+            try { e.preventDefault(); } catch (_) { /* ignore */ }
+        };
+        // iOS legacy gesture events (page pinch) — contain to chart surface.
+        for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+            this.canvas.addEventListener(type, blockSafariGesture, opts);
+        }
+        const onTouchMoveContain = (e) => {
+            if (this._touchGestureV1Disabled()) return;
+            if (!e.touches || e.touches.length < 1) return;
+            // Only prevent when interacting with the plot (avoids locking page chrome).
+            if (e.touches.length >= 2 || this._pinchActive
+                || this._activeTouchPointerId != null
+                || this._drawingTouchPointerId != null
+                || (this.drag && this.drag.active)) {
+                try { e.preventDefault(); } catch (_) { /* ignore */ }
+            }
+        };
+        this.canvas.addEventListener('touchmove', onTouchMoveContain, opts);
+        const wrap = this.canvas.parentElement;
+        if (wrap) {
+            wrap.addEventListener('touchmove', onTouchMoveContain, opts);
+            for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+                wrap.addEventListener(type, blockSafariGesture, opts);
+            }
+        }
+    }
+
     _setupTouchPointerBridge() {
         if (!this.canvas) return;
+        if (this.canvas.__talariaTouchPointerBridgeInstalled) return;
+        this.canvas.__talariaTouchPointerBridgeInstalled = true;
+
         const opts = { passive: false };
-        const isTouchLike = (e) => !!(e && e.pointerType && e.pointerType !== 'mouse');
+        const isTouchLike = (e) => this._isTouchLikePointer(e);
 
         const forward = (e, mouseType) => {
             if (!isTouchLike(e) || this._pinchActive) return;
             this._dispatchCompatMouseEvent(e, mouseType);
         };
 
+        const armLongPress = (e) => {
+            if (this._touchGestureV1Disabled()) return;
+            if (this._touchDrawingConsumesPointer(e)) return;
+            this._clearTouchLongPress();
+            const g = this._touchGesture;
+            g.longPressClient = { x: e.clientX, y: e.clientY };
+            g.longPressMoved = false;
+            g.longPressTimer = setTimeout(() => {
+                g.longPressTimer = null;
+                if (g.longPressMoved || this._pinchActive) return;
+                this._fireTouchLongPress(e.clientX, e.clientY);
+            }, 500);
+        };
+
         this.canvas.addEventListener('pointerdown', (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
             if (typeof e.button === 'number' && e.button !== 0) return;
 
+            if (this._touchGesture) {
+                this._touchGesture.mode = 'oneFinger';
+                if (!this._touchGesture.pointerIds.includes(e.pointerId)) {
+                    this._touchGesture.pointerIds.push(e.pointerId);
+                }
+            }
+
             if (this._touchDrawingConsumesPointer(e)) {
                 e.preventDefault();
                 const dm = this.drawingManager;
-                if (dm && typeof dm.handleMouseDown === 'function') {
+                if (dm) {
                     dm._touchPointerActive = true;
+                    this._drawingTouchPointerId = e.pointerId;
+                    // TradingView: relative aim (no snap). Tap places at blue crosshair.
+                    if (typeof dm._touchTapPlaceEnabled === 'function' && dm._touchTapPlaceEnabled()
+                        && dm.currentTool
+                        && !dm.isDrawingPath
+                        && !(typeof dm._isLiveHandleEditing === 'function' && dm._isLiveHandleEditing())
+                        && !(typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive())) {
+                        if (typeof dm._beginTouchAimGesture === 'function') {
+                            dm._beginTouchAimGesture(e);
+                        }
+                        this._touchTapPlace = { pointerId: e.pointerId };
+                        try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
+                        return;
+                    }
                     if (typeof dm._rememberPlacementCrosshair === 'function') {
                         dm._rememberPlacementCrosshair(e);
                     }
-                    this._drawingTouchPointerId = e.pointerId;
-                    dm.handleMouseDown(e);
+                    if (typeof dm.handleMouseDown === 'function') {
+                        dm.handleMouseDown(e);
+                    }
                     try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
                 }
                 return;
@@ -26940,15 +27403,33 @@ class Chart {
 
             e.preventDefault();
             this._activeTouchPointerId = e.pointerId;
+            armLongPress(e);
             forward(e, 'mousedown');
         }, opts);
 
         const onPointerMove = (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
 
+            const g = this._touchGesture;
+            if (g && g.longPressClient && !g.longPressMoved) {
+                const dx = e.clientX - g.longPressClient.x;
+                const dy = e.clientY - g.longPressClient.y;
+                if (Math.hypot(dx, dy) > 10) {
+                    g.longPressMoved = true;
+                    this._clearTouchLongPress();
+                }
+            }
+
             if (this._drawingTouchPointerId === e.pointerId) {
                 e.preventDefault();
                 const dm = this.drawingManager;
+                const tap = this._touchTapPlace;
+                if (tap && tap.pointerId === e.pointerId) {
+                    if (dm && typeof dm._updateTouchAimGesture === 'function') {
+                        dm._updateTouchAimGesture(e);
+                    }
+                    return;
+                }
                 if (dm && typeof dm.handleMouseMove === 'function') {
                     if (typeof dm._rememberPlacementCrosshair === 'function') {
                         dm._rememberPlacementCrosshair(e);
@@ -26961,8 +27442,12 @@ class Chart {
                 return;
             }
 
+            // Placement aiming: do not snap blue crosshair to a floating finger.
             if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) {
                 const dm = this.drawingManager;
+                if (dm && typeof dm._touchTapPlaceEnabled === 'function' && dm._touchTapPlaceEnabled()) {
+                    return;
+                }
                 if (dm && typeof dm._rememberPlacementCrosshair === 'function') {
                     dm._rememberPlacementCrosshair(e);
                 }
@@ -26981,11 +27466,46 @@ class Chart {
         document.addEventListener('pointermove', onPointerMove, opts);
 
         const onPointerUp = (e) => {
-            if (!isTouchLike(e) || this._pinchActive) return;
+            if (!isTouchLike(e)) return;
+
+            if (this._pinchActive) {
+                // Pinch owns the gesture; one-finger bridge must not synthesize mouseup.
+                if (this._activeTouchPointerId === e.pointerId) {
+                    this._activeTouchPointerId = null;
+                }
+                if (this._drawingTouchPointerId === e.pointerId) {
+                    this._drawingTouchPointerId = null;
+                }
+                return;
+            }
+
+            this._clearTouchLongPress();
 
             if (this._drawingTouchPointerId === e.pointerId) {
                 e.preventDefault();
                 const dm = this.drawingManager;
+                const tap = this._touchTapPlace;
+                if (tap && tap.pointerId === e.pointerId) {
+                    this._touchTapPlace = null;
+                    this._drawingTouchPointerId = null;
+                    if (dm) dm._touchPointerActive = false;
+                    const aim = dm && typeof dm._endTouchAimGesture === 'function'
+                        ? dm._endTouchAimGesture()
+                        : null;
+                    if (aim && !aim.moved && dm && typeof dm._placeTouchTapAtEvent === 'function') {
+                        dm._placeTouchTapAtEvent(e);
+                    } else if (dm && typeof dm._eventAtPlacementCrosshair === 'function') {
+                        const pinEv = dm._eventAtPlacementCrosshair(e);
+                        dm._placementCrosshairPinned = true;
+                        if (typeof this.updateCrosshair === 'function') this.updateCrosshair(pinEv);
+                    }
+                    if (this._touchGesture) {
+                        this._touchGesture.mode = 'idle';
+                        this._touchGesture.pointerIds = this._touchGesture.pointerIds
+                            .filter((id) => id !== e.pointerId);
+                    }
+                    return;
+                }
                 if (dm) {
                     dm._lastTouchSynthAt = performance.now();
                     if (typeof dm.handleMouseUp === 'function') {
@@ -26994,6 +27514,11 @@ class Chart {
                     dm._touchPointerActive = false;
                 }
                 this._drawingTouchPointerId = null;
+                if (this._touchGesture) {
+                    this._touchGesture.mode = 'idle';
+                    this._touchGesture.pointerIds = this._touchGesture.pointerIds
+                        .filter((id) => id !== e.pointerId);
+                }
                 return;
             }
 
@@ -27005,11 +27530,31 @@ class Chart {
             if (this._activeTouchPointerId === e.pointerId) {
                 this._activeTouchPointerId = null;
             }
+            if (this._touchGesture) {
+                this._touchGesture.mode = 'idle';
+                this._touchGesture.pointerIds = this._touchGesture.pointerIds
+                    .filter((id) => id !== e.pointerId);
+            }
         };
         this.canvas.addEventListener('pointerup', onPointerUp, opts);
-        this.canvas.addEventListener('pointercancel', onPointerUp, opts);
+        this.canvas.addEventListener('pointercancel', (e) => {
+            if (!isTouchLike(e)) return;
+            this._resetTouchGestureState();
+            if (this.drag && this.drag.active && typeof this._onChartDragMouseUp === 'function') {
+                try { this._onChartDragMouseUp(e); } catch (_) { /* ignore */ }
+            }
+        }, opts);
         document.addEventListener('pointerup', onPointerUp, opts);
-        document.addEventListener('pointercancel', onPointerUp, opts);
+        document.addEventListener('pointercancel', (e) => {
+            if (!isTouchLike(e)) return;
+            this._resetTouchGestureState();
+        }, opts);
+
+        try {
+            window.addEventListener('blur', () => this._resetTouchGestureState(), true);
+        } catch (_) { /* ignore */ }
+
+        this._installSafariTouchContainment();
     }
 
     /**
@@ -28052,7 +28597,16 @@ class Chart {
 
     render() {
         this._mcDiag && this._mcDiag.renders++;
-        if (this.isLoading && !this._canBypassLoadingRenderFreeze()) return;
+        if (this.isLoading && !this._canBypassLoadingRenderFreeze()) {
+            // Tab discard / slow load can wipe the canvas while isLoading is still true.
+            // Paint a loading placeholder instead of leaving a blank white pane.
+            if ((!this.data || this.data.length === 0)
+                && this.w >= 200 && this.h >= 150
+                && typeof this._paintEmptyChartPlaceholder === 'function') {
+                try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+            }
+            return;
+        }
 
         // TradingView-style timeframe switch: freeze the previously-rendered frame while
         // we wait for the new bars. Without this freeze the canvas would clear and either
@@ -28063,6 +28617,16 @@ class Chart {
         // committed and the currentTimeframe matches the destination TF.
         if ((this._timeframeSwitching || this._pairSwitchLoading)
             && !this._canBypassDataSwitchRenderFreeze()) {
+            if ((!this.data || this.data.length === 0)
+                && this.w >= 200 && this.h >= 150
+                && typeof this._paintEmptyChartPlaceholder === 'function') {
+                const parent = this.canvas && this.canvas.parentElement;
+                const freeze = parent && parent.querySelector(':scope > .tf-freeze-overlay');
+                const freezeVisible = !!(freeze && freeze.style.display !== 'none' && freeze.getAttribute('src'));
+                if (!freezeVisible) {
+                    try { this._paintEmptyChartPlaceholder(); } catch (_) { /* ignore */ }
+                }
+            }
             return;
         }
 
@@ -28089,14 +28653,16 @@ class Chart {
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
-        // If no data, show message
+        // If no data: session/file loads → "Loading chart…"; idle → CSV prompt
         if (!this.data || this.data.length === 0) {
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '16px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
+            this._paintEmptyChartPlaceholder();
             return;
         }
+        try {
+            if (!this._pairSwitchLoading && !this._timeframeSwitching) {
+                this._hideChartCenterLoadingDots();
+            }
+        } catch (_) { /* ignore */ }
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
@@ -28173,12 +28739,9 @@ class Chart {
             ? this._resolveVisibleBarsForPaint(startIdx, endIdx)
             : this.data.slice(startIdx, endIdx);
         
-        // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
+        // Better check: Only show empty placeholder if we truly have no data
         if (visible.length === 0 && this.data.length === 0) {
-            this.ctx.fillStyle = '#787b86';
-            this.ctx.font = '16px Roboto';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('No data to display. Please upload or select a CSV file.', this.w / 2, this.h / 2);
+            this._paintEmptyChartPlaceholder();
             return;
         }
         
@@ -28267,8 +28830,12 @@ class Chart {
                 alwaysReplayDrawingSync = !(typeof window !== 'undefined'
                     && window.__TALARIA_DISABLE_REPLAY_PLAY_DRAWING_SYNC_V1 === true);
             } catch (_) { alwaysReplayDrawingSync = true; }
+            // Touch pinch uses the wheel-burst lite path; also key off _pinchActive so
+            // shapes never freeze if the burst timer is cleared a frame early.
+            const touchPinchActive = !!this._pinchActive;
             const syncDrawingsNow = chartViewPanning
                 || wheelBurstLight
+                || touchPinchActive
                 || axisZoomDragging
                 || !interactionLite
                 || (alwaysReplayDrawingSync && replayPlayback);
@@ -30137,7 +30704,12 @@ class Chart {
         if (!Number.isFinite(p)) return p;
         const tick = this.getTickSize();
         if (!Number.isFinite(tick) || tick <= 0) return p;
-        return Math.round(p / tick) * tick;
+        const snapped = Math.round(p / tick) * tick;
+        // Clear binary dust (e.g. 15122.2499999998 → 15122.25 on NQ 0.25).
+        const prec = (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0)
+            ? this._symbolPrecision
+            : Math.max(0, Math.min(10, Math.ceil(-Math.log10(tick) + 1e-12)));
+        return Number(snapped.toFixed(prec));
     }
 
     /**
@@ -30510,6 +31082,16 @@ class Chart {
                         }
                     }
                 } catch (_liveMark) { /* cross-origin / missing parent */ }
+                // Host (and any non-embed path): never trust a stamped mark alone.
+                // Manual step / paused replay skips multichart broadcast, so the stamp
+                // can freeze at an old price (price line stuck at the bottom).
+                if (typeof rs._resolveCanonicalReplayMark === 'function') {
+                    const live = rs._resolveCanonicalReplayMark();
+                    if (Number.isFinite(live)) {
+                        this._mcCanonicalReplayMark = live;
+                        return live;
+                    }
+                }
                 if (Number.isFinite(Number(this._mcCanonicalReplayMark))) {
                     return Number(this._mcCanonicalReplayMark);
                 }
@@ -30523,14 +31105,16 @@ class Chart {
                 return Number.isFinite(price) ? price : null;
             }
 
-            // Trust the painted last bar (includes walk-forward trim + tick patch on chart.data).
-            // Do not override with fullRawData[currentIndex] — that causes the price-line gap.
-            if (Number.isFinite(price)) return price;
-
+            // Prefer live animated / playhead mark before painted last close so the
+            // price line tracks Manual Forward Tick / pause instead of a stale bar close.
             if (typeof rs.getCurrentAnimatedPrice === 'function') {
                 const ap = rs.getCurrentAnimatedPrice();
                 if (Number.isFinite(ap)) return ap;
             }
+
+            // Trust the painted last bar (includes walk-forward trim + tick patch on chart.data).
+            // Do not override with fullRawData[currentIndex] — that causes the price-line gap.
+            if (Number.isFinite(price)) return price;
             const rb = rs.fullRawData && typeof rs.currentIndex === 'number'
                 ? rs.fullRawData[rs.currentIndex]
                 : null;
@@ -34467,7 +35051,10 @@ class Chart {
                     const commitDy = (e.clientY - (this.drag.startY ?? e.clientY)) / zPanCommit;
                     // Keep idle time-axis ticks until this is a real pan (not a click).
                     if (!this.drag.panCommitted) {
-                        if (Math.hypot(commitDx, commitDy) < 5) {
+                        const panSlop = typeof this._panCommitThresholdPx === 'function'
+                            ? this._panCommitThresholdPx()
+                            : 5;
+                        if (Math.hypot(commitDx, commitDy) < panSlop) {
                             this.drag.lastX = e.clientX;
                             this.drag.lastY = e.clientY;
                         } else {
@@ -34696,7 +35283,11 @@ class Chart {
             // Handle pan end — stop immediately on release (no post-release slide)
             else             if (dragType === 'pan' && wasDragging) {
                 this._releasePanPointerCapture();
-                const panClickThresholdPx = 5;
+                // Match touch pan-commit slop so a fat-finger tap is not treated as a
+                // half-finished pan that skips drawing finalize.
+                const panClickThresholdPx = typeof this._panCommitThresholdPx === 'function'
+                    ? this._panCommitThresholdPx()
+                    : 5;
                 const zc = this._v9LayoutZoom();
                 const panDx = ((e.clientX - (this.drag.startX ?? e.clientX)) / zc);
                 const panDy = ((e.clientY - (this.drag.startY ?? e.clientY)) / zc);
@@ -35923,10 +36514,8 @@ class Chart {
     }
     
     setupTouchEvents() {
-        let initialPinchDistance = 0;
-        let initialCandleWidth = this.candleWidth;
-        let initialOffsetX = this.offsetX;
-        let initialCandleSpacing = this.getCandleSpacing();
+        if (!this.canvas || this.canvas.__talariaTouchEventsInstalled) return;
+        this.canvas.__talariaTouchEventsInstalled = true;
 
         const pinchWidths = () => (
             (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
@@ -35934,8 +36523,57 @@ class Chart {
                 : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89]
         );
 
+        const beginPinch = (touch1, touch2) => {
+            this._cancelOneFingerForPinch();
+            this._pinchActive = true;
+            if (this._touchGesture) this._touchGesture.mode = 'pinch';
+
+            const midClientX = (touch1.clientX + touch2.clientX) / 2;
+            const midClientY = (touch1.clientY + touch2.clientY) / 2;
+            const [startMx, startMy] = this._eventCanvasLocalXY({
+                clientX: midClientX,
+                clientY: midClientY,
+            });
+
+            this._touchPinch = {
+                initialDistance: Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                ) || 1,
+                initialCandleWidth: this.candleWidth,
+                initialOffsetX: this.offsetX,
+                initialCandleSpacing: this.getCandleSpacing(),
+                initialPriceOffset: this.priceOffset || 0,
+                startMx,
+                startMy,
+                startMidClientX: midClientX,
+                startMidClientY: midClientY,
+            };
+
+            // Match wheel-burst interaction freeze so pinch feels continuous.
+            this._wheelBurstUntil = performance.now() + 550;
+            this._markScalesDirty?.();
+            this._clearPanTimeTickCache?.();
+            this._cachedInteractionTimeTicks = null;
+
+            // Re-anchor drawing bar indices once at pinch start (same as pan snapshot).
+            const dm = this.drawingManager;
+            if (dm && dm.drawings && dm.drawings.length > 0
+                && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+                try {
+                    dm.drawings.forEach((drawing) => {
+                        if (drawing) {
+                            dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                        }
+                    });
+                } catch (_) { /* ignore */ }
+            }
+            try { this._clearPanDrawingsLayerTransform(false); } catch (_) { /* ignore */ }
+        };
+
         const applyPinchZoom = (touch1, touch2) => {
-            if (!initialPinchDistance || !this.data || this.data.length === 0) return;
+            const pinch = this._touchPinch;
+            if (!pinch || !pinch.initialDistance || !this.data || this.data.length === 0) return;
             const timeLocked = this.timeScale && this.timeScale.locked;
             if (timeLocked) return;
 
@@ -35943,11 +36581,11 @@ class Chart {
                 touch2.clientX - touch1.clientX,
                 touch2.clientY - touch1.clientY
             );
-            const scale = currentDistance / initialPinchDistance;
+            const scale = currentDistance / pinch.initialDistance;
             const widths = pinchWidths();
             const minWidth = this._getEffectiveMinCandleWidth(widths);
             const maxWidth = widths[widths.length - 1];
-            const newWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));
+            const newWidth = Math.max(minWidth, Math.min(maxWidth, pinch.initialCandleWidth * scale));
 
             const priceLocked = this.priceScale && this.priceScale.locked;
             if (!priceLocked) {
@@ -35955,16 +36593,32 @@ class Chart {
                 this.priceScale.autoScale = false;
             }
 
-            const midX = (touch1.clientX + touch2.clientX) / 2;
-            const midY = (touch1.clientY + touch2.clientY) / 2;
-            const [mx] = this._eventCanvasLocalXY({ clientX: midX, clientY: midY });
+            const midClientX = (touch1.clientX + touch2.clientX) / 2;
+            const midClientY = (touch1.clientY + touch2.clientY) / 2;
+            const [mx, my] = this._eventCanvasLocalXY({
+                clientX: midClientX,
+                clientY: midClientY,
+            });
             const m = this.margin;
-            const anchorIndex = (mx - m.l - initialOffsetX) / initialCandleSpacing;
-            const oldAnchorX = m.l + anchorIndex * initialCandleSpacing + initialOffsetX;
+
+            // Data-index under the pinch-start midpoint; keep it under the *current*
+            // midpoint so pinch zooms AND pans (TradingView-style two-finger move).
+            const anchorIndex = (pinch.startMx - m.l - pinch.initialOffsetX)
+                / pinch.initialCandleSpacing;
 
             this.candleWidth = newWidth;
             const newCandleSpacing = this.getCandleSpacing();
-            this.offsetX = oldAnchorX - (m.l + anchorIndex * newCandleSpacing);
+            this.offsetX = (mx - m.l) - (anchorIndex * newCandleSpacing);
+
+            // Vertical midpoint drag nudges price when unlocked (X-primary; light Y).
+            if (!priceLocked && this.yScale) {
+                const midDeltaY = my - pinch.startMy;
+                const domain = this.yScale.domain();
+                const priceRange = domain[1] - domain[0];
+                const plotH = Math.max(1, (this.h || 0) - m.t - m.b);
+                const pricePerPixel = priceRange / plotH;
+                this.priceOffset = pinch.initialPriceOffset + (midDeltaY * pricePerPixel);
+            }
 
             let nearestIdx = 0;
             let minDiff = Math.abs(newWidth - widths[0]);
@@ -35980,31 +36634,36 @@ class Chart {
             }
 
             this._lastWheelZoomDirection = scale > 1 ? 1 : -1;
+            this._wheelBurstUntil = performance.now() + 550;
             if (this.replaySystem?.isActive) {
                 this.replaySystem.onUserPan();
             }
             this.constrainOffset();
-            this.scheduleRender();
+            if (typeof this._scheduleWheelBurstRender === 'function') {
+                this._scheduleWheelBurstRender();
+            } else {
+                this.scheduleRender();
+            }
+        };
+
+        const endPinch = (e) => {
+            if (e.touches && e.touches.length >= 2) return;
+            const wasPinch = this._pinchActive;
+            this._pinchActive = false;
+            this._touchPinch = null;
+            if (this._touchGesture) {
+                this._touchGesture.mode = 'idle';
+                this._touchGesture.pointerIds = [];
+            }
+            this._activeTouchPointerId = null;
+            if (wasPinch) {
+                this._settleAfterTouchPinch();
+            }
         };
 
         this.canvas.addEventListener('touchstart', (e) => {
             if (e.touches.length === 2) {
-                this._pinchActive = true;
-                this._activeTouchPointerId = null;
-                if (this.drag && this.drag.active) {
-                    this.drag.active = false;
-                    this.drag.type = null;
-                    this.movement.isDragging = false;
-                }
-                const touch1 = e.touches[0];
-                const touch2 = e.touches[1];
-                initialPinchDistance = Math.hypot(
-                    touch2.clientX - touch1.clientX,
-                    touch2.clientY - touch1.clientY
-                );
-                initialCandleWidth = this.candleWidth;
-                initialOffsetX = this.offsetX;
-                initialCandleSpacing = this.getCandleSpacing();
+                beginPinch(e.touches[0], e.touches[1]);
                 e.preventDefault();
             }
         }, { passive: false });
@@ -36016,17 +36675,38 @@ class Chart {
             }
         }, { passive: false });
 
-        const endPinch = (e) => {
-            if (e.touches.length < 2) {
-                this._pinchActive = false;
-                initialPinchDistance = 0;
-            }
-        };
         this.canvas.addEventListener('touchend', endPinch, { passive: false });
-        this.canvas.addEventListener('touchcancel', () => {
-            this._pinchActive = false;
-            initialPinchDistance = 0;
+        this.canvas.addEventListener('touchcancel', (e) => {
+            this._resetTouchGestureState();
+            if (e) endPinch(e);
+            else {
+                this._pinchActive = false;
+                this._touchPinch = null;
+            }
         }, { passive: false });
+
+        // Also listen on wrapper so SVG-covered areas still get multitouch.
+        const wrap = this.canvas.parentElement;
+        if (wrap && !wrap.__talariaTouchPinchInstalled) {
+            wrap.__talariaTouchPinchInstalled = true;
+            wrap.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    beginPinch(e.touches[0], e.touches[1]);
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            wrap.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && this._pinchActive) {
+                    applyPinchZoom(e.touches[0], e.touches[1]);
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            wrap.addEventListener('touchend', endPinch, { passive: false });
+            wrap.addEventListener('touchcancel', () => {
+                this._resetTouchGestureState();
+                this._settleAfterTouchPinch();
+            }, { passive: false });
+        }
     }
     
     setupDraggableToolbox() {
@@ -36120,6 +36800,7 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
+            const touchPinchActive = !!this._pinchActive;
             // PLAY ticks are as hot as pan — use panFast (skip interaction setup) but
             // still rebuild SVG from current scales so shapes track auto-scroll/TF.
             if (typeof this._isReplayPlaybackRendering === 'function'
@@ -36142,7 +36823,7 @@ class Chart {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
             }
-            if (wheelActive && !this._wheelBurstFinalPass) {
+            if ((wheelActive || touchPinchActive) && !this._wheelBurstFinalPass) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();
@@ -36941,12 +37622,9 @@ class Chart {
         // `this.canvas.parentElement` is required for V9 live: `#panels-container` comes
         // before `#chartWrapper` in the DOM, so `document.querySelector` would update a
         // panel's crosshair with coordinates computed for the main canvas.
-        const container = this.canvas.parentElement;
+        // Price/time badges must be direct children — drawings use SVG `.price-label`.
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         
         // Bar under cursor (for OHLC / lock). Lines & labels use raw (x,y) so the pointer
         // sits on the crosshair intersection (snap-to-bar caused visible offset vs cursor).
@@ -37094,19 +37772,30 @@ class Chart {
             this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive || touchPlacement
         ) && (this.cursorType !== 'dot' || touchPlacement);
         const showCrosshairUi = showLines || this.cursorType === 'dot' || this.cursorType === 'eraser' || touchPlacement;
-        const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
-        const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
-        const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
+        // Touch placement: TradingView dashed blue + center dot while a draw tool is armed.
+        let crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
+        if (touchPlacement && _dm && typeof _dm._touchPlacementCrosshairColor === 'function') {
+            try { crossColor = _dm._touchPlacementCrosshairColor() || crossColor; } catch (_) { /* ignore */ }
+        }
+        const crossPattern = touchPlacement
+            ? 'dashed'
+            : ((this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed');
+        const crossWidth = touchPlacement
+            ? 1
+            : Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
+        // TV mobile placement: short even dashes (~4 on / 4 off).
+        const dashOn = touchPlacement ? 4 : 6;
+        const dashOff = touchPlacement ? 8 : 10;
         const vBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+                : `repeating-linear-gradient(to bottom,${crossColor} 0px,${crossColor} ${dashOn}px,transparent ${dashOn}px,transparent ${dashOff}px)`;
         const hBg = crossPattern === 'solid'
             ? crossColor
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
-                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
+                : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} ${dashOn}px,transparent ${dashOn}px,transparent ${dashOff}px)`;
         // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
         const plotW = Math.max(0, this.w - m.l - m.r);
         if (vLine) {
@@ -37116,6 +37805,7 @@ class Chart {
             vLine.style.height = 'calc(100% - 30px)';
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
+            vLine.classList.toggle('touch-placement-crosshair', !!touchPlacement);
         }
         const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
         if (hLine) {
@@ -37126,6 +37816,37 @@ class Chart {
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
+            hLine.classList.toggle('touch-placement-crosshair', !!touchPlacement);
+        }
+
+        // TradingView placement: solid blue center dot at the crosshair intersection.
+        let placementDot = container.querySelector('.touch-placement-crosshair-dot');
+        if (!placementDot && touchPlacement) {
+            placementDot = document.createElement('div');
+            placementDot.className = 'touch-placement-crosshair-dot';
+            placementDot.style.cssText = [
+                'position:absolute',
+                'width:7px',
+                'height:7px',
+                'border-radius:50%',
+                'background:#2962FF',
+                'pointer-events:none',
+                'z-index:10001',
+                'transform:translate(-50%,-50%)',
+                'display:none',
+                'box-shadow:0 0 0 1px rgba(255,255,255,0.35)',
+            ].join(';');
+            container.appendChild(placementDot);
+        }
+        if (placementDot) {
+            if (touchPlacement && showLines) {
+                placementDot.style.left = lineX + 'px';
+                placementDot.style.top = safeHLineY + 'px';
+                placementDot.style.background = crossColor;
+                placementDot.style.display = 'block';
+            } else {
+                placementDot.style.display = 'none';
+            }
         }
         
         // Show dot indicator for 'dot' cursor type
@@ -37138,7 +37859,7 @@ class Chart {
             appendTarget.appendChild(dotIndicator);
         }
         if (dotIndicator) {
-            if (this.cursorType === 'dot' && !this.tool) {
+            if (this.cursorType === 'dot' && !this.tool && !touchPlacement) {
                 // lineX/lineY are already in container (layout) space
                 dotIndicator.style.left = lineX + 'px';
                 dotIndicator.style.top = lineY + 'px';
@@ -37192,6 +37913,8 @@ class Chart {
             priceLabel.style.textAlign = 'center';
             const showPanelCrosshairUi = showCrosshairUi;
             priceLabel.style.display = (inIndicatorSubPanel || !showPanelCrosshairUi) ? 'none' : 'block';
+            // Stay above separate-panel overlay (z~35) and match sync path (z~101).
+            if (priceLabel.style.display === 'block') priceLabel.style.zIndex = '101';
             if (labelBg) priceLabel.style.background = labelBg;
             if (labelTextColor) priceLabel.style.color = labelTextColor;
         }
@@ -37241,23 +37964,24 @@ class Chart {
                 crosshairTimestampMs = playheadMs;
             }
             
-            // Show time label if we have a valid timestamp
+            // Always toggle display — after hideCrosshair() the badge stays `none`
+            // unless every branch sets it (missing timestamp used to skip this).
+            timeLabel.style.left = lineX + 'px';
+            timeLabel.style.top = 'auto';
+            timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
+            timeLabel.style.transform = 'translateX(-50%)';
+            timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
+            if (showCrosshairUi) timeLabel.style.zIndex = '101';
+            if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
+            if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
             if (crosshairTimestampMs && crosshairTimestampMs > 0) {
                 const timeStr = this._formatCrosshairTimeLabel(crosshairTimestampMs, timeframeMs);
                 this._lastCrosshairTimeLabel = timeStr;
-                
                 timeLabel.textContent = timeStr;
-                timeLabel.style.left = lineX + 'px';
-                timeLabel.style.top = 'auto';
-                timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
-                timeLabel.style.transform = 'translateX(-50%)';
-                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
-                // Enforce label colors from settings
-                if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
-                if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
-            } else if (this.data.length === 0) {
-                // Even with no data, show the label (will be empty but visible)
-                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
+            } else if (this._lastCrosshairTimeLabel) {
+                timeLabel.textContent = this._lastCrosshairTimeLabel;
+            } else {
+                timeLabel.textContent = '—';
             }
             
             if (hasSnappedCandle) {
@@ -37373,19 +38097,23 @@ class Chart {
         if (typeof this._syncSeparatePanelCrosshairUi === 'function') {
             this._syncSeparatePanelCrosshairUi({ show: false });
         }
-        const container = this.canvas?.parentElement;
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         const dotIndicator = container.querySelector('.cursor-dot-indicator');
+        const placementDot = container.querySelector('.touch-placement-crosshair-dot');
         
-        if (vLine) vLine.style.display = 'none';
-        if (hLine) hLine.style.display = 'none';
+        if (vLine) {
+            vLine.style.display = 'none';
+            vLine.classList.remove('touch-placement-crosshair');
+        }
+        if (hLine) {
+            hLine.style.display = 'none';
+            hLine.classList.remove('touch-placement-crosshair');
+        }
         if (priceLabel) priceLabel.style.display = 'none';
         if (timeLabel) timeLabel.style.display = 'none';
         if (dotIndicator) dotIndicator.style.display = 'none';
+        if (placementDot) placementDot.style.display = 'none';
     }
     
     updateTooltip(e) {
@@ -39596,12 +40324,8 @@ class Chart {
     receiveCrosshairSync(timestamp, price = null, sourceCandle = null, opts = {}) {
         if (!this._crosshairPanelSyncAllowed()) return;
         
-        const container = this.canvas.parentElement;
+        const { container, vLine, hLine, priceLabel, timeLabel } = this._getCrosshairOverlayElements();
         if (!container) return;
-        const vLine = container.querySelector('.crosshair-vertical');
-        const hLine = container.querySelector('.crosshair-horizontal');
-        const priceLabel = container.querySelector('.price-label');
-        const timeLabel = container.querySelector('.time-label');
         
         // If timestamp is null, hide crosshair
         if (timestamp === null) {

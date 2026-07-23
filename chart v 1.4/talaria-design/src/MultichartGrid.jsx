@@ -1067,6 +1067,14 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
             ? String(window.__TALARIA_CHART_BUILD_ID)
             : "";
     if (buildV) params.set("v", buildV);
+    // Share host window claim with panel iframes (hard-gated /api/file + session state).
+    try {
+        const lim = typeof window !== "undefined" ? window.__talariaChartWindowLimit : null;
+        const wid = lim && typeof lim.getClientId === "function" ? lim.getClientId() : "";
+        if (wid && String(wid).length >= 8) {
+            params.set("chartWindowId", String(wid).slice(0, 64));
+        }
+    } catch (_) { /* ignore */ }
     // Bust cached chart-embed.html shells (nginx serves /chart/ from static export with 1h TTL).
     params.set("embedRev", "ohlc2");
     // Lightweight chart-only page — no React bundle per iframe (major multichart perf win).
@@ -5076,10 +5084,16 @@ export default function MultichartGrid({
                             : undefined;
                         const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
                             && typeof ch.loadMultichartPanelFile === "function";
+                        const hostReplayTs = Number.isFinite(Number(args.replayTimestamp))
+                            ? Number(args.replayTimestamp)
+                            : (typeof ch._resolveMultichartReplayPlayheadMs === "function"
+                                ? ch._resolveMultichartReplayPlayheadMs()
+                                : undefined);
                         const loadFn = useMc
                             ? () => ch.loadMultichartPanelFile(fid, {
                                 force: !!args.force,
                                 symbol: symHint,
+                                replayTimestamp: hostReplayTs,
                             })
                             : (typeof ch.loadMultichartPanelFromHost === "function"
                                 && (ch.isBacktestMode || ch.backtestingSession))
@@ -5087,9 +5101,7 @@ export default function MultichartGrid({
                                     fileId: fid,
                                     force: !!args.force,
                                     symbol: symHint,
-                                    replayTimestamp: typeof ch._resolveMultichartReplayPlayheadMs === "function"
-                                        ? ch._resolveMultichartReplayPlayheadMs()
-                                        : undefined,
+                                    replayTimestamp: hostReplayTs,
                                 })
                                 : () => ch.loadFileData(fid);
                         const r = loadFn();
@@ -5730,6 +5742,12 @@ export default function MultichartGrid({
                 if (o.symbol != null && String(o.symbol).trim()) {
                     hostLoadArgs.symbol = String(o.symbol).trim();
                 }
+                const hostReplayTs = Number.isFinite(Number(o.replayTimestamp))
+                    ? Number(o.replayTimestamp)
+                    : resolveHostReplayPlayheadMs();
+                if (Number.isFinite(hostReplayTs)) {
+                    hostLoadArgs.replayTimestamp = hostReplayTs;
+                }
                 return applyHostCommand("loadFile", hostLoadArgs).then((data) => {
                     if (typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
                         try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
@@ -5856,7 +5874,14 @@ export default function MultichartGrid({
                 return applyHostCommand(cmd, args, inProcChart);
             }
             if (cmd === "loadFile" && args && args.fileId != null && args.fileId !== "") {
-                return loadFileOnPanel(target, args.fileId, { force: !!args.force });
+                const loadOpts = { force: !!args.force };
+                if (args.symbol != null && String(args.symbol).trim()) {
+                    loadOpts.symbol = String(args.symbol).trim();
+                }
+                if (Number.isFinite(Number(args.replayTimestamp))) {
+                    loadOpts.replayTimestamp = Number(args.replayTimestamp);
+                }
+                return loadFileOnPanel(target, args.fileId, loadOpts);
             }
             if (target === HOST_PANEL_ID) {
                 return applyHostCommand(cmd, args);

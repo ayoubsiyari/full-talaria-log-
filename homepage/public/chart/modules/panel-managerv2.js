@@ -1414,12 +1414,24 @@ class PanelManager {
                     chart.redrawDrawings();
                 }
                 
-                // Reset crosshair elements (must not use document — panel slots come first in DOM)
-                const mainRoot = chart.canvas && chart.canvas.parentElement;
-                const crosshairV = mainRoot ? mainRoot.querySelector('.crosshair-vertical') : null;
-                const crosshairH = mainRoot ? mainRoot.querySelector('.crosshair-horizontal') : null;
-                const priceLabel = mainRoot ? mainRoot.querySelector('.price-label') : null;
-                const timeLabel = mainRoot ? mainRoot.querySelector('.time-label') : null;
+                // Reset crosshair elements (must not use document — panel slots come first in DOM).
+                // Price/time badges are direct children; drawings own SVG `.price-label` groups.
+                const overlay = (chart && typeof chart._getCrosshairOverlayElements === 'function')
+                    ? chart._getCrosshairOverlayElements()
+                    : null;
+                const mainRoot = overlay?.container || (chart.canvas && chart.canvas.parentElement);
+                const crosshairV = overlay?.vLine || (mainRoot ? mainRoot.querySelector('.crosshair-vertical') : null);
+                const crosshairH = overlay?.hLine || (mainRoot ? mainRoot.querySelector('.crosshair-horizontal') : null);
+                const priceLabel = overlay?.priceLabel || (mainRoot
+                    ? (typeof chart._queryChartOverlayBadge === 'function'
+                        ? chart._queryChartOverlayBadge(mainRoot, 'price-label')
+                        : mainRoot.querySelector(':scope > .price-label'))
+                    : null);
+                const timeLabel = overlay?.timeLabel || (mainRoot
+                    ? (typeof chart._queryChartOverlayBadge === 'function'
+                        ? chart._queryChartOverlayBadge(mainRoot, 'time-label')
+                        : mainRoot.querySelector(':scope > .time-label'))
+                    : null);
                 
                 if (crosshairV) crosshairV.style.display = 'none';
                 if (crosshairH) crosshairH.style.display = 'none';
@@ -2413,9 +2425,16 @@ class PanelManager {
 
     _doSavePanelState() {
         try {
+            let sessionId = null;
+            try {
+                const p = new URLSearchParams(window.location.search || '');
+                const sid = p.get('sessionId') || p.get('session_id');
+                if (sid != null && String(sid).trim() !== '') sessionId = String(sid).trim();
+            } catch (_e) { /* ignore */ }
             const state = {
                 layout: this.currentLayout,
                 selectedPanelIndex: this.selectedPanelIndex,
+                sessionId,
                 panels: this.panels.map((panel, idx) => {
                     const pc = panel.chartInstance;
                     if (!pc) return { index: idx, isMainChart: panel.isMainChart };

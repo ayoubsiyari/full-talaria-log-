@@ -169,6 +169,9 @@ class ReplaySystem {
     }
 
     applyPersistedState(state) {
+        if (state && typeof state === 'object' && Number.isFinite(Number(state.playheadRewoundAt))) {
+            this._playheadRewoundAt = Number(state.playheadRewoundAt);
+        }
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
 
@@ -811,14 +814,43 @@ class ReplaySystem {
 
         if (!modeChanged) return;
 
+        // Drop in-flight tick state whenever MODE changes. Leaving animatingCandle /
+        // _savedTickState / _nextCandleTimer alive after tick→candle made the
+        // current-price label freeze on the last tick while candle playback continued.
+        this._clearTickPlaybackStateForModeSwitch();
 
         if (this.isPlaying && restartPlayback) {
-            // Restart playback immediately so mode change applies without extra clicks.
-            this._preserveTickProgress = false;
-            this.animatingCandle = null;
-            this.tickProgress = 0;
-            this.tickElapsedMs = 0;
-            this.play();
+            // Same immediate re-arm path as INTERVAL changes — avoid deferred play()
+            // racing a pending startTickAnimation from the previous mode.
+            this._restartPlaybackAfterControlChange(true);
+            try { this.updateChartData(!!this.autoScrollEnabled); } catch (_e) { /* ignore */ }
+            return;
+        }
+
+        // Paused: still repaint so the label/line leave the last tick mid-price.
+        try { this.updateChartData(false); } catch (_e2) { /* ignore */ }
+    }
+
+    /** Clear tick-loop leftovers so candle mode cannot keep a frozen tick mark. */
+    _clearTickPlaybackStateForModeSwitch() {
+        this._preserveTickProgress = false;
+        this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
+        this.fastMode = false;
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+        if (this.tickInterval) {
+            clearTimeout(this.tickInterval);
+            this.tickInterval = null;
+        }
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        if (this.chart && Number.isFinite(Number(this.chart._mcCanonicalReplayMark))) {
+            // Force re-resolve from the closed playhead bar on the next paint.
+            this.chart._mcCanonicalReplayMark = null;
         }
     }
 
@@ -2728,10 +2760,20 @@ class ReplaySystem {
         } else {
             this.replayTimestamp = ts;
         }
+        // Mark intentional rewind so refresh restore + session merge prefer this
+        // playhead over monotonic furthest_replay_ts (dashboard progress).
+        this._playheadRewoundAt = Date.now();
+        this._persistedPlayheadApplied = true;
 
         this.updateChartData();
         if (typeof this.updateTimeDisplay === 'function') {
             this.updateTimeDisplay();
+        }
+
+        // Critical flush — pause/exit already flush; cut used to rely on a 2.5s
+        // throttle and lost the rewind on hard refresh.
+        if (typeof this._flushReplayStateToSession === 'function') {
+            try { this._flushReplayStateToSession(); } catch (_flush) { /* ignore */ }
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
@@ -3261,7 +3303,14 @@ class ReplaySystem {
             0,
             Math.floor(numVisibleCandles * (Number.isFinite(this.replayRightPaddingRatio) ? this.replayRightPaddingRatio : 0.2))
         );
-        const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
+        const desiredGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
+        // Cap the reserved right gap to a fraction of the visible window.
+        // Without this, default rightOffsetCandles=15 can exceed numVisibleCandles
+        // when Place Order narrows the plot (or zoom is tight): targetVisibleCandles
+        // collapses to 1 → offsetX≈minOffset → playhead pinned LEFT with empty
+        // future to the right (the "open trade / order rail shifts chart left" bug).
+        const maxGapCandles = Math.max(0, Math.floor(numVisibleCandles * 0.35));
+        const rightGapCandles = Math.min(desiredGapCandles, maxGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
         // Anchor so the LAST loaded bar (the replay playhead — `data` is sliced to it)
@@ -3813,6 +3862,12 @@ class ReplaySystem {
 
         this._persistReplayStateThrottled();
 
+        // Keep host current-price mark fresh while paused / manual-stepping.
+        // Broadcast used to run only while playing, which froze _mcCanonicalReplayMark.
+        if (_mcCanonicalReplayMarkV1Enabled() && this.chart) {
+            const mark = this._resolveCanonicalReplayMark();
+            if (Number.isFinite(mark)) this.chart._mcCanonicalReplayMark = mark;
+        }
         if (this.isPlaying) {
             this._multichartBroadcastReplayFrame();
         }
@@ -4099,6 +4154,15 @@ class ReplaySystem {
             this.syncPlayPauseUI();
             return;
         }
+
+        // Kick-oldest: displaced window must not keep burning replay CPU/network.
+        try {
+            if (typeof window !== 'undefined' && window.__talariaChartWindowBlocked) {
+                this.isPlaying = false;
+                this.syncPlayPauseUI();
+                return;
+            }
+        } catch (_blocked) { /* ignore */ }
 
         // Re-scan panel TFs so coarse-main Play never uses a stale host-only finest.
         try { this._onFinestTfCadencePanelsChanged(); } catch (_e) { /* ignore */ }
@@ -4884,6 +4948,15 @@ class ReplaySystem {
      */
     startTickAnimation() {
         if (!this.isActive || !this.isPlaying) return;
+        // Guard mode switches: a pending _nextCandleTimer from tick mode must not
+        // revive tick animation after the user selected candle-by-candle.
+        if (!this._shouldUseTickAnimation()) {
+            this.animatingCandle = null;
+            this.tickProgress = 0;
+            this.tickElapsedMs = 0;
+            if (this.isPlaying) this.startCandleByCandle(false);
+            return;
+        }
 
         // Invalidate any prior tick timeout chain before starting a new one.
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
@@ -5469,6 +5542,10 @@ class ReplaySystem {
             timeframe: this.chart.currentTimeframe,
             isActive: true,
         };
+        const rewoundAt = Number(this._playheadRewoundAt);
+        if (Number.isFinite(rewoundAt) && rewoundAt > 0) {
+            replay.playheadRewoundAt = rewoundAt;
+        }
         if (Number.isFinite(dash.furthest_replay_ts)) {
             replay.dashboard = dash;
         }
@@ -5609,7 +5686,10 @@ class ReplaySystem {
     getCurrentAnimatedPrice() {
         if (!this.fullRawData || this.fullRawData.length === 0) return null;
 
-        if (this.animatingCandle) {
+        // Candle-by-candle must never read leftover tick-anim close — that froze the
+        // axis price label after a live tick→candle mode switch.
+        const tickAnimActive = this.getPlaybackMode() === 'tick' && this._shouldUseTickAnimation();
+        if (tickAnimActive && this.animatingCandle) {
             if (this.tickProgress > 0) {
                 if (!this.animatingCandle.cachedPath) {
                     this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
@@ -5627,6 +5707,15 @@ class ReplaySystem {
             }
             const openPx = Number.parseFloat(this.animatingCandle.open);
             if (Number.isFinite(openPx)) return openPx;
+        }
+
+        // Prefer the painted replay head (includes candle-mode resample) over raw index
+        // so the label tracks the visible last close after mode switches.
+        const chart = this.chart;
+        if (chart && Array.isArray(chart.data) && chart.data.length) {
+            const painted = Number(chart.data[chart.data.length - 1].c
+                ?? chart.data[chart.data.length - 1].close);
+            if (Number.isFinite(painted)) return painted;
         }
 
         // Fallback when no intra-candle animation is available.
@@ -6038,7 +6127,9 @@ class ReplaySystem {
                 : 50;
             this._nextCandleTimer = setTimeout(() => {
                 this._nextCandleTimer = null;
-                if (this.isPlaying) this.startTickAnimation();
+                if (!this.isPlaying) return;
+                if (this._shouldUseTickAnimation()) this.startTickAnimation();
+                else this.startCandleByCandle(false);
             }, nextCandleDelay);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
             if (!this._handleForwardEdgeWhilePlaying(() => this.startTickAnimation())) {
@@ -6149,6 +6240,57 @@ class ReplaySystem {
     }
 
     /**
+     * Before a manual bar-step abandons mid-candle tick animation, evaluate SL/TP
+     * against the remaining tick path after each position's placement guard.
+     * Otherwise step-forward skips those ticks and a same-bar SL never fires
+     * (while a later-bar TP still can).
+     */
+    _flushIntrabarSltpBeforeBarStep() {
+        if (this.getPlaybackMode() !== 'tick') return;
+        const om = this.chart && this.chart.orderManager;
+        if (!om || typeof om.updatePositions !== 'function') return;
+
+        const saved = this._savedTickState;
+        const anim = (saved && saved.animatingCandle) || this.animatingCandle;
+        if (!anim) return;
+
+        const tc = anim.target || anim;
+        let path = anim.cachedPath;
+        if ((!path || !path.length) && typeof this.getTickPath === 'function') {
+            path = this.getTickPath(tc);
+        }
+        if (!path || !path.length) return;
+
+        const prevAnim = this.animatingCandle;
+        const prevProgress = this.tickProgress;
+        const prevElapsed = this.tickElapsedMs;
+        const prevSaved = this._savedTickState;
+
+        // Restore live anim + jump progress to candle end so existing guarded
+        // tick-path SL/TP checks see every sample after the placement guard.
+        this._savedTickState = null;
+        this.animatingCandle = anim;
+        if (!anim.cachedPath) anim.cachedPath = path;
+        const th = Number.parseFloat(tc.h ?? tc.high);
+        const tl = Number.parseFloat(tc.l ?? tc.low);
+        const tcClose = Number.parseFloat(tc.c ?? tc.close);
+        if (Number.isFinite(th)) anim.high = th;
+        if (Number.isFinite(tl)) anim.low = tl;
+        if (Number.isFinite(tcClose)) anim.close = tcClose;
+        this.tickProgress = path.length;
+        this.tickElapsedMs = prevElapsed;
+
+        try {
+            om.updatePositions();
+        } catch (_e) { /* ignore */ }
+
+        this.animatingCandle = prevAnim;
+        this.tickProgress = prevProgress;
+        this.tickElapsedMs = prevElapsed;
+        this._savedTickState = prevSaved;
+    }
+
+    /**
      * Manual step forward request from UI controls/clone.
      * Ensures replay does not continue running after a single-step action.
      */
@@ -6165,6 +6307,8 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
+        // Must run before clearing animatingCandle / _savedTickState.
+        this._flushIntrabarSltpBeforeBarStep();
         this._savedTickState = null;
         this.animatingCandle = null;
         this.tickProgress = 0;

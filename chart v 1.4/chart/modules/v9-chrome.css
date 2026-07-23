@@ -84,6 +84,62 @@ body {
     box-shadow: 0 1px 0 rgba(0,0,0,0.4);
 }
 
+/* V9 live top chrome: desktop stays left/right aligned; swipe only when content overflows. */
+[data-v9-topbar="1"] {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+[data-v9-topbar="1"]::-webkit-scrollbar {
+    display: none;
+    height: 0;
+    width: 0;
+}
+/* Keep controls full-width; the flex spacer collapses first so overflow can scroll. */
+[data-v9-topbar="1"] > *:not([aria-hidden="true"]) {
+    flex-shrink: 0;
+}
+@media (pointer: fine) and (min-width: 900px) {
+    [data-v9-topbar="1"] {
+        overflow-x: hidden;
+        touch-action: manipulation;
+    }
+}
+
+/* V9 live replay bar: desktop keeps left | center | right; swipe only when narrow. */
+[data-v9-replaybar="1"] {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+[data-v9-replaybar="1"]::-webkit-scrollbar {
+    display: none;
+    height: 0;
+    width: 0;
+}
+@media (max-width: 899px) {
+    [data-v9-replaybar="1"] {
+        display: flex !important;
+        align-items: center;
+        touch-action: pan-x;
+    }
+    [data-v9-replaybar="1"] > * {
+        flex-shrink: 0;
+    }
+}
+@media (pointer: fine) and (min-width: 900px) {
+    [data-v9-replaybar="1"] {
+        overflow-x: hidden;
+        touch-action: manipulation;
+    }
+}
+
 .toolbar-support-link {
     color: var(--v9-tm) !important;
     font-size: 10px !important;
@@ -533,6 +589,27 @@ html, body, #chart-container, .container, .chart-wrapper, #panels-container {
     border: 2px solid transparent;
 }
 *::-webkit-scrollbar-corner { background: transparent; }
+
+/* Fat-finger tap targets on tablets / phones (coarse pointer). */
+@media (hover: none) and (pointer: coarse) {
+    .left-sidebar .tool-group-btn,
+    .left-sidebar .tool-btn,
+    .tool-group-btn,
+    .tool-btn,
+    .toolbar-drawing-icons .toolbar-icon-btn {
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+    }
+    .left-sidebar .tool-group-btn svg,
+    .left-sidebar .tool-btn svg,
+    .tool-group-btn svg,
+    .tool-btn svg {
+        width: 22px !important;
+        height: 22px !important;
+    }
+}
 
 /* ============================================================================
  * End V9 chrome.
