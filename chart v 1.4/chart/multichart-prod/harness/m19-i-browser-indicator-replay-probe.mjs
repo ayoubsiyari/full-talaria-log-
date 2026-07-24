@@ -17,12 +17,24 @@
  *      invokes that path (speed=100 alone is insufficient).
  *   5. Heap retained growth within the M19-G bound.
  *
+ * Expected build ID (never taken from the live browser observation):
+ *   M19_EXPECTED_BUILD_ID=20260724b58   — explicit candidate (preferred for deploy gates)
+ *   else parse chart.js CHART_ENGINE_BUILD / serve.mjs buildId before launch.
+ *
  * Run:
- *   node m19-i-browser-indicator-replay-probe.mjs
- *   M19_FOCUS=I node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ *   M19_EXPECTED_BUILD_ID=20260724b58 node m19-i-browser-indicator-replay-probe.mjs
+ *   M19_FOCUS=I M19_EXPECTED_BUILD_ID=20260724b58 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startServer } from './serve.mjs';
 import { bootLayout, launchBrowser, sleep } from './harness-lib.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const CHART_JS_PATH = path.resolve(__dirname, '../../chart.js');
+const SERVE_MJS_PATH = path.resolve(__dirname, 'serve.mjs');
 
 const MIB = 1024 * 1024;
 const BYTES_PER_BAR_PACKED = 6 * 8; // Float64 [t,o,h,l,c,v]
@@ -63,7 +75,47 @@ const MIN_WORKER_PAYLOAD_SAMPLES = Math.max(
   Number(process.env.M19_I_MIN_PAYLOAD_SAMPLES) || 3,
 );
 
-const EXPECTED_BUILD_ID = '20260723b57';
+/**
+ * Resolve the candidate expected build ID BEFORE launch.
+ * Priority: explicit M19_EXPECTED_BUILD_ID → chart.js CHART_ENGINE_BUILD →
+ * serve.mjs host buildId literal. Never defaults to the live browser value.
+ */
+function resolveExpectedBuildId() {
+  const fromEnv = String(process.env.M19_EXPECTED_BUILD_ID || '').trim();
+  if (/^\d{8}b\d+$/.test(fromEnv)) {
+    return { expectedBuildId: fromEnv, source: 'env:M19_EXPECTED_BUILD_ID' };
+  }
+  const tryParse = (filePath, patterns, label) => {
+    if (!fs.existsSync(filePath)) return null;
+    const src = fs.readFileSync(filePath, 'utf8');
+    for (const re of patterns) {
+      const m = src.match(re);
+      if (m && /^\d{8}b\d+$/.test(m[1])) {
+        return { expectedBuildId: m[1], source: label };
+      }
+    }
+    return null;
+  };
+  const fromChart = tryParse(
+    CHART_JS_PATH,
+    [/const\s+CHART_ENGINE_BUILD\s*=\s*['"](\d{8}b\d+)['"]/],
+    'chart.js:CHART_ENGINE_BUILD',
+  );
+  if (fromChart) return fromChart;
+  const fromServe = tryParse(
+    SERVE_MJS_PATH,
+    [/const\s+buildId\s*=\s*['"](\d{8}b\d+)['"]/],
+    'serve.mjs:buildId',
+  );
+  if (fromServe) return fromServe;
+  throw new Error(
+    'M19-I SETUP-FAIL: cannot resolve expected build ID '
+    + '(set M19_EXPECTED_BUILD_ID or ensure chart.js CHART_ENGINE_BUILD is present). '
+    + 'Never default expected to the observed browser build id.',
+  );
+}
+
+const { expectedBuildId: EXPECTED_BUILD_ID, source: EXPECTED_BUILD_SOURCE } = resolveExpectedBuildId();
 
 function metric(metrics, name) {
   const value = Number(metrics?.[name]);
@@ -916,6 +968,8 @@ async function main() {
       ticket: 'M19-I',
       scenario: 'one-panel / 90-day 1m feed / 100x continuous replay / 8 indicators / NO TF switches',
       killSwitchesInjected: KILL_SWITCHES,
+      expectedBuildId: EXPECTED_BUILD_ID,
+      expectedBuildSource: EXPECTED_BUILD_SOURCE,
       buildId: setup.buildId,
       setup,
       measured: {

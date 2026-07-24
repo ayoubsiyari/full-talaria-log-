@@ -1678,14 +1678,53 @@ function sortedMarkerKeys(om) {
  * M19-I — 8-indicator continuous-replay acceptance cell (browser harness).
  *   M19_FOCUS=I node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
+/**
+ * Resolve candidate expected build for M19-I evidence filenames + gate.
+ * Same contract as the browser probe: env wins, else parse chart.js
+ * CHART_ENGINE_BUILD (never the live browser observation).
+ */
+function resolveM19ICandidateBuildId() {
+  const fromEnv = String(process.env.M19_EXPECTED_BUILD_ID || '').trim();
+  if (/^\d{8}b\d+$/.test(fromEnv)) {
+    return { candidateBuildId: fromEnv, source: 'env:M19_EXPECTED_BUILD_ID' };
+  }
+  if (fs.existsSync(CHART_PATH)) {
+    const src = fs.readFileSync(CHART_PATH, 'utf8');
+    const m = src.match(/const\s+CHART_ENGINE_BUILD\s*=\s*['"](\d{8}b\d+)['"]/);
+    if (m) {
+      return { candidateBuildId: m[1], source: 'chart.js:CHART_ENGINE_BUILD' };
+    }
+  }
+  const servePath = path.join(__dirname, '../multichart-prod/harness/serve.mjs');
+  if (fs.existsSync(servePath)) {
+    const src = fs.readFileSync(servePath, 'utf8');
+    const m = src.match(/const\s+buildId\s*=\s*['"](\d{8}b\d+)['"]/);
+    if (m) {
+      return { candidateBuildId: m[1], source: 'serve.mjs:buildId' };
+    }
+  }
+  throw new Error(
+    'M19-I SETUP-FAIL: cannot resolve candidate build ID '
+    + '(set M19_EXPECTED_BUILD_ID or ensure chart.js CHART_ENGINE_BUILD is present).',
+  );
+}
+
 async function runM19IFocusEvidence() {
   // Soak module freezes Date for A–E durability cells; restore wall clock for I.
   restoreDate();
   const started = new Date().toISOString();
   const t0 = performance.now();
   const headSha = headShaOrNull();
-  const buildId = '20260723b57';
-  const sealedSha = 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc';
+  // M0 sealed baseline (pre-lag-sprint) — provenance only, not the candidate gate.
+  const baselineM0 = {
+    checkpoint: 'CKPT-015',
+    sourceSha: 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc',
+    buildId: '20260723b57',
+    tag: 'pre-lag-sprint-20260724',
+    chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
+    homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
+  };
+  const { candidateBuildId: buildId, source: expectedBuildSource } = resolveM19ICandidateBuildId();
   const harnessDir = path.join(__dirname, '../multichart-prod/harness');
   const probePath = path.join(harnessDir, 'm19-i-browser-indicator-replay-probe.mjs');
   const cifPath = path.join(__dirname, 'chart-indicators-full.js');
@@ -1703,13 +1742,19 @@ async function runM19IFocusEvidence() {
     throw new Error(`M19-I probe missing: ${probePath}`);
   }
 
-  const command = `node "${probePath}"`;
+  // Forward the resolved candidate so the probe's expected matches evidence filenames
+  // even when the wrapper resolved from chart.js and env was unset.
+  const childEnv = {
+    ...process.env,
+    M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
+  };
+  const command = `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} node "${probePath}"`;
   const child = spawnSync(process.execPath, [probePath], {
     cwd: harnessDir,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: 10 * 60 * 1000,
-    env: { ...process.env },
+    env: childEnv,
   });
 
   const stdout = String(child.stdout || '');
@@ -1744,7 +1789,8 @@ async function runM19IFocusEvidence() {
   const scheduler = probe?.asserts?.steadyReplayScheduler || {};
   const heap = probe?.memoryMiB || {};
   const liveBuildId = probe?.buildId || null;
-  const buildIdOk = liveBuildId === buildId;
+  const expectedBuildId = probe?.expectedBuildId || buildId;
+  const buildIdOk = liveBuildId === expectedBuildId && expectedBuildId === buildId;
 
   const failingGates = probe?.asserts
     ? Object.entries(probe.asserts)
@@ -1767,14 +1813,11 @@ async function runM19IFocusEvidence() {
     finishedAt,
     elapsedMs,
     headSha,
-    sealedM0: {
-      checkpoint: 'CKPT-015',
-      sourceSha: sealedSha,
-      buildId,
-      tag: 'pre-lag-sprint-20260724',
-      chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
-      homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
-    },
+    // Pre-lag-sprint M0 baseline (b57) — historical provenance, not the candidate gate.
+    sealedM0: baselineM0,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
     liveBuildId,
     command,
     cwd: harnessDir,
@@ -1841,8 +1884,9 @@ async function runM19IFocusEvidence() {
         flagged: true,
         severity: 'build-id-mismatch',
         liveHarnessBuildId: liveBuildId,
-        sealedBuildId: buildId,
-        sealedSha,
+        expectedBuildId,
+        candidateBuildId: buildId,
+        baselineM0BuildId: baselineM0.buildId,
         m19iFixesPresent: false,
         weakenedThresholds: false,
       },
@@ -1865,12 +1909,12 @@ async function runM19IFocusEvidence() {
 ## Environment / provenance
 
 - HEAD: \`${headSha}\`
-- M0 sealed source: \`${sealedSha}\`
-- Sealed build ID: \`${buildId}\`
-- **Live harness build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches sealed b57)' : '(MISMATCH)'}
-- Tag: \`pre-lag-sprint-20260724\`
-- Chart digest: \`sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f\`
-- Homepage digest: \`sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056\`
+- M0 baseline (pre-lag-sprint): \`${baselineM0.sourceSha}\` / \`${baselineM0.buildId}\` (provenance only)
+- **Candidate / expected build ID:** \`${expectedBuildId}\` (source: ${evidence.expectedBuildSource})
+- **Live harness build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches expected)' : '(MISMATCH — SETUP-FAIL)'}
+- Tag: \`${baselineM0.tag}\`
+- Chart digest (M0): \`${baselineM0.chartDigest}\`
+- Homepage digest (M0): \`${baselineM0.homepageDigest}\`
 - startedAt: ${started}
 - finishedAt: ${finishedAt}
 - elapsedMs: ${Math.round(elapsedMs)}
@@ -1959,6 +2003,9 @@ M19-I product fixes remain Lane 1. M20 is out of scope for this cell.
     isRed,
     isGreen,
     setupFail,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: evidence.expectedBuildSource,
     liveBuildId,
     buildIdOk,
     failingGates,
