@@ -1371,6 +1371,49 @@ class ReplaySystem {
         });
     }
 
+    /**
+     * M20-Q6 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1 = true
+     * restores legacy accumulation of document mousemove/mouseup per float cycle.
+     */
+    _m20Q6ReplayFloatListenerTeardownEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1 !== true;
+    }
+
+    /** M20-Q6 — drop document mousemove/mouseup pairs registered for floating clones. */
+    _teardownFloatingCloneDocListeners() {
+        if (!this._m20Q6ReplayFloatListenerTeardownEnabled()) return;
+        const list = this._floatingCloneDocListenerTeardowns;
+        if (!Array.isArray(list) || list.length === 0) return;
+        while (list.length) {
+            const fn = list.pop();
+            try { if (typeof fn === 'function') fn(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
+     * M20-Q6 — remove floating replay-toolbar clone and (when fix ON) its document listeners.
+     * Shared by close-button, exitReplayMode, and any reinit cleanup.
+     */
+    _removeFloatingReplayToolbarClone() {
+        this._teardownFloatingCloneDocListeners();
+        const floatingClone = typeof document !== 'undefined'
+            ? document.getElementById('replayToolbarClone')
+            : null;
+        if (floatingClone) {
+            try { floatingClone.remove(); } catch (_) { /* ignore */ }
+        }
+        try {
+            if (typeof userStorage !== 'undefined' && userStorage && typeof userStorage.removeItem === 'function') {
+                userStorage.removeItem('replayToolbarClonePosition');
+            }
+        } catch (_) { /* ignore */ }
+        if (this.toolbar) {
+            this.toolbar.style.opacity = '1';
+        }
+    }
+
     addCloseButtonToClone(clone) {
         // Create close button
         const closeBtn = document.createElement('button');
@@ -1411,10 +1454,15 @@ class ReplaySystem {
         
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            clone.remove();
-            userStorage.removeItem('replayToolbarClonePosition');
-            if (this.toolbar) {
-                this.toolbar.style.opacity = '1';
+            // M20-Q6: tear down document mousemove/mouseup with the floating clone.
+            if (typeof this._removeFloatingReplayToolbarClone === 'function') {
+                this._removeFloatingReplayToolbarClone();
+            } else {
+                clone.remove();
+                userStorage.removeItem('replayToolbarClonePosition');
+                if (this.toolbar) {
+                    this.toolbar.style.opacity = '1';
+                }
             }
         });
         
@@ -1426,6 +1474,11 @@ class ReplaySystem {
     }
 
     makeCloneDraggable(clone) {
+        // M20-Q6 fix ON: clear any prior float-cycle document pair before installing a new one.
+        if (typeof this._teardownFloatingCloneDocListeners === 'function') {
+            this._teardownFloatingCloneDocListeners();
+        }
+
         let isDragging = false;
         let offsetX = 0;
         let offsetY = 0;
@@ -1461,10 +1514,24 @@ class ReplaySystem {
             const rect = clone.getBoundingClientRect();
             this.saveFloatingClonePosition(rect.left, rect.top);
         };
+
+        const teardownDocListeners = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
         
         clone.addEventListener('mousedown', onMouseDown);
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+
+        // M20-Q6: register teardown so close/exit do not leave a permanent document pair.
+        // Kill-switch OFF skips registration → legacy accumulation returns.
+        if (this._m20Q6ReplayFloatListenerTeardownEnabled()) {
+            if (!Array.isArray(this._floatingCloneDocListenerTeardowns)) {
+                this._floatingCloneDocListenerTeardowns = [];
+            }
+            this._floatingCloneDocListenerTeardowns.push(teardownDocListeners);
+        }
     }
 
     attachCloneEventHandlers(clone) {
@@ -3232,13 +3299,18 @@ class ReplaySystem {
         this.isActive = false;
         this.stop();
 
-        const floatingClone = document.getElementById('replayToolbarClone');
-        if (floatingClone) {
-            floatingClone.remove();
-            userStorage.removeItem('replayToolbarClonePosition');
-        }
-        if (this.toolbar) {
-            this.toolbar.style.opacity = '1';
+        // M20-Q6: remove floating clone + document mousemove/mouseup (fix ON).
+        if (typeof this._removeFloatingReplayToolbarClone === 'function') {
+            this._removeFloatingReplayToolbarClone();
+        } else {
+            const floatingClone = document.getElementById('replayToolbarClone');
+            if (floatingClone) {
+                floatingClone.remove();
+                userStorage.removeItem('replayToolbarClonePosition');
+            }
+            if (this.toolbar) {
+                this.toolbar.style.opacity = '1';
+            }
         }
         
         // Restore full data
