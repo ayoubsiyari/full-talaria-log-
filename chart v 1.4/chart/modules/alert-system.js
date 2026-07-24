@@ -315,10 +315,31 @@ class AlertSystem {
         this.loadAlerts();
         this.setupUI();
         this.setupEventListeners();
+        // M20-Q8: start only when alerts exist (kill-switch restores always-on 500ms).
         this.startAlertChecker();
         this.initAlertSound();
         
         console.log('✅ Alert System initialized with', this.alerts.length, 'alerts');
+    }
+
+    /**
+     * M20-Q8 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_Q8_ALERT_CHECKER_IDLE_V1 = true
+     */
+    _m20Q8AlertCheckerIdleFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_Q8_ALERT_CHECKER_IDLE_V1 !== true;
+    }
+
+    /** Keep the 500ms checker running iff there is at least one alert (fix ON). */
+    syncAlertCheckerWithAlerts() {
+        if (!this._m20Q8AlertCheckerIdleFixEnabled()) {
+            // Legacy owns one always-on checker created during init. New alert
+            // mutations must not add extra intervals while the fix is disabled.
+            return;
+        }
+        if (this.alerts && this.alerts.length > 0) this.startAlertChecker();
+        else this.stopAlertChecker();
     }
     
     /**
@@ -535,6 +556,9 @@ class AlertSystem {
         this.renderAlertLines();
         this.refreshAlertsList();
         this.updateBadge();
+        if (typeof this.syncAlertCheckerWithAlerts === 'function') {
+            this.syncAlertCheckerWithAlerts();
+        }
         
         if (this.chart && typeof this.chart.showNotification === 'function') {
             this.chart.showNotification(`Alert created at ${this.formatPrice(alert.price)} ✓`);
@@ -602,6 +626,9 @@ class AlertSystem {
             this.renderAlertLines();
             this.refreshAlertsList();
             this.updateBadge();
+            if (typeof this.syncAlertCheckerWithAlerts === 'function') {
+                this.syncAlertCheckerWithAlerts();
+            }
             
             if (this.chart && typeof this.chart.showNotification === 'function') {
                 this.chart.showNotification('Alert deleted');
@@ -889,10 +916,22 @@ class AlertSystem {
     }
     
     /**
-     * Start the alert checker interval
+     * Start the alert checker interval.
+     * M20-Q8 (default ON): clear-before-restart; skip when zero alerts.
+     * Kill-switch __TALARIA_DISABLE_M20_Q8_ALERT_CHECKER_IDLE_V1 = true restores
+     * always-on 500ms (and may stack if start is called twice — legacy RED).
      */
     startAlertChecker() {
-        // Check alerts every 500ms
+        const fixOn = this._m20Q8AlertCheckerIdleFixEnabled();
+        if (fixOn) {
+            this.stopAlertChecker();
+            if (!this.alerts || this.alerts.length === 0) return;
+            this.checkInterval = setInterval(() => {
+                this.checkAlerts();
+            }, 500);
+            return;
+        }
+        // Legacy kill-switch path: permanent 500ms wakeups, no clear-before-restart.
         this.checkInterval = setInterval(() => {
             this.checkAlerts();
         }, 500);
@@ -904,6 +943,7 @@ class AlertSystem {
     stopAlertChecker() {
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
+            this.checkInterval = null;
         }
     }
     
@@ -1573,15 +1613,23 @@ class AlertSystem {
             this.renderAlertLines();
             this.refreshAlertsList();
             this.updateBadge();
+            if (typeof this.syncAlertCheckerWithAlerts === 'function') {
+                this.syncAlertCheckerWithAlerts();
+            }
         }
     }
     
     /**
      * Destroy the alert system
+     * M20-Q8: always clear the checker handle (stopAlertChecker nulls checkInterval).
      */
     destroy() {
         this.stopAlertChecker();
-        this.chart.svg.select('#alertLinesGroup').remove();
+        try {
+            if (this.chart && this.chart.svg && typeof this.chart.svg.select === 'function') {
+                this.chart.svg.select('#alertLinesGroup').remove();
+            }
+        } catch (_) {}
     }
 }
 
