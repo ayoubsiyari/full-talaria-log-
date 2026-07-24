@@ -21,11 +21,15 @@
  *   (c) __TALARIA_DISABLE_M19_PERSIST_TRIM_V1
  *   (d) __TALARIA_DISABLE_M19_MARKER_DELTA_V1
  *   (e) __TALARIA_DISABLE_M19_HOTPATH_LOG_GUARD_V1
+ *
+ * M19-I 8-indicator continuous-replay cell (browser harness):
+ *   M19_FOCUS=I node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
@@ -1671,6 +1675,310 @@ function sortedMarkerKeys(om) {
 }
 
 /**
+ * M19-I — 8-indicator continuous-replay acceptance cell (browser harness).
+ *   M19_FOCUS=I node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ */
+async function runM19IFocusEvidence() {
+  // Soak module freezes Date for A–E durability cells; restore wall clock for I.
+  restoreDate();
+  const started = new Date().toISOString();
+  const t0 = performance.now();
+  const headSha = headShaOrNull();
+  const buildId = '20260723b57';
+  const sealedSha = 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc';
+  const harnessDir = path.join(__dirname, '../multichart-prod/harness');
+  const probePath = path.join(harnessDir, 'm19-i-browser-indicator-replay-probe.mjs');
+  const cifPath = path.join(__dirname, 'chart-indicators-full.js');
+  const ipPath = path.join(__dirname, 'indicator-performance.js');
+  const fileHashes = {
+    'order-manager.js': sha256File(OM_PATH),
+    'replay-system.js': sha256File(RS_PATH),
+    'chart.js': sha256File(CHART_PATH),
+    'chart-indicators-full.js': fs.existsSync(cifPath) ? sha256File(cifPath) : null,
+    'indicator-performance.js': fs.existsSync(ipPath) ? sha256File(ipPath) : null,
+    'm19-i-browser-indicator-replay-probe.mjs': sha256File(probePath),
+  };
+
+  if (!fs.existsSync(probePath)) {
+    throw new Error(`M19-I probe missing: ${probePath}`);
+  }
+
+  const command = `node "${probePath}"`;
+  const child = spawnSync(process.execPath, [probePath], {
+    cwd: harnessDir,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 10 * 60 * 1000,
+    env: { ...process.env },
+  });
+
+  const stdout = String(child.stdout || '');
+  const stderr = String(child.stderr || '');
+  let probe = null;
+  let parseError = null;
+  try {
+    // Probe prints one root JSON object; find the first '{' and parse.
+    const start = stdout.indexOf('{');
+    if (start >= 0) probe = JSON.parse(stdout.slice(start));
+  } catch (err) {
+    probe = null;
+    parseError = String(err?.message || err);
+  }
+
+  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-${buildId}-RED.json`);
+  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-${buildId}-RED.md`);
+  const finishedAt = new Date().toISOString();
+  const elapsedMs = performance.now() - t0;
+
+  const verdict = probe?.verdict
+    || (child.status === 2 || child.error || parseError ? 'SETUP-FAIL' : 'M19-I-RED');
+  const isRed = verdict === 'M19-I-RED';
+  const isGreen = verdict === 'M19-I-GREEN';
+  const setupFail = verdict === 'SETUP-FAIL' || !probe || probe?.ticket !== 'M19-I';
+
+  const main = probe?.measured?.mainThreadMsSummary || {};
+  const payload = probe?.asserts?.payloadOTail || {};
+  const absBudget = probe?.asserts?.mainThreadAbsoluteBudget || {};
+  const liveness = probe?.asserts?.workerLiveness || {};
+  const scheduler = probe?.asserts?.steadyReplayScheduler || {};
+  const heap = probe?.memoryMiB || {};
+  const liveBuildId = probe?.buildId || null;
+  const buildIdOk = liveBuildId === buildId;
+
+  const failingGates = probe?.asserts
+    ? Object.entries(probe.asserts)
+      .filter(([, a]) => a && a.pass === false)
+      .map(([name]) => name)
+    : [];
+  const passingGates = probe?.asserts
+    ? Object.entries(probe.asserts)
+      .filter(([, a]) => a && a.pass === true)
+      .map(([name]) => name)
+    : [];
+
+  const evidence = {
+    row: 'L2-M19-I',
+    title: 'Indicator replay compute budget — 8-indicator continuous replay',
+    task: 'M19-I-BASELINE-RED',
+    lane: 'Lane 2',
+    model: 'Grok 4.5',
+    startedAt: started,
+    finishedAt,
+    elapsedMs,
+    headSha,
+    sealedM0: {
+      checkpoint: 'CKPT-015',
+      sourceSha: sealedSha,
+      buildId,
+      tag: 'pre-lag-sprint-20260724',
+      chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
+      homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
+    },
+    liveBuildId,
+    command,
+    cwd: harnessDir,
+    exitStatus: child.status,
+    signal: child.signal || null,
+    fileHashes,
+    probe,
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
+    numericBaseline: {
+      mainThreadFirstMedMs: main.firstMed ?? null,
+      mainThreadLastMedMs: main.lastMed ?? null,
+      mainThreadRatio: main.ratio ?? null,
+      mainThreadSlopePer1k: main.slopePer1k ?? null,
+      mainThreadSlopeFracOfFirst: main.slopeFracOfFirst ?? null,
+      mainThreadMedianMs: absBudget.medianMs ?? main.medianMs ?? null,
+      mainThreadP95Ms: absBudget.p95Ms ?? main.p95Ms ?? null,
+      mainThreadMedianLimitMs: absBudget.medianLimitMs ?? null,
+      mainThreadP95LimitMs: absBudget.p95LimitMs ?? null,
+      medianPostMessageBytes: payload.medianPostMessageBytes ?? null,
+      maxPostMessageBytes: payload.maxPostMessageBytes ?? null,
+      packComplexityBytes: payload.packComplexityBytes ?? null,
+      historyBytes: payload.historyBytes ?? null,
+      tailBudgetBytes: payload.tailBudgetBytes ?? null,
+      payloadClass: payload.payloadClass ?? null,
+      workerPostSamples: payload.workerPostSamples ?? null,
+      transferStrategy: payload.transferStrategy ?? null,
+      workerLivenessPass: liveness.pass ?? null,
+      workerQuietAfterBaseline: liveness.workerQuietAfterBaseline ?? null,
+      gotResultResponse: liveness.gotResultResponse ?? null,
+      playCadencePass: scheduler.playCadence?.pass ?? null,
+      parseError,
+      heapPeakMiB: heap.peak ?? null,
+      heapAfterGcMiB: heap.afterGc ?? null,
+      heapRetainedGrowthMiB: heap.retainedGrowth ?? null,
+    },
+    failingGates,
+    passingGates,
+    whyValidRed: setupFail
+      ? 'Probe failed to produce a complete result; not a GREEN waiver.'
+      : [
+        'Clean sealed b57 / CKPT-015 has no M19-I product fixes.',
+        'Cell uses real browser harness paths: scheduleReplayIndicatorRecalc + recalculateIndicatorsIncremental + Worker.postMessage.',
+        '8-indicator mix includes sync-only (talariafvg), worker-skip (supertrend), and worker-eligible SMA/EMA/RSI.',
+        '90d 1m data, 100x continuous replay, no timeframe switches.',
+        `Absolute main-thread median=${absBudget.medianMs ?? main.medianMs} ms (limit ≤ ${absBudget.medianLimitMs} ms / 1 frame); p95=${absBudget.p95Ms ?? main.p95Ms} ms (limit ≤ ${absBudget.p95LimitMs} ms). Flat-but-expensive sync recompute is RED.`,
+        `Ratio=${main.ratio} (≤1.25); slopeFrac=${main.slopeFracOfFirst} (≤0.05) — flatness alone is insufficient.`,
+        `Worker liveness pass=${liveness.pass}: quiet=${liveness.workerQuietAfterBaseline}, gotResultResponse=${liveness.gotResultResponse}, commitsDelta=${liveness.commitsDelta}; direct pack cannot satisfy liveness.`,
+        payload.payloadClass === 'O(history)' || payload.payloadClass === 'no-live-worker-samples'
+          ? `Payload class=${payload.payloadClass}; medianPost=${payload.medianPostMessageBytes}; historyBytes=${payload.historyBytes}; GREEN requires ≥${payload.minWorkerPostSamples} live Worker samples at O(tail) ≤ ${payload.tailBudgetBytes}.`
+          : `Payload class=${payload.payloadClass}.`,
+        `Heap retainedGrowth=${heap.retainedGrowth} MiB (M19-G limit ≤ 128).`,
+      ].join(' '),
+    flakeNotes: [
+      'Harness stub /api/auth/me — no TEST_EMAIL required.',
+      'Deterministic advances call updateChartData + scheduleReplayIndicatorRecalc (steady-replay scheduler entry); playCadence separately requires replay.play() at speed=100.',
+      'b57 posts CALCULATE_TAIL but indicator-worker.js has no CALCULATE_TAIL handler → busy wedges; liveness RED is expected until Lane 1 fixes the protocol.',
+      'packBarsCompact byte length is complexity evidence only and cannot pass payloadOTail or workerLiveness.',
+      'If Worker construction fails, probe exits SETUP-FAIL rather than weakening thresholds.',
+    ],
+    provenanceBlocker: buildIdOk
+      ? null
+      : {
+        flagged: true,
+        severity: 'build-id-mismatch',
+        liveHarnessBuildId: liveBuildId,
+        sealedBuildId: buildId,
+        sealedSha,
+        m19iFixesPresent: false,
+        weakenedThresholds: false,
+      },
+    verdict,
+    signature: 'Lane 2 / Grok 4.5',
+  };
+
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+
+  const report = `# L2-M19-I — 8-indicator continuous-replay baseline (${buildId})
+
+**Verdict:** ${verdict}
+
+**Scope:** M1 / M19-I acceptance instrument only. No product edits. Not a live I15 UI verdict.
+
+**Signature:** Lane 2 / Grok 4.5
+
+## Environment / provenance
+
+- HEAD: \`${headSha}\`
+- M0 sealed source: \`${sealedSha}\`
+- Sealed build ID: \`${buildId}\`
+- **Live harness build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches sealed b57)' : '(MISMATCH)'}
+- Tag: \`pre-lag-sprint-20260724\`
+- Chart digest: \`sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f\`
+- Homepage digest: \`sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056\`
+- startedAt: ${started}
+- finishedAt: ${finishedAt}
+- elapsedMs: ${Math.round(elapsedMs)}
+- probe exitStatus: ${child.status}
+- provenanceBlocker: ${evidence.provenanceBlocker ? JSON.stringify(evidence.provenanceBlocker) : 'none'}
+
+## Command
+
+\`\`\`
+M19_FOCUS=I node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+\`\`\`
+
+Probe (cwd \`${path.relative(ROOT, harnessDir).replace(/\\\\/g, '/')}\`):
+
+\`\`\`
+${command}
+\`\`\`
+
+## Scenario
+
+- one panel
+- ~90 days of 1m data (\`fineCount >= 129000\`)
+- 100x continuous replay
+- **no timeframe switches**
+- 8 indicators: SMA, EMA, RSI, MACD, Bollinger, ATR, **talariafvg** (sync-only), **supertrend** (worker-skip)
+- Deterministic scheduler path: \`updateChartData + scheduleReplayIndicatorRecalc(true) + rAF\`
+- Plus short \`replay.play()\` cadence check (speed=100 alone is insufficient)
+
+## Gates
+
+- FAILING: ${failingGates.length ? failingGates.join(', ') : '(none)'}
+- PASSING: ${passingGates.length ? passingGates.join(', ') : '(none)'}
+
+## Numeric baseline
+
+| Metric | Value | GREEN gate |
+|---|---|---|
+| main-thread median / p95 (ms) | ${absBudget.medianMs ?? main.medianMs ?? 'n/a'} / ${absBudget.p95Ms ?? main.p95Ms ?? 'n/a'} | ≤ ${absBudget.medianLimitMs ?? '16.67'} / ≤ ${absBudget.p95LimitMs ?? '33.33'} |
+| main-thread first→last median (ms) | ${main.firstMed ?? 'n/a'} → ${main.lastMed ?? 'n/a'} | ratio ≤ 1.25 |
+| main-thread ratio | ${main.ratio ?? 'n/a'} | ≤ 1.25 |
+| main-thread slopeFrac / 1k | ${main.slopeFracOfFirst ?? 'n/a'} | ≤ 0.05 |
+| worker liveness | pass=${liveness.pass} quiet=${liveness.workerQuietAfterBaseline} response=${liveness.gotResultResponse} commits=${liveness.commitsDelta} | response + busy clear ≤ ${liveness.timeoutMs ?? 5000} ms + commit |
+| median Worker.postMessage bytes | ${payload.medianPostMessageBytes ?? 'n/a'} (${payload.workerPostSamples ?? 0} samples) | O(tail) ≤ ${payload.tailBudgetBytes ?? 'n/a'}, ≥ ${payload.minWorkerPostSamples ?? 3} live samples |
+| pack complexity bytes (evidence only) | ${payload.packComplexityBytes ?? 'n/a'} | cannot pass payload/liveness |
+| history packed bytes | ${payload.historyBytes ?? 'n/a'} | — |
+| payload class / transfer strategy | ${payload.payloadClass ?? 'n/a'} / ${payload.transferStrategy ?? 'n/a'} | O(tail); transfer or reuse OK |
+| play cadence | pass=${scheduler.playCadence?.pass} Δindex=${scheduler.playCadence?.indexDelta} Δrecalc=${scheduler.playCadence?.recalcDelta} | play() advances bars + scheduler |
+| heap peak / afterGc / retainedGrowth (MiB) | ${heap.peak ?? 'n/a'} / ${heap.afterGc ?? 'n/a'} / ${heap.retainedGrowth ?? 'n/a'} | ≤ 512 / 256 / 128 |
+
+## Why this is a valid RED
+
+${evidence.whyValidRed}
+
+## Flake notes
+
+${evidence.flakeNotes.map((n) => `- ${n}`).join('\n')}
+
+## Assert detail
+
+\`\`\`json
+${JSON.stringify(probe?.asserts || { error: 'probe missing' }, null, 2)}
+\`\`\`
+
+## File hashes
+
+\`\`\`json
+${JSON.stringify(fileHashes, null, 2)}
+\`\`\`
+
+## Evidence
+
+- JSON: \`${path.relative(ROOT, evidencePath).replace(/\\\\/g, '/')}\`
+- Report: \`${path.relative(ROOT, reportPath).replace(/\\\\/g, '/')}\`
+- Probe: \`chart v 1.4/chart/multichart-prod/harness/m19-i-browser-indicator-replay-probe.mjs\`
+
+## Binding
+
+Lane 2 owns acceptance instrumentation only — no product edits.
+M19-I product fixes remain Lane 1. M20 is out of scope for this cell.
+`;
+
+  fs.writeFileSync(reportPath, report);
+
+  process.stdout.write(`${JSON.stringify({
+    verdict,
+    isRed,
+    isGreen,
+    setupFail,
+    liveBuildId,
+    buildIdOk,
+    failingGates,
+    passingGates,
+    numericBaseline: evidence.numericBaseline,
+    provenanceBlocker: evidence.provenanceBlocker,
+    evidence: evidencePath,
+    report: reportPath,
+    probeExitStatus: child.status,
+    signature: 'Lane 2 / Grok 4.5',
+  }, null, 2)}\n`);
+
+  // Required outcome today: RED. Exit 1 = RED-EXPECTED; 2 = setup/probe failure.
+  if (setupFail || !buildIdOk) process.exitCode = 2;
+  else if (isRed) process.exitCode = 1;
+  else if (isGreen) process.exitCode = 0;
+  else process.exitCode = 2;
+  restoreDate();
+}
+
+/**
  * Focused D/E evidence (separate GREEN artifacts; overall M19 may stay RED).
  *   M19_FOCUS=D|E node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
@@ -1960,6 +2268,10 @@ async function runSoakMarkerCapture({ deltaDisabled }) {
 
 async function main() {
   const focus = String(process.env.M19_FOCUS || '').trim().toUpperCase();
+  if (focus === 'I') {
+    await runM19IFocusEvidence();
+    return;
+  }
   if (focus === 'D' || focus === 'E') {
     await runFocusEvidence(focus);
     return;
