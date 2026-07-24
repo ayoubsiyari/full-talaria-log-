@@ -6097,9 +6097,13 @@ class ReplaySystem {
             this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
         }
 
-        if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
-            this.chart.recalculateAllIndicators();
-        }
+        // M19-I-g: forming-candle tick paints must refresh indicator tips against
+        // the live last-bar OHLC. The old recalculateAllIndicators hook never
+        // existed on Chart, so tips stayed frozen until the bar committed —
+        // visible as high-speed catch-up (15x looks fine; 60x+ does not).
+        try {
+            this._scheduleReplayIndicatorRecalc();
+        } catch (_) { /* silent */ }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();

@@ -2334,6 +2334,635 @@ M19-I compute gate remains standing. M20 out of scope.
 }
 
 /**
+ * M19-I-g exact five-MA presentation cell (SMA20+EMA20+WMA20+DEMA20+TEMA20).
+ * Distinct from M19-I-f PO-mix — that gate GREEN is not proof for this mix.
+ *   M19_FOCUS=I-G M19_EXPECTED_BUILD_ID=20260724b59 \
+ *     M19_DEPLOYED_ORIGIN=http://31.97.192.82:3000 \
+ *     node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ */
+async function runM19IGFocusEvidence() {
+  restoreDate();
+  const started = new Date().toISOString();
+  const t0 = performance.now();
+  const headSha = headShaOrNull();
+  const baselineM0 = {
+    checkpoint: 'CKPT-015',
+    sourceSha: 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc',
+    buildId: '20260723b57',
+    tag: 'pre-lag-sprint-20260724',
+    chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
+    homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
+  };
+  const immutableCandidate = {
+    checkpoint: 'CKPT-017',
+    sourceSha: '254051afe5c2b58f85c53763256a9641229f0656',
+    buildId: '20260724b59',
+  };
+  const { candidateBuildId: buildId, source: expectedBuildSource } = resolveM19ICandidateBuildId();
+  const harnessDir = path.join(__dirname, '../multichart-prod/harness');
+  const probePath = path.join(harnessDir, 'm19-i-g-browser-exact-five-ma-probe.mjs');
+  const fileHashes = {
+    'chart.js': sha256File(CHART_PATH),
+    'replay-system.js': sha256File(RS_PATH),
+    'chart-indicators-full.js': sha256File(path.join(__dirname, 'chart-indicators-full.js')),
+    'm19-i-g-browser-exact-five-ma-probe.mjs': sha256File(probePath),
+  };
+
+  if (!fs.existsSync(probePath)) {
+    throw new Error(`M19-I-g probe missing: ${probePath}`);
+  }
+
+  const deployedOriginRaw = String(process.env.M19_DEPLOYED_ORIGIN || '').trim();
+  const killSwitchesRaw = String(process.env.M19_IG_KILL_SWITCHES || '').trim();
+  const childEnv = {
+    ...process.env,
+    M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
+  };
+  const commandParts = [`M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID}`];
+  if (deployedOriginRaw) commandParts.push(`M19_DEPLOYED_ORIGIN=${deployedOriginRaw}`);
+  if (killSwitchesRaw) commandParts.push(`M19_IG_KILL_SWITCHES=${killSwitchesRaw}`);
+  commandParts.push(`node "${probePath}"`);
+  const command = commandParts.join(' ');
+  const child = spawnSync(process.execPath, [probePath], {
+    cwd: harnessDir,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 15 * 60 * 1000,
+    env: childEnv,
+  });
+
+  const stdout = String(child.stdout || '');
+  const stderr = String(child.stderr || '');
+  let probe = null;
+  let parseError = null;
+  try {
+    const start = stdout.indexOf('{');
+    if (start >= 0) probe = JSON.parse(stdout.slice(start));
+  } catch (err) {
+    probe = null;
+    parseError = String(err?.message || err);
+  }
+
+  const finishedAt = new Date().toISOString();
+  const elapsedMs = performance.now() - t0;
+  const verdict = probe?.verdict
+    || (child.status === 2 || child.error || parseError ? 'SETUP-FAIL' : 'M19-I-g-RED');
+  const isRed = verdict === 'M19-I-g-RED';
+  const isGreen = verdict === 'M19-I-g-GREEN';
+  const setupFail = verdict === 'SETUP-FAIL' || !probe || probe?.ticket !== 'M19-I-g';
+  const artifactTag = isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL');
+  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-g-${buildId}-${artifactTag}.json`);
+  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-g-${buildId}-${artifactTag}.md`);
+
+  const liveBuildId = probe?.buildId || null;
+  const expectedBuildId = probe?.expectedBuildId || buildId;
+  const buildIdOk = liveBuildId === expectedBuildId && expectedBuildId === buildId;
+  const failingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === false).map(([n]) => n)
+    : [];
+  const passingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === true).map(([n]) => n)
+    : [];
+  const high = probe?.highSpeed || {};
+  const stress = probe?.stressSpeedCell || {};
+  const ctrl = probe?.controlSpeedCell || {};
+  const lag = high.catchUpLagMs || {};
+  const te = probe?.temporalEvidence || {};
+
+  const evidence = {
+    row: 'L2-M19-I-g',
+    title: 'Exact five-MA high-speed presentation lag — SMA20+EMA20+WMA20+DEMA20+TEMA20',
+    task: isGreen ? 'M19-I-g-ACCEPTANCE-GREEN' : (isRed ? 'M19-I-g-BASELINE-RED' : 'M19-I-g-SETUP-FAIL'),
+    lane: 'Lane 2',
+    model: 'Grok 4.5',
+    startedAt: started,
+    finishedAt,
+    elapsedMs,
+    headSha,
+    sealedM0: baselineM0,
+    immutableProduct: immutableCandidate,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
+    liveBuildId,
+    killSwitchesInjected: probe?.killSwitchesInjected || (killSwitchesRaw ? killSwitchesRaw.split(',').map((s) => s.trim()).filter(Boolean) : []),
+    deployedMode: probe?.deployedMode === true,
+    assetOrigin: probe?.assetOrigin || null,
+    upstreamObservedBuild: probe?.upstreamObservedBuild || null,
+    provenanceNote: probe?.provenanceNote
+      || 'Exact-mix presentation sampled at chart.render() with tip-index/value/geometry; M19-I-f PO-mix gate unchanged.',
+    command,
+    cwd: harnessDir,
+    exitStatus: child.status,
+    signal: child.signal || null,
+    fileHashes,
+    probe,
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
+    numericBaseline: {
+      primarySpeed: probe?.primarySpeed ?? 60,
+      stressSpeed: probe?.stressSpeed ?? 100,
+      controlSpeed: probe?.controlSpeed ?? 10,
+      primaryRepeats: Array.isArray(probe?.primaryRuns) ? probe.primaryRuns.length : null,
+      highPaintCount: high.paintCount ?? null,
+      highStaleFrames: high.staleFrames ?? null,
+      highMaxConsecutiveStaleFrames: high.maxConsecutiveStaleFrames ?? null,
+      highMaxBarDelta: high.maxBarDelta ?? null,
+      highMaxTipIndexDelta: high.maxTipIndexDelta ?? null,
+      highValueMismatchFrames: high.valueMismatchFrames ?? null,
+      highGeomBehindFrames: high.geomBehindFrames ?? null,
+      highCatchUpLagMaxMs: lag.max ?? null,
+      highCatchUpLagP95Ms: lag.p95 ?? null,
+      highCatchUpLagMedianMs: lag.median ?? null,
+      highMathLagOnlyFrames: high.mathLagOnlyFrames ?? null,
+      highStaleByType: high.staleByType ?? null,
+      highIndexDelta: high.indexDelta ?? null,
+      stressStaleFrames: stress.staleFrames ?? null,
+      stressMaxTipIndexDelta: stress.maxTipIndexDelta ?? null,
+      stressValueMismatchFrames: stress.valueMismatchFrames ?? null,
+      stressCatchUpLagP95Ms: stress.catchUpLagMs?.p95 ?? null,
+      controlStaleFrames: ctrl.staleFrames ?? null,
+      controlMaxTipIndexDelta: ctrl.maxTipIndexDelta ?? null,
+      controlValueMismatchFrames: ctrl.valueMismatchFrames ?? null,
+      controlCatchUpLagP95Ms: ctrl.catchUpLagMs?.p95 ?? null,
+      expectedReliable: probe?.setup?.expectedReliable ?? null,
+      highM19ifStats: high.m19ifStats ?? null,
+      temporalEvidence: te,
+      parseError,
+    },
+    failingGates,
+    passingGates,
+    proposedPostFixThreshold: probe?.thresholds?.proposedPostFix || null,
+    proposedSwitchOffDiscriminator: probe?.thresholds?.proposedSwitchOffDiscriminator || null,
+    mechanismNote: probe?.mechanismNote || null,
+    whyValidRed: setupFail
+      ? 'Probe failed to produce a complete result; not a GREEN waiver.'
+      : [
+        'User report: SMA/EMA/WMA/DEMA/TEMA(20) trail price at high-speed continuous replay, catch up visually; low speed looks correct.',
+        'Cell uses real replay.play() (60x ×≥3 primary + 100x stress + 10x control), not only manual step calls.',
+        'Presentation sampled at chart.render() — priceBars/ts vs tipIdx/tipTs/tipVal, fresh expected tip, render/cache generation, geometry endpoint.',
+        'Array-length-only sampling is insufficient; tip-value stagnation and expected-tip mismatch distinguish temporal lag from mathematical MA smoothing.',
+        `60x worst: staleFrames=${high.staleFrames}, maxConsecutive=${high.maxConsecutiveStaleFrames}, maxBarDelta=${high.maxBarDelta}, maxTipIndexDelta=${high.maxTipIndexDelta}, valueMismatchFrames=${high.valueMismatchFrames}, catchUp p95=${lag.p95}ms max=${lag.max}ms.`,
+        'M19-I-f PO-mix GREEN is not cited as proof for this mix and does not force RED here.',
+      ].join(' '),
+    provenanceBlocker: buildIdOk
+      ? null
+      : {
+        flagged: true,
+        severity: 'build-id-mismatch',
+        liveHarnessBuildId: liveBuildId,
+        expectedBuildId,
+        candidateBuildId: buildId,
+      },
+    verdict,
+    signature: 'Lane 2 / Grok 4.5',
+  };
+
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+
+  const report = `# L2-M19-I-g — exact five-MA presentation ${isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL')} (${buildId})
+
+**Verdict:** ${verdict}
+
+**Scope:** M1 / M19-I-g acceptance instrumentation only. Exact mix SMA(20)+EMA(20)+WMA(20)+DEMA(20)+TEMA(20). Does **not** replace M19-I-f PO-mix or M19-I compute-budget. No product edits. Not a certified deployment claim (deployed b59 origin may be mutable VPS).
+
+**Signature:** Lane 2 / Grok 4.5
+
+## Environment / provenance
+
+- HEAD: \`${headSha}\`
+- Immutable candidate (CKPT-017): \`${immutableCandidate.sourceSha}\` / \`${immutableCandidate.buildId}\`
+- **Expected build ID:** \`${expectedBuildId}\` (source: ${evidence.expectedBuildSource})
+- **Live build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches expected)' : '(MISMATCH — SETUP-FAIL)'}
+- **Deployed mode:** ${evidence.deployedMode ? 'true' : 'false'}
+- **Asset origin:** ${evidence.assetOrigin || '(local checkout)'}
+- Provenance: ${evidence.provenanceNote}
+- startedAt: ${started}
+- finishedAt: ${finishedAt}
+- elapsedMs: ${Math.round(elapsedMs)}
+- probe exitStatus: ${child.status}
+- expected tip calibration reliable: ${evidence.numericBaseline.expectedReliable}
+
+## Command
+
+\`\`\`
+M19_FOCUS=I-G M19_EXPECTED_BUILD_ID=${expectedBuildId} M19_DEPLOYED_ORIGIN=${deployedOriginRaw || '(unset)'} node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+\`\`\`
+
+Probe:
+
+\`\`\`
+${command}
+\`\`\`
+
+## Scenario
+
+- Real \`replay.play()\` continuous loop (not only deterministic manual steps)
+- Primary: **60x × ≥3 repeats**; stress: **100x**; control: **10x**
+- Exact overlays: SMA(20) + EMA(20) + WMA(20) + DEMA(20) + TEMA(20)
+- One panel / 1m synthetic feed / deployed-asset mode against b59 when origin set
+- Presentation sampled at \`chart.render()\`: tip index/ts/value, fresh expected tip, render/cache gen, geometry endpoint
+- Discriminates mathematical vertical smoothing (tip ≠ close, tip fresh) from temporal presentation lag
+
+## Gates
+
+- FAILING: ${failingGates.length ? failingGates.join(', ') : '(none)'}
+- PASSING: ${passingGates.length ? passingGates.join(', ') : '(none)'}
+
+## Numeric baseline (60x worst primary)
+
+| Metric | Value | Hard limit |
+|---|---|---|
+| paintCount | ${high.paintCount ?? 'n/a'} | ≥ 40 |
+| staleFrames (temporal) | ${high.staleFrames ?? 'n/a'} | (informational) |
+| maxConsecutiveStaleFrames | ${high.maxConsecutiveStaleFrames ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| maxBarDelta | ${high.maxBarDelta ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| maxTipIndexDelta | ${high.maxTipIndexDelta ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| valueMismatchFrames | ${high.valueMismatchFrames ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| geomBehindFrames | ${high.geomBehindFrames ?? 'n/a'} | (diagnostic) |
+| mathLagOnlyFrames | ${high.mathLagOnlyFrames ?? 'n/a'} | (not a fail) |
+| catch-up lag p95 / max (ms) | ${lag.p95 ?? 'n/a'} / ${lag.max ?? 'n/a'} | ≤ 33.33 / ≤ 33.33 |
+
+100x stress: stale=${stress.staleFrames ?? 'n/a'}, tipΔ=${stress.maxTipIndexDelta ?? 'n/a'}, valueMismatch=${stress.valueMismatchFrames ?? 'n/a'}, p95=${stress.catchUpLagMs?.p95 ?? 'n/a'} ms
+
+10x control: stale=${ctrl.staleFrames ?? 'n/a'}, tipΔ=${ctrl.maxTipIndexDelta ?? 'n/a'}, valueMismatch=${ctrl.valueMismatchFrames ?? 'n/a'}, p95=${ctrl.catchUpLagMs?.p95 ?? 'n/a'} ms
+
+## Mechanism note
+
+${probe?.mechanismNote || '(none)'}
+
+## Proposed post-fix threshold
+
+\`\`\`json
+${JSON.stringify(probe?.thresholds?.proposedPostFix || {}, null, 2)}
+\`\`\`
+
+## Proposed switch-OFF discriminator
+
+\`\`\`json
+${JSON.stringify(probe?.thresholds?.proposedSwitchOffDiscriminator || {}, null, 2)}
+\`\`\`
+
+## Asserts
+
+\`\`\`json
+${JSON.stringify(probe?.asserts || { error: 'probe missing' }, null, 2)}
+\`\`\`
+
+## Evidence
+
+- JSON: \`${path.relative(ROOT, evidencePath).replace(/\\\\/g, '/')}\`
+- Report: \`${path.relative(ROOT, reportPath).replace(/\\\\/g, '/')}\`
+- Probe: \`chart v 1.4/chart/multichart-prod/harness/m19-i-g-browser-exact-five-ma-probe.mjs\`
+
+## Binding
+
+Lane 2 owns acceptance instrumentation only — no product edits.
+Lane 1 / Fable 5 owns any product fix for this exact mix.
+M19-I-f PO-mix and M19-I compute gates remain standing. M20 out of scope.
+`;
+
+  fs.writeFileSync(reportPath, report);
+
+  process.stdout.write(`${JSON.stringify({
+    verdict,
+    isRed,
+    isGreen,
+    setupFail,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: evidence.expectedBuildSource,
+    liveBuildId,
+    buildIdOk,
+    killSwitchesInjected: evidence.killSwitchesInjected,
+    deployedMode: evidence.deployedMode,
+    assetOrigin: evidence.assetOrigin,
+    failingGates,
+    passingGates,
+    numericBaseline: evidence.numericBaseline,
+    mechanismNote: evidence.mechanismNote,
+    proposedPostFixThreshold: evidence.proposedPostFixThreshold,
+    proposedSwitchOffDiscriminator: evidence.proposedSwitchOffDiscriminator,
+    provenanceBlocker: evidence.provenanceBlocker,
+    evidence: evidencePath,
+    report: reportPath,
+    probeExitStatus: child.status,
+    signature: 'Lane 2 / Grok 4.5',
+  }, null, 2)}\n`);
+
+  if (setupFail || !buildIdOk) process.exitCode = 2;
+  else if (isRed) process.exitCode = 1;
+  else if (isGreen) process.exitCode = 0;
+  else process.exitCode = 2;
+  restoreDate();
+}
+
+/**
+ * M19-I-g2 tick-mode PO-feel cell (15x control vs 60x/100x). Extends I-g;
+ * does not weaken I-g candle tip-index GREEN semantics.
+ *   M19_FOCUS=I-G2 M19_EXPECTED_BUILD_ID=20260724b59 \
+ *     M19_DEPLOYED_ORIGIN=http://31.97.192.82:3000 \
+ *     node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ */
+async function runM19IG2FocusEvidence() {
+  restoreDate();
+  const started = new Date().toISOString();
+  const t0 = performance.now();
+  const headSha = headShaOrNull();
+  const baselineM0 = {
+    checkpoint: 'CKPT-015',
+    sourceSha: 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc',
+    buildId: '20260723b57',
+    tag: 'pre-lag-sprint-20260724',
+    chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
+    homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
+  };
+  const immutableCandidate = {
+    checkpoint: 'CKPT-017',
+    sourceSha: '254051afe5c2b58f85c53763256a9641229f0656',
+    buildId: '20260724b59',
+  };
+  const { candidateBuildId: buildId, source: expectedBuildSource } = resolveM19ICandidateBuildId();
+  const harnessDir = path.join(__dirname, '../multichart-prod/harness');
+  const probePath = path.join(harnessDir, 'm19-i-g2-browser-tick-feel-probe.mjs');
+  const fileHashes = {
+    'chart.js': sha256File(CHART_PATH),
+    'replay-system.js': sha256File(RS_PATH),
+    'chart-indicators-full.js': sha256File(path.join(__dirname, 'chart-indicators-full.js')),
+    'm19-i-g2-browser-tick-feel-probe.mjs': sha256File(probePath),
+  };
+
+  if (!fs.existsSync(probePath)) {
+    throw new Error(`M19-I-g2 probe missing: ${probePath}`);
+  }
+
+  const deployedOriginRaw = String(process.env.M19_DEPLOYED_ORIGIN || '').trim();
+  const killSwitchesRaw = String(process.env.M19_IG2_KILL_SWITCHES || process.env.M19_IG_KILL_SWITCHES || '').trim();
+  const childEnv = {
+    ...process.env,
+    M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
+  };
+  const commandParts = [`M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID}`];
+  if (deployedOriginRaw) commandParts.push(`M19_DEPLOYED_ORIGIN=${deployedOriginRaw}`);
+  if (killSwitchesRaw) commandParts.push(`M19_IG2_KILL_SWITCHES=${killSwitchesRaw}`);
+  commandParts.push(`node "${probePath}"`);
+  const command = commandParts.join(' ');
+  const child = spawnSync(process.execPath, [probePath], {
+    cwd: harnessDir,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 15 * 60 * 1000,
+    env: childEnv,
+  });
+
+  const stdout = String(child.stdout || '');
+  const stderr = String(child.stderr || '');
+  let probe = null;
+  let parseError = null;
+  try {
+    const start = stdout.indexOf('{');
+    if (start >= 0) probe = JSON.parse(stdout.slice(start));
+  } catch (err) {
+    probe = null;
+    parseError = String(err?.message || err);
+  }
+
+  const finishedAt = new Date().toISOString();
+  const elapsedMs = performance.now() - t0;
+  const verdict = probe?.verdict
+    || (child.status === 2 || child.error || parseError ? 'SETUP-FAIL' : 'M19-I-g2-RED');
+  const isRed = verdict === 'M19-I-g2-RED';
+  const isGreen = verdict === 'M19-I-g2-GREEN';
+  const setupFail = verdict === 'SETUP-FAIL' || !probe || probe?.ticket !== 'M19-I-g2';
+  const artifactTag = isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL');
+  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-g2-${buildId}-${artifactTag}.json`);
+  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-g2-${buildId}-${artifactTag}.md`);
+
+  const liveBuildId = probe?.buildId || null;
+  const expectedBuildId = probe?.expectedBuildId || buildId;
+  const buildIdOk = liveBuildId === expectedBuildId && expectedBuildId === buildId;
+  const failingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === false).map(([n]) => n)
+    : [];
+  const passingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === true).map(([n]) => n)
+    : [];
+  const high = probe?.highSpeed || {};
+  const stress = probe?.stressSpeedCell || {};
+  const ctrl = probe?.controlSpeedCell || {};
+  const lag = high.catchUpLagMs || {};
+  const feel = probe?.feelEvidence || {};
+
+  const evidence = {
+    row: 'L2-M19-I-g2',
+    title: 'Tick-mode PO-feel five-MA lag — 15x control vs 60x/100x (SMA20+EMA20+WMA20+DEMA20+TEMA20)',
+    task: isGreen ? 'M19-I-g2-ACCEPTANCE-GREEN' : (isRed ? 'M19-I-g2-BASELINE-RED' : 'M19-I-g2-SETUP-FAIL'),
+    lane: 'Lane 2',
+    model: 'Grok 4.5',
+    startedAt: started,
+    finishedAt,
+    elapsedMs,
+    headSha,
+    sealedM0: baselineM0,
+    immutableProduct: immutableCandidate,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
+    liveBuildId,
+    killSwitchesInjected: probe?.killSwitchesInjected || (killSwitchesRaw ? killSwitchesRaw.split(',').map((s) => s.trim()).filter(Boolean) : []),
+    deployedMode: probe?.deployedMode === true,
+    assetOrigin: probe?.assetOrigin || null,
+    upstreamObservedBuild: probe?.upstreamObservedBuild || null,
+    provenanceNote: probe?.provenanceNote
+      || 'Tick-mode feel sampled at chart.render(); I-g candle tip-index gate unchanged.',
+    command,
+    cwd: harnessDir,
+    exitStatus: child.status,
+    signal: child.signal || null,
+    fileHashes,
+    probe,
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
+    numericBaseline: {
+      primarySpeed: probe?.primarySpeed ?? 60,
+      stressSpeed: probe?.stressSpeed ?? 100,
+      controlSpeed: probe?.controlSpeed ?? 15,
+      primaryRepeats: Array.isArray(probe?.primaryRuns) ? probe.primaryRuns.length : null,
+      highPaintCount: high.paintCount ?? null,
+      highStaleFrames: high.staleFrames ?? null,
+      highMaxTipIndexDelta: high.maxTipIndexDelta ?? null,
+      highValueMismatchFrames: high.valueMismatchFrames ?? null,
+      highIntraBarFrozenFrames: high.intraBarFrozenFrames ?? null,
+      highIntraBarStaleRatio: high.intraBarStaleRatio ?? null,
+      highCloseDriftWhileFrozenPerSec: high.closeDriftWhileFrozenPerSec ?? null,
+      highSkipRatio: high.recalcStats?.skipRatio ?? null,
+      highCatchUpLagP95Ms: lag.p95 ?? null,
+      highMathLagOnlyFrames: high.mathLagOnlyFrames ?? null,
+      stressIntraBarStaleRatio: stress.intraBarStaleRatio ?? null,
+      stressCloseDriftWhileFrozenPerSec: stress.closeDriftWhileFrozenPerSec ?? null,
+      stressMaxTipIndexDelta: stress.maxTipIndexDelta ?? null,
+      stressValueMismatchFrames: stress.valueMismatchFrames ?? null,
+      controlIntraBarStaleRatio: ctrl.intraBarStaleRatio ?? null,
+      controlCloseDriftWhileFrozenPerSec: ctrl.closeDriftWhileFrozenPerSec ?? null,
+      controlSkipRatio: ctrl.recalcStats?.skipRatio ?? null,
+      feelEvidence: feel,
+      expectedReliable: probe?.setup?.expectedReliable ?? null,
+      parseError,
+    },
+    failingGates,
+    passingGates,
+    mechanismNote: probe?.mechanismNote || null,
+    whyValidRed: setupFail
+      ? 'Probe failed to produce a complete result; not a GREEN waiver.'
+      : [
+        'PO feel: SMA/EMA/WMA/DEMA/TEMA trail at high replay speed; 15x looks correct.',
+        'I-g candle tip-index gate stayed GREEN (0 temporal stale) — blind to tick-mode mid-bar freeze.',
+        'I-g2 uses default playbackMode=tick with speed ladder 15x / 60x×≥3 / 100x.',
+        'Measures tip frozen while forming close moves + same-bar fingerprint skip ratio + feel intensity vs 15x.',
+        `60x worst: tipΔ=${high.maxTipIndexDelta}, valueMismatch=${high.valueMismatchFrames}, intraBarRatio=${high.intraBarStaleRatio}, closeDrift/sec=${high.closeDriftWhileFrozenPerSec}, skipRatio=${high.recalcStats?.skipRatio}.`,
+        'Product path if RED: _replayIndicatorBarFingerprint omits OHLC → scheduleReplayIndicatorRecalc skips mid-bar tip updates.',
+      ].join(' '),
+    provenanceBlocker: buildIdOk
+      ? null
+      : {
+        flagged: true,
+        severity: 'build-id-mismatch',
+        liveHarnessBuildId: liveBuildId,
+        expectedBuildId,
+        candidateBuildId: buildId,
+      },
+    verdict,
+    signature: 'Lane 2 / Grok 4.5',
+  };
+
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+
+  const report = `# L2-M19-I-g2 — tick-mode PO-feel five-MA ${isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL')} (${buildId})
+
+**Verdict:** ${verdict}
+
+**Scope:** M1 / M19-I-g2 acceptance instrumentation only. Exact mix SMA(20)+EMA(20)+WMA(20)+DEMA(20)+TEMA(20) in **tick mode**. Extends I-g; does **not** weaken I-g candle tip-index GREEN. Does **not** replace M19-I-f. No product edits. Not a certified deployment claim (deployed b59 origin may be mutable VPS).
+
+**Signature:** Lane 2 / Grok 4.5
+
+## Environment / provenance
+
+- HEAD: \`${headSha}\`
+- Immutable candidate (CKPT-017): \`${immutableCandidate.sourceSha}\` / \`${immutableCandidate.buildId}\`
+- **Expected build ID:** \`${expectedBuildId}\` (source: ${evidence.expectedBuildSource})
+- **Live build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches expected)' : '(MISMATCH — SETUP-FAIL)'}
+- **Deployed mode:** ${evidence.deployedMode ? 'true' : 'false'}
+- **Asset origin:** ${evidence.assetOrigin || '(local checkout)'}
+- Provenance: ${evidence.provenanceNote}
+- startedAt: ${started}
+- finishedAt: ${finishedAt}
+- elapsedMs: ${Math.round(elapsedMs)}
+- probe exitStatus: ${child.status}
+- expected tip calibration reliable: ${evidence.numericBaseline.expectedReliable}
+
+## Command
+
+\`\`\`
+M19_FOCUS=I-G2 M19_EXPECTED_BUILD_ID=${expectedBuildId} M19_DEPLOYED_ORIGIN=${deployedOriginRaw || '(unset)'} node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+\`\`\`
+
+Probe:
+
+\`\`\`
+${command}
+\`\`\`
+
+## Scenario
+
+- Real \`replay.play()\` with **playbackMode=tick** (product default; I-g forced candle)
+- Control: **15x** (PO "perfect"); primary: **60x × ≥3**; stress: **100x**
+- Exact overlays: SMA(20) + EMA(20) + WMA(20) + DEMA(20) + TEMA(20)
+- Samples tip-index temporal lag (I-g style) **and** intra-bar tip freeze while forming close moves
+- Instruments same-bar fingerprint skips in \`scheduleReplayIndicatorRecalc\`
+
+## Gates
+
+- FAILING: ${failingGates.length ? failingGates.join(', ') : '(none)'}
+- PASSING: ${passingGates.length ? passingGates.join(', ') : '(none)'}
+
+## Numeric baseline
+
+| Cell | tipΔ | valueMismatch | intraBarFrozen ratio | closeDrift/sec while frozen | skipRatio |
+|---|---|---|---|---|---|
+| 15x control | ${ctrl.maxTipIndexDelta ?? 'n/a'} | ${ctrl.valueMismatchFrames ?? 'n/a'} | ${ctrl.intraBarStaleRatio ?? 'n/a'} | ${ctrl.closeDriftWhileFrozenPerSec ?? 'n/a'} | ${ctrl.recalcStats?.skipRatio ?? 'n/a'} |
+| 60x worst | ${high.maxTipIndexDelta ?? 'n/a'} | ${high.valueMismatchFrames ?? 'n/a'} | ${high.intraBarStaleRatio ?? 'n/a'} | ${high.closeDriftWhileFrozenPerSec ?? 'n/a'} | ${high.recalcStats?.skipRatio ?? 'n/a'} |
+| 100x stress | ${stress.maxTipIndexDelta ?? 'n/a'} | ${stress.valueMismatchFrames ?? 'n/a'} | ${stress.intraBarStaleRatio ?? 'n/a'} | ${stress.closeDriftWhileFrozenPerSec ?? 'n/a'} | ${stress.recalcStats?.skipRatio ?? 'n/a'} |
+
+Feel intensity vs 15x (60x): ${feel.primaryFeelIntensityVsControl ?? 'n/a'}
+
+## Mechanism note
+
+${probe?.mechanismNote || '(none)'}
+
+## Lane 1 product scope (if RED)
+
+- \`chart-indicators-full.js\`: \`_replayIndicatorBarFingerprint\` intentionally omits OHLC (length|t only) so mid-bar forming ticks skip indicator recalc in \`scheduleReplayIndicatorRecalc\`.
+- Tip index stays on newest bar → I-g tip-index GREEN; tip **values** freeze until bar advance → PO feel.
+- Also: \`replay-system.js:updateChartWithAnimatedCandle\` calls missing \`recalculateAllIndicators\` every 18 ticks (dead path).
+- Fix options: include forming close / tip-affecting OHLC in fingerprint or cheap tip-only update each tick; do not weaken I-g/I-f gates.
+
+## Asserts
+
+\`\`\`json
+${JSON.stringify(probe?.asserts || { error: 'probe missing' }, null, 2)}
+\`\`\`
+
+## Evidence
+
+- JSON: \`${path.relative(ROOT, evidencePath).replace(/\\\\/g, '/')}\`
+- Report: \`${path.relative(ROOT, reportPath).replace(/\\\\/g, '/')}\`
+- Probe: \`chart v 1.4/chart/multichart-prod/harness/m19-i-g2-browser-tick-feel-probe.mjs\`
+
+## Binding
+
+Lane 2 owns acceptance instrumentation only — no product edits.
+Lane 1 / Fable 5 owns any product fix for tick-mode mid-bar tip freeze.
+M19-I-g candle tip-index and M19-I-f PO-mix gates remain standing. M20 out of scope.
+`;
+
+  fs.writeFileSync(reportPath, report);
+
+  process.stdout.write(`${JSON.stringify({
+    verdict,
+    isRed,
+    isGreen,
+    setupFail,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: evidence.expectedBuildSource,
+    liveBuildId,
+    buildIdOk,
+    killSwitchesInjected: evidence.killSwitchesInjected,
+    deployedMode: evidence.deployedMode,
+    assetOrigin: evidence.assetOrigin,
+    failingGates,
+    passingGates,
+    numericBaseline: evidence.numericBaseline,
+    mechanismNote: evidence.mechanismNote,
+    provenanceBlocker: evidence.provenanceBlocker,
+    evidence: evidencePath,
+    report: reportPath,
+    probeExitStatus: child.status,
+    signature: 'Lane 2 / Grok 4.5',
+  }, null, 2)}\n`);
+
+  if (setupFail || !buildIdOk) process.exitCode = 2;
+  else if (isRed) process.exitCode = 1;
+  else if (isGreen) process.exitCode = 0;
+  else process.exitCode = 2;
+  restoreDate();
+}
+
+/**
  * Focused D/E evidence (separate GREEN artifacts; overall M19 may stay RED).
  *   M19_FOCUS=D|E node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
@@ -2629,6 +3258,14 @@ async function main() {
   }
   if (focus === 'I-F' || focus === 'IF') {
     await runM19IFFocusEvidence();
+    return;
+  }
+  if (focus === 'I-G' || focus === 'IG') {
+    await runM19IGFocusEvidence();
+    return;
+  }
+  if (focus === 'I-G2' || focus === 'IG2') {
+    await runM19IG2FocusEvidence();
     return;
   }
   if (focus === 'D' || focus === 'E') {

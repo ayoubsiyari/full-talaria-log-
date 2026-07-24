@@ -8449,6 +8449,8 @@
     //   I-d  __TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1   — force:true bypasses dedupe
     //   I-f  __TALARIA_DISABLE_M19I_FRAME_COHERENT_V1 — b58 price-first paint +
     //        rAF-deferred pass + worker-RTT indicator catch-up during play
+    //   I-g  __TALARIA_DISABLE_M19I_TICK_COHERENT_V1  — forming-candle tick
+    //        animation freezes MA tips until the bar commits (skip OHLC)
 
     function _m19iTailSendEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TAIL_SEND_V1;
@@ -8464,6 +8466,11 @@
     }
     function _m19ifFrameCoherentEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1;
+    }
+    /** I-g: refresh indicator tips while tick-mode forming OHLC mutates. */
+    function _m19igTickCoherentEnabled() {
+        return _m19ifFrameCoherentEnabled()
+            && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TICK_COHERENT_V1);
     }
 
     /** Single source for the sync-only (main-thread structural) indicator types. */
@@ -9056,6 +9063,7 @@
             this._indicatorWorkerSeq++;
             this._indicatorWorkerCoalesce = false;
             this._sessionIndReplayFp = null;
+            this._sessionIndReplayTipFp = null;
             this._recalcSkipTypes = null;
             // I-d: repeated pause/step/restore with byte-identical state
             // dedupes the full sync; any data/param/TF delta still recomputes.
@@ -9099,15 +9107,33 @@
 
             // Same bar → keep prior indicator arrays; only re-render / legend.
             // Applies to ALL indicators (not only Sessions/Talaria).
+            // I-g: while tick-mode forming OHLC mutates, tip must track last.c
+            // even though bar length/open-time fingerprint is unchanged.
             let skipAllRecalc = false;
             if (_sessionReplayPerfFixEnabled()) {
                 const fp = _replayIndicatorBarFingerprint(chart);
-                if (fp
+                const replay = chart.replaySystem;
+                const formingTick = _m19igTickCoherentEnabled()
+                    && replay
+                    && replay.animatingCandle
+                    && (replay.tickProgress || 0) > 0;
+                if (formingTick && fp) {
+                    const last = chart.data[chart.data.length - 1] || {};
+                    const tipFp = fp + '|' + last.c + '|' + last.h + '|' + last.l;
+                    if (tipFp === chart._sessionIndReplayTipFp
+                        && _replayIndicatorsReady(chart)) {
+                        skipAllRecalc = true;
+                    } else {
+                        chart._sessionIndReplayTipFp = tipFp;
+                        chart._sessionIndReplayFp = fp;
+                    }
+                } else if (fp
                     && fp === chart._sessionIndReplayFp
                     && _replayIndicatorsReady(chart)) {
                     skipAllRecalc = true;
                 } else if (fp) {
                     chart._sessionIndReplayFp = fp;
+                    chart._sessionIndReplayTipFp = null;
                 }
             }
 

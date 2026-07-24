@@ -107,6 +107,7 @@ function resetKillSwitches() {
     delete global.window.__TALARIA_DISABLE_M19I_WORKER_PORT_V1;
     delete global.window.__TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1;
     delete global.window.__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1;
+    delete global.window.__TALARIA_DISABLE_M19I_TICK_COHERENT_V1;
     workerConfig.delayMs = 0;
     workerConfig.drop = false;
 }
@@ -449,6 +450,83 @@ test('order execution at tick time is never delayed: coherent pass completes bef
 });
 
 // ─── Fallback accounting (never hidden) ─────────────────────────────────────
+
+test('I-g: forming-candle tick OHLC mutation refreshes MA tip; kill switch freezes tip', () => {
+    resetKillSwitches();
+    workerConfig.drop = true;
+    const bars = makeBars(200, { seed: 97 });
+    const inds = [
+        ind('sma', { period: 20 }),
+        ind('ema', { period: 20 }),
+        ind('wma', { period: 20 }),
+        ind('dema', { period: 20 }),
+        ind('tema', { period: 20 }),
+    ];
+    const chart = makeChart(inds, bars.map((b) => ({ ...b })));
+    chart.recalculateIndicators();
+    chart.scheduleReplayIndicatorRecalc(true); // seed bar fingerprint
+
+    const tipOf = (type, pack) => {
+        if (!pack) return null;
+        const arr = Array.isArray(pack) ? pack : (pack.line || pack.ma);
+        if (!Array.isArray(arr) || !arr.length) return null;
+        const v = arr[arr.length - 1];
+        return (v && typeof v === 'object') ? Number(v.value ?? v.y ?? v.c) : Number(v);
+    };
+    const tipsBefore = Object.fromEntries(
+        inds.map((i) => [i.type, tipOf(i.type, chart.indicators.data[i.id])]),
+    );
+
+    // Same bar count / open time; mutate forming close (tick animation).
+    chart.replaySystem.animatingCandle = { t: bars[bars.length - 1].t };
+    chart.replaySystem.tickProgress = 12;
+    const last = chart.data[chart.data.length - 1];
+    last.c = last.c + 25;
+    last.h = Math.max(last.h, last.c);
+
+    let incCalls = 0;
+    const origInc = chart.recalculateIndicatorsIncremental.bind(chart);
+    chart.recalculateIndicatorsIncremental = function (f) {
+        incCalls += 1;
+        return origInc(f);
+    };
+    chart.scheduleReplayIndicatorRecalc(true);
+    assert.ok(incCalls >= 1, 'forming tip change must recompute (not bar-fp skip)');
+    for (const i of inds) {
+        const after = tipOf(i.type, chart.indicators.data[i.id]);
+        assert.notEqual(after, tipsBefore[i.type], `${i.type} tip must move with forming close`);
+    }
+
+    // Kill switch I-g: same mutation must skip again (legacy freeze).
+    resetKillSwitches();
+    global.window.__TALARIA_DISABLE_M19I_TICK_COHERENT_V1 = 1;
+    const chartOff = makeChart(inds, bars.map((b) => ({ ...b })));
+    chartOff.recalculateIndicators();
+    chartOff.scheduleReplayIndicatorRecalc(true);
+    const tipsOffBefore = Object.fromEntries(
+        inds.map((i) => [i.type, tipOf(i.type, chartOff.indicators.data[i.id])]),
+    );
+    chartOff.replaySystem.animatingCandle = { t: bars[bars.length - 1].t };
+    chartOff.replaySystem.tickProgress = 12;
+    const lastOff = chartOff.data[chartOff.data.length - 1];
+    lastOff.c = lastOff.c + 25;
+    lastOff.h = Math.max(lastOff.h, lastOff.c);
+    let incOff = 0;
+    const origIncOff = chartOff.recalculateIndicatorsIncremental.bind(chartOff);
+    chartOff.recalculateIndicatorsIncremental = function (f) {
+        incOff += 1;
+        return origIncOff(f);
+    };
+    chartOff.scheduleReplayIndicatorRecalc(true);
+    assert.equal(incOff, 0, 'I-g OFF: forming OHLC still skipped by bar fingerprint');
+    for (const i of inds) {
+        assert.equal(
+            tipOf(i.type, chartOff.indicators.data[i.id]),
+            tipsOffBefore[i.type],
+            `${i.type} tip frozen when I-g kill switch is ON`,
+        );
+    }
+});
 
 test('cumulative (non-tail-safe) types are counted as fallbacks and do not fake completeness', () => {
     resetKillSwitches();
