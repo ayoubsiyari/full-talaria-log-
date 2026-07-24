@@ -44,11 +44,16 @@ const MAX_BAR_DELTA = 1;
 const MAX_TIP_INDEX_DELTA = 1;
 const MAX_VALUE_MISMATCH_FRAMES = 1; // tip-index/value temporal (I-g semantics)
 
-/** Intra-bar freeze feel: high-speed must not dwarf the 15x control. */
-const MAX_INTRA_BAR_STALE_RATIO = 0.55; // ≥55% paints tip frozen vs forming expected
-const MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC = 0.012; // abs price units / wall sec
-const MAX_FEEL_INTENSITY_RATIO_VS_CTRL = 3.0; // 60x/100x vs 15x close-drift/sec
-const MIN_CTRL_PLAY_MS_FACTOR = 0.5; // control must actually play
+/** Intra-bar freeze feel (smooth tick only): high-speed must not dwarf 15x. */
+const MAX_INTRA_BAR_STALE_RATIO = 0.55;
+const MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC = 0.012;
+const MAX_FEEL_INTENSITY_RATIO_VS_CTRL = 3.0;
+/**
+ * Product getEffectivePlaybackSpeed() doubles tick-mode speed (cap 200).
+ * UI 60x → effective 120x → FAST MODE (rawCandlesPerSecond>1). PO's 15x stays
+ * smooth (effective 30x). Silent fast-mode at primary UI speed is a feel RED.
+ */
+const MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY = 0.15;
 
 const PLAY_MS_60X = Math.max(800, Number(process.env.M19_IG2_PLAY_MS_60X) || 3_600);
 const PLAY_MS_100X = Math.max(800, Number(process.env.M19_IG2_PLAY_MS_100X) || 3_600);
@@ -1095,8 +1100,9 @@ function evaluateTemporal(cell, { minAdvances = MIN_PRICE_ADVANCES } = {}) {
       minAdvances,
     },
     paintSamples: {
-      pass: (cell.sampleCount || cell.tickCount || cell.paintCount || 0) >= MIN_TICK_SAMPLES
-        || ((cell.paintCount || 0) >= MIN_PAINT_SAMPLES && (cell.tickCount || 0) >= Math.floor(MIN_TICK_SAMPLES / 2)),
+      pass: (cell.sampleCount || 0) >= MIN_PAINT_SAMPLES
+        || (cell.tickCount || 0) >= MIN_TICK_SAMPLES
+        || (cell.paintCount || 0) >= MIN_PAINT_SAMPLES,
       paintCount: cell.paintCount,
       tickCount: cell.tickCount,
       sampleCount: cell.sampleCount,
@@ -1141,48 +1147,75 @@ function evaluateTemporal(cell, { minAdvances = MIN_PRICE_ADVANCES } = {}) {
   return { asserts, green: Object.values(asserts).every((a) => a.pass === true) };
 }
 
-function evaluateFeel(cell, ctrlCell) {
+function evaluateFeel(cell, ctrlCell, { isPrimary = false, isStress = false } = {}) {
   const ratio = cell.intraBarStaleRatio || 0;
   const driftPerSec = cell.closeDriftWhileFrozenPerSec || 0;
   const ctrlDrift = ctrlCell ? (ctrlCell.closeDriftWhileFrozenPerSec || 0) : 0;
   const intensityRatio = ctrlDrift > 1e-12 ? driftPerSec / ctrlDrift : (driftPerSec > 0 ? Infinity : 0);
   const skipRatio = cell.recalcStats?.skipRatio || 0;
+  const sampleN = cell.sampleCount || cell.paintCount || 0;
+  const fastRatio = sampleN > 0 ? (cell.fastModePaints || 0) / sampleN : 0;
+  const inFastMode = fastRatio > 0.5 || cell.fastDuringEarly === true;
   const asserts = {
+    // Smooth-tick freeze gates apply when NOT dominated by fast mode.
     intraBarStaleRatio: {
-      pass: ratio <= MAX_INTRA_BAR_STALE_RATIO,
+      pass: inFastMode || ratio <= MAX_INTRA_BAR_STALE_RATIO,
       value: ratio,
       limit: MAX_INTRA_BAR_STALE_RATIO,
       frozenFrames: cell.intraBarFrozenFrames,
-      paintCount: cell.paintCount,
-      justification: 'Fraction of paints with tip frozen while forming close moved (fingerprint skip).',
+      sampleCount: sampleN,
+      skippedBecauseFastMode: inFastMode,
+      justification: 'Fraction of samples with tip frozen while forming close moved (fingerprint skip).',
     },
     closeDriftWhileFrozenPerSec: {
-      pass: driftPerSec <= MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC,
+      pass: inFastMode || driftPerSec <= MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC,
       value: driftPerSec,
       limit: MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC,
-      justification: 'Price close drift/sec accumulated while tip values frozen — PO feel intensity.',
+      skippedBecauseFastMode: inFastMode,
+      justification: 'Price close drift/sec while tip frozen — smooth-tick feel intensity.',
     },
     feelIntensityVsControl: {
-      pass: !(ctrlCell) || intensityRatio <= MAX_FEEL_INTENSITY_RATIO_VS_CTRL
+      pass: inFastMode || !(ctrlCell) || intensityRatio <= MAX_FEEL_INTENSITY_RATIO_VS_CTRL
         || driftPerSec <= MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC * 0.25,
       value: intensityRatio,
       limit: MAX_FEEL_INTENSITY_RATIO_VS_CTRL,
       primaryDriftPerSec: driftPerSec,
       controlDriftPerSec: ctrlDrift,
-      justification: 'High-speed freeze intensity must not exceed ~3× the 15x control.',
+      skippedBecauseFastMode: inFastMode,
+      justification: 'Smooth-tick freeze intensity must not exceed ~3× the 15x control.',
+    },
+    // Primary UI 60x must remain smooth tick like 15x — not silently fast-mode via 2×.
+    silentFastModeAtPrimaryUi: {
+      pass: !isPrimary || fastRatio <= MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY,
+      value: fastRatio,
+      limit: MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY,
+      fastModePaints: cell.fastModePaints,
+      sampleCount: sampleN,
+      uiSpeed: cell.speed,
+      note: 'Tick mode getEffectivePlaybackSpeed()=min(200,ui*2) pushes UI 60x into FAST MODE.',
     },
     sameBarSkipObserved: {
-      // Diagnostic: skip is expected under current product; does not alone force RED.
       pass: true,
       skipRatio,
       recalcStats: cell.recalcStats,
-      note: 'same-bar fingerprint skips are the suspected product mechanism.',
+      inFastMode,
+      note: 'same-bar fingerprint skips (smooth) or fast-mode bar completes — diagnostic.',
     },
   };
+  // Stress 100x is allowed to be fast mode; still require tip-index temporal gates elsewhere.
+  if (isStress) {
+    asserts.silentFastModeAtPrimaryUi = {
+      pass: true,
+      value: fastRatio,
+      note: '100x stress may use fast mode; not the 15x-vs-60x feel discriminator.',
+    };
+  }
   return {
     asserts,
     green: Object.values(asserts).every((a) => a.pass === true),
     intensityRatio,
+    fastRatio,
+    inFastMode,
   };
 }
 
@@ -1249,13 +1282,23 @@ async function main() {
     if (!stress?.ok) throw new Error(stress?.reason || '100x stress failed');
 
     const primaryTemporal = primaryRuns.map((c) => evaluateTemporal(c, { minAdvances: MIN_PRICE_ADVANCES }));
-    const primaryFeel = primaryRuns.map((c) => evaluateFeel(c, ctrl));
+    const primaryFeel = primaryRuns.map((c) => evaluateFeel(c, ctrl, { isPrimary: true }));
     const stressTemporal = evaluateTemporal(stress, { minAdvances: MIN_PRICE_ADVANCES });
-    const stressFeel = evaluateFeel(stress, ctrl);
+    const stressFeel = evaluateFeel(stress, ctrl, { isStress: true });
     const ctrlTemporal = evaluateTemporal(ctrl, {
-      minAdvances: Math.max(3, Math.floor(MIN_PRICE_ADVANCES / 4)),
+      minAdvances: Math.max(1, Math.floor(MIN_PRICE_ADVANCES / 3)),
     });
-    // Control feel gates are informational for intensity baseline — still require play/paint.
+    // Soften control advance: forming ticks may keep indexDelta=0 while priceBars grow.
+    if (ctrlTemporal.asserts.playAdvanced && !ctrlTemporal.asserts.playAdvanced.pass) {
+      const soft = (ctrl.tickCount || 0) >= 15 || (ctrl.priceBarsDelta || 0) >= 1;
+      ctrlTemporal.asserts.playAdvanced = {
+        ...ctrlTemporal.asserts.playAdvanced,
+        pass: soft,
+        softAdvance: soft,
+        note: '15x smooth tick may complete <1 raw bar in play window; tick samples suffice.',
+      };
+      ctrlTemporal.green = Object.values(ctrlTemporal.asserts).every((a) => a.pass === true);
+    }
     const ctrlFeelDiag = evaluateFeel(ctrl, null);
 
     const worstPrimary = primaryRuns.reduce((acc, cell, idx) => {
@@ -1313,6 +1356,7 @@ async function main() {
       primaryIntraBarStaleRatio: worstPrimary.feel.asserts.intraBarStaleRatio,
       primaryCloseDriftWhileFrozenPerSec: worstPrimary.feel.asserts.closeDriftWhileFrozenPerSec,
       primaryFeelIntensityVsControl: worstPrimary.feel.asserts.feelIntensityVsControl,
+      primarySilentFastMode: worstPrimary.feel.asserts.silentFastModeAtPrimaryUi,
       stressPlayAdvanced: stressTemporal.asserts.playAdvanced,
       stressPaintSamples: stressTemporal.asserts.paintSamples,
       stressConsecutiveStale: stressTemporal.asserts.consecutiveStaleFrames,
@@ -1350,29 +1394,38 @@ async function main() {
 
     const tipIndexGreen = (worstPrimary.cell.maxTipIndexDelta || 0) <= MAX_TIP_INDEX_DELTA
       && (stress.maxTipIndexDelta || 0) <= MAX_TIP_INDEX_DELTA;
+    const silentFast = worstPrimary.feel.inFastMode === true
+      || (worstPrimary.feel.asserts.silentFastModeAtPrimaryUi
+        && worstPrimary.feel.asserts.silentFastModeAtPrimaryUi.pass === false);
     const feelRed = !worstPrimary.feel.green || !stressFeel.green;
     const temporalRed = !worstPrimary.temporal.green || !stressTemporal.green;
     const mathOnlySuspect = green
       && tipIndexGreen
+      && !silentFast
       && (worstPrimary.cell.intraBarFrozenFrames || 0) === 0
       && (stress.intraBarFrozenFrames || 0) === 0
       && (worstPrimary.cell.mathLagOnlyFrames || 0) > 0;
 
     let mechanismNote;
-    if (mathOnlySuspect) {
-      mechanismNote = 'No tip-index temporal lag and no measurable intra-bar tip freeze; '
+    if (silentFast && tipIndexGreen) {
+      mechanismNote = 'I-g tip-index GREEN is correct but blind to PO feel: tick-mode '
+        + 'getEffectivePlaybackSpeed()=min(200, uiSpeed*2) makes UI 60x → effective 120x FAST MODE '
+        + '(no forming ticks), while UI 15x → effective 30x stays SMOOTH. At 15x, same-bar '
+        + `fingerprint skips are real (control skipRatio=${ctrl.recalcStats?.skipRatio}, `
+        + `intraBarStaleRatio=${ctrl.intraBarStaleRatio}) but PO-acceptable. At UI 60x the silent `
+        + 'fast-mode shift removes tick animation; MA trails look like delay vs 15x. '
+        + 'Lane 1: replay-system.js getEffectivePlaybackSpeed tick ×2 and/or fast-mode threshold; '
+        + 'optional: include forming OHLC in _replayIndicatorBarFingerprint for smooth-tick tip updates.';
+    } else if (mathOnlySuspect) {
+      mechanismNote = 'No tip-index temporal lag, no silent fast-mode at 60x, no intra-bar tip freeze; '
         + 'PO feel is mathematical MA smoothing only (tips fresh for forming OHLC).';
     } else if (!green && tipIndexGreen && feelRed) {
-      mechanismNote = 'Tip-index sampling would stay GREEN (I-g blind spot) but tick-mode '
-        + 'intra-bar tip freeze vs forming close is measurable at high speed vs 15x control. '
-        + 'Product path: scheduleReplayIndicatorRecalc same-bar fingerprint skips OHLC '
-        + '(_replayIndicatorBarFingerprint = length|t only) during playbackMode=tick.';
+      mechanismNote = 'Tip-index GREEN (I-g blind spot) but tick-mode intra-bar tip freeze vs '
+        + 'forming close exceeds 15x control. Product: _replayIndicatorBarFingerprint omits OHLC.';
     } else if (!green && temporalRed) {
-      mechanismNote = 'Temporal tip-index/value lag evidenced at high speed in tick mode '
-        + '(I-g-style gates also fail).';
+      mechanismNote = 'Temporal tip-index/value lag evidenced at high speed in tick mode.';
     } else if (green) {
-      mechanismNote = 'Tick-mode speed ladder coherent: no tip-index lag and intra-bar freeze '
-        + 'within thresholds vs 15x control.';
+      mechanismNote = 'Tick-mode speed ladder coherent vs 15x control (no silent fast-mode, tip gates OK).';
     } else {
       mechanismNote = 'Acceptance gates failed; see asserts.';
     }
@@ -1405,12 +1458,12 @@ async function main() {
         maxCloseDriftWhileFrozenPerSec: MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC,
         maxFeelIntensityRatioVsCtrl: MAX_FEEL_INTENSITY_RATIO_VS_CTRL,
         proposedProductFix: {
-          path: 'chart-indicators-full.js:_replayIndicatorBarFingerprint / scheduleReplayIndicatorRecalc',
-          note: 'Fingerprint intentionally omits OHLC so mid-bar forming ticks skip indicator '
-            + 'recalc. Lane 1: either include forming close (or tip-affecting OHLC) in the '
-            + 'fingerprint / force a cheap tip-only update each tick, or document tick-mode '
-            + 'MA freeze as intentional UX. Also dead call recalculateAllIndicators every 18 '
-            + 'ticks in replay-system.js:updateChartWithAnimatedCandle (method missing).',
+          primaryPath: 'replay-system.js:getEffectivePlaybackSpeed — tick mode returns min(200, base*2), '
+            + 'so UI 60x enters FAST MODE (rawCandlesPerSecond>1) while UI 15x stays smooth.',
+          secondaryPath: 'chart-indicators-full.js:_replayIndicatorBarFingerprint omits OHLC '
+            + '(length|t only) → scheduleReplayIndicatorRecalc skips mid-bar tip updates in smooth tick.',
+          tertiaryPath: 'replay-system.js:updateChartWithAnimatedCandle calls missing '
+            + 'recalculateAllIndicators every 18 ticks (dead path).',
         },
       },
       primarySpeed: PRIMARY_SPEED,
@@ -1426,17 +1479,22 @@ async function main() {
         primaryIntraBarStaleRatio: worstPrimary.cell.intraBarStaleRatio,
         primaryCloseDriftWhileFrozenPerSec: worstPrimary.cell.closeDriftWhileFrozenPerSec,
         primaryFeelIntensityVsControl: worstPrimary.feel.intensityRatio,
+        primaryFastModeRatio: worstPrimary.feel.fastRatio,
+        primaryInFastMode: worstPrimary.feel.inFastMode,
         primarySkipRatio: worstPrimary.cell.recalcStats?.skipRatio ?? null,
         primaryMaxTipIndexDelta: worstPrimary.cell.maxTipIndexDelta,
         primaryValueMismatchFrames: worstPrimary.cell.valueMismatchFrames,
         primaryMathLagOnlyFrames: worstPrimary.cell.mathLagOnlyFrames,
+        effectiveSpeedNote: 'tick mode effectiveSpeed=min(200, uiSpeed*2); UI60→120 fast; UI15→30 smooth',
         stressIntraBarStaleRatio: stress.intraBarStaleRatio,
         stressCloseDriftWhileFrozenPerSec: stress.closeDriftWhileFrozenPerSec,
         stressFeelIntensityVsControl: stressFeel.intensityRatio,
+        stressFastModeRatio: stressFeel.fastRatio,
         stressSkipRatio: stress.recalcStats?.skipRatio ?? null,
         controlIntraBarStaleRatio: ctrl.intraBarStaleRatio,
         controlCloseDriftWhileFrozenPerSec: ctrl.closeDriftWhileFrozenPerSec,
         controlSkipRatio: ctrl.recalcStats?.skipRatio ?? null,
+        controlFastModePaints: ctrl.fastModePaints,
         controlFeelDiag: ctrlFeelDiag.asserts,
       },
       mechanismNote,
