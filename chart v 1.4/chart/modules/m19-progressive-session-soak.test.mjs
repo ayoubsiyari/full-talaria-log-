@@ -2040,7 +2040,286 @@ M19-I product fixes remain Lane 1. M20 is out of scope for this cell.
     signature: 'Lane 2 / Grok 4.5',
   }, null, 2)}\n`);
 
-  // Required outcome today: RED. Exit 1 = RED-EXPECTED; 2 = setup/probe failure.
+  // Exit: 0 GREEN, 1 RED (measured), 2 setup/probe failure.
+  if (setupFail || !buildIdOk) process.exitCode = 2;
+  else if (isRed) process.exitCode = 1;
+  else if (isGreen) process.exitCode = 0;
+  else process.exitCode = 2;
+  restoreDate();
+}
+
+/**
+ * M19-I-f presentation-coherence cell (PO feel: indicators trail price at high speed).
+ * Does not replace M19-I compute-budget — M1 needs both GREEN.
+ *   M19_FOCUS=I-F M19_EXPECTED_BUILD_ID=20260724b58 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+ */
+async function runM19IFFocusEvidence() {
+  restoreDate();
+  const started = new Date().toISOString();
+  const t0 = performance.now();
+  const headSha = headShaOrNull();
+  const baselineM0 = {
+    checkpoint: 'CKPT-015',
+    sourceSha: 'a8d5f721d4ba27e2fda1c7ffd18f91d3cc5a8bbc',
+    buildId: '20260723b57',
+    tag: 'pre-lag-sprint-20260724',
+    chartDigest: 'sha256:f1057e01b021e1ad98f7418bf4464ccfb4868a205072d7d33c01a5fcf9a9d99f',
+    homepageDigest: 'sha256:9cbcd51c080cc6eef56c0058ed9fa6889fe736c2551b888bcbf6610b8ad47056',
+  };
+  const immutableB58 = {
+    checkpoint: 'CKPT-016',
+    sourceSha: '9cacd3ec8db3f428fbc433725145aceb173eb27d',
+    buildId: '20260724b58',
+  };
+  const { candidateBuildId: buildId, source: expectedBuildSource } = resolveM19ICandidateBuildId();
+  const harnessDir = path.join(__dirname, '../multichart-prod/harness');
+  const probePath = path.join(harnessDir, 'm19-i-f-browser-presentation-coherence-probe.mjs');
+  const fileHashes = {
+    'chart.js': sha256File(CHART_PATH),
+    'replay-system.js': sha256File(RS_PATH),
+    'chart-indicators-full.js': sha256File(path.join(__dirname, 'chart-indicators-full.js')),
+    'm19-i-f-browser-presentation-coherence-probe.mjs': sha256File(probePath),
+  };
+
+  if (!fs.existsSync(probePath)) {
+    throw new Error(`M19-I-f probe missing: ${probePath}`);
+  }
+
+  const deployedOriginRaw = String(process.env.M19_DEPLOYED_ORIGIN || '').trim();
+  const childEnv = {
+    ...process.env,
+    M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
+  };
+  const command = deployedOriginRaw
+    ? `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} M19_DEPLOYED_ORIGIN=${deployedOriginRaw} node "${probePath}"`
+    : `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} node "${probePath}"`;
+  const child = spawnSync(process.execPath, [probePath], {
+    cwd: harnessDir,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    timeout: 10 * 60 * 1000,
+    env: childEnv,
+  });
+
+  const stdout = String(child.stdout || '');
+  const stderr = String(child.stderr || '');
+  let probe = null;
+  let parseError = null;
+  try {
+    const start = stdout.indexOf('{');
+    if (start >= 0) probe = JSON.parse(stdout.slice(start));
+  } catch (err) {
+    probe = null;
+    parseError = String(err?.message || err);
+  }
+
+  const finishedAt = new Date().toISOString();
+  const elapsedMs = performance.now() - t0;
+  const verdict = probe?.verdict
+    || (child.status === 2 || child.error || parseError ? 'SETUP-FAIL' : 'M19-I-f-RED');
+  const isRed = verdict === 'M19-I-f-RED';
+  const isGreen = verdict === 'M19-I-f-GREEN';
+  const setupFail = verdict === 'SETUP-FAIL' || !probe || probe?.ticket !== 'M19-I-f';
+  const artifactTag = isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL');
+  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-f-${buildId}-${artifactTag}.json`);
+  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-f-${buildId}-${artifactTag}.md`);
+
+  const liveBuildId = probe?.buildId || null;
+  const expectedBuildId = probe?.expectedBuildId || buildId;
+  const buildIdOk = liveBuildId === expectedBuildId && expectedBuildId === buildId;
+  const failingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === false).map(([n]) => n)
+    : [];
+  const passingGates = probe?.asserts
+    ? Object.entries(probe.asserts).filter(([, a]) => a && a.pass === true).map(([n]) => n)
+    : [];
+  const high = probe?.highSpeed || {};
+  const ctrl = probe?.controlSpeed || {};
+  const lag = high.catchUpLagMs || {};
+
+  const evidence = {
+    row: 'L2-M19-I-f',
+    title: 'Presentation coherence — overlays + RSI/MACD/Stoch during continuous play',
+    task: isGreen ? 'M19-I-f-ACCEPTANCE-GREEN' : (isRed ? 'M19-I-f-BASELINE-RED' : 'M19-I-f-SETUP-FAIL'),
+    lane: 'Lane 2',
+    model: 'Grok 4.5',
+    startedAt: started,
+    finishedAt,
+    elapsedMs,
+    headSha,
+    sealedM0: baselineM0,
+    immutableProduct: immutableB58,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
+    liveBuildId,
+    deployedMode: probe?.deployedMode === true,
+    assetOrigin: probe?.assetOrigin || null,
+    upstreamObservedBuild: probe?.upstreamObservedBuild || null,
+    provenanceNote: probe?.provenanceNote
+      || 'Presentation sampled at chart.render() during real replay.play(); M19-I compute gate unchanged.',
+    command,
+    cwd: harnessDir,
+    exitStatus: child.status,
+    signal: child.signal || null,
+    fileHashes,
+    probe,
+    stdoutTail: stdout.slice(-4000),
+    stderrTail: stderr.slice(-4000),
+    numericBaseline: {
+      highSpeed: high.speed ?? 100,
+      controlSpeed: ctrl.speed ?? null,
+      highPaintCount: high.paintCount ?? null,
+      highStaleFrames: high.staleFrames ?? null,
+      highMaxConsecutiveStaleFrames: high.maxConsecutiveStaleFrames ?? null,
+      highMaxBarDelta: high.maxBarDelta ?? null,
+      highCatchUpLagMaxMs: lag.max ?? null,
+      highCatchUpLagP95Ms: lag.p95 ?? null,
+      highCatchUpLagMedianMs: lag.median ?? null,
+      highIndexDelta: high.indexDelta ?? null,
+      controlStaleFrames: ctrl.staleFrames ?? null,
+      controlMaxConsecutiveStaleFrames: ctrl.maxConsecutiveStaleFrames ?? null,
+      controlCatchUpLagP95Ms: ctrl.catchUpLagMs?.p95 ?? null,
+      parseError,
+    },
+    failingGates,
+    passingGates,
+    proposedPostFixThreshold: probe?.thresholds?.proposedPostFix || null,
+    whyValidRed: setupFail
+      ? 'Probe failed to produce a complete result; not a GREEN waiver.'
+      : [
+        'PO feel: at high replay speed, candles/price advance first; overlays and lower panes catch up visibly later.',
+        'Cell uses real replay.play() continuous loop (100x primary + lower-speed control), not only manual step calls.',
+        'Presentation sampled at chart.render() — priceBars vs committed indicator series / _indCalcSnapshot.',
+        `100x: staleFrames=${high.staleFrames}, maxConsecutiveStale=${high.maxConsecutiveStaleFrames}, maxBarDelta=${high.maxBarDelta}, catchUp p95=${lag.p95}ms max=${lag.max}ms.`,
+        'Hard-fail human-visible multi-frame delay (≥2 consecutive stale paints or catch-up > 2×16.67ms).',
+        'M19-I compute-budget gate remains separate and must also be GREEN for M1 close.',
+      ].join(' '),
+    provenanceBlocker: buildIdOk
+      ? null
+      : {
+        flagged: true,
+        severity: 'build-id-mismatch',
+        liveHarnessBuildId: liveBuildId,
+        expectedBuildId,
+        candidateBuildId: buildId,
+      },
+    verdict,
+    signature: 'Lane 2 / Grok 4.5',
+  };
+
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+
+  const report = `# L2-M19-I-f — presentation coherence ${isGreen ? 'GREEN' : 'RED'} (${buildId})
+
+**Verdict:** ${verdict}
+
+**Scope:** M1 / M19-I-f acceptance instrumentation only. Does **not** replace M19-I compute-budget. No product edits. Not a deployed milestone claim until both gates GREEN on deployed b58+.
+
+**Signature:** Lane 2 / Grok 4.5
+
+## Environment / provenance
+
+- HEAD: \`${headSha}\`
+- Immutable product (CKPT-016): \`${immutableB58.sourceSha}\` / \`${immutableB58.buildId}\`
+- **Expected build ID:** \`${expectedBuildId}\` (source: ${evidence.expectedBuildSource})
+- **Live build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches expected)' : '(MISMATCH — SETUP-FAIL)'}
+- **Deployed mode:** ${evidence.deployedMode ? 'true' : 'false'}
+- **Asset origin:** ${evidence.assetOrigin || '(local checkout)'}
+- Provenance: ${evidence.provenanceNote}
+- startedAt: ${started}
+- finishedAt: ${finishedAt}
+- elapsedMs: ${Math.round(elapsedMs)}
+- probe exitStatus: ${child.status}
+
+## Command
+
+\`\`\`
+M19_FOCUS=I-F M19_EXPECTED_BUILD_ID=${expectedBuildId} node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
+\`\`\`
+
+Probe:
+
+\`\`\`
+${command}
+\`\`\`
+
+## Scenario
+
+- Real \`replay.play()\` continuous loop (not only deterministic manual steps)
+- Primary: **100x**; control: lower speed
+- Overlays: SMA + EMA + WMA + Bollinger bands
+- Lower panes: RSI + MACD + Stochastic
+- Presentation sampled at \`chart.render()\` (price/display bars vs committed indicator series)
+
+## Gates
+
+- FAILING: ${failingGates.length ? failingGates.join(', ') : '(none)'}
+- PASSING: ${passingGates.length ? passingGates.join(', ') : '(none)'}
+
+## Numeric baseline (100x)
+
+| Metric | Value | Hard limit |
+|---|---|---|
+| paintCount | ${high.paintCount ?? 'n/a'} | ≥ 40 |
+| staleFrames | ${high.staleFrames ?? 'n/a'} | (informational) |
+| maxConsecutiveStaleFrames | ${high.maxConsecutiveStaleFrames ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| maxBarDelta | ${high.maxBarDelta ?? 'n/a'} | ≤ 1 (≥2 ⇒ RED) |
+| catch-up lag p95 / max (ms) | ${lag.p95 ?? 'n/a'} / ${lag.max ?? 'n/a'} | ≤ 33.33 / ≤ 33.33 |
+
+Control (${ctrl.speed ?? 'n/a'}x): stale=${ctrl.staleFrames ?? 'n/a'}, maxConsecutive=${ctrl.maxConsecutiveStaleFrames ?? 'n/a'}, p95=${ctrl.catchUpLagMs?.p95 ?? 'n/a'} ms
+
+## Proposed post-fix threshold
+
+\`\`\`json
+${JSON.stringify(probe?.thresholds?.proposedPostFix || {}, null, 2)}
+\`\`\`
+
+## Asserts
+
+\`\`\`json
+${JSON.stringify(probe?.asserts || { error: 'probe missing' }, null, 2)}
+\`\`\`
+
+## Evidence
+
+- JSON: \`${path.relative(ROOT, evidencePath).replace(/\\\\/g, '/')}\`
+- Report: \`${path.relative(ROOT, reportPath).replace(/\\\\/g, '/')}\`
+- Probe: \`chart v 1.4/chart/multichart-prod/harness/m19-i-f-browser-presentation-coherence-probe.mjs\`
+
+## Binding
+
+Lane 2 owns acceptance instrumentation only — no product edits.
+M19-I compute gate remains standing. M20 out of scope.
+`;
+
+  fs.writeFileSync(reportPath, report);
+
+  process.stdout.write(`${JSON.stringify({
+    verdict,
+    isRed,
+    isGreen,
+    setupFail,
+    candidateBuildId: buildId,
+    expectedBuildId,
+    expectedBuildSource: evidence.expectedBuildSource,
+    liveBuildId,
+    buildIdOk,
+    deployedMode: evidence.deployedMode,
+    assetOrigin: evidence.assetOrigin,
+    failingGates,
+    passingGates,
+    numericBaseline: evidence.numericBaseline,
+    proposedPostFixThreshold: evidence.proposedPostFixThreshold,
+    provenanceBlocker: evidence.provenanceBlocker,
+    evidence: evidencePath,
+    report: reportPath,
+    probeExitStatus: child.status,
+    signature: 'Lane 2 / Grok 4.5',
+  }, null, 2)}\n`);
+
   if (setupFail || !buildIdOk) process.exitCode = 2;
   else if (isRed) process.exitCode = 1;
   else if (isGreen) process.exitCode = 0;
@@ -2340,6 +2619,10 @@ async function main() {
   const focus = String(process.env.M19_FOCUS || '').trim().toUpperCase();
   if (focus === 'I') {
     await runM19IFocusEvidence();
+    return;
+  }
+  if (focus === 'I-F' || focus === 'IF') {
+    await runM19IFFocusEvidence();
     return;
   }
   if (focus === 'D' || focus === 'E') {
