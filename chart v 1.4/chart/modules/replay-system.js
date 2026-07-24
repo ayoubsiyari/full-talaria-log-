@@ -3299,6 +3299,9 @@ class ReplaySystem {
         this.isActive = false;
         this.stop();
 
+        // M20-Q9: leaving replay — release reusable playhead prefix shells.
+        this._invalidatePlayheadPrefixes();
+
         // M20-Q6: remove floating clone + document mousemove/mouseup (fix ON).
         if (typeof this._removeFloatingReplayToolbarClone === 'function') {
             this._removeFloatingReplayToolbarClone();
@@ -3789,6 +3792,102 @@ class ReplaySystem {
     }
 
     /**
+     * M20-Q9 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 = true
+     * restores the legacy O(session bars) `master.slice(0, sliceEnd)` allocation on
+     * every static playhead install (normal, fast, panel-sync, static-mirror paths).
+     */
+    _m20Q9PrefixSliceFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_PREFIX_SLICE_V1 !== true;
+    }
+
+    /**
+     * M20-Q9 stage-1 — reusable growing OWNED prefix for static playhead cuts.
+     *
+     * Content always equals `master.slice(0, sliceEnd)` but the array identity is
+     * reused across consecutive installs against the same master:
+     *   - forward advance appends only the newly revealed bars (no O(session) copy);
+     *   - backward seek truncates the owned shell (future bars dropped, never leaked);
+     *   - dataset/TF/pair replacement and replay cuts rebuild automatically because
+     *     reuse is keyed by master array identity (all swap paths install a new array);
+     *   - same-master same-identity SLOT replacement at the head or the retained-tail
+     *     boundary is caught by O(1) identity sentinels and rebuilds a fresh shell.
+     *     Interior slot replacement requires a new master array or
+     *     _invalidatePlayheadPrefixes() — no production path replaces master slots
+     *     in place (W1 Q9 audit M-table).
+     *
+     * The returned prefix is always a DISTINCT shell from `master` — never a
+     * zero-copy alias/view — so downstream owned-array semantics hold. Forming-candle
+     * animation paths keep their dedicated `slice(...) + push(...)` scratch arrays
+     * and must NOT be routed through this installer.
+     *
+     * `consumerChart` is the chart whose rawData receives this prefix; its
+     * ChartDataPipeline resample cache is dropped on every fix-ON install — see
+     * _m20Q9DropConsumerResampleCache for the correctness contract.
+     */
+    _installPlayheadPrefix(master, sliceEnd, consumerChart) {
+        const end = Math.max(0, Math.min(Number(sliceEnd) || 0, master.length));
+        if (!this._m20Q9PrefixSliceFixEnabled()) {
+            return master.slice(0, end);
+        }
+        let byMaster = this._m20Q9PrefixByMaster;
+        if (!byMaster) {
+            byMaster = new WeakMap();
+            this._m20Q9PrefixByMaster = byMaster;
+        }
+        let buf = byMaster.get(master);
+        if (Array.isArray(buf) && buf.length > 0) {
+            // Same-identity content-replacement sentinel: a replaced master slot at
+            // the head or the retained-tail boundary means the cached shell no longer
+            // mirrors master.slice(0, end) — rebuild a fresh owned shell.
+            const keep = Math.min(buf.length, end);
+            if (buf[0] !== master[0] || (keep > 0 && buf[keep - 1] !== master[keep - 1])) {
+                buf = null;
+            }
+        }
+        if (!Array.isArray(buf)) {
+            buf = master.slice(0, end);
+            byMaster.set(master, buf);
+        } else if (end < buf.length) {
+            buf.length = end; // backward seek / reset: drop future bars
+        } else {
+            for (let i = buf.length; i < end; i++) buf.push(master[i]);
+        }
+        this._m20Q9DropConsumerResampleCache(consumerChart);
+        return buf;
+    }
+
+    /**
+     * M20-Q9 correction (independent review finding 1, 2026-07-24) — legacy
+     * fresh-slice installs changed `chart.rawData` identity on every call, so
+     * ChartDataPipeline.getResampledSeries could never match `cache.sourceRef`
+     * and always FULL-resampled after an install. The reused owned shell keeps
+     * one identity, which would let the pipeline's same-sourceRef len+1
+     * incremental branch finalize the prior display bucket from its cached
+     * result — and chart.js `_trimLastDataBarToReplayPlayhead()` mutates that
+     * cached result's last bar in place (playhead trim), so the finalized
+     * bucket would keep stale trimmed OHLC instead of being rebuilt from the
+     * raw master. Dropping the consumer's resample cache on every fix-ON
+     * install restores the legacy full-resample contract exactly; the
+     * stable-prefix allocation win is untouched. Deliberately a no-op when the
+     * fix is killed — legacy slices already churn identity, and the switch-OFF
+     * path must stay literally legacy (no added invalidation traffic).
+     */
+    _m20Q9DropConsumerResampleCache(consumerChart) {
+        if (!consumerChart || !this._m20Q9PrefixSliceFixEnabled()) return;
+        const pipeline = consumerChart.dataPipeline;
+        if (pipeline && typeof pipeline.invalidateResampleCache === 'function') {
+            pipeline.invalidateResampleCache();
+        }
+    }
+
+    /** M20-Q9 — drop reusable playhead prefixes (replay exit hygiene). */
+    _invalidatePlayheadPrefixes() {
+        this._m20Q9PrefixByMaster = null;
+    }
+
+    /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
      * @param {{skipOrderUpdate?: boolean}} [options] - Internal batched-money-path paint options
@@ -3879,7 +3978,10 @@ class ReplaySystem {
             && Number(currentRaw[0]?.t) === Number(this.fullRawData[0]?.t)
             && Number(currentRaw[sliceEnd - 1]?.t) === Number(this.fullRawData[sliceEnd - 1]?.t);
         if (!reuseTfSwitchPrefix) {
-            this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
+            // M20-Q9: reuse one growing owned prefix; kill-switch restores legacy copy.
+            this.chart.rawData = this._m20Q9PrefixSliceFixEnabled()
+                ? this._installPlayheadPrefix(this.fullRawData, sliceEnd, this.chart)
+                : this.fullRawData.slice(0, sliceEnd);
         }
         
         if (this.chart.rawData.length === 0) {
@@ -5647,7 +5749,10 @@ class ReplaySystem {
         // Keep fast-mode rendering aligned with canonical resampleData()
         // so OHLC is identical to normal replay updates for all timeframes.
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
-        const slicedRaw = this.fullRawData.slice(0, sliceEnd);
+        // M20-Q9: shared installer with updateChartData; kill-switch restores legacy copy.
+        const slicedRaw = this._m20Q9PrefixSliceFixEnabled()
+            ? this._installPlayheadPrefix(this.fullRawData, sliceEnd, this.chart)
+            : this.fullRawData.slice(0, sliceEnd);
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
         if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
@@ -6331,7 +6436,10 @@ class ReplaySystem {
                     appliedSlice = true;
                 } else if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    // M20-Q9: per-panel grow buffer keyed on the panel master.
+                    const panelSlice = this._m20Q9PrefixSliceFixEnabled()
+                        ? this._installPlayheadPrefix(pc._panelFullRawData, idx + 1, pc)
+                        : pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
                     if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
@@ -8037,7 +8145,10 @@ class ReplaySystem {
             } else {
                 sliceEnd = Math.max(this.currentIndex + 1, 1);
             }
-            chart.rawData = frd.slice(0, sliceEnd);
+            // M20-Q9: static mirror install reuses one owned prefix keyed on frd.
+            chart.rawData = this._m20Q9PrefixSliceFixEnabled()
+                ? this._installPlayheadPrefix(frd, sliceEnd, chart)
+                : frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
                 chart._trimLastDataBarToReplayPlayhead();
@@ -8823,7 +8934,11 @@ class ReplaySystem {
 
         this._clampCurrentIndexToReplayTimestamp();
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
-        const slicedRawData = this.fullRawData.slice(0, sliceEnd);
+        // M20-Q9: same grow buffer as updateChartData/Fast (main + same-dataset panels
+        // intentionally share this one prefix identity); kill-switch restores legacy copy.
+        const slicedRawData = this._m20Q9PrefixSliceFixEnabled()
+            ? this._installPlayheadPrefix(this.fullRawData, sliceEnd, this.chart)
+            : this.fullRawData.slice(0, sliceEnd);
         if (!mainAlreadyAligned && this.isActive) {
             this._realignMainChartWithReplaySlice(slicedRawData);
         }
@@ -8877,6 +8992,10 @@ class ReplaySystem {
                     }
                     preArmPanelGuards();
                     pc.rawData = slicedRawData;
+                    // M20-Q9 correction: pc shares the reused prefix identity — drop its
+                    // resample cache exactly like a legacy fresh slice would (no-op when
+                    // the kill-switch is engaged; slicedRawData is then a fresh copy).
+                    this._m20Q9DropConsumerResampleCache(pc);
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
                     if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
                         pc._trimLastDataBarToReplayPlayhead();
@@ -8884,7 +9003,10 @@ class ReplaySystem {
                     appliedSlice = true;
                 } else if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    // M20-Q9: per-panel grow buffer keyed on the panel master.
+                    const panelSlice = this._m20Q9PrefixSliceFixEnabled()
+                        ? this._installPlayheadPrefix(pc._panelFullRawData, idx + 1, pc)
+                        : pc._panelFullRawData.slice(0, idx + 1);
                     preArmPanelGuards();
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);

@@ -1,0 +1,148 @@
+{
+  "worker": "W1",
+  "track": "M20-Q9 stage-1 (narrow GO) + independent-review correction",
+  "stamp": "20260724",
+  "status": "FABLE-W1-Q9-CORRECTION-LANDED-PENDING-MANAGER-INTEGRATION",
+  "supersedes": "FABLE-W1-STAGE1-LANDED-PENDING-MANAGER-INTEGRATION (BLOCKED by independent review 2026-07-24)",
+  "reviewBlock": {
+    "source": "independent review BLOCK (agent 52b44092-ec56-45d3-9bf5-0f4c942c2e63)",
+    "finding1": "Stable prefix identity activates ChartDataPipeline's same-sourceRef len+1 incremental resample branch; chart.js _trimLastDataBarToReplayPlayhead mutates the cached result's last bar in place, so the finalized prior display bucket keeps stale trimmed OHLC instead of the legacy fresh-slice full resample",
+    "finding2": "Q9 tests imported untracked W6 fixtures (m21-w6-fixtures/visible-window-mirror.mjs), absent from HEAD and excluded from the scoped manifest — Q9 could not pass from a clean scoped checkout",
+    "bothReproducedRedFirst": "docs/plan3/evidence/W1-Q9-20260724-correction-red.json (oracle staleTicks=29/30 + sentinel fails on unfixed product; clean-scope ERR_MODULE_NOT_FOUND on pre-correction test)"
+  },
+  "productEditAllowed": true,
+  "serializationGate": "CLEARED 2026-07-24: Q6 committed 2f0ce7831 — replay-system.js RELEASED to W1; no chart-data-pipeline.js/chart.js edit was needed for the correction (narrowest contract uses the pipeline's public invalidateResampleCache())",
+  "killSwitches": {
+    "Q9": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1"
+  },
+  "scope": {
+    "in": "Reusable growing OWNED object-array prefix for STATIC playhead cuts (H1–H5) behind one kill-switch; per-install consumer resample-cache drop (fix ON only); same-identity slot-replacement sentinel; dual-tree mirrors; test + evidence",
+    "out": "NO zero-copy view into fullRawData; NO index-window/M21-3a; NO b62 exact-tail or indicator changes; M1–M4 forming slice+push scratch untouched; S1–S5 side paths untouched; no chart.js/chart-data-pipeline.js/order-manager/indicators/Q5-Q7/W3/W6 edits; W6 stride-6 fixture cross-check is REPORT-ONLY (no runtime import)"
+  },
+  "correctionContract": {
+    "invalidation": "Every fix-ON _installPlayheadPrefix install calls _m20Q9DropConsumerResampleCache(consumerChart) → consumerChart.dataPipeline.invalidateResampleCache() (public API). Legacy fresh slices changed sourceRef identity per install, so the pipeline always FULL-resampled after an install; dropping the cache restores that contract exactly while keeping the O(session-bars) allocation win. Switch OFF path performs a literal legacy master.slice(0, sliceEnd) with NO invalidation call (no amplification).",
+    "sharedPrefixConsumers": "H3 same-dataset panels share the one prefix identity — the panel-share branch calls _m20Q9DropConsumerResampleCache(pc) before pc.resampleData (no-op under kill). The parent-data mirror (_tryMirrorFrameFromParentData) shares parent.data directly and never resamples the shared shell — no invalidation needed (verified).",
+    "slotReplacementSentinel": "O(1) identity checks on reuse (buf[0] === master[0] and buf[keep-1] === master[keep-1], keep = min(buf.length, end)) rebuild a fresh shell when a same-identity master slot was replaced at the head or retained-tail boundary. Interior replacement requires a new master array or _invalidatePlayheadPrefixes(); no production path replaces master slots in place (audit M-table)."
+  },
+  "hunks": [
+    {
+      "id": "Q9-A",
+      "files": [
+        "homepage/public/chart/modules/replay-system.js",
+        "chart v 1.4/chart/modules/replay-system.js"
+      ],
+      "anchor": "before updateChartData (~L3794) + exitReplayMode (~L3302)",
+      "intent": "_m20Q9PrefixSliceFixEnabled, _installPlayheadPrefix (WeakMap keyed by master identity → owned grow/truncate buffer, never aliases master), _invalidatePlayheadPrefixes; invalidate on exitReplayMode",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724"
+    },
+    {
+      "id": "Q9-I",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "_installPlayheadPrefix body + new _m20Q9DropConsumerResampleCache (~L3829-3906)",
+      "intent": "CORRECTION finding 1+coverage: installer takes consumerChart, drops its ChartDataPipeline resample cache on every fix-ON install (public invalidateResampleCache()); same-identity slot-replacement sentinel rebuilds fresh shell on head/retained-tail identity mismatch",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-B",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "updateChartData static install (~L3981) inside !reuseTfSwitchPrefix (M19-H short-circuit preserved)",
+      "intent": "Fix ON → _installPlayheadPrefix(fullRawData, sliceEnd, this.chart); switch OFF → legacy this.fullRawData.slice(0, sliceEnd)",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-C",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "updateChartDataFast (~L5752)",
+      "intent": "Same shared installer as normal path, consumer = this.chart",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-D",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "syncPanelCharts (~L8937)",
+      "intent": "Same grow buffer as H1/H2, consumer = this.chart; main + same-dataset panels keep intentional single-prefix ref share",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-J",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "syncPanelCharts same-dataset panel-share branch (~L8995)",
+      "intent": "CORRECTION finding 1: _m20Q9DropConsumerResampleCache(pc) before pc.resampleData on the SHARED prefix identity (no-op under kill; slicedRawData is then a fresh legacy copy)",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-E",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "applyMultichartMirrorFrame static install (~L8148)",
+      "intent": "Owned prefix keyed on frd, consumer = target chart, same helper",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-F",
+      "files": ["dual-tree replay-system.js"],
+      "anchor": "panel own-data installs: syncPanelChartsWithAnimatedCandle (~L6439) + syncPanelCharts (~L9006)",
+      "intent": "Per-panel grow buffer keyed by pc._panelFullRawData identity, consumer = pc, via shared helper",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-G",
+      "files": ["chart v 1.4/chart/modules/replay-system.js"],
+      "anchor": "whole file",
+      "intent": "Byte-identical mirror of homepage tree (git hash-object 43c671b5 both trees; product-dual-tree-source-identical row)",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    },
+    {
+      "id": "Q9-H",
+      "files": [
+        "homepage/public/chart/modules/m20-q9-prefix-slice.test.mjs",
+        "chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs"
+      ],
+      "anchor": "hardened scaffold + product behavioral probes + CORRECTION oracle suite",
+      "intent": "CORRECTION finding 1+2: end-to-end oracle (real installer → real ChartDataPipeline → production trim mechanism) demands byte/value equivalence with legacy fresh-slice full resample across 30 advances; zero/one/full/over-length + truncate/regrow pipeline-equivalence; same-identity slot replacement (tail/head/explicit); switch-OFF oracle (churn + correctness); W6 fixture import REMOVED — stride-6 layout asserted self-contained against tracked indicator-performance.js packBarsRangeCompact",
+      "fableSignoff": "SIGNED-AND-LANDED-20260724-CORRECTION"
+    }
+  ],
+  "lexicalSurface": {
+    "gatedInstallSites": 6,
+    "categories": "H1 updateChartData, H2 updateChartDataFast, H3 syncPanelCharts, H4 applyMultichartMirrorFrame static, H5 panel own-data ×2 — unchanged from reviewed stage-1 land",
+    "deletionsVsHead": "6 per mirror — exactly the six legacy slice lines (Q6 hunks byte-preserved; verified via git diff --unified=0)"
+  },
+  "invalidation": {
+    "identityKeyed": "startReplay [...rawData], TF master swap, pair switch, applyMultichartReplayCut truncated.slice() all install NEW master arrays → WeakMap rebuild is automatic",
+    "explicit": "exitReplayMode → _invalidatePlayheadPrefixes() (retention hygiene)",
+    "pipeline": "every fix-ON install → consumer chart dataPipeline.invalidateResampleCache() (correction, finding 1)",
+    "contentReplacement": "same-identity head/retained-tail slot replacement → sentinel rebuild (correction)"
+  },
+  "evidence": {
+    "red": "docs/plan3/evidence/W1-Q9-20260724-red.json (historical pre-land RED, 7 pass / 2 desired-product fails)",
+    "correctionRed": "docs/plan3/evidence/W1-Q9-20260724-correction-red.json (17 pass / 2 fail on unfixed product: oracle staleTicks=29/30, slot-replacement sentinel absent; + finding-2 clean-scope ERR_MODULE_NOT_FOUND + reviewer standalone probe stale:true)",
+    "green": "docs/plan3/evidence/W1-Q9-20260724-green.json (regenerated: 19/19 tests, oracle 30/30 equivalent, alloc win distinct=1, verdict GREEN)",
+    "kill": "docs/plan3/evidence/W1-Q9-20260724-kill.json (regenerated: switch OFF 25/25 fresh legacy slices on real installer AND 18-advance oracle churn distinct=18/18 with stale=0 — literal legacy churn, semantically correct)",
+    "cleanScope": "docs/plan3/evidence/W1-Q9-CORRECTION-20260724-clean-scope.json (git worktree at HEAD 2f0ce7831 + ONLY scoped manifest files: 19 pass / 0 fail both mirrors; W6 fixtures absent)"
+  },
+  "gates": {
+    "focusedQ9": "19 pass / 0 fail on BOTH tree mirrors (was 15; +4 correction tests)",
+    "syntax": "node --check clean on both replay-system.js copies",
+    "parity": "git hash-object identical 43c671b5 both trees (product); test mirrors byte-identical",
+    "replayRegressions": "Q6 float-listeners + M19-H + M19-I-g2 + M19-I-f + M2 canonical mark + pair-switch playhead + autoscroll right-gap + crop refresh restore + mode-switch price + step-forward SLTP flush + M10 runtime PnL frame: 44 pass / 0 fail / 1 known evidence-writer skip; M19-I indicator tail + indicator-replay-ui-sync: 22 pass / 0 fail; Q5/Q7 outbound drains: 5 pass / 0 fail / 1 skip — identical to pre-correction baseline"
+  },
+  "scopedCommitManifest": [
+    "chart v 1.4/chart/modules/replay-system.js",
+    "homepage/public/chart/modules/replay-system.js",
+    "chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs",
+    "homepage/public/chart/modules/m20-q9-prefix-slice.test.mjs",
+    "docs/plan3/worker-reports/W1-Q9-CONSUMER-AUDIT-20260724.md",
+    "docs/plan3/evidence/W1-Q9-20260724-red.json",
+    "docs/plan3/evidence/W1-Q9-20260724-correction-red.json",
+    "docs/plan3/evidence/W1-Q9-20260724-green.json",
+    "docs/plan3/evidence/W1-Q9-20260724-kill.json",
+    "docs/plan3/evidence/W1-Q9-20260724-HUNK-MANIFEST.json",
+    "docs/plan3/evidence/W1-Q9-CORRECTION-20260724-clean-scope.json"
+  ],
+  "nextQueue": [
+    "Manager integrates this scoped manifest (commit authored by Manager; W1 does not commit/push/deploy). NOTE: docs/ is gitignored (.gitignore:24) — report/evidence files require git add -f (independent-review follow-up 5)",
+    "b62 exact-tail product package ONLY after independent GPT accepts the W5 b61 value/Y painted-endpoint RED",
+    "Q9 stage-2 candidates (S1–S5, chart.js _applyIndependentPanelReplaySlice) remain OUT until separately assigned",
+    "W6 typed stride-6 mirror stays a parallel B2/M21-2 consumer — not a Q9 rawData shell replacement; its fixture cross-check is report-only for Q9"
+  ]
+}

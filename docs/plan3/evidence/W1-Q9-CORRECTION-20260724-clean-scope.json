@@ -1,0 +1,25 @@
+{
+  "stamp": "FABLE-W1-Q9-CORRECTION-LANDED-PENDING-MANAGER-INTEGRATION",
+  "generatedAt": "2026-07-24T13:02:12.871Z",
+  "method": "git worktree add --detach %TEMP%/q9-clean-scope HEAD (2f0ce7831), git checkout+clean reset, then overlay of ONLY the scoped Q9 manifest files",
+  "overlaidFiles": [
+    "chart v 1.4/chart/modules/replay-system.js",
+    "homepage/public/chart/modules/replay-system.js",
+    "chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs",
+    "homepage/public/chart/modules/m20-q9-prefix-slice.test.mjs",
+    "docs/plan3/worker-reports/W1-Q9-CONSUMER-AUDIT-20260724.md",
+    "docs/plan3/evidence/W1-Q9-20260724-red.json",
+    "docs/plan3/evidence/W1-Q9-20260724-correction-red.json",
+    "docs/plan3/evidence/W1-Q9-20260724-green.json",
+    "docs/plan3/evidence/W1-Q9-20260724-kill.json",
+    "docs/plan3/evidence/W1-Q9-20260724-HUNK-MANIFEST.json"
+  ],
+  "w6FixturesPresentInCleanScope": false,
+  "preCorrectionResult": "0 pass / 1 fail — ERR_MODULE_NOT_FOUND m21-w6-fixtures/visible-window-mirror.mjs (finding 2 RED)",
+  "postCorrectionResult": {
+    "v14Mirror": "19 pass / 0 fail",
+    "homepageMirror": "19 pass / 0 fail",
+    "verdict": "GREEN"
+  },
+  "provesIndependenceFrom": "all excluded dirty lanes (W3/W6 fixtures, b62 indicators, chart.js, order-manager, untracked harnesses)"
+}

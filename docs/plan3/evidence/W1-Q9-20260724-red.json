@@ -1,0 +1,206 @@
+{
+  "stamp": "PRELIMINARY-PENDING-FABLE-SIGNOFF",
+  "mode": "red",
+  "killSwitch": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1",
+  "generatedAt": "2026-07-24T11:48:18.572Z",
+  "rows": [
+    {
+      "q": "Q9",
+      "name": "inventory-H1",
+      "pass": true,
+      "detail": "updateChartData"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H2",
+      "pass": true,
+      "detail": "updateChartDataFast"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H3",
+      "pass": true,
+      "detail": "syncPanelCharts"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H4",
+      "pass": true,
+      "detail": "mirror-static"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H5",
+      "pass": true,
+      "detail": "panel-own-prefix"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M1",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M2",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M3",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "syncPanelCharts-already-shares-prefix-ref",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "owned-prefix-push-does-not-grow-master",
+      "pass": true,
+      "detail": "masterLen=200"
+    },
+    {
+      "q": "Q9",
+      "name": "owned-prefix-truncate-leaves-master",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "zero-copy-alias-truncate-is-destructive-NO-GO",
+      "pass": true,
+      "detail": "stage-1 must never assign master as mutable playhead shell"
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-reuses-identity",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-truncates-length",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-no-future-leak",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-slice-push-leaves-master-length",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-last-bar-is-new-object",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-push-on-master-shell-corrupts-NO-GO",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-push-sites-retained",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "kill-OFF-legacy-churns-identity",
+      "pass": true,
+      "detail": "distinct=25"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-ON-fix-reuses-identity",
+      "pass": true,
+      "detail": "distinct=1"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-OFF-after-seek-breaks-reuse",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "legacy-slice-churn-reproduced",
+      "pass": true,
+      "detail": "distinct=40"
+    },
+    {
+      "q": "Q9",
+      "name": "desired-grow-buffer-stable",
+      "pass": true,
+      "detail": "distinct=1 len=140"
+    },
+    {
+      "q": "Q9",
+      "name": "product-helper-or-kill-present",
+      "pass": false,
+      "detail": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1"
+    },
+    {
+      "q": "Q9",
+      "name": "desired-product-reuse-contract",
+      "pass": false,
+      "detail": "RED: helper/kill absent on b61 surface"
+    },
+    {
+      "q": "Q9",
+      "name": "fast-and-normal-both-slice-today",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "fast-normal-shared-helper-product",
+      "pass": false,
+      "detail": "RED: H1/H2 not yet routed through _installPlayheadPrefix"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-switch-dual-tree",
+      "pass": false,
+      "detail": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1"
+    },
+    {
+      "q": "Q9",
+      "name": "w6-stride6-matches-packBarsRangeCompact",
+      "pass": true,
+      "detail": "elems=30 stride=6"
+    },
+    {
+      "q": "Q9",
+      "name": "q9-object-prefix-vs-w6-typed-boundary",
+      "pass": true,
+      "detail": "compatible pack layout; distinct runtime shells"
+    }
+  ],
+  "summary": {
+    "verdict": "RED",
+    "failed": [
+      "product-helper-or-kill-present",
+      "desired-product-reuse-contract",
+      "fast-normal-shared-helper-product",
+      "kill-switch-dual-tree"
+    ],
+    "stamp": "PRELIMINARY-PENDING-FABLE-SIGNOFF",
+    "b62ProductEdit": "FORBIDDEN-UNTIL-W5-PAINTED-RED-ON-B61",
+    "stage1Go": "NARROW-GROWING-OWNED-PREFIX-AFTER-FABLE-SIGNOFF"
+  }
+}

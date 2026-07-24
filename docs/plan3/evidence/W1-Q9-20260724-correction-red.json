@@ -1,0 +1,376 @@
+{
+  "stamp": "FABLE-W1-Q9-CORRECTION-LANDED-PENDING-MANAGER-INTEGRATION",
+  "mode": "correction-red",
+  "killSwitch": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1",
+  "generatedAt": "2026-07-24T12:56:36.671Z",
+  "rows": [
+    {
+      "q": "Q9",
+      "name": "inventory-H1",
+      "pass": true,
+      "detail": "updateChartData"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H2",
+      "pass": true,
+      "detail": "updateChartDataFast"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H3",
+      "pass": true,
+      "detail": "syncPanelCharts"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H4",
+      "pass": true,
+      "detail": "mirror-static"
+    },
+    {
+      "q": "Q9",
+      "name": "inventory-H5",
+      "pass": true,
+      "detail": "panel-own-prefix"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M1",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M2",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "mutation-M3",
+      "pass": true,
+      "detail": "owned-array push required"
+    },
+    {
+      "q": "Q9",
+      "name": "syncPanelCharts-already-shares-prefix-ref",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "owned-prefix-push-does-not-grow-master",
+      "pass": true,
+      "detail": "masterLen=200"
+    },
+    {
+      "q": "Q9",
+      "name": "owned-prefix-truncate-leaves-master",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "zero-copy-alias-truncate-is-destructive-NO-GO",
+      "pass": true,
+      "detail": "stage-1 must never assign master as mutable playhead shell"
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-reuses-identity",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-truncates-length",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "seek-back-no-future-leak",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-slice-push-leaves-master-length",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-last-bar-is-new-object",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-push-on-master-shell-corrupts-NO-GO",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "forming-push-sites-retained",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "kill-OFF-legacy-churns-identity",
+      "pass": true,
+      "detail": "distinct=25"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-ON-fix-reuses-identity",
+      "pass": true,
+      "detail": "distinct=1"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-OFF-after-seek-breaks-reuse",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "legacy-slice-churn-reproduced",
+      "pass": true,
+      "detail": "distinct=40"
+    },
+    {
+      "q": "Q9",
+      "name": "desired-grow-buffer-stable",
+      "pass": true,
+      "detail": "distinct=1 len=140"
+    },
+    {
+      "q": "Q9",
+      "name": "product-helper-or-kill-present",
+      "pass": true,
+      "detail": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1"
+    },
+    {
+      "q": "Q9",
+      "name": "desired-product-reuse-contract",
+      "pass": true,
+      "detail": "helper present — re-run behavioral product probe"
+    },
+    {
+      "q": "Q9",
+      "name": "fast-and-normal-both-slice-today",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "fast-normal-shared-helper-product",
+      "pass": true,
+      "detail": "unified"
+    },
+    {
+      "q": "Q9",
+      "name": "kill-switch-dual-tree",
+      "pass": true,
+      "detail": "__TALARIA_DISABLE_M20_PREFIX_SLICE_V1"
+    },
+    {
+      "q": "Q9",
+      "name": "product-fixON-single-identity-40-advances",
+      "pass": true,
+      "detail": "distinct=1"
+    },
+    {
+      "q": "Q9",
+      "name": "product-fixON-length-tracks-playhead",
+      "pass": true,
+      "detail": "len=140"
+    },
+    {
+      "q": "Q9",
+      "name": "product-fixON-content-matches-master-prefix",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-fixON-prefix-not-master-alias",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-fixON-full-length-still-owned-copy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-seek-back-reuses-identity",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-seek-back-truncates-length",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-seek-back-no-future-leak",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-seek-then-advance-regrows-same-shell",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-master-swap-rebuilds-owned-prefix",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-per-master-buffers-isolated",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-invalidate-drops-reuse",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-forming-scratch-isolated-from-grow-buffer",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-killOFF-restores-slice-churn",
+      "pass": true,
+      "detail": "distinct=25"
+    },
+    {
+      "q": "Q9",
+      "name": "product-killON-again-resumes-reuse",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-kill-false-keeps-fix-on",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "product-dual-tree-source-identical",
+      "pass": true,
+      "detail": "v14=387872B home=387872B"
+    },
+    {
+      "q": "Q9",
+      "name": "correction-oracle-pipeline-trim-value-equivalent",
+      "pass": false,
+      "detail": "staleTicks=29/30 first=end=2"
+    },
+    {
+      "q": "Q9",
+      "name": "correction-oracle-stable-prefix-alloc-win-retained",
+      "pass": true,
+      "detail": "distinct=1"
+    },
+    {
+      "q": "Q9",
+      "name": "correction-edge-zero-one-full-over-length",
+      "pass": true,
+      "detail": "seq=0/1/12/37/1/12"
+    },
+    {
+      "q": "Q9",
+      "name": "correction-slot-replacement-tail-detected",
+      "pass": false,
+      "detail": "RED: stale shell served old slot object"
+    },
+    {
+      "q": "Q9",
+      "name": "correction-slot-replacement-head-detected",
+      "pass": false,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "correction-explicit-invalidate-rebuilds",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "q": "Q9",
+      "name": "correction-killOFF-legacy-churn-and-correct",
+      "pass": true,
+      "detail": "distinct=18/18 stale=0"
+    },
+    {
+      "q": "Q9",
+      "name": "stride6-selfcontained-matches-packBarsRangeCompact",
+      "pass": true,
+      "detail": "elems=30 stride=6"
+    },
+    {
+      "q": "Q9",
+      "name": "q9-object-prefix-vs-typed-window-boundary",
+      "pass": true,
+      "detail": "compatible pack layout; distinct runtime shells"
+    }
+  ],
+  "summary": {
+    "verdict": "RED",
+    "failed": [
+      "correction-oracle-pipeline-trim-value-equivalent",
+      "correction-slot-replacement-tail-detected",
+      "correction-slot-replacement-head-detected"
+    ],
+    "stamp": "FABLE-W1-Q9-CORRECTION-LANDED-PENDING-MANAGER-INTEGRATION",
+    "b62ProductEdit": "FORBIDDEN-UNTIL-INDEPENDENT-GPT-ACCEPTS-W5-B61-VALUE-Y-RED",
+    "stage1": "CORRECTED-INSTALL-DROPS-CONSUMER-RESAMPLE-CACHE"
+  },
+  "reviewBlockSource": "independent review BLOCK 2026-07-24 (agent 52b44092-ec56-45d3-9bf5-0f4c942c2e63)",
+  "finding1StandaloneProbe": {
+    "description": "reviewer probe re-run on unfixed product: stable sourceRef identity + trimmed cached result + len+1 => ChartDataPipeline incremental branch finalizes stale prior bucket",
+    "reusedPrior": {
+      "t": 0,
+      "o": 1,
+      "h": 3,
+      "l": 1,
+      "c": 2,
+      "v": 10
+    },
+    "legacyPrior": {
+      "t": 0,
+      "o": 1,
+      "h": 10,
+      "l": 0,
+      "c": 9,
+      "v": 100
+    },
+    "stale": true
+  },
+  "finding2CleanScopeRed": {
+    "description": "git worktree at HEAD 2f0ce7831 + only the 9 manifest files overlaid; pre-correction test failed to load",
+    "error": "ERR_MODULE_NOT_FOUND",
+    "missingModule": "chart v 1.4/chart/modules/m21-w6-fixtures/visible-window-mirror.mjs",
+    "result": "0 pass / 1 fail (module resolution)"
+  }
+}
