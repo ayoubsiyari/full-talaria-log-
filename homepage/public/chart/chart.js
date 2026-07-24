@@ -1549,9 +1549,11 @@ class Chart {
         // Runtime fallback for V9 settings panel when React bundle is stale:
         // read Time Format / Time Zone text from the opened Settings modal and
         // apply it to chartSettings + timezoneManager so axis/crosshair update.
+        // M20-Q1: default = MutationObserver / click on settings panel only.
+        // Kill-switch __TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1 = true
+        // restores the permanent 600ms full-DOM span poll.
         if (!this.isPanel) {
-            this.syncV9TimeControlsFromDom();
-            this._v9TimeSyncTimer = setInterval(() => this.syncV9TimeControlsFromDom(), 600);
+            this._startV9TimeControlsSync();
         }
         
         // Check for backtesting mode from URL (only for main chart)
@@ -28665,13 +28667,20 @@ class Chart {
         // an independent once-a-second countdown re-render here makes a same-pair
         // panel constantly re-render (and visibly jump) while idle, unlike the
         // smooth main chart. Skip it on panels; the host still shows the countdown.
-        const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
-            && this._isMultichartEmbedPanel();
-        if (!isEmbedPanel && this.chartSettings.showCountdownToBarClose !== false) {
-            const nowCd = performance.now();
-            if (!this._lastCountdownRender || nowCd - this._lastCountdownRender > 1000) {
-                this._lastCountdownRender = nowCd;
-                this.scheduleRender();
+        // M20-Q2: default = region paint / suspend when hidden (no idle full render).
+        // Kill-switch __TALARIA_DISABLE_M20_Q2_COUNTDOWN_IDLE_RENDER_V1 = true
+        // restores the ~1Hz scheduleRender() full paint.
+        if (typeof this._tickBarCloseCountdown === 'function') {
+            this._tickBarCloseCountdown(performance.now());
+        } else {
+            const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
+                && this._isMultichartEmbedPanel();
+            if (!isEmbedPanel && this.chartSettings.showCountdownToBarClose !== false) {
+                const nowCd = performance.now();
+                if (!this._lastCountdownRender || nowCd - this._lastCountdownRender > 1000) {
+                    this._lastCountdownRender = nowCd;
+                    this.scheduleRender();
+                }
             }
         }
 
@@ -30503,6 +30512,198 @@ class Chart {
         return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
+    /**
+     * M20-Q2 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_Q2_COUNTDOWN_IDLE_RENDER_V1 = true
+     * restores ~1Hz full scheduleRender() from animate().
+     */
+    _m20Q2CountdownIdleFixEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_Q2_COUNTDOWN_IDLE_RENDER_V1 !== true;
+    }
+
+    /**
+     * M20-Q2 — once-per-second countdown tick from the forever animate() rAF.
+     * Fix ON: suspend when tab hidden; pixel-safe region paint only when the
+     * current-price / spread geometry matches the last full-paint cache.
+     * Kill-switch OFF path: legacy full scheduleRender().
+     */
+    _tickBarCloseCountdown(nowCd) {
+        const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel();
+        if (isEmbedPanel) return;
+        if (!this.chartSettings || this.chartSettings.showCountdownToBarClose === false) return;
+        const now = Number.isFinite(nowCd) ? nowCd : performance.now();
+        if (this._lastCountdownRender && now - this._lastCountdownRender <= 1000) return;
+        this._lastCountdownRender = now;
+
+        if (!this._m20Q2CountdownIdleFixEnabled()) {
+            this.scheduleRender();
+            return;
+        }
+        if (typeof document !== 'undefined' && document.hidden) return;
+
+        const text = typeof this._getBarCloseCountdownText === 'function'
+            ? this._getBarCloseCountdownText()
+            : '';
+        // Skip work when the displayed countdown string is unchanged.
+        if (text === this._lastCountdownPaintedText && this._countdownRegionPainted) return;
+        const prevHad = !!this._lastCountdownPaintedText;
+        const nextHad = !!text;
+        this._lastCountdownPaintedText = text;
+
+        // Geometry of the badge changes when countdown appears/disappears — full paint once.
+        if (prevHad !== nextHad) {
+            this._countdownRegionPainted = false;
+            this.scheduleRender();
+            return;
+        }
+        if (typeof this._paintBarCloseCountdownRegion === 'function') {
+            this._countdownRegionPainted = !!this._paintBarCloseCountdownRegion();
+        } else {
+            this.scheduleRender();
+        }
+    }
+
+    /**
+     * M20-Q2 — deterministic current-price label / spread geometry key + rect.
+     * Idle region paints are allowed only when this matches the last full-paint cache
+     * (opaque same-rect redraw may cover old countdown digits).
+     */
+    _computeCurrentPriceLabelGeometry(visible) {
+        if (!this.yScale) return null;
+
+        const m = this.margin || { t: 0, b: 0, l: 0, r: 0 };
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
+
+        const currentPrice = typeof this.resolveEffectiveCurrentPrice === 'function'
+            ? this.resolveEffectiveCurrentPrice(visible)
+            : null;
+        if (!Number.isFinite(currentPrice)) return null;
+        const y = this.yScale(currentPrice);
+        if (!Number.isFinite(y) || y < m.t || y > pricePlotBottom) return null;
+
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const hasSpread = !(this.chartSettings && this.chartSettings.showSpreadMarker === false)
+            && typeof this.resolveSessionBidAsk === 'function'
+            && !!this.resolveSessionBidAsk(currentPrice);
+        const spreadGutter = hasSpread && typeof this._spreadAxisGutterPx === 'function'
+            ? this._spreadAxisGutterPx()
+            : 0;
+        const labelWidth = Math.max(28, axisW - 4 - spreadGutter);
+        const labelX = axisLeft ? 2 : (this.w - m.r + spreadGutter);
+
+        const countdownText = typeof this._getBarCloseCountdownText === 'function'
+            ? this._getBarCloseCountdownText()
+            : '';
+        const showCountdown = !!countdownText;
+        const priceHeight = 20;
+        const countdownHeight = showCountdown ? 18 : 0;
+        const totalHeight = priceHeight + countdownHeight;
+        const labelY = y - totalHeight / 2;
+
+        let spreadYBid = '';
+        let spreadYAsk = '';
+        let spreadHalf = '';
+        if (hasSpread && typeof this.resolveSessionBidAsk === 'function') {
+            const ba = this.resolveSessionBidAsk(currentPrice);
+            if (ba && Number.isFinite(ba.bid) && Number.isFinite(ba.ask)) {
+                const yBid = this.yScale(ba.bid);
+                const yAsk = this.yScale(ba.ask);
+                if (Number.isFinite(yBid) && Number.isFinite(yAsk)) {
+                    spreadYBid = yBid;
+                    spreadYAsk = yAsk;
+                    spreadHalf = Number.isFinite(ba.half) ? ba.half : '';
+                }
+            }
+        }
+
+        const key = [
+            y,
+            axisLeft ? 'L' : 'R',
+            labelX,
+            labelWidth,
+            labelY,
+            totalHeight,
+            showCountdown ? 1 : 0,
+            spreadGutter,
+            spreadYBid,
+            spreadYAsk,
+            spreadHalf,
+            this.w,
+            this.h,
+            m.l,
+            m.r
+        ].join('|');
+
+        return {
+            key,
+            rect: { x: labelX, y: labelY, w: labelWidth, h: totalHeight },
+            y,
+            axisLeft,
+            showCountdown,
+            hasSpread,
+            currentPrice,
+            priceHeight,
+            countdownHeight,
+            countdownText,
+            spreadGutter,
+        };
+    }
+
+    /** M20-Q2 — anchor geometry cache from a normal (full-canvas) price-label paint. */
+    _cacheCurrentPriceLabelGeometryFromFullPaint(visible) {
+        if (this._m20Q2CountdownRegionPaintActive) return;
+        const geo = typeof this._computeCurrentPriceLabelGeometry === 'function'
+            ? this._computeCurrentPriceLabelGeometry(visible)
+            : null;
+        this._m20Q2PriceLabelGeometry = geo
+            ? { key: geo.key, rect: { x: geo.rect.x, y: geo.rect.y, w: geo.rect.w, h: geo.rect.h } }
+            : null;
+    }
+
+    /**
+     * M20-Q2 — redraw only the current-price / countdown badge when geometry is unchanged.
+     * @returns {boolean} true when a direct region paint ran; false when a full render was scheduled.
+     */
+    _paintBarCloseCountdownRegion() {
+        if (!this.ctx || typeof this.drawCurrentPriceLabel !== 'function') {
+            this._countdownRegionPainted = false;
+            this.scheduleRender();
+            return false;
+        }
+        try {
+            const visible = (typeof this.getVisibleData === 'function')
+                ? this.getVisibleData()
+                : (this.data || []);
+            const geo = typeof this._computeCurrentPriceLabelGeometry === 'function'
+                ? this._computeCurrentPriceLabelGeometry(visible)
+                : null;
+            const cached = this._m20Q2PriceLabelGeometry;
+            // Absent or changed geometry → never direct-paint (avoids ghosts/overdraw).
+            if (!geo || !cached || !cached.key || geo.key !== cached.key) {
+                this._countdownRegionPainted = false;
+                this.scheduleRender();
+                return false;
+            }
+            this._m20Q2CountdownRegionPaintActive = true;
+            try {
+                this.drawCurrentPriceLabel(visible);
+            } finally {
+                this._m20Q2CountdownRegionPaintActive = false;
+            }
+            return true;
+        } catch (_) {
+            this._countdownRegionPainted = false;
+            this.scheduleRender();
+            return false;
+        }
+    }
+
     /** Replay-mode bar-close countdown (progress through forming candle). */
     _getReplayBarCloseCountdownText() {
         const rs = this.replaySystem;
@@ -31386,7 +31587,10 @@ class Chart {
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
-        if (!this.yScale) return;
+        if (!this.yScale) {
+            if (!this._m20Q2CountdownRegionPaintActive) this._m20Q2PriceLabelGeometry = null;
+            return;
+        }
 
         const m = this.margin;
         const plotLayout = typeof this._getMainPricePlotLayout === 'function'
@@ -31395,11 +31599,17 @@ class Chart {
         const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
 
         const currentPrice = this.resolveEffectiveCurrentPrice(visible);
-        if (!Number.isFinite(currentPrice)) return;
+        if (!Number.isFinite(currentPrice)) {
+            if (!this._m20Q2CountdownRegionPaintActive) this._m20Q2PriceLabelGeometry = null;
+            return;
+        }
         const y = this.yScale(currentPrice);
 
         // Only draw if within price chart area
-        if (y < m.t || y > pricePlotBottom) return;
+        if (y < m.t || y > pricePlotBottom) {
+            if (!this._m20Q2CountdownRegionPaintActive) this._m20Q2PriceLabelGeometry = null;
+            return;
+        }
 
         // Match the price line color so label and line are always the same color
         const bgColor = this.chartSettings.priceLineColor || '#787B86';
@@ -31466,6 +31676,10 @@ class Chart {
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
 
+        // M20-Q2: re-anchor geometry cache only on normal full paints (not idle region paints).
+        if (typeof this._cacheCurrentPriceLabelGeometryFromFullPaint === 'function') {
+            this._cacheCurrentPriceLabelGeometryFromFullPaint(visible);
+        }
     }
     
     /**
@@ -31679,10 +31893,135 @@ class Chart {
         return null;
     }
 
+    /**
+     * M20-Q1 — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1 = true
+     */
+    _m20Q1V9TimeSyncObserverEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1 !== true;
+    }
+
+    /** M20-Q1 — resolve only known settings roots; never scan the full document. */
+    _resolveV9SettingsPanelRoot() {
+        if (typeof document === 'undefined') return null;
+        try {
+            return document.querySelector(
+                '.tv-settings-modal, [data-talaria-v9-settings], '
+                + '[data-multichart-global-settings], #multichart-global-settings-root, '
+                + '.chart-settings-modal'
+            );
+        } catch (_) {}
+        return null;
+    }
+
+    _startV9TimeControlsSync() {
+        this.syncV9TimeControlsFromDom();
+        if (!this._m20Q1V9TimeSyncObserverEnabled()) {
+            if (this._v9TimeSyncTimer) {
+                try { clearInterval(this._v9TimeSyncTimer); } catch (_) {}
+                this._v9TimeSyncTimer = null;
+            }
+            this._v9TimeSyncTimer = setInterval(() => this.syncV9TimeControlsFromDom(), 600);
+            return;
+        }
+        this._stopV9TimeControlsSyncLegacyTimer();
+        this._installV9TimeSyncObserver();
+    }
+
+    _stopV9TimeControlsSyncLegacyTimer() {
+        if (this._v9TimeSyncTimer) {
+            try { clearInterval(this._v9TimeSyncTimer); } catch (_) {}
+            this._v9TimeSyncTimer = null;
+        }
+    }
+
+    _detachV9TimeSyncPanelObserver() {
+        if (this._v9TimeSyncPanelObserver) {
+            try { this._v9TimeSyncPanelObserver.disconnect(); } catch (_) {}
+            this._v9TimeSyncPanelObserver = null;
+        }
+        this._v9TimeSyncPanelEl = null;
+    }
+
+    _attachV9TimeSyncPanelObserver(panel) {
+        if (!panel || typeof MutationObserver === 'undefined') return;
+        if (panel === this._v9TimeSyncPanelEl && this._v9TimeSyncPanelObserver) {
+            this.syncV9TimeControlsFromDom();
+            return;
+        }
+        this._detachV9TimeSyncPanelObserver();
+        this._v9TimeSyncPanelEl = panel;
+        this.syncV9TimeControlsFromDom();
+        try {
+            this._v9TimeSyncPanelObserver = new MutationObserver(() => {
+                this.syncV9TimeControlsFromDom();
+            });
+            this._v9TimeSyncPanelObserver.observe(panel, {
+                subtree: true,
+                childList: true,
+                characterData: true,
+            });
+        } catch (_) {
+            this._v9TimeSyncPanelObserver = null;
+        }
+    }
+
+    _installV9TimeSyncObserver() {
+        if (this._v9TimeSyncObserverInstalled) return;
+        this._v9TimeSyncObserverInstalled = true;
+        if (typeof document === 'undefined') return;
+
+        const scanForPanel = () => {
+            if (!this._m20Q1V9TimeSyncObserverEnabled()) return;
+            const panel = this._resolveV9SettingsPanelRoot();
+            if (panel) this._attachV9TimeSyncPanelObserver(panel);
+            else this._detachV9TimeSyncPanelObserver();
+        };
+
+        this._v9TimeSyncClickHandler = () => {
+            if (this._v9TimeSyncClickTimer) {
+                try { clearTimeout(this._v9TimeSyncClickTimer); } catch (_) {}
+            }
+            this._v9TimeSyncClickTimer = setTimeout(() => {
+                this._v9TimeSyncClickTimer = null;
+                scanForPanel();
+                if (this._v9TimeSyncPanelEl) this.syncV9TimeControlsFromDom();
+            }, 40);
+        };
+
+        try {
+            document.addEventListener('click', this._v9TimeSyncClickHandler, true);
+        } catch (_) {}
+
+        // The known multichart/legacy roots exist before their contents mount.
+        // Observe that root only; click discovery covers dynamically-created V9 modals.
+        scanForPanel();
+    }
+
+    /** Teardown helper for future Chart.destroy / M20-A registry. */
+    _teardownV9TimeControlsSync() {
+        this._stopV9TimeControlsSyncLegacyTimer();
+        this._detachV9TimeSyncPanelObserver();
+        if (this._v9TimeSyncClickHandler && typeof document !== 'undefined') {
+            try { document.removeEventListener('click', this._v9TimeSyncClickHandler, true); } catch (_) {}
+            this._v9TimeSyncClickHandler = null;
+        }
+        if (this._v9TimeSyncClickTimer) {
+            try { clearTimeout(this._v9TimeSyncClickTimer); } catch (_) {}
+            this._v9TimeSyncClickTimer = null;
+        }
+        this._v9TimeSyncObserverInstalled = false;
+    }
+
     syncV9TimeControlsFromDom() {
         if (typeof document === 'undefined' || !this.chartSettings) return;
         try {
-            const spans = Array.from(document.querySelectorAll('span'));
+            const fixOn = this._m20Q1V9TimeSyncObserverEnabled();
+            const root = fixOn ? this._resolveV9SettingsPanelRoot() : document;
+            // Fix ON: never walk the full document span list when settings are closed.
+            if (fixOn && !root) return;
+            const spans = Array.from((root || document).querySelectorAll('span'));
             const getSettingValue = (label) => {
                 const labelEl = spans.find((el) => (el.textContent || '').trim() === label);
                 const row = labelEl && labelEl.parentElement;
