@@ -8066,7 +8066,10 @@
         const period = indicator.params && indicator.params.period != null ? indicator.params.period : 10;
         const multiplier = indicator.params && indicator.params.multiplier != null ? indicator.params.multiplier : 3;
         indicator.name = 'Supertrend(' + period + ')';
-        chart.indicators.data[indicator.id] = calculateSupertrend(chart.data, period, multiplier);
+        // M19-I(c): exact O(delta) continuation instead of a full-history scan.
+        chart.indicators.data[indicator.id] = (typeof _m19iWorkerPortEnabled === 'function' && _m19iWorkerPortEnabled())
+            ? _m19iSupertrendIncremental(chart, indicator)
+            : calculateSupertrend(chart.data, period, multiplier);
     }
 
     /** ADR requires timezone-aware daily session keys — always recalc on the main thread. */
@@ -8078,7 +8081,10 @@
         indicator.separatePanel = true;
         indicator.params.period = Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14);
         indicator.name = 'ADR(' + indicator.params.period + ')';
-        chart.indicators.data[indicator.id] = calculateADR(chart.data, indicator.params.period);
+        // M19-I(c): exact O(delta + current day) continuation on the main thread.
+        chart.indicators.data[indicator.id] = (typeof _m19iWorkerPortEnabled === 'function' && _m19iWorkerPortEnabled())
+            ? _m19iAdrIncremental(chart, indicator)
+            : calculateADR(chart.data, indicator.params.period);
     }
 
     /**
@@ -8095,6 +8101,8 @@
         // Coalesce rapid replay/live-tick requests — do not bump seq while a worker pass is in flight.
         if (chart._indicatorWorkerBusy) {
             chart._indicatorWorkerCoalesce = true;
+            // M19-I: a full pass was requested — a coalesced tail rerun is not enough.
+            chart._m19iCoalesceFullAsync = true;
             return;
         }
         chart._indicatorWorkerBusy = true;
@@ -8123,6 +8131,8 @@
             var again = chart._indicatorWorkerCoalesce;
             chart._indicatorWorkerCoalesce = false;
             if (again) {
+                // Full rerun below also satisfies any pending full-pass request.
+                chart._m19iCoalesceFullAsync = false;
                 try { chart.recalculateIndicatorsAsync(); } catch (_) {}
             }
         }
@@ -8131,13 +8141,8 @@
         var indicators = {};
         var didSyncOverlayRecalc = false;
         chart.indicators.active.forEach(function(ind) {
-            // Multi-pass MAs, Supertrend, + ICT/session types stay on main thread.
-            var workerSkip = [
-                'dema', 'tema', 'hma', 'supertrend', 'adr',
-                'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
-                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'icteverything',
-                'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'
-            ];
+            // Multi-pass MAs (I-c OFF), Supertrend, + ICT/session types stay on main thread.
+            var workerSkip = M19I_LEGACY_WORKER_SKIP;
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
             if (indType === 'supertrend') {
@@ -8151,6 +8156,15 @@
                 return;
             }
             if (['dema', 'tema', 'hma'].indexOf(indType) >= 0) {
+                if (_m19iWorkerPortEnabled()) {
+                    // I-c: pure series math — computed off-thread by the worker.
+                    ind.overlay = true;
+                    ind.separatePanel = false;
+                    var mp = ind.params && ind.params.period != null ? Math.max(1, Number(ind.params.period) | 0) : 20;
+                    ind.name = indType.toUpperCase() + '(' + mp + ')';
+                    indicators[ind.id] = { type: indType, params: ind.params || {} };
+                    return;
+                }
                 try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
                 didSyncOverlayRecalc = true;
                 return;
@@ -8377,6 +8391,7 @@
         if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
         this._indicatorWorkerSeq++;
         this._indicatorWorkerCoalesce = false;
+        this._m19iCoalesceFullAsync = false;
         this._indicatorPendingResults = null;
         this._sessionIndReplayFp = null;
         if (this._replayIndRecalcRaf != null) {
@@ -8425,6 +8440,483 @@
         if (typeof this.updateOHLCIndicators === 'function') this.updateOHLCIndicators();
     };
 
+    // ─── M19-I: indicator replay compute budget ─────────────────────────────
+    // Four independently switchable fixes. Each disable flag restores the
+    // b57 legacy behavior for its own scope only.
+    //   I-a  __TALARIA_DISABLE_M19I_TAIL_SEND_V1     — O(history) pack + clone
+    //   I-b  __TALARIA_DISABLE_M19I_SYNCONLY_TAIL_V1 — sync-only full rescans
+    //   I-c  __TALARIA_DISABLE_M19I_WORKER_PORT_V1   — dema/tema/hma sync + supertrend/adr O(n)
+    //   I-d  __TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1  — force:true bypasses dedupe
+
+    function _m19iTailSendEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TAIL_SEND_V1;
+    }
+    function _m19iSyncOnlyTailEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_SYNCONLY_TAIL_V1;
+    }
+    function _m19iWorkerPortEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_WORKER_PORT_V1;
+    }
+    function _m19iForceDedupeEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1;
+    }
+
+    /** Single source for the sync-only (main-thread structural) indicator types. */
+    var M19I_SYNC_ONLY_TYPES = [
+        'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
+        'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'ictliquidity', 'icteverything',
+        'talariafvg', 'talariaratiogap', 'talariaweeklymap', 'talariasmc'
+    ];
+
+    /** Legacy worker-skip list (b57) — used verbatim when I-c is disabled. */
+    var M19I_LEGACY_WORKER_SKIP = ['dema', 'tema', 'hma', 'supertrend', 'adr']
+        .concat(M19I_SYNC_ONLY_TYPES, ['volume', 'custom']);
+
+    /**
+     * I-c: dema/tema/hma are pure series math and go to the worker; supertrend
+     * and adr stay on the main thread but run as exact O(delta) continuations.
+     * volume is O(1); custom keeps its own scheduled compute path.
+     */
+    var M19I_PORTED_WORKER_SKIP = ['supertrend', 'adr']
+        .concat(M19I_SYNC_ONLY_TYPES, ['volume', 'custom']);
+
+    function _m19iWorkerSkipTypes() {
+        return _m19iWorkerPortEnabled() ? M19I_PORTED_WORKER_SKIP : M19I_LEGACY_WORKER_SKIP;
+    }
+
+    /**
+     * Types whose worker results are safe for windowed tail recompute:
+     * FIR/windowed math or convergent IIR smoothing that a lookback window
+     * (estimateTailLookback) re-seeds within numeric noise. Cumulative or
+     * whole-history types (obv, vwap, psar, seasonality) are excluded — they
+     * always take the full CALCULATE_ALL path.
+     */
+    var M19I_TAIL_SAFE_WORKER_TYPES = [
+        'sma', 'ema', 'wma', 'bb', 'bollinger', 'envelope', 'smaenvelope', 'atr',
+        'cci', 'adx', 'rsi', 'macd', 'ppo', 'stoch', 'stochastic', 'roc',
+        'mom', 'momentum', 'willr', 'mfi', 'donchian', 'keltner', 'aroon',
+        'cmf', 'trix', 'stochrsi', 'massindex', 'coppock', 'rvi', 'elderray',
+        'ao', 'uo', 'vortex', 'dpo', 'stddev', 'dema', 'tema', 'hma'
+    ];
+
+    function _m19iIndicatorTailSafe(ind) {
+        if (!ind) return false;
+        var t = String(ind.type || '').toLowerCase();
+        if (M19I_TAIL_SAFE_WORKER_TYPES.indexOf(t) < 0) return false;
+        // dema/tema/hma tail only when they are worker-ported (I-c on).
+        if ((t === 'dema' || t === 'tema' || t === 'hma') && !_m19iWorkerPortEnabled()) return false;
+        // RSI divergence enrichment is index-based over full history.
+        if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) return false;
+        return true;
+    }
+
+    /** Per-chart M19-I stateful continuation caches (cleared with async work). */
+    function _m19iState(chart) {
+        if (!chart._m19iIndState) chart._m19iIndState = {};
+        return chart._m19iIndState;
+    }
+
+    Chart.prototype._m19iInvalidateIndicatorTailState = function() {
+        this._m19iIndState = null;
+    };
+
+    /**
+     * I-c: exact O(delta) supertrend continuation. State checkpoints at the
+     * last CONFIRMED bar (n-2); the forming bar is recomputed every pass so
+     * its provisional OHLC never poisons the recursion. Falls back to the
+     * full calculateSupertrend scan whenever the prefix/params changed.
+     */
+    function _m19iSupertrendKey(chart, indicator) {
+        var p = indicator.params || {};
+        return [
+            String(chart.currentTimeframe || ''),
+            Number(p.period != null ? p.period : 10),
+            Number(p.multiplier != null ? p.multiplier : 3)
+        ].join('|');
+    }
+
+    function _m19iSupertrendFull(chart, indicator) {
+        var data = chart.data;
+        var n = data.length;
+        var p = Math.max(1, (indicator.params && indicator.params.period) || 10);
+        var result = calculateSupertrend(data, indicator.params && indicator.params.period, indicator.params && indicator.params.multiplier);
+        chart.indicators.data[indicator.id] = result;
+        if (n < 2) return result;
+        // Rebuild the RMA ATR state at n-2 (calculateSupertrend does not expose it).
+        var atr = calculateATR(data, p);
+        var j = n - 2;
+        _m19iState(chart)['st:' + indicator.id] = {
+            key: _m19iSupertrendKey(chart, indicator),
+            j: j,
+            tJ: data[j].t,
+            atr: atr[j],
+            close: resolveOhlcSourceValue(data[j], 'close'),
+            fU: result.upper[j],
+            fL: result.lower[j],
+            dir: result.direction[j],
+            result: result
+        };
+        return result;
+    }
+
+    function _m19iSupertrendStep(cur, bar, mult, p) {
+        var hl2 = resolveOhlcSourceValue(bar, 'hl2');
+        var close = resolveOhlcSourceValue(bar, 'close');
+        var tr = Math.max(
+            bar.h - bar.l,
+            Math.max(Math.abs(bar.h - cur.close), Math.abs(bar.l - cur.close))
+        );
+        var atr = cur.atr == null || isNaN(cur.atr)
+            ? null
+            : (cur.atr * (p - 1) + tr) / p;
+        var out = {
+            atr: atr,
+            close: close,
+            body: Number.isFinite(hl2) ? hl2 : null,
+            fU: cur.fU,
+            fL: cur.fL,
+            dir: cur.dir,
+            line: null
+        };
+        if (atr == null || isNaN(atr) || !Number.isFinite(hl2)) return out;
+        var basicUpper = hl2 + mult * atr;
+        var basicLower = hl2 - mult * atr;
+        var pU = cur.fU;
+        var pL = cur.fL;
+        var pC = cur.close;
+        out.fU = (basicUpper < pU || pC > pU) ? basicUpper : pU;
+        out.fL = (basicLower > pL || pC < pL) ? basicLower : pL;
+        if (cur.dir === 1) {
+            if (close < pL) { out.dir = -1; out.line = out.fU; }
+            else { out.dir = 1; out.line = out.fL; }
+        } else {
+            if (close > pU) { out.dir = 1; out.line = out.fL; }
+            else { out.dir = -1; out.line = out.fU; }
+        }
+        return out;
+    }
+
+    function _m19iSupertrendIncremental(chart, indicator) {
+        var data = chart.data;
+        var n = Array.isArray(data) ? data.length : 0;
+        if (n < 3) return _m19iSupertrendFull(chart, indicator);
+        var key = _m19iSupertrendKey(chart, indicator);
+        var st = _m19iState(chart)['st:' + indicator.id];
+        var result = chart.indicators.data[indicator.id];
+        if (!st || st.key !== key || !result || result !== st.result
+            || st.j == null || st.j > n - 2 || !data[st.j] || data[st.j].t !== st.tJ
+            || st.atr == null || isNaN(st.atr)
+            || st.fU == null || st.fL == null) {
+            return _m19iSupertrendFull(chart, indicator);
+        }
+        var p = Math.max(1, (indicator.params && indicator.params.period) || 10);
+        var mult = indicator.params && indicator.params.multiplier != null
+            ? indicator.params.multiplier : 3;
+        var arrays = [result.line, result.direction, result.upper, result.lower, result.body];
+        for (var a = 0; a < arrays.length; a++) {
+            if (!Array.isArray(arrays[a])) return _m19iSupertrendFull(chart, indicator);
+            while (arrays[a].length < n) arrays[a].push(null);
+            if (arrays[a].length > n) arrays[a].length = n;
+        }
+        var cur = { atr: st.atr, close: st.close, fU: st.fU, fL: st.fL, dir: st.dir };
+        for (var i = st.j + 1; i < n; i++) {
+            var step = _m19iSupertrendStep(cur, data[i], mult, p);
+            result.body[i] = step.body;
+            result.line[i] = step.line;
+            result.direction[i] = step.line != null ? step.dir : (result.direction[i] != null ? result.direction[i] : 1);
+            result.upper[i] = step.line != null ? step.fU : null;
+            result.lower[i] = step.line != null ? step.fL : null;
+            if (step.line != null) {
+                cur = step;
+            } else {
+                cur = { atr: step.atr, close: step.close, fU: cur.fU, fL: cur.fL, dir: cur.dir };
+            }
+            if (i === n - 2) {
+                st.j = i;
+                st.tJ = data[i].t;
+                st.atr = cur.atr;
+                st.close = cur.close;
+                st.fU = cur.fU;
+                st.fL = cur.fL;
+                st.dir = cur.dir;
+            }
+        }
+        st.result = result;
+        return result;
+    }
+
+    /** I-c: exact O(delta + currentDay) ADR continuation (same checkpoint rule). */
+    function _m19iAdrKey(chart, indicator, tzId) {
+        return [
+            String(chart.currentTimeframe || ''),
+            Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14),
+            String(tzId || '')
+        ].join('|');
+    }
+
+    function _m19iAdrFull(chart, indicator) {
+        var data = chart.data;
+        var n = data.length;
+        var p = Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14);
+        var tzId = resolveChartWallTimezoneId();
+        var result = calculateADR(data, p);
+        chart.indicators.data[indicator.id] = result;
+        if (n < 2) return result;
+        // Rebuild day aggregation state at n-2.
+        var j = n - 2;
+        var dailyRanges = [];
+        var currentDay = null;
+        var dayHigh = null;
+        var dayLow = null;
+        for (var i = 0; i <= j; i++) {
+            var ms = adrCandleTimeMs(data[i].t);
+            var dayKey = Number.isFinite(ms) ? dayKeyInTimezone(ms, tzId) : '';
+            if (!dayKey) continue;
+            if (currentDay !== dayKey) {
+                if (currentDay !== null && dayHigh !== null && dayLow !== null) {
+                    dailyRanges.push(dayHigh - dayLow);
+                }
+                currentDay = dayKey;
+                dayHigh = data[i].h;
+                dayLow = data[i].l;
+            } else {
+                dayHigh = Math.max(dayHigh, data[i].h);
+                dayLow = Math.min(dayLow, data[i].l);
+            }
+        }
+        _m19iState(chart)['adr:' + indicator.id] = {
+            key: _m19iAdrKey(chart, indicator, tzId),
+            j: j,
+            tJ: data[j].t,
+            currentDay: currentDay,
+            dayHigh: dayHigh,
+            dayLow: dayLow,
+            dailyRanges: dailyRanges,
+            result: result
+        };
+        return result;
+    }
+
+    function _m19iAdrValue(dailyRanges, p) {
+        var priorCount = dailyRanges.length;
+        if (priorCount < 1) return null;
+        var lookback = Math.min(p, priorCount);
+        var sum = 0;
+        for (var d = priorCount - lookback; d < priorCount; d++) sum += dailyRanges[d];
+        return sum / lookback;
+    }
+
+    function _m19iAdrIncremental(chart, indicator) {
+        var data = chart.data;
+        var n = Array.isArray(data) ? data.length : 0;
+        if (n < 3) return _m19iAdrFull(chart, indicator);
+        var tzId = resolveChartWallTimezoneId();
+        var key = _m19iAdrKey(chart, indicator, tzId);
+        var st = _m19iState(chart)['adr:' + indicator.id];
+        var result = chart.indicators.data[indicator.id];
+        if (!st || st.key !== key || !Array.isArray(result) || result !== st.result
+            || st.j == null || st.j > n - 2 || !data[st.j] || data[st.j].t !== st.tJ) {
+            return _m19iAdrFull(chart, indicator);
+        }
+        var p = Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14);
+        while (result.length < n) result.push(null);
+        if (result.length > n) result.length = n;
+        var cur = {
+            currentDay: st.currentDay,
+            dayHigh: st.dayHigh,
+            dayLow: st.dayLow,
+            ranges: st.dailyRanges
+        };
+        for (var i = st.j + 1; i < n; i++) {
+            var ms = adrCandleTimeMs(data[i].t);
+            var dayKey = Number.isFinite(ms) ? dayKeyInTimezone(ms, tzId) : '';
+            var committed = i <= n - 2;
+            if (!dayKey) {
+                result[i] = null;
+            } else if (cur.currentDay !== dayKey) {
+                var rangesAfterRoll = cur.ranges;
+                if (cur.currentDay !== null && cur.dayHigh !== null && cur.dayLow !== null) {
+                    rangesAfterRoll = cur.ranges.concat([cur.dayHigh - cur.dayLow]);
+                }
+                result[i] = _m19iAdrValue(rangesAfterRoll, p);
+                if (committed) {
+                    cur.ranges = rangesAfterRoll;
+                    cur.currentDay = dayKey;
+                    cur.dayHigh = data[i].h;
+                    cur.dayLow = data[i].l;
+                }
+            } else {
+                result[i] = _m19iAdrValue(cur.ranges, p);
+                if (committed) {
+                    cur.dayHigh = Math.max(cur.dayHigh, data[i].h);
+                    cur.dayLow = Math.min(cur.dayLow, data[i].l);
+                }
+            }
+            if (i === n - 2) {
+                st.j = i;
+                st.tJ = data[i].t;
+                st.currentDay = cur.currentDay;
+                st.dayHigh = cur.dayHigh;
+                st.dayLow = cur.dayLow;
+                st.dailyRanges = cur.ranges;
+            }
+        }
+        st.result = result;
+        return result;
+    }
+
+    /**
+     * I-b: sessions is pure per-bar (depends only on bar.t), so an append-only
+     * pass computes ONLY the new bars and reuses the prior perCandle prefix.
+     */
+    function _m19iSessionsCalc(chart, indicator) {
+        var payload = sessionsCalcPayload(indicator);
+        if (!_m19iSyncOnlyTailEnabled()) {
+            return calculateSessions(chart.data, payload);
+        }
+        var data = chart.data;
+        var n = data.length;
+        var sig;
+        try { sig = JSON.stringify(payload); } catch (_) { sig = null; }
+        var stMap = _m19iState(chart);
+        var st = sig ? stMap['sess:' + indicator.id] : null;
+        var prev = chart.indicators.data[indicator.id];
+        if (st && st.sig === sig && prev && st.result === prev
+            && Array.isArray(prev.perCandle)
+            && st.len <= n && st.len > 0
+            && data[st.len - 1] && data[st.len - 1].t === st.lastT) {
+            var defs = prev.defs;
+            for (var i = st.len; i < n; i++) {
+                var dec = sessionWallDecimal(data[i].t, prev.timezone);
+                var candleSessions = [];
+                for (var d = 0; d < defs.length; d++) {
+                    var sd = defs[d];
+                    if (isInSessionDecimal(dec, sd)) {
+                        candleSessions.push({ type: sd.key, name: sd.name, color: sd.color });
+                    }
+                }
+                prev.perCandle.push(candleSessions);
+            }
+            if (prev.perCandle.length > n) prev.perCandle.length = n;
+            st.len = n;
+            st.lastT = n ? data[n - 1].t : null;
+            return prev;
+        }
+        var full = calculateSessions(data, payload);
+        if (sig) {
+            stMap['sess:' + indicator.id] = {
+                sig: sig,
+                len: n,
+                lastT: n ? data[n - 1].t : null,
+                result: full
+            };
+        }
+        return full;
+    }
+
+    /**
+     * I-b: ictfvg boxes are stateless 3-candle detections extended by a fixed
+     * bar count. Recompute only the window that new bars can affect and keep
+     * earlier (provably stable) boxes from the prior result.
+     */
+    function _m19iIctFvgCalc(chart, indicator) {
+        var params = {
+            extendBars: indicator.params.extendBars,
+            maxBoxes: indicator.params.maxBoxes,
+            minGapPct: indicator.params.minGapPct
+        };
+        if (!_m19iSyncOnlyTailEnabled()) {
+            return calculateFairValueGaps(chart.data, params);
+        }
+        var data = chart.data;
+        var n = data.length;
+        var extendBars = params.extendBars != null ? params.extendBars : 80;
+        var maxBoxes = Math.min(400, Math.max(8, params.maxBoxes != null ? params.maxBoxes : 120));
+        var sig;
+        try { sig = JSON.stringify(params); } catch (_) { sig = null; }
+        var stMap = _m19iState(chart);
+        var st = sig ? stMap['ictfvg:' + indicator.id] : null;
+        var prev = chart.indicators.data[indicator.id];
+        var w0 = st ? Math.max(0, st.len - extendBars - 3) : 0;
+        if (st && st.sig === sig && prev && st.result === prev
+            && Array.isArray(prev.boxes)
+            && st.len >= 3 && st.len <= n
+            && data[st.len - 1] && data[st.len - 1].t === st.lastT
+            && data[st.len - 1].c === st.lastC
+            && w0 > 0) {
+            var tailBoxes = calculateFairValueGaps(data.slice(w0), params).boxes;
+            var merged = [];
+            var pb = prev.boxes;
+            for (var i = 0; i < pb.length; i++) {
+                if (pb[i].startIndex < w0) merged.push(pb[i]);
+            }
+            for (var j = 0; j < tailBoxes.length; j++) {
+                var b = tailBoxes[j];
+                merged.push({
+                    startIndex: b.startIndex + w0,
+                    endIndex: Math.min(n - 1, b.endIndex + w0),
+                    top: b.top,
+                    bottom: b.bottom,
+                    bullish: b.bullish
+                });
+            }
+            var out = { boxes: merged.length > maxBoxes ? merged.slice(-maxBoxes) : merged };
+            stMap['ictfvg:' + indicator.id] = {
+                sig: sig,
+                len: n,
+                lastT: data[n - 1].t,
+                lastC: data[n - 1].c,
+                result: out
+            };
+            return out;
+        }
+        var full = calculateFairValueGaps(data, params);
+        if (sig && n >= 3) {
+            stMap['ictfvg:' + indicator.id] = {
+                sig: sig,
+                len: n,
+                lastT: data[n - 1].t,
+                lastC: data[n - 1].c,
+                result: full
+            };
+        }
+        return full;
+    }
+
+    /** I-b: talariafvg via the module's checkpoint/resume engine. */
+    function _m19iTalariaFvgCalc(chart, indicator) {
+        var mod = global.TalariaFvgIndicator;
+        if (!_m19iSyncOnlyTailEnabled()
+            || !mod || typeof mod.calculateResumable !== 'function') {
+            return calculateTalariaFvgIndicator(chart.data, indicator, chart);
+        }
+        var ctx = {
+            resample: typeof chart.resampleData === 'function' ? chart.resampleData.bind(chart) : null,
+            rawData: Array.isArray(chart.rawData) ? chart.rawData : chart.data,
+            currentTimeframe: chart.currentTimeframe
+        };
+        var stMap = _m19iState(chart);
+        var prevCp = stMap['fvg:' + indicator.id] || null;
+        var rr = mod.calculateResumable(chart.data, indicator.params, ctx, prevCp);
+        stMap['fvg:' + indicator.id] = rr.checkpoint;
+        return rr.result;
+    }
+
+    /**
+     * M19-I(d): reasons whose force:true must bypass the identical-state
+     * dedupe. These change indicator OUTPUT without changing the snapshot
+     * fields (timezone) or replace data wholesale where a fingerprint of the
+     * last bar is not proof enough. Everything else dedupes on identical
+     * state: TF / params / data replacement still invalidate through the
+     * snapshot fields themselves.
+     */
+    var M19I_FORCE_INVALIDATING_REASONS = [
+        'timezone', 'backtest-tf', 'data-defer', 'replay-restore',
+        'tf-change', 'timeframe-change', 'param-change', 'params-change',
+        'data-replace', 'indicator-add', 'indicator-remove',
+        'symbol-change', 'file-change'
+    ];
+
     Chart.prototype.scheduleIndicatorRecalc = function(reason, opts) {
         opts = opts || {};
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
@@ -8437,7 +8929,14 @@
         const dataFp = _indicatorDataFingerprint(this);
         const snap = this._indCalcSnapshot;
 
-        if (!opts.force && snap
+        // I-d: force only bypasses dedupe for genuinely invalidating reasons.
+        let honorForce = !!opts.force;
+        if (honorForce && _m19iForceDedupeEnabled()
+            && M19I_FORCE_INVALIDATING_REASONS.indexOf(String(reason || '')) < 0) {
+            honorForce = false;
+        }
+
+        if (!honorForce && snap
             && snap.barCount === barCount
             && snap.dataVersion === dataVersion
             && snap.paramsHash === paramsHash
@@ -8553,7 +9052,20 @@
             this._indicatorWorkerCoalesce = false;
             this._sessionIndReplayFp = null;
             this._recalcSkipTypes = null;
-            if (typeof this.recalculateIndicators === 'function') {
+            // I-d: repeated pause/step/restore with byte-identical state
+            // dedupes the full sync; any data/param/TF delta still recomputes.
+            var skipPauseSync = false;
+            if (_m19iForceDedupeEnabled()) {
+                var pSnap = this._indCalcSnapshot;
+                skipPauseSync = !!(pSnap
+                    && pSnap.barCount === this.data.length
+                    && pSnap.dataVersion === (this.dataVersion != null ? this.dataVersion : 0)
+                    && pSnap.paramsHash === this._indicatorParamsHash()
+                    && pSnap.timeframe === String(this.currentTimeframe || '')
+                    && pSnap.dataFp === _indicatorDataFingerprint(this)
+                    && _replayIndicatorsReady(this));
+            }
+            if (!skipPauseSync && typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_) {}
             }
             pinReplayLegendHoverBeforeRecalc(this);
@@ -8573,8 +9085,14 @@
             if (!chart.indicators || !chart.indicators.active || !chart.indicators.active.length) return;
             if (!Array.isArray(chart.data) || !chart.data.length) return;
             if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
-            chart._indicatorWorkerSeq++;
-            chart._indicatorWorkerCoalesce = false;
+            const tailSend = _m19iTailSendEnabled();
+            if (!tailSend) {
+                // b57 legacy: invalidate any in-flight worker pass every frame.
+                // The tail path instead guards commits by exact array length +
+                // timeframe, so responses posted this bar may still land.
+                chart._indicatorWorkerSeq++;
+                chart._indicatorWorkerCoalesce = false;
+            }
 
             // Same bar → keep prior indicator arrays; only re-render / legend.
             // Applies to ALL indicators (not only Sessions/Talaria).
@@ -8591,15 +9109,40 @@
             }
 
             if (!skipAllRecalc) {
-                try {
-                    if (typeof chart.recalculateIndicators === 'function') {
-                        chart._recalcSkipTypes = null;
-                        try { chart.recalculateIndicators(); } finally {
-                            chart._recalcSkipTypes = null;
+                // I-a/I-b/I-c: steady play routes bar advances through the
+                // bounded incremental pipeline instead of a full O(history)
+                // synchronous rescan of every indicator.
+                let usedTail = false;
+                if (tailSend && typeof chart.recalculateIndicatorsIncremental === 'function') {
+                    const tSnap = chart._indCalcSnapshot;
+                    const barCount = chart.data.length;
+                    if (tSnap
+                        && tSnap.timeframe === String(chart.currentTimeframe || '')
+                        && tSnap.paramsHash === chart._indicatorParamsHash()
+                        && barCount >= tSnap.barCount
+                        && (barCount - tSnap.barCount) <= 64
+                        && _replayIndicatorsReady(chart)) {
+                        try {
+                            chart.recalculateIndicatorsIncremental(tSnap.barCount);
+                            usedTail = true;
+                        } catch (_) {
+                            usedTail = false;
                         }
                     }
-                } catch (_) {
-                    chart._recalcSkipTypes = null;
+                }
+                if (!usedTail) {
+                    // Baseline / seek / self-heal: one full synchronous pass
+                    // re-anchors every indicator and the dedupe snapshot.
+                    try {
+                        if (typeof chart.recalculateIndicators === 'function') {
+                            chart._recalcSkipTypes = null;
+                            try { chart.recalculateIndicators(); } finally {
+                                chart._recalcSkipTypes = null;
+                            }
+                        }
+                    } catch (_) {
+                        chart._recalcSkipTypes = null;
+                    }
                 }
             }
             pinReplayLegendHoverBeforeRecalc(chart);
@@ -8645,12 +9188,65 @@
         }
     };
 
-    Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq, calcToken) {
+    Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq, calcToken, tailMeta) {
         const chart = this;
         if (chart._indicatorWorkerSeq !== mySeq) return;
-        if (!_indicatorAsyncTokenMatches(chart, calcToken)) return;
+
+        // M19-I(a): a tail commit uses a relaxed guard — the strict data token
+        // (dataVersion/last-bar fingerprint) churns every replay advance, but a
+        // tail merge is only valid for the exact array length it was computed
+        // against, on the same timeframe. Any TF switch / data replacement
+        // bumps _indicatorWorkerSeq (M19-H) and is rejected above.
+        if (tailMeta) {
+            if (!Array.isArray(chart.data)
+                || chart.data.length !== tailMeta.totalLength
+                || String(chart.currentTimeframe || '') !== tailMeta.timeframe) {
+                return;
+            }
+        } else if (!_indicatorAsyncTokenMatches(chart, calcToken)) {
+            return;
+        }
         if (!chart.indicators) chart.indicators = {};
         if (!chart.indicators.data) chart.indicators.data = {};
+
+        if (tailMeta) {
+            const perf = global.IndicatorPerf;
+            const mergeWindow = perf && typeof perf.mergeIndicatorTailWindow === 'function'
+                ? perf.mergeIndicatorTailWindow
+                : null;
+            let mergeFailed = false;
+            Object.keys(results).forEach(function(indId) {
+                const merged = mergeWindow
+                    ? mergeWindow(
+                        chart.indicators.data[indId],
+                        results[indId],
+                        tailMeta.tailStart,
+                        tailMeta.fromIndex,
+                        tailMeta.totalLength
+                    )
+                    : null;
+                if (merged != null) {
+                    chart.indicators.data[indId] = merged;
+                } else {
+                    mergeFailed = true;
+                }
+            });
+            if (mergeFailed) {
+                // Shape mismatch (first pass for an indicator, param edit race…):
+                // schedule one full worker pass to rebuild clean baselines.
+                chart._m19iCoalesceFullAsync = true;
+                chart._indicatorWorkerCoalesce = true;
+            } else if (tailMeta.markComplete
+                && typeof chart._markIndicatorRecalcComplete === 'function') {
+                chart._markIndicatorRecalcComplete();
+            }
+            if (typeof chart._clearIndicatorCalculatingFlags === 'function') {
+                chart._clearIndicatorCalculatingFlags();
+            }
+            chart.bumpIndicatorRenderVersion();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            return;
+        }
 
         Object.assign(chart.indicators.data, results);
         chart.indicators.active.forEach(function(ind) {
@@ -8660,7 +9256,10 @@
             } else if (t === 'adr') {
                 try { recalcAdrIndicator(chart, ind); } catch (_) {}
             } else if (t === 'dema' || t === 'tema' || t === 'hma') {
-                try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                // I-c: the worker already computed these series in this pass.
+                if (!(_m19iWorkerPortEnabled() && results && results[ind.id] != null)) {
+                    try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                }
             } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
                 const base = chart.indicators.data[ind.id];
                 if (base) {
@@ -8696,7 +9295,10 @@
             } else if (t === 'adr') {
                 try { recalcAdrIndicator(chart, ind); } catch (_) {}
             } else if (t === 'dema' || t === 'tema' || t === 'hma') {
-                try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                // I-c: the worker already computed these series in this pass.
+                if (!(_m19iWorkerPortEnabled() && pending.results[ind.id] != null)) {
+                    try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                }
             } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
                 const base = chart.indicators.data[ind.id];
                 if (base) {
@@ -8767,6 +9369,221 @@
     };
 
     Chart.prototype.recalculateIndicatorsIncremental = function(fromBarCount) {
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+        if (!_m19iTailSendEnabled()) {
+            return this._recalculateIndicatorsIncrementalLegacy(fromBarCount);
+        }
+
+        const chart = this;
+        if (chart._indicatorWorkerBusy) {
+            chart._indicatorWorkerCoalesce = true;
+            return;
+        }
+        chart._indicatorWorkerBusy = true;
+        chart._indicatorWorkerCoalesce = false;
+
+        function finishIncrementalPass() {
+            chart._indicatorWorkerBusy = false;
+            var again = chart._indicatorWorkerCoalesce;
+            var wantFull = chart._m19iCoalesceFullAsync === true;
+            chart._indicatorWorkerCoalesce = false;
+            chart._m19iCoalesceFullAsync = false;
+            if (wantFull) {
+                if (typeof chart.recalculateIndicatorsAsync === 'function') {
+                    try { chart.recalculateIndicatorsAsync(); } catch (_) {}
+                } else if (typeof chart.recalculateIndicators === 'function') {
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            } else if (again && typeof chart._runIndicatorRecalc === 'function') {
+                // A coalesced request re-routes through the scheduler so replay
+                // play / paused / live paths each take their correct pipeline.
+                try { chart._runIndicatorRecalc({ force: false }); } catch (_) {}
+            }
+        }
+
+        // Drop stale continuation state for removed indicators (id-keyed).
+        if (chart._m19iIndState) {
+            var activeIds = {};
+            chart.indicators.active.forEach(function(ind) { if (ind && ind.id) activeIds[String(ind.id)] = true; });
+            Object.keys(chart._m19iIndState).forEach(function(key) {
+                var sep = key.indexOf(':');
+                if (sep >= 0 && !activeIds[key.slice(sep + 1)]) delete chart._m19iIndState[key];
+            });
+        }
+
+        const perf = global.IndicatorPerf;
+        const totalLen = chart.data.length;
+        const lookback = perf && typeof perf.estimateTailLookback === 'function'
+            ? perf.estimateTailLookback(this.indicators.active)
+            : 256;
+        // Refresh margin: the previously-forming bar finalizes on advance, so
+        // merge from two bars before the old count; warmup extends behind it.
+        const mergeFrom = Math.max(0, Math.min(fromBarCount | 0, totalLen) - 2);
+        const tailStart = Math.max(0, mergeFrom - lookback);
+        const worker = _getIndicatorWorker();
+
+        if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
+        const mySeq = ++chart._indicatorWorkerSeq;
+
+        // 1) Sync-only structural overlays (I-b bounds the covered types via
+        //    checkpoint/patch caches inside their calculators).
+        var needsSyncOnly = chart.indicators.active.some(function(ind) {
+            return M19I_SYNC_ONLY_TYPES.indexOf(String(ind.type || '').toLowerCase()) >= 0;
+        });
+        if (needsSyncOnly) {
+            try {
+                chart._recalcOnlyTypes = M19I_SYNC_ONLY_TYPES;
+                chart.recalculateIndicators();
+            } catch (_) {}
+            chart._recalcOnlyTypes = null;
+        }
+
+        // 2) I-c stateful main-thread continuations + trivial types. In the
+        //    legacy path supertrend/adr silently went stale on append passes.
+        var uncovered = [];
+        var didStateful = false;
+        chart.indicators.active.forEach(function(ind) {
+            var t = String(ind.type || '').toLowerCase();
+            if (M19I_SYNC_ONLY_TYPES.indexOf(t) >= 0) return;
+            if (t === 'volume') {
+                chart.indicators.data[ind.id] = { active: true };
+                return;
+            }
+            if (t === 'custom') {
+                if (typeof chart._scheduleCustomIndicatorCompute === 'function') {
+                    try { chart._scheduleCustomIndicatorCompute(ind); } catch (_) {}
+                }
+                return;
+            }
+            if (_m19iWorkerPortEnabled()) {
+                if (t === 'supertrend') {
+                    try { recalcSupertrendOverlay(chart, ind); didStateful = true; } catch (_) {}
+                    return;
+                }
+                if (t === 'adr') {
+                    try { recalcAdrIndicator(chart, ind); didStateful = true; } catch (_) {}
+                    return;
+                }
+            }
+        });
+
+        // 3) Worker-eligible tail map.
+        const indicators = {};
+        var needsFullAsync = false;
+        const skipTypes = _m19iWorkerSkipTypes();
+        chart.indicators.active.forEach(function(ind) {
+            const indType = String(ind.type || '').toLowerCase();
+            if (indType === 'volume' || indType === 'custom') return;
+            if (skipTypes.indexOf(indType) >= 0) {
+                if (M19I_SYNC_ONLY_TYPES.indexOf(indType) < 0
+                    && indType !== 'supertrend' && indType !== 'adr') {
+                    uncovered.push(indType);
+                }
+                return;
+            }
+            if (!_m19iIndicatorTailSafe(ind)) {
+                // Cumulative/whole-history types must take a full worker pass.
+                needsFullAsync = true;
+                return;
+            }
+            if (indType === 'dema' || indType === 'tema' || indType === 'hma') {
+                // Worker returns the series; keep overlay metadata current.
+                ind.overlay = true;
+                ind.separatePanel = false;
+                var mp = ind.params && ind.params.period != null ? Math.max(1, Number(ind.params.period) | 0) : 20;
+                ind.name = indType.toUpperCase() + '(' + mp + ')';
+            }
+            indicators[ind.id] = { type: indType, params: ind.params || {} };
+        });
+
+        // Legacy worker-skip types (I-c OFF) stay stale on this pass exactly
+        // like b57; a later full recalc refreshes them.
+        var coverageComplete = uncovered.length === 0 && !needsFullAsync;
+        if (needsFullAsync) chart._m19iCoalesceFullAsync = true;
+
+        if (Object.keys(indicators).length === 0) {
+            finishIncrementalPass();
+            if (!needsSyncOnly && !didStateful && !needsFullAsync) {
+                try { chart.recalculateIndicators(); } catch (_) {}
+            } else if (coverageComplete
+                && typeof chart._markIndicatorRecalcComplete === 'function') {
+                try { chart._markIndicatorRecalcComplete(); } catch (_) {}
+            }
+            if (typeof chart.bumpIndicatorRenderVersion === 'function') {
+                try { chart.bumpIndicatorRenderVersion(); } catch (_) {}
+            }
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            return;
+        }
+
+        if (!worker) {
+            finishIncrementalPass();
+            try { chart.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+
+        // 4) O(tail) pack of bars[tailStart..n) — ownership moves to the worker
+        //    via the transfer list, so nothing is cloned.
+        const packed = perf && typeof perf.packBarsRangeCompact === 'function'
+            ? perf.packBarsRangeCompact(chart.data, tailStart, totalLen)
+            : null;
+        const id = _workerNextId++;
+        const tailMeta = {
+            tailStart: tailStart,
+            fromIndex: mergeFrom,
+            totalLength: totalLen,
+            markComplete: coverageComplete,
+            timeframe: String(chart.currentTimeframe || '')
+        };
+
+        new Promise(function(resolve, reject) {
+            _workerPending.set(id, { resolve: resolve, reject: reject });
+            const message = {
+                type: 'CALCULATE_TAIL',
+                id: id,
+                payload: {
+                    barsPacked: packed,
+                    bars: packed ? null : chart.data.slice(tailStart),
+                    tailStart: tailStart,
+                    fromIndex: mergeFrom,
+                    lookback: lookback,
+                    totalLength: totalLen,
+                    indicators: indicators
+                }
+            };
+            if (packed && packed.buffer) {
+                worker.postMessage(message, [packed.buffer]);
+            } else {
+                worker.postMessage(message);
+            }
+        }).then(function(results) {
+            if (chart._indicatorWorkerSeq !== mySeq) {
+                finishIncrementalPass();
+                return;
+            }
+            if (typeof chart._applyIndicatorWorkerResults === 'function') {
+                chart._applyIndicatorWorkerResults(results, mySeq, null, tailMeta);
+            }
+            finishIncrementalPass();
+        }).catch(function() {
+            if (chart._indicatorWorkerSeq !== mySeq) {
+                finishIncrementalPass();
+                return;
+            }
+            try { chart.recalculateIndicatorsAsync(); } catch (_) {
+                try { chart.recalculateIndicators(); } catch (_2) {}
+            }
+            finishIncrementalPass();
+        });
+    };
+
+    /**
+     * b57 legacy incremental path, preserved verbatim for the I-a kill switch
+     * (__TALARIA_DISABLE_M19I_TAIL_SEND_V1): O(history) full-array pack posted
+     * with an EMPTY transfer list (structured clone per pass).
+     */
+    Chart.prototype._recalculateIndicatorsIncrementalLegacy = function(fromBarCount) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
 
@@ -9010,14 +9827,16 @@
                 case 'adr':
                     indicator.params.period = Math.max(1, parseInt(indicator.params.period, 10) || 14);
                     indicator.name = 'ADR(' + indicator.params.period + ')';
-                    this.indicators.data[indicator.id] = calculateADR(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = _m19iWorkerPortEnabled()
+                        ? _m19iAdrIncremental(this, indicator)
+                        : calculateADR(this.data, indicator.params.period);
                     break;
                 case 'volume':
                     // Volume data comes from candle data, no recalculation needed
                     this.indicators.data[indicator.id] = { active: true };
                     break;
                 case 'sessions':
-                    this.indicators.data[indicator.id] = calculateSessions(this.data, sessionsCalcPayload(indicator));
+                    this.indicators.data[indicator.id] = _m19iSessionsCalc(this, indicator);
                     break;
                 case 'killzones':
                 case 'ictkz':
@@ -9129,7 +9948,9 @@
                     this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                     break;
                 case 'supertrend':
-                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                    this.indicators.data[indicator.id] = _m19iWorkerPortEnabled()
+                        ? _m19iSupertrendIncremental(this, indicator)
+                        : calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
                     break;
                 case 'stddev':
                     this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -9206,11 +10027,7 @@
                     );
                     break;
                 case 'ictfvg':
-                    this.indicators.data[indicator.id] = calculateFairValueGaps(this.data, {
-                        extendBars: indicator.params.extendBars,
-                        maxBoxes: indicator.params.maxBoxes,
-                        minGapPct: indicator.params.minGapPct
-                    });
+                    this.indicators.data[indicator.id] = _m19iIctFvgCalc(this, indicator);
                     break;
                 case 'ictsesspd':
                     this.indicators.data[indicator.id] = calculateIctSessionPrevDayPD(this.data, {
@@ -9232,7 +10049,7 @@
                     this.indicators.data[indicator.id] = calculateIctEverything(this.data, indicator);
                     break;
                 case 'talariafvg':
-                    this.indicators.data[indicator.id] = calculateTalariaFvgIndicator(this.data, indicator, this);
+                    this.indicators.data[indicator.id] = _m19iTalariaFvgCalc(this, indicator);
                     break;
                 case 'talariaratiogap':
                     this.indicators.data[indicator.id] = calculateTalariaRatioGapIndicator(this.data, indicator);
@@ -9256,7 +10073,9 @@
         } else if (typeof this._setAllIndicatorsCalculating === 'function') {
             this._setAllIndicatorsCalculating(false);
         }
-        if (typeof this._markIndicatorRecalcComplete === 'function') {
+        // M19-I(d): a filtered pass (onlyTypes/skipTypes) leaves other
+        // indicators stale — it must NOT mark the dedupe snapshot complete.
+        if (!onlyTypes && !skipTypes && typeof this._markIndicatorRecalcComplete === 'function') {
             this._markIndicatorRecalcComplete();
         }
         if (typeof this.bumpIndicatorRenderVersion === 'function') {

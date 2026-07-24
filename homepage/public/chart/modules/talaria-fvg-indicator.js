@@ -144,25 +144,7 @@
         st.preview = null;
     }
 
-    function calculateTalariaFvg(data, params, ctx) {
-        var p = mergeParams(params);
-        var chartData = Array.isArray(data) ? data : [];
-        var n = chartData.length;
-        if (n < 3) return { boxes: [], dayLines: [], midLines: [], previews: [] };
-
-        var chartTf = ctx && ctx.currentTimeframe ? ctx.currentTimeframe : '5m';
-        var chartMs = tfToMs(chartTf);
-        if (chartMs >= tfToMs('1d')) return { boxes: [], dayLines: [], midLines: [], previews: [] };
-
-        var ok5 = chartMs <= tfToMs('5m');
-        var ok15 = chartMs <= tfToMs('15m');
-        var ok30 = chartMs <= tfToMs('30m');
-        var atrLen = Math.max(1, Math.floor(Number(p.atrLen) || 14));
-        var removeAtDayEnd = String(p.dayEnd).indexOf('remove') >= 0;
-        var maxLive = Math.max(10, Math.min(400, Number(p.maxLive) || 150));
-        var padBars = Math.max(3, Math.min(40, Number(p.padBars) || 10));
-        var livePrev = p.livePrev !== false;
-
+    function makeInitialFvgState(p, ok5, ok15, ok30) {
         var streams = [];
         if (p.on5 && ok5) {
             streams.push(makeStreamState({
@@ -185,13 +167,47 @@
                 bullFill: p.cB30f, bearFill: p.cR30f, firstFill: p.cF30
             }));
         }
+        return {
+            streams: streams,
+            live: [],
+            frozen: [],
+            dayLines: [],
+            dayStartT: null,
+            prevDayKey: null,
+            laneCounter: 0
+        };
+    }
 
-        var live = [];
-        var frozen = [];
-        var dayLines = [];
-        var dayStartT = null;
-        var prevDayKey = null;
-        var laneCounter = 0;
+    /**
+     * M19-I(b): deep-enough clone for checkpoint/resume. Stream + live box
+     * objects are mutated bar-by-bar and must be copied; frozen boxes and
+     * dayLine entries are immutable after push so the array copy suffices.
+     */
+    function cloneFvgState(S) {
+        return {
+            streams: S.streams.map(function (st) { return Object.assign({}, st); }),
+            live: S.live.map(function (b) { return Object.assign({}, b); }),
+            frozen: S.frozen.slice(),
+            dayLines: S.dayLines.slice(),
+            dayStartT: S.dayStartT,
+            prevDayKey: S.prevDayKey,
+            laneCounter: S.laneCounter
+        };
+    }
+
+    /**
+     * Core engine. Processes bars [startI..endI] of chartData against state S
+     * (mutating it); bars at index <= confirmedThrough are confirmed, later
+     * bars are forming. Bar-by-bar behavior is IDENTICAL to the original
+     * single-pass loop; only the state container changed so steady replay can
+     * resume from the last confirmed bar instead of rescanning full history.
+     */
+    function runTalariaFvgBars(S, chartData, startI, endI, confirmedThrough, p, chartMs) {
+        var n = chartData.length;
+        var atrLen = Math.max(1, Math.floor(Number(p.atrLen) || 14));
+        var removeAtDayEnd = String(p.dayEnd).indexOf('remove') >= 0;
+        var maxLive = Math.max(10, Math.min(400, Number(p.maxLive) || 150));
+        var livePrev = p.livePrev !== false;
 
         function indexAtOrBefore(t) {
             var lo = 0, hi = n - 1, ans = 0;
@@ -203,11 +219,11 @@
             return ans;
         }
 
-        function killAt(idx) { live.splice(idx, 1); }
+        function killAt(idx) { S.live.splice(idx, 1); }
 
         function freezeAt(idx, rightIndex) {
-            var b = live[idx];
-            frozen.push({
+            var b = S.live[idx];
+            S.frozen.push({
                 startIndex: b.startIndex,
                 endIndex: rightIndex,
                 top: b.top,
@@ -219,11 +235,11 @@
                 showMid: !!p.showMid,
                 provisional: false
             });
-            live.splice(idx, 1);
+            S.live.splice(idx, 1);
         }
 
         function spawn(leftT, top, bot, dir, isFirst, tg, cBg, cFirstBg, barIndex) {
-            live.push({
+            S.live.push({
                 startIndex: Math.max(0, indexAtOrBefore(leftT)),
                 endIndex: barIndex,
                 top: Math.max(top, bot),
@@ -232,8 +248,8 @@
                 tagged: tg !== '',
                 tag: tg,
                 fillColor: isFirst ? cFirstBg : cBg,
-                birthDay: dayStartT,
-                lane: tg !== '' ? (laneCounter++ % 5) : 0
+                birthDay: S.dayStartT,
+                lane: tg !== '' ? (S.laneCounter++ % 5) : 0
             });
         }
 
@@ -253,8 +269,8 @@
             var bearGap = st.cH3 < st.cL1;
             var sz = bullGap ? (st.cL3 - st.cH1) : bearGap ? (st.cL1 - st.cH3) : null;
             var qual = sz != null && (st.mult === 0 || (st.atrV != null && sz >= st.mult * st.atrV));
-            var oldDay = dayStartT != null && st.cT3 < dayStartT;
-            var c1Today = dayStartT != null && st.cT1 >= dayStartT;
+            var oldDay = S.dayStartT != null && st.cT3 < S.dayStartT;
+            var c1Today = S.dayStartT != null && st.cT1 >= S.dayStartT;
             var isFirst = (bullGap || bearGap) && c1Today && !st.firstDone && st.tagFirst;
             if (isFirst) st.firstDone = true;
             var tg = isFirst
@@ -263,11 +279,11 @@
 
             if (bullGap && (qual || isFirst) && !(oldDay && removeAtDayEnd)) {
                 spawn(st.cT2, st.cL3, st.cH1, 1, isFirst, tg, st.bullFill, st.firstFill, barIndex);
-                if (oldDay) freezeAt(live.length - 1, indexAtOrBefore(dayStartT));
+                if (oldDay) freezeAt(S.live.length - 1, indexAtOrBefore(S.dayStartT));
             }
             if (bearGap && (qual || isFirst) && !(oldDay && removeAtDayEnd)) {
                 spawn(st.cT2, st.cL1, st.cH3, -1, isFirst, tg, st.bearFill, st.firstFill, barIndex);
-                if (oldDay) freezeAt(live.length - 1, indexAtOrBefore(dayStartT));
+                if (oldDay) freezeAt(S.live.length - 1, indexAtOrBefore(S.dayStartT));
             }
         }
 
@@ -318,7 +334,7 @@
                     var pBot = pBull ? st.cH2 : st.runH;
                     var pSz = pTop - pBot;
                     var pQual = st.mult === 0 || (st.atrV != null && pSz >= st.mult * st.atrV);
-                    var pFirst = st.tagFirst && !st.firstDone && dayStartT != null && st.cT2 >= dayStartT;
+                    var pFirst = st.tagFirst && !st.firstDone && S.dayStartT != null && st.cT2 >= S.dayStartT;
                     if (pQual || pFirst) {
                         st.preview = {
                             startIndex: indexAtOrBefore(st.cT3 != null ? st.cT3 : st.runT),
@@ -335,48 +351,48 @@
             }
         }
 
-        for (var i = 0; i < n; i++) {
+        var stopI = Math.min(n - 1, endI | 0);
+        for (var i = Math.max(0, startI | 0); i <= stopI; i++) {
             var bar = chartData[i];
             var dayKey = sessionDayKey(bar.t);
-            var newDay = prevDayKey == null || dayKey !== prevDayKey;
-            var isLast = i === n - 1;
+            var newDay = S.prevDayKey == null || dayKey !== S.prevDayKey;
             // Mirror Pine barstate.isconfirmed: only the forming (last) bar is unconfirmed.
-            var isConfirmed = !isLast;
+            var isConfirmed = i <= confirmedThrough;
 
             if (newDay) {
-                dayStartT = bar.t;
-                if (p.showDayLn && prevDayKey != null) {
-                    dayLines.push({
+                S.dayStartT = bar.t;
+                if (p.showDayLn && S.prevDayKey != null) {
+                    S.dayLines.push({
                         index: i,
                         color: p.cDayLn,
                         style: p.sDayLn,
                         width: Number(p.wDayLn) || 1
                     });
-                    while (dayLines.length > Math.max(1, Number(p.keepDays) || 20)) dayLines.shift();
+                    while (S.dayLines.length > Math.max(1, Number(p.keepDays) || 20)) S.dayLines.shift();
                 }
                 // GATE 3a — rollover sweep
-                if (prevDayKey != null) {
-                    while (live.length > 0) {
+                if (S.prevDayKey != null) {
+                    while (S.live.length > 0) {
                         if (removeAtDayEnd) killAt(0);
                         else freezeAt(0, Math.max(0, i - 1));
                     }
-                    for (var rsi = 0; rsi < streams.length; rsi++) resetStreamDay(streams[rsi]);
+                    for (var rsi = 0; rsi < S.streams.length; rsi++) resetStreamDay(S.streams[rsi]);
                 }
-                prevDayKey = dayKey;
+                S.prevDayKey = dayKey;
             }
 
-            for (var s = 0; s < streams.length; s++) {
-                processStream(streams[s], bar, i, isConfirmed);
+            for (var s = 0; s < S.streams.length; s++) {
+                processStream(S.streams[s], bar, i, isConfirmed);
             }
 
             if (isConfirmed) {
-                var j = live.length - 1;
+                var j = S.live.length - 1;
                 while (j >= 0) {
-                    var b = live[j];
+                    var b = S.live[j];
                     // GATE 3b — birth-day check
-                    if (dayStartT != null && b.birthDay !== dayStartT) {
+                    if (S.dayStartT != null && b.birthDay !== S.dayStartT) {
                         if (removeAtDayEnd) killAt(j);
-                        else freezeAt(j, indexAtOrBefore(dayStartT));
+                        else freezeAt(j, indexAtOrBefore(S.dayStartT));
                     } else {
                         var top = b.top;
                         var bot = b.bottom;
@@ -397,15 +413,18 @@
                     }
                     j--;
                 }
-                while (live.length > maxLive) freezeAt(0, live[0].endIndex);
+                while (S.live.length > maxLive) freezeAt(0, S.live[0].endIndex);
             } else {
-                for (var k = 0; k < live.length; k++) live[k].endIndex = i;
+                for (var k = 0; k < S.live.length; k++) S.live[k].endIndex = i;
             }
         }
+    }
 
+    function buildTalariaFvgResult(S, n, p, chartMs) {
+        var padBars = Math.max(3, Math.min(40, Number(p.padBars) || 10));
         var last = n - 1;
-        var boxes = frozen.slice();
-        live.forEach(function (b) {
+        var boxes = S.frozen.slice();
+        S.live.forEach(function (b) {
             var endIdx = b.endIndex;
             if (b.tagged) endIdx = b.endIndex + (1 + (b.lane || 0)) * padBars;
             boxes.push({
@@ -435,19 +454,97 @@
         }
 
         var previews = [];
-        streams.forEach(function (st) {
+        S.streams.forEach(function (st) {
             if (st.preview) previews.push(st.preview);
         });
 
         return {
             boxes: boxes,
-            dayLines: dayLines,
+            dayLines: S.dayLines,
             midLines: midLines,
             previews: previews,
             txtColS: p.txtColS,
             txtSizeS: p.txtSizeS,
             padBars: padBars,
             chartMs: chartMs
+        };
+    }
+
+    function fvgParamsSignature(p, chartTf) {
+        try {
+            return String(chartTf || '') + '|' + JSON.stringify(p);
+        } catch (_) {
+            return String(chartTf || '');
+        }
+    }
+
+    function calculateTalariaFvg(data, params, ctx) {
+        return calculateTalariaFvgResumable(data, params, ctx, null).result;
+    }
+
+    /**
+     * M19-I(b): checkpoint/resume calculation for steady replay.
+     * The checkpoint captures the stream state after the last CONFIRMED bar
+     * (index n-2). The forming bar (n-1) is always processed on a clone, so a
+     * later pass can re-process it with its finalized OHLC. Any prefix/params/
+     * timeframe mismatch falls back to a full-history scan — identical output
+     * either way (regression-tested for parity with the single-pass engine).
+     */
+    function calculateTalariaFvgResumable(data, params, ctx, checkpoint) {
+        var p = mergeParams(params);
+        var chartData = Array.isArray(data) ? data : [];
+        var n = chartData.length;
+        var empty = { boxes: [], dayLines: [], midLines: [], previews: [] };
+        if (n < 3) return { result: empty, checkpoint: null };
+
+        var chartTf = ctx && ctx.currentTimeframe ? ctx.currentTimeframe : '5m';
+        var chartMs = tfToMs(chartTf);
+        if (chartMs >= tfToMs('1d')) return { result: empty, checkpoint: null };
+
+        var sig = fvgParamsSignature(p, chartTf);
+        var confirmedThrough = n - 2;
+
+        var S = null;
+        var startI = 0;
+        if (checkpoint
+            && checkpoint.sig === sig
+            && checkpoint.state
+            && checkpoint.confirmedThrough != null
+            && checkpoint.confirmedThrough <= confirmedThrough
+            && chartData[checkpoint.confirmedThrough]
+            && chartData[checkpoint.confirmedThrough].t === checkpoint.confirmedT
+            && chartData[checkpoint.confirmedThrough].c === checkpoint.confirmedC) {
+            S = cloneFvgState(checkpoint.state);
+            startI = checkpoint.confirmedThrough + 1;
+        }
+        if (!S) {
+            var ok5 = chartMs <= tfToMs('5m');
+            var ok15 = chartMs <= tfToMs('15m');
+            var ok30 = chartMs <= tfToMs('30m');
+            S = makeInitialFvgState(p, ok5, ok15, ok30);
+            startI = 0;
+        }
+
+        // Confirmed region first — this is the resumable prefix.
+        if (startI <= confirmedThrough) {
+            runTalariaFvgBars(S, chartData, startI, confirmedThrough, confirmedThrough, p, chartMs);
+        }
+
+        var nextCheckpoint = {
+            sig: sig,
+            confirmedThrough: confirmedThrough,
+            confirmedT: chartData[confirmedThrough].t,
+            confirmedC: chartData[confirmedThrough].c,
+            state: cloneFvgState(S)
+        };
+
+        // Forming bar runs on the committed state; the checkpoint keeps the
+        // pre-forming clone so the bar can be re-processed once confirmed.
+        runTalariaFvgBars(S, chartData, n - 1, n - 1, confirmedThrough, p, chartMs);
+
+        return {
+            result: buildTalariaFvgResult(S, n, p, chartMs),
+            checkpoint: nextCheckpoint
         };
     }
 
@@ -555,6 +652,7 @@
 
     global.TalariaFvgIndicator = {
         defaultParams: defaultParams,
-        calculate: calculateTalariaFvg
+        calculate: calculateTalariaFvg,
+        calculateResumable: calculateTalariaFvgResumable
     };
 })(typeof window !== 'undefined' ? window : this);

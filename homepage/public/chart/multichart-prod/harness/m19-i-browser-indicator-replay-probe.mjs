@@ -188,6 +188,19 @@ function installPreDocumentHooks() {
           };
 
           let userHandler = null;
+          // Delivery plumbing only (no acceptance-semantics change): the own-property
+          // accessor shadows Worker.prototype.onmessage, so the wrapped handler MUST
+          // be forwarded to the native IDL setter or the browser never registers a
+          // listener and every response is silently dropped (false RED for any engine).
+          const protoOnMessage = (() => {
+            let proto = Object.getPrototypeOf(w);
+            while (proto) {
+              const d = Object.getOwnPropertyDescriptor(proto, 'onmessage');
+              if (d && typeof d.set === 'function') return d;
+              proto = Object.getPrototypeOf(proto);
+            }
+            return null;
+          })();
           Object.defineProperty(w, 'onmessage', {
             configurable: true,
             enumerable: true,
@@ -212,6 +225,7 @@ function installPreDocumentHooks() {
                 } catch (_) {}
                 if (typeof fn === 'function') return fn.call(this, ev);
               };
+              if (protoOnMessage) protoOnMessage.set.call(w, userHandler);
             },
           });
           return w;
@@ -687,6 +701,15 @@ async function runPlayCadenceCheck(page, playMs) {
   }, playMs);
 }
 
+// Switch-OFF discriminator plumbing ONLY (no acceptance-semantics change):
+// M19_I_KILL_SWITCHES="__TALARIA_DISABLE_M19I_TAIL_SEND_V1,..." injects the named
+// window flags before any engine script so the SAME instrument reproduces each
+// legacy RED. Empty (default) = clean GREEN gate run.
+const KILL_SWITCHES = String(process.env.M19_I_KILL_SWITCHES || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 async function main() {
   const server = await startServer();
   const browser = await launchBrowser({ headful: false });
@@ -696,6 +719,8 @@ async function main() {
       pair: 'same',
       panels: 1,
       tf: '1m',
+      bug: KILL_SWITCHES.length > 0,
+      bugSwitches: KILL_SWITCHES.length ? KILL_SWITCHES : null,
       preDocument: installPreDocumentHooks(),
     });
     const { page } = boot;
@@ -890,6 +915,7 @@ async function main() {
     const result = {
       ticket: 'M19-I',
       scenario: 'one-panel / 90-day 1m feed / 100x continuous replay / 8 indicators / NO TF switches',
+      killSwitchesInjected: KILL_SWITCHES,
       buildId: setup.buildId,
       setup,
       measured: {

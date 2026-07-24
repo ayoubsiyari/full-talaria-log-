@@ -79,6 +79,29 @@
         return packed;
     }
 
+    /**
+     * M19-I(a): pack only bars[start..end) — O(tail) alloc for the windowed
+     * worker send instead of an O(history) full-array pack per pass.
+     */
+    function packBarsRangeCompact(bars, start, end) {
+        const n = bars ? bars.length : 0;
+        const s = Math.max(0, Math.min(n, start | 0));
+        const e = end == null ? n : Math.max(s, Math.min(n, end | 0));
+        const count = e - s;
+        const packed = new Float64Array(count * 6);
+        for (let i = 0; i < count; i++) {
+            const b = bars[s + i];
+            const o = i * 6;
+            packed[o] = b.t;
+            packed[o + 1] = b.o != null ? b.o : b.open;
+            packed[o + 2] = b.h != null ? b.h : b.high;
+            packed[o + 3] = b.l != null ? b.l : b.low;
+            packed[o + 4] = b.c != null ? b.c : b.close;
+            packed[o + 5] = b.v != null ? b.v : (b.volume != null ? b.volume : 0);
+        }
+        return packed;
+    }
+
     /** Restore [t,o,h,l,c,v] worker payloads to the chart's canonical bar shape. */
     function unpackBarsCompact(packed) {
         if (packed == null) return [];
@@ -143,9 +166,84 @@
             maxP = Math.max(maxP, Number(p.rsiPeriod) || 0);
             maxP = Math.max(maxP, Number(p.diLength) || 0);
             maxP = Math.max(maxP, Number(p.adxSmoothing) || 0);
+            // M19-I(a): cover the window params the original list missed so a
+            // tail recompute can never under-seed (ao/uo/stochrsi/coppock/…).
+            maxP = Math.max(maxP, Number(p.fastLength) || 0);
+            maxP = Math.max(maxP, Number(p.slowLength) || 0);
+            maxP = Math.max(maxP, Number(p.period1) || 0);
+            maxP = Math.max(maxP, Number(p.period2) || 0);
+            maxP = Math.max(maxP, Number(p.period3) || 0);
+            maxP = Math.max(maxP, Number(p.stochLen) || 0);
+            maxP = Math.max(maxP, Number(p.smoothK) || 0);
+            maxP = Math.max(maxP, Number(p.smoothD) || 0);
+            maxP = Math.max(maxP, Number(p.smoothingLength) || 0);
+            maxP = Math.max(maxP, Math.abs(Number(p.offset) || 0));
             if (t === 'macd' || t === 'ppo') maxP = Math.max(maxP, (Number(p.slow) || 26) + (Number(p.signal) || 9));
+            if (t === 'stochrsi') maxP = Math.max(maxP, (Number(p.rsiPeriod) || 14) + (Number(p.stochLen) || 14));
         });
         return Math.min(5000, Math.max(120, maxP * 4 + 64));
+    }
+
+    /**
+     * M19-I(a): merge a tail-window worker result (arrays are tail-length,
+     * aligned to bars[tailStart..totalLength)) into the existing full-length
+     * result. Values in [tailStart, fromIndex) are warmup-only and discarded.
+     * Returns the merged result, or null when shapes are incompatible and the
+     * caller must fall back to a full recompute for that indicator.
+     */
+    function mergeIndicatorTailWindow(existing, fresh, tailStart, fromIndex, totalLength) {
+        if (fresh == null) return null;
+        tailStart = Math.max(0, tailStart | 0);
+        fromIndex = Math.max(tailStart, fromIndex | 0);
+        totalLength = Math.max(0, totalLength | 0);
+        const tailLen = totalLength - tailStart;
+        if (tailLen <= 0) return null;
+
+        function patchArray(dst, src) {
+            if (!Array.isArray(dst) || !Array.isArray(src)) return null;
+            if (src.length !== tailLen) return null;
+            while (dst.length < totalLength) dst.push(null);
+            if (dst.length > totalLength) dst.length = totalLength;
+            for (let i = fromIndex; i < totalLength; i++) {
+                dst[i] = src[i - tailStart];
+            }
+            return dst;
+        }
+
+        if (Array.isArray(fresh)) {
+            if (!Array.isArray(existing)) {
+                // No prior full-length result to patch into — only safe when the
+                // tail covers the whole series.
+                return tailStart === 0 ? fresh : null;
+            }
+            return patchArray(existing, fresh) ? existing : null;
+        }
+
+        if (typeof existing === 'object' && existing !== null && typeof fresh === 'object') {
+            const keys = Object.keys(fresh);
+            for (let k = 0; k < keys.length; k++) {
+                const key = keys[k];
+                const src = fresh[key];
+                if (Array.isArray(src)) {
+                    if (src.length === tailLen && Array.isArray(existing[key])) {
+                        if (!patchArray(existing[key], src)) return null;
+                    } else if (src.length === tailLen && existing[key] == null && tailStart === 0) {
+                        existing[key] = src;
+                    } else if (src.length !== tailLen) {
+                        // Non-series array payloads (e.g. divergence/zones lists)
+                        // are index-based over the tail slice — unsafe to merge.
+                        return null;
+                    } else {
+                        return null;
+                    }
+                } else {
+                    existing[key] = src;
+                }
+            }
+            return existing;
+        }
+
+        return null;
     }
 
     function hashIndicatorParams(active) {
@@ -166,8 +264,10 @@
         rollingSmaFast: rollingSmaFast,
         rollingWmaFast: rollingWmaFast,
         packBarsCompact: packBarsCompact,
+        packBarsRangeCompact: packBarsRangeCompact,
         unpackBarsCompact: unpackBarsCompact,
         mergeIndicatorTail: mergeIndicatorTail,
+        mergeIndicatorTailWindow: mergeIndicatorTailWindow,
         estimateTailLookback: estimateTailLookback,
         hashIndicatorParams: hashIndicatorParams
     };

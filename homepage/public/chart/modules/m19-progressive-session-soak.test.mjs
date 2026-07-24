@@ -1725,8 +1725,6 @@ async function runM19IFocusEvidence() {
     parseError = String(err?.message || err);
   }
 
-  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-${buildId}-RED.json`);
-  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-${buildId}-RED.md`);
   const finishedAt = new Date().toISOString();
   const elapsedMs = performance.now() - t0;
 
@@ -1735,6 +1733,9 @@ async function runM19IFocusEvidence() {
   const isRed = verdict === 'M19-I-RED';
   const isGreen = verdict === 'M19-I-GREEN';
   const setupFail = verdict === 'SETUP-FAIL' || !probe || probe?.ticket !== 'M19-I';
+  const artifactTag = isGreen ? 'GREEN' : (isRed ? 'RED' : 'SETUP-FAIL');
+  const evidencePath = path.join(ROOT, `docs/plan3/evidence/L2-M19-I-${buildId}-${artifactTag}.json`);
+  const reportPath = path.join(ROOT, `docs/plan3/worker-reports/L2-M19-I-${buildId}-${artifactTag}.md`);
 
   const main = probe?.measured?.mainThreadMsSummary || {};
   const payload = probe?.asserts?.payloadOTail || {};
@@ -1759,7 +1760,7 @@ async function runM19IFocusEvidence() {
   const evidence = {
     row: 'L2-M19-I',
     title: 'Indicator replay compute budget — 8-indicator continuous replay',
-    task: 'M19-I-BASELINE-RED',
+    task: isGreen ? 'M19-I-ACCEPTANCE-GREEN' : (isRed ? 'M19-I-BASELINE-RED' : 'M19-I-SETUP-FAIL'),
     lane: 'Lane 2',
     model: 'Grok 4.5',
     startedAt: started,
@@ -1853,11 +1854,11 @@ async function runM19IFocusEvidence() {
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
 
-  const report = `# L2-M19-I — 8-indicator continuous-replay baseline (${buildId})
+  const report = `# L2-M19-I — 8-indicator continuous-replay ${isGreen ? 'GREEN review' : 'baseline'} (${buildId})
 
 **Verdict:** ${verdict}
 
-**Scope:** M1 / M19-I acceptance instrument only. No product edits. Not a live I15 UI verdict.
+**Scope:** M1 / M19-I acceptance ${isGreen ? 'review' : 'instrument'} only. No product edits. Not a live I15 UI / deployed milestone claim.
 
 **Signature:** Lane 2 / Grok 4.5
 

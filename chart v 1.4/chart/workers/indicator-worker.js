@@ -5,12 +5,17 @@
  * Extracted from chart-indicators-full.js.
  *
  * Messages IN:
- *   { type: 'CALCULATE_ALL', id, payload: { bars, barsPacked, indicators } }
- *   { type: 'CANCEL', id }
+ *   { type: 'CALCULATE_ALL',  id, payload: { bars, barsPacked, indicators } }
+ *   { type: 'CALCULATE_TAIL', id, payload: { bars, barsPacked, indicators,
+ *                                            tailStart, fromIndex, lookback, totalLength } }
+ *   { type: 'PING', id } / { type: 'CANCEL', id }
  *
  * Messages OUT:
- *   { type: 'ALL_RESULTS', id, results }          — success
+ *   { type: 'ALL_RESULTS', id, results[, tail] }   — success
  *   { type: 'ERROR',       id, error }             — failure
+ *
+ * Contract (M19-I): every inbound message receives exactly one reply so the
+ * main thread's busy/coalesce pipeline can never wedge on a silent drop.
  */
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
@@ -372,9 +377,9 @@ function calculateDEMA(data, period, source) {
     });
 }
 
-function calculateTEMA(data, period) {
+function calculateTEMA(data, period, source) {
     period = period || 20;
-    const source = 'close';
+    source = source || 'close';
     const e1 = calculateEMA(data, period, source);
     const p2 = pseudoBarsFromSeries(data, e1, source);
     const e2 = calculateEMA(p2, period, 'close');
@@ -1185,6 +1190,13 @@ function massIndexPeriodFromParams(params) {
 
 // ─── DISPATCH MAP ──────────────────────────────────────────────────────────
 
+/** Mirror of the main-thread calculateXOverlayData offset shift (M19-I(c) parity). */
+function calcShiftedOverlayLine(line, params) {
+    const offsetRaw = params && params.offset != null ? Number(params.offset) : 0;
+    const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+    return offset ? shiftLineSeries(line, offset) : line;
+}
+
 function calcIndicator(type, data, params) {
     if (!data || !data.length) return null;
     type = String(type || '').toLowerCase();
@@ -1192,9 +1204,9 @@ function calcIndicator(type, data, params) {
         case 'sma': return calculateSMAIndicatorData(data, params);
         case 'ema': return calculateEMAIndicatorData(data, params);
         case 'wma': return calculateWMAOverlayData(data, params);
-        case 'dema': return calculateDEMA(data, params.period, params.source || 'close');
-        case 'tema': return calculateTEMA(data, params.period);
-        case 'hma': return calculateHMA(data, params.period, params.source || 'close');
+        case 'dema': return calcShiftedOverlayLine(calculateDEMA(data, params.period, params.source || 'close'), params);
+        case 'tema': return calcShiftedOverlayLine(calculateTEMA(data, params.period, params.source || 'close'), params);
+        case 'hma': return calcShiftedOverlayLine(calculateHMA(data, params.period, params.source || 'close'), params);
         case 'bb': case 'bollinger': return calculateBollingerBands(data, params);
         case 'envelope': case 'smaenvelope': return calculateEnvelope(data, params.period, params.percent, params.source || 'close');
         case 'vwap': return calculateVWAPIndicatorData(data, params);
@@ -1270,7 +1282,60 @@ self.onmessage = function(e) {
         return;
     }
 
+    /**
+     * M19-I(a): windowed tail recompute. The payload carries ONLY
+     * bars[tailStart..totalLength) — lookback warmup plus the appended bars.
+     * Results are tail-length arrays; the main thread merges them from
+     * payload.fromIndex on (mergeIndicatorTailWindow) and discards warmup.
+     */
+    if (type === 'CALCULATE_TAIL') {
+        try {
+            const { indicators, barsPacked } = payload;
+            const bars = Array.isArray(payload.bars)
+                ? payload.bars
+                : unpackBarsCompact(barsPacked);
+            const results = {};
+            for (const [indId, cfg] of Object.entries(indicators)) {
+                try {
+                    results[indId] = calcIndicator(cfg.type, bars, cfg.params || {});
+                } catch (err) {
+                    results[indId] = null;
+                }
+            }
+            self.postMessage({
+                type: 'ALL_RESULTS',
+                id,
+                results,
+                tail: {
+                    tailStart: payload.tailStart | 0,
+                    fromIndex: payload.fromIndex | 0,
+                    lookback: payload.lookback | 0,
+                    totalLength: payload.totalLength | 0,
+                    tailBars: bars.length
+                }
+            });
+        } catch (err) {
+            self.postMessage({ type: 'ERROR', id, error: err.message });
+        }
+        return;
+    }
+
     if (type === 'PING') {
         self.postMessage({ type: 'PONG', id });
+        return;
     }
+
+    if (type === 'CANCEL') {
+        // No streaming work to abort; acknowledge so callers never wedge.
+        self.postMessage({ type: 'ERROR', id, error: 'cancelled' });
+        return;
+    }
+
+    // M19-I liveness hardening: EVERY message gets a reply. An unknown type
+    // must never leave the main thread's busy flag wedged again.
+    self.postMessage({
+        type: 'ERROR',
+        id: id != null ? id : null,
+        error: 'unknown message type: ' + String(type)
+    });
 };
