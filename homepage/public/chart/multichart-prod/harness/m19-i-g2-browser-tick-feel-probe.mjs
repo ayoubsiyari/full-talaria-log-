@@ -1,14 +1,9 @@
 /**
  * M19-I-g2 real-browser acceptance: PO-feel high-speed MA lag (tick mode).
  *
- * Extends the M19-I-g exact five-MA mix with the mechanism I-g is blind to:
- *   I-g forced playbackMode='candle' and gated tip-index / committed tip value.
- *   Default product mode is playbackMode='tick'. Mid-bar forming OHLC updates
- *   every tick while scheduleReplayIndicatorRecalc skips full passes when
- *   _replayIndicatorBarFingerprint matches (length + open time only — OHLC
- *   intentionally excluded). Tip index stays on the newest bar (I-g GREEN)
- *   while tip values freeze until the next bar advance → human-visible lag
- *   that intensifies at high tick cadence; PO reports 15x OK, high speed lag.
+ * Extends the M19-I-g exact five-MA mix with default playbackMode='tick'.
+ * It detects both legacy blind spots: same-bar forming-tip freeze and the
+ * silent fast-mode transition that removed forming paints at 60x/100x.
  *
  * Discriminates:
  *   A) tip-index temporal lag (I-g style) — still gated, not weakened
@@ -48,11 +43,7 @@ const MAX_VALUE_MISMATCH_FRAMES = 1; // tip-index/value temporal (I-g semantics)
 const MAX_INTRA_BAR_STALE_RATIO = 0.55;
 const MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC = 0.012;
 const MAX_FEEL_INTENSITY_RATIO_VS_CTRL = 3.0;
-/**
- * Product getEffectivePlaybackSpeed() doubles tick-mode speed (cap 200).
- * UI 60x → effective 120x → FAST MODE (rawCandlesPerSecond>1). PO's 15x stays
- * smooth (effective 30x). Silent fast-mode at primary UI speed is a feel RED.
- */
+/** No selected high-speed cell may silently become commit-only fast mode. */
 const MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY = 0.15;
 
 const PLAY_MS_60X = Math.max(800, Number(process.env.M19_IG2_PLAY_MS_60X) || 3_600);
@@ -902,6 +893,9 @@ async function runPlayFeel(page, { speed, playMs, label }) {
     }
     const playingDuring = !!replay.isPlaying;
     const modeDuring = replay.getPlaybackMode ? replay.getPlaybackMode() : replay.playbackMode;
+    const effectiveSpeed = typeof replay.getEffectivePlaybackSpeed === 'function'
+      ? replay.getEffectivePlaybackSpeed()
+      : speed;
     const fastDuringEarly = !!replay.fastMode;
     const armedAt = performance.now();
     await new Promise((r) => setTimeout(r, Math.max(0, playMs)));
@@ -1037,6 +1031,7 @@ async function runPlayFeel(page, { speed, playMs, label }) {
       ok: true,
       label,
       speed,
+      effectiveSpeed,
       playMs,
       playingDuring,
       modeDuring,
@@ -1184,15 +1179,16 @@ function evaluateFeel(cell, ctrlCell, { isPrimary = false, isStress = false } = 
       skippedBecauseFastMode: inFastMode,
       justification: 'Smooth-tick freeze intensity must not exceed ~3× the 15x control.',
     },
-    // Primary UI 60x must remain smooth tick like 15x — not silently fast-mode via 2×.
+    // Selected 60x/100x must remain smooth tick like 15x, not commit-only fast mode.
     silentFastModeAtPrimaryUi: {
-      pass: !isPrimary || fastRatio <= MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY,
+      pass: !(isPrimary || isStress) || fastRatio <= MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY,
       value: fastRatio,
       limit: MAX_FAST_MODE_SAMPLE_RATIO_AT_PRIMARY,
       fastModePaints: cell.fastModePaints,
       sampleCount: sampleN,
       uiSpeed: cell.speed,
-      note: 'Tick mode getEffectivePlaybackSpeed()=min(200,ui*2) pushes UI 60x into FAST MODE.',
+      effectiveSpeed: cell.effectiveSpeed,
+      note: 'Tick mode must keep labelled 60x/100x forming-candle paints.',
     },
     sameBarSkipObserved: {
       pass: true,
@@ -1202,14 +1198,6 @@ function evaluateFeel(cell, ctrlCell, { isPrimary = false, isStress = false } = 
       note: 'same-bar fingerprint skips (smooth) or fast-mode bar completes — diagnostic.',
     },
   };
-  // Stress 100x is allowed to be fast mode; still require tip-index temporal gates elsewhere.
-  if (isStress) {
-    asserts.silentFastModeAtPrimaryUi = {
-      pass: true,
-      value: fastRatio,
-      note: '100x stress may use fast mode; not the 15x-vs-60x feel discriminator.',
-    };
-  }
   return {
     asserts,
     green: Object.values(asserts).every((a) => a.pass === true),
@@ -1368,6 +1356,7 @@ async function main() {
       stressIntraBarStaleRatio: stressFeel.asserts.intraBarStaleRatio,
       stressCloseDriftWhileFrozenPerSec: stressFeel.asserts.closeDriftWhileFrozenPerSec,
       stressFeelIntensityVsControl: stressFeel.asserts.feelIntensityVsControl,
+      stressSilentFastMode: stressFeel.asserts.silentFastModeAtPrimaryUi,
       controlPlayAdvanced: ctrlTemporal.asserts.playAdvanced,
       controlPaintSamples: ctrlTemporal.asserts.paintSamples,
       controlTickMode: {
@@ -1395,6 +1384,7 @@ async function main() {
     const tipIndexGreen = (worstPrimary.cell.maxTipIndexDelta || 0) <= MAX_TIP_INDEX_DELTA
       && (stress.maxTipIndexDelta || 0) <= MAX_TIP_INDEX_DELTA;
     const silentFast = worstPrimary.feel.inFastMode === true
+      || stressFeel.inFastMode === true
       || (worstPrimary.feel.asserts.silentFastModeAtPrimaryUi
         && worstPrimary.feel.asserts.silentFastModeAtPrimaryUi.pass === false);
     const feelRed = !worstPrimary.feel.green || !stressFeel.green;
@@ -1457,13 +1447,12 @@ async function main() {
         maxIntraBarStaleRatio: MAX_INTRA_BAR_STALE_RATIO,
         maxCloseDriftWhileFrozenPerSec: MAX_CLOSE_DRIFT_WHILE_FROZEN_PER_SEC,
         maxFeelIntensityRatioVsCtrl: MAX_FEEL_INTENSITY_RATIO_VS_CTRL,
-        proposedProductFix: {
-          primaryPath: 'replay-system.js:getEffectivePlaybackSpeed — tick mode returns min(200, base*2), '
-            + 'so UI 60x enters FAST MODE (rawCandlesPerSecond>1) while UI 15x stays smooth.',
-          secondaryPath: 'chart-indicators-full.js:_replayIndicatorBarFingerprint omits OHLC '
-            + '(length|t only) → scheduleReplayIndicatorRecalc skips mid-bar tip updates in smooth tick.',
-          tertiaryPath: 'replay-system.js:updateChartWithAnimatedCandle calls missing '
-            + 'recalculateAllIndicators every 18 ticks (dead path).',
+        productContract: {
+          primaryPath: 'replay-system.js keeps tick speed equal to the UI label and preserves '
+            + 'frame-budgeted forming-candle paints through 100x.',
+          secondaryPath: 'chart-indicators-full.js includes forming OHLC in the I-g fingerprint '
+            + 'and refreshes the current MA tip during smooth tick.',
+          killSwitch: '__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1',
         },
       },
       primarySpeed: PRIMARY_SPEED,
@@ -1485,7 +1474,9 @@ async function main() {
         primaryMaxTipIndexDelta: worstPrimary.cell.maxTipIndexDelta,
         primaryValueMismatchFrames: worstPrimary.cell.valueMismatchFrames,
         primaryMathLagOnlyFrames: worstPrimary.cell.mathLagOnlyFrames,
-        effectiveSpeedNote: 'tick mode effectiveSpeed=min(200, uiSpeed*2); UI60→120 fast; UI15→30 smooth',
+        effectiveSpeedNote: `label/effective: ${CTRL_SPEED}/${ctrl.effectiveSpeed}, `
+          + `${PRIMARY_SPEED}/${worstPrimary.cell.effectiveSpeed}, `
+          + `${STRESS_SPEED}/${stress.effectiveSpeed}`,
         stressIntraBarStaleRatio: stress.intraBarStaleRatio,
         stressCloseDriftWhileFrozenPerSec: stress.closeDriftWhileFrozenPerSec,
         stressFeelIntensityVsControl: stressFeel.intensityRatio,

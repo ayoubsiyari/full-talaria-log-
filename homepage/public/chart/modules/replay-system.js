@@ -15,6 +15,12 @@ function _m19hTimeframeCoalesceEnabled() {
         || window.__TALARIA_DISABLE_M19_H_TF_COALESCE_V1 !== true;
 }
 
+/** M19-I-g2: slider speed is literal and 1–100x tick play keeps forming-candle paints. */
+function _m19iTickSpeedCoherenceEnabled() {
+    return typeof window === 'undefined'
+        || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -5015,9 +5021,9 @@ class ReplaySystem {
     }
     
     /**
-     * Start tick-by-tick animation for the forming candle
-     * SMOOTH MODE: Animates ticks within each candle (speed <= 60x)
-     * FAST MODE: Completes multiple candles per frame (speed > 60x)
+     * Start tick-by-tick animation for the forming candle.
+     * M19-I-g2 keeps every user-selectable 1–100x speed in smooth mode when
+     * frame cadence can represent it; fast mode remains for sub-frame cadences.
      */
     startTickAnimation() {
         if (!this.isActive || !this.isPlaying) return;
@@ -5100,19 +5106,25 @@ class ReplaySystem {
         // rawCandlesPerSecond = speed / rawCandleTimeframeSec
         // At 60x: 60 / 60 = 1 raw candle/sec
         // At 3600x: 3600 / 60 = 60 raw candles/sec
-        const rawCandlesPerSecond = this.getEffectivePlaybackSpeed() / rawCandleTimeframeSec;
+        const effectivePlaybackSpeed = this.getEffectivePlaybackSpeed();
+        const rawCandlesPerSecond = effectivePlaybackSpeed / rawCandleTimeframeSec;
         
         // Calculate how long each raw candle should take in REAL time
-        let realTimeCandleDuration = rawCandleTimeframeMs / this.getEffectivePlaybackSpeed();
+        let realTimeCandleDuration = rawCandleTimeframeMs / effectivePlaybackSpeed;
         const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
         if (cadenceSubdivisions > 1) {
             // D-016: keep selected-panel wall-clock pace; subdivide within one finest bar.
             realTimeCandleDuration = realTimeCandleDuration / cadenceSubdivisions;
         }
         
-        // If MORE than 1 raw candle per second (>60x), use FAST MODE
-        // At 60x or less, use SMOOTH MODE with tick animation
-        if (rawCandlesPerSecond > 1) {
+        // Legacy silently switched to commit-only fast mode above one raw bar/sec
+        // (tick UI 60x was internally 120x). Keep forming ticks whenever at least
+        // two 16ms paint opportunities fit; genuinely sub-frame cadences stay fast.
+        const tickSpeedCoherent = _m19iTickSpeedCoherenceEnabled();
+        const useFastMode = tickSpeedCoherent
+            ? realTimeCandleDuration < 32
+            : rawCandlesPerSecond > 1;
+        if (useFastMode) {
             // FAST MODE: Complete candles rapidly without tick animation
             this.fastMode = true;
             this.currentTicksPerCandle = 1;
@@ -5182,10 +5194,31 @@ class ReplaySystem {
             
             this._preserveTickProgress = false;
             
-            this.currentTicksPerCandle = this.ticksPerCandle || 72;
+            const configuredTicks = this.ticksPerCandle || 72;
+            if (tickSpeedCoherent) {
+                // Indicator-coherent paints on a loaded chart cost materially more
+                // than an empty rAF. Budget ~4 forming updates/sec (the measured
+                // smooth 15x cadence) so 60x/100x keep both fresh tips and wall clock.
+                const presentationBudgetTicks = Math.max(2, Math.floor(realTimeCandleDuration / 240));
+                this.currentTicksPerCandle = Math.min(configuredTicks, presentationBudgetTicks);
+            } else {
+                this.currentTicksPerCandle = configuredTicks;
+            }
             
             // Base tick interval = candle duration / ticks
             const baseTickInterval = Math.max(16, realTimeCandleDuration / this.currentTicksPerCandle);
+            if (tickSpeedCoherent) {
+                const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+                    ? performance.now()
+                    : Date.now();
+                const progress = Math.max(0, Math.min(
+                    1,
+                    (this.tickProgress || 0) / Math.max(1, this.currentTicksPerCandle),
+                ));
+                // Re-anchor on speed changes so timer/work cost cannot accumulate
+                // after each tick and silently turn 100x back into a low speed.
+                this._tickCandleStartedAt = now - (progress * realTimeCandleDuration);
+            }
 
             if (this.useConstantTickInterval) {
                 // Use fixed cadence to avoid perceived pause/surge behavior,
@@ -5332,7 +5365,19 @@ class ReplaySystem {
         
         // Calculate this tick's interval
         const baseInterval = this.volumeTickData ? this.volumeTickData.baseInterval : 1000;
-        const tickInterval = Math.max(16, baseInterval * intervalMultiplier);
+        let tickInterval = Math.max(16, baseInterval * intervalMultiplier);
+        if (_m19iTickSpeedCoherenceEnabled()
+            && this.useConstantTickInterval
+            && Number.isFinite(this._tickCandleStartedAt)) {
+            const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+                ? performance.now()
+                : Date.now();
+            const nextTickNumber = Math.max(1, (this.tickProgress || 0) + 1);
+            const targetAt = this._tickCandleStartedAt + (nextTickNumber * baseInterval);
+            // Absolute deadlines include prior paint/recalc cost. If work consumed
+            // the interval, yield through a zero-delay timer instead of adding 16ms.
+            tickInterval = Math.max(0, targetAt - now);
+        }
         
         // Schedule next tick
         this.tickInterval = setTimeout(() => {
@@ -5407,7 +5452,14 @@ class ReplaySystem {
             }
             
             // Get price from cached path (deterministic across all timeframes)
-            const pathIndex = Math.min(this.tickProgress - 1, target.cachedPath.length - 1);
+            // Frame-budgeted high speeds use fewer ticks; sample the whole cached
+            // path instead of truncating it to the first N points.
+            const pathSpan = Math.max(0, target.cachedPath.length - 1);
+            const tickSpan = Math.max(1, ticksNeeded - 1);
+            const pathIndex = Math.min(
+                pathSpan,
+                Math.floor(((this.tickProgress - 1) * pathSpan) / tickSpan),
+            );
             let currentPrice = target.cachedPath[pathIndex];
             
             // NO random noise - keep it deterministic!
@@ -6599,14 +6651,10 @@ class ReplaySystem {
         return Math.max(1, Math.min(100, n));
     }
 
-    /**
-     * Tick-by-tick playback runs at 2× the slider speed; candle-by-candle uses the slider as-is.
-     * Cap effective tick speed at 200 (not 100) so slider 50 → 100 and 100 → 200 stay distinct
-     * (old min(100, base*2) made every speed ≥50 identical in tick mode).
-     */
+    /** User-visible speed is the effective speed in both playback modes. */
     getEffectivePlaybackSpeed() {
         const base = this.normalizeSpeed(this.speed);
-        if (this.getPlaybackMode() === 'tick') {
+        if (this.getPlaybackMode() === 'tick' && !_m19iTickSpeedCoherenceEnabled()) {
             return Math.min(200, base * 2);
         }
         return base;
