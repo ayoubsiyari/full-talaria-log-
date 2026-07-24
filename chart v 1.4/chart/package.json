@@ -1,6 +1,6 @@
 {
   "name": "talaria-trading-chart-runtime",
-  "version": "1.4.29",
+  "version": "1.4.30",
   "private": true,
   "scripts": {
     "sync-env": "node scripts/sync-chart-env.mjs",
