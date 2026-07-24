@@ -1744,11 +1744,16 @@ async function runM19IFocusEvidence() {
 
   // Forward the resolved candidate so the probe's expected matches evidence filenames
   // even when the wrapper resolved from chart.js and env was unset.
+  // M19_DEPLOYED_ORIGIN (when set) is inherited via process.env — serve.mjs
+  // proxies /chart/* from that origin with no local fallback.
+  const deployedOriginRaw = String(process.env.M19_DEPLOYED_ORIGIN || '').trim();
   const childEnv = {
     ...process.env,
     M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
   };
-  const command = `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} node "${probePath}"`;
+  const command = deployedOriginRaw
+    ? `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} M19_DEPLOYED_ORIGIN=${deployedOriginRaw} node "${probePath}"`
+    : `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} node "${probePath}"`;
   const child = spawnSync(process.execPath, [probePath], {
     cwd: harnessDir,
     encoding: 'utf8',
@@ -1819,6 +1824,15 @@ async function runM19IFocusEvidence() {
     expectedBuildId,
     expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
     liveBuildId,
+    deployedMode: probe?.deployedMode === true,
+    assetOrigin: probe?.assetOrigin || null,
+    upstreamObservedBuild: probe?.upstreamObservedBuild || null,
+    upstreamEngineBuild: probe?.upstreamEngineBuild || null,
+    upstreamShellBuild: probe?.upstreamShellBuild ?? null,
+    provenanceNote: probe?.provenanceNote
+      || (deployedOriginRaw
+        ? `Product /chart/* assets fetched from deployed origin ${deployedOriginRaw}; synthetic /api/* + /harness/* local.`
+        : 'Product /chart/* assets served from local checkout; synthetic /api/* + /harness/* local harness.'),
     command,
     cwd: harnessDir,
     exitStatus: child.status,
@@ -1912,6 +1926,10 @@ async function runM19IFocusEvidence() {
 - M0 baseline (pre-lag-sprint): \`${baselineM0.sourceSha}\` / \`${baselineM0.buildId}\` (provenance only)
 - **Candidate / expected build ID:** \`${expectedBuildId}\` (source: ${evidence.expectedBuildSource})
 - **Live harness build ID:** \`${liveBuildId}\` ${buildIdOk ? '(matches expected)' : '(MISMATCH — SETUP-FAIL)'}
+- **Deployed mode:** ${evidence.deployedMode ? 'true' : 'false'}
+- **Asset origin:** ${evidence.assetOrigin || '(local checkout)'}
+- **Upstream observed build:** ${evidence.upstreamObservedBuild || 'n/a'}
+- Provenance: ${evidence.provenanceNote}
 - Tag: \`${baselineM0.tag}\`
 - Chart digest (M0): \`${baselineM0.chartDigest}\`
 - Homepage digest (M0): \`${baselineM0.homepageDigest}\`
@@ -2008,6 +2026,10 @@ M19-I product fixes remain Lane 1. M20 is out of scope for this cell.
     expectedBuildSource: evidence.expectedBuildSource,
     liveBuildId,
     buildIdOk,
+    deployedMode: evidence.deployedMode,
+    assetOrigin: evidence.assetOrigin,
+    upstreamObservedBuild: evidence.upstreamObservedBuild,
+    provenanceNote: evidence.provenanceNote,
     failingGates,
     passingGates,
     numericBaseline: evidence.numericBaseline,

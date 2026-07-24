@@ -21,14 +21,22 @@
  *   M19_EXPECTED_BUILD_ID=20260724b58   — explicit candidate (preferred for deploy gates)
  *   else parse chart.js CHART_ENGINE_BUILD / serve.mjs buildId before launch.
  *
+ * Deployed-asset mode (digest-pinned homepage/chart images; M1 claims):
+ *   M19_DEPLOYED_ORIGIN=http://127.0.0.1:3000
+ *   When set, the local harness keeps synthetic `/api/*` + `/harness/*`, but
+ *   every `/chart/*` byte (engine, modules, workers) is fetched from that
+ *   origin. Requires explicit M19_EXPECTED_BUILD_ID. Upstream shell/engine
+ *   build is verified BEFORE measurement; mismatch/unobservable → SETUP-FAIL.
+ *
  * Run:
  *   M19_EXPECTED_BUILD_ID=20260724b58 node m19-i-browser-indicator-replay-probe.mjs
+ *   M19_EXPECTED_BUILD_ID=20260724b58 M19_DEPLOYED_ORIGIN=http://127.0.0.1:3000 node m19-i-browser-indicator-replay-probe.mjs
  *   M19_FOCUS=I M19_EXPECTED_BUILD_ID=20260724b58 node "chart v 1.4/chart/modules/m19-progressive-session-soak.test.mjs"
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer } from './serve.mjs';
+import { startServer, normalizeDeployedOrigin } from './serve.mjs';
 import { bootLayout, launchBrowser, sleep } from './harness-lib.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,15 +83,31 @@ const MIN_WORKER_PAYLOAD_SAMPLES = Math.max(
   Number(process.env.M19_I_MIN_PAYLOAD_SAMPLES) || 3,
 );
 
+const DEPLOYED_ORIGIN = (() => {
+  try {
+    return normalizeDeployedOrigin(process.env.M19_DEPLOYED_ORIGIN);
+  } catch (err) {
+    throw new Error(`M19-I SETUP-FAIL: ${err?.message || err}`);
+  }
+})();
+const DEPLOYED_MODE = Boolean(DEPLOYED_ORIGIN);
+
 /**
  * Resolve the candidate expected build ID BEFORE launch.
  * Priority: explicit M19_EXPECTED_BUILD_ID → chart.js CHART_ENGINE_BUILD →
  * serve.mjs host buildId literal. Never defaults to the live browser value.
+ * Deployed mode requires the explicit env (must not silently use checkout).
  */
 function resolveExpectedBuildId() {
   const fromEnv = String(process.env.M19_EXPECTED_BUILD_ID || '').trim();
   if (/^\d{8}b\d+$/.test(fromEnv)) {
     return { expectedBuildId: fromEnv, source: 'env:M19_EXPECTED_BUILD_ID' };
+  }
+  if (DEPLOYED_MODE) {
+    throw new Error(
+      'M19-I SETUP-FAIL: M19_DEPLOYED_ORIGIN requires explicit M19_EXPECTED_BUILD_ID '
+      + '(never infer expected from upstream/browser observation or local checkout).',
+    );
   }
   const tryParse = (filePath, patterns, label) => {
     if (!fs.existsSync(filePath)) return null;
@@ -116,6 +140,85 @@ function resolveExpectedBuildId() {
 }
 
 const { expectedBuildId: EXPECTED_BUILD_ID, source: EXPECTED_BUILD_SOURCE } = resolveExpectedBuildId();
+
+/**
+ * Fetch upstream deployed engine (and optional harness shell stamp) BEFORE
+ * measurement. Returns observed build or throws SETUP-FAIL.
+ */
+async function verifyUpstreamDeployedBuild(origin, expectedBuildId) {
+  const engineUrl = `${origin}/chart/chart.js`;
+  let engineText;
+  try {
+    const res = await fetch(engineUrl, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache', Accept: '*/*' },
+      cache: 'no-store',
+      redirect: 'follow',
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} fetching ${engineUrl}`);
+    }
+    engineText = await res.text();
+  } catch (err) {
+    throw new Error(
+      `M19-I SETUP-FAIL: upstream deployed engine unobservable at ${engineUrl}: `
+      + String(err?.message || err),
+    );
+  }
+  const engineMatch = engineText.match(
+    /const\s+CHART_ENGINE_BUILD\s*=\s*['"](\d{8}b\d+)['"]/,
+  );
+  const upstreamEngineBuild = engineMatch?.[1] || null;
+  if (!upstreamEngineBuild) {
+    throw new Error(
+      `M19-I SETUP-FAIL: upstream deployed engine build unobservable in ${engineUrl} `
+      + '(no CHART_ENGINE_BUILD literal).',
+    );
+  }
+
+  // Optional shell stamp from harness host when the stand-in upstream is serve.mjs.
+  // Homepage/chart images may not expose /harness/host.html — that is OK.
+  let upstreamShellBuild = null;
+  const shellUrl = `${origin}/harness/host.html`;
+  try {
+    const shellRes = await fetch(shellUrl, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache', Accept: 'text/html' },
+      cache: 'no-store',
+      redirect: 'follow',
+    });
+    if (shellRes.ok) {
+      const shellText = await shellRes.text();
+      const shellMatch = shellText.match(
+        /__TALARIA_CHART_BUILD_ID\s*=\s*['"](\d{8}b\d+)['"]/,
+      );
+      upstreamShellBuild = shellMatch?.[1] || null;
+    }
+  } catch (_e) {
+    upstreamShellBuild = null;
+  }
+
+  if (upstreamShellBuild && upstreamShellBuild !== expectedBuildId) {
+    throw new Error(
+      `M19-I SETUP-FAIL: upstream deployed shell build mismatch `
+      + `(observed=${upstreamShellBuild}, expected=${expectedBuildId}).`,
+    );
+  }
+  if (upstreamEngineBuild !== expectedBuildId) {
+    throw new Error(
+      `M19-I SETUP-FAIL: upstream deployed engine build mismatch `
+      + `(observed=${upstreamEngineBuild}, expected=${expectedBuildId}).`,
+    );
+  }
+
+  return {
+    upstreamObservedBuild: upstreamEngineBuild,
+    upstreamEngineBuild,
+    upstreamShellBuild,
+    engineUrl,
+    shellUrl: upstreamShellBuild ? shellUrl : null,
+  };
+}
 
 function metric(metrics, name) {
   const value = Number(metrics?.[name]);
@@ -508,9 +611,25 @@ async function setupEightIndicatorContinuousReplay(page) {
       ? replay.getCandlePlaybackCadence()
       : null;
 
+    // Live engine stamp from the bytes the browser actually loaded via /chart/*
+    // (in deployed mode this is the proxied digest-pinned origin — not checkout).
+    let engineBuildId = null;
+    try {
+      const engRes = await fetch('/chart/chart.js', { cache: 'no-store' });
+      if (engRes.ok) {
+        const engText = await engRes.text();
+        const m = engText.match(/const\s+CHART_ENGINE_BUILD\s*=\s*['"](\d{8}b\d+)['"]/);
+        engineBuildId = m ? m[1] : null;
+      }
+    } catch (_e) {
+      engineBuildId = null;
+    }
+
     return {
       ok: true,
-      buildId: window.__TALARIA_CHART_BUILD_ID || null,
+      buildId: engineBuildId || window.__TALARIA_CHART_BUILD_ID || null,
+      htmlBuildId: window.__TALARIA_CHART_BUILD_ID || null,
+      engineBuildId,
       fineCount: fine.length,
       displayBars: Array.isArray(chart.data) ? chart.data.length : null,
       startIndex,
@@ -763,7 +882,18 @@ const KILL_SWITCHES = String(process.env.M19_I_KILL_SWITCHES || '')
   .filter(Boolean);
 
 async function main() {
+  let upstreamVerify = null;
+  if (DEPLOYED_MODE) {
+    upstreamVerify = await verifyUpstreamDeployedBuild(DEPLOYED_ORIGIN, EXPECTED_BUILD_ID);
+  }
+
   const server = await startServer();
+  if (DEPLOYED_MODE && !server.deployedMode) {
+    throw new Error(
+      'M19-I SETUP-FAIL: M19_DEPLOYED_ORIGIN set but harness server is not in deployed mode '
+      + '(env must be present before serve.mjs is loaded).',
+    );
+  }
   const browser = await launchBrowser({ headful: false });
   let boot;
   try {
@@ -971,6 +1101,14 @@ async function main() {
       expectedBuildId: EXPECTED_BUILD_ID,
       expectedBuildSource: EXPECTED_BUILD_SOURCE,
       buildId: setup.buildId,
+      deployedMode: DEPLOYED_MODE,
+      assetOrigin: DEPLOYED_MODE ? DEPLOYED_ORIGIN : null,
+      upstreamObservedBuild: upstreamVerify?.upstreamObservedBuild || null,
+      upstreamEngineBuild: upstreamVerify?.upstreamEngineBuild || null,
+      upstreamShellBuild: upstreamVerify?.upstreamShellBuild ?? null,
+      provenanceNote: DEPLOYED_MODE
+        ? `Product /chart/* assets (engine, modules, workers) fetched byte-for-byte from deployed origin ${DEPLOYED_ORIGIN}; synthetic /api/* + /harness/* remain local harness. Upstream engine build verified pre-measure as ${upstreamVerify?.upstreamObservedBuild}.`
+        : 'Product /chart/* assets served from local checkout; synthetic /api/* + /harness/* local harness.',
       setup,
       measured: {
         steps: measured.steps,

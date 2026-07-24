@@ -13,6 +13,14 @@
  *         /chart/vendor/*            -> ../../vendor/*             (d3, lz-string)
  *         /chart/fonts/*             -> ../../fonts/*
  *
+ *     Deployed-asset mode (M19-I / M1 digest-pinned claims):
+ *         M19_DEPLOYED_ORIGIN=http://127.0.0.1:3000
+ *     When set, `/api/*` and `/harness/*` (plus `/`) remain the local
+ *     deterministic harness, but every `/chart/*` request is fetched
+ *     byte-for-byte from that origin (query string preserved, no-store /
+ *     no-cache, upstream status + Content-Type preserved). Upstream fetch
+ *     failure is a hard 502 — there is NO silent local fallback.
+ *
  *  2. Emulate the API endpoints the engine calls during boot with deterministic
  *     synthetic 1-minute candles (~90 days), matching the REAL response shapes
  *     read by chart.js (verified against chart.js + api_server.py):
@@ -45,6 +53,36 @@ const CHART_ROOT = path.resolve(__dirname, '..', '..');
 const DIST_V9_OVERRIDE_ROOT = process.env.REACT_PARITY_DIST_DIR
   ? path.resolve(process.env.REACT_PARITY_DIST_DIR)
   : null;
+
+/**
+ * Normalize M19_DEPLOYED_ORIGIN to a bare http(s) origin, or null when unset.
+ * Throws on vacuous / unparseable values so misconfig cannot silently degrade
+ * to local checkout serving.
+ */
+export function normalizeDeployedOrigin(raw = process.env.M19_DEPLOYED_ORIGIN) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  let u;
+  try {
+    u = new URL(s);
+  } catch (_e) {
+    throw new Error(
+      `M19_DEPLOYED_ORIGIN is not a valid URL: ${JSON.stringify(s)}`,
+    );
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(
+      `M19_DEPLOYED_ORIGIN must be http(s); got protocol ${u.protocol}`,
+    );
+  }
+  if (u.username || u.password) {
+    throw new Error('M19_DEPLOYED_ORIGIN must not include credentials');
+  }
+  // Origin only — chart paths are appended from the browser request.
+  return u.origin;
+}
+
+const DEPLOYED_ORIGIN = normalizeDeployedOrigin();
 
 const MIN_MS = 60_000;
 const SYNTH_DAYS = 90;
@@ -398,6 +436,107 @@ function serveStatic(res, relPath) {
     });
     fs.createReadStream(filePath).pipe(res);
   });
+}
+
+/**
+ * Proxy `/chart/*` from M19_DEPLOYED_ORIGIN. No local fallback — any upstream
+ * transport/HTTP failure ends as 502 so the browser gate hard-fails.
+ */
+async function proxyChartFromDeployed(req, res, url) {
+  const targetUrl = `${DEPLOYED_ORIGIN}${url.pathname}${url.search}`;
+  let upstream;
+  try {
+    upstream = await fetch(targetUrl, {
+      method: req.method || 'GET',
+      headers: {
+        Accept: req.headers.accept || '*/*',
+        'Cache-Control': 'no-store',
+        Pragma: 'no-cache',
+      },
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+  } catch (err) {
+    const msg = `M19 deployed-origin fetch failed for ${url.pathname}${url.search}: `
+      + String(err?.message || err);
+    console.error(`[serve] ${msg}`);
+    res.writeHead(502, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(msg);
+    return;
+  }
+
+  // Refuse opaque redirects that would escape the pinned origin.
+  if (upstream.status >= 300 && upstream.status < 400) {
+    const loc = upstream.headers.get('location') || '';
+    let nextOrigin = null;
+    try { nextOrigin = new URL(loc, DEPLOYED_ORIGIN).origin; } catch (_e) { nextOrigin = null; }
+    if (nextOrigin !== DEPLOYED_ORIGIN) {
+      const msg = `M19 deployed-origin redirect escaped pinned origin for `
+        + `${url.pathname}: location=${JSON.stringify(loc)}`;
+      console.error(`[serve] ${msg}`);
+      res.writeHead(502, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(msg);
+      return;
+    }
+    // Same-origin redirect: follow once via absolute URL on the pinned origin.
+    try {
+      const nextUrl = new URL(loc, DEPLOYED_ORIGIN);
+      upstream = await fetch(nextUrl.href, {
+        method: 'GET',
+        headers: {
+          Accept: req.headers.accept || '*/*',
+          'Cache-Control': 'no-store',
+          Pragma: 'no-cache',
+        },
+        cache: 'no-store',
+        redirect: 'manual',
+      });
+    } catch (err) {
+      const msg = `M19 deployed-origin redirect fetch failed for ${url.pathname}: `
+        + String(err?.message || err);
+      console.error(`[serve] ${msg}`);
+      res.writeHead(502, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(msg);
+      return;
+    }
+  }
+
+  let body;
+  try {
+    body = Buffer.from(await upstream.arrayBuffer());
+  } catch (err) {
+    const msg = `M19 deployed-origin body read failed for ${url.pathname}: `
+      + String(err?.message || err);
+    console.error(`[serve] ${msg}`);
+    res.writeHead(502, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(msg);
+    return;
+  }
+
+  const ext = path.extname(url.pathname).toLowerCase();
+  const contentType = upstream.headers.get('content-type')
+    || CONTENT_TYPES[ext]
+    || 'application/octet-stream';
+  res.writeHead(upstream.status, {
+    'Content-Type': contentType,
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    Pragma: 'no-cache',
+    'X-M19-Deployed-Origin': DEPLOYED_ORIGIN,
+  });
+  res.end(body);
 }
 
 // Faithful host page mirroring PRODUCTION MultichartGrid topology:
@@ -1066,7 +1205,15 @@ export function startServer(port = 0) {
       return;
     }
     if (pathname.startsWith('/api/')) { handleApi(req, res, url); return; }
-    if (pathname.startsWith('/chart/')) { serveStatic(res, pathname.slice('/chart/'.length)); return; }
+    if (pathname.startsWith('/chart/')) {
+      if (DEPLOYED_ORIGIN) {
+        // Deployed mode: never fall back to checkout bytes.
+        proxyChartFromDeployed(req, res, url);
+        return;
+      }
+      serveStatic(res, pathname.slice('/chart/'.length));
+      return;
+    }
     if (pathname === '/login/' || pathname.startsWith('/login')) {
       // chart-embed redirects here only when auth fails; should never happen.
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -1085,6 +1232,8 @@ export function startServer(port = 0) {
         server,
         port: actualPort,
         url: `http://127.0.0.1:${actualPort}`,
+        deployedMode: Boolean(DEPLOYED_ORIGIN),
+        deployedOrigin: DEPLOYED_ORIGIN,
         getApiLog: () => apiLog.slice(),
         // Task 4.2: each scenario counts only the fetches IT triggered, so the
         // runner clears the log after boot / before the gesture under test.
@@ -1101,6 +1250,9 @@ if (invokedDirectly) {
   const port = parseInt(process.env.PORT || '8791', 10);
   startServer(port).then((h) => {
     console.log(`[serve] canonical chart tree: ${CHART_ROOT}`);
+    if (h.deployedMode) {
+      console.log(`[serve] DEPLOYED MODE — /chart/* proxied from ${h.deployedOrigin} (no local fallback)`);
+    }
     console.log(`[serve] listening on ${h.url}`);
     console.log(`[serve] host page: ${h.url}/harness/host.html`);
   });
