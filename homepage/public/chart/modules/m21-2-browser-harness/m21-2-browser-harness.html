@@ -1,0 +1,22 @@
+<!doctype html>
+<!--
+  M21-2 — standalone browser-integration harness page (W3-owned, NEW FILE).
+  Exercises the REAL bridge + REAL same-origin classic worker from
+  representative /chart paths. NO product wiring; bridge/worker/API/test files
+  under review are imported read-only and remain byte-untouched.
+  Served by m21-2-browser-harness-serve.mjs under a strict same-origin CSP
+  (script-src 'self'; worker-src 'self') — no inline scripts on purpose.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>M21-2 candle OffscreenCanvas — W3 browser harness</title>
+</head>
+<body>
+  <h1>M21-2 candle-layer OffscreenCanvas — standalone browser harness (PRELIMINARY-SCAFFOLD-BROWSER)</h1>
+  <p>Real bridge + real worker, no product wiring. Results post to <code>/report</code>.</p>
+  <pre id="log">running…</pre>
+  <div id="stage"></div>
+  <script type="module" src="./m21-2-browser-harness.client.mjs"></script>
+</body>
+</html>

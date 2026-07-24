@@ -565,6 +565,11 @@ class OrderManager {
         
         // SPLIT ENTRY TRACKING (for split entries placed at once)
         this.splitTrades = new Map(); // Map of splitGroupId -> {entries: [], status, totalPnL, ...}
+
+        // M20-A1: same-origin logout privacy-clean bridge (dashboard shell →
+        // chart). Listener only — zero IndexedDB traffic until a validated
+        // same-origin, owner-matched request arrives.
+        this._m20A1InstallLogoutBridge();
         
         // Order visualization
         this.orderLines = [];
@@ -4163,6 +4168,1534 @@ class OrderManager {
         };
     }
 
+    // ═════════════════════════════════════════════════════════════════════
+    // M20-A1 — retained screenshots → IndexedDB (W2 / Lane 3, D-030 + I16).
+    //
+    // Kill-switch (restores today's in-row base64 retention + byte behavior):
+    //   window.__TALARIA_DISABLE_M20_A1_SCREENSHOT_IDB_V1 = true
+    //
+    // Scope: the tradeJournal / closedPositions RETENTION boundary only.
+    //   - Live open/pending orders keep their in-row blobs (money path and
+    //     the durable runtime patch are byte-identical to pre-A1).
+    //   - Retained rows have their base64 screenshot payloads moved into a
+    //     durable IndexedDB store; additive *Ref fields point at the bytes.
+    //   - The durable server tier (critical journal PATCH + JSON export) is
+    //     REHYDRATED from IndexedDB before serialize, so server/session data
+    //     is never destructively stripped (I16 restore of old sessions and
+    //     switch-OFF byte class are preserved).
+    //   - UI paths rehydrate lazily through a bounded LRU cache; IndexedDB
+    //     failure at any point fails soft to today's in-row behavior.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** A1 active: kill-switch unset AND IndexedDB actually available. */
+    _m20A1ScreenshotIdbV1Enabled() {
+        try {
+            if (typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M20_A1_SCREENSHOT_IDB_V1 === true) {
+                return false;
+            }
+            const scope = typeof window !== 'undefined'
+                ? window
+                : (typeof globalThis !== 'undefined' ? globalThis : null);
+            return !!(scope && scope.indexedDB && typeof scope.indexedDB.open === 'function');
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** Raw kill-switch state (independent of IndexedDB availability). */
+    _m20A1KillSwitchOn() {
+        try {
+            return typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_M20_A1_SCREENSHOT_IDB_V1 === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * Strict supported-image data-URL contract. Every payload REHYDRATED
+     * from IndexedDB must pass this before it is used in HTML/src or
+     * persisted/exported; the base64 charset excludes quotes/backslashes/
+     * angle brackets so a validated value cannot break out of an attribute
+     * or inline handler. Only strict-valid blobs are externalized in the
+     * first place — anything else keeps today's in-row path untouched.
+     */
+    _m20A1IsValidScreenshotDataUrl(value) {
+        if (typeof value !== 'string') return false;
+        if (value.length < 96 || value.length > 34 * 1024 * 1024) return false;
+        return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
+    }
+
+    /** Externalize only blobs that satisfy the strict data-URL contract. */
+    _m20A1IsExternalizableShot(value) {
+        return this._m20A1IsEmbeddedShot(value)
+            && this._m20A1IsValidScreenshotDataUrl(value);
+    }
+
+    /** Names match modules/m20-a1-screenshot-idb-contract.mjs (M20_A1_IDB). */
+    _m20A1IdbConfig() {
+        return {
+            dbName: 'talaria_m20_a1_screenshots_v1',
+            dbVersion: 1,
+            storeName: 'screenshots',
+            keyPath: 'refId',
+        };
+    }
+
+    /** Additive row mark: set once any screenshot on the row was externalized. */
+    _m20A1SchemaMarkKey() {
+        return 'm20_a1_screenshot_idb_v1';
+    }
+
+    _m20A1IsEmbeddedShot(value) {
+        return typeof value === 'string'
+            && value.startsWith('data:image/')
+            && value.length > 80;
+    }
+
+    _m20A1MimeOf(dataUrl) {
+        try {
+            const m = /^data:(image\/[a-z0-9.+-]+)[;,]/i.exec(dataUrl);
+            return m ? m[1] : 'image/unknown';
+        } catch (_) {
+            return 'image/unknown';
+        }
+    }
+
+    /**
+     * A1-F1 — trustworthy authenticated account key, or null.
+     * Source of truth is the repo's existing per-user isolation identity:
+     * window.__talariaUserId is set from the authenticated /api/auth/me
+     * response (dist index auth bootstrap) and mirrored to localStorage
+     * '_uid' — the exact same pair window.userKey()/userStorage use for all
+     * per-user localStorage scoping. NEVER derived from email/password and
+     * NEVER forged: when neither is present A1 performs zero IDB writes and
+     * rows keep today's in-row blobs (fail-soft legacy).
+     */
+    _m20A1OwnerKey() {
+        try {
+            const scope = typeof window !== 'undefined' ? window : null;
+            if (scope && scope.__talariaUserId != null && String(scope.__talariaUserId) !== '') {
+                return String(scope.__talariaUserId);
+            }
+            if (typeof localStorage !== 'undefined' && localStorage
+                && typeof localStorage.getItem === 'function') {
+                const uid = localStorage.getItem('_uid');
+                if (uid != null && String(uid) !== '') return String(uid);
+            }
+        } catch (_) { /* no trustworthy owner — A1 writes disabled */ }
+        return null;
+    }
+
+    /**
+     * Deterministic ref id — journal + closed copies of one trade share
+     * records. v2 ids are owner-namespaced (A1-F1); legacy v1 ids without
+     * the owner segment stay resolvable through the adoption path below.
+     */
+    _m20A1MakeRefId(tradeId, role, idx) {
+        let sess = 'nosess';
+        try {
+            if (this.chart && typeof this.chart.getActiveTradingSessionId === 'function') {
+                sess = this.chart.getActiveTradingSessionId() || 'nosess';
+            }
+        } catch (_) { /* keep nosess */ }
+        const tid = tradeId != null ? String(tradeId) : 'na';
+        const owner = this._m20A1OwnerKey();
+        const ownerSeg = owner != null ? `u${owner}:` : '';
+        return `a1:${ownerSeg}${sess}:${tid}:${role}${idx != null ? `:${idx}` : ''}`;
+    }
+
+    /**
+     * Memoized fail-soft DB open. A1-F3: the installed connection registers
+     * onversionchange → close + drop the cached handle so future schema
+     * upgrades and deleteDatabase are never wedged, and the page lifecycle
+     * (pagehide) runs the idempotent teardown. Open FAILURE is not memoized
+     * forever: the cached promise is dropped and a cooldown allows a clean
+     * retry (fail-soft legacy in-row behavior in between). When the runtime
+     * kill transition is active the enabled() gate is bypassed once so
+     * already-externalized rows can be recovered (the ONLY kill-time IDB
+     * traffic — see _m20A1RunKillTransitionNow).
+     */
+    _m20A1OpenIdb() {
+        if (this.__m20A1DbPromise) return this.__m20A1DbPromise;
+        if (!this._m20A1ScreenshotIdbV1Enabled() && this.__m20A1TransitionActive !== true) {
+            return Promise.resolve(null);
+        }
+        const scope = typeof window !== 'undefined' ? window : globalThis;
+        if (!scope || !scope.indexedDB || typeof scope.indexedDB.open !== 'function') {
+            return Promise.resolve(null);
+        }
+        if (this.__m20A1OpenFailedAt
+            && Date.now() - this.__m20A1OpenFailedAt < 15_000) {
+            return Promise.resolve(null); // retry cooldown — no hammering
+        }
+        const cfg = this._m20A1IdbConfig();
+        this.__m20A1DbPromise = new Promise((resolve) => {
+            let settled = false;
+            const fail = () => {
+                if (settled) return;
+                settled = true;
+                this.__m20A1DbPromise = null;      // allow a later retry
+                this.__m20A1OpenFailedAt = Date.now();
+                resolve(null);
+            };
+            let req;
+            try {
+                req = scope.indexedDB.open(cfg.dbName, cfg.dbVersion);
+            } catch (_) {
+                fail();
+                return;
+            }
+            req.onupgradeneeded = () => {
+                try {
+                    const db = req.result;
+                    if (db && !db.objectStoreNames.contains(cfg.storeName)) {
+                        db.createObjectStore(cfg.storeName, { keyPath: cfg.keyPath });
+                    }
+                } catch (_) { /* fail-soft — open resolves below */ }
+            };
+            req.onsuccess = () => {
+                if (settled) {
+                    // A blocked open that later succeeded after fail(): release
+                    // the connection — callers already took the fail-soft path.
+                    try { if (req.result) req.result.close(); } catch (_) { /* noop */ }
+                    return;
+                }
+                settled = true;
+                const db = req.result || null;
+                this.__m20A1Db = db;
+                this.__m20A1OpenFailedAt = null;
+                if (db) {
+                    try {
+                        db.onversionchange = () => this._m20A1CloseIdb();
+                    } catch (_) { /* close still reachable via teardown */ }
+                }
+                try {
+                    if (!this.__m20A1PagehideHooked
+                        && typeof window !== 'undefined'
+                        && typeof window.addEventListener === 'function') {
+                        this.__m20A1PagehideHooked = true;
+                        window.addEventListener('pagehide', () => this._m20A1Teardown(), { once: true });
+                    }
+                } catch (_) { /* lifecycle hook optional */ }
+                resolve(db);
+            };
+            req.onerror = () => fail();
+            req.onblocked = () => fail();
+        });
+        return this.__m20A1DbPromise;
+    }
+
+    /**
+     * A1-F3 — idempotent connection close: releases the held IndexedDB
+     * connection and clears the memoized open promise so a later call can
+     * reopen (or fail-soft) cleanly. Safe to call any number of times.
+     */
+    _m20A1CloseIdb() {
+        const db = this.__m20A1Db;
+        this.__m20A1Db = null;
+        this.__m20A1DbPromise = null;
+        if (db) {
+            try { db.close(); } catch (_) { /* already closed */ }
+        }
+    }
+
+    /**
+     * A1-F3 — idempotent full teardown for OrderManager lifecycle (pagehide,
+     * versionchange, logout privacy-clean): closes the DB connection, clears
+     * every A1 timer, and wipes the in-memory blob cache + prefetch state.
+     * Leaves durable IndexedDB records untouched (no data loss).
+     */
+    _m20A1Teardown() {
+        try {
+            if (this.__m20A1SweepTimer != null) {
+                clearTimeout(this.__m20A1SweepTimer);
+                this.__m20A1SweepTimer = null;
+            }
+            if (this.__m20A1RetentionTimer != null) {
+                clearTimeout(this.__m20A1RetentionTimer);
+                this.__m20A1RetentionTimer = null;
+            }
+            if (this.__m20A1RerenderTimers) {
+                for (const t of this.__m20A1RerenderTimers.values()) clearTimeout(t);
+                this.__m20A1RerenderTimers.clear();
+            }
+            if (this.__m20A1BlobCache) {
+                this.__m20A1BlobCache.clear();
+                this.__m20A1BlobCacheBytes = 0;
+            }
+            this.__m20A1PrefetchState = null;
+            this.__m20A1ReachableMemo = null;
+            this.__m20A1SweepCursor = null;
+            if (this.__m20A1DisplayOverlay) {
+                this.__m20A1DisplayOverlay.clear();
+                this.__m20A1DisplayOverlayBytes = 0;
+            }
+        } catch (_) { /* teardown must never throw */ }
+        this._m20A1CloseIdb();
+    }
+
+    /**
+     * Put one screenshot record; resolves false on any failure (never
+     * throws). A1-F4: resolves true ONLY after transaction oncomplete (the
+     * durable commit) — request-level onsuccess is NOT commit. onabort /
+     * onerror (incl. commit-time quota/IO failure) resolve false, so callers
+     * only null in-row blobs after the bytes are actually durable.
+     * A1-F1: every record is owner-stamped and owner-validated; without a
+     * trustworthy owner key the put is refused (fail-soft legacy retention).
+     */
+    async _m20A1IdbPut(record) {
+        const owner = this._m20A1OwnerKey();
+        if (owner == null) return false;
+        if (!record || typeof record !== 'object') return false;
+        if (record.owner != null && String(record.owner) !== owner) return false;
+        record.owner = owner;
+        const db = await this._m20A1OpenIdb();
+        if (!db) return false;
+        const cfg = this._m20A1IdbConfig();
+        return new Promise((resolve) => {
+            let settled = false;
+            const settle = (v) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(v);
+                }
+            };
+            try {
+                const tx = db.transaction([cfg.storeName], 'readwrite');
+                const rq = tx.objectStore(cfg.storeName).put(record);
+                rq.onerror = () => settle(false);
+                tx.oncomplete = () => settle(true);
+                tx.onabort = () => settle(false);
+                tx.onerror = () => settle(false);
+            } catch (_) {
+                settle(false);
+            }
+        });
+    }
+
+    /** Raw keyed read — internal only; product reads go through _m20A1IdbGet. */
+    async _m20A1IdbGetRaw(refId) {
+        const db = await this._m20A1OpenIdb();
+        if (!db) return null;
+        const cfg = this._m20A1IdbConfig();
+        return new Promise((resolve) => {
+            try {
+                const tx = db.transaction([cfg.storeName], 'readonly');
+                const rq = tx.objectStore(cfg.storeName).get(refId);
+                rq.onsuccess = () => resolve(rq.result || null);
+                rq.onerror = () => resolve(null);
+                tx.onabort = () => resolve(null);
+            } catch (_) {
+                resolve(null);
+            }
+        });
+    }
+
+    /**
+     * Owner-validated read (A1-F1); resolves null on miss/failure/foreign
+     * owner. Legacy ownerless v1 records are returned (and durably adopted)
+     * ONLY when the refId is still referenced by the current account's
+     * loaded journal/closed rows; otherwise they stay quarantined until
+     * retention expires them — never blindly assigned to the reader.
+     */
+    async _m20A1IdbGet(refId) {
+        const rec = await this._m20A1IdbGetRaw(refId);
+        if (!rec) return null;
+        const owner = this._m20A1OwnerKey();
+        if (rec.owner != null) {
+            return owner != null && String(rec.owner) === owner ? rec : null;
+        }
+        if (owner != null && this._m20A1RefReachableFromLoadedRows(refId)) {
+            const adopt = { ...rec, owner };
+            this._m20A1IdbPut(adopt).catch(() => {});
+            return rec;
+        }
+        return null;
+    }
+
+    /** Durable keyed delete; resolves true only after commit (never throws). */
+    async _m20A1IdbDelete(refId) {
+        const db = await this._m20A1OpenIdb();
+        if (!db || refId == null) return false;
+        const cfg = this._m20A1IdbConfig();
+        return new Promise((resolve) => {
+            let settled = false;
+            const settle = (v) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(v);
+                }
+            };
+            try {
+                const tx = db.transaction([cfg.storeName], 'readwrite');
+                const rq = tx.objectStore(cfg.storeName).delete(refId);
+                rq.onerror = () => settle(false);
+                tx.oncomplete = () => settle(true);
+                tx.onabort = () => settle(false);
+                tx.onerror = () => settle(false);
+            } catch (_) {
+                settle(false);
+            }
+        });
+    }
+
+    /**
+     * Metadata-only store scan (cursor; blobs are NOT loaded into memory).
+     * Used by retention mark/sweep. Resolves null on any failure.
+     */
+    async _m20A1IdbScanMeta() {
+        const db = await this._m20A1OpenIdb();
+        if (!db) return null;
+        const cfg = this._m20A1IdbConfig();
+        return new Promise((resolve) => {
+            let settled = false;
+            const settle = (v) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(v);
+                }
+            };
+            try {
+                const out = [];
+                const tx = db.transaction([cfg.storeName], 'readonly');
+                const rq = tx.objectStore(cfg.storeName).openCursor();
+                rq.onsuccess = () => {
+                    const cur = rq.result;
+                    if (!cur) return; // final resolve on tx.oncomplete
+                    try {
+                        const v = cur.value || {};
+                        out.push({
+                            refId: v.refId,
+                            owner: v.owner != null ? String(v.owner) : null,
+                            sessionId: v.sessionId != null ? String(v.sessionId) : null,
+                            createdAt: Number(v.createdAt) || 0,
+                            byteLength: Number(v.byteLength) || 0,
+                        });
+                    } catch (_) { /* skip malformed row */ }
+                    try { cur.continue(); } catch (_) { settle(out); }
+                };
+                rq.onerror = () => settle(null);
+                tx.oncomplete = () => settle(out);
+                tx.onabort = () => settle(null);
+                tx.onerror = () => settle(null);
+            } catch (_) {
+                settle(null);
+            }
+        });
+    }
+
+    /** Bounded rehydrate cache (UI paths): LRU by entry count AND total bytes. */
+    _m20A1CacheLimits() {
+        return { maxEntries: 32, maxBytes: 24 * 1024 * 1024 };
+    }
+
+    _m20A1Cache() {
+        if (!this.__m20A1BlobCache) {
+            this.__m20A1BlobCache = new Map();
+            this.__m20A1BlobCacheBytes = 0;
+        }
+        return this.__m20A1BlobCache;
+    }
+
+    _m20A1CacheGet(refId) {
+        const c = this._m20A1Cache();
+        if (!c.has(refId)) return null;
+        const v = c.get(refId);
+        c.delete(refId);
+        c.set(refId, v); // LRU bump
+        return v;
+    }
+
+    _m20A1CachePut(refId, dataUrl) {
+        if (typeof dataUrl !== 'string' || !dataUrl || !refId) return;
+        if (!this._m20A1IsValidScreenshotDataUrl(dataUrl)) return;
+        const c = this._m20A1Cache();
+        const lim = this._m20A1CacheLimits();
+        if (dataUrl.length > lim.maxBytes) return;
+        if (c.has(refId)) {
+            this.__m20A1BlobCacheBytes -= c.get(refId).length;
+            c.delete(refId);
+        }
+        c.set(refId, dataUrl);
+        this.__m20A1BlobCacheBytes += dataUrl.length;
+        while (c.size > lim.maxEntries || this.__m20A1BlobCacheBytes > lim.maxBytes) {
+            const oldest = c.keys().next().value;
+            if (oldest === undefined) break;
+            this.__m20A1BlobCacheBytes -= c.get(oldest).length;
+            c.delete(oldest);
+        }
+    }
+
+    /** True when the row (or its nested journalEntry/metadata) retains blobs. */
+    _m20A1RowNeedsExternalize(row) {
+        if (!row || typeof row !== 'object') return false;
+        if (this._m20A1IsExternalizableShot(row.entryScreenshot)) return true;
+        if (this._m20A1IsExternalizableShot(row.exitScreenshot)) return true;
+        if (Array.isArray(row.entryScreenshots)
+            && row.entryScreenshots.some((e) => e && this._m20A1IsExternalizableShot(e.screenshot))) {
+            return true;
+        }
+        if (Array.isArray(row.railScreenshots)
+            && row.railScreenshots.some((r) => r && this._m20A1IsExternalizableShot(r.dataUrl))) {
+            return true;
+        }
+        if (row.journalEntry && typeof row.journalEntry === 'object'
+            && this._m20A1RowNeedsExternalize(row.journalEntry)) {
+            return true;
+        }
+        if (row.metadata && typeof row.metadata === 'object'
+            && this._m20A1RowNeedsExternalize(row.metadata)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Externalize one retained row in place: put blobs into IndexedDB, write
+     * additive *Ref fields, then null the in-row base64 (only after IDB
+     * success — capture bytes are never lost). Returns true when changed.
+     */
+    async _m20A1ExternalizeRowScreenshots(row, opts = {}) {
+        if (!row || typeof row !== 'object') return false;
+        if (!this._m20A1ScreenshotIdbV1Enabled()) return false;
+        // A1-F1: no trustworthy authenticated owner → zero IDB writes; rows
+        // keep today's in-row blobs (fail-soft legacy, never forged identity).
+        if (this._m20A1OwnerKey() == null) return false;
+        const rolePrefix = opts.rolePrefix || '';
+        const tradeId = row.tradeId != null ? row.tradeId : (row.id != null ? row.id : opts.tradeId);
+        let changed = false;
+        let putFailed = false;
+
+        const putOne = async (dataUrl, role, idx) => {
+            const fullRole = rolePrefix + role;
+            const refId = this._m20A1MakeRefId(tradeId, fullRole, idx);
+            let sess = null;
+            try {
+                sess = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { /* null */ }
+            const ok = await this._m20A1IdbPut({
+                refId,
+                sessionId: sess != null ? String(sess) : null,
+                tradeId: tradeId != null ? tradeId : null,
+                role: fullRole,
+                mime: this._m20A1MimeOf(dataUrl),
+                byteLength: dataUrl.length,
+                createdAt: Date.now(),
+                blob: dataUrl,
+            });
+            if (!ok) {
+                putFailed = true;
+                return null;
+            }
+            this._m20A1CachePut(refId, dataUrl);
+            return {
+                refId,
+                mime: this._m20A1MimeOf(dataUrl),
+                byteLength: dataUrl.length,
+                role: fullRole,
+            };
+        };
+
+        if (this._m20A1IsExternalizableShot(row.entryScreenshot)) {
+            const ref = await putOne(row.entryScreenshot, 'entry');
+            if (ref) {
+                row.entryScreenshotRef = ref;
+                row.entryScreenshot = null;
+                changed = true;
+            }
+        }
+        if (!putFailed && this._m20A1IsExternalizableShot(row.exitScreenshot)) {
+            const ref = await putOne(row.exitScreenshot, 'exit');
+            if (ref) {
+                row.exitScreenshotRef = ref;
+                row.exitScreenshot = null;
+                changed = true;
+            }
+        }
+        if (!putFailed && Array.isArray(row.entryScreenshots)
+            && row.entryScreenshots.some((e) => e && this._m20A1IsExternalizableShot(e.screenshot))) {
+            const refs = [];
+            let allOk = true;
+            for (let i = 0; i < row.entryScreenshots.length; i++) {
+                const item = row.entryScreenshots[i];
+                if (item && this._m20A1IsExternalizableShot(item.screenshot)) {
+                    const ref = await putOne(item.screenshot, 'entrylist', i);
+                    if (!ref) { allOk = false; break; }
+                    refs.push({ ...item, screenshot: null, ...ref });
+                } else {
+                    refs.push(item);
+                }
+            }
+            if (allOk) {
+                row.entryScreenshotRefs = refs;
+                row.entryScreenshots = null;
+                changed = true;
+            }
+        }
+        if (!putFailed && Array.isArray(row.railScreenshots)
+            && row.railScreenshots.some((r) => r && this._m20A1IsExternalizableShot(r.dataUrl))) {
+            const refs = [];
+            let allOk = true;
+            for (let i = 0; i < row.railScreenshots.length; i++) {
+                const item = row.railScreenshots[i];
+                if (item && this._m20A1IsExternalizableShot(item.dataUrl)) {
+                    const ref = await putOne(item.dataUrl, 'rail', i);
+                    if (!ref) { allOk = false; break; }
+                    refs.push({ name: item.name != null ? item.name : null, ...ref });
+                } else {
+                    refs.push(item);
+                }
+            }
+            if (allOk) {
+                row.railScreenshotRefs = refs;
+                row.railScreenshots = null;
+                changed = true;
+            }
+        }
+        // Nested duplicates observed on durable rows (journalEntry / metadata).
+        if (!putFailed && row.journalEntry && typeof row.journalEntry === 'object') {
+            const nested = await this._m20A1ExternalizeRowScreenshots(row.journalEntry, {
+                rolePrefix: 'je-', tradeId,
+            });
+            changed = nested || changed;
+        }
+        if (!putFailed && row.metadata && typeof row.metadata === 'object') {
+            const nested = await this._m20A1ExternalizeRowScreenshots(row.metadata, {
+                rolePrefix: 'meta-', tradeId,
+            });
+            changed = nested || changed;
+        }
+        if (changed) row[this._m20A1SchemaMarkKey()] = true;
+        return changed;
+    }
+
+    /**
+     * Rows of a still-open scaled OR split group are skipped: the aggregate
+     * journal entry reads leg blobs synchronously at group close, so early
+     * legs must never be externalized (and their bytes must never leave the
+     * row) before the aggregate closes.
+     */
+    _m20A1RowInOpenScaledGroup(row) {
+        if (!row || typeof row !== 'object') return false;
+        try {
+            if (row.tradeGroupId != null) {
+                const info = this.scaledTrades && typeof this.scaledTrades.get === 'function'
+                    ? this.scaledTrades.get(row.tradeGroupId)
+                    : null;
+                if (info && info.status !== 'CLOSED') return true;
+            }
+            if (row.splitGroupId != null) {
+                const sInfo = this.splitTrades && typeof this.splitTrades.get === 'function'
+                    ? this.splitTrades.get(row.splitGroupId)
+                    : null;
+                if (sInfo && sInfo.status !== 'CLOSED') return true;
+            }
+            if (row.scaledGroupId != null && row.scaledGroupId !== row.tradeGroupId) {
+                const scInfo = this.scaledTrades && typeof this.scaledTrades.get === 'function'
+                    ? this.scaledTrades.get(row.scaledGroupId)
+                    : null;
+                if (scInfo && scInfo.status !== 'CLOSED') return true;
+            }
+            return false;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** Debounced retained-set sweep (journal close, restore hydrate, closed push). */
+    _m20A1ScheduleRetainedSweep(reason) {
+        if (!this._m20A1ScreenshotIdbV1Enabled()) return;
+        // New external trigger (rows changed): restart the scan from the
+        // newest rows. 'sweep-continue' keeps the saved resume cursor so a
+        // long backlog is walked incrementally instead of rescanned.
+        if (reason !== 'sweep-continue') this.__m20A1SweepCursor = null;
+        if (this.__m20A1SweepTimer != null) return;
+        this.__m20A1SweepTimer = setTimeout(() => {
+            this.__m20A1SweepTimer = null;
+            this._m20A1RunRetainedSweepNow().catch(() => {});
+        }, 1200);
+    }
+
+    /**
+     * Externalize retained journal/closed rows, newest first. BOTH the
+     * write work (maxRows) and the SCAN work (maxScan) are bounded per
+     * pass: a persistent resume cursor continues where the previous pass
+     * stopped, so a 50k-row journal is never rescanned end-to-end on every
+     * trigger. Reschedules itself while rows remain; stops on IDB failure
+     * (fail-soft: rows keep their in-row blobs — exactly today's behavior).
+     */
+    async _m20A1RunRetainedSweepNow(maxRows = 16, maxScan = 4000) {
+        if (!this._m20A1ScreenshotIdbV1Enabled()) {
+            return { scanned: 0, externalized: 0, enabled: false };
+        }
+        // A1-F1: externalization requires a trustworthy authenticated owner.
+        if (this._m20A1OwnerKey() == null) {
+            return { scanned: 0, externalized: 0, owner: null };
+        }
+        if (this.__m20A1SweepActive) return { scanned: 0, externalized: 0, busy: true };
+        this.__m20A1SweepActive = true;
+        let scanned = 0;
+        let externalized = 0;
+        let pendingMore = false;
+        let aborted = false;
+        try {
+            const lists = [this.tradeJournal, this.closedPositions];
+            const cursor = this.__m20A1SweepCursor;
+            let startLi = 0;
+            let startIdx = null; // null → tail of the list
+            if (cursor && Number.isInteger(cursor.li) && cursor.li >= 0 && cursor.li < lists.length) {
+                startLi = cursor.li;
+                startIdx = Number.isInteger(cursor.idx) ? cursor.idx : null;
+            }
+            this.__m20A1SweepCursor = null;
+            outer:
+            for (let li = startLi; li < lists.length; li++) {
+                const list = lists[li];
+                if (aborted) break;
+                if (!Array.isArray(list)) continue;
+                const from = (li === startLi && startIdx != null)
+                    ? Math.min(startIdx, list.length - 1)
+                    : list.length - 1;
+                for (let i = from; i >= 0; i--) {
+                    if (scanned >= maxScan || externalized >= maxRows) {
+                        this.__m20A1SweepCursor = { li, idx: i };
+                        pendingMore = true;
+                        break outer;
+                    }
+                    const row = list[i];
+                    scanned += 1;
+                    if (!this._m20A1RowNeedsExternalize(row)) continue;
+                    if (this._m20A1RowInOpenScaledGroup(row)) continue;
+                    const changed = await this._m20A1ExternalizeRowScreenshots(row);
+                    if (changed) {
+                        externalized += 1;
+                    } else {
+                        // IDB put failed — stop hammering; retry on next trigger.
+                        aborted = true;
+                        break;
+                    }
+                }
+            }
+        } finally {
+            this.__m20A1SweepActive = false;
+        }
+        if (pendingMore) this._m20A1ScheduleRetainedSweep('sweep-continue');
+        else this._m20A1ScheduleRetentionSweep('post-externalize');
+        return { scanned, externalized, pendingMore, aborted };
+    }
+
+    // ─── A1-F1/F2 — ownership reachability, retention, logout clean ────────
+
+    /**
+     * Every refId still referenced by the CURRENT account's loaded journal /
+     * closed rows (incl. nested journalEntry/metadata copies). These are the
+     * marked (protected) set: retention and logout may never delete them.
+     * Memoized briefly — sweeps and display bursts share one scan.
+     */
+    _m20A1CollectReachableRefIds(force = false) {
+        const now = Date.now();
+        const memo = this.__m20A1ReachableMemo;
+        if (!force && memo && now - memo.at < 5000) return memo.set;
+        const set = new Set();
+        const addRow = (row) => {
+            if (!row || typeof row !== 'object') return;
+            if (row.entryScreenshotRef && row.entryScreenshotRef.refId) set.add(row.entryScreenshotRef.refId);
+            if (row.exitScreenshotRef && row.exitScreenshotRef.refId) set.add(row.exitScreenshotRef.refId);
+            if (Array.isArray(row.entryScreenshotRefs)) {
+                for (const r of row.entryScreenshotRefs) if (r && r.refId) set.add(r.refId);
+            }
+            if (Array.isArray(row.railScreenshotRefs)) {
+                for (const r of row.railScreenshotRefs) if (r && r.refId) set.add(r.refId);
+            }
+            if (row.journalEntry && typeof row.journalEntry === 'object') addRow(row.journalEntry);
+            if (row.metadata && typeof row.metadata === 'object') addRow(row.metadata);
+        };
+        try {
+            if (Array.isArray(this.tradeJournal)) this.tradeJournal.forEach(addRow);
+            if (Array.isArray(this.closedPositions)) this.closedPositions.forEach(addRow);
+        } catch (_) { /* partial set is still safe (only used to PROTECT) */ }
+        this.__m20A1ReachableMemo = { at: now, set };
+        return set;
+    }
+
+    _m20A1RefReachableFromLoadedRows(refId) {
+        if (!refId) return false;
+        return this._m20A1CollectReachableRefIds().has(refId);
+    }
+
+    /**
+     * A1-F2 — retention bounds. Reachable records are always preserved;
+     * bounds apply to the current account's UNREACHABLE records and to
+     * quarantined ownerless v1 leftovers only. Foreign-owner records are
+     * never touched (their own sessions retain/clean them).
+     */
+    _m20A1RetentionConfig() {
+        return {
+            maxAgeMs: 30 * 24 * 60 * 60 * 1000,   // unreachable + quarantined expiry
+            maxRecords: 512,                        // per current owner
+            maxTotalBytes: 128 * 1024 * 1024,       // per current owner
+            unreachableGraceMs: 10 * 60 * 1000,     // active-session rows may be mid-mutation
+        };
+    }
+
+    /** Debounced retention sweep (fires once after externalize settles). */
+    _m20A1ScheduleRetentionSweep(_reason) {
+        if (!this._m20A1ScreenshotIdbV1Enabled()) return;
+        if (this.__m20A1RetentionTimer != null) return;
+        this.__m20A1RetentionTimer = setTimeout(() => {
+            this.__m20A1RetentionTimer = null;
+            this._m20A1RunRetentionSweepNow().catch(() => {});
+        }, 4000);
+    }
+
+    /**
+     * A1-F2 — mark/sweep retention over the current account's records.
+     * Mark: every refId reachable from loaded journal/closed rows (never
+     * deleted, regardless of age or budget — no data loss before durable /
+     * server re-embed). Sweep (durable deletes, fail-soft):
+     *   - own unreachable records past maxAgeMs;
+     *   - own unreachable records of the ACTIVE session past the grace
+     *     window (their row was removed from the loaded journal);
+     *   - ownerless v1 quarantine past maxAgeMs (reachable ones are adopted
+     *     instead — see _m20A1IdbGet);
+     *   - oldest own unreachable records while count/byte budgets overflow.
+     * Offline/failure policy: any scan/delete failure exits fail-soft and
+     * keeps records (retention prefers residue over data loss); reachable
+     * overflow is reported (overBudget) but never deleted.
+     */
+    async _m20A1RunRetentionSweepNow() {
+        if (!this._m20A1ScreenshotIdbV1Enabled()) return { enabled: false };
+        const owner = this._m20A1OwnerKey();
+        if (owner == null) return { enabled: true, owner: null, skipped: true };
+        if (this.__m20A1RetentionActive) return { busy: true };
+        this.__m20A1RetentionActive = true;
+        const out = { scanned: 0, deleted: 0, adopted: 0, kept: 0, overBudget: false };
+        try {
+            const rows = await this._m20A1IdbScanMeta();
+            if (!Array.isArray(rows)) return { ...out, failed: true };
+            out.scanned = rows.length;
+            const cfg = this._m20A1RetentionConfig();
+            const reachable = this._m20A1CollectReachableRefIds(true);
+            const now = Date.now();
+            let activeSess = null;
+            try {
+                activeSess = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                    ? this.chart.getActiveTradingSessionId()
+                    : null;
+            } catch (_) { /* null */ }
+            const activeSessStr = activeSess != null ? String(activeSess) : null;
+
+            const toDelete = [];
+            const mineUnreachable = [];
+            let mineCount = 0;
+            let mineBytes = 0;
+            for (const r of rows) {
+                if (!r || r.refId == null) continue;
+                const isMine = r.owner != null && r.owner === owner;
+                const isLegacy = r.owner == null;
+                if (!isMine && !isLegacy) continue; // foreign owner — never touched
+                const age = now - (r.createdAt || 0);
+                if (reachable.has(r.refId)) {
+                    if (isLegacy) {
+                        // reachable quarantined v1 → adopt for current account
+                        const rec = await this._m20A1IdbGetRaw(r.refId);
+                        if (rec && rec.owner == null) {
+                            const ok = await this._m20A1IdbPut({ ...rec, owner });
+                            if (ok) out.adopted += 1;
+                        }
+                    }
+                    if (isMine || isLegacy) {
+                        mineCount += 1;
+                        mineBytes += r.byteLength || 0;
+                    }
+                    continue;
+                }
+                if (isLegacy) {
+                    if (age > cfg.maxAgeMs) toDelete.push(r.refId);
+                    else out.kept += 1;
+                    continue;
+                }
+                // mine + unreachable
+                if (age > cfg.maxAgeMs
+                    || (activeSessStr != null && r.sessionId === activeSessStr
+                        && age > cfg.unreachableGraceMs)) {
+                    toDelete.push(r.refId);
+                } else {
+                    mineUnreachable.push(r);
+                    mineCount += 1;
+                    mineBytes += r.byteLength || 0;
+                }
+            }
+            // Budget overflow: evict oldest UNREACHABLE own records only.
+            mineUnreachable.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            let i = 0;
+            while ((mineCount > cfg.maxRecords || mineBytes > cfg.maxTotalBytes)
+                && i < mineUnreachable.length) {
+                const r = mineUnreachable[i++];
+                toDelete.push(r.refId);
+                mineCount -= 1;
+                mineBytes -= r.byteLength || 0;
+            }
+            if (mineCount > cfg.maxRecords || mineBytes > cfg.maxTotalBytes) {
+                out.overBudget = true; // only reachable records remain — report, never delete
+            }
+            for (const refId of toDelete) {
+                const ok = await this._m20A1IdbDelete(refId);
+                if (ok) out.deleted += 1;
+                else out.kept += 1;
+            }
+        } catch (_) {
+            out.failed = true; // fail-soft: keep records
+        } finally {
+            this.__m20A1RetentionActive = false;
+        }
+        return out;
+    }
+
+    /**
+     * A1-F2 — privacy clean for CONFIRMED logout, exposed for the lifecycle
+     * owner (dashboard-shell logout / auth teardown). Policy:
+     *   - always: run the safe retention sweep, wipe the in-memory blob
+     *     cache/timers and close the connection (idempotent teardown);
+     *   - opts.confirmDurable === true (caller asserts the durable server
+     *     re-embed persisted after the last externalize): additionally
+     *     delete ALL records owned by the current account. Without that
+     *     explicit confirmation records are NEVER bulk-deleted (no data
+     *     loss while offline / before durable persist); they stay
+     *     unreadable to other accounts (owner validation) and expire via
+     *     retention age bounds.
+     */
+    async _m20A1PrivacyCleanOnLogout(opts = {}) {
+        const summary = { enabled: false, deleted: 0, kept: 0, retention: null, tornDown: false };
+        try {
+            if (this._m20A1ScreenshotIdbV1Enabled()) {
+                summary.enabled = true;
+                const owner = this._m20A1OwnerKey();
+                summary.retention = await this._m20A1RunRetentionSweepNow();
+                if (owner != null && opts.confirmDurable === true) {
+                    const rows = await this._m20A1IdbScanMeta();
+                    if (Array.isArray(rows)) {
+                        for (const r of rows) {
+                            if (!r || r.refId == null) continue;
+                            if (r.owner !== owner) continue; // foreign/quarantined stay
+                            const ok = await this._m20A1IdbDelete(r.refId);
+                            if (ok) summary.deleted += 1;
+                            else summary.kept += 1;
+                        }
+                    }
+                }
+            }
+        } catch (_) { /* fail-soft — teardown below always runs */ }
+        this._m20A1Teardown();
+        summary.tornDown = true;
+        return summary;
+    }
+
+    // ─── Runtime kill AFTER externalization — explicit one-time transition ──
+    //
+    // Boot-time semantics: kill set before A1 ever ran → rows carry no refs
+    // and every A1 path is a no-op (ZERO IndexedDB traffic, exact legacy).
+    // Runtime/boot flip AFTER externalization: rows carry refs whose bytes
+    // live only in IndexedDB. Silently persisting/displaying null-blob+ref
+    // rows would be data loss, so the FIRST touch (display or persist)
+    // schedules a one-time recovery transition that re-embeds all refs back
+    // into the rows (explicit, documented IDB reads — no false zero-traffic
+    // claim), then closes the connection. Steady state afterwards is exact
+    // legacy with zero IDB traffic. Unresolved refs stay in-row (byte
+    // preservation) and durable persist stays fail-closed until recovered.
+
+    _m20A1ScheduleKillTransition(_reason) {
+        if (!this._m20A1KillSwitchOn()) return;
+        if (this.__m20A1KillTransitionDone || this.__m20A1KillTransitionRunning) return;
+        if (this.__m20A1KillTransitionTimer != null) return;
+        if (this.__m20A1KillTransitionLastAt
+            && Date.now() - this.__m20A1KillTransitionLastAt < 30_000) {
+            return; // unresolved refs — retry backoff, no loop
+        }
+        this.__m20A1KillTransitionTimer = setTimeout(() => {
+            this.__m20A1KillTransitionTimer = null;
+            this._m20A1RunKillTransitionNow().catch(() => {});
+        }, 50);
+    }
+
+    async _m20A1RunKillTransitionNow() {
+        if (!this._m20A1KillSwitchOn()) return { skipped: true };
+        if (this.__m20A1KillTransitionDone) return { done: true };
+        if (this.__m20A1KillTransitionRunning) return { busy: true };
+        this.__m20A1KillTransitionRunning = true;
+        const out = { rows: 0, recovered: 0, unresolved: 0 };
+        try {
+            this.__m20A1TransitionActive = true; // one-time open-gate bypass
+            for (const list of [this.tradeJournal, this.closedPositions]) {
+                if (!Array.isArray(list)) continue;
+                for (const row of list) {
+                    if (!this._m20A1RowHasScreenshotRefs(row)) continue;
+                    out.rows += 1;
+                    const r = await this._m20A1ReEmbedRowFromRefs(row);
+                    out.recovered += r.recovered;
+                    out.unresolved += r.unresolved;
+                }
+            }
+        } catch (_) {
+            out.failed = true;
+        } finally {
+            this.__m20A1TransitionActive = false;
+            this.__m20A1KillTransitionRunning = false;
+            this.__m20A1KillTransitionLastAt = Date.now();
+            this._m20A1CloseIdb(); // steady legacy: zero IDB traffic from here
+        }
+        if (!out.failed && out.unresolved === 0) {
+            this.__m20A1KillTransitionDone = true;
+            if (out.rows > 0) {
+                // Flush the fully recovered journal through the EXACT legacy
+                // sync persist path and refresh the UI once.
+                try { this.persistJournal(); } catch (_) { /* next persist covers it */ }
+                try {
+                    if (typeof this.updateJournalTab === 'function') this.updateJournalTab();
+                } catch (_) { /* display only */ }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Restore legacy in-row blob fields from refs on a LIVE row (kill
+     * transition only). Per-field atomic: a field's refs are removed only
+     * when every blob resolved; unresolved refs stay in-row so the bytes
+     * remain recoverable (fail-soft, never destructive).
+     */
+    async _m20A1ReEmbedRowFromRefs(row) {
+        const out = { recovered: 0, unresolved: 0 };
+        if (!row || typeof row !== 'object') return out;
+        if (row.entryScreenshotRef && row.entryScreenshotRef.refId) {
+            if (this._m20A1IsEmbeddedShot(row.entryScreenshot)) {
+                delete row.entryScreenshotRef;
+            } else {
+                const blob = await this._m20A1ResolveRefBlob(row.entryScreenshotRef.refId);
+                if (blob) {
+                    row.entryScreenshot = blob;
+                    delete row.entryScreenshotRef;
+                    out.recovered += 1;
+                } else {
+                    out.unresolved += 1;
+                }
+            }
+        }
+        if (row.exitScreenshotRef && row.exitScreenshotRef.refId) {
+            if (this._m20A1IsEmbeddedShot(row.exitScreenshot)) {
+                delete row.exitScreenshotRef;
+            } else {
+                const blob = await this._m20A1ResolveRefBlob(row.exitScreenshotRef.refId);
+                if (blob) {
+                    row.exitScreenshot = blob;
+                    delete row.exitScreenshotRef;
+                    out.recovered += 1;
+                } else {
+                    out.unresolved += 1;
+                }
+            }
+        }
+        if (Array.isArray(row.entryScreenshotRefs)) {
+            if (Array.isArray(row.entryScreenshots)) {
+                delete row.entryScreenshotRefs;
+            } else {
+                const items = [];
+                let missing = 0;
+                for (const r of row.entryScreenshotRefs) {
+                    if (!r || !r.refId) { items.push(r); continue; }
+                    const blob = await this._m20A1ResolveRefBlob(r.refId);
+                    if (!blob) { missing += 1; continue; }
+                    const { refId, mime, byteLength, role, ...rest } = r;
+                    items.push({ ...rest, screenshot: blob });
+                }
+                if (missing === 0) {
+                    row.entryScreenshots = items;
+                    delete row.entryScreenshotRefs;
+                    out.recovered += items.length;
+                } else {
+                    out.unresolved += missing;
+                }
+            }
+        }
+        if (Array.isArray(row.railScreenshotRefs)) {
+            if (Array.isArray(row.railScreenshots)) {
+                delete row.railScreenshotRefs;
+            } else {
+                const items = [];
+                let missing = 0;
+                for (const r of row.railScreenshotRefs) {
+                    if (!r || !r.refId) { items.push(r); continue; }
+                    const blob = await this._m20A1ResolveRefBlob(r.refId);
+                    if (!blob) { missing += 1; continue; }
+                    items.push({ dataUrl: blob, name: r.name != null ? r.name : null });
+                }
+                if (missing === 0) {
+                    row.railScreenshots = items;
+                    delete row.railScreenshotRefs;
+                    out.recovered += items.length;
+                } else {
+                    out.unresolved += missing;
+                }
+            }
+        }
+        if (row.journalEntry && typeof row.journalEntry === 'object') {
+            const r = await this._m20A1ReEmbedRowFromRefs(row.journalEntry);
+            out.recovered += r.recovered;
+            out.unresolved += r.unresolved;
+        }
+        if (row.metadata && typeof row.metadata === 'object') {
+            const r = await this._m20A1ReEmbedRowFromRefs(row.metadata);
+            out.recovered += r.recovered;
+            out.unresolved += r.unresolved;
+        }
+        if (out.unresolved === 0 && row[this._m20A1SchemaMarkKey()] === true) {
+            delete row[this._m20A1SchemaMarkKey()];
+        }
+        return out;
+    }
+
+    /**
+     * Aggregate close (scaled/split group): the aggregate journal entry
+     * collects leg `entryScreenshot` blobs — a leg externalized earlier
+     * (restored session or guard race) must contribute its BYTES to the
+     * aggregate, not a dangling ref. Restores blobs in place; fail-soft
+     * (unresolved legs keep their refs — bytes stay recoverable).
+     */
+    async _m20A1RestoreLegBlobs(entries) {
+        if (!Array.isArray(entries) || !this._m20A1ScreenshotIdbV1Enabled()) return 0;
+        let restored = 0;
+        for (const e of entries) {
+            if (!e || typeof e !== 'object') continue;
+            if (e.entryScreenshotRef && e.entryScreenshotRef.refId
+                && !this._m20A1IsEmbeddedShot(e.entryScreenshot)) {
+                try {
+                    const blob = await this._m20A1ResolveRefBlob(e.entryScreenshotRef.refId);
+                    if (blob) {
+                        e.entryScreenshot = blob;
+                        delete e.entryScreenshotRef;
+                        if (e[this._m20A1SchemaMarkKey()] === true) delete e[this._m20A1SchemaMarkKey()];
+                        restored += 1;
+                    }
+                } catch (_) { /* leg keeps its ref */ }
+            }
+        }
+        return restored;
+    }
+
+    // ─── Logout privacy-clean bridge (dashboard shell → chart iframe) ──────
+    //
+    // The dashboard shell (parent window) posts a same-origin request when
+    // the authenticated user logs out; the chart runs the privacy clean and
+    // replies with a truthful durable-confirmation result. Security:
+    //   - the event origin MUST equal this window's origin (no wildcard);
+    //   - the request owner MUST match the chart's authenticated owner key;
+    //   - confirmDurable is NEVER accepted from a message: a durable
+    //     server-ack signal is not observable in this architecture, so bulk
+    //     deletion is refused and the reply says so (no unverified bulk
+    //     deletion — records stay owner-locked and expire via retention).
+
+    _m20A1LogoutBridgeMessageTypes() {
+        return {
+            request: 'talaria:m20-a1:privacy-clean:request',
+            result: 'talaria:m20-a1:privacy-clean:result',
+            channel: 'talaria:m20-a1:privacy-clean',
+        };
+    }
+
+    /**
+     * Two same-origin transports, one validated handler:
+     *   - window 'message' (origin-checked) for embedded/iframe hosts;
+     *   - BroadcastChannel (same-origin by construction) for the REAL
+     *     architecture: the dashboard shell navigates to /chart/ in a
+     *     sibling tab, so no window handle exists at logout time.
+     */
+    _m20A1InstallLogoutBridge() {
+        try {
+            if (this.__m20A1LogoutBridgeInstalled) return;
+            if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+            this.__m20A1LogoutBridgeInstalled = true;
+            window.addEventListener('message', (event) => {
+                this._m20A1HandleLogoutBridgeMessage(event);
+            });
+            try {
+                if (typeof BroadcastChannel === 'function') {
+                    const types = this._m20A1LogoutBridgeMessageTypes();
+                    this.__m20A1LogoutChannel = new BroadcastChannel(types.channel);
+                    this.__m20A1LogoutChannel.onmessage = (event) => {
+                        this._m20A1HandleLogoutBridgeMessage({
+                            origin: window.location.origin, // BroadcastChannel never crosses origins
+                            data: event && event.data,
+                            source: null,
+                            viaBroadcast: true,
+                        });
+                    };
+                }
+            } catch (_) { /* window transport still installed */ }
+        } catch (_) { /* bridge optional — logout still tears down via pagehide */ }
+    }
+
+    _m20A1HandleLogoutBridgeMessage(event) {
+        try {
+            const types = this._m20A1LogoutBridgeMessageTypes();
+            if (!event || typeof event.origin !== 'string') return;
+            if (event.origin !== window.location.origin) return; // same-origin only
+            const msg = event.data;
+            if (!msg || typeof msg !== 'object' || msg.type !== types.request) return;
+            const reply = (payload) => {
+                try {
+                    const body = {
+                        type: types.result,
+                        requestId: msg.requestId != null ? msg.requestId : null,
+                        ...payload,
+                    };
+                    if (event.viaBroadcast === true && this.__m20A1LogoutChannel) {
+                        this.__m20A1LogoutChannel.postMessage(body);
+                    } else if (event.source && typeof event.source.postMessage === 'function') {
+                        event.source.postMessage(body, event.origin); // explicit target origin — never '*'
+                    }
+                } catch (_) { /* reply best-effort; shell times out fail-soft */ }
+            };
+            const owner = this._m20A1OwnerKey();
+            if (owner == null || msg.owner == null || String(msg.owner) !== owner) {
+                reply({ ok: false, reason: 'owner-mismatch' });
+                return;
+            }
+            this._m20A1PrivacyCleanOnLogout({ confirmDurable: false })
+                .then((summary) => reply({
+                    ok: true,
+                    confirmDurable: false,
+                    deleted: summary.deleted,
+                    kept: summary.kept,
+                    tornDown: summary.tornDown,
+                    retention: summary.retention && typeof summary.retention === 'object'
+                        ? { deleted: summary.retention.deleted, scanned: summary.retention.scanned }
+                        : null,
+                    reason: 'durable-ack-unavailable-bulk-delete-refused',
+                }))
+                .catch(() => reply({ ok: false, reason: 'clean-failed' }));
+        } catch (_) { /* never throw from a message handler */ }
+    }
+
+    /** True when one row carries A1 refs (incl. nested journalEntry/metadata). */
+    _m20A1RowHasScreenshotRefs(row) {
+        if (!row || typeof row !== 'object') return false;
+        if (row[this._m20A1SchemaMarkKey()] === true) return true;
+        if (row.entryScreenshotRef || row.exitScreenshotRef
+            || row.entryScreenshotRefs || row.railScreenshotRefs) {
+            return true;
+        }
+        if (row.journalEntry && typeof row.journalEntry === 'object'
+            && this._m20A1RowHasScreenshotRefs(row.journalEntry)) {
+            return true;
+        }
+        if (row.metadata && typeof row.metadata === 'object'
+            && this._m20A1RowHasScreenshotRefs(row.metadata)) {
+            return true;
+        }
+        return false;
+    }
+
+    /** True when any row carries A1 refs (durable/export paths must rehydrate). */
+    _m20A1RowsHaveScreenshotRefs(rows) {
+        if (!Array.isArray(rows)) return false;
+        for (const row of rows) {
+            if (this._m20A1RowHasScreenshotRefs(row)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Resolve one ref to its data-URL (cache-aware; optional cache insert).
+     * Every payload read back from IndexedDB is validated against the
+     * strict image data-URL contract BEFORE any HTML/src/persist use —
+     * corrupt or tampered records resolve null (treated as a miss).
+     */
+    async _m20A1ResolveRefBlob(refId, opts = {}) {
+        if (!refId) return null;
+        const cached = this._m20A1CacheGet(refId);
+        if (cached) return cached;
+        const rec = await this._m20A1IdbGet(refId);
+        let blob = rec && typeof rec.blob === 'string' && rec.blob ? rec.blob : null;
+        if (blob && !this._m20A1IsValidScreenshotDataUrl(blob)) blob = null;
+        if (blob && opts.cache === true) this._m20A1CachePut(refId, blob);
+        return blob;
+    }
+
+    /**
+     * Fill legacy blob fields back from IndexedDB on an (already cloned) row.
+     * Durable server tier + JSON export use this so persisted session data
+     * keeps today's embedded byte class (I16 — additive, never stripped).
+     * `report.unresolved` counts every ref that could NOT be resolved
+     * (missing / corrupt / evicted): durable + export callers FAIL CLOSED on
+     * a non-zero count instead of emitting ref-only/null payloads that would
+     * overwrite the last known durable state.
+     */
+    async _m20A1RehydrateRowForDurablePersist(row, report) {
+        if (!row || typeof row !== 'object') return row;
+        const miss = () => { if (report) report.unresolved = (report.unresolved || 0) + 1; };
+        if (row.entryScreenshotRef && row.entryScreenshotRef.refId
+            && !this._m20A1IsEmbeddedShot(row.entryScreenshot)) {
+            const blob = await this._m20A1ResolveRefBlob(row.entryScreenshotRef.refId);
+            if (blob) row.entryScreenshot = blob;
+            else miss();
+        }
+        if (row.exitScreenshotRef && row.exitScreenshotRef.refId
+            && !this._m20A1IsEmbeddedShot(row.exitScreenshot)) {
+            const blob = await this._m20A1ResolveRefBlob(row.exitScreenshotRef.refId);
+            if (blob) row.exitScreenshot = blob;
+            else miss();
+        }
+        if (Array.isArray(row.entryScreenshotRefs) && !Array.isArray(row.entryScreenshots)) {
+            const items = [];
+            let complete = true;
+            for (const r of row.entryScreenshotRefs) {
+                if (!r || !r.refId) { items.push(r); continue; }
+                const blob = await this._m20A1ResolveRefBlob(r.refId);
+                if (!blob) { complete = false; miss(); break; }
+                items.push({ ...r, screenshot: blob });
+            }
+            if (complete) row.entryScreenshots = items;
+        }
+        if (Array.isArray(row.railScreenshotRefs) && !Array.isArray(row.railScreenshots)) {
+            const items = [];
+            let complete = true;
+            for (const r of row.railScreenshotRefs) {
+                if (!r || !r.refId) { items.push(r); continue; }
+                const blob = await this._m20A1ResolveRefBlob(r.refId);
+                if (!blob) { complete = false; miss(); break; }
+                items.push({ dataUrl: blob, name: r.name != null ? r.name : null });
+            }
+            if (complete) row.railScreenshots = items;
+        }
+        if (row.journalEntry && typeof row.journalEntry === 'object') {
+            await this._m20A1RehydrateRowForDurablePersist(row.journalEntry, report);
+        }
+        if (row.metadata && typeof row.metadata === 'object') {
+            await this._m20A1RehydrateRowForDurablePersist(row.metadata, report);
+        }
+        return row;
+    }
+
+    /** Rehydrate a cloned row list in place (durable persist / export). */
+    async _m20A1RehydrateRowsForDurablePersist(rows, report) {
+        const list = Array.isArray(rows) ? rows : [];
+        for (const row of list) {
+            try {
+                await this._m20A1RehydrateRowForDurablePersist(row, report);
+            } catch (_) {
+                // fail-soft for the ROW (keeps refs) but the batch reports it
+                // so durable/export callers can fail closed.
+                if (report) report.unresolved = (report.unresolved || 0) + 1;
+            }
+        }
+        return list;
+    }
+
+    /** groupJournalByTicker over explicit rows (durable rehydrate / export). */
+    _m20A1GroupRowsByTicker(rows) {
+        const grouped = {};
+        (Array.isArray(rows) ? rows : []).forEach((trade) => {
+            const ticker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            if (!grouped[ticker]) grouped[ticker] = [];
+            grouped[ticker].push(trade);
+        });
+        return grouped;
+    }
+
+    /**
+     * Short-lived display overlay for values the bounded LRU cache cannot
+     * hold: >32-shot groups and oversized single payloads. Entries live
+     * only long enough for the pending rerender(s) to consume them (TTL),
+     * with hard entry/byte caps — so big groups render completely without
+     * repeated-read storms while steady-state memory stays bounded.
+     */
+    _m20A1OverlayLimits() {
+        return { maxEntries: 256, maxBytes: 64 * 1024 * 1024, ttlMs: 10_000 };
+    }
+
+    _m20A1Overlay() {
+        if (!this.__m20A1DisplayOverlay) {
+            this.__m20A1DisplayOverlay = new Map();
+            this.__m20A1DisplayOverlayBytes = 0;
+        }
+        return this.__m20A1DisplayOverlay;
+    }
+
+    _m20A1OverlayGet(refId) {
+        const o = this._m20A1Overlay();
+        const e = o.get(refId);
+        if (!e) return null;
+        if (Date.now() - e.at > this._m20A1OverlayLimits().ttlMs) {
+            this.__m20A1DisplayOverlayBytes -= e.blob.length;
+            o.delete(refId);
+            return null;
+        }
+        return e.blob;
+    }
+
+    _m20A1OverlayPut(refId, blob) {
+        if (!refId || typeof blob !== 'string' || !blob) return;
+        const o = this._m20A1Overlay();
+        const lim = this._m20A1OverlayLimits();
+        if (blob.length > lim.maxBytes) return;
+        const prev = o.get(refId);
+        if (prev) {
+            this.__m20A1DisplayOverlayBytes -= prev.blob.length;
+            o.delete(refId);
+        }
+        o.set(refId, { blob, at: Date.now() });
+        this.__m20A1DisplayOverlayBytes += blob.length;
+        while (o.size > lim.maxEntries || this.__m20A1DisplayOverlayBytes > lim.maxBytes) {
+            const oldest = o.keys().next().value;
+            if (oldest === undefined) break;
+            this.__m20A1DisplayOverlayBytes -= o.get(oldest).blob.length;
+            o.delete(oldest);
+        }
+    }
+
+    /** Cache then overlay lookup for display paths. */
+    _m20A1DisplayBlob(refId) {
+        const cached = this._m20A1CacheGet(refId);
+        if (cached) return cached;
+        return this._m20A1OverlayGet(refId);
+    }
+
+    /**
+     * Display view for UI templates: shallow copy with cached blobs filled in.
+     * Uncached refs schedule an async prefetch; every caller that joins an
+     * in-flight fetch registers its own rerender ({ key, fn }) and ALL of
+     * them fire when the fetch lands (debounced + budget-capped per key so
+     * hydration can never loop). Returns the row unchanged when A1 is off
+     * (scheduling the one-time kill transition when refs are present) or
+     * nothing needs resolving.
+     */
+    _m20A1TradeForDisplay(trade, rerender) {
+        if (!trade || typeof trade !== 'object') return trade;
+        if (!this._m20A1ScreenshotIdbV1Enabled()) {
+            // Runtime kill AFTER externalization: never display/persist a
+            // null-blob+ref row silently — recover the rows once, then the
+            // steady path is exact legacy with zero IDB traffic.
+            if (this._m20A1KillSwitchOn() && this._m20A1RowHasScreenshotRefs(trade)) {
+                this._m20A1ScheduleKillTransition('display');
+            }
+            return trade;
+        }
+        const wantsEntry = trade.entryScreenshotRef && trade.entryScreenshotRef.refId
+            && !this._m20A1IsEmbeddedShot(trade.entryScreenshot);
+        const wantsExit = trade.exitScreenshotRef && trade.exitScreenshotRef.refId
+            && !this._m20A1IsEmbeddedShot(trade.exitScreenshot);
+        const wantsEntryList = Array.isArray(trade.entryScreenshotRefs)
+            && !Array.isArray(trade.entryScreenshots);
+        const wantsRail = Array.isArray(trade.railScreenshotRefs)
+            && !Array.isArray(trade.railScreenshots);
+        if (!wantsEntry && !wantsExit && !wantsEntryList && !wantsRail) return trade;
+
+        const view = { ...trade };
+        const missing = [];
+        if (wantsEntry) {
+            const blob = this._m20A1DisplayBlob(trade.entryScreenshotRef.refId);
+            if (blob) view.entryScreenshot = blob;
+            else missing.push(trade.entryScreenshotRef.refId);
+        }
+        if (wantsExit) {
+            const blob = this._m20A1DisplayBlob(trade.exitScreenshotRef.refId);
+            if (blob) view.exitScreenshot = blob;
+            else missing.push(trade.exitScreenshotRef.refId);
+        }
+        if (wantsEntryList) {
+            const items = [];
+            let complete = true;
+            for (const r of trade.entryScreenshotRefs) {
+                if (!r || !r.refId) { items.push(r); continue; }
+                const blob = this._m20A1DisplayBlob(r.refId);
+                if (blob) items.push({ ...r, screenshot: blob });
+                else { complete = false; missing.push(r.refId); }
+            }
+            if (complete && items.length) view.entryScreenshots = items;
+        }
+        if (wantsRail) {
+            const items = [];
+            let complete = true;
+            for (const r of trade.railScreenshotRefs) {
+                if (!r || !r.refId) { items.push(r); continue; }
+                const blob = this._m20A1DisplayBlob(r.refId);
+                if (blob) items.push({ dataUrl: blob, name: r.name != null ? r.name : null });
+                else { complete = false; missing.push(r.refId); }
+            }
+            if (complete && items.length) view.railScreenshots = items;
+        }
+        if (missing.length && rerender) this._m20A1PrefetchRefs(missing, rerender);
+        return view;
+    }
+
+    /**
+     * Async batch prefetch into cache + overlay; failed refs never retry.
+     * Fan-out: joiners of an in-flight ref register their rerender too, so
+     * EVERY caller waiting on the same ref re-renders when the bytes land
+     * (the per-key debounce/budget in _m20A1FireDisplayRerender dedupes).
+     */
+    _m20A1PrefetchRefs(refIds, rerender) {
+        if (!this.__m20A1PrefetchState || !(this.__m20A1PrefetchState.inflight instanceof Map)) {
+            this.__m20A1PrefetchState = { inflight: new Map(), failed: new Set() };
+        }
+        const st = this.__m20A1PrefetchState;
+        const toFetch = [];
+        for (const id of (refIds || [])) {
+            if (!id || st.failed.has(id)) continue;
+            const waiters = st.inflight.get(id);
+            if (waiters) {
+                if (rerender) waiters.push(rerender); // join in-flight fetch
+                continue;
+            }
+            st.inflight.set(id, rerender ? [rerender] : []);
+            toFetch.push(id);
+        }
+        if (!toFetch.length) return;
+        toFetch.forEach((id) => {
+            this._m20A1ResolveRefBlob(id, { cache: true }).then((blob) => {
+                const waiters = st.inflight.get(id) || [];
+                st.inflight.delete(id);
+                if (!blob) {
+                    st.failed.add(id);
+                    return;
+                }
+                this._m20A1OverlayPut(id, blob);
+                for (const w of waiters) this._m20A1FireDisplayRerender(w);
+            }).catch(() => {
+                st.inflight.delete(id);
+                st.failed.add(id);
+            });
+        });
+    }
+
+    /** One debounced rerender per key; ≤3 auto-rerenders / 10s (loop guard). */
+    _m20A1FireDisplayRerender(rerender) {
+        if (!rerender || typeof rerender.fn !== 'function') return;
+        const key = String(rerender.key || 'default');
+        if (!this.__m20A1RerenderTimers) this.__m20A1RerenderTimers = new Map();
+        if (this.__m20A1RerenderTimers.has(key)) return; // coalesced into pending timer
+        if (!this.__m20A1RerenderBudget) this.__m20A1RerenderBudget = new Map();
+        const now = Date.now();
+        const budget = this.__m20A1RerenderBudget.get(key) || { windowStart: now, count: 0 };
+        if (now - budget.windowStart > 10_000) {
+            budget.windowStart = now;
+            budget.count = 0;
+        }
+        if (budget.count >= 3) return;
+        budget.count += 1;
+        this.__m20A1RerenderBudget.set(key, budget);
+        this.__m20A1RerenderTimers.set(key, setTimeout(() => {
+            this.__m20A1RerenderTimers.delete(key);
+            try {
+                rerender.fn();
+            } catch (_) { /* display only */ }
+        }, 120));
+    }
+
     /**
      * Authoritative sample count for bar_close_r (survives tail trim).
      * Additive field bar_r_count; falls back to array length for legacy rows.
@@ -5620,6 +7153,7 @@ class OrderManager {
             }
         }
 
+        let hotQueued = false;
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             const hotPatch = {
                 journal: hotJournal,
@@ -5632,15 +7166,100 @@ class OrderManager {
                 hotPatch.journal_by_ticker = journalByTicker;
             }
             this.chart.scheduleSessionStateSave(hotPatch);
+            hotQueued = true;
         }
         if (this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            const rowsHaveRefs = this._m20A1RowsHaveScreenshotRefs(durableJournal);
+            // M20-A1 runtime-kill transition: kill flipped AFTER rows were
+            // externalized. Durable must NEVER replace the server journal
+            // with ref-only/null-blob rows (fail closed, keep last durable
+            // state); the explicit one-time transition below re-embeds the
+            // live rows from IndexedDB, then re-runs the exact legacy path.
+            if (rowsHaveRefs && !this._m20A1ScreenshotIdbV1Enabled()
+                && this._m20A1KillSwitchOn()) {
+                this._m20A1ScheduleKillTransition('persist');
+                return Promise.resolve({
+                    hotQueued, durableQueued: false, reason: 'kill-transition-pending',
+                });
+            }
+            // M20-A1: rows with externalized screenshots rehydrate from IndexedDB
+            // before the durable queue so the server tier keeps today's embedded
+            // byte class (never destructively stripped — D-030/I16).
+            if (this._m20A1ScreenshotIdbV1Enabled() && rowsHaveRefs) {
+                let rehydrateRows = durableJournal;
+                if (!trimOn || rehydrateRows === this.tradeJournal) {
+                    // Never mutate live rows — rehydrate operates on a clone only.
+                    try {
+                        rehydrateRows = JSON.parse(JSON.stringify(Array.isArray(this.tradeJournal) ? this.tradeJournal : []));
+                    } catch (_) {
+                        rehydrateRows = null;
+                    }
+                }
+                if (rehydrateRows) {
+                    // ── Ordering / session routing (reviewer blocker #2) ──
+                    // Scope is captured AT INVOCATION: authenticated owner +
+                    // active session + snapshot. Completions are serialized
+                    // last-write-wins per (owner|session): a stale async
+                    // rehydrate never overwrites a newer snapshot, and a
+                    // completion after a session switch is dropped instead
+                    // of being routed to the newly active session (the
+                    // chart queue reads the active session at call time).
+                    const scopeOwner = this._m20A1OwnerKey();
+                    const scopeSession = sessionId != null ? String(sessionId) : null;
+                    const scopeKey = `${scopeOwner != null ? scopeOwner : ''}|${scopeSession != null ? scopeSession : ''}`;
+                    if (!this.__m20A1PersistSeq) this.__m20A1PersistSeq = new Map();
+                    const seq = (this.__m20A1PersistSeq.get(scopeKey) || 0) + 1;
+                    this.__m20A1PersistSeq.set(scopeKey, seq);
+                    const queueDurable = (rows, report) => {
+                        // Superseded by a newer persist for the same scope?
+                        if ((this.__m20A1PersistSeq.get(scopeKey) || 0) !== seq) {
+                            return { hotQueued, durableQueued: false, reason: 'superseded-by-newer-persist' };
+                        }
+                        // Session switched mid-flight: the chart queue would
+                        // route this snapshot to the NEW session — drop it.
+                        let liveSession = null;
+                        try {
+                            liveSession = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                                ? this.chart.getActiveTradingSessionId()
+                                : null;
+                        } catch (_) { /* null */ }
+                        if ((liveSession != null ? String(liveSession) : null) !== scopeSession) {
+                            return { hotQueued, durableQueued: false, reason: 'session-switched-mid-flight' };
+                        }
+                        // Missing/corrupt/evicted refs: NEVER emit ref-only /
+                        // null-blob rows to the durable tier (would replace
+                        // the last known good server state) — fail closed,
+                        // refs stay in-row, next persist retries.
+                        if (report && report.unresolved > 0) {
+                            console.warn(`📔 A1 durable persist deferred: ${report.unresolved} screenshot ref(s) unresolved — keeping last durable server state (will retry).`);
+                            return { hotQueued, durableQueued: false, reason: 'refs-unresolved', unresolved: report.unresolved };
+                        }
+                        try {
+                            this.chart.queueCriticalSessionStateSave({
+                                journal: rows,
+                                per_instrument_stats: perInstrumentStats,
+                                journal_by_ticker: this._m20A1GroupRowsByTicker(rows),
+                            });
+                            return { hotQueued, durableQueued: true, seq };
+                        } catch (_) {
+                            return { hotQueued, durableQueued: false, reason: 'queue-unavailable' };
+                        }
+                    };
+                    const report = { unresolved: 0 };
+                    return this._m20A1RehydrateRowsForDurablePersist(rehydrateRows, report)
+                        .then((rows) => queueDurable(rows, report))
+                        .catch(() => queueDurable(null, { unresolved: Number.MAX_SAFE_INTEGER }));
+                }
+            }
             // Unmarked full journal — server must replace, not prefer-richer.
             this.chart.queueCriticalSessionStateSave({
                 journal: durableJournal,
                 per_instrument_stats: perInstrumentStats,
                 journal_by_ticker: journalByTicker
             });
+            return Promise.resolve({ hotQueued, durableQueued: true, sync: true });
         }
+        return Promise.resolve({ hotQueued, durableQueued: false, reason: 'no-critical-queue' });
     }
 
     /**
@@ -6261,6 +7880,14 @@ class OrderManager {
                 dataUrl: r.dataUrl,
                 name: r.name,
             }));
+        }
+        // M20-A1: when the position's rail shots were externalized, carry refs.
+        if (
+            !entry.railScreenshots && !entry.railScreenshotRefs &&
+            Array.isArray(position.railScreenshotRefs) &&
+            position.railScreenshotRefs.length > 0
+        ) {
+            entry.railScreenshotRefs = position.railScreenshotRefs.slice();
         }
 
         const posJe = position.journalEntry && typeof position.journalEntry === 'object'
@@ -7782,7 +9409,13 @@ class OrderManager {
      */
     renderTradeListItem(trade, index) {
         console.log(`🎨 Rendering trade item ${index}: NEW GRADIENT STYLE`);
-        
+
+        // M20-A1: externalized screenshots resolve from the bounded cache; the
+        // newest rows prefetch lazily and re-render the tab once per batch.
+        trade = this._m20A1TradeForDisplay(trade, index < 12
+            ? { key: 'journal-tab', fn: () => this.updateJournalTab() }
+            : null);
+
         const date = new Date(trade.closeTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const time = this.formatTimeOnly(trade.closeTime);
         const closeTypeIcon = trade.closeType === 'TP' ? '🎯' : trade.closeType === 'BE' || String(trade.closeType || '').startsWith('BE') ? '⚖️' : trade.closeType === 'SL' ? '🛑' : '✋';
@@ -7960,7 +9593,7 @@ class OrderManager {
                             font-weight: 600;
                         ">${rMultiple > 0 ? '+' : ''}${rMultiple}R</span>` : ''}
                         ${hasNotes ? '<span style="color: #7c3aed; font-size: 11px;">📝</span>' : ''}
-                        ${trade.entryScreenshot || trade.exitScreenshot ? '<span style="color: #60a5fa; font-size: 11px;">📸</span>' : ''}
+                        ${trade.entryScreenshot || trade.exitScreenshot || trade.entryScreenshotRef || trade.exitScreenshotRef ? '<span style="color: #60a5fa; font-size: 11px;">📸</span>' : ''}
                     </div>
                     <span style="color: #787b86; font-size: 9px;">Click for details →</span>
                 </div>
@@ -8124,6 +9757,26 @@ class OrderManager {
             }
         }
         trade = viewTrade;
+
+        // M20-A1: lazy-rehydrate externalized screenshots; when the fetch lands
+        // the open modal re-renders once with the exact original bytes.
+        // Stale-selection guard: the rerender only reopens the modal when it
+        // is still showing THIS trade — a late fetch for trade A must never
+        // replace the trade B the user has since selected.
+        const m20A1DetailsSource = trade;
+        const m20A1DetailsKey = `trade-details:${trade.tradeId != null ? trade.tradeId : trade.id}`;
+        this.__m20A1DetailsShownKey = m20A1DetailsKey;
+        trade = this._m20A1TradeForDisplay(trade, {
+            key: m20A1DetailsKey,
+            fn: () => {
+                try {
+                    if (this.__m20A1DetailsShownKey === m20A1DetailsKey
+                        && document.getElementById('tradeDetailsModal')) {
+                        this.showTradeDetails(m20A1DetailsSource);
+                    }
+                } catch (_) { /* display only */ }
+            },
+        });
 
         const preN = trade.preTradeNotes || {};
         const postN = trade.postTradeNotes || {};
@@ -9483,12 +11136,17 @@ class OrderManager {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) { /* released */ } }, 10_000);
         
         console.log(`✅ Exported ${this.tradeJournal.length} trades to CSV`);
         this.showNotification(`✅ Exported ${this.tradeJournal.length} trades to CSV`, 'success');
     }
 
-    buildMilestone4ExportSnapshot() {
+    buildMilestone4ExportSnapshot(opts = {}) {
+        // M20-A1: export paths may pass rehydrated journal rows (exact original
+        // screenshots restored from IndexedDB) — default reads live rows as today.
+        const journalRows = Array.isArray(opts.journalRows) ? opts.journalRows : (this.tradeJournal || []);
+        const usingOverride = Array.isArray(opts.journalRows);
         const session = this.chart?.backtestingSession || {};
         const account = this.orderService?.multiInstrumentSession || {};
         const instrumentsSource = (account && account.instruments && typeof account.instruments === 'object')
@@ -9514,25 +11172,65 @@ class OrderManager {
             },
             instruments,
             per_instrument_stats: this.buildPerInstrumentStats(),
-            journal_by_ticker: this.groupJournalByTicker(),
+            journal_by_ticker: usingOverride
+                ? this._m20A1GroupRowsByTicker(journalRows)
+                : this.groupJournalByTicker(),
             // Archive-aware projection so historical excursion charts/export see full series.
-            trades: (this.tradeJournal || []).map((t) => this._m19ProjectTradeExcursionFields(t)),
+            trades: journalRows.map((t) => this._m19ProjectTradeExcursionFields(t)),
         };
     }
 
     exportTradesToJSON() {
-        const payload = this.buildMilestone4ExportSnapshot();
-        const json = JSON.stringify(payload, null, 2);
-        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `trade_journal_${new Date().toISOString().split('T')[0]}.json`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        this.showNotification('✅ Exported session + trades JSON', 'success');
+        const finish = (payload) => {
+            const json = JSON.stringify(payload, null, 2);
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `trade_journal_${new Date().toISOString().split('T')[0]}.json`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) { /* released */ } }, 10_000);
+            this.showNotification('✅ Exported session + trades JSON', 'success');
+        };
+        const rowsHaveRefs = this._m20A1RowsHaveScreenshotRefs(this.tradeJournal);
+        // Runtime kill AFTER externalization: fail closed — never export
+        // ref-only/null screenshot payloads; recover rows first, then retry.
+        if (rowsHaveRefs && !this._m20A1ScreenshotIdbV1Enabled() && this._m20A1KillSwitchOn()) {
+            this._m20A1ScheduleKillTransition('export');
+            this.showNotification('⏳ Screenshots are being restored from local storage — retry the export in a moment', 'error');
+            return;
+        }
+        // M20-A1: exports rehydrate externalized screenshots so the JSON carries
+        // the exact original bytes (lazy — only when refs are present). Missing/
+        // corrupt/evicted refs FAIL CLOSED with an explicit error — the export
+        // never silently emits unrecoverable ref-only rows.
+        if (this._m20A1ScreenshotIdbV1Enabled() && rowsHaveRefs) {
+            let rows = null;
+            try {
+                rows = JSON.parse(JSON.stringify(Array.isArray(this.tradeJournal) ? this.tradeJournal : []));
+            } catch (_) {
+                rows = null;
+            }
+            if (rows) {
+                const report = { unresolved: 0 };
+                this._m20A1RehydrateRowsForDurablePersist(rows, report)
+                    .then((full) => {
+                        if (report.unresolved > 0) {
+                            this.showNotification(`❌ Export blocked: ${report.unresolved} screenshot(s) could not be restored from local storage — retry, or export after the next sync`, 'error');
+                            return;
+                        }
+                        finish(this.buildMilestone4ExportSnapshot({ journalRows: full }));
+                    })
+                    .catch(() => {
+                        this.showNotification('❌ Export blocked: screenshots could not be restored from local storage — retry', 'error');
+                    });
+                return;
+            }
+        }
+        finish(this.buildMilestone4ExportSnapshot());
     }
 
     getAnalyticsSnapshot() {
@@ -9654,6 +11352,7 @@ class OrderManager {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) { /* released */ } }, 10_000);
         this.showNotification('✅ Exported analytics CSV', 'success');
     }
 
@@ -10529,6 +12228,10 @@ class OrderManager {
                     await Promise.all(pendingPromises);
                     console.log('📸 All entry screenshots ready');
                     
+                    // M20-A1: legs externalized earlier contribute their BYTES
+                    // to the aggregate (refs are resolved back in place).
+                    await this._m20A1RestoreLegBlobs(scaledInfo.entries);
+
                     // Re-collect screenshots after promises resolved
                     const updatedScreenshots = scaledInfo.entries
                         .filter(e => e.entryScreenshot)
@@ -10573,6 +12276,10 @@ class OrderManager {
                         console.log('📸 All split entry screenshots ready');
                     }
                     
+                    // M20-A1: legs externalized earlier contribute their BYTES
+                    // to the aggregate (refs are resolved back in place).
+                    await this._m20A1RestoreLegBlobs(splitInfo.entries);
+
                     // Re-collect screenshots after promises resolved
                     const updatedScreenshots = splitInfo.entries
                         .filter(e => e.entryScreenshot)
@@ -10816,6 +12523,11 @@ class OrderManager {
                       name: r.name,
                   }))
                 : [],
+            // M20-A1 additive refs survive when the source row was externalized.
+            entryScreenshotRef: order.entryScreenshotRef || null,
+            railScreenshotRefs: Array.isArray(order.railScreenshotRefs)
+                ? order.railScreenshotRefs.slice()
+                : null,
             
             // Metadata (instrument_settings omitted — spread/commission/pip scalars below; analytics_core + normalization use those or fall back to instrument_settings on older rows)
             savedAt: Date.now(),
@@ -29153,6 +30865,8 @@ class OrderManager {
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
         this.closedPositions.push(position);
         this._syncOrderServiceOpenAfterClose(orderId);
+        // M20-A1: closed rows join the retained set — externalize off hot path.
+        this._m20A1ScheduleRetainedSweep('closed-push');
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
         if (this.orderService && typeof this.orderService.emit === 'function') {
@@ -29272,6 +30986,11 @@ class OrderManager {
                           name: r.name,
                       }))
                     : [],
+                // M20-A1 additive refs survive when the source row was externalized.
+                entryScreenshotRef: position.entryScreenshotRef || null,
+                railScreenshotRefs: Array.isArray(position.railScreenshotRefs)
+                    ? position.railScreenshotRefs.slice()
+                    : null,
                 exitScreenshot: null, // Will be captured below
                 mfe: position.mfe || null,
                 mae: position.mae || null,
@@ -31804,6 +33523,8 @@ class OrderManager {
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
             this._syncOrderServiceOpenAfterClose(orderId);
+            // M20-A1: closed rows join the retained set — externalize off hot path.
+            this._m20A1ScheduleRetainedSweep('closed-push-full');
 
             if (this.orderService && typeof this.orderService.emit === 'function') {
                 try {
@@ -38005,12 +39726,16 @@ class OrderManager {
     _m19NoteJournalAppend() {
         // O(1): length growth with unchanged structural epoch keeps the scan cursor.
         this._m19JournalLenSeen = (this.tradeJournal || []).length;
+        // M20-A1: retained rows externalize their screenshots off the hot path.
+        this._m20A1ScheduleRetainedSweep('journal-append');
     }
 
     _m19NoteJournalStructuralMutation(reason) {
         this._m19JournalStructuralEpoch = (this._m19JournalStructuralEpoch | 0) + 1;
         this._m19JournalLenSeen = (this.tradeJournal || []).length;
         this._invalidateM19MarkerDeltaCache(reason || 'journal-structural');
+        // M20-A1: covers restore hydrate / replace paths (debounced, kill-gated).
+        this._m20A1ScheduleRetainedSweep(reason || 'journal-structural');
     }
 
     /** Cold-init empty journal array without bumping structural epoch. */

@@ -8128,6 +8128,12 @@
 
         function finishWorkerPass() {
             chart._indicatorWorkerBusy = false;
+            if (_m19iExactTailPaintEnabled() && chart._m19iB62PendingFreshFp != null) {
+                // B62-2: a fresh request riding on this FULL pass has concluded
+                // (applied, failed, or superseded). Retire the pending memo so
+                // a later draw can re-request — bounded retry, never a freeze.
+                chart._m19iB62PendingFreshFp = null;
+            }
             var again = chart._indicatorWorkerCoalesce;
             chart._indicatorWorkerCoalesce = false;
             if (again) {
@@ -8367,11 +8373,52 @@
         ].join('|');
     }
 
+    function _m19iB62SafeNonnegativeInteger(value) {
+        if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value;
+        return null;
+    }
+
+    function _m19iB62ChartPairIdentity(chart) {
+        if (!chart) return '';
+        return String(
+            chart.currentPair != null ? chart.currentPair
+                : chart.pair != null ? chart.pair
+                    : chart.symbol != null ? chart.symbol
+                        : chart.currentSymbol != null ? chart.currentSymbol
+                            : chart.instrument != null ? chart.instrument
+                                : ''
+        );
+    }
+
+    function _m19iB62MasterGeneration(chart) {
+        if (!chart) return '';
+        var g = chart.masterGeneration != null ? chart.masterGeneration
+            : chart.dataGeneration != null ? chart.dataGeneration
+                : chart.datasetGeneration != null ? chart.datasetGeneration
+                    : chart._masterDataGeneration != null ? chart._masterDataGeneration
+                        : chart._dataGeneration != null ? chart._dataGeneration
+                            : '';
+        return String(g);
+    }
+
     function _indicatorAsyncDataToken(chart) {
+        var data = chart && chart.data;
+        var len = Array.isArray(data) ? data.length : 0;
+        var b62On = chart && _m19iExactTailPaintEnabled();
+        if (b62On) _m19iB62ObserveData(chart);
+        var datasetGen = b62On ? _m19iB62GenOf(chart) : null;
         return {
             dataVersion: chart && chart.dataVersion != null ? chart.dataVersion : 0,
             timeframe: String((chart && chart.currentTimeframe) || ''),
             dataFp: _indicatorDataFingerprint(chart),
+            barCount: len,
+            paramsHash: chart && typeof chart._indicatorParamsHash === 'function'
+                ? chart._indicatorParamsHash() : '',
+            pairIdentity: _m19iB62ChartPairIdentity(chart),
+            masterGeneration: _m19iB62MasterGeneration(chart),
+            datasetGen: datasetGen,
+            windowFp: b62On ? _m19iB62WindowFp(data, 0, len) : null,
+            failClosed: b62On && datasetGen >= Number.MAX_SAFE_INTEGER
         };
     }
 
@@ -8380,7 +8427,15 @@
         const current = _indicatorAsyncDataToken(chart);
         return current.dataVersion === token.dataVersion
             && current.timeframe === token.timeframe
-            && current.dataFp === token.dataFp;
+            && current.dataFp === token.dataFp
+            && current.barCount === token.barCount
+            && current.paramsHash === token.paramsHash
+            && current.pairIdentity === token.pairIdentity
+            && current.masterGeneration === token.masterGeneration
+            && current.datasetGen === token.datasetGen
+            && current.windowFp === token.windowFp
+            && !current.failClosed
+            && !token.failClosed;
     }
 
     /**
@@ -8390,6 +8445,22 @@
     Chart.prototype._invalidateIndicatorAsyncWork = function() {
         if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
         this._indicatorWorkerSeq++;
+        // B62-1: explicit monotonic dataset/master generation — every path
+        // that invalidates async indicator work advances it, so a tail token
+        // can never match across a replacement even if length/TF/fp collide.
+        // KILL-EXACT: every b62 state write is gated on the switch, so a
+        // disabled product leaves chart object state byte-for-byte b61 (no
+        // generation creation/bump, no memo/fingerprint clears). OFF→ON
+        // safety is provided by the render-version witness on the paint
+        // memos and the data-reference observation, not by OFF-time writes.
+        if (_m19iExactTailPaintEnabled()) {
+            this._m19iB62DatasetGen = _m19iB62NextGen(this._m19iB62DatasetGen);
+            this._m19iExactTailLastFp = null;
+            this._m19iExactTailLastRv = null;
+            this._m19iExactTailFailFp = null;
+            this._m19iExactTailFailRv = null;
+            this._m19iB62PendingFreshFp = null;
+        }
         this._indicatorWorkerCoalesce = false;
         this._m19iCoalesceFullAsync = false;
         this._indicatorPendingResults = null;
@@ -8451,6 +8522,8 @@
     //        rAF-deferred pass + worker-RTT indicator catch-up during play
     //   I-g  __TALARIA_DISABLE_M19I_TICK_COHERENT_V1  — forming-candle tick
     //        animation freezes MA tips until the bar commits (skip OHLC)
+    //   b62  __TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1 — b61 stale-overwrite/
+    //        stale-blit behavior (see _m19iExactTailPaintEnabled below)
 
     function _m19iTailSendEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TAIL_SEND_V1;
@@ -8471,6 +8544,341 @@
     function _m19igTickCoherentEnabled() {
         return _m19ifFrameCoherentEnabled()
             && (typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TICK_COHERENT_V1);
+    }
+
+    /**
+     * B62-0 (M19-I exact painted tail) — ONE toggle for the whole b62 package,
+     * default ON when unset. Kill switch:
+     *   window.__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1 = true
+     * restores exact b61 behavior for one-toggle A/B:
+     *   - a same-length/same-TF worker tail reply computed from an OLDER
+     *     forming close commits again and overwrites the fresher bridge tip
+     *     (B62-1 rejection off);
+     *   - no paint-time forming-tail bridge before the indicator layer cache
+     *     decision, so a paint can blit an endpoint older than the forming
+     *     close it presents (B62-2 off).
+     */
+    function _m19iExactTailPaintEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1;
+    }
+
+    /**
+     * B62-1 (corrected): COMPLETE post-time identity/generation token. Object
+     * identity is never serialized — every field is an explicit value or a
+     * monotonic generation, so stale replies cannot cross ANY replacement:
+     *   - dataFp        length + last bar t|o|h|l|c|v (volume included; a
+     *                    volume-only forming mutation changes MFI/CMF tails)
+     *   - dataVersion   dataset/master replacement counter (pair/file/seek)
+     *   - timeframe     TF string at post time
+     *   - paramsHash    active-indicator set + parameter generation
+     *                    (add/remove/param-edit all change the hash)
+     *   - datasetGen    explicit monotonic generation bumped by
+     *                    _invalidateIndicatorAsyncWork (TF transactions and
+     *                    every path that already invalidates async work)
+     * The worker seq (mySeq) remains the outer cancellation layer.
+     */
+    /**
+     * B62-1 generation discipline (corrected): positive safe-integer
+     * monotonic, NO signed 32-bit coercion anywhere, no wrap, no reuse. At
+     * exhaustion the generation freezes at MAX_SAFE_INTEGER and the token
+     * comparison fails CLOSED (permanently stale) so the tail path stops
+     * accepting and the full async pipeline owns freshness — never a reset
+     * or a collision.
+     */
+    function _m19iB62GenOf(chart) {
+        var g = chart._m19iB62DatasetGen;
+        return (typeof g === 'number' && Number.isSafeInteger(g) && g >= 0) ? g : 0;
+    }
+
+    function _m19iB62NextGen(cur) {
+        var n = (typeof cur === 'number' && Number.isSafeInteger(cur) && cur >= 0) ? cur : 0;
+        if (n >= Number.MAX_SAFE_INTEGER - 1) return Number.MAX_SAFE_INTEGER;
+        return n + 1;
+    }
+
+    /**
+     * B62-1 replacement observation (corrected): a multichart-style
+     * `this.data = parent.data` swap can present the SAME length, timeframe
+     * and final bar while the owner of dataVersion failed to bump. The chart
+     * remembers the last data array it tokenized; seeing a different array
+     * mints a NEW monotonic generation BEFORE any token comparison. The
+     * reference is only a local bump trigger — the token serializes the
+     * resulting monotonic generation, never raw object identity.
+     * ON-path only (kill-exact: zero writes while disabled).
+     */
+    function _m19iB62ObserveData(chart) {
+        if (chart._m19iB62SeenData !== chart.data) {
+            if (chart._m19iB62SeenData !== undefined) {
+                chart._m19iB62DatasetGen = _m19iB62NextGen(chart._m19iB62DatasetGen);
+            }
+            chart._m19iB62SeenData = chart.data;
+        }
+    }
+
+    /**
+     * B62-1 window fingerprint (corrected): FNV-1a content hash over exactly
+     * the bars [tailStart..totalLength) the worker computed from — a
+     * same-reference middle or volume mutation INSIDE the window invalidates
+     * the reply even when length/TF/final-bar/dataVersion all collide. Bars
+     * OUTSIDE the window never entered the worker's computation, so they
+     * cannot invalidate the merge itself; full-history freshness for those
+     * remains owned by dataVersion / full recalcs. Cost is one bounded pass,
+     * the same order as the pack the post already performs. (The 32-bit
+     * space here is a content HASH, not a counter — no wrap/reuse concern.)
+     */
+    function _m19iB62WindowFp(data, tailStart, totalLength) {
+        var h = 0x811c9dc5;
+        if (!Array.isArray(data)) return null;
+        var safeTailStart = _m19iB62SafeNonnegativeInteger(tailStart);
+        var safeTotalLength = _m19iB62SafeNonnegativeInteger(totalLength);
+        if (safeTailStart == null || safeTotalLength == null) return null;
+        var from = Math.max(0, safeTailStart);
+        var to = Math.min(safeTotalLength, data.length);
+        for (var i = from; i < to; i++) {
+            var b = data[i] || {};
+            var s = b.t + '|' + b.o + '|' + b.h + '|' + b.l + '|' + b.c + '|' + b.v + ';';
+            for (var j = 0; j < s.length; j++) {
+                h ^= s.charCodeAt(j);
+                h = Math.imul(h, 0x01000193) >>> 0;
+            }
+        }
+        return h >>> 0;
+    }
+
+    function _m19iB62TailToken(chart, tailStart, totalLength) {
+        var safeTailStart = _m19iB62SafeNonnegativeInteger(tailStart);
+        var safeTotalLength = _m19iB62SafeNonnegativeInteger(totalLength);
+        var windowFp = safeTailStart == null || safeTotalLength == null
+            ? null
+            : _m19iB62WindowFp(chart.data, safeTailStart, safeTotalLength);
+        return {
+            dataFp: _indicatorDataFingerprint(chart),
+            windowFp: windowFp,
+            tailStart: safeTailStart,
+            totalLength: safeTotalLength,
+            dataVersion: chart.dataVersion != null ? chart.dataVersion : 0,
+            timeframe: String(chart.currentTimeframe || ''),
+            paramsHash: typeof chart._indicatorParamsHash === 'function'
+                ? chart._indicatorParamsHash() : '',
+            pairIdentity: _m19iB62ChartPairIdentity(chart),
+            masterGeneration: _m19iB62MasterGeneration(chart),
+            datasetGen: _m19iB62GenOf(chart),
+            safe: safeTailStart != null && safeTotalLength != null && windowFp != null
+        };
+    }
+
+    function _m19iB62TailTokenStale(chart, token) {
+        if (!token) return false;
+        // Fail closed at generation exhaustion: the tail path stops accepting.
+        if (!token.safe || token.datasetGen >= Number.MAX_SAFE_INTEGER) return true;
+        return token.dataFp !== _indicatorDataFingerprint(chart)
+            || token.dataVersion !== (chart.dataVersion != null ? chart.dataVersion : 0)
+            || token.timeframe !== String(chart.currentTimeframe || '')
+            || token.paramsHash !== (typeof chart._indicatorParamsHash === 'function'
+                ? chart._indicatorParamsHash() : '')
+            || token.pairIdentity !== _m19iB62ChartPairIdentity(chart)
+            || token.masterGeneration !== _m19iB62MasterGeneration(chart)
+            || token.datasetGen !== _m19iB62GenOf(chart)
+            || token.windowFp !== _m19iB62WindowFp(chart.data, token.tailStart, token.totalLength);
+    }
+
+    /** B62-3: observability counters only — no control flow reads these. */
+    function _m19iB62Stats(chart) {
+        return chart._m19iB62Stats || (chart._m19iB62Stats = {
+            staleTailRejects: 0,
+            exactTailPaints: 0,
+            exactTailSkips: 0,
+            exactTailBudgetSkips: 0,
+            atomicRollbacks: 0,
+            freshAsyncRequests: 0
+        });
+    }
+
+    /**
+     * B62 atomic tail commit (corrected): mergeIndicatorTailWindow mutates
+     * series in place and an object-pack merge can fail AFTER patching some
+     * keys, so a naive loop can leave a mixed-generation partial commit.
+     * This helper snapshots the bounded patch region ([fromIndex..) values +
+     * original length + replaced object keys) for EVERY affected series
+     * BEFORE any merge, then commits the whole set; on ANY failure it
+     * restores every snapshot, so either all series advance to the new
+     * generation or none do. Snapshot cost is O(series × keys × (len-fromIndex)),
+     * i.e. a few slots per series.
+     */
+    function _m19iB62SnapshotValue(existing, fromIndex) {
+        if (existing == null) return { kind: 'absent' };
+        if (Array.isArray(existing)) {
+            return {
+                kind: 'array',
+                ref: existing,
+                origLen: existing.length,
+                tail: existing.slice(Math.min(fromIndex, existing.length))
+            };
+        }
+        if (typeof existing === 'object') {
+            var keys = {};
+            Object.keys(existing).forEach(function(k) {
+                var v = existing[k];
+                keys[k] = Array.isArray(v)
+                    ? { kind: 'array', ref: v, origLen: v.length, tail: v.slice(Math.min(fromIndex, v.length)) }
+                    : { kind: 'value', value: v };
+            });
+            return { kind: 'object', ref: existing, keys: keys };
+        }
+        return { kind: 'value', value: existing };
+    }
+
+    function _m19iB62RestoreArray(snap) {
+        var arr = snap.ref;
+        arr.length = snap.origLen;
+        var start = snap.origLen - snap.tail.length;
+        for (var i = 0; i < snap.tail.length; i++) arr[start + i] = snap.tail[i];
+    }
+
+    function _m19iB62RestoreValue(chart, id, snap) {
+        if (snap.kind === 'absent') {
+            delete chart.indicators.data[id];
+            return;
+        }
+        if (snap.kind === 'array') {
+            _m19iB62RestoreArray(snap);
+            chart.indicators.data[id] = snap.ref;
+            return;
+        }
+        if (snap.kind === 'object') {
+            var obj = snap.ref;
+            var current = Object.keys(obj);
+            for (var c = 0; c < current.length; c++) {
+                if (!(current[c] in snap.keys)) delete obj[current[c]];
+            }
+            Object.keys(snap.keys).forEach(function(k) {
+                var ks = snap.keys[k];
+                if (ks.kind === 'array') {
+                    _m19iB62RestoreArray(ks);
+                    obj[k] = ks.ref;
+                } else {
+                    obj[k] = ks.value;
+                }
+            });
+            chart.indicators.data[id] = obj;
+            return;
+        }
+        chart.indicators.data[id] = snap.value;
+    }
+
+    /**
+     * Commits fresh tail windows for a set of series ATOMICALLY.
+     * @returns true when every series merged; false after a complete rollback.
+     */
+    function _m19iB62AtomicMergeSet(chart, freshById, tailStart, fromIndex, totalLength) {
+        var perf = global.IndicatorPerf;
+        var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
+            ? perf.mergeIndicatorTailWindow : null;
+        var ids = Object.keys(freshById);
+        if (!merge || !ids.length) return false;
+        var snapshots = {};
+        for (var s = 0; s < ids.length; s++) {
+            snapshots[ids[s]] = _m19iB62SnapshotValue(chart.indicators.data[ids[s]], fromIndex);
+        }
+        for (var i = 0; i < ids.length; i++) {
+            var id = ids[i];
+            var merged = null;
+            try {
+                merged = merge(chart.indicators.data[id], freshById[id], tailStart, fromIndex, totalLength);
+            } catch (_) { merged = null;
+            }
+            if (merged == null) {
+                // Restore every series touched so far INCLUDING the failing
+                // one (an object-pack merge can partially patch before null).
+                for (var r = 0; r <= i; r++) {
+                    _m19iB62RestoreValue(chart, ids[r], snapshots[ids[r]]);
+                }
+                return false;
+            }
+            chart.indicators.data[id] = merged;
+        }
+        return true;
+    }
+
+    /**
+     * B62 (mechanism correction): families the synchronous exact-tail bridge
+     * may publish. STRICTLY finite-window math — every value inside the
+     * merge window is EXACTLY recomputable from a bounded slice, so a bridge
+     * candidate equals a fresh full-history computation (no seed
+     * dependence). Recursive / seed-dependent families (ema, dema, tema,
+     * macd, ppo, rsi, atr, adx, keltner, trix, …) and every tail-safe family
+     * without a bridge case (massindex, stochrsi, coppock, …) are NEVER
+     * bridged synchronously: an approximate main-thread candidate is never
+     * published; those transactions take the safe async fresh-worker path
+     * (_m19iB62EnsureFreshAsync) with stale rejection plus guaranteed
+     * eventual paint. seriesCount is the per-family output-array count that
+     * drives the cumulative staged-point budget.
+     */
+    var M19I_B62_SYNC_FAMILIES = {
+        sma: { seriesCount: 1 }, wma: { seriesCount: 1 }, hma: { seriesCount: 1 },
+        bb: { seriesCount: 3 }, bollinger: { seriesCount: 3 },
+        envelope: { seriesCount: 3 }, smaenvelope: { seriesCount: 3 },
+        stddev: { seriesCount: 1 }, roc: { seriesCount: 1 },
+        mom: { seriesCount: 1 }, momentum: { seriesCount: 1 },
+        willr: { seriesCount: 1 }, mfi: { seriesCount: 1 }, cmf: { seriesCount: 1 },
+        donchian: { seriesCount: 3 },
+        stoch: { seriesCount: 2 }, stochastic: { seriesCount: 2 },
+        ao: { seriesCount: 1 }
+        // cci and aroon are EXCLUDED: the independent full-structure probe
+        // (reproduced by the S6 matrix) shows the main-thread CCI formula
+        // diverges from the worker/full-history by up to ~30.76 at the tip,
+        // and the main-thread aroon pack emits different keys than the
+        // worker pack (up/down vs aroonUp/aroonDown) — both are classified
+        // to the safe async fresh-worker fallback rather than shipped as
+        // approximate/incompatible synchronous candidates.
+    };
+
+    function _m19iB62SyncFamily(ind) {
+        if (!ind || !_m19iIndicatorTailSafe(ind)) return null;
+        var t = String(ind.type || '').toLowerCase();
+        // Shape classification: donchian with a non-zero offset misaligns the
+        // derived middle band between the main bridge and the worker/full
+        // history — only the offset-0 shape is synchronous.
+        if (t === 'donchian' && ind.params && Number(ind.params.offset)) return null;
+        return M19I_B62_SYNC_FAMILIES[t] || null;
+    }
+
+    /**
+     * B62-2 (mechanism correction): eventual fresh paint. Whenever the
+     * synchronous bridge cannot run (budget skip, unsupported family in the
+     * transaction, merge failure/rollback), stale worker tails STAY rejected
+     * and this requests exactly ONE fresh worker recomputation for the
+     * current complete identity: repeated pre-reply draws are absorbed by
+     * the pending-identity memo, an in-flight pass absorbs the request as
+     * one boolean coalesce, and finishIncrementalPass clears the memo so a
+     * failed or superseded pass stays bounded-retryable. Correctness never
+     * rests on a suppression memo — when the fresh reply lands, the real
+     * apply path commits and paints it.
+     */
+    function _m19iB62EnsureFreshAsync(chart, fp) {
+        if (chart._m19iB62PendingFreshFp === fp) return;
+        _m19iB62Stats(chart).freshAsyncRequests++;
+        chart._m19iB62PendingFreshFp = fp;
+        if (chart._indicatorWorkerBusy) {
+            chart._indicatorWorkerCoalesce = true;
+            return;
+        }
+        try {
+            if (typeof chart._runIndicatorRecalc === 'function') {
+                chart._runIndicatorRecalc({ force: false });
+            } else if (Array.isArray(chart.data) && chart.data.length
+                && typeof chart.recalculateIndicatorsIncremental === 'function') {
+                chart.recalculateIndicatorsIncremental(chart.data.length);
+            }
+            if (!chart._indicatorWorkerBusy
+                && chart._m19iB62PendingFreshFp === fp
+                && chart._m19iExactTailLastFp === fp) {
+                chart._m19iB62PendingFreshFp = null;
+            }
+        } catch (_) {
+            // Bounded-retryable: a failed request must never freeze freshness.
+            chart._m19iB62PendingFreshFp = null;
+        }
     }
 
     /** Single source for the sync-only (main-thread structural) indicator types. */
@@ -9252,6 +9660,33 @@
                 || String(chart.currentTimeframe || '') !== tailMeta.timeframe) {
                 return;
             }
+            // B62-1: same length + timeframe is NOT enough. A tick-mode forming
+            // close (or volume) mutates the last bar IN PLACE, a pair/dataset
+            // swap can land the same shape, and an indicator add/remove/param
+            // edit can race the reply — any of these makes the reply stale
+            // while seq/snapshot look current. The full post-time token
+            // (t/o/h/l/c/v + dataVersion + TF + paramsHash + datasetGen)
+            // rejects all of them BEFORE any merge; the owning pass's finish
+            // hook reruns through the scheduler via the boolean coalesce flag
+            // only (no queue, no extra worker post from here).
+            if (_m19iExactTailPaintEnabled() && tailMeta.b62Token) {
+                // Mint a new monotonic generation if the data ARRAY was
+                // replaced since the post (multichart same-shape swap where
+                // the dataVersion owner failed to bump) BEFORE comparing.
+                _m19iB62ObserveData(chart);
+                if (_m19iB62TailTokenStale(chart, tailMeta.b62Token)) {
+                    _m19iB62Stats(chart).staleTailRejects++;
+                    if (tailMeta.b62Token.datasetGen >= Number.MAX_SAFE_INTEGER
+                        || _m19iB62GenOf(chart) >= Number.MAX_SAFE_INTEGER) {
+                        // Generation exhaustion fails CLOSED: the tail path
+                        // stops accepting (no reset, no collision) and the
+                        // full async pipeline owns freshness from here.
+                        chart._m19iCoalesceFullAsync = true;
+                    }
+                    chart._indicatorWorkerCoalesce = true;
+                    return;
+                }
+            }
         } else if (!_indicatorAsyncTokenMatches(chart, calcToken)) {
             return;
         }
@@ -9264,22 +9699,36 @@
                 ? perf.mergeIndicatorTailWindow
                 : null;
             let mergeFailed = false;
-            Object.keys(results).forEach(function(indId) {
-                const merged = mergeWindow
-                    ? mergeWindow(
-                        chart.indicators.data[indId],
-                        results[indId],
-                        tailMeta.tailStart,
-                        tailMeta.fromIndex,
-                        tailMeta.totalLength
-                    )
-                    : null;
-                if (merged != null) {
-                    chart.indicators.data[indId] = merged;
-                } else {
-                    mergeFailed = true;
-                }
-            });
+            if (_m19iExactTailPaintEnabled()) {
+                // B62 atomic commit: either every series in this reply merges
+                // to the new generation or none does (bounded snapshot +
+                // rollback) — a mixed-generation partial commit can never
+                // publish through bumpIndicatorRenderVersion below.
+                mergeFailed = !_m19iB62AtomicMergeSet(
+                    chart, results,
+                    tailMeta.tailStart, tailMeta.fromIndex, tailMeta.totalLength
+                );
+                if (mergeFailed) _m19iB62Stats(chart).atomicRollbacks++;
+            } else {
+                // b61 legacy (kill switch): per-series in-place merge, partial
+                // commits possible on failure — preserved exactly for A/B.
+                Object.keys(results).forEach(function(indId) {
+                    const merged = mergeWindow
+                        ? mergeWindow(
+                            chart.indicators.data[indId],
+                            results[indId],
+                            tailMeta.tailStart,
+                            tailMeta.fromIndex,
+                            tailMeta.totalLength
+                        )
+                        : null;
+                    if (merged != null) {
+                        chart.indicators.data[indId] = merged;
+                    } else {
+                        mergeFailed = true;
+                    }
+                });
+            }
             if (mergeFailed) {
                 // Shape mismatch (first pass for an indicator, param edit race…):
                 // schedule one full worker pass to rebuild clean baselines.
@@ -9293,6 +9742,20 @@
                 chart._clearIndicatorCalculatingFlags();
             }
             chart.bumpIndicatorRenderVersion();
+            if (_m19iExactTailPaintEnabled() && !mergeFailed && tailMeta.b62Token) {
+                // B62-2 eventual fresh paint: a token-verified worker tail IS
+                // the exact fresh endpoint for the current identity. Publish
+                // it (with the post-bump render-version witness), release the
+                // failure memo, and retire any pending fresh request — a
+                // budget-skipped or fallback-classified mix converges here.
+                try {
+                    chart._m19iExactTailLastFp = chart._m19iExactTailPaintFp();
+                    chart._m19iExactTailLastRv = chart._indicatorRenderVersion || 0;
+                    chart._m19iExactTailFailFp = null;
+                    chart._m19iExactTailFailRv = null;
+                    chart._m19iB62PendingFreshFp = null;
+                } catch (_) {}
+            }
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
             return;
         }
@@ -9326,6 +9789,22 @@
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
         }
         chart.bumpIndicatorRenderVersion();
+        if (_m19iExactTailPaintEnabled()) {
+            // B62-2 eventual fresh paint (full-pass endpoint): a token-current
+            // FULL worker apply is also an exact fresh endpoint — publish the
+            // success memo, release the failure memo, retire the pending fresh
+            // request. The fp is computed with the CURRENT stored dataset
+            // generation (no ObserveData here): if the data array was replaced
+            // mid-flight, the next paint hook mints a new generation and the
+            // memo can never suppress that repaint.
+            try {
+                chart._m19iExactTailLastFp = chart._m19iExactTailPaintFp();
+                chart._m19iExactTailLastRv = chart._indicatorRenderVersion || 0;
+                chart._m19iExactTailFailFp = null;
+                chart._m19iExactTailFailRv = null;
+                chart._m19iB62PendingFreshFp = null;
+            } catch (_) {}
+        }
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
     };
 
@@ -9360,9 +9839,192 @@
         }
         if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
         chart.bumpIndicatorRenderVersion();
+        if (_m19iExactTailPaintEnabled()) {
+            // B62-2: deferred full-pass commit is a fresh endpoint too (see
+            // _applyIndicatorWorkerResults full branch for the memo contract).
+            try {
+                chart._m19iExactTailLastFp = chart._m19iExactTailPaintFp();
+                chart._m19iExactTailLastRv = chart._indicatorRenderVersion || 0;
+                chart._m19iExactTailFailFp = null;
+                chart._m19iExactTailFailRv = null;
+                chart._m19iB62PendingFreshFp = null;
+            } catch (_) {}
+        }
+    };
+
+    /**
+     * B62-2: forming-tip identity — the same complete field set as the B62-1
+     * token (length + last t/o/h/l/c/v, dataVersion, paramsHash, TF, dataset
+     * generation), serialized to a string. No object identity is compared.
+     */
+    Chart.prototype._m19iExactTailPaintFp = function() {
+        var data = this && this.data;
+        var totalLen = Array.isArray(data) ? data.length : 0;
+        return [
+            _indicatorDataFingerprint(this),
+            this.dataVersion != null ? this.dataVersion : 0,
+            typeof this._indicatorParamsHash === 'function' ? this._indicatorParamsHash() : '',
+            String(this.currentTimeframe || ''),
+            _m19iB62ChartPairIdentity(this),
+            _m19iB62MasterGeneration(this),
+            _m19iB62WindowFp(data, 0, totalLen),
+            _m19iB62GenOf(this)
+        ].join('|');
+    };
+
+    /**
+     * B62-2 workload ceiling: staged points = (tail window × series count).
+     * Measured on representative hardware (W1-B62 workload evidence): the
+     * synchronous bridge costs ≈1µs per staged point, so 4096 points ≈ 4ms
+     * p50 — the ceiling keeps the worst SUPPORTED paint-time bridge under
+     * roughly half a 60Hz frame. The typical W5 scenario (five MA(20) +
+     * TEMA(20), lookback 144) stages <1k points (≪1ms). Heavier mixes
+     * (e.g. 8 series with period ≥200 → 8.5k points, measured p50 ≈8ms,
+     * p95 ≈15ms) fall back to b61-window behavior for that paint
+     * (skip + counter) instead of a synchronous jank spike; the regular
+     * recalc pipeline still refreshes them every tick.
+     */
+    var M19I_B62_MAX_STAGED_POINTS = 4096;
+
+    /**
+     * B62-2: bounded exact forming-tail bridge at PAINT time (M19-I tail-send
+     * extension). Runs only when the forming-tip fingerprint differs from the
+     * last bridged/committed one, immediately before the indicator layer
+     * cache decision — the same paint that moves the price can never blit an
+     * endpoint older than the forming close it presents (RC2), and a stale
+     * commit rejected by B62-1 can never survive into the next paint (RC1).
+     * O(estimateTailLookback) through the SAME _m19ifApplyCoherentBridge merge
+     * the I-f pass uses, so worker/main numeric parity holds by construction.
+     * Never posts to the worker, never touches busy/coalesce, no queue;
+     * re-entrancy guarded by _m19iExactTailPaintBusy.
+     */
+    Chart.prototype._m19iExactTailPaint = function() {
+        if (!_m19iExactTailPaintEnabled()) return false;
+        if (this._m19iExactTailPaintBusy) return false;
+        if (!this.indicators || !Array.isArray(this.indicators.active)
+            || !this.indicators.active.length) return false;
+        if (!Array.isArray(this.data) || !this.data.length) return false;
+        // A swapped data ARRAY mints a new monotonic generation before any
+        // fingerprint/memo comparison (multichart replacement detection).
+        _m19iB62ObserveData(this);
+        var fp = this._m19iExactTailPaintFp();
+        var rv = this._indicatorRenderVersion || 0;
+        if (_m19iB62GenOf(this) >= Number.MAX_SAFE_INTEGER) {
+            _m19iB62Stats(this).exactTailSkips++;
+            this._m19iExactTailFailFp = fp;
+            this._m19iExactTailFailRv = rv;
+            _m19iB62EnsureFreshAsync(this, fp);
+            return false;
+        }
+        // Both memos carry a render-version WITNESS. _m19iExactTailLastFp is
+        // published ONLY after a successful complete atomic commit (here, the
+        // I-f recalc pass, or a fresh worker tail apply); any foreign render
+        // bump afterwards (a b61-era stale overwrite while the switch was
+        // OFF, a full recalc, a worker apply) invalidates the witness and the
+        // next paint re-verifies — OFF→ON re-enable therefore self-heals with
+        // ZERO writes while OFF. The failure memo only suppresses repeated
+        // synchronous work for one identity; eventual freshness NEVER rests
+        // on it because every failure path also requests exactly one fresh
+        // worker recomputation (_m19iB62EnsureFreshAsync).
+        if (fp === this._m19iExactTailLastFp && rv === this._m19iExactTailLastRv) return false;
+        if (fp === this._m19iExactTailFailFp && rv === this._m19iExactTailFailRv) {
+            _m19iB62EnsureFreshAsync(this, fp);
+            return false;
+        }
+        this._m19iExactTailPaintBusy = true;
+        try {
+            var skipTypes = _m19iWorkerSkipTypes();
+            var indicatorMap = {};
+            var stagedSeries = 0;
+            var wholePaintSyncOk = true;
+            this.indicators.active.forEach(function(ind) {
+                if (!ind || !ind.id) return;
+                var t = String(ind.type || '').toLowerCase();
+                // supertrend/adr/sync-only/volume/custom are recalculated
+                // synchronously inside every recalc pass (I-c) or draw —
+                // they are not part of the worker round-trip staleness this
+                // hook repairs, so they do not gate the transaction.
+                if (skipTypes.indexOf(t) >= 0) return;
+                var fam = _m19iB62SyncFamily(ind);
+                if (!fam) {
+                    // Worker-owned family the bridge may not synchronously
+                    // publish (recursive/seed-dependent, tail-unsafe, or no
+                    // bridge case): the WHOLE paint transaction goes async so
+                    // no mixed-generation endpoint can be painted.
+                    wholePaintSyncOk = false;
+                    return;
+                }
+                indicatorMap[ind.id] = { type: t, params: ind.params || {} };
+                stagedSeries += fam.seriesCount;
+            });
+            if (!wholePaintSyncOk) {
+                _m19iB62Stats(this).exactTailSkips++;
+                this._m19iExactTailFailFp = fp;
+                this._m19iExactTailFailRv = rv;
+                _m19iB62EnsureFreshAsync(this, fp);
+                return false;
+            }
+            if (stagedSeries === 0) {
+                // Nothing worker-owned is active — nothing can be RTT-stale.
+                _m19iB62Stats(this).exactTailSkips++;
+                this._m19iExactTailFailFp = fp;
+                this._m19iExactTailFailRv = rv;
+                return false;
+            }
+            var perf = global.IndicatorPerf;
+            var totalLen = this.data.length;
+            var lookback = perf && typeof perf.estimateTailLookback === 'function'
+                ? perf.estimateTailLookback(this.indicators.active)
+                : 256;
+            var mergeFrom = Math.max(0, totalLen - 2);
+            var tailStart = Math.max(0, mergeFrom - lookback);
+            // CUMULATIVE budget FIRST (before any candidate computation):
+            // staged points = window length × Σ per-family output series.
+            // Beyond-ceiling mixes skip the synchronous work but keep the
+            // eventual-fresh guarantee via one coalesced worker recompute —
+            // never a synchronous jank spike, never a post storm, never
+            // acceptance of a stale endpoint.
+            var stagedPoints = (totalLen - tailStart) * stagedSeries;
+            if (stagedPoints > M19I_B62_MAX_STAGED_POINTS) {
+                _m19iB62Stats(this).exactTailBudgetSkips++;
+                this._m19iExactTailFailFp = fp;
+                this._m19iExactTailFailRv = rv;
+                _m19iB62EnsureFreshAsync(this, fp);
+                return false;
+            }
+            var bridgedAll = _m19ifApplyCoherentBridge(
+                this, indicatorMap, tailStart, mergeFrom, totalLen
+            );
+            if (bridgedAll) {
+                _m19iB62Stats(this).exactTailPaints++;
+                if (typeof this.bumpIndicatorRenderVersion === 'function') {
+                    try { this.bumpIndicatorRenderVersion(); } catch (_) {}
+                }
+                // Publish AFTER the successful complete atomic commit only,
+                // witnessed by the post-bump render version.
+                this._m19iExactTailLastFp = fp;
+                this._m19iExactTailLastRv = this._indicatorRenderVersion || 0;
+                this._m19iExactTailFailFp = null;
+                this._m19iExactTailFailRv = null;
+                this._m19iB62PendingFreshFp = null;
+                return true;
+            }
+            // Diagnostics AFTER the (internal) rollback; the memo never
+            // blocks correctness because the fresh request below owns it.
+            _m19iB62Stats(this).exactTailSkips++;
+            this._m19iExactTailFailFp = fp;
+            this._m19iExactTailFailRv = rv;
+            _m19iB62EnsureFreshAsync(this, fp);
+            return false;
+        } finally {
+            this._m19iExactTailPaintBusy = false;
+        }
     };
 
     Chart.prototype.drawIndicatorsOptimized = function() {
+        // B62-2: exact forming tail BEFORE the layer cache decision — covers
+        // both the cached-blit path and the interaction fallback below.
+        try { this._m19iExactTailPaint(); } catch (_) { /* paint must not throw */ }
         const interaction = typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender();
         const hasHiddenOverlay = typeof this._hasHiddenOverlayIndicator === 'function' && this._hasHiddenOverlayIndicator();
         if (interaction || hasHiddenOverlay || typeof this.drawIndicators !== 'function') {
@@ -9490,6 +10152,81 @@
         var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
             ? perf.mergeIndicatorTailWindow
             : null;
+        var statDelta = {
+            bridgePasses: 0,
+            bridgedSeries: 0,
+            uncoveredSeries: 0,
+            mergeRejects: 0,
+            fullAsyncFallbacks: 0
+        };
+        function publishBridgeStats() {
+            var stats = chart._m19ifStats || (chart._m19ifStats = {
+                bridgePasses: 0,
+                bridgedSeries: 0,
+                uncoveredSeries: 0,
+                mergeRejects: 0,
+                fullAsyncFallbacks: 0
+            });
+            stats.bridgePasses += statDelta.bridgePasses;
+            stats.bridgedSeries += statDelta.bridgedSeries;
+            stats.uncoveredSeries += statDelta.uncoveredSeries;
+            stats.mergeRejects += statDelta.mergeRejects;
+            stats.fullAsyncFallbacks += statDelta.fullAsyncFallbacks;
+        }
+        statDelta.bridgePasses++;
+        var slice = chart.data.slice(tailStart);
+        var all = true;
+        if (_m19iExactTailPaintEnabled()) {
+            // B62 (mechanism correction): WHOLE-TRANSACTION atomicity. The
+            // transaction is the complete indicator map — stage EVERY
+            // candidate first (zero live mutation while staging), then commit
+            // the whole set atomically. Any missing candidate (a mapped
+            // family without a bridge case, e.g. massindex), throw, or merge
+            // failure at any position means ZERO live mutation for the whole
+            // transaction — mixed TEMA + massindex can no longer advance TEMA
+            // while massindex stays old. _m19iB62AtomicMergeSet restores
+            // every touched series if the commit itself fails part-way.
+            // NOTE the caller owns CLASSIFICATION: the b62 paint hook only
+            // submits strictly-sync family maps (exact-by-construction),
+            // while the I-f coherent PASS keeps its accepted mixed coverage —
+            // but its lastFp success memo is published only for all-sync maps.
+            if (!merge) {
+                statDelta.uncoveredSeries += Object.keys(indicatorMap).length;
+                publishBridgeStats();
+                return false;
+            }
+            var members = [];
+            chart.indicators.active.forEach(function(ind) {
+                if (!ind || !ind.id || !indicatorMap[ind.id]) return;
+                members.push(ind);
+            });
+            if (!members.length) return true;
+            var freshById = {};
+            var stagedCount = 0;
+            for (var m = 0; m < members.length; m++) {
+                var fresh;
+                try { fresh = _m19ifBridgeTailResult(members[m], slice); } catch (_) { fresh = undefined; }
+                if (fresh == null) {
+                    // Zero mutation happened yet — candidates are staged only.
+                    statDelta.uncoveredSeries += members.length;
+                    publishBridgeStats();
+                    return false;
+                }
+                freshById[members[m].id] = fresh;
+                stagedCount++;
+            }
+            if (_m19iB62AtomicMergeSet(chart, freshById, tailStart, fromIndex, totalLen)) {
+                statDelta.bridgedSeries += stagedCount;
+            } else {
+                all = false;
+                statDelta.mergeRejects += stagedCount;
+                _m19iB62Stats(chart).atomicRollbacks++;
+            }
+            publishBridgeStats();
+            return all;
+        }
+        // b61 legacy (kill switch): compute + merge per series in place; a
+        // late failure leaves earlier series committed — preserved for A/B.
         var stats = chart._m19ifStats || (chart._m19ifStats = {
             bridgePasses: 0,
             bridgedSeries: 0,
@@ -9502,8 +10239,6 @@
             stats.uncoveredSeries += Object.keys(indicatorMap).length;
             return false;
         }
-        var slice = chart.data.slice(tailStart);
-        var all = true;
         chart.indicators.active.forEach(function(ind) {
             if (!ind || !ind.id || !indicatorMap[ind.id]) return;
             var fresh;
@@ -9556,6 +10291,12 @@
             var wantFull = chart._m19iCoalesceFullAsync === true;
             chart._indicatorWorkerCoalesce = false;
             chart._m19iCoalesceFullAsync = false;
+            if (_m19iExactTailPaintEnabled()) {
+                // B62-2: the pass this fresh-request rode on has concluded
+                // (applied, failed, or superseded). Retire the pending memo so
+                // a later draw can re-request — bounded retry, never a freeze.
+                chart._m19iB62PendingFreshFp = null;
+            }
             if (wantFull) {
                 if (typeof chart.recalculateIndicatorsAsync === 'function') {
                     try { chart.recalculateIndicatorsAsync(); } catch (_) {}
@@ -9586,7 +10327,8 @@
             : 256;
         // Refresh margin: the previously-forming bar finalizes on advance, so
         // merge from two bars before the old count; warmup extends behind it.
-        const mergeFrom = Math.max(0, Math.min(fromBarCount | 0, totalLen) - 2);
+        const safeFromBarCount = _m19iB62SafeNonnegativeInteger(fromBarCount);
+        const mergeFrom = Math.max(0, Math.min(safeFromBarCount == null ? totalLen : safeFromBarCount, totalLen) - 2);
         const tailStart = Math.max(0, mergeFrom - lookback);
         const worker = _getIndicatorWorker();
 
@@ -9659,6 +10401,15 @@
                 needsFullAsync = true;
                 return;
             }
+            if (_m19iExactTailPaintEnabled()
+                && chart._m19iB62PendingFreshFp != null
+                && !_m19iB62SyncFamily(ind)) {
+                // A B62 paint-time fallback requested exact freshness for this
+                // identity. Keep the accepted I-f tail bridge/post path active,
+                // but also force the follow-up full async pass that owns exact
+                // endpoint publication for recursive/shape-incompatible rows.
+                needsFullAsync = true;
+            }
             if (indType === 'dema' || indType === 'tema' || indType === 'hma') {
                 // Worker returns the series; keep overlay metadata current.
                 ind.overlay = true;
@@ -9680,22 +10431,53 @@
         // convergence); its later commit merges the identical window, so it is
         // idempotent. Bridge-uncovered series are counted, never hidden.
         if (coherent) {
-            var ifStats = chart._m19ifStats || (chart._m19ifStats = {
-                bridgePasses: 0,
-                bridgedSeries: 0,
-                uncoveredSeries: 0,
-                mergeRejects: 0,
-                fullAsyncFallbacks: 0
-            });
-            if (needsFullAsync) ifStats.fullAsyncFallbacks++;
+            function publishFullAsyncFallback() {
+                if (!needsFullAsync) return;
+                var ifStats = chart._m19ifStats || (chart._m19ifStats = {
+                    bridgePasses: 0,
+                    bridgedSeries: 0,
+                    uncoveredSeries: 0,
+                    mergeRejects: 0,
+                    fullAsyncFallbacks: 0
+                });
+                ifStats.fullAsyncFallbacks++;
+            }
             if (Object.keys(indicators).length > 0) {
                 var bridgedAll = _m19ifApplyCoherentBridge(
                     chart, indicators, tailStart, mergeFrom, totalLen
                 );
+                publishFullAsyncFallback();
                 if (bridgedAll && coverageComplete
                     && typeof chart._markIndicatorRecalcComplete === 'function') {
                     try { chart._markIndicatorRecalcComplete(); } catch (_) {}
                 }
+                // B62-2: this tick's forming tip is committed — the paint-time
+                // hook must not re-bridge the same fingerprint (no double
+                // bounded work per forming change at high speed). bridgedAll
+                // is true only after a COMPLETE atomic commit (b62 path), and
+                // the memo is published ONLY when every transaction member is
+                // a strictly-sync (exact) family: a coherent pass that
+                // bridged a recursive family within I-f tolerance must NOT
+                // claim the exact-endpoint memo — the worker's authoritative
+                // merge (or the paint hook) owns that publish.
+                if (bridgedAll && _m19iExactTailPaintEnabled()
+                    && typeof chart._m19iExactTailPaintFp === 'function') {
+                    var allSyncExact = chart.indicators.active.every(function(ind) {
+                        if (!ind || !ind.id || !indicators[ind.id]) return true;
+                        return !!_m19iB62SyncFamily(ind);
+                    });
+                    if (allSyncExact) {
+                        try {
+                            chart._m19iExactTailLastFp = chart._m19iExactTailPaintFp();
+                            chart._m19iExactTailLastRv = chart._indicatorRenderVersion || 0;
+                            chart._m19iExactTailFailFp = null;
+                            chart._m19iExactTailFailRv = null;
+                            chart._m19iB62PendingFreshFp = null;
+                        } catch (_) {}
+                    }
+                }
+            } else {
+                publishFullAsyncFallback();
             }
         }
 
@@ -9734,12 +10516,25 @@
             ? perf.packBarsRangeCompact(chart.data, tailStart, totalLen)
             : null;
         const id = _workerNextId++;
+        // B62-1 (kill-exact: only computed while enabled): observe the data
+        // array reference first (a swap mints a new monotonic generation),
+        // then capture the COMPLETE identity/generation token at POST time —
+        // length + last-bar t/o/h/l/c/v, a bounded window content hash over
+        // exactly the bars the worker will compute from, dataVersion, TF,
+        // paramsHash and the dataset generation. Length+TF alone cannot see
+        // a tick-mode in-place mutation of the last bar, a same-shape
+        // pair/dataset swap, an in-window middle/volume edit, or an
+        // indicator add/remove/param change racing the reply.
+        if (_m19iExactTailPaintEnabled()) _m19iB62ObserveData(chart);
         const tailMeta = {
             tailStart: tailStart,
             fromIndex: mergeFrom,
             totalLength: totalLen,
             markComplete: coverageComplete,
-            timeframe: String(chart.currentTimeframe || '')
+            timeframe: String(chart.currentTimeframe || ''),
+            b62Token: _m19iExactTailPaintEnabled()
+                ? _m19iB62TailToken(chart, tailStart, totalLen)
+                : null
         };
 
         new Promise(function(resolve, reject) {
@@ -9817,7 +10612,11 @@
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
             : 256;
-        const fromIndex = Math.max(0, (fromBarCount | 0) - lookback);
+        const legacyFromBarCount = Number(fromBarCount);
+        const legacySafeFromBarCount = Number.isFinite(legacyFromBarCount) && legacyFromBarCount >= 0
+            ? Math.floor(legacyFromBarCount)
+            : 0;
+        const fromIndex = Math.max(0, legacySafeFromBarCount - lookback);
         const worker = _getIndicatorWorker();
 
         if (!worker) {

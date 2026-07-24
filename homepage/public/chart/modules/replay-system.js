@@ -9047,6 +9047,1159 @@ class ReplaySystem {
     }
 }
 
+/*
+ * M20-Q6 lifecycle correction.
+ *
+ * The immutable class above is also the complete switch-OFF implementation:
+ * no lifecycle fields, registry, page hooks, destroy/dispose API, or constructor
+ * switch read is installed in that mode.  Accessor-backed diagnostic switches
+ * are deliberately treated as legacy so selecting the runtime never invokes a
+ * user getter; the immutable methods retain their original getter-read trace.
+ */
+function _m20Q6LifecycleRuntimeEnabled() {
+    if (typeof window === 'undefined') return true;
+    let descriptor;
+    try {
+        descriptor = Object.getOwnPropertyDescriptor(
+            window,
+            '__TALARIA_DISABLE_M20_Q6_REPLAY_FLOAT_LISTENER_TEARDOWN_V1',
+        );
+    } catch (_) {
+        return false;
+    }
+    if (descriptor && !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        return false;
+    }
+    return !descriptor || descriptor.value !== true;
+}
+
+if (_m20Q6LifecycleRuntimeEnabled()) {
+    const M20Q6ImmutableReplaySystem = ReplaySystem;
+    const m20Q6States = new WeakMap();
+    const m20Q6ChartOwners = new WeakMap();
+    const m20Q6PageStates = new WeakMap();
+    const m20Q6TargetBridges = new WeakMap();
+    const m20Q6ConstructionStack = [];
+
+    const m20Q6EffectMethods = [
+        'attachButtonEvents',
+        'attachPlaybackModeOptionEvents',
+        'attachPlaybackModeTriggerEvents',
+        'attachPlaybackModeOutsideClickHandler',
+        'attachSpeedButtonEvents',
+        'attachSliderEvents',
+        'attachDragEvents',
+        'attachCloneEventHandlers',
+        'enterPickPointMode',
+        'showPickModeInstruction',
+        'setupGoBackMultiPanelUI',
+        'createGoBackOverlay',
+        'showGoBackInstruction',
+        'applyReplayCutToWallClock',
+        'handleGoBackClick',
+        'enterReplayMode',
+        '_renderReplayChartUpdate',
+        'updateChartData',
+        'togglePlay',
+        '_showPlayPauseFeedback',
+        'play',
+        'startCandleByCandle',
+        'scheduleForwardEdgeRetry',
+        'scheduleNextTick',
+        'completeTickAnimation',
+        'enableAutoScroll',
+        'scheduleReplayFollowOnceLayoutSettled',
+        'ensureReplayFollowButton',
+        '_attachReplayFollowViewportListeners',
+        'onTimeframeChange',
+    ];
+
+    function m20Q6Aggregate(errors, message, report = null) {
+        const list = Array.isArray(errors) ? errors.filter(Boolean) : [];
+        const error = typeof AggregateError === 'function'
+            ? new AggregateError(list, message)
+            : Object.assign(new Error(message), { name: 'AggregateError', errors: list });
+        error.code = 'M20_Q6_REPLAY_LIFECYCLE_CLEANUP_FAILED';
+        if (!Array.isArray(error.errors)) error.errors = list;
+        if (report) error.report = report;
+        return error;
+    }
+
+    function m20Q6AttachCleanupError(primaryError, cleanupError, instance = null) {
+        if (instance) instance._m20Q6LastSuppressedCleanupError = cleanupError;
+        if (!primaryError || (typeof primaryError !== 'object' && typeof primaryError !== 'function')) {
+            return;
+        }
+        try {
+            Object.defineProperty(primaryError, 'm20Q6CleanupError', {
+                value: cleanupError,
+                configurable: true,
+            });
+        } catch (_) { /* frozen primary errors remain observable on the instance/state */ }
+    }
+
+    function m20Q6RestoreOwnProperty(target, name, record) {
+        if (!target || !record) return;
+        try {
+            if (target[name] !== record.wrapper) return;
+            if (record.hadOwn) {
+                Object.defineProperty(target, name, record.descriptor);
+            } else {
+                delete target[name];
+            }
+        } catch (_) { /* restoration is diagnosed by the owning cleanup ledger */ }
+    }
+
+    function m20Q6RestoreRemoveBridge(meta) {
+        if (!meta || meta.entries.size !== 0) return;
+        const target = meta.target;
+        try {
+            if (target.removeEventListener !== meta.bridge) return;
+            if (meta.hadOwn) {
+                Object.defineProperty(target, 'removeEventListener', meta.descriptor);
+            } else {
+                delete target.removeEventListener;
+            }
+            m20Q6TargetBridges.delete(target);
+        } catch (_) {
+            // Keeping a pass-through bridge is safer than discarding listener identity.
+        }
+    }
+
+    function m20Q6RemoveEventEntry(entry) {
+        if (!entry || entry.settled) return true;
+        entry.remove.call(entry.target, entry.type, entry.wrapped, entry.options);
+        entry.settled = true;
+        if (entry.target && entry.target.dataset) {
+            delete entry.target.dataset.replayFollowBound;
+            delete entry.target.dataset.modeBound;
+            delete entry.target.dataset.modeTriggerBound;
+        }
+        if (entry.meta) {
+            entry.meta.entries.delete(entry);
+            m20Q6RestoreRemoveBridge(entry.meta);
+        }
+        return true;
+    }
+
+    function m20Q6EnsureRemoveBridge(target) {
+        let meta = m20Q6TargetBridges.get(target);
+        if (meta) return meta;
+        const remove = target && target.removeEventListener;
+        if (typeof remove !== 'function') {
+            throw new TypeError('M20-Q6 listener target must support removeEventListener');
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(target, 'removeEventListener');
+        meta = {
+            target,
+            remove,
+            hadOwn: !!descriptor,
+            descriptor,
+            entries: new Set(),
+            bridge: null,
+        };
+        meta.bridge = function m20Q6RemoveEventListenerBridge(type, listener, options) {
+            const matches = [];
+            for (const entry of meta.entries) {
+                if (!entry.settled && entry.type === type && entry.listener === listener) {
+                    matches.push(entry);
+                }
+            }
+            if (!matches.length) {
+                return meta.remove.call(this, type, listener, options);
+            }
+            let result;
+            for (const entry of matches) {
+                result = meta.remove.call(this, type, entry.wrapped, options);
+                entry.settled = true;
+                meta.entries.delete(entry);
+            }
+            m20Q6RestoreRemoveBridge(meta);
+            return result;
+        };
+        try {
+            Object.defineProperty(target, 'removeEventListener', {
+                value: meta.bridge,
+                configurable: true,
+                writable: true,
+            });
+        } catch (error) {
+            error.message = `M20-Q6 could not install listener-removal bridge: ${error.message}`;
+            throw error;
+        }
+        m20Q6TargetBridges.set(target, meta);
+        return meta;
+    }
+
+    function m20Q6InvokeListener(state, listener, receiver, args) {
+        if (!state.acceptCallbacks) return undefined;
+        return m20Q6CaptureEffects(state, () => {
+            if (typeof listener === 'function') {
+                return listener.apply(receiver, args);
+            }
+            if (listener && typeof listener.handleEvent === 'function') {
+                return listener.handleEvent.apply(listener, args);
+            }
+            return undefined;
+        }, [receiver]);
+    }
+
+    function m20Q6AddEvent(state, target, type, listener, options, label = '', addOverride = null) {
+        if (!target || typeof target.addEventListener !== 'function') {
+            throw new TypeError(`M20-Q6 ${label || type} target must support addEventListener`);
+        }
+        const meta = m20Q6EnsureRemoveBridge(target);
+        const add = typeof addOverride === 'function' ? addOverride : target.addEventListener;
+        const entry = {
+            kind: 'event',
+            label: label || `event:${type}`,
+            target,
+            type,
+            listener,
+            wrapped: null,
+            options,
+            remove: meta.remove,
+            meta,
+            ownerRoot: state.captureOwnerRoot || null,
+            installed: false,
+            uncertain: true,
+            settled: false,
+        };
+        entry.wrapped = function m20Q6InertableEventCallback(...args) {
+            return m20Q6InvokeListener(state, listener, this, args);
+        };
+        state.events.push(entry);
+        meta.entries.add(entry);
+        const result = add.call(target, type, entry.wrapped, options);
+        entry.installed = true;
+        entry.uncertain = false;
+        return { result, entry };
+    }
+
+    function m20Q6PatchTarget(state, target, session) {
+        if (!target || (typeof target !== 'object' && typeof target !== 'function')) return;
+        if (session.targets.has(target)) return;
+        session.targets.add(target);
+
+        if (typeof target.addEventListener === 'function') {
+            const descriptor = Object.getOwnPropertyDescriptor(target, 'addEventListener');
+            const original = target.addEventListener;
+            const record = {
+                target,
+                name: 'addEventListener',
+                hadOwn: !!descriptor,
+                descriptor,
+                wrapper: null,
+            };
+            record.wrapper = function m20Q6CapturedAddEventListener(type, listener, options) {
+                return m20Q6AddEvent(
+                    state,
+                    target,
+                    type,
+                    listener,
+                    options,
+                    `captured:${String(type)}`,
+                    original,
+                ).result;
+            };
+            Object.defineProperty(target, 'addEventListener', {
+                value: record.wrapper,
+                configurable: true,
+                writable: true,
+            });
+            session.records.push(record);
+        }
+
+        const queryMethods = ['getElementById', 'querySelector', 'querySelectorAll', 'createElement'];
+        for (const name of queryMethods) {
+            if (typeof target[name] !== 'function') continue;
+            const descriptor = Object.getOwnPropertyDescriptor(target, name);
+            const original = target[name];
+            const record = { target, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+            record.wrapper = function m20Q6CapturedQuery(...args) {
+                const value = original.apply(this, args);
+                if (value && typeof value !== 'string' && typeof value[Symbol.iterator] === 'function'
+                    && typeof value.addEventListener !== 'function') {
+                    for (const item of value) m20Q6PatchTarget(state, item, session);
+                } else {
+                    m20Q6PatchTarget(state, value, session);
+                }
+                return value;
+            };
+            Object.defineProperty(target, name, {
+                value: record.wrapper,
+                configurable: true,
+                writable: true,
+            });
+            session.records.push(record);
+        }
+    }
+
+    function m20Q6TrackScheduler(state, scope, kind, callback, delay, rest, original) {
+        if (typeof callback !== 'function') {
+            return original.call(scope, callback, delay, ...rest);
+        }
+        const oneShot = kind === 'timeout' || kind === 'raf' || kind === 'microtask';
+        const entry = {
+            kind: 'scheduler',
+            label: `${kind}:${state.schedulers.length}`,
+            schedulerKind: kind,
+            scope,
+            handle: null,
+            pending: true,
+            uncertain: true,
+            clear: null,
+        };
+        const wrapped = function m20Q6InertableScheduledCallback(...args) {
+            if (oneShot) entry.pending = false;
+            if (!state.acceptCallbacks) return undefined;
+            return m20Q6CaptureEffects(state, () => callback.apply(this, args));
+        };
+        state.schedulers.push(entry);
+        let handle;
+        if (kind === 'raf') {
+            entry.clear = scope.cancelAnimationFrame;
+            handle = original.call(scope, wrapped);
+        } else if (kind === 'microtask') {
+            entry.clear = null;
+            handle = original.call(scope, wrapped);
+        } else {
+            entry.clear = kind === 'interval' ? scope.clearInterval : scope.clearTimeout;
+            handle = original.call(scope, wrapped, delay, ...rest);
+        }
+        entry.handle = handle;
+        entry.uncertain = false;
+        return handle;
+    }
+
+    function m20Q6PatchSchedulers(state, scope, session) {
+        if (!scope || (typeof scope !== 'object' && typeof scope !== 'function')) return;
+        if (session.schedulerScopes.has(scope)) return;
+        session.schedulerScopes.add(scope);
+        const specs = [
+            ['setTimeout', 'timeout'],
+            ['setInterval', 'interval'],
+            ['requestAnimationFrame', 'raf'],
+            ['queueMicrotask', 'microtask'],
+        ];
+        for (const [name, kind] of specs) {
+            if (typeof scope[name] !== 'function') continue;
+            const descriptor = Object.getOwnPropertyDescriptor(scope, name);
+            const original = scope[name];
+            const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+            record.wrapper = function m20Q6CapturedScheduler(callback, delay, ...rest) {
+                return m20Q6TrackScheduler(state, scope, kind, callback, delay, rest, original);
+            };
+            Object.defineProperty(scope, name, {
+                value: record.wrapper,
+                configurable: true,
+                writable: true,
+            });
+            session.records.push(record);
+        }
+        const clearSpecs = [
+            ['clearTimeout', 'timeout'],
+            ['clearInterval', 'interval'],
+            ['cancelAnimationFrame', 'raf'],
+        ];
+        for (const [name, kind] of clearSpecs) {
+            if (typeof scope[name] !== 'function') continue;
+            const descriptor = Object.getOwnPropertyDescriptor(scope, name);
+            const original = scope[name];
+            const record = { target: scope, name, hadOwn: !!descriptor, descriptor, wrapper: null };
+            record.wrapper = function m20Q6CapturedClear(handle) {
+                const result = original.call(scope, handle);
+                for (const entry of state.schedulers) {
+                    if (entry.scope === scope && entry.schedulerKind === kind && entry.handle === handle) {
+                        entry.pending = false;
+                    }
+                }
+                return result;
+            };
+            Object.defineProperty(scope, name, {
+                value: record.wrapper,
+                configurable: true,
+                writable: true,
+            });
+            session.records.push(record);
+        }
+    }
+
+    function m20Q6PatchTimezoneManager(state, session) {
+        const manager = typeof window !== 'undefined' ? window.timezoneManager : null;
+        if (!manager || typeof manager.addListener !== 'function') return;
+        const descriptor = Object.getOwnPropertyDescriptor(manager, 'addListener');
+        const add = manager.addListener;
+        const record = {
+            target: manager,
+            name: 'addListener',
+            hadOwn: !!descriptor,
+            descriptor,
+            wrapper: null,
+        };
+        record.wrapper = function m20Q6CapturedTimezoneAdd(listener) {
+            const entry = {
+                kind: 'manager',
+                label: 'timezone-manager-listener',
+                manager,
+                listener,
+                wrapped: (...args) => (
+                    state.acceptCallbacks && typeof listener === 'function'
+                        ? listener(...args)
+                        : undefined
+                ),
+                remove: manager.removeListener,
+                installed: false,
+                uncertain: true,
+                settled: false,
+            };
+            state.managers.push(entry);
+            const result = add.call(manager, entry.wrapped);
+            entry.installed = true;
+            entry.uncertain = false;
+            return result;
+        };
+        Object.defineProperty(manager, 'addListener', {
+            value: record.wrapper,
+            configurable: true,
+            writable: true,
+        });
+        session.records.push(record);
+    }
+
+    function m20Q6CaptureEffects(state, fn, extraTargets = []) {
+        if (!state || state.captureDepth > 0) {
+            return fn();
+        }
+        state.captureDepth += 1;
+        const priorOwnerRoot = state.captureOwnerRoot || null;
+        const explicitOwnerRoot = (extraTargets || []).find((target) => (
+            target && target.id === 'replayToolbarClone'
+        ));
+        if (explicitOwnerRoot) state.captureOwnerRoot = explicitOwnerRoot;
+        const session = {
+            records: [],
+            targets: new WeakSet(),
+            schedulerScopes: new WeakSet(),
+        };
+        try {
+            const scope = typeof globalThis !== 'undefined' ? globalThis : null;
+            const win = typeof window !== 'undefined' ? window : null;
+            m20Q6PatchTarget(state, typeof document !== 'undefined' ? document : null, session);
+            m20Q6PatchTarget(state, win, session);
+            m20Q6PatchTarget(state, state.instance, session);
+            for (const value of Object.values(state.instance || {})) {
+                if (value && (typeof value.addEventListener === 'function'
+                    || typeof value.querySelector === 'function')) {
+                    m20Q6PatchTarget(state, value, session);
+                }
+            }
+            for (const target of extraTargets || []) m20Q6PatchTarget(state, target, session);
+            m20Q6PatchSchedulers(state, scope, session);
+            if (win !== scope) m20Q6PatchSchedulers(state, win, session);
+            m20Q6PatchTimezoneManager(state, session);
+            return fn();
+        } finally {
+            for (let i = session.records.length - 1; i >= 0; i--) {
+                const record = session.records[i];
+                m20Q6RestoreOwnProperty(record.target, record.name, record);
+            }
+            state.captureDepth -= 1;
+            state.captureOwnerRoot = priorOwnerRoot;
+        }
+    }
+
+    function m20Q6PageState(scope) {
+        let page = m20Q6PageStates.get(scope);
+        if (page) return page;
+        page = {
+            scope,
+            states: new Set(),
+            hooks: [],
+            draining: false,
+            lastError: null,
+        };
+        // Publish before effectful hook registration so a partial constructor
+        // failure still has a reachable, retryable page-hook owner.
+        m20Q6PageStates.set(scope, page);
+        const drainPage = () => {
+            if (page.draining) return;
+            page.draining = true;
+            const errors = [];
+            try {
+                for (const state of [...page.states]) {
+                    try {
+                        m20Q6DrainState(state, 'page-lifecycle');
+                    } catch (error) {
+                        errors.push(error);
+                    }
+                }
+            } finally {
+                page.draining = false;
+            }
+            if (errors.length) {
+                page.lastError = m20Q6Aggregate(errors, 'M20-Q6 page lifecycle cleanup failed');
+                try {
+                    page.scope.__TALARIA_M20_Q6_LAST_PAGE_CLEANUP_ERROR__ = page.lastError;
+                } catch (_) {}
+            } else {
+                page.lastError = null;
+                try {
+                    delete page.scope.__TALARIA_M20_Q6_LAST_PAGE_CLEANUP_ERROR__;
+                } catch (_) {}
+            }
+        };
+        for (const type of ['pagehide', 'beforeunload']) {
+            const entry = {
+                type,
+                handler: drainPage,
+                installed: false,
+                uncertain: true,
+                settled: false,
+                add: scope && scope.addEventListener,
+                remove: scope && scope.removeEventListener,
+            };
+            page.hooks.push(entry);
+            if (typeof entry.add !== 'function' || typeof entry.remove !== 'function') {
+                throw new TypeError('M20-Q6 page lifecycle target must support event listeners');
+            }
+            entry.add.call(scope, type, drainPage);
+            entry.installed = true;
+            entry.uncertain = false;
+        }
+        return page;
+    }
+
+    function m20Q6ReleasePageState(state, errors) {
+        const page = state.page;
+        if (!page) return;
+        page.states.delete(state);
+        if (page.states.size) {
+            state.page = null;
+            return;
+        }
+        for (const hook of page.hooks) {
+            if ((!hook.installed && !hook.uncertain) || hook.settled) continue;
+            try {
+                hook.remove.call(page.scope, hook.type, hook.handler);
+                hook.settled = true;
+                hook.uncertain = false;
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        if (page.hooks.every((hook) => (!hook.installed && !hook.uncertain) || hook.settled)) {
+            m20Q6PageStates.delete(page.scope);
+            state.page = null;
+        } else {
+            page.states.add(state);
+        }
+    }
+
+    function m20Q6StateFor(instance) {
+        let state = m20Q6States.get(instance);
+        if (state) return state;
+        state = {
+            instance,
+            chart: instance.chart,
+            phase: 'constructing',
+            acceptCallbacks: false,
+            captureDepth: 0,
+            captureOwnerRoot: null,
+            events: [],
+            schedulers: [],
+            managers: [],
+            page: null,
+            lastReport: null,
+            constructionError: null,
+        };
+        m20Q6States.set(instance, state);
+        instance._m20Q6LifecycleState = 'constructing';
+        instance._floatingCloneDocListenerTeardowns = [];
+        const tx = m20Q6ConstructionStack[m20Q6ConstructionStack.length - 1];
+        if (tx && tx.chart === instance.chart) tx.state = state;
+        if (instance.chart && (typeof instance.chart === 'object' || typeof instance.chart === 'function')) {
+            m20Q6ChartOwners.set(instance.chart, state);
+        }
+        if (typeof window !== 'undefined'
+            && typeof window.addEventListener === 'function'
+            && typeof window.removeEventListener === 'function') {
+            let page = null;
+            try {
+                page = m20Q6PageState(window);
+            } finally {
+                page = page || m20Q6PageStates.get(window);
+                if (page) {
+                    page.states.add(state);
+                    state.page = page;
+                }
+            }
+        }
+        return state;
+    }
+
+    function m20Q6ClearSchedulerEntry(entry) {
+        if (!entry || !entry.pending) return true;
+        if (entry.schedulerKind === 'microtask') {
+            // Not cancellable; the wrapper is already inert once drain starts.
+            entry.pending = false;
+            return true;
+        }
+        if (typeof entry.clear !== 'function') {
+            throw new TypeError(`M20-Q6 ${entry.schedulerKind} cleanup is unavailable`);
+        }
+        entry.clear.call(entry.scope, entry.handle);
+        entry.pending = false;
+        return true;
+    }
+
+    function m20Q6DrainState(state, reason = 'destroy') {
+        if (!state) {
+            return { enabled: true, state: 'absent', reason, pending: 0, errors: [] };
+        }
+        if (state.phase === 'destroyed') return state.lastReport;
+        const instance = state.instance;
+        state.acceptCallbacks = false;
+        state.phase = 'destroying';
+        instance._m20Q6LifecycleState = 'destroying';
+        instance.isPlaying = false;
+        instance.isPlayStarting = false;
+        instance._activeTickLoop = (instance._activeTickLoop || 0) + 1;
+        instance._activeCandleLoop = (instance._activeCandleLoop || 0) + 1;
+        instance._tfChangeSeq = (instance._tfChangeSeq || 0) + 1;
+
+        const errors = [];
+        let attempted = 0;
+        let completed = 0;
+        const attempt = (label, fn) => {
+            attempted += 1;
+            try {
+                fn();
+                completed += 1;
+            } catch (error) {
+                try {
+                    if (error && !error.m20Q6CleanupLabel) {
+                        Object.defineProperty(error, 'm20Q6CleanupLabel', {
+                            value: label,
+                            configurable: true,
+                        });
+                    }
+                } catch (_) {}
+                errors.push(error);
+            }
+        };
+
+        for (const entry of [...state.schedulers].reverse()) {
+            if (entry.pending) attempt(entry.label, () => m20Q6ClearSchedulerEntry(entry));
+        }
+
+        const timerFields = [
+            ['_playStartRaf1', 'cancelAnimationFrame'],
+            ['_playStartRaf2', 'cancelAnimationFrame'],
+            ['_tfChangeRestoreTimer', 'clearTimeout'],
+            ['tickInterval', 'clearTimeout'],
+            ['_nextCandleTimer', 'clearTimeout'],
+            ['playInterval', 'clearInterval'],
+        ];
+        for (const [field, clearName] of timerFields) {
+            if (instance[field] == null) continue;
+            const handle = instance[field];
+            const scope = typeof globalThis !== 'undefined' ? globalThis : window;
+            attempt(`field:${field}`, () => {
+                if (!scope || typeof scope[clearName] !== 'function') {
+                    throw new TypeError(`M20-Q6 ${clearName} unavailable for ${field}`);
+                }
+                scope[clearName](handle);
+                instance[field] = null;
+            });
+        }
+
+        for (const pair of [...instance._floatingCloneDocListenerTeardowns].reverse()) {
+            for (const entry of pair.entries || []) {
+                if (!entry.settled) attempt(entry.label, () => m20Q6RemoveEventEntry(entry));
+            }
+            if ((pair.entries || []).every((entry) => entry.settled)) {
+                const index = instance._floatingCloneDocListenerTeardowns.indexOf(pair);
+                if (index >= 0) instance._floatingCloneDocListenerTeardowns.splice(index, 1);
+            }
+        }
+
+        for (const entry of [...state.events].reverse()) {
+            if (!entry.settled) attempt(entry.label, () => m20Q6RemoveEventEntry(entry));
+        }
+        for (const entry of [...state.managers].reverse()) {
+            if (entry.settled) continue;
+            attempt(entry.label, () => {
+                if (typeof entry.remove !== 'function') {
+                    throw new TypeError(`M20-Q6 ${entry.label} has no removeListener`);
+                }
+                entry.remove.call(entry.manager, entry.wrapped);
+                entry.settled = true;
+            });
+        }
+
+        if (typeof instance._playPauseToastDismiss === 'function') {
+            const dismiss = instance._playPauseToastDismiss;
+            attempt('play-pause-toast', () => {
+                dismiss();
+                instance._playPauseToastDismiss = null;
+            });
+        }
+
+        const removable = [
+            ['floating-clone', () => document.getElementById('replayToolbarClone')],
+            ['pick-instruction', () => document.getElementById('replayPickInstruction')],
+            ['pick-overlay', () => instance.pickModeOverlay],
+            ['click-capture', () => instance.clickCaptureLayer],
+        ];
+        for (const [label, resolve] of removable) {
+            attempt(label, () => {
+                const element = resolve();
+                if (element && typeof element.remove === 'function') element.remove();
+            });
+        }
+        if (Array.isArray(instance._goBackEntries)) {
+            for (const entry of instance._goBackEntries) {
+                for (const [label, element] of [
+                    ['go-back-overlay', entry && entry.pickModeOverlay],
+                    ['go-back-capture', entry && entry.clickCaptureLayer],
+                ]) {
+                    attempt(label, () => {
+                        if (element && typeof element.remove === 'function') element.remove();
+                    });
+                }
+            }
+        }
+        attempt('cut-line-label', () => {
+            const stack = typeof window !== 'undefined' ? window.__TalariaToastStack : null;
+            if (stack && typeof stack.clearPinned === 'function') {
+                stack.clearPinned('replay-cut-line-label');
+            } else if (instance.cutLineLabel && typeof instance.cutLineLabel.remove === 'function') {
+                instance.cutLineLabel.remove();
+            }
+        });
+        attempt('floating-storage', () => {
+            if (typeof userStorage !== 'undefined' && userStorage
+                && typeof userStorage.removeItem === 'function') {
+                userStorage.removeItem('replayToolbarClonePosition');
+            }
+        });
+        attempt('toolbar-opacity', () => {
+            if (instance.toolbar && instance.toolbar.style) instance.toolbar.style.opacity = '1';
+        });
+
+        state.events = state.events.filter((entry) => !entry.settled);
+        state.schedulers = state.schedulers.filter((entry) => entry.pending);
+        state.managers = state.managers.filter((entry) => !entry.settled);
+        const pending = state.events.filter((entry) => !entry.settled).length
+            + state.schedulers.filter((entry) => entry.pending).length
+            + state.managers.filter((entry) => !entry.settled).length
+            + instance._floatingCloneDocListenerTeardowns.length;
+
+        if (!errors.length && pending === 0) {
+            m20Q6ReleasePageState(state, errors);
+        }
+
+        if (!errors.length && pending === 0 && !state.page) {
+            state.phase = 'destroyed';
+            instance._m20Q6LifecycleState = 'destroyed';
+            if (state.chart && m20Q6ChartOwners.get(state.chart) === state) {
+                m20Q6ChartOwners.delete(state.chart);
+            }
+            if (state.chart && state.chart.replaySystem === instance) {
+                state.chart.replaySystem = null;
+            }
+        } else {
+            state.phase = 'destroy-pending';
+            instance._m20Q6LifecycleState = 'destroy-pending';
+        }
+
+        const report = {
+            enabled: true,
+            state: state.phase,
+            reason,
+            attempted,
+            completed,
+            pending,
+            eventPending: state.events.filter((entry) => !entry.settled).length,
+            schedulerPending: state.schedulers.filter((entry) => entry.pending).length,
+            managerPending: state.managers.filter((entry) => !entry.settled).length,
+            floatingPending: instance._floatingCloneDocListenerTeardowns.length,
+            errors: errors.slice(),
+        };
+        state.lastReport = report;
+        instance._m20Q6LastLifecycleReport = report;
+        if (errors.length || pending !== 0 || state.page) {
+            if (!errors.length) {
+                errors.push(new Error(`M20-Q6 cleanup retained ${pending} resource(s)`));
+            }
+            throw m20Q6Aggregate(
+                errors,
+                `M20-Q6 ReplaySystem lifecycle cleanup retained ${pending} resource(s)`,
+                report,
+            );
+        }
+        return report;
+    }
+
+    class M20Q6ReplaySystem extends M20Q6ImmutableReplaySystem {
+        constructor(chart) {
+            const previous = chart && m20Q6ChartOwners.get(chart);
+            if (previous) {
+                m20Q6DrainState(previous, 'replacement');
+            }
+            const tx = { chart, state: null };
+            m20Q6ConstructionStack.push(tx);
+            try {
+                super(chart);
+            } catch (primaryError) {
+                if (tx.state) {
+                    tx.state.constructionError = primaryError;
+                    try {
+                        m20Q6DrainState(tx.state, 'constructor-rollback');
+                    } catch (cleanupError) {
+                        m20Q6AttachCleanupError(primaryError, cleanupError, tx.state.instance);
+                    }
+                }
+                throw primaryError;
+            } finally {
+                m20Q6ConstructionStack.pop();
+            }
+            const state = m20Q6StateFor(this);
+            state.phase = 'active';
+            state.acceptCallbacks = true;
+            this._m20Q6LifecycleState = 'active';
+        }
+
+        init() {
+            const state = m20Q6StateFor(this);
+            if (document.readyState === 'loading') {
+                const onReady = () => this.setup();
+                return m20Q6AddEvent(
+                    state,
+                    document,
+                    'DOMContentLoaded',
+                    onReady,
+                    undefined,
+                    'document:DOMContentLoaded',
+                ).result;
+            }
+            return this.setup();
+        }
+
+        setup() {
+            const state = m20Q6StateFor(this);
+            try {
+                return m20Q6CaptureEffects(
+                    state,
+                    () => M20Q6ImmutableReplaySystem.prototype.setup.call(this),
+                );
+            } catch (primaryError) {
+                try {
+                    m20Q6DrainState(state, 'setup-rollback');
+                } catch (cleanupError) {
+                    m20Q6AttachCleanupError(primaryError, cleanupError, this);
+                }
+                throw primaryError;
+            }
+        }
+
+        _teardownFloatingCloneDocListeners() {
+            const state = m20Q6StateFor(this);
+            const errors = [];
+            let attempted = 0;
+            let completed = 0;
+            const ledger = this._floatingCloneDocListenerTeardowns;
+            for (const pair of [...ledger].reverse()) {
+                attempted += 1;
+                for (const entry of pair.entries || []) {
+                    if (entry.settled) continue;
+                    try {
+                        m20Q6RemoveEventEntry(entry);
+                        const index = state.events.indexOf(entry);
+                        if (index >= 0) state.events.splice(index, 1);
+                    } catch (error) {
+                        errors.push(error);
+                    }
+                }
+                if ((pair.entries || []).every((entry) => entry.settled)) {
+                    const index = ledger.indexOf(pair);
+                    if (index >= 0) ledger.splice(index, 1);
+                    completed += 1;
+                }
+            }
+            const report = {
+                enabled: true,
+                attempted,
+                completed,
+                pending: ledger.length,
+                errors: errors.slice(),
+            };
+            this._m20Q6LastFloatingTeardownReport = report;
+            state.lastFloatingReport = report;
+            if (errors.length) {
+                throw m20Q6Aggregate(
+                    errors,
+                    `M20-Q6 floating cleanup retained ${ledger.length} pair(s)`,
+                    report,
+                );
+            }
+            return report;
+        }
+
+        _removeFloatingReplayToolbarClone() {
+            const errors = [];
+            let report = null;
+            let clone = null;
+            try {
+                clone = document.getElementById('replayToolbarClone');
+            } catch (error) {
+                errors.push(error);
+            }
+            try {
+                report = this._teardownFloatingCloneDocListeners();
+            } catch (error) {
+                errors.push(...(Array.isArray(error.errors) ? error.errors : [error]));
+                report = error.report || this._m20Q6LastFloatingTeardownReport;
+            }
+            const state = m20Q6States.get(this);
+            if (clone && state) {
+                for (const entry of [...state.events].reverse()) {
+                    let cloneOwned = entry.ownerRoot === clone || entry.target === clone;
+                    if (!cloneOwned && typeof clone.contains === 'function') {
+                        try { cloneOwned = clone.contains(entry.target); } catch (_) {}
+                    }
+                    if (!cloneOwned || entry.settled) continue;
+                    try {
+                        m20Q6RemoveEventEntry(entry);
+                    } catch (error) {
+                        errors.push(error);
+                    }
+                }
+            }
+            try {
+                if (clone && typeof clone.remove === 'function') clone.remove();
+            } catch (error) {
+                errors.push(error);
+            }
+            try {
+                if (typeof userStorage !== 'undefined' && userStorage
+                    && typeof userStorage.removeItem === 'function') {
+                    userStorage.removeItem('replayToolbarClonePosition');
+                }
+            } catch (error) {
+                errors.push(error);
+            }
+            try {
+                if (this.toolbar && this.toolbar.style) this.toolbar.style.opacity = '1';
+            } catch (error) {
+                errors.push(error);
+            }
+            if (errors.length) {
+                throw m20Q6Aggregate(errors, 'M20-Q6 floating toolbar cleanup failed', report);
+            }
+            return report;
+        }
+
+        addCloseButtonToClone(clone) {
+            const state = m20Q6StateFor(this);
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'replay-clone-close-btn';
+            closeBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            `;
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: transparent;
+                border: none;
+                color: #787b86;
+                cursor:default;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10002;
+                transition: all 0.15s ease;
+            `;
+            const enterEntry = m20Q6AddEvent(state, closeBtn, 'mouseenter', () => {
+                closeBtn.style.background = 'rgba(120, 123, 134, 0.2)';
+                closeBtn.style.color = '#d1d4dc';
+            }, undefined, 'clone-close:mouseenter').entry;
+            enterEntry.ownerRoot = clone;
+            const leaveEntry = m20Q6AddEvent(state, closeBtn, 'mouseleave', () => {
+                closeBtn.style.background = 'transparent';
+                closeBtn.style.color = '#787b86';
+            }, undefined, 'clone-close:mouseleave').entry;
+            leaveEntry.ownerRoot = clone;
+            const clickEntry = m20Q6AddEvent(state, closeBtn, 'click', (event) => {
+                let primaryError = null;
+                try {
+                    event.stopPropagation();
+                } catch (error) {
+                    primaryError = error;
+                    throw error;
+                } finally {
+                    try {
+                        this._removeFloatingReplayToolbarClone();
+                    } catch (cleanupError) {
+                        if (primaryError) {
+                            m20Q6AttachCleanupError(primaryError, cleanupError, this);
+                        } else {
+                            throw cleanupError;
+                        }
+                    }
+                }
+            }, undefined, 'clone-close:click').entry;
+            clickEntry.ownerRoot = clone;
+            clone.style.position = 'fixed';
+            clone.appendChild(closeBtn);
+            this.makeCloneDraggable(clone);
+        }
+
+        makeCloneDraggable(clone) {
+            const state = m20Q6StateFor(this);
+            if (!state.acceptCallbacks || state.phase !== 'active') return false;
+            this._teardownFloatingCloneDocListeners();
+
+            let isDragging = false;
+            let offsetX = 0;
+            let offsetY = 0;
+            const onMouseDown = (event) => {
+                if (event.target.closest('button')
+                    || event.target.closest('select')
+                    || event.target.closest('input')) return;
+                isDragging = true;
+                const rect = clone.getBoundingClientRect();
+                offsetX = event.clientX - rect.left;
+                offsetY = event.clientY - rect.top;
+                clone.classList.add('dragging');
+                event.preventDefault();
+            };
+            const onMouseMove = (event) => {
+                if (!isDragging) return;
+                clone.style.left = `${event.clientX - offsetX}px`;
+                clone.style.top = `${event.clientY - offsetY}px`;
+            };
+            const onMouseUp = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                clone.classList.remove('dragging');
+                const rect = clone.getBoundingClientRect();
+                this.saveFloatingClonePosition(rect.left, rect.top);
+            };
+
+            const pair = { entries: [] };
+            this._floatingCloneDocListenerTeardowns.push(pair);
+            let primaryError = null;
+            try {
+                const downEntry = m20Q6AddEvent(
+                    state,
+                    clone,
+                    'mousedown',
+                    onMouseDown,
+                    undefined,
+                    'float:mousedown',
+                ).entry;
+                downEntry.ownerRoot = clone;
+                pair.entries.push(
+                    m20Q6AddEvent(
+                        state,
+                        document,
+                        'mousemove',
+                        onMouseMove,
+                        undefined,
+                        'float:mousemove',
+                    ).entry,
+                );
+                pair.entries[pair.entries.length - 1].ownerRoot = clone;
+                pair.entries.push(
+                    m20Q6AddEvent(
+                        state,
+                        document,
+                        'mouseup',
+                        onMouseUp,
+                        undefined,
+                        'float:mouseup',
+                    ).entry,
+                );
+                pair.entries[pair.entries.length - 1].ownerRoot = clone;
+            } catch (error) {
+                primaryError = error;
+                throw error;
+            } finally {
+                if (primaryError) {
+                    try {
+                        this._teardownFloatingCloneDocListeners();
+                    } catch (cleanupError) {
+                        m20Q6AttachCleanupError(primaryError, cleanupError, this);
+                    }
+                }
+            }
+            return true;
+        }
+
+        exitReplayMode() {
+            let primaryError = null;
+            try {
+                return M20Q6ImmutableReplaySystem.prototype.exitReplayMode.call(this);
+            } catch (error) {
+                primaryError = error;
+                throw error;
+            } finally {
+                try {
+                    this._removeFloatingReplayToolbarClone();
+                } catch (cleanupError) {
+                    if (primaryError) {
+                        m20Q6AttachCleanupError(primaryError, cleanupError, this);
+                    } else {
+                        throw cleanupError;
+                    }
+                }
+            }
+        }
+
+        destroy() {
+            return m20Q6DrainState(m20Q6States.get(this), 'destroy');
+        }
+
+        dispose() {
+            return this.destroy();
+        }
+    }
+
+    for (const name of m20Q6EffectMethods) {
+        if (Object.prototype.hasOwnProperty.call(M20Q6ReplaySystem.prototype, name)) continue;
+        const method = M20Q6ImmutableReplaySystem.prototype[name];
+        if (typeof method !== 'function') continue;
+        Object.defineProperty(M20Q6ReplaySystem.prototype, name, {
+            value: function m20Q6CapturedReplayEffect(...args) {
+                const state = m20Q6StateFor(this);
+                if (!state.acceptCallbacks && state.phase !== 'constructing') return undefined;
+                const priorOwnerRoot = state.captureOwnerRoot;
+                if (name === 'attachCloneEventHandlers' && args[0]) {
+                    state.captureOwnerRoot = args[0];
+                }
+                try {
+                    return m20Q6CaptureEffects(state, () => method.apply(this, args), args);
+                } finally {
+                    state.captureOwnerRoot = priorOwnerRoot;
+                }
+            },
+            configurable: true,
+            writable: true,
+        });
+    }
+
+    ReplaySystem = M20Q6ReplaySystem;
+}
+
 // Export for use in main chart
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ReplaySystem;

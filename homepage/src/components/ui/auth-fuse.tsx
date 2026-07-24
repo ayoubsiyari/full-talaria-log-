@@ -10,6 +10,11 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { GoogleAuthButton } from "./GoogleAuthButton";
 import {
+  createSignInRequestGate,
+  signInFormValuesFromState,
+  validateSignInValues,
+} from "./auth-fuse-signin.cjs";
+import {
   isPathAdminOnlyWip,
   userIsDashboardAdmin,
   userHasAnyDashboardAccess,
@@ -339,12 +344,48 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 PasswordInput.displayName = "PasswordInput";
 
 function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onForgotPassword }: { prefillEmail?: string; bannerMessage?: string | null; accessNotice?: string | null; nextPath?: string; onForgotPassword: () => void }) {
+  const [email, setEmail] = useState(prefillEmail || "");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [accessDenial, setAccessDenial] = useState<ParsedAccessDenial | null>(null);
   const [loading, setLoading] = useState(false);
   const [renewLoading, setRenewLoading] = useState(false);
+  const errorId = useId();
+  const signInValuesRef = React.useRef({ email: prefillEmail || "", password: "" });
+  const requestGateRef = React.useRef(createSignInRequestGate());
 
   const pricingRenewPath = "/pricing/?browse=1";
+
+  useEffect(() => {
+    const nextEmail = prefillEmail || "";
+    setEmail(nextEmail);
+    signInValuesRef.current = {
+      ...signInValuesRef.current,
+      email: nextEmail,
+    };
+  }, [prefillEmail]);
+
+  const syncEmail = (value: string) => {
+    setEmail(value);
+    signInValuesRef.current = {
+      ...signInValuesRef.current,
+      email: value,
+    };
+  };
+
+  const syncPassword = (value: string) => {
+    setPassword(value);
+    signInValuesRef.current = {
+      ...signInValuesRef.current,
+      password: value,
+    };
+  };
+
+  const syncSubmittedValues = (values: { email: string; password: string }) => {
+    if (values.email !== signInValuesRef.current.email) setEmail(values.email);
+    if (values.password !== signInValuesRef.current.password) setPassword(values.password);
+    signInValuesRef.current = values;
+  };
 
   async function submitLogin(email: string, password: string, loginNextPath?: string) {
     const res = await fetch("/api/auth/login", {
@@ -365,20 +406,20 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
     event.preventDefault();
     setError(null);
     setAccessDenial(null);
+
+    const values = signInFormValuesFromState(signInValuesRef.current, event.currentTarget);
+    syncSubmittedValues(values);
+    const validationError = validateSignInValues(values);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    if (!requestGateRef.current.start()) {
+      return;
+    }
     setLoading(true);
-
     try {
-      const form = event.currentTarget;
-      const data = new FormData(form);
-      const email = String(data.get("email") || "").trim();
-      const password = String(data.get("password") || "");
-
-      if (!isValidEmail(email) || !password) {
-        setError("Please enter a valid email and password");
-        return;
-      }
-
-      const { res, body } = await submitLogin(email, password);
+      const { res, body } = await submitLogin(values.email, values.password);
       if (!res.ok) {
         const denial = parseAuthAccessDenial(body);
         if (denial) {
@@ -389,8 +430,9 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
         return;
       }
 
-      await completeAuthLogin(body, { email, password, nextPath });
+      await completeAuthLogin(body, { email: values.email, password: values.password, nextPath });
     } finally {
+      requestGateRef.current.finish();
       setLoading(false);
     }
   };
@@ -398,10 +440,10 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
   const handleRenewSignIn = async () => {
     const form = document.getElementById("sign-in-form") as HTMLFormElement | null;
     if (!form) return;
-    const data = new FormData(form);
-    const email = String(data.get("email") || "").trim();
-    const password = String(data.get("password") || "");
-    if (!isValidEmail(email) || !password) {
+    const values = signInFormValuesFromState(signInValuesRef.current, form);
+    syncSubmittedValues(values);
+    const validationError = validateSignInValues(values);
+    if (validationError) {
       setError("Please enter your email and password first");
       setAccessDenial(null);
       return;
@@ -409,7 +451,7 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
     setRenewLoading(true);
     setError(null);
     try {
-      const { res, body } = await submitLogin(email, password, pricingRenewPath);
+      const { res, body } = await submitLogin(values.email, values.password, pricingRenewPath);
       if (!res.ok) {
         const denial = parseAuthAccessDenial(body);
         if (denial) setAccessDenial(denial);
@@ -417,8 +459,8 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
         return;
       }
       await completeAuthLogin(body, {
-        email,
-        password,
+        email: values.email,
+        password: values.password,
         nextPath: pricingRenewPath,
       });
     } finally {
@@ -427,15 +469,41 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
   };
 
   return (
-    <form id="sign-in-form" onSubmit={handleSignIn} autoComplete="on" className="flex flex-col gap-8">
+    <form id="sign-in-form" onSubmit={handleSignIn} autoComplete="on" className="flex flex-col gap-8" aria-busy={loading || renewLoading}>
       <div className="flex flex-col items-center gap-2 text-center">
         <h1 className="text-2xl font-bold">Sign in to your account</h1>
         <p className="text-balance text-sm text-muted-foreground">Enter your email below to sign in</p>
       </div>
       <div className="grid gap-4">
-        <div className="grid gap-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" defaultValue={prefillEmail || ""} /></div>
         <div className="grid gap-2">
-          <PasswordInput name="password" label="Password" required autoComplete="current-password" placeholder="Password" />
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="m@example.com"
+            required
+            autoComplete="email"
+            value={email}
+            onInput={(e) => syncEmail((e.target as HTMLInputElement).value)}
+            onChange={(e) => syncEmail(e.target.value)}
+            aria-invalid={!!error && !isValidEmail(email.trim())}
+            aria-describedby={error ? errorId : undefined}
+          />
+        </div>
+        <div className="grid gap-2">
+          <PasswordInput
+            name="password"
+            label="Password"
+            required
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onInput={(e) => syncPassword((e.target as HTMLInputElement).value)}
+            onChange={(e) => syncPassword((e.target as HTMLInputElement).value)}
+            aria-invalid={!!error && !password}
+            aria-describedby={error ? errorId : undefined}
+          />
           <div className="text-right">
             <AuthButton type="button" variant="link" className="p-0 h-auto text-xs" onClick={onForgotPassword}>Forgot password?</AuthButton>
           </div>
@@ -471,7 +539,7 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
           </div>
         )}
         {error && !accessDenial && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div id={errorId} role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
         <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading || renewLoading}>
           {loading ? "Signing In..." : "Sign In"}

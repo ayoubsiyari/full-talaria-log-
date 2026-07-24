@@ -20,9 +20,31 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHART_ROOT = path.resolve(__dirname, '..');
-const HOMEPAGE_CHART = path.resolve(__dirname, '../../../homepage/public/chart');
-const EVIDENCE_DIR = path.resolve(__dirname, '../../../docs/plan3/evidence');
+function isCanonicalRoot(candidate) {
+  const markers = [
+    'chart v 1.4/chart/chart.js',
+    'homepage/public/chart/chart.js',
+    'docs/plan3/PLAN3-BOARD.md',
+    '.git',
+  ];
+  return markers.every((marker) => fs.existsSync(path.join(candidate, marker)));
+}
+
+function findCanonicalRoot(start) {
+  let current = fs.realpathSync(start);
+  for (;;) {
+    if (isCanonicalRoot(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  throw new Error(`M20 Q1/Q2/Q8 canonical repository root not found from ${start}`);
+}
+
+const REPO_ROOT = findCanonicalRoot(__dirname);
+const CHART_ROOT = path.join(REPO_ROOT, 'chart v 1.4/chart');
+const HOMEPAGE_CHART = path.join(REPO_ROOT, 'homepage/public/chart');
+const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs/plan3/evidence');
 const require = createRequire(import.meta.url);
 
 const KS_Q1 = '__TALARIA_DISABLE_M20_Q1_V9_TIME_SYNC_OBSERVER_V1';
@@ -446,11 +468,12 @@ test('Q8: alert checker idle / clear-before-restart / destroy', () => {
     `intervals=${intervals.size}`);
   assert.equal(intervals.size, 1);
 
-  // Restart clears before re-create (no stack)
+  // Nonempty → nonempty is a no-op: keep the live checker identity.
   as.startAlertChecker();
-  note('Q8', 'clear-before-restart-no-stack', intervals.size === 1 && as.checkInterval !== firstId,
+  note('Q8', 'nonempty-reconcile-keeps-live-checker', intervals.size === 1 && as.checkInterval === firstId,
     `intervals=${intervals.size} prev=${firstId} cur=${as.checkInterval}`);
   assert.equal(intervals.size, 1);
+  assert.equal(as.checkInterval, firstId);
 
   // Empty again → stop
   as.alerts = [];
@@ -466,22 +489,31 @@ test('Q8: alert checker idle / clear-before-restart / destroy', () => {
   note('Q8', 'destroy-clears-interval', intervals.size === 0 && as.checkInterval == null);
   assert.equal(intervals.size, 0);
 
-  // Kill-switch → always-on interval even with zero alerts (legacy RED)
+  // Kill-switch → a fresh, never-fixed instance follows exact immutable legacy.
   window[KS_Q8] = true;
-  as.alerts = [];
-  as.startAlertChecker();
-  const legacyId = as.checkInterval;
+  const legacy = Object.create(proto);
+  legacy.chart = as.chart;
+  legacy.alerts = [];
+  legacy.storageKey = 'chart_alerts_legacy_test';
+  legacy.isVisible = false;
+  legacy.alertSound = null;
+  legacy.checkInterval = null;
+  legacy.lastPrices = {};
+  legacy.conditions = as.conditions;
+  legacy.expirations = as.expirations;
+  legacy.startAlertChecker();
+  const legacyId = legacy.checkInterval;
   note('Q8', 'kill-switch-always-on-zero-alerts', intervals.size >= 1,
     `intervals=${intervals.size}`);
   assert.ok(intervals.size >= 1);
-  as.alerts = [{ id: 'legacy-a1', active: true, price: 3 }];
-  as.syncAlertCheckerWithAlerts();
+  legacy.alerts = [{ id: 'legacy-a1', active: true, price: 3 }];
+  legacy.syncAlertCheckerWithAlerts();
   note('Q8', 'kill-switch-alert-mutation-does-not-amplify-legacy',
-    intervals.size === 1 && as.checkInterval === legacyId,
+    intervals.size === 1 && legacy.checkInterval === legacyId,
     `intervals=${intervals.size}`);
   assert.equal(intervals.size, 1);
-  assert.equal(as.checkInterval, legacyId);
-  as.destroy();
+  assert.equal(legacy.checkInterval, legacyId);
+  legacy.destroy();
 
   global.setInterval = realSetInterval;
   global.clearInterval = realClearInterval;
@@ -531,7 +563,7 @@ test('switch-OFF discrimination: legacy drains return', () => {
     assert.equal(calls.scheduleRender, 1);
   }
 
-  // Q8: kill-switch restores always-on interval with zero alerts.
+  // Q8: execute the actual immutable-compatible product method.
   {
     const intervals = new Set();
     let nextId = 100;
@@ -540,29 +572,12 @@ test('switch-OFF discrimination: legacy drains return', () => {
     global.setInterval = () => { const id = nextId++; intervals.add(id); return id; };
     global.clearInterval = (id) => { intervals.delete(id); };
     window[KS_Q8] = true;
-    const as = {
-      alerts: [],
-      checkInterval: null,
-      _m20Q8AlertCheckerIdleFixEnabled() {
-        return typeof window === 'undefined' || window[KS_Q8] !== true;
-      },
-      stopAlertChecker() {
-        if (this.checkInterval) {
-          clearInterval(this.checkInterval);
-          this.checkInterval = null;
-        }
-      },
-      startAlertChecker() {
-        const fixOn = this._m20Q8AlertCheckerIdleFixEnabled();
-        if (fixOn) {
-          this.stopAlertChecker();
-          if (!this.alerts || this.alerts.length === 0) return;
-          this.checkInterval = setInterval(() => {}, 500);
-          return;
-        }
-        this.checkInterval = setInterval(() => {}, 500);
-      },
-    };
+    const AlertSystem = window.AlertSystem;
+    assert.equal(typeof AlertSystem, 'function', 'Q8 actual product class unavailable');
+    const as = Object.create(AlertSystem.prototype);
+    as.alerts = [];
+    as.checkInterval = null;
+    as.checkAlerts = () => {};
     as.startAlertChecker();
     const desiredNoInterval = intervals.size === 0;
     note('Q8', 'switch-off-desired-contract-RED', desiredNoInterval === false,

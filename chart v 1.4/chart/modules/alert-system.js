@@ -338,8 +338,437 @@ class AlertSystem {
             // mutations must not add extra intervals while the fix is disabled.
             return;
         }
-        if (this.alerts && this.alerts.length > 0) this.startAlertChecker();
-        else this.stopAlertChecker();
+        this._m20Q8InstallTransactionalOwnership();
+        return this._m20Q8ReconcileAlertChecker();
+    }
+
+    _m20Q8InstallTransactionalOwnership() {
+        if (Object.prototype.hasOwnProperty.call(this, '_m20Q8CheckerHandles')) return;
+
+        Object.defineProperty(this, '_m20Q8CheckerHandles', {
+            configurable: true,
+            enumerable: false,
+            writable: false,
+            value: new Set()
+        });
+
+        const aliases = {
+            createAlert: '_m20Q8CreateAlertTransactional',
+            updateAlert: '_m20Q8UpdateAlertTransactional',
+            deleteAlert: '_m20Q8DeleteAlertTransactional',
+            toggleAlert: '_m20Q8ToggleAlertTransactional',
+            clearAllAlerts: '_m20Q8ClearAllAlertsTransactional',
+            startAlertChecker: '_m20Q8StartAlertCheckerTransactional',
+            stopAlertChecker: '_m20Q8StopAlertCheckerTransactional',
+            syncAlertCheckerWithAlerts: '_m20Q8SyncAlertCheckerTransactional'
+        };
+        Object.entries(aliases).forEach(([publicName, fixedName]) => {
+            Object.defineProperty(this, publicName, {
+                configurable: true,
+                enumerable: false,
+                writable: true,
+                value: this[fixedName]
+            });
+        });
+    }
+
+    _m20Q8ReportSecondaryFailure(context, error) {
+        try {
+            console.error(`[M20-Q8] ${context}`, error);
+        } catch (_) {
+            // Diagnostics must never replace the operation's primary exception.
+        }
+    }
+
+    _m20Q8CaptureCheckerOwnership() {
+        const handles = this._m20Q8CheckerHandles instanceof Set
+            ? [...this._m20Q8CheckerHandles]
+            : [];
+        return {
+            checkInterval: this.checkInterval == null ? null : this.checkInterval,
+            handles
+        };
+    }
+
+    _m20Q8ClearCheckerHandle(handle) {
+        let firstError = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                clearInterval(handle);
+                return;
+            } catch (error) {
+                if (!firstError) firstError = error;
+            }
+        }
+        throw firstError;
+    }
+
+    _m20Q8RestoreCheckerOwnership(snapshot) {
+        const ledger = this._m20Q8CheckerHandles;
+        let firstError = null;
+        if (!(ledger instanceof Set)) return;
+
+        for (const handle of [...ledger]) {
+            if (snapshot.handles.includes(handle)) continue;
+            try {
+                this._m20Q8ClearCheckerHandle(handle);
+                ledger.delete(handle);
+            } catch (error) {
+                if (!firstError) firstError = error;
+            }
+        }
+
+        try {
+            ledger.clear();
+            snapshot.handles.forEach((handle) => ledger.add(handle));
+            this.checkInterval = snapshot.checkInterval;
+        } catch (error) {
+            if (!firstError) firstError = error;
+        }
+
+        if (firstError) throw firstError;
+    }
+
+    _m20Q8StartOwnedChecker() {
+        const ledger = this._m20Q8CheckerHandles;
+        let handle = null;
+        try {
+            handle = setInterval(() => {
+                this.checkAlerts();
+            }, 500);
+            if (handle == null) throw new Error('Alert checker did not return a timer handle');
+            ledger.add(handle);
+            this.checkInterval = handle;
+            return handle;
+        } catch (error) {
+            if (handle != null) {
+                try {
+                    this._m20Q8ClearCheckerHandle(handle);
+                } catch (clearError) {
+                    this._m20Q8ReportSecondaryFailure('failed to clear rejected checker start', clearError);
+                }
+                ledger.delete(handle);
+            }
+            throw error;
+        }
+    }
+
+    _m20Q8ApplyCheckerOwnership(desiredRunning) {
+        const ledger = this._m20Q8CheckerHandles;
+        const primary = this.checkInterval == null ? null : this.checkInterval;
+
+        if (primary != null && !ledger.has(primary)) {
+            this._m20Q8ClearCheckerHandle(primary);
+            this.checkInterval = null;
+        }
+
+        if (!desiredRunning) {
+            const handles = [...ledger];
+            for (const handle of handles) {
+                this._m20Q8ClearCheckerHandle(handle);
+                ledger.delete(handle);
+            }
+            this.checkInterval = null;
+            return null;
+        }
+
+        if (ledger.size === 0) {
+            return this._m20Q8StartOwnedChecker();
+        }
+
+        const handles = [...ledger];
+        const keeper = ledger.has(this.checkInterval) ? this.checkInterval : handles[0];
+        for (const handle of handles) {
+            if (handle === keeper) continue;
+            this._m20Q8ClearCheckerHandle(handle);
+            ledger.delete(handle);
+        }
+        this.checkInterval = keeper;
+        return keeper;
+    }
+
+    _m20Q8ReconcileAlertChecker(desiredRunning) {
+        const desired = typeof desiredRunning === 'boolean'
+            ? desiredRunning
+            : !!(this.alerts && this.alerts.length > 0);
+        const before = this._m20Q8CaptureCheckerOwnership();
+        try {
+            return this._m20Q8ApplyCheckerOwnership(desired);
+        } catch (error) {
+            try {
+                this._m20Q8RestoreCheckerOwnership(before);
+            } catch (restoreError) {
+                this._m20Q8ReportSecondaryFailure('checker ownership rollback failed', restoreError);
+            }
+            throw error;
+        }
+    }
+
+    _m20Q8DescriptorsEqual(left, right) {
+        const leftKeys = Reflect.ownKeys(left);
+        const rightKeys = Reflect.ownKeys(right);
+        if (leftKeys.length !== rightKeys.length) return false;
+        for (const key of leftKeys) {
+            if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+            const a = left[key];
+            const b = right[key];
+            if (
+                a.configurable !== b.configurable
+                || a.enumerable !== b.enumerable
+                || a.writable !== b.writable
+                || a.value !== b.value
+                || a.get !== b.get
+                || a.set !== b.set
+            ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _m20Q8CaptureAlertState() {
+        const alertsRef = this.alerts;
+        const entries = Array.prototype.slice.call(alertsRef);
+        const seen = new Set();
+        const objects = [];
+        entries.forEach((entry) => {
+            if (!entry || (typeof entry !== 'object' && typeof entry !== 'function') || seen.has(entry)) {
+                return;
+            }
+            seen.add(entry);
+            objects.push({
+                object: entry,
+                descriptors: Object.getOwnPropertyDescriptors(entry)
+            });
+        });
+        return { alertsRef, entries, objects };
+    }
+
+    _m20Q8AlertStateEquals(snapshot) {
+        if (this.alerts !== snapshot.alertsRef) return false;
+        if (this.alerts.length !== snapshot.entries.length) return false;
+        for (let index = 0; index < snapshot.entries.length; index += 1) {
+            if (this.alerts[index] !== snapshot.entries[index]) return false;
+        }
+        for (const record of snapshot.objects) {
+            if (!this._m20Q8DescriptorsEqual(
+                Object.getOwnPropertyDescriptors(record.object),
+                record.descriptors
+            )) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    _m20Q8RestoreAlertState(snapshot) {
+        for (const record of snapshot.objects) {
+            const currentKeys = Reflect.ownKeys(record.object);
+            for (const key of currentKeys) {
+                if (Object.prototype.hasOwnProperty.call(record.descriptors, key)) continue;
+                if (!Reflect.deleteProperty(record.object, key)) {
+                    throw new Error(`Unable to remove partial alert property ${String(key)}`);
+                }
+            }
+            Object.defineProperties(record.object, record.descriptors);
+        }
+
+        if (this.alerts !== snapshot.alertsRef) {
+            this.alerts = snapshot.alertsRef;
+        }
+        Array.prototype.splice.call(
+            snapshot.alertsRef,
+            0,
+            snapshot.alertsRef.length,
+            ...snapshot.entries
+        );
+    }
+
+    _m20Q8SaveAlertsTransactionally() {
+        const beforeSave = this._m20Q8CaptureAlertState();
+        try {
+            return this.saveAlerts();
+        } catch (error) {
+            try {
+                if (!this._m20Q8AlertStateEquals(beforeSave)) {
+                    this._m20Q8RestoreAlertState(beforeSave);
+                }
+            } catch (restoreError) {
+                this._m20Q8ReportSecondaryFailure('partial save rollback failed', restoreError);
+            }
+            throw error;
+        }
+    }
+
+    _m20Q8RunAlertMutation(mutate, effects) {
+        const beforeState = this._m20Q8CaptureAlertState();
+        const beforeOwnership = this._m20Q8CaptureCheckerOwnership();
+        let mutationReturned = false;
+        let mutationChanged = false;
+        let primaryError = null;
+        let result;
+
+        try {
+            mutate();
+            mutationReturned = true;
+            mutationChanged = !this._m20Q8AlertStateEquals(beforeState);
+            result = effects();
+        } catch (error) {
+            primaryError = error;
+        }
+
+        if (!mutationReturned) {
+            try {
+                if (!this._m20Q8AlertStateEquals(beforeState)) {
+                    this._m20Q8RestoreAlertState(beforeState);
+                }
+            } catch (restoreError) {
+                this._m20Q8ReportSecondaryFailure('partial mutation rollback failed', restoreError);
+            }
+            throw primaryError;
+        }
+
+        if (mutationChanged) {
+            try {
+                this._m20Q8ReconcileAlertChecker();
+            } catch (reconcileError) {
+                try {
+                    this._m20Q8RestoreAlertState(beforeState);
+                } catch (restoreError) {
+                    this._m20Q8ReportSecondaryFailure('alert state rollback failed', restoreError);
+                }
+                try {
+                    this._m20Q8RestoreCheckerOwnership(beforeOwnership);
+                } catch (restoreError) {
+                    this._m20Q8ReportSecondaryFailure('checker rollback after mutation failed', restoreError);
+                }
+                if (primaryError) {
+                    this._m20Q8ReportSecondaryFailure('checker reconciliation failed', reconcileError);
+                    throw primaryError;
+                }
+                throw reconcileError;
+            }
+        }
+
+        if (primaryError) throw primaryError;
+        return result;
+    }
+
+    _m20Q8CreateAlertTransactional(options) {
+        const alert = {
+            id: 'alert_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            symbol: options.symbol || this.getSymbolName(),
+            price: parseFloat(options.price),
+            condition: options.condition || this.conditions.CROSSING,
+            message: options.message || `Price ${options.condition || 'crossing'} ${options.price}`,
+            expiration: options.expiration || this.expirations.EVERY_TIME,
+            active: true,
+            triggered: false,
+            triggeredCount: 0,
+            lastTriggeredBar: null,
+            color: options.color || '#ff9800',
+            lineStyle: options.lineStyle || 'dashed',
+            showPopup: options.showPopup !== false,
+            playSound: options.playSound !== false,
+            createdAt: Date.now(),
+            upperPrice: options.upperPrice || null,
+            lowerPrice: options.lowerPrice || null
+        };
+
+        return this._m20Q8RunAlertMutation(
+            () => {
+                this.alerts.push(alert);
+            },
+            () => {
+                this._m20Q8SaveAlertsTransactionally();
+                this.renderAlertLines();
+                this.refreshAlertsList();
+                this.updateBadge();
+                if (this.chart && typeof this.chart.showNotification === 'function') {
+                    this.chart.showNotification(`Alert created at ${this.formatPrice(alert.price)} ✓`);
+                }
+                console.log('🔔 Alert created:', alert);
+                return alert;
+            }
+        );
+    }
+
+    _m20Q8UpdateAlertTransactional(alertId, updates) {
+        const alert = this.alerts.find(a => a.id === alertId);
+        if (!alert) return;
+        return this._m20Q8RunAlertMutation(
+            () => {
+                Object.assign(alert, updates);
+            },
+            () => {
+                this._m20Q8SaveAlertsTransactionally();
+                this.renderAlertLines();
+                this.refreshAlertsList();
+                console.log('🔔 Alert updated:', alert);
+            }
+        );
+    }
+
+    _m20Q8DeleteAlertTransactional(alertId) {
+        const index = this.alerts.findIndex(a => a.id === alertId);
+        if (index < 0) return;
+        return this._m20Q8RunAlertMutation(
+            () => {
+                this.alerts.splice(index, 1);
+            },
+            () => {
+                this._m20Q8SaveAlertsTransactionally();
+                this.renderAlertLines();
+                this.refreshAlertsList();
+                this.updateBadge();
+                if (this.chart && typeof this.chart.showNotification === 'function') {
+                    this.chart.showNotification('Alert deleted');
+                }
+            }
+        );
+    }
+
+    _m20Q8ToggleAlertTransactional(alertId) {
+        const alert = this.alerts.find(a => a.id === alertId);
+        if (!alert) return;
+        return this._m20Q8RunAlertMutation(
+            () => {
+                alert.active = !alert.active;
+            },
+            () => {
+                this._m20Q8SaveAlertsTransactionally();
+                this.renderAlertLines();
+                this.refreshAlertsList();
+                this.updateBadge();
+            }
+        );
+    }
+
+    _m20Q8ClearAllAlertsTransactional() {
+        if (!confirm('Delete all alerts? This cannot be undone.')) return;
+        return this._m20Q8RunAlertMutation(
+            () => {
+                this.alerts = [];
+            },
+            () => {
+                this._m20Q8SaveAlertsTransactionally();
+                this.renderAlertLines();
+                this.refreshAlertsList();
+                this.updateBadge();
+            }
+        );
+    }
+
+    _m20Q8StartAlertCheckerTransactional() {
+        return this._m20Q8ReconcileAlertChecker();
+    }
+
+    _m20Q8StopAlertCheckerTransactional() {
+        return this._m20Q8ReconcileAlertChecker(false);
+    }
+
+    _m20Q8SyncAlertCheckerTransactional() {
+        return this._m20Q8ReconcileAlertChecker();
     }
     
     /**
@@ -924,12 +1353,8 @@ class AlertSystem {
     startAlertChecker() {
         const fixOn = this._m20Q8AlertCheckerIdleFixEnabled();
         if (fixOn) {
-            this.stopAlertChecker();
-            if (!this.alerts || this.alerts.length === 0) return;
-            this.checkInterval = setInterval(() => {
-                this.checkAlerts();
-            }, 500);
-            return;
+            this._m20Q8InstallTransactionalOwnership();
+            return this._m20Q8ReconcileAlertChecker();
         }
         // Legacy kill-switch path: permanent 500ms wakeups, no clear-before-restart.
         this.checkInterval = setInterval(() => {

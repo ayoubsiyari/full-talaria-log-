@@ -1,0 +1,3836 @@
+{
+  "schema": 1,
+  "ticket": "M20-Q8-ALERT-CHECKER-TRANSACTION",
+  "date": "2026-07-24",
+  "mode": "kill",
+  "status": "PENDING-FRESH-GPT-REVIEW",
+  "acceptanceClaimed": false,
+  "verdict": "RED",
+  "killSwitch": "__TALARIA_DISABLE_M20_Q8_ALERT_CHECKER_IDLE_V1",
+  "provenance": {
+    "repositoryRoot": "C:\\Users\\user\\Desktop\\talaria1\\full-talaria-log--main",
+    "headCommit": "f8ef6a0017b3087070c3e2bc098fc92e3aa10413",
+    "immutableCommit": "5cd010bb8649fec301983c6ee964379e8d3be3f7",
+    "immutableProductSha256": "fb17b18698a18605d9051183c7f867abb9cf77b353abb2df0baf34e01825093d",
+    "rejectedProductSha256": "89ec4e7ba1b9cb13a54c1958c1166e43771d2aebede8a72421024fe45f315bc9",
+    "currentCanonicalSha256": "76c1c0f365571d32d43358fff90274a2e736c8ee3d3dea21a90e63d1201af95c",
+    "currentHomepageSha256": "76c1c0f365571d32d43358fff90274a2e736c8ee3d3dea21a90e63d1201af95c",
+    "dualTreeParity": true
+  },
+  "summary": {
+    "total": 22,
+    "pass": 22,
+    "fail": 0,
+    "immutableInvariantViolations": 3,
+    "rejectedBindingFailures": 22,
+    "killLegacyInvariantViolations": 4
+  },
+  "rows": [
+    {
+      "phase": "provenance",
+      "name": "exactCommit",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "immutableCanonicalHash",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "immutableHomepageHash",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "immutableTreeParity",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "rejectedFixtureHash",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "currentTreeParity",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "statusPendingFreshReview",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "canonicalEvidenceRoot",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "packetScopeIsNotIgnored",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "root-exactRepositoryRoot",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "root-homepageShadowRejected",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "root-canonicalProductResolved",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "provenance",
+      "name": "root-homepageProductResolved",
+      "pass": true,
+      "detail": "bound"
+    },
+    {
+      "phase": "kill",
+      "name": "canonical-exact-immutable-trace",
+      "pass": true,
+      "detail": "",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "homepage-exact-immutable-trace",
+      "pass": true,
+      "detail": "",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "zero-alert-always-on",
+      "pass": true,
+      "detail": "legacy RED reproduced",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "restart-amplifies",
+      "pass": true,
+      "detail": "legacy RED reproduced",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "mutation-hook-does-not-amplify",
+      "pass": true,
+      "detail": "legacy RED reproduced",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "zero-after-delete-remains-on",
+      "pass": true,
+      "detail": "legacy RED reproduced",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "amplified-destroy-retains-legacy-orphans",
+      "pass": true,
+      "detail": "legacy RED reproduced",
+      "measurements": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "canonical-switch-getter-full-trace-exact",
+      "pass": true,
+      "detail": "exact",
+      "measurements": {
+        "immutable": [
+          {
+            "name": "start-zero",
+            "events": [
+              "switch:get",
+              "timer:set:500",
+              "timer:set-result:1",
+              "instance:set:checkInterval:1"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": 1,
+            "activeTimers": [
+              1
+            ]
+          },
+          {
+            "name": "create-success",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "alert",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              801
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "create-render-throw",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              802
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "update-success",
+            "events": [
+              "alert:set:price:803",
+              "save",
+              "render",
+              "list",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              803
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "toggle-success",
+            "events": [
+              "alert:set:active:false",
+              "save",
+              "render",
+              "list",
+              "badge"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              false
+            ],
+            "prices": [
+              100
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-success",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-render-throw",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-success",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-render-throw",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          }
+        ],
+        "current": [
+          {
+            "name": "start-zero",
+            "events": [
+              "switch:get",
+              "timer:set:500",
+              "timer:set-result:1",
+              "instance:set:checkInterval:1"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": 1,
+            "activeTimers": [
+              1
+            ]
+          },
+          {
+            "name": "create-success",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "alert",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              801
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "create-render-throw",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              802
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "update-success",
+            "events": [
+              "alert:set:price:803",
+              "save",
+              "render",
+              "list",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              803
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "toggle-success",
+            "events": [
+              "alert:set:active:false",
+              "save",
+              "render",
+              "list",
+              "badge"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              false
+            ],
+            "prices": [
+              100
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-success",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-render-throw",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-success",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-render-throw",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          }
+        ]
+      }
+    },
+    {
+      "phase": "kill",
+      "name": "homepage-switch-getter-full-trace-exact",
+      "pass": true,
+      "detail": "exact",
+      "measurements": {
+        "immutable": [
+          {
+            "name": "start-zero",
+            "events": [
+              "switch:get",
+              "timer:set:500",
+              "timer:set-result:1",
+              "instance:set:checkInterval:1"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": 1,
+            "activeTimers": [
+              1
+            ]
+          },
+          {
+            "name": "create-success",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "alert",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              801
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "create-render-throw",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              802
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "update-success",
+            "events": [
+              "alert:set:price:803",
+              "save",
+              "render",
+              "list",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              803
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "toggle-success",
+            "events": [
+              "alert:set:active:false",
+              "save",
+              "render",
+              "list",
+              "badge"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              false
+            ],
+            "prices": [
+              100
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-success",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-render-throw",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-success",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-render-throw",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          }
+        ],
+        "current": [
+          {
+            "name": "start-zero",
+            "events": [
+              "switch:get",
+              "timer:set:500",
+              "timer:set-result:1",
+              "instance:set:checkInterval:1"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": 1,
+            "activeTimers": [
+              1
+            ]
+          },
+          {
+            "name": "create-success",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "alert",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              801
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "create-render-throw",
+            "events": [
+              "array:push:before:0",
+              "array:push:after:1",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              802
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "update-success",
+            "events": [
+              "alert:set:price:803",
+              "save",
+              "render",
+              "list",
+              "console:log"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              true
+            ],
+            "prices": [
+              803
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "toggle-success",
+            "events": [
+              "alert:set:active:false",
+              "save",
+              "render",
+              "list",
+              "badge"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 1,
+            "activeValues": [
+              false
+            ],
+            "prices": [
+              100
+            ],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-success",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get",
+              "notification"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "delete-render-throw",
+            "events": [
+              "array:splice:before:1",
+              "array:splice:after:0",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-success",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render",
+              "list",
+              "badge",
+              "switch:get"
+            ],
+            "error": null,
+            "normalizedReturn": "undefined",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          },
+          {
+            "name": "clear-render-throw",
+            "events": [
+              "instance:set:alerts:array(0)",
+              "save",
+              "render"
+            ],
+            "error": "sentinel",
+            "normalizedReturn": "throw",
+            "alertCount": 0,
+            "activeValues": [],
+            "prices": [],
+            "checkInterval": null,
+            "activeTimers": []
+          }
+        ]
+      }
+    }
+  ],
+  "measurements": {
+    "immutableRed": {
+      "createRender": {
+        "alertCount": 1,
+        "expectedIntervals": 1,
+        "intervalCount": 0,
+        "checkInterval": null,
+        "handleIsLive": false,
+        "invariant": false,
+        "sameError": true,
+        "trace": [
+          "persistence",
+          "render"
+        ]
+      },
+      "deleteRender": {
+        "alertCount": 0,
+        "expectedIntervals": 0,
+        "intervalCount": 1,
+        "checkInterval": 1,
+        "handleIsLive": false,
+        "invariant": false,
+        "sameError": true,
+        "trace": [
+          "persistence",
+          "render"
+        ]
+      },
+      "clearRender": {
+        "alertCount": 0,
+        "expectedIntervals": 0,
+        "intervalCount": 1,
+        "checkInterval": 1,
+        "handleIsLive": false,
+        "invariant": false,
+        "sameError": true,
+        "trace": [
+          "persistence",
+          "render"
+        ]
+      }
+    },
+    "rejectedRed": {
+      "snapshotSha256": "89ec4e7ba1b9cb13a54c1958c1166e43771d2aebede8a72421024fe45f315bc9",
+      "expectedFailures": [
+        "fault:clear-partial-mutation-rolls-back",
+        "fault:create-partial-mutation-rolls-back",
+        "fault:delete-partial-mutation-rolls-back",
+        "kill:switch-getter-full-trace-drift",
+        "ownership:fifty-adds-start-once-with-zero-clear-churn",
+        "ownership:manager-ledger-clears-secondary-owned-handle-only",
+        "ownership:nested-create-create-starts-once",
+        "ownership:nested-delete-create-keeps-prior-live-handle",
+        "ownership:save-partial-state-write-restores-committed-mutation-shape",
+        "ownership:stale-primary-handle-rebinds-to-owned-live-handle",
+        "ownership:toggle-disable-render-failure-reconciles-committed-mutation",
+        "ownership:toggle-enable-render-failure-reconciles-committed-mutation",
+        "ownership:toggle-partial-setter-rolls-back-without-reconcile",
+        "ownership:untracked-active-primary-is-cleared-and-owned-handle-restored",
+        "ownership:update-partial-property-write-rolls-back-without-reconcile",
+        "ownership:update-render-failure-reconciles-committed-mutation",
+        "timer:persistent-stop-failure-restores-prior-state-ownership",
+        "timer:primary-create-error-survives-start-failure",
+        "timer:primary-delete-error-survives-stop-after-effect",
+        "timer:primary-delete-error-survives-stop-before-effect",
+        "timer:secondary-diagnostic-failure-never-masks-primary",
+        "timer:start-only-failure-rolls-back-and-escapes"
+      ],
+      "observedFailures": [
+        "fault:clear-partial-mutation-rolls-back",
+        "fault:create-partial-mutation-rolls-back",
+        "fault:delete-partial-mutation-rolls-back",
+        "kill:switch-getter-full-trace-drift",
+        "ownership:fifty-adds-start-once-with-zero-clear-churn",
+        "ownership:manager-ledger-clears-secondary-owned-handle-only",
+        "ownership:nested-create-create-starts-once",
+        "ownership:nested-delete-create-keeps-prior-live-handle",
+        "ownership:save-partial-state-write-restores-committed-mutation-shape",
+        "ownership:stale-primary-handle-rebinds-to-owned-live-handle",
+        "ownership:toggle-disable-render-failure-reconciles-committed-mutation",
+        "ownership:toggle-enable-render-failure-reconciles-committed-mutation",
+        "ownership:toggle-partial-setter-rolls-back-without-reconcile",
+        "ownership:untracked-active-primary-is-cleared-and-owned-handle-restored",
+        "ownership:update-partial-property-write-rolls-back-without-reconcile",
+        "ownership:update-render-failure-reconciles-committed-mutation",
+        "timer:persistent-stop-failure-restores-prior-state-ownership",
+        "timer:primary-create-error-survives-start-failure",
+        "timer:primary-delete-error-survives-stop-after-effect",
+        "timer:primary-delete-error-survives-stop-before-effect",
+        "timer:secondary-diagnostic-failure-never-masks-primary",
+        "timer:start-only-failure-rolls-back-and-escapes"
+      ]
+    },
+    "currentCore": {
+      "canonical": {
+        "createRender": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "deleteRender": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "clearRender": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        }
+      },
+      "homepage": {
+        "createRender": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "deleteRender": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "clearRender": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        }
+      }
+    },
+    "currentFaults": {
+      "canonical": [
+        {
+          "name": "create-before-mutation",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-notification",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-storage-failure-preserves-swallow-contract",
+          "pass": true,
+          "outwardError": null,
+          "storageSetCalls": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-before-mutation",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-notification",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-before-mutation-confirm",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-cancel-keeps-state-and-checker",
+          "pass": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        }
+      ],
+      "homepage": [
+        {
+          "name": "create-before-mutation",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-after-mutation-notification",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "create-storage-failure-preserves-swallow-contract",
+          "pass": true,
+          "outwardError": null,
+          "storageSetCalls": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-before-mutation",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "delete-after-mutation-notification",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-before-mutation-confirm",
+          "pass": true,
+          "sameError": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-partial-mutation-rolls-back",
+          "pass": true,
+          "sameError": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-persistence",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-render",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-list",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-after-mutation-badge",
+          "pass": true,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "clear-cancel-keeps-state-and-checker",
+          "pass": true,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        }
+      ]
+    },
+    "timerFaults": {
+      "canonical": [
+        {
+          "name": "primary-create-error-survives-start-failure",
+          "pass": true,
+          "samePrimary": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "secondary-diagnostic-failure-never-masks-primary",
+          "pass": true,
+          "samePrimary": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "start-only-failure-rolls-back-and-escapes",
+          "pass": true,
+          "sameTimerError": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "primary-delete-error-survives-stop-before-effect",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:throw-before",
+            "clear:call:1",
+            "clear:effect:1"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "primary-delete-error-survives-stop-after-effect",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:effect:1",
+            "clear:throw-after",
+            "clear:call:1",
+            "clear:effect:1"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "persistent-stop-failure-restores-prior-state-ownership",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:throw-before",
+            "clear:call:1",
+            "clear:throw-before"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        }
+      ],
+      "homepage": [
+        {
+          "name": "primary-create-error-survives-start-failure",
+          "pass": true,
+          "samePrimary": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "secondary-diagnostic-failure-never-masks-primary",
+          "pass": true,
+          "samePrimary": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "start-only-failure-rolls-back-and-escapes",
+          "pass": true,
+          "sameTimerError": true,
+          "timerEvents": [
+            "set:call",
+            "set:throw-before"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "primary-delete-error-survives-stop-before-effect",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:throw-before",
+            "clear:call:1",
+            "clear:effect:1"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "primary-delete-error-survives-stop-after-effect",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:effect:1",
+            "clear:throw-after",
+            "clear:call:1",
+            "clear:effect:1"
+          ],
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "persistent-stop-failure-restores-prior-state-ownership",
+          "pass": true,
+          "samePrimary": true,
+          "priorHandle": 1,
+          "timerEvents": [
+            "clear:call:1",
+            "clear:throw-before",
+            "clear:call:1",
+            "clear:throw-before"
+          ],
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        }
+      ]
+    },
+    "ownership": {
+      "canonical": [
+        {
+          "name": "update-partial-property-write-rolls-back-without-reconcile",
+          "pass": true,
+          "sameError": true,
+          "price": 100,
+          "message": "test",
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "toggle-partial-setter-rolls-back-without-reconcile",
+          "pass": true,
+          "sameError": true,
+          "active": true,
+          "backing": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "save-partial-state-write-restores-committed-mutation-shape",
+          "pass": true,
+          "sameError": true,
+          "message": "Price crossing 403",
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "toggle-disable-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": false,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "toggle-enable-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": true,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "update-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": true,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "same-value-update-does-not-reconcile-or-replace-handle",
+          "pass": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "fifty-adds-start-once-with-zero-clear-churn",
+          "pass": true,
+          "firstHandle": 1,
+          "handleStable": true,
+          "startDelta": 1,
+          "clearDelta": 0,
+          "alertCount": 50,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-create-create-starts-once",
+          "pass": true,
+          "startDelta": 1,
+          "clearDelta": 0,
+          "alertCount": 2,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-delete-create-keeps-prior-live-handle",
+          "pass": true,
+          "priorHandle": 1,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-toggle-update-preserves-inner-error-and-live-handle",
+          "pass": true,
+          "sameError": true,
+          "active": false,
+          "price": 909,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "untracked-active-primary-is-cleared-and-owned-handle-restored",
+          "pass": true,
+          "primaryHandle": 1,
+          "untrackedHandle": 2,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "manager-ledger-clears-secondary-owned-handle-only",
+          "pass": true,
+          "primaryHandle": 1,
+          "extraHandle": 3,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "stale-primary-handle-rebinds-to-owned-live-handle",
+          "pass": true,
+          "primaryHandle": 1,
+          "currentHandle": 1,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "manager-instances-keep-isolated-timer-ownership",
+          "pass": true,
+          "active": [
+            2
+          ],
+          "secondHandle": 2,
+          "secondStable": true
+        },
+        {
+          "name": "checker-callback-fault-remains-outward-to-timer-host",
+          "pass": true,
+          "callbackErrors": 1,
+          "sameError": true,
+          "handleStable": true
+        }
+      ],
+      "homepage": [
+        {
+          "name": "update-partial-property-write-rolls-back-without-reconcile",
+          "pass": true,
+          "sameError": true,
+          "price": 100,
+          "message": "test",
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "toggle-partial-setter-rolls-back-without-reconcile",
+          "pass": true,
+          "sameError": true,
+          "active": true,
+          "backing": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "save-partial-state-write-restores-committed-mutation-shape",
+          "pass": true,
+          "sameError": true,
+          "message": "Price crossing 403",
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "toggle-disable-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": false,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "toggle-enable-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": true,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "update-render-failure-reconciles-committed-mutation",
+          "pass": true,
+          "samePrimary": true,
+          "active": true,
+          "startDelta": 1,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 2,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "same-value-update-does-not-reconcile-or-replace-handle",
+          "pass": true,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0
+        },
+        {
+          "name": "fifty-adds-start-once-with-zero-clear-churn",
+          "pass": true,
+          "firstHandle": 1,
+          "handleStable": true,
+          "startDelta": 1,
+          "clearDelta": 0,
+          "alertCount": 50,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-create-create-starts-once",
+          "pass": true,
+          "startDelta": 1,
+          "clearDelta": 0,
+          "alertCount": 2,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-delete-create-keeps-prior-live-handle",
+          "pass": true,
+          "priorHandle": 1,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "nested-toggle-update-preserves-inner-error-and-live-handle",
+          "pass": true,
+          "sameError": true,
+          "active": false,
+          "price": 909,
+          "handleStable": true,
+          "startDelta": 0,
+          "clearDelta": 0,
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        {
+          "name": "untracked-active-primary-is-cleared-and-owned-handle-restored",
+          "pass": true,
+          "primaryHandle": 1,
+          "untrackedHandle": 2,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "manager-ledger-clears-secondary-owned-handle-only",
+          "pass": true,
+          "primaryHandle": 1,
+          "extraHandle": 3,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "stale-primary-handle-rebinds-to-owned-live-handle",
+          "pass": true,
+          "primaryHandle": 1,
+          "currentHandle": 1,
+          "active": [
+            1
+          ],
+          "startDelta": 0,
+          "clearDelta": 1
+        },
+        {
+          "name": "manager-instances-keep-isolated-timer-ownership",
+          "pass": true,
+          "active": [
+            2
+          ],
+          "secondHandle": 2,
+          "secondStable": true
+        },
+        {
+          "name": "checker-callback-fault-remains-outward-to-timer-host",
+          "pass": true,
+          "callbackErrors": 1,
+          "sameError": true,
+          "handleStable": true
+        }
+      ]
+    },
+    "stress": {
+      "canonical": {
+        "cycles": 100,
+        "failures": [],
+        "maxActiveTimers": 1,
+        "timerStarts": 103,
+        "timerClears": 103,
+        "rapidInvariant": true,
+        "rapidMeasurements": [
+          {
+            "alertCount": 3,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 2,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 3,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          }
+        ],
+        "beforeDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 102,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "afterDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterReinit": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "afterSecondReinit": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "hiddenChecks": 1,
+        "hiddenMeasurement": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "zeroAlertReinit": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "callbackErrors": 0,
+        "finalActiveTimers": 0
+      },
+      "homepage": {
+        "cycles": 100,
+        "failures": [],
+        "maxActiveTimers": 1,
+        "timerStarts": 103,
+        "timerClears": 103,
+        "rapidInvariant": true,
+        "rapidMeasurements": [
+          {
+            "alertCount": 3,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 2,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 3,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 101,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          }
+        ],
+        "beforeDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 102,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "afterDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterReinit": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "afterSecondReinit": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "hiddenChecks": 1,
+        "hiddenMeasurement": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 1,
+          "checkInterval": 103,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "zeroAlertReinit": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 0,
+          "checkInterval": null,
+          "handleIsLive": true,
+          "invariant": true
+        },
+        "callbackErrors": 0,
+        "finalActiveTimers": 0
+      }
+    },
+    "kill": {
+      "immutable": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      },
+      "canonical": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      },
+      "homepage": {
+        "zeroAlertStart": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 1,
+          "checkInterval": 1,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterRestarts": {
+          "alertCount": 0,
+          "expectedIntervals": 0,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "afterCreateThrow": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 3,
+          "checkInterval": 3,
+          "handleIsLive": true,
+          "invariant": false,
+          "sameError": true,
+          "trace": [
+            "persistence",
+            "render"
+          ]
+        },
+        "afterAmplifiedDestroy": {
+          "alertCount": 1,
+          "expectedIntervals": 1,
+          "intervalCount": 2,
+          "checkInterval": null,
+          "handleIsLive": false,
+          "invariant": false
+        },
+        "leakedBeforeHarnessCleanup": 2,
+        "timerStats": {
+          "starts": 3,
+          "clears": 1,
+          "maxActive": 3
+        },
+        "successfulMutationPath": {
+          "afterSuccessfulCreate": {
+            "alertCount": 1,
+            "expectedIntervals": 1,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "afterSuccessfulDelete": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 1,
+            "checkInterval": 1,
+            "handleIsLive": false,
+            "invariant": false
+          },
+          "afterStableDestroy": {
+            "alertCount": 0,
+            "expectedIntervals": 0,
+            "intervalCount": 0,
+            "checkInterval": null,
+            "handleIsLive": true,
+            "invariant": true
+          },
+          "trace": [
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification",
+            "persistence",
+            "render",
+            "list",
+            "badge",
+            "notification"
+          ]
+        }
+      }
+    },
+    "switchGetterTrace": {
+      "immutable": [
+        {
+          "name": "start-zero",
+          "events": [
+            "switch:get",
+            "timer:set:500",
+            "timer:set-result:1",
+            "instance:set:checkInterval:1"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": 1,
+          "activeTimers": [
+            1
+          ]
+        },
+        {
+          "name": "create-success",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "alert",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            801
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "create-render-throw",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            802
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "update-success",
+          "events": [
+            "alert:set:price:803",
+            "save",
+            "render",
+            "list",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            803
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "toggle-success",
+          "events": [
+            "alert:set:active:false",
+            "save",
+            "render",
+            "list",
+            "badge"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            false
+          ],
+          "prices": [
+            100
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-success",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-render-throw",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-success",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-render-throw",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        }
+      ],
+      "canonical": [
+        {
+          "name": "start-zero",
+          "events": [
+            "switch:get",
+            "timer:set:500",
+            "timer:set-result:1",
+            "instance:set:checkInterval:1"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": 1,
+          "activeTimers": [
+            1
+          ]
+        },
+        {
+          "name": "create-success",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "alert",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            801
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "create-render-throw",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            802
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "update-success",
+          "events": [
+            "alert:set:price:803",
+            "save",
+            "render",
+            "list",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            803
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "toggle-success",
+          "events": [
+            "alert:set:active:false",
+            "save",
+            "render",
+            "list",
+            "badge"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            false
+          ],
+          "prices": [
+            100
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-success",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-render-throw",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-success",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-render-throw",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        }
+      ],
+      "homepage": [
+        {
+          "name": "start-zero",
+          "events": [
+            "switch:get",
+            "timer:set:500",
+            "timer:set-result:1",
+            "instance:set:checkInterval:1"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": 1,
+          "activeTimers": [
+            1
+          ]
+        },
+        {
+          "name": "create-success",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "alert",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            801
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "create-render-throw",
+          "events": [
+            "array:push:before:0",
+            "array:push:after:1",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            802
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "update-success",
+          "events": [
+            "alert:set:price:803",
+            "save",
+            "render",
+            "list",
+            "console:log"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            true
+          ],
+          "prices": [
+            803
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "toggle-success",
+          "events": [
+            "alert:set:active:false",
+            "save",
+            "render",
+            "list",
+            "badge"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 1,
+          "activeValues": [
+            false
+          ],
+          "prices": [
+            100
+          ],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-success",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get",
+            "notification"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "delete-render-throw",
+          "events": [
+            "array:splice:before:1",
+            "array:splice:after:0",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-success",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render",
+            "list",
+            "badge",
+            "switch:get"
+          ],
+          "error": null,
+          "normalizedReturn": "undefined",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        },
+        {
+          "name": "clear-render-throw",
+          "events": [
+            "instance:set:alerts:array(0)",
+            "save",
+            "render"
+          ],
+          "error": "sentinel",
+          "normalizedReturn": "throw",
+          "alertCount": 0,
+          "activeValues": [],
+          "prices": [],
+          "checkInterval": null,
+          "activeTimers": []
+        }
+      ]
+    }
+  }
+}

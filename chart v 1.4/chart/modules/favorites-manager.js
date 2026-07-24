@@ -743,52 +743,490 @@ class FavoritesManager {
         }
     }
     
+    /**
+     * M20-A — default ON. Kill-switch:
+     *   window.__TALARIA_DISABLE_M20_A_FAVORITES_LISTENER_TEARDOWN_V1 = true
+     * restores legacy permanent/stacked listeners (no teardown on destroy).
+     */
+    _m20AFavoritesListenerTeardownEnabled() {
+        return typeof window === 'undefined'
+            || window.__TALARIA_DISABLE_M20_A_FAVORITES_LISTENER_TEARDOWN_V1 !== true;
+    }
+
+    /**
+     * M20-A — passive ledger entry for kill-period bindings (recovery only).
+     * Entries capture the exact EventTarget the listener was added to plus
+     * the shared per-setup legacy state (current RAF token + validity).
+     * Actually-mutated toolbars live in the manager-level touched registry
+     * (`_favoritesLegacyTouched`) so stacked bindings share one earliest
+     * pre-drag baseline per target. Recording must never alter steady
+     * kill-mode observable behavior (order/count/visuals) while the switch
+     * stays active.
+     */
+    _recordFavoritesBinding(target, type, fn, state) {
+        if (!target || !type || !fn) return;
+        if (!this._favoritesBindingLedger) this._favoritesBindingLedger = [];
+        this._favoritesBindingLedger.push({ target, type, fn, state: state || null });
+    }
+
+    _favoritesLeaseRegistry(target) {
+        const doc = (target && target.ownerDocument) || (typeof document !== 'undefined' ? document : null);
+        if (!doc) return null;
+        const key = '__talariaFavoritesDragTargetLeasesV1';
+        if (!doc[key]) {
+            Object.defineProperty(doc, key, {
+                value: new WeakMap(),
+                configurable: true
+            });
+        }
+        return doc[key];
+    }
+
+    _captureFavoritesTransition(target) {
+        return target && target.style && typeof target.style.transition === 'string'
+            ? target.style.transition
+            : '';
+    }
+
+    _markFavoritesTargetOwned(target) {
+        if (!target) return null;
+        const registry = this._favoritesLeaseRegistry(target);
+        if (!registry) return null;
+        let lease = registry.get(target);
+        if (!lease) {
+            lease = {
+                baseline: this._captureFavoritesTransition(target),
+                owners: new Set()
+            };
+            registry.set(target, lease);
+        }
+        lease.owners.add(this);
+        if (!this._favoritesLeasedTargets) this._favoritesLeasedTargets = new Set();
+        this._favoritesLeasedTargets.add(target);
+        return lease;
+    }
+
+    _restoreFavoritesTarget(target, transition) {
+        try { target.classList.remove('dragging'); } catch (_) { /* detached target */ }
+        try { target.style.transition = transition; } catch (_) { /* detached target */ }
+    }
+
+    _releaseFavoritesTarget(target, options = {}) {
+        if (!target) return false;
+        const registry = this._favoritesLeaseRegistry(target);
+        const lease = registry && registry.get(target);
+        if (!lease) return false;
+
+        const owners = Array.from(lease.owners);
+        if (options.terminal) {
+            for (const owner of owners) {
+                if (owner._favoritesLeasedTargets) owner._favoritesLeasedTargets.delete(target);
+                if (owner._favoritesLegacyTouched) owner._favoritesLegacyTouched.delete(target);
+            }
+            lease.owners.clear();
+            registry.delete(target);
+            if (options.mutate !== false) {
+                this._restoreFavoritesTarget(
+                    target,
+                    Object.prototype.hasOwnProperty.call(options, 'transition')
+                        ? options.transition
+                        : lease.baseline
+                );
+            }
+            return true;
+        }
+
+        lease.owners.delete(this);
+        if (this._favoritesLeasedTargets) this._favoritesLeasedTargets.delete(target);
+        if (lease.owners.size > 0) return true;
+
+        registry.delete(target);
+        this._restoreFavoritesTarget(target, lease.baseline);
+        return true;
+    }
+
+    /**
+     * M20-A — drain the kill-period ledger (fix-ON recovery/destroy only).
+     * Per legacy setup state:
+     *   • marks the state invalidated FIRST, then cancels its recorded
+     *     kill-period RAF token exactly once — a callback that still executes
+     *     after a cancel failure/race is inert (no style mutation, and it can
+     *     never clear or overwrite a newer fix-ON token).
+     * Then, from the MANAGER-LEVEL touched registry (target-level ownership,
+     * shared across all stacked kill bindings of this manager):
+     *   • removes `.dragging` and restores the EARLIEST captured true
+     *     pre-drag transition on every toolbar the legacy callbacks actually
+     *     mutated — including targets swapped in via `this.toolbar`
+     *     reassignment after install — exactly once per target, and leaves
+     *     never-touched and legacy-mouseup-resolved toolbars alone;
+     *   • resets the drag flag/offsets.
+     * Bounded + idempotent: the ledger is emptied before removal starts and
+     * the touched registry is cleared after restoration, so repeated
+     * recovery/destroy passes are no-ops. Only this manager's own ledger and
+     * registry are ever drained.
+     */
+    _recoverFavoritesBindingLedger() {
+        const ledger = this._favoritesBindingLedger;
+        if (!ledger || !ledger.length) return;
+        this._favoritesBindingLedger = [];
+        const states = new Set();
+        for (const entry of ledger) {
+            try {
+                entry.target.removeEventListener(entry.type, entry.fn);
+            } catch (_) { /* keep draining remaining entries */ }
+            if (entry.state) states.add(entry.state);
+        }
+        for (const state of states) {
+            state.invalidated = true; // close the cancel race before cancelling
+            if (state.rafId != null) {
+                const token = state.rafId;
+                state.rafId = null; // cancel exactly once
+                try { cancelAnimationFrame(token); } catch (_) { /* stale callback stays inert via invalidated */ }
+            }
+        }
+        let touchedAny = false;
+        const touchedRegistry = this._favoritesLegacyTouched;
+        if (touchedRegistry && touchedRegistry.size) {
+            touchedAny = true;
+            for (const [target, preTransition] of touchedRegistry) {
+                if (!this._releaseFavoritesTarget(target)) {
+                    this._restoreFavoritesTarget(target, preTransition);
+                }
+            }
+            touchedRegistry.clear();
+        }
+        if (touchedAny || this.isDragging) {
+            this.isDragging = false;
+            if (this.dragOffset) {
+                this.dragOffset.x = 0;
+                this.dragOffset.y = 0;
+            }
+        }
+    }
+
+    /**
+     * M20-A — remove every fix-ON drag binding this manager installed.
+     * Per binding: removes from the exact EventTarget/handle captured at
+     * install time (survives global document replacement), cancels only that
+     * binding's own RAF token (never a newer callback's id/state), and cleans
+     * active-drag visual state (.dragging class + transition + drag flags) on
+     * the exact toolbar bound when the drag started — even detached/replaced.
+     * No-op while the kill-switch is ON (legacy shipped no teardown).
+     * Only this manager's own recorded refs are ever removed.
+     */
+    _teardownDragBindings() {
+        if (!this._m20AFavoritesListenerTeardownEnabled()) return;
+
+        this._recoverFavoritesBindingLedger();
+
+        const bindings = this._favoritesDragBindings;
+        this._favoritesDragBindings = [];
+        if (Array.isArray(bindings)) {
+            for (const binding of bindings) {
+                try { binding.doc.removeEventListener('mousemove', binding.move); } catch (_) { /* keep draining */ }
+                try { binding.doc.removeEventListener('mouseup', binding.up); } catch (_) { /* keep draining */ }
+                try { binding.handle.removeEventListener('mousedown', binding.down); } catch (_) { /* keep draining */ }
+
+                if (binding.rafId != null) {
+                    const token = binding.rafId;
+                    binding.rafId = null; // own token only
+                    try { cancelAnimationFrame(token); } catch (_) { /* cancel may throw; own token already cleared */ }
+                    if (this._favoritesDragRafId === token) this._favoritesDragRafId = null;
+                }
+
+                if (binding.dragActive) {
+                    binding.dragActive = false;
+                    if (!this._releaseFavoritesTarget(binding.toolbar)) {
+                        this._restoreFavoritesTarget(binding.toolbar, binding.preDragTransition || '');
+                    }
+                }
+            }
+        }
+
+        this._favoritesDocMouseMove = null;
+        this._favoritesDocMouseUp = null;
+        this._favoritesHandleMouseDown = null;
+        this._favoritesDragHandle = null;
+
+        this._favoritesDragGeneration = (this._favoritesDragGeneration || 0) + 1;
+        this.isDragging = false;
+        if (this.dragOffset) {
+            this.dragOffset.x = 0;
+            this.dragOffset.y = 0;
+        }
+    }
+
+    /** @deprecated alias — use _teardownDragBindings */
+    _teardownDocumentDragListeners() {
+        this._teardownDragBindings();
+    }
+
+    /**
+     * M20-A — destroy/teardown contract for favorites drag listeners.
+     * Chart-side pre-replace + destroy registry is a later M20-A sweep.
+     */
+    destroy() {
+        this._teardownDragBindings();
+    }
+
     // Setup drag functionality
     setupDrag() {
+        if (!this._m20AFavoritesListenerTeardownEnabled()) {
+            this._setupDragLegacy();
+            return;
+        }
+
+        // Fix ON: drain prior bindings BEFORE any early return so a rebind
+        // with a null/detached/replaced toolbar or handle cannot strand them.
+        this._teardownDragBindings();
+
+        if (!this.toolbar) return;
+        const dragHandle = this.toolbar.querySelector('.favorites-drag-handle');
+        if (!dragHandle) return;
+
+        this._favoritesDragGeneration = (this._favoritesDragGeneration || 0) + 1;
+        const bindingGeneration = this._favoritesDragGeneration;
+
+        // Exact objects bound at install time; teardown must use these even
+        // if the global document or this.toolbar is replaced later.
+        const boundDocument = document;
+        const boundToolbar = this.toolbar;
+        const boundHandle = dragHandle;
+
+        const binding = {
+            generation: bindingGeneration,
+            doc: boundDocument,
+            toolbar: boundToolbar,
+            handle: boundHandle,
+            down: null,
+            move: null,
+            up: null,
+            rafId: null,
+            dragActive: false,
+            preDragTransition: ''
+        };
+
+        let currentMouseX = 0;
+        let currentMouseY = 0;
+
+        const bindingAlive = () => (
+            bindingGeneration === this._favoritesDragGeneration
+            && boundToolbar === this.toolbar
+            && !!this.toolbar
+        );
+
+        binding.down = (e) => {
+            if (!bindingAlive()) return;
+            this.isDragging = true;
+            binding.dragActive = true;
+            const lease = this._markFavoritesTargetOwned(boundToolbar);
+            binding.preDragTransition = lease ? lease.baseline : (boundToolbar.style.transition || '');
+
+            const rect = boundToolbar.getBoundingClientRect();
+            this.dragOffset.x = e.clientX - rect.left;
+            this.dragOffset.y = e.clientY - rect.top;
+
+            boundToolbar.style.transition = 'none';
+            boundToolbar.classList.add('dragging');
+
+            currentMouseX = e.clientX;
+            currentMouseY = e.clientY;
+
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        binding.move = (e) => {
+            if (!bindingAlive() || !this.isDragging) return;
+
+            currentMouseX = e.clientX;
+            currentMouseY = e.clientY;
+
+            if (binding.rafId == null) {
+                let token = null;
+                let ranSynchronously = false;
+                const rafCallback = () => {
+                    ranSynchronously = true;
+                    // RAF ownership: a (possibly stale or delayed) callback may
+                    // clear only its OWN token; it must never null/cancel/reset
+                    // a newer callback's id or state.
+                    if (token != null) {
+                        if (binding.rafId === token) binding.rafId = null;
+                        if (this._favoritesDragRafId === token) this._favoritesDragRafId = null;
+                    }
+                    if (!bindingAlive()) return;
+                    try {
+                        let left = currentMouseX - this.dragOffset.x;
+                        let top = currentMouseY - this.dragOffset.y;
+
+                        const rect = boundToolbar.getBoundingClientRect();
+                        const minTop = this.getMinToolbarTop();
+                        const maxLeft = Math.max(0, window.innerWidth - rect.width);
+                        const maxTop = Math.max(minTop, window.innerHeight - rect.height);
+
+                        left = Math.max(0, Math.min(left, maxLeft));
+                        top = Math.max(minTop, Math.min(top, maxTop));
+
+                        boundToolbar.style.left = left + 'px';
+                        boundToolbar.style.top = top + 'px';
+                    } catch (_) { /* stale callback must not propagate */ }
+                };
+                token = requestAnimationFrame(rafCallback);
+                if (!ranSynchronously) {
+                    binding.rafId = token;
+                    this._favoritesDragRafId = token;
+                }
+            }
+
+            e.preventDefault();
+        };
+
+        binding.up = () => {
+            if (!bindingAlive()) return;
+            if (this.isDragging) {
+                this.isDragging = false;
+                binding.dragActive = false;
+                if (!this._releaseFavoritesTarget(boundToolbar, { terminal: true })) {
+                    this._restoreFavoritesTarget(boundToolbar, binding.preDragTransition || '');
+                }
+
+                if (binding.rafId != null) {
+                    const token = binding.rafId;
+                    binding.rafId = null; // own token only
+                    try { cancelAnimationFrame(token); } catch (_) { /* own token already cleared */ }
+                    if (this._favoritesDragRafId === token) this._favoritesDragRafId = null;
+                }
+
+                this.savePosition();
+            }
+        };
+
+        boundHandle.addEventListener('mousedown', binding.down);
+        boundDocument.addEventListener('mousemove', binding.move);
+        boundDocument.addEventListener('mouseup', binding.up);
+
+        if (!this._favoritesDragBindings) this._favoritesDragBindings = [];
+        this._favoritesDragBindings.push(binding);
+
+        // Single-slot mirrors kept for compatibility with earlier audits.
+        this._favoritesHandleMouseDown = binding.down;
+        this._favoritesDragHandle = boundHandle;
+        this._favoritesDocMouseMove = binding.move;
+        this._favoritesDocMouseUp = binding.up;
+
+        console.log('✅ Drag functionality setup');
+    }
+
+    /**
+     * M20-A kill path — legacy-behavior setupDrag.
+     *
+     * PRECISE CONTRACT (not a byte/AST/verbatim claim): while the kill switch
+     * remains active, this path has ORDERED OBSERVABLE BEHAVIOR PARITY with
+     * the authentic pre-fix source (git object 32c916dd0464de6b22042b6c6c1257570313dce8,
+     * raw/LF sha256 091e2467928b759b1a26dfa16b3ea63c79f3d0fab6c069ce542edcb67cbc68b6)
+     * for the covered legacy events: stacked handle mousedown / document
+     * mousemove / document mouseup and their RAF scheduling, execution,
+     * style/class mutations and cancels — 2 stacked bindings → 2 callbacks →
+     * 2 RAFs, no guard suppression, no shared-state dedupe.
+     *
+     * Known, intentional differences from the pre-fix source:
+     *   • whole-method bytes/AST differ — the `legacyState` (RAF token +
+     *     validity) and manager-level touched-target registry bookkeeping
+     *     below are non-observable during steady kill mode and exist only so
+     *     fix-ON recovery/destroy can cancel kill-period RAFs and restore
+     *     mutated toolbars to their earliest true pre-drag transitions;
+     *   • stack frame names differ (named consts here vs pre-fix inline
+     *     anonymous callbacks);
+     *   • after fix-ON recovery/destroy, kill-created callbacks become inert
+     *     (transition safety) — pre-fix had no such transition at all.
+     * Parity is proven by the ordered Node and Edge A/B logs in the shipped
+     * suites, not asserted as source equivalence.
+     */
+    _setupDragLegacy() {
         if (!this.toolbar) return;
 
         // Use the drag handle element
         const dragHandle = this.toolbar.querySelector('.favorites-drag-handle');
         if (!dragHandle) return;
-        
+
+        // Non-observable recovery bookkeeping, one state per legacy setup:
+        // current RAF token + invalidation flag. Touched-target tracking is
+        // MANAGER-LEVEL (target-level ownership): stacked bindings all firing
+        // on one target must keep the EARLIEST true pre-drag transition, and
+        // a legacy-mouseup-resolved target is terminally resolved for every
+        // stacked binding of this manager at once.
+        const legacyState = {
+            rafId: null,
+            invalidated: false
+        };
+        if (!this._favoritesLegacyTouched) this._favoritesLegacyTouched = new Map();
+        const touchedRegistry = this._favoritesLegacyTouched;
+
         let animationFrameId = null;
         let currentMouseX = 0;
         let currentMouseY = 0;
-        
+
         // Mouse down on drag handle
-        dragHandle.addEventListener('mousedown', (e) => {
+        const legacyMouseDown = (e) => {
+            if (legacyState.invalidated) return; // inert after fix-ON recovery
             this.isDragging = true;
-            
+
             // Calculate offset from mouse to toolbar top-left
             const rect = this.toolbar.getBoundingClientRect();
             this.dragOffset.x = e.clientX - rect.left;
             this.dragOffset.y = e.clientY - rect.top;
-            
+
+            // Record the ACTUAL target about to be mutated (this.toolbar may
+            // have been reassigned since install). Earliest capture wins: a
+            // later stacked binding firing on the same dispatch must not
+            // overwrite the true pre-drag transition with the already-dirty
+            // 'none' written by an earlier binding.
+            const touchedTarget = this.toolbar;
+            if (touchedTarget && !touchedRegistry.has(touchedTarget)) {
+                this._markFavoritesTargetOwned(touchedTarget);
+                touchedRegistry.set(
+                    touchedTarget,
+                    touchedTarget.style && typeof touchedTarget.style.transition === 'string'
+                        ? touchedTarget.style.transition
+                        : ''
+                );
+            }
+
             // Add dragging class for visual feedback
             this.toolbar.style.transition = 'none';
             this.toolbar.classList.add('dragging');
-            
+
             // Store initial mouse position
             currentMouseX = e.clientX;
             currentMouseY = e.clientY;
-            
+
             e.preventDefault();
             e.stopPropagation();
-        });
-        
+        };
+        dragHandle.addEventListener('mousedown', legacyMouseDown);
+
         // Mouse move - throttled with requestAnimationFrame
         const handleMouseMove = (e) => {
+            if (legacyState.invalidated) return; // inert after fix-ON recovery
             if (!this.isDragging) return;
-            
+
             currentMouseX = e.clientX;
             currentMouseY = e.clientY;
-            
+
             if (!animationFrameId) {
                 animationFrameId = requestAnimationFrame(() => {
+                    // A kill-period RAF that still executes after recovery
+                    // (cancel failure/race) must be inert: no style mutation
+                    // and no interaction with any newer fix-ON token.
+                    if (legacyState.invalidated) {
+                        animationFrameId = null;
+                        legacyState.rafId = null;
+                        return;
+                    }
                     // Calculate new position
                     let left = currentMouseX - this.dragOffset.x;
                     let top = currentMouseY - this.dragOffset.y;
-                    
+
                     // Constrain to viewport
                     const rect = this.toolbar.getBoundingClientRect();
                     const minTop = this.getMinToolbarTop();
@@ -797,38 +1235,59 @@ class FavoritesManager {
 
                     left = Math.max(0, Math.min(left, maxLeft));
                     top = Math.max(minTop, Math.min(top, maxTop));
-                    
+
                     // Apply position using transform for better performance
                     this.toolbar.style.left = left + 'px';
                     this.toolbar.style.top = top + 'px';
-                    
+
                     animationFrameId = null;
+                    legacyState.rafId = null;
                 });
+                // Recorded so fix-ON recovery/destroy can cancel exactly once.
+                legacyState.rafId = animationFrameId;
             }
-            
+
             e.preventDefault();
         };
-        
+
         document.addEventListener('mousemove', handleMouseMove);
-        
+
         // Mouse up
-        document.addEventListener('mouseup', () => {
+        const legacyMouseUp = () => {
+            if (legacyState.invalidated) return; // inert after fix-ON recovery
             if (this.isDragging) {
                 this.isDragging = false;
                 this.toolbar.classList.remove('dragging');
                 this.toolbar.style.transition = '';
-                
+
+                // Legacy resolved this exact target itself — TERMINALLY, for
+                // every stacked binding of this manager: recovery must never
+                // reapply a captured 'none' over legacy's own cleanup.
+                this._releaseFavoritesTarget(this.toolbar, {
+                    terminal: true,
+                    mutate: false,
+                    transition: ''
+                });
+                touchedRegistry.delete(this.toolbar);
+
                 // Cancel any pending animation frame
                 if (animationFrameId) {
                     cancelAnimationFrame(animationFrameId);
                     animationFrameId = null;
+                    legacyState.rafId = null;
                 }
-                
+
                 // Save position
                 this.savePosition();
             }
-        });
-        
+        };
+        document.addEventListener('mouseup', legacyMouseUp);
+
+        // Passive ledger (fix-ON recovery only; no steady kill-mode change).
+        this._recordFavoritesBinding(dragHandle, 'mousedown', legacyMouseDown, legacyState);
+        this._recordFavoritesBinding(document, 'mousemove', handleMouseMove, legacyState);
+        this._recordFavoritesBinding(document, 'mouseup', legacyMouseUp, legacyState);
+
         console.log('✅ Drag functionality setup');
     }
     
@@ -914,5 +1373,10 @@ class FavoritesManager {
     }
 }
 
-// Make it globally accessible
-window.FavoritesManager = FavoritesManager;
+// Export for tests / bundlers; keep global for chart script tags.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = FavoritesManager;
+}
+if (typeof window !== 'undefined') {
+    window.FavoritesManager = FavoritesManager;
+}

@@ -3,6 +3,62 @@
  * Provides timezone conversion and persistence
  */
 
+const M20_A_TZ_LISTENER_STORES = new WeakMap();
+const M20_A_TZ_WEAKMAP_GET = WeakMap.prototype.get;
+const M20_A_TZ_WEAKMAP_SET = WeakMap.prototype.set;
+const M20_A_TZ_ARRAY_PUSH = Array.prototype.push;
+const M20_A_TZ_ARRAY_SLICE = Array.prototype.slice;
+const M20_A_TZ_ARRAY_SPLICE = Array.prototype.splice;
+const M20_A_TZ_ARRAY_INDEX_OF = Array.prototype.indexOf;
+const M20_A_TZ_OBJECT_DEFINE_PROPERTY = Object.defineProperty;
+
+function m20ATzInstallListenerStore(manager) {
+    const listeners = [];
+    M20_A_TZ_WEAKMAP_SET.call(M20_A_TZ_LISTENER_STORES, manager, listeners);
+    M20_A_TZ_OBJECT_DEFINE_PROPERTY(manager, 'listeners', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            return M20_A_TZ_WEAKMAP_GET.call(M20_A_TZ_LISTENER_STORES, manager);
+        },
+        set() {
+            // Public whole-property replacement is ignored for internal safety.
+            // The compatible observable surface remains the genuine listener Array.
+        }
+    });
+}
+
+function m20ATzListenerStore(manager) {
+    const listeners = M20_A_TZ_WEAKMAP_GET.call(M20_A_TZ_LISTENER_STORES, manager);
+    if (!listeners) throw new Error('Timezone listener store not initialized');
+    return listeners;
+}
+
+function m20ATzListenerInsert(manager, callback) {
+    M20_A_TZ_ARRAY_PUSH.call(m20ATzListenerStore(manager), callback);
+}
+
+function m20ATzListenerRemoveOne(manager, callback) {
+    const listeners = m20ATzListenerStore(manager);
+    const idx = M20_A_TZ_ARRAY_INDEX_OF.call(listeners, callback);
+    if (idx >= 0) M20_A_TZ_ARRAY_SPLICE.call(listeners, idx, 1);
+}
+
+function m20ATzListenerRemoveAll(manager, callback) {
+    const listeners = m20ATzListenerStore(manager);
+    for (let i = listeners.length - 1; i >= 0; i--) {
+        if (listeners[i] === callback) M20_A_TZ_ARRAY_SPLICE.call(listeners, i, 1);
+    }
+}
+
+function m20ATzListenerSnapshot(manager) {
+    return M20_A_TZ_ARRAY_SLICE.call(m20ATzListenerStore(manager));
+}
+
+function m20ATzListenerCensus(manager) {
+    return m20ATzListenerStore(manager).length;
+}
+
 class TimezoneManager {
     constructor() {
         this.STORAGE_KEY = 'chartTimezone';
@@ -36,13 +92,21 @@ class TimezoneManager {
             { id: 'Pacific/Noumea', label: 'Noumea (NCT)', offset: 11 },
             { id: 'Pacific/Auckland', label: 'Auckland (NZST)', offset: 12 }
         ];
-        
+
+        // Private listener store is installed before storage/host callbacks.
+        m20ATzInstallListenerStore(this);
+
         // Load saved timezone
         this.currentTimezone = this.loadTimezone();
-        
-        // Listeners for timezone changes
-        this.listeners = [];
         this._wallClockFmtCache = Object.create(null);
+
+        // M20-A bounded notify state (see notifyListeners contract):
+        // at most NOTIFY_PASS_BUDGET delivery passes per externally initiated
+        // change; reentrant setTimezone beyond the budget is rejected loudly.
+        this.NOTIFY_PASS_BUDGET = 8;
+        this._notifyActive = false;
+        this._notifyPassCount = 0;
+        this._notifyPending = false;
         
         console.log('🌍 TimezoneManager initialized:', this.currentTimezone);
     }
@@ -112,6 +176,15 @@ class TimezoneManager {
             } catch (_) {
                 return false;
             }
+        }
+        // M20-A: same-timezone set is idempotent — no duplicate save/notify.
+        if (this.currentTimezone && this.currentTimezone.id === tz.id) return true;
+        // M20-A: once the trailing notify budget is exhausted, further
+        // reentrant (listener-initiated) changes are rejected loudly — never
+        // silently dropped — so the final delivered timezone equals state.
+        if (this._notifyActive && this._notifyPassCount >= this.NOTIFY_PASS_BUDGET) {
+            console.warn('🌍 Timezone change rejected: reentrant notify pass budget exhausted:', timezoneId);
+            return false;
         }
         this.currentTimezone = tz;
         this.saveTimezone(tz);
@@ -304,30 +377,268 @@ class TimezoneManager {
     }
     
     /**
+     * M20-A kill-switch (default ON = subscribe unsubscribe fix active when unset/false):
+     *   window.__TALARIA_DISABLE_M20_A_TIMEZONE_LISTENER_UNSUB_V1 = true
+     *   → subscribe() registers via legacy addListener; returned cleanup is intentional no-op.
+     */
+    _m20ATimezoneListenerUnsubEnabled() {
+        try {
+            return window.__TALARIA_DISABLE_M20_A_TIMEZONE_LISTENER_UNSUB_V1 !== true;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    /**
      * Add listener for timezone changes
      */
     addListener(callback) {
-        this.listeners.push(callback);
+        if (typeof callback !== 'function') return;
+        m20ATzListenerInsert(this, callback);
     }
     
     /**
      * Remove listener
      */
     removeListener(callback) {
-        this.listeners = this.listeners.filter(l => l !== callback);
+        if (typeof callback !== 'function') return;
+        m20ATzListenerRemoveAll(this, callback);
+    }
+
+    /**
+     * Internal listener census for tests/evidence; immune to public property replacement.
+     */
+    _m20ATimezoneListenerCensus() {
+        return m20ATzListenerCensus(this);
+    }
+
+    /**
+     * Subscribe to timezone changes with idempotent unsubscribe and optional AbortSignal.
+     *
+     * M20-A fail-closed signal contract (explicit ATTACHING → LIVE → SETTLED
+     * phase machine with a STICKY abort-seen flag):
+     * - `options.signal` / `signal.aborted` / add-remove method lookups are all
+     *   read defensively; a throwing getter or malformed signal (missing
+     *   addEventListener/removeEventListener functions) means NO registration
+     *   is performed and a no-op unsubscribe is returned. Nothing throws
+     *   outward and no half-registered manager state can remain.
+     * - ATTACHING: the abort handler is attached while the manager wrapper is
+     *   NOT yet in `this.listeners`. During any hostile user-controlled call
+     *   (addEventListener body, method getters, the post-attach `aborted`
+     *   recheck getter, reentrant setTimezone) the subscription is completely
+     *   invisible to census and notifications, and the callback cannot fire
+     *   before subscribe returns. ANY abort dispatch in this phase sets the
+     *   sticky `abortSeen` flag and is otherwise inert — the flag can never
+     *   be un-set, so a hostile getter that dispatches the retained handler
+     *   and then returns false cannot launder the abort away.
+     * - The sticky flag is reread after EVERY user-controlled call returns,
+     *   before the captured-primordial private-store insertion commit; no
+     *   user-controlled code can run between that final gate and insertion.
+     *   If the gate trips (or attach threw, or the recheck read true/threw),
+     *   the handler is detached fail-soft (contained) and the
+     *   registration SETTLES inert with a no-op unsubscribe — never pushed,
+     *   never delivered.
+     * - LIVE: successful private-store insertion publishes atomically, with
+     *   no externally dispatchable operation after the cancellation gate. A
+     *   later abort/unsubscribe removes the manager wrapper first and detaches
+     *   the abort handler exactly once, then SETTLES.
+     * - SETTLED: terminal. A hostile signal that retains the handler can
+     *   re-invoke it forever — it is inert in this phase (and inert-sticky in
+     *   ATTACHING if registration never committed).
+     *
+     * @param {function} callback
+     * @param {{ signal?: AbortSignal }} [options]
+     * @returns {function} unsubscribe (safe to call repeatedly)
+     */
+    subscribe(callback, options) {
+        const noopUnsub = () => {};
+        if (typeof callback !== 'function') return noopUnsub;
+
+        let signal = null;
+        try {
+            signal = options ? options.signal : null;
+        } catch (_) {
+            return noopUnsub; // throwing options.signal getter → fail closed
+        }
+        if (signal === undefined) signal = null;
+        if (signal !== null) {
+            let aborted = false;
+            try {
+                if (typeof signal.addEventListener !== 'function'
+                    || typeof signal.removeEventListener !== 'function') {
+                    return noopUnsub; // malformed signal → fail closed, no registration
+                }
+                aborted = signal.aborted === true;
+            } catch (_) {
+                return noopUnsub; // throwing aborted getter / method lookup → fail closed
+            }
+            if (aborted) return noopUnsub;
+        }
+
+        if (!this._m20ATimezoneListenerUnsubEnabled()) {
+            // Kill mode: same fail-closed signal validation above, then exact
+            // legacy registration (no signal attach, trivially opaque);
+            // cleanup intentionally no-op.
+            this.addListener(callback);
+            return noopUnsub;
+        }
+
+        // Inert until commit: the wrapper only forwards while active, and it
+        // is not pushed into this.listeners until the LIVE transition below.
+        const sub = { active: false };
+        const wrapper = (tz) => {
+            if (sub.active) callback(tz);
+        };
+
+        // Explicit attach-phase state machine. ATTACHING covers every
+        // user-controlled call before commit; LIVE is the committed
+        // registration; SETTLED is terminal (inert forever).
+        const ATTACHING = 0, LIVE = 1, SETTLED = 2;
+        let phase = ATTACHING;
+        let abortSeen = false;    // STICKY: any abort dispatch while ATTACHING
+        let abortHandler = null;
+        let detached = true;      // becomes false only while a handler may be attached
+
+        // Detach the abort handler at most once; fail-soft — a throwing
+        // removeEventListener (or a dispatch fired from a hostile
+        // removeEventListener method getter) stays contained; by the time
+        // detach runs on a fail path the phase is already SETTLED, so any
+        // such dispatch is inert.
+        const detachOnce = () => {
+            if (detached) return;
+            detached = true;
+            const h = abortHandler;
+            abortHandler = null;
+            if (h && signal) {
+                try {
+                    signal.removeEventListener('abort', h);
+                } catch (_) { /* hostile removeEventListener — handler already inert */ }
+            }
+        };
+
+        const unsubscribe = () => {
+            if (phase !== LIVE) return; // inert while ATTACHING and after SETTLED
+            phase = SETTLED;
+            sub.active = false;
+            // Remove the manager wrapper first, then detach exactly once.
+            m20ATzListenerRemoveOne(this, wrapper);
+            detachOnce();
+        };
+
+        // Settle a never-committed registration: mark terminal FIRST so any
+        // handler dispatch provoked by the detach itself is inert, then
+        // detach fail-soft. Nothing was ever visible in this.listeners.
+        const settleInert = () => {
+            phase = SETTLED;
+            detachOnce();
+            return noopUnsub;
+        };
+
+        if (signal) {
+            // ATTACHING — attach while the wrapper is NOT in this.listeners.
+            // Whatever hostile user code runs synchronously (dispatch abort,
+            // call setTimezone, inspect the manager), the subscription does
+            // not exist yet: census is unchanged and the callback cannot fire.
+            abortHandler = () => {
+                if (phase === ATTACHING) {
+                    abortSeen = true; // STICKY — can never be un-set
+                    return;           // inert until (unless) commit
+                }
+                if (phase === LIVE) unsubscribe();
+                // SETTLED → inert
+            };
+            try {
+                detached = false;
+                signal.addEventListener('abort', abortHandler, { once: true }); // user code
+            } catch (_) {
+                return settleInert(); // fail-soft; nothing thrown outward, nothing visible
+            }
+            // Reread the sticky flag now that the user-controlled attach call
+            // has returned; only if still clean, run the post-attach recheck
+            // (closes the check→attach race: real AbortSignals never fire
+            // listeners added post-abort). The recheck getter is user code
+            // and may itself dispatch the retained handler — that sets the
+            // sticky flag, which the FINAL gate below rereads.
+            let observedAborted = false;
+            if (!abortSeen) {
+                try {
+                    observedAborted = signal.aborted === true; // user code
+                } catch (_) {
+                    observedAborted = true; // unreadable after attach → fail closed
+                }
+            }
+            // FINAL pre-commit gate — pure local reads. No user-controlled
+            // call can run between this check and the captured insertion
+            // below, so an
+            // abort dispatched inside ANY earlier hostile call (attach body,
+            // method getter, recheck getter — even one that then returns
+            // false) cannot be lost.
+            if (abortSeen || observedAborted) {
+                return settleInert(); // never committed: no half-registration, no callback
+            }
+        }
+
+        // LIVE — commit atomically via captured primordials and private store.
+        try {
+            m20ATzListenerInsert(this, wrapper);
+        } catch (insertionError) {
+            phase = SETTLED;
+            sub.active = false;
+            detachOnce();
+            throw insertionError;
+        }
+        phase = LIVE;
+        sub.active = true;
+        return unsubscribe;
     }
     
     /**
-     * Notify all listeners of timezone change
+     * Notify all listeners of a timezone change.
+     *
+     * M20-A bounded trailing-generation contract:
+     * - A notify while another notify is running only sets a pending flag
+     *   (coalescing); it never recurses.
+     * - Per externally initiated generation, at most NOTIFY_PASS_BUDGET (8)
+     *   snapshot passes run. Each pass calls every listener registered at
+     *   pass start at most once with the current accepted timezone; listener
+     *   throws are contained per callback.
+     * - setTimezone rejects reentrant changes once the budget is exhausted
+     *   (returns false + warns), so the final pass always delivers the final
+     *   accepted timezone — reentrant callbacks cannot livelock, recurse, or
+     *   generate unbounded storage writes.
      */
     notifyListeners() {
-        this.listeners.forEach(callback => {
-            try {
-                callback(this.currentTimezone);
-            } catch (e) {
-                console.warn('Timezone listener error:', e);
+        if (this._notifyActive) {
+            this._notifyPending = true;
+            return;
+        }
+        this._notifyActive = true;
+        this._notifyPassCount = 0;
+        try {
+            do {
+                this._notifyPending = false;
+                this._notifyPassCount += 1;
+                const snapshot = m20ATzListenerSnapshot(this);
+                for (let i = 0; i < snapshot.length; i++) {
+                    try {
+                        snapshot[i](this.currentTimezone);
+                    } catch (e) {
+                        console.warn('Timezone listener error:', e);
+                    }
+                }
+            } while (this._notifyPending && this._notifyPassCount < this.NOTIFY_PASS_BUDGET);
+            if (this._notifyPending) {
+                // Only reachable via a direct reentrant notifyListeners() call
+                // during the final pass (state changes are already rejected at
+                // the budget); the delivered value equals current state, so
+                // dropping this redundant trailing request is deterministic.
+                console.warn('🌍 Timezone notify coalescing stopped at pass budget', this.NOTIFY_PASS_BUDGET);
             }
-        });
+        } finally {
+            this._notifyActive = false;
+            this._notifyPassCount = 0;
+            this._notifyPending = false;
+        }
     }
 }
 
