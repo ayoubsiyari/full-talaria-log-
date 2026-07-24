@@ -486,6 +486,14 @@ async function runPlayCoherence(page, { speed, playMs, label }) {
     sink.commits = [];
     sink.paintCount = 0;
     sink.commitCount = 0;
+    // Reset bridge diagnostics for this speed cell only (no cross-run leak).
+    chart._m19ifStats = {
+      bridgePasses: 0,
+      bridgedSeries: 0,
+      uncoveredSeries: 0,
+      mergeRejects: 0,
+      fullAsyncFallbacks: 0,
+    };
     sink.sampling = true;
 
     replay.speed = speed;
@@ -584,6 +592,9 @@ async function runPlayCoherence(page, { speed, playMs, label }) {
         samples: catchUpLags.slice(0, 40),
       },
       workerBusySeenOnStalePaint: maxWorkerBusyDuringStale,
+      m19ifStats: chart._m19ifStats
+        ? { ...chart._m19ifStats }
+        : null,
       sampleHead: paints.slice(0, 3),
       sampleTail: paints.slice(-3),
     };
@@ -637,6 +648,16 @@ function evaluateCoherence(cell, { minAdvances = MIN_PRICE_ADVANCES } = {}) {
   return { asserts, green };
 }
 
+// Switch-OFF discriminator plumbing ONLY (no acceptance-semantics change),
+// mirroring the M19-I compute probe's accepted M19_I_KILL_SWITCHES pattern:
+// M19_IF_KILL_SWITCHES="__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1" injects the
+// named window flags before any engine script so the SAME instrument
+// reproduces the legacy RED. Empty (default) = clean GREEN gate run.
+const KILL_SWITCHES = String(process.env.M19_IF_KILL_SWITCHES || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 async function main() {
   let upstreamVerify = null;
   if (DEPLOYED_MODE) {
@@ -656,6 +677,8 @@ async function main() {
       pair: 'same',
       panels: 1,
       tf: '1m',
+      bug: KILL_SWITCHES.length > 0,
+      bugSwitches: KILL_SWITCHES.length ? KILL_SWITCHES : null,
       preDocument: installPreDocumentHooks(),
     });
     const { page } = boot;
@@ -705,6 +728,21 @@ async function main() {
       controlPaintSamples: ctrlEval.asserts.paintSamples,
     };
 
+    // When the I-f fix is ON (no kill switches), PO-mix bridge must not hide
+    // uncovered/rejected series behind a vacuous snapshot. Diagnostic only —
+    // thresholds for lag/stale frames are unchanged.
+    if (KILL_SWITCHES.length === 0) {
+      const st = high.m19ifStats || {};
+      asserts.poMixZeroFallbacks = {
+        pass: (st.bridgePasses || 0) > 0
+          && (st.uncoveredSeries || 0) === 0
+          && (st.mergeRejects || 0) === 0
+          && (st.fullAsyncFallbacks || 0) === 0,
+        m19ifStats: st,
+        note: 'PO mix (sma/ema/wma/bollinger/rsi/macd/stoch) must bridge every series; uncovered/rejects/full-async counted, never hidden.',
+      };
+    }
+
     const green = Object.values(asserts).every((a) => a.pass === true);
     const result = {
       ticket: 'M19-I-f',
@@ -712,6 +750,7 @@ async function main() {
       expectedBuildId: EXPECTED_BUILD_ID,
       expectedBuildSource: EXPECTED_BUILD_SOURCE,
       buildId: setup.buildId,
+      killSwitchesInjected: KILL_SWITCHES,
       deployedMode: DEPLOYED_MODE,
       assetOrigin: DEPLOYED_MODE ? DEPLOYED_ORIGIN : null,
       upstreamObservedBuild: upstreamVerify?.upstreamObservedBuild || null,

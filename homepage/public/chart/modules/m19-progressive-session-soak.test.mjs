@@ -2086,13 +2086,16 @@ async function runM19IFFocusEvidence() {
   }
 
   const deployedOriginRaw = String(process.env.M19_DEPLOYED_ORIGIN || '').trim();
+  const killSwitchesRaw = String(process.env.M19_IF_KILL_SWITCHES || '').trim();
   const childEnv = {
     ...process.env,
     M19_EXPECTED_BUILD_ID: process.env.M19_EXPECTED_BUILD_ID || buildId,
   };
-  const command = deployedOriginRaw
-    ? `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} M19_DEPLOYED_ORIGIN=${deployedOriginRaw} node "${probePath}"`
-    : `M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID} node "${probePath}"`;
+  const commandParts = [`M19_EXPECTED_BUILD_ID=${childEnv.M19_EXPECTED_BUILD_ID}`];
+  if (deployedOriginRaw) commandParts.push(`M19_DEPLOYED_ORIGIN=${deployedOriginRaw}`);
+  if (killSwitchesRaw) commandParts.push(`M19_IF_KILL_SWITCHES=${killSwitchesRaw}`);
+  commandParts.push(`node "${probePath}"`);
+  const command = commandParts.join(' ');
   const child = spawnSync(process.execPath, [probePath], {
     cwd: harnessDir,
     encoding: 'utf8',
@@ -2153,6 +2156,7 @@ async function runM19IFFocusEvidence() {
     expectedBuildId,
     expectedBuildSource: probe?.expectedBuildSource || expectedBuildSource,
     liveBuildId,
+    killSwitchesInjected: probe?.killSwitchesInjected || (killSwitchesRaw ? killSwitchesRaw.split(',').map((s) => s.trim()).filter(Boolean) : []),
     deployedMode: probe?.deployedMode === true,
     assetOrigin: probe?.assetOrigin || null,
     upstreamObservedBuild: probe?.upstreamObservedBuild || null,
@@ -2180,6 +2184,7 @@ async function runM19IFFocusEvidence() {
       controlStaleFrames: ctrl.staleFrames ?? null,
       controlMaxConsecutiveStaleFrames: ctrl.maxConsecutiveStaleFrames ?? null,
       controlCatchUpLagP95Ms: ctrl.catchUpLagMs?.p95 ?? null,
+      highM19ifStats: high.m19ifStats ?? null,
       parseError,
     },
     failingGates,
@@ -2307,6 +2312,7 @@ M19-I compute gate remains standing. M20 out of scope.
     expectedBuildSource: evidence.expectedBuildSource,
     liveBuildId,
     buildIdOk,
+    killSwitchesInjected: evidence.killSwitchesInjected,
     deployedMode: evidence.deployedMode,
     assetOrigin: evidence.assetOrigin,
     failingGates,

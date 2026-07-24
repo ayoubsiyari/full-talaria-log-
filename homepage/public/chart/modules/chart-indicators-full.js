@@ -8441,12 +8441,14 @@
     };
 
     // ─── M19-I: indicator replay compute budget ─────────────────────────────
-    // Four independently switchable fixes. Each disable flag restores the
-    // b57 legacy behavior for its own scope only.
-    //   I-a  __TALARIA_DISABLE_M19I_TAIL_SEND_V1     — O(history) pack + clone
-    //   I-b  __TALARIA_DISABLE_M19I_SYNCONLY_TAIL_V1 — sync-only full rescans
-    //   I-c  __TALARIA_DISABLE_M19I_WORKER_PORT_V1   — dema/tema/hma sync + supertrend/adr O(n)
-    //   I-d  __TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1  — force:true bypasses dedupe
+    // Five independently switchable fixes. Each disable flag restores the
+    // prior (b57/b58) legacy behavior for its own scope only.
+    //   I-a  __TALARIA_DISABLE_M19I_TAIL_SEND_V1      — O(history) pack + clone
+    //   I-b  __TALARIA_DISABLE_M19I_SYNCONLY_TAIL_V1  — sync-only full rescans
+    //   I-c  __TALARIA_DISABLE_M19I_WORKER_PORT_V1    — dema/tema/hma sync + supertrend/adr O(n)
+    //   I-d  __TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1   — force:true bypasses dedupe
+    //   I-f  __TALARIA_DISABLE_M19I_FRAME_COHERENT_V1 — b58 price-first paint +
+    //        rAF-deferred pass + worker-RTT indicator catch-up during play
 
     function _m19iTailSendEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_TAIL_SEND_V1;
@@ -8459,6 +8461,9 @@
     }
     function _m19iForceDedupeEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1;
+    }
+    function _m19ifFrameCoherentEnabled() {
+        return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1;
     }
 
     /** Single source for the sync-only (main-thread structural) indicator types. */
@@ -9075,10 +9080,8 @@
             return;
         }
 
-        if (this._replayIndRecalcRaf != null) return;
         const chart = this;
-        this._replayIndRecalcRaf = requestAnimationFrame(function() {
-            chart._replayIndRecalcRaf = null;
+        const runReplayPlayIndicatorPass = function() {
             const passiveMirror = chart._multichartPassivePlayActive === true;
             if (!chart.replaySystem || !chart.replaySystem.isActive) return;
             if (!chart.replaySystem.isPlaying && !passiveMirror) return;
@@ -9150,6 +9153,26 @@
             if (typeof chart.bumpIndicatorRenderVersion === 'function') chart.bumpIndicatorRenderVersion();
             syncReplayLegendAfterIndicatorRecalc(chart);
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        };
+
+        if (_m19ifFrameCoherentEnabled()) {
+            // I-f: run the bounded pass synchronously at tick time. The replay
+            // tick calls this BEFORE the price paint (_renderReplayChartUpdate),
+            // so every paint presents price and indicator series from the same
+            // committed generation — no rAF gap, no worker-RTT catch-up frame.
+            if (this._replayIndRecalcRaf != null) {
+                cancelAnimationFrame(this._replayIndRecalcRaf);
+                this._replayIndRecalcRaf = null;
+            }
+            runReplayPlayIndicatorPass();
+            return;
+        }
+        // I-f OFF (b58 legacy): defer to the next animation frame; the tick's
+        // price paint lands first and indicators visibly catch up afterwards.
+        if (this._replayIndRecalcRaf != null) return;
+        this._replayIndRecalcRaf = requestAnimationFrame(function() {
+            chart._replayIndRecalcRaf = null;
+            runReplayPlayIndicatorPass();
         });
     };
 
@@ -9368,6 +9391,117 @@
         this._indLayerCacheKey = key;
     };
 
+    /**
+     * M19-I-f coherent-presentation bridge (kill switch
+     * __TALARIA_DISABLE_M19I_FRAME_COHERENT_V1): compute one worker-eligible
+     * indicator's tail on the MAIN thread over the same bounded slice the
+     * worker receives. Reuses the exact per-type calculators the full sync
+     * path uses (pure functions of the bar array), so shapes and values match
+     * both the full pass and the worker's later authoritative commit.
+     * Returns undefined for types without a verified slice-pure calculator.
+     */
+    function _m19ifBridgeTailResult(ind, slice) {
+        var t = String(ind.type || '').toLowerCase();
+        var p = ind.params || {};
+        switch (t) {
+            case 'sma': return calculateSMAIndicatorData(slice, p);
+            case 'ema': return calculateEMAIndicatorData(slice, p);
+            case 'wma': return calculateWMAOverlayData(slice, p);
+            case 'bb':
+            case 'bollinger': return calculateBollingerBands(slice, p);
+            case 'envelope':
+            case 'smaenvelope':
+                return calculateEnvelope(slice, p.period, p.percent, p.source || 'close');
+            case 'atr':
+                return calculateATR(slice, atrPeriodFromParams(p), atrSmoothingTypeFromParams(p));
+            case 'cci': return calculateCCIIndicatorData(slice, p);
+            case 'adx': return calculateADX(slice, p.diLength, p.adxSmoothing);
+            case 'rsi':
+                // Divergence-enabled RSI is excluded from the tail-safe set
+                // upstream; guard anyway (divergences need full-history enrich).
+                if (p.divergenceEnabled) return undefined;
+                return calculateRSIIndicatorData(slice, p);
+            case 'macd':
+            case 'ppo':
+                return calculateMACD(slice, p.fast, p.slow, p.signal, p.source || 'close', {
+                    oscillatorMaType: p.oscillatorMaType,
+                    signalMaType: p.signalMaType
+                });
+            case 'stoch':
+            case 'stochastic':
+                return calculateStochastic(slice, p.period, p.smoothK, p.smoothD);
+            case 'dema': return calculateDEMAOverlayData(slice, p);
+            case 'tema': return calculateTEMAOverlayData(slice, p);
+            case 'hma': return calculateHMAOverlayData(slice, p);
+            case 'roc': return calculateROC(slice, p.period, p.source || 'close');
+            case 'mom':
+            case 'momentum': return calculateMomentum(slice, p.period, p.source || 'close');
+            case 'willr': return calculateWilliamsR(slice, p.period, p.source || 'close');
+            case 'mfi': return calculateMFI(slice, p.period);
+            case 'donchian':
+                return calculateDonchian(slice, p.period, p.offset != null ? p.offset : 0);
+            case 'keltner': return calculateKeltner(slice, p);
+            case 'aroon': return calculateAroon(slice, p.period);
+            case 'cmf': return calculateCMF(slice, p.period);
+            case 'trix': return calculateTRIX(slice, p.period);
+            case 'stddev': return calculateStdDevLine(slice, p.period, p.source || 'close');
+            case 'ao': return calculateAO(slice, p.fastLength, p.slowLength);
+            default: return undefined;
+        }
+    }
+
+    /**
+     * M19-I-f: merge synchronous main-thread tail results for every indicator
+     * in the worker map, using the same merge window the worker commit will
+     * use. Returns true only when EVERY mapped indicator was bridged, so the
+     * caller can mark the recalc snapshot complete for this bar count.
+     * Counters in chart._m19ifStats expose uncovered/rejected series — these
+     * are the (diagnosed, never hidden) fallback paths where presentation
+     * temporarily behaves like b58 async catch-up for that series only.
+     */
+    function _m19ifApplyCoherentBridge(chart, indicatorMap, tailStart, fromIndex, totalLen) {
+        var perf = global.IndicatorPerf;
+        var merge = perf && typeof perf.mergeIndicatorTailWindow === 'function'
+            ? perf.mergeIndicatorTailWindow
+            : null;
+        var stats = chart._m19ifStats || (chart._m19ifStats = {
+            bridgePasses: 0,
+            bridgedSeries: 0,
+            uncoveredSeries: 0,
+            mergeRejects: 0,
+            fullAsyncFallbacks: 0
+        });
+        stats.bridgePasses++;
+        if (!merge) {
+            stats.uncoveredSeries += Object.keys(indicatorMap).length;
+            return false;
+        }
+        var slice = chart.data.slice(tailStart);
+        var all = true;
+        chart.indicators.active.forEach(function(ind) {
+            if (!ind || !ind.id || !indicatorMap[ind.id]) return;
+            var fresh;
+            try { fresh = _m19ifBridgeTailResult(ind, slice); } catch (_) { fresh = undefined; }
+            if (fresh == null) {
+                all = false;
+                stats.uncoveredSeries++;
+                return;
+            }
+            var merged = null;
+            try {
+                merged = merge(chart.indicators.data[ind.id], fresh, tailStart, fromIndex, totalLen);
+            } catch (_) { merged = null; }
+            if (merged != null) {
+                chart.indicators.data[ind.id] = merged;
+                stats.bridgedSeries++;
+            } else {
+                all = false;
+                stats.mergeRejects++;
+            }
+        });
+        return all;
+    }
+
     Chart.prototype.recalculateIndicatorsIncremental = function(fromBarCount) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
@@ -9376,12 +9510,19 @@
         }
 
         const chart = this;
-        if (chart._indicatorWorkerBusy) {
+        const coherent = _m19ifFrameCoherentEnabled();
+        // I-f OFF (b58 legacy): worker backpressure defers the WHOLE incremental
+        // pass to a later frame. I-f ON: every synchronous step below (sync-only,
+        // stateful, coherent bridge) still runs so presentation never depends on
+        // worker round-trip time; only the worker post itself coalesces.
+        const ownsWorkerPass = !chart._indicatorWorkerBusy;
+        if (!ownsWorkerPass) {
             chart._indicatorWorkerCoalesce = true;
-            return;
+            if (!coherent) return;
+        } else {
+            chart._indicatorWorkerBusy = true;
+            chart._indicatorWorkerCoalesce = false;
         }
-        chart._indicatorWorkerBusy = true;
-        chart._indicatorWorkerCoalesce = false;
 
         function finishIncrementalPass() {
             chart._indicatorWorkerBusy = false;
@@ -9424,7 +9565,12 @@
         const worker = _getIndicatorWorker();
 
         if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
-        const mySeq = ++chart._indicatorWorkerSeq;
+        // Backpressured coherent passes must NOT bump the sequence: doing so
+        // would invalidate the in-flight worker commit every tick and starve
+        // the authoritative worker pipeline under continuous high-speed play.
+        const mySeq = ownsWorkerPass
+            ? ++chart._indicatorWorkerSeq
+            : chart._indicatorWorkerSeq;
 
         // 1) Sync-only structural overlays (I-b bounds the covered types via
         //    checkpoint/patch caches inside their calculators).
@@ -9502,8 +9648,33 @@
         var coverageComplete = uncovered.length === 0 && !needsFullAsync;
         if (needsFullAsync) chart._m19iCoalesceFullAsync = true;
 
+        // I-f: synchronously commit bounded main-thread tail results for the
+        // worker-eligible series BEFORE any paint can observe the new bars.
+        // The worker pass below still runs (compute gate / authoritative
+        // convergence); its later commit merges the identical window, so it is
+        // idempotent. Bridge-uncovered series are counted, never hidden.
+        if (coherent) {
+            var ifStats = chart._m19ifStats || (chart._m19ifStats = {
+                bridgePasses: 0,
+                bridgedSeries: 0,
+                uncoveredSeries: 0,
+                mergeRejects: 0,
+                fullAsyncFallbacks: 0
+            });
+            if (needsFullAsync) ifStats.fullAsyncFallbacks++;
+            if (Object.keys(indicators).length > 0) {
+                var bridgedAll = _m19ifApplyCoherentBridge(
+                    chart, indicators, tailStart, mergeFrom, totalLen
+                );
+                if (bridgedAll && coverageComplete
+                    && typeof chart._markIndicatorRecalcComplete === 'function') {
+                    try { chart._markIndicatorRecalcComplete(); } catch (_) {}
+                }
+            }
+        }
+
         if (Object.keys(indicators).length === 0) {
-            finishIncrementalPass();
+            if (ownsWorkerPass) finishIncrementalPass();
             if (!needsSyncOnly && !didStateful && !needsFullAsync) {
                 try { chart.recalculateIndicators(); } catch (_) {}
             } else if (coverageComplete
@@ -9518,8 +9689,16 @@
         }
 
         if (!worker) {
-            finishIncrementalPass();
+            if (ownsWorkerPass) finishIncrementalPass();
             try { chart.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+
+        if (!ownsWorkerPass) {
+            // Coherent backpressure: this bar's series are already bridged and
+            // committed above. The in-flight pass's finish hook reruns the
+            // scheduler via the coalesce flag, so the worker catches up without
+            // this pass invalidating or duplicating it.
             return;
         }
 
