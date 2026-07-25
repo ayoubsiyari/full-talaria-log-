@@ -6,6 +6,22 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 say() { printf '\n=== %s ===\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"; }
 
+verify_existing_test_project() {
+  local compose=(docker compose -f "$ORCHESTRATOR_ROOT/docker-compose.yml"
+    --project-directory "$ORCHESTRATOR_ROOT" -p "$COMPOSE_PROJECT_NAME")
+  local service volume
+  for service in "${TEST_PROFILE_SERVICES[@]}"; do
+    [[ -n "$("${compose[@]}" ps -q "$service")" ]] \
+      || die "allowlisted TEST project lacks running service: $COMPOSE_PROJECT_NAME/$service"
+  done
+  for volume in "${TEST_PROFILE_VOLUMES[@]}"; do
+    docker volume inspect "${COMPOSE_PROJECT_NAME}_${volume}" >/dev/null 2>&1 \
+      || die "allowlisted TEST project lacks expected volume: ${COMPOSE_PROJECT_NAME}_${volume}"
+  done
+  docker network inspect "${COMPOSE_PROJECT_NAME}_${TEST_PROFILE_NETWORK}" >/dev/null 2>&1 \
+    || die "allowlisted TEST project lacks expected network: ${COMPOSE_PROJECT_NAME}_${TEST_PROFILE_NETWORK}"
+}
+
 resolve_remote_annotated_tag() {
   local remote_url="$1"
   local remote_ref="$2"
@@ -65,11 +81,11 @@ Usage:
   scripts/deploy-test-checkpoint.sh --source-tag=<tag> --build-id=YYYYMMDDbN \
     --checkpoint=CKPT-N --registry=<registry/namespace> \
     --rollback-manifest=<accepted.json> --public-origin=https://test.example \
-    --compose-project=<explicit-test-project>
+    --compose-project=<allowlisted-existing-test-project>
 
 Options:
   --direct-origin=<origin|auto>  Re-resolve the recreated homepage container (default: auto)
-  --compose-project=<name>       Required TEST Compose project name; must contain "test"
+  --compose-project=<name>       Existing project exactly bound to --public-origin by profile
   --remote=<git-remote>          Remote containing the immutable source tag (default: origin)
   --state-root=<directory>       Durable manifests, proofs, logs, and source worktrees
   --dry-run                      Verify inputs and print the exact plan; change nothing
@@ -111,14 +127,41 @@ case "$STATE_ROOT/" in
     ;;
 esac
 
-[[ "$COMPOSE_PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*test[a-z0-9_-]*$ ]] \
-  || die "--compose-project must explicitly name a TEST project (and contain 'test')"
+for tool in node docker; do need "$tool"; done
+PROFILE_PATH="$ORCHESTRATOR_ROOT/scripts/test-deployment-profiles.json"
+[[ -f "$PROFILE_PATH" ]] || die "committed TEST deployment profile is missing"
+mapfile -t TEST_PROFILE_FIELDS < <(
+  node - "$PROFILE_PATH" "$PUBLIC_ORIGIN" "$COMPOSE_PROJECT_NAME" <<'NODE'
+const fs = require('fs');
+const [profilePath, publicOrigin, composeProject] = process.argv.slice(2);
+const document = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+if (document.schema !== 'talaria.test-deployment-profiles/v1') process.exit(3);
+const matches = document.profiles.filter(
+  (profile) => profile.publicOrigin === publicOrigin
+    && profile.composeProject === composeProject,
+);
+if (matches.length !== 1) process.exit(4);
+const profile = matches[0];
+if (!Array.isArray(profile.services) || !profile.services.length
+    || !Array.isArray(profile.volumes) || !profile.volumes.length
+    || typeof profile.network !== 'string' || !profile.network) process.exit(5);
+console.log(profile.services.join(','));
+console.log(profile.volumes.join(','));
+console.log(profile.network);
+NODE
+)
+[[ "${#TEST_PROFILE_FIELDS[@]}" -eq 3 ]] \
+  || die "public origin and Compose project are not an exact committed TEST profile"
+IFS=',' read -r -a TEST_PROFILE_SERVICES <<<"${TEST_PROFILE_FIELDS[0]}"
+IFS=',' read -r -a TEST_PROFILE_VOLUMES <<<"${TEST_PROFILE_FIELDS[1]}"
+TEST_PROFILE_NETWORK="${TEST_PROFILE_FIELDS[2]}"
+verify_existing_test_project
 export COMPOSE_PROJECT_NAME
 
 if [[ -n "$DEPLOY_EXISTING" ]]; then
   [[ -f "$DEPLOY_EXISTING" ]] || die "accepted manifest does not exist: $DEPLOY_EXISTING"
   [[ "$PUBLIC_ORIGIN" =~ ^https?://[^/]+/?$ ]] || die "invalid or missing --public-origin"
-  for tool in git node docker; do need "$tool"; done
+  need git
   mapfile -t EXISTING_FIELDS < <(node - "$DEPLOY_EXISTING" <<'NODE'
 const fs = require('fs');
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));

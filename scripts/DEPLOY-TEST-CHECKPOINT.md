@@ -13,8 +13,8 @@ bash ./scripts/deploy-test-checkpoint.sh \
   --checkpoint=CKPT-66 \
   --registry=localhost:5000/talaria \
   --rollback-manifest=/var/lib/talaria/checkpoints/previous.provenance.json \
-  --public-origin=https://test.example.invalid \
-  --compose-project=talaria-test
+  --public-origin=http://31.97.192.82:3000 \
+  --compose-project=talaria
 ```
 
 Use the TEST registry namespace configured for the VPS. A host-local registry is
@@ -33,8 +33,11 @@ preflight. A lock rejects concurrent runs for the
 same build. Interrupted runs retain evidence and can be rerun; completed build
 IDs fail closed rather than overwriting provenance. Use `--state-root` for a
 persistent operations directory.
-The required `--compose-project` value must contain `test`; production-looking
-or implicit project names fail before any Docker command runs.
+The origin/project pair must exactly match `scripts/test-deployment-profiles.json`.
+The current TEST profile binds `http://31.97.192.82:3000` to the existing
+`talaria` project. Before any build, pull, or recreation, the wrapper requires
+the profile's running services, named persistent volumes, and default network.
+It never provisions a missing project.
 
 The default direct-origin mode resolves the homepage container address after
 recreation. Public and direct checks fetch static host, iframe, and engine assets,
