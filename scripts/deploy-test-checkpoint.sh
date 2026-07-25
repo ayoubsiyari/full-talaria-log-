@@ -6,6 +6,44 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 say() { printf '\n=== %s ===\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"; }
 
+resolve_remote_annotated_tag() {
+  local remote_url="$1"
+  local remote_ref="$2"
+  local output line sha ref
+  local tag_object_sha=""
+  local peeled_commit_sha=""
+
+  output="$(git ls-remote "$remote_url" "$remote_ref" "$remote_ref^{}")" \
+    || die "could not query remote source tag: $remote_ref"
+  while IFS=$'\t' read -r sha ref; do
+    [[ -z "$sha$ref" ]] && continue
+    [[ "$sha" =~ ^[a-f0-9]{40}$ ]] || die "remote tag returned an invalid object id"
+    case "$ref" in
+      "$remote_ref")
+        [[ -z "$tag_object_sha" ]] || die "remote tag object is ambiguous: $remote_ref"
+        tag_object_sha="$sha"
+        ;;
+      "$remote_ref^{}")
+        [[ -z "$peeled_commit_sha" ]] || die "remote peeled tag is ambiguous: $remote_ref^{}"
+        peeled_commit_sha="$sha"
+        ;;
+      *) die "remote tag query returned an unexpected ref: $ref" ;;
+    esac
+  done <<<"$output"
+
+  [[ -n "$tag_object_sha" ]] || die "pushed source tag not found: $remote_ref"
+  [[ -n "$peeled_commit_sha" ]] \
+    || die "source tag must be annotated and expose a peeled commit ref: $remote_ref^{}"
+  [[ "$tag_object_sha" != "$peeled_commit_sha" ]] \
+    || die "source tag object and peeled commit must be distinct"
+  REMOTE_TAG_OBJECT_SHA="$tag_object_sha"
+  SOURCE_SHA="$peeled_commit_sha"
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 ORCHESTRATOR_ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SOURCE_TAG=""
 BUILD_ID=""
@@ -89,8 +127,9 @@ NODE
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
     --manifest="$DEPLOY_EXISTING" >/dev/null
   REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$EXISTING_REMOTE")"
-  REMOTE_SHA="$(git ls-remote --refs "$REMOTE_URL" "$EXISTING_REF" | awk 'NR==1 {print $1}')"
-  [[ "$REMOTE_SHA" == "$EXISTING_SHA" ]] || die "accepted manifest source tag is not immutable remotely"
+  resolve_remote_annotated_tag "$REMOTE_URL" "$EXISTING_REF"
+  [[ "$SOURCE_SHA" == "$EXISTING_SHA" ]] \
+    || die "accepted manifest source tag peeled commit is not immutable remotely"
   EXISTING_SOURCE="$STATE_ROOT/rollback-$EXISTING_BUILD/source"
   mkdir -p "$(dirname "$EXISTING_SOURCE")"
   if [[ ! -e "$EXISTING_SOURCE/.git" ]]; then
@@ -124,10 +163,7 @@ git -C "$ORCHESTRATOR_ROOT" remote get-url "$REMOTE" >/dev/null 2>&1 \
 
 REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$REMOTE")"
 REMOTE_REF="refs/tags/$SOURCE_TAG"
-REMOTE_LINE="$(git ls-remote --refs "$REMOTE_URL" "$REMOTE_REF")"
-[[ -n "$REMOTE_LINE" ]] || die "pushed source tag not found: $REMOTE_REF"
-SOURCE_SHA="${REMOTE_LINE%%[[:space:]]*}"
-[[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || die "remote tag did not resolve to a commit SHA"
+resolve_remote_annotated_tag "$REMOTE_URL" "$REMOTE_REF"
 
 ROLLBACK_FIELDS=()
 mapfile -t ROLLBACK_FIELDS < <(
@@ -146,6 +182,7 @@ HOMEPAGE_TAG="$REGISTRY/talaria-homepage:$BUILD_ID"
 cat <<EOF
 TEST checkpoint plan
   source:     $REMOTE_REF
+  tag object: $REMOTE_TAG_OBJECT_SHA
   source SHA: $SOURCE_SHA
   build:      $BUILD_ID
   checkpoint: $CHECKPOINT
@@ -181,8 +218,14 @@ trap cleanup EXIT
 
 say "fetch and verify immutable source"
 git -C "$ORCHESTRATOR_ROOT" fetch --force "$REMOTE" "$REMOTE_REF"
+FETCHED_TAG_OBJECT_SHA="$(git -C "$ORCHESTRATOR_ROOT" rev-parse FETCH_HEAD^{object})"
+FETCHED_OBJECT_TYPE="$(git -C "$ORCHESTRATOR_ROOT" cat-file -t "$FETCHED_TAG_OBJECT_SHA")"
 FETCHED_SHA="$(git -C "$ORCHESTRATOR_ROOT" rev-parse FETCH_HEAD^{commit})"
-[[ "$FETCHED_SHA" == "$SOURCE_SHA" ]] || die "fetched SHA differs from verified remote SHA"
+[[ "$FETCHED_OBJECT_TYPE" == tag ]] || die "fetched source ref is not an annotated tag object"
+[[ "$FETCHED_TAG_OBJECT_SHA" == "$REMOTE_TAG_OBJECT_SHA" ]] \
+  || die "fetched tag object differs from verified remote tag object"
+[[ "$FETCHED_SHA" == "$SOURCE_SHA" ]] \
+  || die "fetched peeled commit differs from verified remote peeled commit"
 if [[ -d "$SOURCE_DIR" ]]; then
   git -C "$ORCHESTRATOR_ROOT" worktree remove --force "$SOURCE_DIR" >/dev/null 2>&1 || true
 fi
