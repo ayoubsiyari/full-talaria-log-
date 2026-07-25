@@ -9692,6 +9692,10 @@
             error: null
         };
         this._rev17CandleAtomicTailLast = diag;
+        if (!perf || typeof perf.mergeIndicatorTailWindow !== 'function') {
+            diag.error = 'missing-indicator-performance-bridge';
+            return false;
+        }
         for (var i = 0; i < this.indicators.active.length; i++) {
             var ind = this.indicators.active[i];
             if (!ind || !ind.id) continue;
