@@ -8,6 +8,7 @@ import {
   MANIFEST_SCHEMA,
   createDeployPlan,
   loadManifest,
+  resolveAdvertisedTagCommit,
   sha256File,
   validateManifest,
   verifyRepositoryEvidence,
@@ -114,11 +115,29 @@ function commandPreflight(args) {
     'ls-remote',
     manifest.source.remote,
     manifest.source.ref,
+    `${manifest.source.ref}^{}`,
   ], { allowFailure: true });
-  const remoteLine = remoteOutput.status === 0
-    ? remoteOutput.stdout.split(/\r?\n/).find(Boolean)
-    : '';
-  const remoteSha = remoteLine?.split(/\s+/)[0] || null;
+  let remoteSha = null;
+  let remoteTagObjectSha = null;
+  let remoteAnnotated = null;
+  let remoteResolutionFailure = null;
+  if (remoteOutput.status === 0) {
+    try {
+      const resolved = resolveAdvertisedTagCommit(remoteOutput.stdout, manifest.source.ref);
+      remoteSha = resolved.commitSha;
+      remoteTagObjectSha = resolved.tagObjectSha;
+      remoteAnnotated = resolved.annotated;
+      const remoteType = git(repoRoot, ['cat-file', '-t', remoteSha], { allowFailure: true });
+      if (remoteType.status !== 0 || remoteType.stdout !== 'commit') {
+        remoteResolutionFailure = `remote tag target ${remoteSha} is not a locally verified commit`;
+        remoteSha = null;
+      }
+    } catch (error) {
+      remoteResolutionFailure = error.message;
+    }
+  } else {
+    remoteResolutionFailure = remoteOutput.stderr || 'remote tag lookup failed';
+  }
 
   const repository = verifyRepositoryEvidence(manifest, {
     dirty: status.length > 0,
@@ -132,6 +151,7 @@ function commandPreflight(args) {
     sourceSha: manifest.source.sha,
   });
   const failures = [
+    ...(remoteResolutionFailure ? [remoteResolutionFailure] : []),
     ...repository.failures,
     ...proof.failures,
     ...uniformity.failures,
@@ -147,6 +167,8 @@ function commandPreflight(args) {
       headSha,
       remote: manifest.source.remote,
       remoteRef: manifest.source.ref,
+      remoteTagObjectSha,
+      remoteAnnotated,
       remoteSha,
       ok: repository.ok,
     },

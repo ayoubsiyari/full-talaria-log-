@@ -53,7 +53,7 @@ PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-}"
 DIRECT_ORIGIN="${DIRECT_ORIGIN:-auto}"
 ROLLBACK_MANIFEST=""
 REMOTE="${TEST_CHECKPOINT_REMOTE:-origin}"
-STATE_ROOT="${TEST_CHECKPOINT_STATE_ROOT:-$ORCHESTRATOR_ROOT/.checkpoint-test}"
+STATE_ROOT="${TEST_CHECKPOINT_STATE_ROOT:-/var/lib/talaria/checkpoints}"
 COMPOSE_PROJECT_NAME=""
 DRY_RUN=0
 KEEP_WORKTREE=0
@@ -102,6 +102,14 @@ for arg in "$@"; do
     *) die "unknown argument: $arg" ;;
   esac
 done
+
+ORCHESTRATOR_ROOT="$(cd "$ORCHESTRATOR_ROOT" && pwd -P)"
+[[ "$STATE_ROOT" == /* ]] || die "--state-root must be an absolute path outside the repository"
+case "$STATE_ROOT/" in
+  "$ORCHESTRATOR_ROOT/"*)
+    die "--state-root must be outside the deployment-tooling repository"
+    ;;
+esac
 
 [[ "$COMPOSE_PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*test[a-z0-9_-]*$ ]] \
   || die "--compose-project must explicitly name a TEST project (and contain 'test')"

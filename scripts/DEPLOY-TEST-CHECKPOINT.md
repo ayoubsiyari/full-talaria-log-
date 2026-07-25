@@ -27,7 +27,9 @@ the accepted rollback manifest without creating files, worktrees, images, or
 containers.
 
 Evidence and the retained deployment worktree are stored below
-`.checkpoint-test/<build-id>/` by default. A lock rejects concurrent runs for the
+`/var/lib/talaria/checkpoints/<build-id>/` by default. State paths must be
+absolute and outside the tooling repository so evidence cannot dirty source
+preflight. A lock rejects concurrent runs for the
 same build. Interrupted runs retain evidence and can be rerun; completed build
 IDs fail closed rather than overwriting provenance. Use `--state-root` for a
 persistent operations directory.
