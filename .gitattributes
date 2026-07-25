@@ -6,3 +6,5 @@
 **/chart/legacy-index.html text eol=lf
 **/chart/multichart-prod/chart-embed.html text eol=lf
 **/talaria-design/live/index.html text eol=lf
+scripts/deploy.sh text eol=lf
+scripts/deploy-test-checkpoint.sh text eol=lf
