@@ -74,6 +74,7 @@ COMPOSE_PROJECT_NAME=""
 DRY_RUN=0
 KEEP_WORKTREE=0
 DEPLOY_EXISTING=""
+NO_BUILD=0
 
 usage() {
   cat <<'EOF'
@@ -90,6 +91,7 @@ Options:
   --state-root=<directory>       Durable manifests, proofs, logs, and source worktrees
   --dry-run                      Verify inputs and print the exact plan; change nothing
   --keep-worktree                Keep the clean detached source worktree after success
+  --no-build                     Reuse already-published images after digest resolution
   --deploy-existing=<manifest>   Deploy/rollback an already accepted pinned manifest
 
 The registry may be a remote registry or a TEST-local registry such as
@@ -112,6 +114,7 @@ for arg in "$@"; do
     --state-root=*) STATE_ROOT="${arg#*=}" ;;
     --dry-run) DRY_RUN=1 ;;
     --keep-worktree) KEEP_WORKTREE=1 ;;
+    --no-build) NO_BUILD=1 ;;
     --deploy-existing=*) DEPLOY_EXISTING="${arg#*=}" ;;
     -h|--help) usage; exit 0 ;;
     --provenance-guard-off) die "--provenance-guard-off is prohibited" ;;
@@ -309,41 +312,96 @@ git -C "$ORCHESTRATOR_ROOT" worktree add --detach "$SOURCE_DIR" "$SOURCE_SHA"
 [[ -z "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=all)" ]] \
   || die "source worktree is unexpectedly dirty"
 
-say "generate source uniformity proof"
-node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" uniformity \
-  --repo-root="$SOURCE_DIR" --build-id="$BUILD_ID" --source-sha="$SOURCE_SHA" \
-  --output="$PROOF" >/dev/null
+say "generate or validate source uniformity proof"
+if [[ -f "$PROOF" && -f "$PROOF.sha256" ]] \
+  && printf '%s  %s\n' "$(<"$PROOF.sha256")" "$PROOF" | sha256sum --check --status \
+  && node - "$PROOF" "$BUILD_ID" "$SOURCE_SHA" <<'NODE'
+const fs = require('fs');
+const [file, buildId, sourceSha] = process.argv.slice(2);
+const proof = JSON.parse(fs.readFileSync(file, 'utf8'));
+process.exit(proof.expectedBuildId === buildId && proof.sourceSha === sourceSha ? 0 : 1);
+NODE
+then
+  printf 'Resuming source-bound proof: %s\n' "$PROOF"
+else
+  rm -f "$PROOF" "$PROOF.sha256"
+  node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" uniformity \
+    --repo-root="$SOURCE_DIR" --build-id="$BUILD_ID" --source-sha="$SOURCE_SHA" \
+    --output="$PROOF" >/dev/null
+  sha256sum "$PROOF" | awk '{print $1}' >"$PROOF.sha256"
+fi
 
-say "strict chart and homepage builds"
+say "strict chart and homepage builds/images"
 export CHECKPOINT_BUILD=1 CHART_BUILD_ID="$BUILD_ID" SOURCE_COMMIT_SHA="$SOURCE_SHA"
 export TRADING_CHART_IMAGE="$CHART_TAG" HOMEPAGE_IMAGE="$HOMEPAGE_TAG"
-docker compose -f "$SOURCE_DIR/docker-compose.yml" --project-directory "$SOURCE_DIR" \
-  build --pull trading-chart homepage
+if (( ! NO_BUILD )); then
+  docker compose -f "$SOURCE_DIR/docker-compose.yml" --project-directory "$SOURCE_DIR" \
+    build --pull trading-chart homepage
+  docker push "$CHART_TAG"
+  docker push "$HOMEPAGE_TAG"
+fi
 
-say "publish and resolve immutable image digests"
-docker push "$CHART_TAG"
-docker push "$HOMEPAGE_TAG"
-CHART_REF="$(docker image inspect "$CHART_TAG" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-  | awk -v r="${CHART_TAG%:*}@" 'index($0,r)==1 {print; exit}')"
-HOMEPAGE_REF="$(docker image inspect "$HOMEPAGE_TAG" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-  | awk -v r="${HOMEPAGE_TAG%:*}@" 'index($0,r)==1 {print; exit}')"
+say "resolve registry-authoritative immutable image digests"
+CHART_DIGEST="$(docker buildx imagetools inspect "$CHART_TAG" \
+  --format '{{json .Manifest.Digest}}' | tr -d '"')"
+HOMEPAGE_DIGEST="$(docker buildx imagetools inspect "$HOMEPAGE_TAG" \
+  --format '{{json .Manifest.Digest}}' | tr -d '"')"
+CHART_REF="${CHART_TAG%:*}@$CHART_DIGEST"
+HOMEPAGE_REF="${HOMEPAGE_TAG%:*}@$HOMEPAGE_DIGEST"
 [[ "$CHART_REF" =~ @sha256:[a-f0-9]{64}$ ]] || die "chart registry digest was not resolved"
 [[ "$HOMEPAGE_REF" =~ @sha256:[a-f0-9]{64}$ ]] || die "homepage registry digest was not resolved"
-CHART_DIGEST="${CHART_REF##*@}"
-HOMEPAGE_DIGEST="${HOMEPAGE_REF##*@}"
+for published_tag in "$CHART_TAG" "$HOMEPAGE_TAG"; do
+  PUBLISHED_LABELS="$(docker buildx imagetools inspect "$published_tag" \
+    --format '{{json .Image.Config.Labels}}')"
+  node - "$PUBLISHED_LABELS" "$BUILD_ID" "$SOURCE_SHA" <<'NODE' \
+    || die "published image labels do not match strict build/source: $published_tag"
+const [raw, buildId, sourceSha] = process.argv.slice(2);
+const labels = JSON.parse(raw);
+const ok = labels?.['io.talaria.checkpoint.strict'] === '1'
+  && labels?.['io.talaria.checkpoint.build-id'] === buildId
+  && labels?.['org.opencontainers.image.revision'] === sourceSha;
+process.exit(ok ? 0 : 1);
+NODE
+done
 PROOF_HASH="$(sha256sum "$PROOF" | awk '{print $1}')"
 
-say "generate provenance manifest"
-node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" create-manifest \
-  --checkpoint="$CHECKPOINT" --build-id="$BUILD_ID" --source-sha="$SOURCE_SHA" \
-  --remote="$REMOTE" --remote-ref="$REMOTE_REF" \
-  --chart-ref="$CHART_REF" --chart-digest="$CHART_DIGEST" \
-  --homepage-ref="$HOMEPAGE_REF" --homepage-digest="$HOMEPAGE_DIGEST" \
-  --proof="$(basename "$PROOF")" --proof-sha256="$PROOF_HASH" \
-  --rollback-build-id="${ROLLBACK_FIELDS[1]}" --rollback-source-sha="${ROLLBACK_FIELDS[0]}" \
-  --rollback-chart-ref="${ROLLBACK_FIELDS[2]}" --rollback-chart-digest="${ROLLBACK_FIELDS[4]}" \
-  --rollback-homepage-ref="${ROLLBACK_FIELDS[3]}" --rollback-homepage-digest="${ROLLBACK_FIELDS[5]}" \
-  --output="$MANIFEST" >/dev/null
+say "generate or validate provenance manifest"
+if [[ -f "$MANIFEST" && -f "$MANIFEST.sha256" ]] \
+  && printf '%s  %s\n' "$(<"$MANIFEST.sha256")" "$MANIFEST" | sha256sum --check --status \
+  && node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" validate-manifest --manifest="$MANIFEST" >/dev/null \
+  && node - "$MANIFEST" "$CHECKPOINT" "$BUILD_ID" "$SOURCE_SHA" "$REMOTE_REF" \
+    "$CHART_REF" "$HOMEPAGE_REF" "$PROOF_HASH" "${ROLLBACK_FIELDS[1]}" <<'NODE'
+const fs = require('fs');
+const [file, checkpoint, buildId, sourceSha, remoteRef, chartRef, homepageRef, proofHash, rollbackId]
+  = process.argv.slice(2);
+const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+const ok = m.checkpoint === checkpoint && m.buildId === buildId
+  && m.source?.sha === sourceSha && m.source?.ref === remoteRef
+  && m.images?.chart?.ref === chartRef && m.images?.homepage?.ref === homepageRef
+  && m.proof?.sha256 === proofHash && m.rollback?.buildId === rollbackId;
+process.exit(ok ? 0 : 1);
+NODE
+then
+  printf 'Resuming fully-bound manifest: %s\n' "$MANIFEST"
+else
+  rm -f "$MANIFEST" "$MANIFEST.sha256"
+  node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" create-manifest \
+    --checkpoint="$CHECKPOINT" --build-id="$BUILD_ID" --source-sha="$SOURCE_SHA" \
+    --remote="$REMOTE" --remote-ref="$REMOTE_REF" \
+    --chart-ref="$CHART_REF" --chart-digest="$CHART_DIGEST" \
+    --homepage-ref="$HOMEPAGE_REF" --homepage-digest="$HOMEPAGE_DIGEST" \
+    --proof="$(basename "$PROOF")" --proof-sha256="$PROOF_HASH" \
+    --rollback-build-id="${ROLLBACK_FIELDS[1]}" --rollback-source-sha="${ROLLBACK_FIELDS[0]}" \
+    --rollback-chart-ref="${ROLLBACK_FIELDS[2]}" --rollback-chart-digest="${ROLLBACK_FIELDS[4]}" \
+    --rollback-homepage-ref="${ROLLBACK_FIELDS[3]}" --rollback-homepage-digest="${ROLLBACK_FIELDS[5]}" \
+    --output="$MANIFEST" >/dev/null
+  sha256sum "$MANIFEST" | awk '{print $1}' >"$MANIFEST.sha256"
+fi
+
+say "validate manifest and run fail-closed preflight"
+node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" validate-manifest --manifest="$MANIFEST"
+node "$SOURCE_DIR/scripts/checkpoint-provenance.mjs" preflight \
+  --manifest="$MANIFEST" --repo-root="$SOURCE_DIR"
 
 say "deploy through guarded deploy.sh"
 if [[ "$DIRECT_ORIGIN" == auto ]]; then
@@ -357,6 +415,7 @@ CHECKPOINT_RUNTIME_REPORT="$RUN_DIR/runtime.json" \
   ROOT="$SOURCE_DIR" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
   bash "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
 
+sha256sum "$RUN_DIR/runtime.json" | awk '{print $1}' >"$RUN_DIR/runtime.json.sha256"
 touch "$RUN_DIR/.complete"
 ROLLBACK_COMMAND="'$ORCHESTRATOR_ROOT/scripts/deploy-test-checkpoint.sh' --deploy-existing='$ROLLBACK_MANIFEST' --public-origin='$PUBLIC_ORIGIN' --direct-origin='$DIRECT_ORIGIN' --compose-project='$COMPOSE_PROJECT_NAME' --state-root='$STATE_ROOT'"
 cat <<EOF
