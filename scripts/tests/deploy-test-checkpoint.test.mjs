@@ -41,7 +41,7 @@ test('checkpoint wrapper is fail-closed and never handles passwords', () => {
     2,
   );
   assert.match(source, /DRY RUN:.*no files, images, or containers changed/);
-  assert.doesNotMatch(source, /password|sshpass/i);
+  assert.doesNotMatch(source, /sshpass|password\s*[:=]\s*['"][^'"]+/i);
   assert.doesNotMatch(source, /:latest/);
 });
 
@@ -70,7 +70,7 @@ test('exact TEST profile binds origin to existing talaria project only', () => {
 
 test('existing TEST stack inventory is checked before any build or deploy mutation', () => {
   const source = fs.readFileSync(workflowPath, 'utf8');
-  const service = source.indexOf('ps -q "$service"');
+  const service = source.indexOf('ps -a -q "$service"');
   const volume = source.indexOf('docker volume inspect');
   const network = source.indexOf('docker network inspect');
   const profileCall = source.indexOf('verify_existing_test_project');
@@ -78,6 +78,55 @@ test('existing TEST stack inventory is checked before any build or deploy mutati
   assert.ok(service >= 0 && volume > service && network > volume);
   assert.ok(profileCall >= 0 && profileCall < build);
   assert.doesNotMatch(source, /--provision|provision mode/);
+});
+
+test('partial deploy inventory resumes stopped services but rejects an absent service', (t) => {
+  const fixture = fs.mkdtempSync(path.join(root, '.resume-inventory-'));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const bin = path.join(fixture, 'bin');
+  fs.mkdirSync(bin);
+  const docker = path.join(bin, 'docker');
+  fs.writeFileSync(docker, `#!/usr/bin/env bash
+if [[ "$1 $2" == "compose -f" && "$*" == *" ps -a -q "* ]]; then
+  service="\${@: -1}"
+  [[ "\${MISSING_SERVICE:-}" == "$service" ]] && exit 0
+  printf '%s-id\\n' "$service"
+elif [[ "$1" == "inspect" && "$2" == "--format" ]]; then
+  id="\${@: -1}"; service="\${id%-id}"
+  state=running
+  [[ "$service" == trading-chart ]] && state=unhealthy
+  [[ "$service" == homepage ]] && state=exited
+  printf 'talaria|%s|%s\\n' "$service" "$state"
+elif [[ "$1 $2" == "volume inspect" || "$1 $2" == "network inspect" ]]; then
+  exit 0
+else
+  printf 'unexpected docker: %s\\n' "$*" >&2; exit 9
+fi
+`);
+  fs.chmodSync(docker, 0o755);
+  const bash = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'bash.exe');
+  const engine = shellPath(path.relative(root, workflowPath));
+  const fixtureBin = shellPath(path.relative(root, bin));
+  const command = `export PATH="$PWD/${fixtureBin}:$PATH"; source "$PWD/${engine}"; `
+    + 'ORCHESTRATOR_ROOT="$PWD"; COMPOSE_PROJECT_NAME=talaria; ENV_FILE=; '
+    + 'TEST_PROFILE_SERVICES=(trading-chart trading-chart-worker homepage); '
+    + 'TEST_PROFILE_VOLUMES=(postgres_data); TEST_PROFILE_NETWORK=default; '
+    + 'verify_existing_test_project 1';
+  const resumed = spawnSync(bash, ['-c', command], { cwd: root, encoding: 'utf8' });
+  assert.equal(resumed.status, 0, resumed.stderr);
+  const firstRun = spawnSync(bash, ['-c', command.replace(
+    'verify_existing_test_project 1',
+    'verify_existing_test_project 0',
+  )], { cwd: root, encoding: 'utf8' });
+  assert.equal(firstRun.status, 2);
+  assert.match(firstRun.stderr, /lacks running service: talaria\/trading-chart/);
+  const missing = spawnSync(bash, ['-c', `export MISSING_SERVICE=homepage; ${command}`], {
+    cwd: root,
+    encoding: 'utf8',
+    env: process.env,
+  });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /lacks expected service container: talaria\/homepage/);
 });
 
 test('deploy refreshes auto direct-origin after container recreation', () => {

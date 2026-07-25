@@ -16,6 +16,7 @@ SOURCE_TAG=""
 CREATE_SOURCE_TAG=""
 NO_BUILD=0
 PLAN=0
+ENV_FILE=""
 
 usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ Usage: scripts/ckpt-ship.sh --checkpoint=CKPT-N --build-id=YYYYMMDDbN [options]
   --no-build              Reuse published images after authoritative digest lookup
   --plan                  Verify and print the full plan without mutation
   --state-root=DIR        Durable state outside this repository
+  --env-file=FILE         Compose environment file containing POSTGRES variables
 EOF
 }
 
@@ -38,6 +40,7 @@ for arg in "$@"; do
     --source-tag=*) SOURCE_TAG="${arg#*=}" ;;
     --create-source-tag=*) CREATE_SOURCE_TAG="${arg#*=}" ;;
     --state-root=*) STATE_ROOT="${arg#*=}" ;;
+    --env-file=*) ENV_FILE="${arg#*=}" ;;
     --no-build) NO_BUILD=1 ;;
     --plan) PLAN=1 ;;
     --provenance-guard-off|--force) die "$arg is prohibited in the stable ship command" ;;
@@ -50,6 +53,10 @@ done
 [[ "$BUILD_ID" =~ ^[0-9]{8}b[0-9]+$ ]] || die "invalid or missing --build-id"
 [[ "$STATE_ROOT" == /* ]] || die "--state-root must be absolute"
 case "$STATE_ROOT/" in "$ROOT/"*) die "--state-root must be outside the repository" ;; esac
+if [[ -n "$ENV_FILE" ]]; then
+  [[ "$ENV_FILE" == /* ]] || die "--env-file must be absolute"
+  [[ -f "$ENV_FILE" ]] || die "configured env-file does not exist: $ENV_FILE"
+fi
 if [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" && -z "${TMUX:-}" ]]; then
   die "refusing SSH operation outside tmux; attach tmux and rerun the same command"
 fi
@@ -156,9 +163,25 @@ if (( ! PLAN )); then
   mkdir -p "$RUN_DIR"
   exec > >(tee -a "$LOG") 2>&1
 fi
-printf 'SHIP PARAMETERS\n  checkpoint: %s\n  build: %s\n  head: %s\n  source tag: %s\n  tag object: %s\n  rollback: %s\n  no-build: %s\n  plan: %s\n' \
+db_presence() {
+  local name="$1"
+  if [[ -v "$name" && -n "${!name}" ]]; then
+    printf 'environment'
+  elif [[ -n "$ENV_FILE" ]] && awk -F= -v key="$name" \
+    '$1 == key && length(substr($0, index($0, "=") + 1)) > 0 { found=1 } END { exit !found }' \
+    "$ENV_FILE"; then
+    printf 'env-file'
+  else
+    printf 'missing'
+  fi
+}
+POSTGRES_DB_PRESENCE="$(db_presence POSTGRES_DB)"
+POSTGRES_USER_PRESENCE="$(db_presence POSTGRES_USER)"
+POSTGRES_PASSWORD_PRESENCE="$(db_presence POSTGRES_PASSWORD)"
+printf 'SHIP PARAMETERS\n  checkpoint: %s\n  build: %s\n  head: %s\n  source tag: %s\n  tag object: %s\n  rollback: %s\n  no-build: %s\n  plan: %s\n  credential presence: POSTGRES_DB=%s POSTGRES_USER=%s POSTGRES_PASSWORD=%s\n' \
   "$CHECKPOINT" "$BUILD_ID" "$HEAD_SHA" "$SOURCE_TAG" "$TAG_OBJECT_SHA" \
-  "$ROLLBACK_BUILD_ID" "$NO_BUILD" "$PLAN"
+  "$ROLLBACK_BUILD_ID" "$NO_BUILD" "$PLAN" "$POSTGRES_DB_PRESENCE" \
+  "$POSTGRES_USER_PRESENCE" "$POSTGRES_PASSWORD_PRESENCE"
 
 MANIFEST="$RUN_DIR/$CHECKPOINT.provenance.json"
 RUNTIME="$RUN_DIR/runtime.json"
@@ -181,6 +204,7 @@ else
     "--public-origin=$PUBLIC_ORIGIN" "--compose-project=$COMPOSE_PROJECT"
     "--state-root=$STATE_ROOT" "--remote=$REMOTE"
   )
+  [[ -z "$ENV_FILE" ]] || command+=("--env-file=$ENV_FILE")
   (( NO_BUILD )) && command+=(--no-build)
   (( PLAN )) && command+=(--dry-run)
   "${command[@]}"

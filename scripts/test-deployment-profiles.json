@@ -4,7 +4,7 @@
     {
       "publicOrigin": "http://31.97.192.82:3000",
       "composeProject": "talaria",
-      "services": ["trading-chart", "homepage"],
+      "services": ["trading-chart", "trading-chart-worker", "homepage"],
       "volumes": [
         "postgres_data",
         "questdb_data",

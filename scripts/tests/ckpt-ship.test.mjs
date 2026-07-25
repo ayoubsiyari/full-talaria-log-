@@ -185,5 +185,9 @@ test('stable command and engine expose no guard bypass', () => {
   assert.match(ship, /--provenance-guard-off\|--force.*prohibited/);
   assert.match(engine, /validate manifest and run fail-closed preflight/);
   assert.match(engine, /sha256sum --check --status/);
+  assert.match(engine, /Compose defaults are prohibited/);
+  assert.match(engine, /validated_interrupted_resume/);
+  assert.match(ship, /credential presence: POSTGRES_DB=%s POSTGRES_USER=%s POSTGRES_PASSWORD=%s/);
+  assert.doesNotMatch(ship, /POSTGRES_PASSWORD["'}]*\s*"\)/);
   assert.doesNotMatch(`${ship}\n${engine}`, /DISABLE_PROD_SECURITY_CHECK|guard-off=.*1/);
 });

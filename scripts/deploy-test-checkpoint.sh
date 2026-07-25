@@ -7,12 +7,25 @@ say() { printf '\n=== %s ===\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"; }
 
 verify_existing_test_project() {
-  local compose=(docker compose -f "$ORCHESTRATOR_ROOT/docker-compose.yml"
+  local allow_stopped="${1:-0}"
+  local compose=(docker compose)
+  [[ -z "$ENV_FILE" ]] || compose+=(--env-file "$ENV_FILE")
+  compose+=(-f "$ORCHESTRATOR_ROOT/docker-compose.yml"
     --project-directory "$ORCHESTRATOR_ROOT" -p "$COMPOSE_PROJECT_NAME")
-  local service volume
+  local service volume id identity project service_label state
   for service in "${TEST_PROFILE_SERVICES[@]}"; do
-    [[ -n "$("${compose[@]}" ps -q "$service")" ]] \
-      || die "allowlisted TEST project lacks running service: $COMPOSE_PROJECT_NAME/$service"
+    id="$("${compose[@]}" ps -a -q "$service")"
+    [[ -n "$id" ]] \
+      || die "allowlisted TEST project lacks expected service container: $COMPOSE_PROJECT_NAME/$service"
+    identity="$(docker inspect --format \
+      '{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.service" }}|{{.State.Status}}' \
+      "$id")"
+    IFS='|' read -r project service_label state <<<"$identity"
+    [[ "$project" == "$COMPOSE_PROJECT_NAME" && "$service_label" == "$service" ]] \
+      || die "service container does not belong to allowlisted TEST project: $COMPOSE_PROJECT_NAME/$service"
+    if (( ! allow_stopped )) && [[ "$state" != running ]]; then
+      die "allowlisted TEST project lacks running service: $COMPOSE_PROJECT_NAME/$service"
+    fi
   done
   for volume in "${TEST_PROFILE_VOLUMES[@]}"; do
     docker volume inspect "${COMPOSE_PROJECT_NAME}_${volume}" >/dev/null 2>&1 \
@@ -20,6 +33,65 @@ verify_existing_test_project() {
   done
   docker network inspect "${COMPOSE_PROJECT_NAME}_${TEST_PROFILE_NETWORK}" >/dev/null 2>&1 \
     || die "allowlisted TEST project lacks expected network: ${COMPOSE_PROJECT_NAME}_${TEST_PROFILE_NETWORK}"
+}
+
+require_database_inputs() {
+  local name
+  for name in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD; do
+    if [[ -v "$name" && -n "${!name}" ]]; then
+      continue
+    fi
+    if [[ -n "$ENV_FILE" ]] \
+      && awk -F= -v key="$name" \
+        '$1 == key && length(substr($0, index($0, "=") + 1)) > 0 { found=1 } END { exit !found }' \
+        "$ENV_FILE"; then
+      continue
+    fi
+    die "$name must be set or present in --env-file; Compose defaults are prohibited"
+  done
+}
+
+validated_interrupted_resume() {
+  [[ -f "$RUN_DIR/.source-sha" && "$(<"$RUN_DIR/.source-sha")" == "$SOURCE_SHA" ]] || return 1
+  [[ -f "$PROOF" && -f "$PROOF.sha256" && -f "$MANIFEST" && -f "$MANIFEST.sha256" ]] || return 1
+  printf '%s  %s\n' "$(<"$PROOF.sha256")" "$PROOF" | sha256sum --check --status || return 1
+  printf '%s  %s\n' "$(<"$MANIFEST.sha256")" "$MANIFEST" | sha256sum --check --status || return 1
+  node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
+    --manifest="$MANIFEST" >/dev/null || return 1
+  mapfile -t RESUME_FIELDS < <(node - "$PROOF" "$MANIFEST" <<'NODE'
+const fs = require('fs');
+const proof = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+for (const value of [
+  proof.expectedBuildId, proof.sourceSha, manifest.checkpoint, manifest.buildId,
+  manifest.source?.sha, manifest.images?.chart?.ref, manifest.images?.homepage?.ref,
+]) console.log(value || '');
+NODE
+  )
+  [[ "${#RESUME_FIELDS[@]}" -eq 7
+    && "${RESUME_FIELDS[0]}" == "$BUILD_ID"
+    && "${RESUME_FIELDS[1]}" == "$SOURCE_SHA"
+    && "${RESUME_FIELDS[2]}" == "$CHECKPOINT"
+    && "${RESUME_FIELDS[3]}" == "$BUILD_ID"
+    && "${RESUME_FIELDS[4]}" == "$SOURCE_SHA" ]] || return 1
+
+  local compose=(docker compose)
+  [[ -z "$ENV_FILE" ]] || compose+=(--env-file "$ENV_FILE")
+  compose+=(-f "$ORCHESTRATOR_ROOT/docker-compose.yml"
+    --project-directory "$ORCHESTRATOR_ROOT" -p "$COMPOSE_PROJECT_NAME")
+  local service id expected image
+  for service in "${TEST_PROFILE_SERVICES[@]}"; do
+    id="$("${compose[@]}" ps -a -q "$service")"
+    [[ -n "$id" ]] || return 1
+    case "$service" in
+      trading-chart|trading-chart-worker) expected="${RESUME_FIELDS[5]}" ;;
+      homepage) expected="${RESUME_FIELDS[6]}" ;;
+      *) return 1 ;;
+    esac
+    image="$(docker inspect --format '{{.Config.Image}}' "$id")"
+    [[ "$image" == "$expected" ]] || return 1
+  done
+  return 0
 }
 
 resolve_remote_annotated_tag() {
@@ -76,6 +148,7 @@ DRY_RUN=0
 KEEP_WORKTREE=0
 DEPLOY_EXISTING=""
 NO_BUILD=0
+ENV_FILE=""
 
 usage() {
   cat <<'EOF'
@@ -95,6 +168,7 @@ Options:
   --no-build                     Reuse already-published images after digest resolution
   --deploy-existing=<manifest>   Deploy/rollback an already accepted pinned manifest
   --rollback-build-id=<id>       Assert the selected rollback candidate identity
+  --env-file=<absolute-file>     Compose environment containing POSTGRES variables
 
 The registry may be a remote registry or a TEST-local registry such as
 localhost:5000/talaria. Images are always pushed and consumed by repository
@@ -110,6 +184,7 @@ for arg in "$@"; do
     --registry=*) REGISTRY="${arg#*=}" ;;
     --rollback-manifest=*) ROLLBACK_MANIFEST="${arg#*=}" ;;
     --rollback-build-id=*) ROLLBACK_BUILD_ID="${arg#*=}" ;;
+    --env-file=*) ENV_FILE="${arg#*=}" ;;
     --public-origin=*) PUBLIC_ORIGIN="${arg#*=}" ;;
     --direct-origin=*) DIRECT_ORIGIN="${arg#*=}" ;;
     --compose-project=*) COMPOSE_PROJECT_NAME="${arg#*=}" ;;
@@ -132,6 +207,11 @@ case "$STATE_ROOT/" in
     die "--state-root must be outside the deployment-tooling repository"
     ;;
 esac
+if [[ -n "$ENV_FILE" ]]; then
+  [[ "$ENV_FILE" == /* ]] || die "--env-file must be absolute"
+  [[ -f "$ENV_FILE" ]] || die "configured env-file does not exist: $ENV_FILE"
+  export COMPOSE_ENV_FILES="$ENV_FILE"
+fi
 
 for tool in node docker; do need "$tool"; done
 PROFILE_PATH="$ORCHESTRATOR_ROOT/scripts/test-deployment-profiles.json"
@@ -161,10 +241,11 @@ NODE
 IFS=',' read -r -a TEST_PROFILE_SERVICES <<<"${TEST_PROFILE_FIELDS[0]}"
 IFS=',' read -r -a TEST_PROFILE_VOLUMES <<<"${TEST_PROFILE_FIELDS[1]}"
 TEST_PROFILE_NETWORK="${TEST_PROFILE_FIELDS[2]}"
-verify_existing_test_project
 export COMPOSE_PROJECT_NAME
 
 if [[ -n "$DEPLOY_EXISTING" ]]; then
+  require_database_inputs
+  verify_existing_test_project 0
   [[ -f "$DEPLOY_EXISTING" ]] || die "accepted manifest does not exist: $DEPLOY_EXISTING"
   [[ "$PUBLIC_ORIGIN" =~ ^https?://[^/]+/?$ ]] || die "invalid or missing --public-origin"
   need git
@@ -238,6 +319,14 @@ PROOF="$RUN_DIR/uniformity.json"
 MANIFEST="$RUN_DIR/$CHECKPOINT.provenance.json"
 CHART_TAG="$REGISTRY/talaria-trading-chart:$BUILD_ID"
 HOMEPAGE_TAG="$REGISTRY/talaria-homepage:$BUILD_ID"
+
+require_database_inputs
+if validated_interrupted_resume; then
+  verify_existing_test_project 1
+  printf 'Validated interrupted deploy evidence; stopped/unhealthy/restarting services may resume.\n'
+else
+  verify_existing_test_project 0
+fi
 
 cat <<EOF
 TEST checkpoint plan
@@ -417,6 +506,7 @@ else
   export DIRECT_ORIGIN
 fi
 export PUBLIC_ORIGIN
+touch "$RUN_DIR/.deployment-began"
 CHECKPOINT_RUNTIME_REPORT="$RUN_DIR/runtime.json" \
   ROOT="$SOURCE_DIR" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
   bash "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
