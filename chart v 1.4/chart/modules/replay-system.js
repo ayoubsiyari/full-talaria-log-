@@ -21,6 +21,114 @@ function _m19iTickSpeedCoherenceEnabled() {
         || window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 !== true;
 }
 
+// Rev 1.7 TEST-only host/panel per-tick ledger. No allocation or paint hook is
+// installed unless the explicit diagnostic switch is exactly true.
+const _rev17LedgerStates = new WeakMap();
+let _rev17TickSeq = 0;
+const _rev17LedgerFields = [
+    'tickSeq', 'wallTs', 'dataTailTs', 'indTailTs', 'workerReqTs', 'workerReplyTs',
+    'publishTs', 'renderSchedTs', 'paintTs', 'frameDropped', 'coalesced', 'sliceResampleMs',
+];
+function _rev17LedgerEnabled() {
+    return typeof window !== 'undefined' && window.__TALARIA_REPLAY_TICK_LEDGER_V1 === true;
+}
+function _rev17Now() {
+    return Date.now();
+}
+function _rev17DurationNow() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+function _rev17TailTs(values) {
+    if (!Array.isArray(values) || !values.length) return null;
+    const point = values[values.length - 1];
+    const raw = point && (point.t ?? point.time ?? point.timestamp);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+}
+function _rev17IndicatorTail(chart) {
+    if (!chart) return null;
+    const data = chart.indicators && chart.indicators.data;
+    if (!data || typeof data !== 'object') return null;
+    let tail = null;
+    function visit(candidate) {
+        if (Array.isArray(candidate)) {
+            for (let i = candidate.length - 1; i >= 0; i--) {
+                const point = candidate[i];
+                if (point == null) continue;
+                const raw = point && typeof point === 'object'
+                    ? (point.t ?? point.time ?? point.timestamp)
+                    : chart.data && chart.data[i] && chart.data[i].t;
+                const ts = Number(raw);
+                if (Number.isFinite(ts) && (tail == null || ts > tail)) tail = ts;
+                break;
+            }
+            return;
+        }
+        if (candidate && typeof candidate === 'object') {
+            Object.values(candidate).forEach(visit);
+        }
+    }
+    Object.values(data).forEach(visit);
+    if (tail == null && Array.isArray(chart.data)) {
+        let longest = 0;
+        const measure = (value) => {
+            if (Array.isArray(value)) {
+                longest = Math.max(longest, value.length);
+                return;
+            }
+            if (value && typeof value === 'object') Object.values(value).forEach(measure);
+        };
+        Object.values(data).forEach(measure);
+        if (longest > 0) {
+            const point = chart.data[Math.min(longest, chart.data.length) - 1];
+            tail = _rev17TailTs([point]);
+        }
+    }
+    return tail;
+}
+function _rev17Finalize(chart) {
+    const state = chart && _rev17LedgerStates.get(chart);
+    if (!state || !state.row) return;
+    state.row.dataTailTs = _rev17TailTs(chart.data);
+    state.row.indTailTs = _rev17IndicatorTail(chart);
+    const row = {};
+    _rev17LedgerFields.forEach((field) => { row[field] = state.row[field] ?? null; });
+    if (!Array.isArray(chart._rev17ReplayTickLedger)) chart._rev17ReplayTickLedger = [];
+    chart._rev17ReplayTickLedger.push(row);
+    state.row = null;
+}
+function _rev17Begin(chart, tickSeq) {
+    if (!_rev17LedgerEnabled() || !chart) return null;
+    let state = _rev17LedgerStates.get(chart);
+    if (!state) {
+        state = { row: null };
+        _rev17LedgerStates.set(chart, state);
+    }
+    const priorPending = !!(state.row && state.row.paintTs == null);
+    _rev17Finalize(chart);
+    state.row = {
+        tickSeq: Number.isFinite(tickSeq) ? tickSeq : ++_rev17TickSeq,
+        wallTs: Date.now(),
+        dataTailTs: null,
+        indTailTs: null,
+        workerReqTs: null,
+        workerReplyTs: null,
+        publishTs: null,
+        renderSchedTs: null,
+        paintTs: null,
+        frameDropped: priorPending,
+        coalesced: !!chart._indicatorWorkerCoalesce,
+        sliceResampleMs: 0,
+    };
+    return state.row;
+}
+function _rev17Mark(chart, field, value) {
+    if (!_rev17LedgerEnabled() || !chart || !_rev17LedgerFields.includes(field)) return;
+    const state = _rev17LedgerStates.get(chart);
+    if (!state || !state.row) return;
+    state.row[field] = value == null ? _rev17Now() : value;
+}
+
 class ReplaySystem {
     constructor(chart) {
         this.chart = chart;
@@ -3710,6 +3818,10 @@ class ReplaySystem {
     _renderReplayChartUpdate() {
         const chart = this.chart;
         if (!chart) return;
+        _rev17Mark(chart, 'renderSchedTs');
+        if (_rev17LedgerEnabled()) {
+            requestAnimationFrame(() => _rev17Mark(chart, 'paintTs'));
+        }
         chart.renderPending = true;
         if (typeof chart.render === 'function') {
             chart.render();
@@ -3897,6 +4009,8 @@ class ReplaySystem {
             console.error('❌ No fullRawData available');
             return;
         }
+        const rev17Row = _rev17Begin(this.chart);
+        const rev17UpdateStart = rev17Row ? _rev17DurationNow() : 0;
 
         // Ensure currentIndex is valid (never before backtest session floor — all paths must honor this)
         const floorIdx = this.sessionStartIndex || 0;
@@ -4000,6 +4114,10 @@ class ReplaySystem {
                 this.chart.bumpDataVersion();
             }
             this._syncCompareOverlaysForReplay();
+            if (rev17Row) {
+                rev17Row.sliceResampleMs = _rev17DurationNow() - rev17UpdateStart;
+                rev17Row.dataTailTs = _rev17TailTs(this.chart.data);
+            }
         } catch (error) {
             console.error('❌ Error resampling data:', error);
             return;
@@ -4010,6 +4128,17 @@ class ReplaySystem {
             this._scheduleReplayIndicatorRecalc();
         } catch (error) {
             console.warn('⚠️ Error recalculating indicators:', error);
+        }
+        // Rev17: candle playback must present the host's current indicator
+        // generation, just as follower panels do before their render below.
+        // The chart-owned method is independently kill-switchable and a no-op
+        // for tick mode, pause, seek, restore, and charts without indicators.
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_REPLAY_CANDLE_ATOMIC_TAIL_V1 === true
+            && typeof this.chart.commitReplayCandlePaintIndicators === 'function') {
+            try { this.chart.commitReplayCandlePaintIndicators(); } catch (error) {
+                console.warn('⚠️ Error committing candle paint indicators:', error);
+            }
         }
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
@@ -5737,6 +5866,7 @@ class ReplaySystem {
      */
     updateChartDataFast() {
         if (!this.fullRawData || this.fullRawData.length === 0) return;
+        const rev17Row = _rev17Begin(this.chart);
         
         // Ensure currentIndex is valid (never before backtest session floor — all paths must honor this)
         const floorIdx = this.sessionStartIndex || 0;
@@ -5754,7 +5884,12 @@ class ReplaySystem {
             ? this._installPlayheadPrefix(this.fullRawData, sliceEnd, this.chart)
             : this.fullRawData.slice(0, sliceEnd);
         this.chart.rawData = slicedRaw;
+        const rev17ResampleStart = _rev17LedgerEnabled() ? _rev17DurationNow() : 0;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
+        if (rev17Row) {
+            rev17Row.sliceResampleMs = _rev17DurationNow() - rev17ResampleStart;
+            rev17Row.dataTailTs = _rev17TailTs(this.chart.data);
+        }
         if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
             this.chart._trimLastDataBarToReplayPlayhead();
         }
@@ -7702,6 +7837,10 @@ class ReplaySystem {
             this._scheduleReplayIndicatorRecalc();
         } catch (_indErr) { /* ignore */ }
         if (!skipRender && typeof chart.render === 'function') {
+            _rev17Mark(chart, 'renderSchedTs');
+            if (_rev17LedgerEnabled()) {
+                requestAnimationFrame(() => _rev17Mark(chart, 'paintTs'));
+            }
             if (passivePlay || lightPass) {
                 chart.renderPending = false;
                 chart.render();
@@ -7905,6 +8044,7 @@ class ReplaySystem {
         window.__talariaBl2bMark && window.__talariaBl2bMark(this.chart, 'replay-mirror', 'replay-system.js:applyMultichartMirrorFrame');
         if (!this.isActive || !detail || typeof detail !== 'object') return false;
         const chart = this.chart;
+        const rev17Row = _rev17Begin(chart, Number(detail._rev17TickSeq));
         const frd = this._resolveMirrorRawSeries(chart, detail);
         if (!chart || !Array.isArray(frd) || !frd.length) return false;
 
@@ -7928,6 +8068,7 @@ class ReplaySystem {
         // the single biggest replay-playback CPU saver in multichart.
         if (sharesHostDataset
             && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+            if (rev17Row) rev17Row.dataTailTs = _rev17TailTs(chart.data);
             this._applyCanonicalReplayMarkFromDetail(detail);
             return true;
         }
@@ -8243,6 +8384,10 @@ class ReplaySystem {
                 : null,
             ticksPerCandle: this.currentTicksPerCandle || this.ticksPerCandle || 72,
         };
+        if (_rev17LedgerEnabled()) {
+            const state = this.chart && _rev17LedgerStates.get(this.chart);
+            detail._rev17TickSeq = state && state.row ? state.row.tickSeq : null;
+        }
         if (this.chart && this.autoScrollEnabled && !this.userHasPanned
                 && Number.isFinite(this.chart.offsetX)) {
             detail.hostOffsetX = this.chart.offsetX;
@@ -10207,6 +10352,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (typeof window !== 'undefined') {
     window.ReplaySystem = ReplaySystem;
+    window.__talariaReplayLedgerMark = _rev17Mark;
+    window.__talariaReplayLedgerFlush = function (chart) {
+        _rev17Finalize(chart);
+        return chart && Array.isArray(chart._rev17ReplayTickLedger)
+            ? chart._rev17ReplayTickLedger.slice()
+            : [];
+    };
 }
 
 // Debug function for console

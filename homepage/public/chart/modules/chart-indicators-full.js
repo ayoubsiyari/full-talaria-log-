@@ -7992,6 +7992,12 @@
     var _workerLoadFailed = false;
     var _workerPending = new Map(); // id → { resolve, reject }
     var _workerNextId = 0;
+    function _rev17IndicatorLedgerMark(chart, field) {
+        if (global.__TALARIA_REPLAY_TICK_LEDGER_V1 === true
+            && typeof global.__talariaReplayLedgerMark === 'function') {
+            global.__talariaReplayLedgerMark(chart, field);
+        }
+    }
 
     function _getIndicatorWorker() {
         if (_workerLoadFailed) return null;
@@ -8004,6 +8010,7 @@
                 var pending = _workerPending.get(msg.id);
                 if (!pending) return;
                 _workerPending.delete(msg.id);
+                _rev17IndicatorLedgerMark(pending.chart, 'workerReplyTs');
                 if (msg.type === 'ERROR') {
                     pending.reject(new Error(msg.error || 'worker error'));
                 } else if (msg.type === 'ALL_RESULTS') {
@@ -8229,7 +8236,7 @@
             ? perf.packBarsCompact(chart.data)
             : null;
         new Promise(function(resolve, reject) {
-            _workerPending.set(id, { resolve: resolve, reject: reject });
+            _workerPending.set(id, { resolve: resolve, reject: reject, chart: chart });
             var message = {
                 type: 'CALCULATE_ALL',
                 id: id,
@@ -8239,6 +8246,7 @@
                     indicators: indicators
                 }
             };
+            _rev17IndicatorLedgerMark(chart, 'workerReqTs');
             if (packed && packed.buffer) {
                 worker.postMessage(message, [packed.buffer]);
             } else {
@@ -9655,6 +9663,119 @@
         });
     };
 
+    /** Rev17 opt-in bounded atomic tail owner for candle presentation. */
+    Chart.prototype.commitReplayCandlePaintIndicators = function() {
+        if (typeof window === 'undefined'
+            || window.__TALARIA_ENABLE_REPLAY_CANDLE_ATOMIC_TAIL_V1 !== true) return false;
+        var replay = this.replaySystem;
+        if (!replay || !replay.isActive || !replay.isPlaying
+            || typeof replay.getPlaybackMode !== 'function'
+            || replay.getPlaybackMode() !== 'candle') return false;
+        if (!this.indicators || !Array.isArray(this.indicators.active)
+            || !this.indicators.active.length || !Array.isArray(this.data)
+            || !this.data.length) return false;
+        var perf = global.IndicatorPerf;
+        var estimate = perf && typeof perf.estimateTailLookback === 'function'
+            ? perf.estimateTailLookback : null;
+        var totalLen = this.data.length;
+        var mergeFrom = Math.max(0, totalLen - 2);
+        var stagedPoints = 0;
+        var matchedIds = [];
+        var indicatorMap = {};
+        var transactionTailStart = totalLen;
+        var transactionSeries = 0;
+        var seqBefore = this._indicatorWorkerSeq == null ? 0 : this._indicatorWorkerSeq;
+        var diag = {
+            committed: false, stagedPoints: 0, matchedInstances: 0,
+            mergedInstances: 0, seqBefore: seqBefore, seqAfter: seqBefore,
+            directPublicationGeneration: this._rev17DirectPublicationGeneration || 0,
+            error: null
+        };
+        this._rev17CandleAtomicTailLast = diag;
+        for (var i = 0; i < this.indicators.active.length; i++) {
+            var ind = this.indicators.active[i];
+            if (!ind || !ind.id) continue;
+            var type = String(ind.type || '').toLowerCase();
+            if (_m19iWorkerSkipTypes().indexOf(type) >= 0) continue;
+            var family = _m19iB62SyncFamily(ind);
+            var proof = _m19iB66Proof(ind);
+            if (!family && !proof) { diag.error = 'unsupported:' + type; return false; }
+            matchedIds.push(ind.id);
+            var period = Math.max(1, Number(ind.params && (
+                ind.params.period || ind.params.slow || ind.params.length
+            )) || 20);
+            var lookback = estimate ? estimate([ind]) : 256;
+            if (proof) lookback = Math.max(lookback, proof.minLookback, period * proof.lookbackFactor);
+            var tailStart = Math.max(0, mergeFrom - lookback);
+            var seriesCount = family ? family.seriesCount : (
+                type === 'macd' || type === 'ppo' || type === 'keltner' ? 3 : 1
+            );
+            transactionTailStart = Math.min(transactionTailStart, tailStart);
+            transactionSeries += seriesCount;
+            indicatorMap[ind.id] = { type: type, params: ind.params || {} };
+        }
+        stagedPoints = (totalLen - transactionTailStart) * transactionSeries;
+        diag.stagedPoints = stagedPoints;
+        if (stagedPoints > M19I_B62_MAX_STAGED_POINTS) {
+            diag.error = 'budget'; return false;
+        }
+        diag.matchedInstances = matchedIds.length;
+        _m19iB62ObserveData(this);
+        var boundedFp = [
+            _indicatorDataFingerprint(this),
+            this.dataVersion != null ? this.dataVersion : 0,
+            typeof this._indicatorParamsHash === 'function' ? this._indicatorParamsHash() : '',
+            String(this.currentTimeframe || ''),
+            _m19iB62ChartPairIdentity(this),
+            _m19iB62MasterGeneration(this),
+            _m19iB62GenOf(this)
+        ].join('|');
+        var chartForVersions = this;
+        try {
+            var bridged = _m19ifApplyCoherentBridge(
+                this, indicatorMap, transactionTailStart, mergeFrom, totalLen
+            );
+            if (!bridged) {
+                diag.error = 'stage-or-merge-failed';
+                return false;
+            }
+            var rvBefore = this._indicatorRenderVersion || 0;
+            var memos = _m19iB66Memos(this);
+            matchedIds.forEach(function(id) {
+                var item = chartForVersions.indicators.active.find(
+                    function(active) { return active && active.id === id; }
+                );
+                var prior = memos[id];
+                memos[id] = {
+                    fp: _m19iB66InstanceFp(chartForVersions, item, boundedFp),
+                    rv: rvBefore + 1,
+                    version: (prior && prior.version || 0) + 1
+                };
+                item._m19iB66PublishedVersion = memos[id].version;
+            });
+            this.bumpIndicatorRenderVersion();
+            var publishedRv = this._indicatorRenderVersion || 0;
+            matchedIds.forEach(function(id) { memos[id].rv = publishedRv; });
+            diag.mergedInstances = matchedIds.length;
+            // Publication is now proven. Only now supersede the worker generation.
+            if (this._replayIndRecalcRaf != null) {
+                cancelAnimationFrame(this._replayIndRecalcRaf);
+                this._replayIndRecalcRaf = null;
+            }
+            this._indicatorWorkerSeq = seqBefore + 1;
+            this._indicatorWorkerCoalesce = false;
+            this._rev17DirectPublicationGeneration =
+                (this._rev17DirectPublicationGeneration || 0) + 1;
+            diag.committed = true;
+            diag.seqAfter = this._indicatorWorkerSeq;
+            diag.directPublicationGeneration = this._rev17DirectPublicationGeneration;
+            return true;
+        } catch (error) {
+            diag.error = String(error && error.message || error);
+            return false;
+        }
+    };
+
     Chart.prototype._runIndicatorRecalc = function(opts) {
         opts = opts || {};
         const barCount = this.data.length;
@@ -9787,6 +9908,7 @@
                 chart._clearIndicatorCalculatingFlags();
             }
             chart.bumpIndicatorRenderVersion();
+            _rev17IndicatorLedgerMark(chart, 'publishTs');
             if (_m19iExactTailPaintEnabled() && !mergeFailed && tailMeta.b62Token) {
                 // B62-2 eventual fresh paint: a token-verified worker tail IS
                 // the exact fresh endpoint for the current identity. Publish
@@ -9834,6 +9956,7 @@
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
         }
         chart.bumpIndicatorRenderVersion();
+        _rev17IndicatorLedgerMark(chart, 'publishTs');
         if (_m19iExactTailPaintEnabled()) {
             // B62-2 eventual fresh paint (full-pass endpoint): a token-current
             // FULL worker apply is also an exact fresh endpoint — publish the
@@ -10030,7 +10153,7 @@
         this._m19iCoalesceFullAsync = false;
         _m19iB66CancelReconcile(this, true);
     };
-    function _m19iB66PaintInstances(chart, fp, rv) {
+    function _m19iB66PaintInstances(chart, fp, rv, suppressRender) {
         var perf = global.IndicatorPerf;
         var estimate = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback : null;
@@ -10077,7 +10200,7 @@
             Object.keys(memos).forEach(function(id) {
                 if (memos[id] && memos[id].rv === rv + 1) memos[id].rv = newRv;
             });
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            if (!suppressRender && typeof chart.scheduleRender === 'function') chart.scheduleRender();
         }
         if (needsReconcile) _m19iB66RequestReconcile(chart, false);
         return changed;
@@ -10419,6 +10542,9 @@
                 }
                 freshById[members[m].id] = fresh;
                 stagedCount++;
+                if (chart._rev17AtomicTailTestFailAfterInstance === stagedCount) {
+                    throw new Error('injected-mid-transaction');
+                }
             }
             if (_m19iB62AtomicMergeSet(chart, freshById, tailStart, fromIndex, totalLen)) {
                 statDelta.bridgedSeries += stagedCount;
@@ -10752,7 +10878,7 @@
         };
 
         new Promise(function(resolve, reject) {
-            _workerPending.set(id, { resolve: resolve, reject: reject });
+            _workerPending.set(id, { resolve: resolve, reject: reject, chart: chart });
             const message = {
                 type: 'CALCULATE_TAIL',
                 id: id,
@@ -10766,6 +10892,7 @@
                     indicators: indicators
                 }
             };
+            _rev17IndicatorLedgerMark(chart, 'workerReqTs');
             if (packed && packed.buffer) {
                 worker.postMessage(message, [packed.buffer]);
             } else {
@@ -10896,7 +11023,8 @@
         const id = _workerNextId++;
 
         new Promise(function(resolve, reject) {
-            _workerPending.set(id, { resolve: resolve, reject: reject });
+            _workerPending.set(id, { resolve: resolve, reject: reject, chart: chart });
+            _rev17IndicatorLedgerMark(chart, 'workerReqTs');
             worker.postMessage({
                 type: 'CALCULATE_TAIL',
                 id: id,
