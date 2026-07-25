@@ -73,7 +73,7 @@ const OTHER_PRODUCT = path.join(
   TREE === 'homepage' ? CANONICAL_MODULES : HOMEPAGE_MODULES, 'favorites-manager.js');
 const PREFIX_BLOB = path.join(
   CANONICAL_MODULES, 'm20-a-favorites-harness', 'blobs', 'favorites-manager.prefix.js');
-const PREFIX_SHA256 = '091e2467928b759b1a26dfa16b3ea63c79f3d0fab6c069ce542edcb67cbc68b6';
+const PREFIX_SHA256 = '754c77f4832e56b2284f1a4a2ce43078192cae371e0524068b62f823284d5382';
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'plan3', 'evidence');
 const require = createRequire(import.meta.url);
 

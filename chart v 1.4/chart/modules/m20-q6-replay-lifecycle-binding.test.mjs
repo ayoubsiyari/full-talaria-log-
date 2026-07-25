@@ -1003,11 +1003,8 @@ test('Q6 exact/current binding hashes and mirror bytes', () => {
   assert.equal(reviewedCoreHash(source), REVIEWED_Q6_CORE_SHA256);
   assert.equal(source, mirrorSource);
   if (fs.existsSync(MIRROR_TEST)) {
-    assert.match(
-      fs.readFileSync(MIRROR_TEST, 'utf8'),
-      /m20-q6-replay-lifecycle-binding\.test\.mjs/,
-    );
-    assert.notEqual(sha256(fs.readFileSync(THIS_TEST)), sha256(fs.readFileSync(MIRROR_TEST)));
+    assert.equal(fs.readFileSync(THIS_TEST, 'utf8'), fs.readFileSync(MIRROR_TEST, 'utf8'));
+    assert.equal(sha256(fs.readFileSync(THIS_TEST)), sha256(fs.readFileSync(MIRROR_TEST)));
   }
 });
 
@@ -1244,4 +1241,3 @@ test.after(() => {
 
   writeJsonAtomic(MANIFEST, buildManifestPayload());
 });
-

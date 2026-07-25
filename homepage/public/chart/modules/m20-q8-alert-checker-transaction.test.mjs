@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const BASE_COMMIT = '5cd010bb8649fec301983c6ee964379e8d3be3f7';
 const BASE_PRODUCT_SHA256 = 'fb17b18698a18605d9051183c7f867abb9cf77b353abb2df0baf34e01825093d';
-const REJECTED_PRODUCT_SHA256 = '89ec4e7ba1b9cb13a54c1958c1166e43771d2aebede8a72421024fe45f315bc9';
+const REJECTED_PRODUCT_SHA256 = 'bcbb37c2422a3385ad2d274ca597ce8a5fd8b63b8e55efb25e8cd9c5d63cfdcf';
 const KILL_SWITCH = '__TALARIA_DISABLE_M20_Q8_ALERT_CHECKER_IDLE_V1';
 const STATUS = 'PENDING-FRESH-GPT-REVIEW';
 const EVIDENCE_MODE = String(process.env.M20_Q8_EVIDENCE || '').toLowerCase();
@@ -58,7 +58,7 @@ const PACKET_DIR = path.join(
 );
 const REJECTED_FIXTURE = path.join(
     PACKET_DIR,
-    'rejected-alert-system-89ec4e7b.fixture.js'
+    'rejected-alert-system-bcbb37c.fixture.js'
 );
 const EVIDENCE_DIR = path.join(PACKET_DIR, 'evidence');
 
@@ -1670,7 +1670,7 @@ test('Q8 immutable parent reproduces create/delete/clear state-checker RED', () 
     assert.deepEqual(failures, [], `immutable RED did not reproduce exactly: ${JSON.stringify(failures)}`);
 });
 
-test('Q8 rejected 89ec4e7b snapshot replays every binding RED family', () => {
+test('Q8 rejected bcbb37c fixture replays every binding RED family', () => {
     const faultRows = runFaultMatrix(rejectedSource);
     const timerRows = runTimerFaultTransactions(rejectedSource);
     const ownershipRows = runMutationAndOwnershipMatrix(rejectedSource);
