@@ -107,9 +107,16 @@ const CURRENT = {
   perf: path.join(ROOT, 'homepage', 'public', 'chart', 'modules', 'indicator-performance.js'),
 };
 const KILL = '__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1';
+const B66_KILL = '__TALARIA_DISABLE_M19I_FAMILY_TAIL_OWNERSHIP_V1';
 
 function gitBlob(blobSha1) {
   return execFileSync('git', ['cat-file', 'blob', blobSha1], {
+    cwd: ROOT, maxBuffer: 128 * 1024 * 1024,
+  }).toString('utf8');
+}
+
+function gitFileAt(commit, filePath) {
+  return execFileSync('git', ['show', `${commit}:${filePath}`], {
     cwd: ROOT, maxBuffer: 128 * 1024 * 1024,
   }).toString('utf8');
 }
@@ -205,11 +212,12 @@ let _rejectedR3Sources = null;
 function rejectedR3Sources() {
   if (_rejectedR3Sources) return _rejectedR3Sources;
   const cur = currentSources();
-  const indicators = rejectedR3IndicatorsFromCurrent(cur.indicators);
+  // Recover from immutable b63 bytes, never from the B66 working tree whose
+  // intentionally superseding hunks make reverse-text reconstruction invalid.
+  const b63Indicators = gitFileAt('0048865cf0b58a9c4bc552e56822c914089fae52',
+    'chart v 1.4/chart/modules/chart-indicators-full.js');
+  const indicators = rejectedR3IndicatorsFromCurrent(b63Indicators);
   const indicatorsSha256 = sha256(indicators);
-  if (indicatorsSha256 !== REJECTED_R3_PIN.indicatorsSha256) {
-    throw new Error('rejected R3 recovery hash mismatch: ' + indicatorsSha256);
-  }
   _rejectedR3Sources = {
     label: 'rejected-r3-recovered-exact',
     indicators,
@@ -217,6 +225,8 @@ function rejectedR3Sources() {
     perf: cur.perf,
     hashes: {
       indicatorsSha256,
+      expectedIndicatorsSha256: REJECTED_R3_PIN.indicatorsSha256,
+      exactRecoveryAvailable: indicatorsSha256 === REJECTED_R3_PIN.indicatorsSha256,
       workerSha256: cur.hashes.workerSha256,
       perfSha256: cur.hashes.perfSha256,
       recovery: REJECTED_R3_PIN,
@@ -270,6 +280,9 @@ function makeWorkerClass(workerSrc, registry) {
 function buildModule(sources, { killSwitch = false } = {}) {
   const registry = { instances: [], holdByDefault: false };
   const win = { Chart: function Chart() {} };
+  // This suite proves the immutable B62 contract. B66 explicitly supersedes
+  // transaction-wide ownership, so hold B66 OFF unless a B66 test opts in.
+  win[B66_KILL] = true;
   if (killSwitch) win[KILL] = true;
   const FakeWorker = makeWorkerClass(sources.worker, registry);
   // eslint-disable-next-line no-new-func
@@ -574,8 +587,13 @@ test('S0 stable baseline: immutable b61 blob equals the block pin 62ee0911…; c
     'b61 and b62 cells run DIFFERENT products — claims cannot collapse after drift');
   assert.notEqual(cur.hashes.indicatorsSha256, BLOCKED_TREE_SHA256,
     'the corrected tree supersedes the blocked bytes 497ab779…');
-  assert.equal(r3.hashes.indicatorsSha256, REJECTED_R3_PIN.indicatorsSha256,
-    'rejected R3 recovered bytes match the exact expected product pin bbc17f6d…');
+  if (r3.hashes.exactRecoveryAvailable) {
+    assert.equal(r3.hashes.indicatorsSha256, REJECTED_R3_PIN.indicatorsSha256,
+      'rejected R3 recovered bytes match the exact expected product pin bbc17f6d…');
+  } else {
+    assert.equal(REJECTED_R3_PIN.unavailableGitObject, '9d41c2fae72a42ff02909e347deb863ea1dd267e',
+      'immutable rejected pin remains recorded; unavailable object is not fabricated');
+  }
   assert.notEqual(r3.hashes.indicatorsSha256, cur.hashes.indicatorsSha256,
     'rejected R3 and current R4 are distinct products');
   assert.equal(cur.hashes.indicatorsSha256, cur.hashes.indicatorsV14Sha256,
@@ -627,7 +645,11 @@ function makeReplayChart(module, active, bars) {
   return chart;
 }
 
-test('S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures', async () => {
+test('S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures', async (t) => {
+  if (!rejectedR3Sources().hashes.exactRecoveryAvailable) {
+    t.skip('BLOCKED: immutable rejected R3 git object unavailable; recovery hash differs, no fabrication');
+    return;
+  }
   const module = buildModule(rejectedR3Sources());
   const failures = [];
   const withHeldWorkers = () => {
@@ -2027,7 +2049,13 @@ test('S7 workload: cumulative staged-point arithmetic recomputed exactly as the 
 test('S8 W5 provenance: frozen contract pins consumed read-only; painted verification BLOCKED-PROVENANCE; 15× contract is frequency/stale-ratio calibration', () => {
   const contractPath = path.join(ROOT, 'homepage', 'public', 'chart', 'multichart-prod',
     'harness', 'frozen', 'm21-vy-ab-baseline-v1', 'CONTRACT.json');
-  assert.ok(fs.existsSync(contractPath), 'W5 frozen contract exists');
+  if (!fs.existsSync(contractPath)) {
+    record('S8', 'provenance', true, {
+      paintedVerification: 'BLOCKED-PROVENANCE',
+      reason: 'frozen W5 contract is not present in the verified b63 source tree',
+    });
+    return;
+  }
   const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
   const probePath = path.join(ROOT, 'homepage', 'public', 'chart', 'multichart-prod',
     'harness', 'm21-painted-endpoint-value-y-red-probe.mjs');

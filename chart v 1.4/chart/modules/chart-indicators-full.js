@@ -8119,6 +8119,9 @@
             if (coalesceSync) {
                 try { chart.recalculateIndicatorsAsync(); } catch (_) {}
             }
+            if (_m19iFamilyTailOwnershipEnabled()) {
+                _m19iB66DrainReconcileAfterBusy(chart);
+            }
             return;
         }
 
@@ -8136,10 +8139,20 @@
             }
             var again = chart._indicatorWorkerCoalesce;
             chart._indicatorWorkerCoalesce = false;
-            if (again) {
-                // Full rerun below also satisfies any pending full-pass request.
+            if (chart._m19iB66ReconcileRetired === true) {
                 chart._m19iCoalesceFullAsync = false;
-                try { chart.recalculateIndicatorsAsync(); } catch (_) {}
+                return;
+            }
+            if (again) {
+                chart._m19iCoalesceFullAsync = false;
+                if (_m19iFamilyTailOwnershipEnabled()) {
+                    _m19iB66RequestReconcile(chart, false);
+                } else {
+                    try { chart.recalculateIndicatorsAsync(); } catch (_) {}
+                }
+            }
+            if (_m19iFamilyTailOwnershipEnabled()) {
+                _m19iB66DrainReconcileAfterBusy(chart);
             }
         }
 
@@ -8461,6 +8474,9 @@
             this._m19iExactTailFailRv = null;
             this._m19iB62PendingFreshFp = null;
         }
+        if (_m19iFamilyTailOwnershipEnabled()) {
+            _m19iB66CancelReconcile(this, false);
+        }
         this._indicatorWorkerCoalesce = false;
         this._m19iCoalesceFullAsync = false;
         this._indicatorPendingResults = null;
@@ -8560,6 +8576,35 @@
      */
     function _m19iExactTailPaintEnabled() {
         return typeof window === 'undefined' || !window.__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1;
+    }
+
+    function _m19iFamilyTailOwnershipEnabled() {
+        return typeof window === 'undefined'
+            || !window.__TALARIA_DISABLE_M19I_FAMILY_TAIL_OWNERSHIP_V1;
+    }
+
+    var M19I_B66_FAMILY_PROOF = {
+        ema: { epsilon: 1e-8, lookbackFactor: 16, minLookback: 384 },
+        dema: { epsilon: 2e-8, lookbackFactor: 24, minLookback: 576 },
+        tema: { epsilon: 3e-8, lookbackFactor: 32, minLookback: 768 },
+        macd: { epsilon: 3e-8, lookbackFactor: 24, minLookback: 768 },
+        ppo: { epsilon: 3e-8, lookbackFactor: 24, minLookback: 768 },
+        rsi: { epsilon: 1e-7, lookbackFactor: 32, minLookback: 768 },
+        atr: { epsilon: 1e-8, lookbackFactor: 32, minLookback: 768 },
+        keltner: { epsilon: 2e-8, lookbackFactor: 32, minLookback: 768 },
+        trix: { epsilon: 5e-8, lookbackFactor: 40, minLookback: 1024 }
+    };
+    function _m19iB66Proof(ind) {
+        if (!_m19iFamilyTailOwnershipEnabled() || !ind || !_m19iIndicatorTailSafe(ind)) return null;
+        return M19I_B66_FAMILY_PROOF[String(ind.type || '').toLowerCase()] || null;
+    }
+    function _m19iB66InstanceFp(chart, ind, fp) {
+        return String(ind.id) + '|' + String(ind.type || '').toLowerCase() + '|'
+            + JSON.stringify(ind.params || {}) + '|' + fp;
+    }
+    function _m19iB66Memos(chart) {
+        if (!chart._m19iB66InstanceMemos) chart._m19iB66InstanceMemos = Object.create(null);
+        return chart._m19iB66InstanceMemos;
     }
 
     /**
@@ -9885,6 +9930,158 @@
      * recalc pipeline still refreshes them every tick.
      */
     var M19I_B62_MAX_STAGED_POINTS = 4096;
+    var M19I_B66_RECONCILE_FLOOR_MS = 5000;
+    function _m19iB66Generation(chart) {
+        var g = chart._m19iB66ReconcileGeneration;
+        return Number.isSafeInteger(g) && g >= 0 ? g : 0;
+    }
+    function _m19iB66RemoveLifecycle(chart) {
+        var target = chart._m19iB66LifecycleTarget;
+        var retire = chart._m19iB66LifecycleRetire;
+        if (target && retire && typeof target.removeEventListener === 'function') {
+            target.removeEventListener('pagehide', retire);
+            target.removeEventListener('beforeunload', retire);
+        }
+        // Drop both directions of ownership: the global target no longer owns
+        // the closure, and the chart no longer owns a closure that captures it.
+        chart._m19iB66LifecycleInstalled = false;
+        chart._m19iB66LifecycleTarget = null;
+        chart._m19iB66LifecycleRetire = null;
+    }
+    function _m19iB66CancelReconcile(chart, retire) {
+        if (chart._m19iB66ReconcileTimer != null) clearTimeout(chart._m19iB66ReconcileTimer);
+        chart._m19iB66ReconcileTimer = null;
+        chart._m19iB66ReconcileWanted = false;
+        chart._m19iB66ReconcileDeferred = false;
+        chart._m19iB66ReconcileGeneration = _m19iB66Generation(chart) + 1;
+        _m19iB66RemoveLifecycle(chart);
+        if (retire) chart._m19iB66ReconcileRetired = true;
+    }
+    function _m19iB66EnsureLifecycle(chart) {
+        if (chart._m19iB66LifecycleInstalled) return;
+        if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+        var retire = function() { _m19iB66CancelReconcile(chart, true); };
+        chart._m19iB66LifecycleInstalled = true;
+        chart._m19iB66LifecycleTarget = window;
+        chart._m19iB66LifecycleRetire = retire;
+        window.addEventListener('pagehide', retire, { once: true });
+        window.addEventListener('beforeunload', retire, { once: true });
+    }
+    function _m19iB66DrainReconcileAfterBusy(chart) {
+        if (chart._m19iB66ReconcileRetired || chart._indicatorWorkerBusy) return;
+        if (!chart._m19iB66ReconcileWanted && !chart._m19iB66ReconcileDeferred) return;
+        chart._m19iB66ReconcileDeferred = false;
+        _m19iB66RequestReconcile(chart, false);
+    }
+    function _m19iB66RequestReconcile(chart, immediate) {
+        if (!_m19iFamilyTailOwnershipEnabled() || chart._m19iB66ReconcileRetired) return false;
+        _m19iB66EnsureLifecycle(chart);
+        chart._m19iB66ReconcileWanted = true;
+        if (chart._m19iB66ReconcileTimer != null) return true;
+        var now = Date.now();
+        var wait = immediate ? 0 : Math.max(0,
+            M19I_B66_RECONCILE_FLOOR_MS - (now - (chart._m19iB66LastReconcileAt || 0)));
+        var generation = _m19iB66Generation(chart);
+        chart._m19iB66ReconcileTimer = setTimeout(function() {
+            chart._m19iB66ReconcileTimer = null;
+            if (!_m19iFamilyTailOwnershipEnabled()) {
+                _m19iB66CancelReconcile(chart, false);
+                return;
+            }
+            if (chart._m19iB66ReconcileRetired
+                || generation !== _m19iB66Generation(chart)) return;
+            if (!chart._m19iB66ReconcileWanted) return;
+            if (chart._indicatorWorkerBusy) {
+                chart._m19iB66ReconcileDeferred = true;
+                return;
+            }
+            chart._m19iB66ReconcileWanted = false;
+            chart._m19iB66ReconcileDeferred = false;
+            chart._m19iB66LastReconcileAt = Date.now();
+            try { chart.recalculateIndicatorsAsync(); } catch (_) {}
+        }, wait);
+        return true;
+    }
+    function _m19iB66HasOwnedState(chart) {
+        if (!chart) return false;
+        var own = Object.prototype.hasOwnProperty;
+        return own.call(chart, '_m19iB66InstanceMemos')
+            || own.call(chart, '_m19iB66LifecycleInstalled')
+            || own.call(chart, '_m19iB66LifecycleTarget')
+            || own.call(chart, '_m19iB66LifecycleRetire')
+            || own.call(chart, '_m19iB66ReconcileTimer')
+            || own.call(chart, '_m19iB66ReconcileWanted')
+            || own.call(chart, '_m19iB66ReconcileDeferred')
+            || own.call(chart, '_m19iB66ReconcileGeneration')
+            || own.call(chart, '_m19iB66ReconcileRetired')
+            || own.call(chart, '_m19iB66LastReconcileAt');
+    }
+    Chart.prototype._m19iB66RetireIndicatorReconcile = function() {
+        // Teardown is switch-independent once this chart has ever acquired
+        // B66 ownership. A chart born and kept OFF has no owned fields and
+        // returns without changing its exact b63 object/state surface.
+        if (!_m19iB66HasOwnedState(this) || this._m19iB66ReconcileRetired === true) return;
+        // Invalidate every already-posted CALCULATE_TAIL/CALCULATE_ALL result
+        // before dropping lifecycle ownership. Late promises still finish and
+        // clear busy, but fail their sequence guard before merge/apply/render.
+        if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
+        this._indicatorWorkerSeq++;
+        this._indicatorWorkerCoalesce = false;
+        this._m19iCoalesceFullAsync = false;
+        _m19iB66CancelReconcile(this, true);
+    };
+    function _m19iB66PaintInstances(chart, fp, rv) {
+        var perf = global.IndicatorPerf;
+        var estimate = perf && typeof perf.estimateTailLookback === 'function'
+            ? perf.estimateTailLookback : null;
+        var totalLen = chart.data.length;
+        var mergeFrom = Math.max(0, totalLen - 2);
+        var memos = _m19iB66Memos(chart);
+        var changed = false;
+        var needsReconcile = false;
+        chart.indicators.active.forEach(function(ind) {
+            if (!ind || !ind.id) return;
+            var t = String(ind.type || '').toLowerCase();
+            if (_m19iWorkerSkipTypes().indexOf(t) >= 0) return;
+            var family = _m19iB62SyncFamily(ind);
+            var proof = _m19iB66Proof(ind);
+            if (!family && !proof) { needsReconcile = true; return; }
+            var instanceFp = _m19iB66InstanceFp(chart, ind, fp);
+            var memo = memos[ind.id];
+            if (memo && memo.fp === instanceFp && memo.rv === rv) return;
+            var baseLookback = estimate ? estimate([ind]) : 256;
+            var period = Math.max(1, Number(ind.params && (
+                ind.params.period || ind.params.slow || ind.params.length
+            )) || 20);
+            var lookback = proof
+                ? Math.max(baseLookback, proof.minLookback, period * proof.lookbackFactor)
+                : baseLookback;
+            var tailStart = Math.max(0, mergeFrom - lookback);
+            var seriesCount = family ? family.seriesCount : (
+                t === 'macd' || t === 'ppo' ? 3 : t === 'keltner' ? 3 : 1
+            );
+            if ((totalLen - tailStart) * seriesCount > M19I_B62_MAX_STAGED_POINTS) {
+                needsReconcile = true; return;
+            }
+            var map = {};
+            map[ind.id] = { type: t, params: ind.params || {} };
+            if (_m19ifApplyCoherentBridge(chart, map, tailStart, mergeFrom, totalLen)) {
+                memos[ind.id] = { fp: instanceFp, rv: rv + 1, version: (memo && memo.version || 0) + 1 };
+                ind._m19iB66PublishedVersion = memos[ind.id].version;
+                changed = true;
+            } else needsReconcile = true;
+        });
+        if (changed) {
+            chart.bumpIndicatorRenderVersion();
+            var newRv = chart._indicatorRenderVersion || 0;
+            Object.keys(memos).forEach(function(id) {
+                if (memos[id] && memos[id].rv === rv + 1) memos[id].rv = newRv;
+            });
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        }
+        if (needsReconcile) _m19iB66RequestReconcile(chart, false);
+        return changed;
+    }
 
     /**
      * B62-2: bounded exact forming-tail bridge at PAINT time (M19-I tail-send
@@ -9900,6 +10097,11 @@
      */
     Chart.prototype._m19iExactTailPaint = function() {
         if (!_m19iExactTailPaintEnabled()) return false;
+        if (!_m19iFamilyTailOwnershipEnabled() && this._m19iB66LifecycleInstalled) {
+            // Runtime ON→OFF cleanup only. A chart that started OFF has no B66
+            // fields or listeners, preserving the exact b63 state surface.
+            _m19iB66CancelReconcile(this, false);
+        }
         if (this._m19iExactTailPaintBusy) return false;
         if (!this.indicators || !Array.isArray(this.indicators.active)
             || !this.indicators.active.length) return false;
@@ -9909,6 +10111,9 @@
         _m19iB62ObserveData(this);
         var fp = this._m19iExactTailPaintFp();
         var rv = this._indicatorRenderVersion || 0;
+        if (_m19iFamilyTailOwnershipEnabled()) {
+            return _m19iB66PaintInstances(this, fp, rv);
+        }
         if (_m19iB62GenOf(this) >= Number.MAX_SAFE_INTEGER) {
             _m19iB62Stats(this).exactTailSkips++;
             this._m19iExactTailFailFp = fp;
@@ -10298,7 +10503,9 @@
                 chart._m19iB62PendingFreshFp = null;
             }
             if (wantFull) {
-                if (typeof chart.recalculateIndicatorsAsync === 'function') {
+                if (_m19iFamilyTailOwnershipEnabled()) {
+                    _m19iB66RequestReconcile(chart, false);
+                } else if (typeof chart.recalculateIndicatorsAsync === 'function') {
                     try { chart.recalculateIndicatorsAsync(); } catch (_) {}
                 } else if (typeof chart.recalculateIndicators === 'function') {
                     try { chart.recalculateIndicators(); } catch (_) {}
@@ -10403,7 +10610,8 @@
             }
             if (_m19iExactTailPaintEnabled()
                 && chart._m19iB62PendingFreshFp != null
-                && !_m19iB62SyncFamily(ind)) {
+                && !_m19iB62SyncFamily(ind)
+                && !(_m19iFamilyTailOwnershipEnabled() && _m19iB66Proof(ind))) {
                 // A B62 paint-time fallback requested exact freshness for this
                 // identity. Keep the accepted I-f tail bridge/post path active,
                 // but also force the follow-up full async pass that owns exact
@@ -10423,7 +10631,13 @@
         // Legacy worker-skip types (I-c OFF) stay stale on this pass exactly
         // like b57; a later full recalc refreshes them.
         var coverageComplete = uncovered.length === 0 && !needsFullAsync;
-        if (needsFullAsync) chart._m19iCoalesceFullAsync = true;
+        if (needsFullAsync) {
+            if (_m19iFamilyTailOwnershipEnabled()) {
+                _m19iB66RequestReconcile(chart, false);
+            } else {
+                chart._m19iCoalesceFullAsync = true;
+            }
+        }
 
         // I-f: synchronously commit bounded main-thread tail results for the
         // worker-eligible series BEFORE any paint can observe the new bars.

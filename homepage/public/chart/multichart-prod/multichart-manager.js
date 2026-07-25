@@ -516,6 +516,13 @@
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
         }
+        try {
+            const panelWindow = c.frame && c.frame.contentWindow;
+            const panelChart = panelWindow && panelWindow.chart;
+            if (panelChart && typeof panelChart._m19iB66RetireIndicatorReconcile === 'function') {
+                panelChart._m19iB66RetireIndicatorReconcile();
+            }
+        } catch (_) { /* cross-origin/partial iframe teardown still proceeds */ }
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
