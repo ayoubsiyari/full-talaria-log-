@@ -1,0 +1,48 @@
+# TEST checkpoint deployment
+
+Run this workflow only from the deployment-tooling checkout on the TEST VPS. It
+creates a detached worktree from the pushed source tag, performs strict chart
+and homepage builds, publishes both images, resolves repository digests, creates
+the uniformity proof and provenance manifest, and delegates recreation and
+runtime checks to `scripts/deploy.sh`.
+
+```bash
+bash ./scripts/deploy-test-checkpoint.sh \
+  --source-tag=d034-20260725b66-source \
+  --build-id=20260725b66 \
+  --checkpoint=CKPT-66 \
+  --registry=localhost:5000/talaria \
+  --rollback-manifest=/var/lib/talaria/checkpoints/previous.provenance.json \
+  --public-origin=https://test.example.invalid \
+  --compose-project=talaria-test
+```
+
+Use the TEST registry namespace configured for the VPS. A host-local registry is
+supported if Docker can pull from it. The workflow pushes a temporary build tag
+but deploys only its resolved `@sha256` reference. Remote-registry authentication
+must already be configured in the platform credential store.
+
+Append `--dry-run` first. Dry-run verifies CLI syntax, the pushed remote tag, and
+the accepted rollback manifest without creating files, worktrees, images, or
+containers.
+
+Evidence and the retained deployment worktree are stored below
+`.checkpoint-test/<build-id>/` by default. A lock rejects concurrent runs for the
+same build. Interrupted runs retain evidence and can be rerun; completed build
+IDs fail closed rather than overwriting provenance. Use `--state-root` for a
+persistent operations directory.
+The required `--compose-project` value must contain `test`; production-looking
+or implicit project names fail before any Docker command runs.
+
+The default direct-origin mode resolves the homepage container address after
+recreation. Public and direct checks fetch static host, iframe, and engine assets,
+so login redirects cannot cause false timeouts. An authenticated browser check
+remains available directly with `--browser-authenticated=1`.
+
+Success output includes source tag/SHA, build ID, image digests, evidence paths,
+and an exact `--deploy-existing` rollback command using the previous accepted
+manifest. Keep each manifest beside its uniformity proof.
+
+There is no option to disable provenance, source-tag, digest, rollback,
+authentication, or runtime guards. The workflow does not perform SSH and must
+not be given host credentials.

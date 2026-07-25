@@ -3,21 +3,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import {
   loadManifest,
   verifyRuntimeSnapshot,
 } from './lib/checkpoint-provenance.mjs';
-
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, '..');
-const harnessPackage = path.join(
-  repoRoot,
-  'chart v 1.4/chart/multichart-prod/harness/package.json',
-);
-const harnessRequire = createRequire(harnessPackage);
-const puppeteer = harnessRequire('puppeteer');
 
 function parseArgs(argv) {
   const result = {};
@@ -159,17 +148,27 @@ async function probeSurface(browser, origin, expectedBuildId, nonce) {
     '/chart/multichart-prod/harness/serve.mjs',
     nonce,
   );
-  const browserRuntime = await readBrowserRuntime(browser, origin, nonce);
+  const embedBuildId = match(
+    embed.text,
+    /window\.__TALARIA_CHART_BUILD_ID\s*=\s*p\.get\('v'\)\s*\|\|\s*'([^']+)'/,
+    'embed build id',
+  );
+  // Static mode is intentional for login-gated TEST surfaces: it proves the
+  // host, iframe payload, and engine without waiting on an authenticated app
+  // redirect. An explicitly authenticated browser run remains available.
+  const browserRuntime = browser
+    ? await readBrowserRuntime(browser, origin, nonce)
+    : {
+        hostBuildId: shellBuildId,
+        frameBuildIds: [embedBuildId],
+        frameUrls: [embed.url],
+      };
 
   return {
     origin,
     shellBuildId,
     moduleQueryBuildId,
-    embedBuildId: match(
-      embed.text,
-      /window\.__TALARIA_CHART_BUILD_ID\s*=\s*p\.get\('v'\)\s*\|\|\s*'([^']+)'/,
-      'embed build id',
-    ),
+    embedBuildId,
     engineBuildId: match(
       engine.text,
       /const CHART_ENGINE_BUILD = '([^']+)'/,
@@ -213,10 +212,21 @@ const { manifest } = loadManifest(manifestPath);
 const directOrigin = normalizeOrigin(args.direct);
 const publicOrigin = normalizeOrigin(args.public);
 const nonce = `${Date.now()}-${process.pid}`;
-const browser = await puppeteer.launch({
-  headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-});
+let browser = null;
+if (args['browser-authenticated'] === '1') {
+  const { createRequire } = await import('node:module');
+  const { fileURLToPath } = await import('node:url');
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const harnessPackage = path.join(
+    path.resolve(scriptDir, '..'),
+    'chart v 1.4/chart/multichart-prod/harness/package.json',
+  );
+  const puppeteer = createRequire(harnessPackage)('puppeteer');
+  browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+}
 
 try {
   const snapshot = {
@@ -232,5 +242,5 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
 } finally {
-  await browser.close();
+  if (browser) await browser.close();
 }
