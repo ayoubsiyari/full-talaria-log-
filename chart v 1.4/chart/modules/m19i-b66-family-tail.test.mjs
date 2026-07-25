@@ -7,7 +7,18 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..', '..', '..');
+function findRepoRoot(start) {
+  let dir = start;
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, 'chart v 1.4'))
+      && fs.existsSync(path.join(dir, 'homepage'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(`repository root not found from ${start}`);
+}
+const ROOT = findRepoRoot(HERE);
 const PRODUCT = path.join(HERE, 'chart-indicators-full.js');
 const PERF = path.join(HERE, 'indicator-performance.js');
 const WORKER = path.join(HERE, '..', 'workers', 'indicator-worker.js');
