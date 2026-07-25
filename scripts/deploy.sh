@@ -11,6 +11,7 @@
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+TOOL_ROOT="${TOOL_ROOT:-$ROOT}"
 cd "$ROOT"
 
 MANIFEST=""
@@ -40,21 +41,25 @@ if [ -z "${DIRECT_ORIGIN:-}" ] || [ -z "${PUBLIC_ORIGIN:-}" ]; then
   echo "ERROR: DIRECT_ORIGIN and PUBLIC_ORIGIN are required for post-deploy parity." >&2
   exit 2
 fi
+if [ "$DIRECT_ORIGIN" != "auto" ] && [[ "$DIRECT_ORIGIN" != http://* ]] \
+  && [[ "$DIRECT_ORIGIN" != https://* ]]; then
+  echo "ERROR: DIRECT_ORIGIN must be auto or an HTTP(S) origin." >&2
+  exit 2
+fi
 
-RUNTIME_PROBE="$ROOT/scripts/checkpoint-runtime-probe.mjs"
-PUPPETEER_DIR="$ROOT/chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer"
-if [ ! -f "$RUNTIME_PROBE" ] || [ ! -d "$PUPPETEER_DIR" ]; then
-  echo "ERROR: runtime probe/Puppeteer prerequisite is missing; stop before deployment." >&2
+RUNTIME_PROBE="$TOOL_ROOT/scripts/checkpoint-runtime-probe.mjs"
+if [ ! -f "$RUNTIME_PROBE" ]; then
+  echo "ERROR: runtime probe is missing; stop before deployment." >&2
   exit 2
 fi
 
 echo "=== immutable checkpoint preflight ==="
-node "$ROOT/scripts/checkpoint-provenance.mjs" preflight \
+node "$TOOL_ROOT/scripts/checkpoint-provenance.mjs" preflight \
   --manifest="$MANIFEST" \
   --repo-root="$ROOT"
 
 mapfile -t PROVENANCE_FIELDS < <(
-  node "$ROOT/scripts/checkpoint-provenance.mjs" fields --manifest="$MANIFEST"
+  node "$TOOL_ROOT/scripts/checkpoint-provenance.mjs" fields --manifest="$MANIFEST"
 )
 if [ "${#PROVENANCE_FIELDS[@]}" -ne 6 ]; then
   echo "ERROR: provenance field extraction failed." >&2
@@ -83,7 +88,7 @@ echo "=== pull exact candidate image digests (NO BUILD) ==="
 docker compose pull trading-chart trading-chart-worker homepage
 
 echo "=== disposable image uniformity preflight ==="
-node "$ROOT/scripts/checkpoint-image-preflight.mjs" --manifest="$MANIFEST"
+node "$TOOL_ROOT/scripts/checkpoint-image-preflight.mjs" --manifest="$MANIFEST"
 
 echo "=== recreate exact checkpoint services (NO BUILD) ==="
 docker compose up -d --no-build --no-deps trading-chart trading-chart-worker homepage
@@ -103,6 +108,19 @@ homepage_image_id="$(docker inspect --format '{{.Image}}' "$homepage_container_i
 if [ "$homepage_image_id" != "$EXPECTED_HOMEPAGE_IMAGE_ID" ]; then
   echo "ERROR: homepage is not running expected digest $EXPECTED_HOMEPAGE_DIGEST." >&2
   exit 1
+fi
+if [ "$DIRECT_ORIGIN" = "auto" ]; then
+  homepage_ip="$(
+    docker inspect --format \
+      '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' \
+      "$homepage_container_id" | awk 'NF { print; exit }'
+  )"
+  if [ -z "$homepage_ip" ]; then
+    echo "ERROR: could not resolve recreated homepage container direct origin." >&2
+    exit 1
+  fi
+  DIRECT_ORIGIN="http://$homepage_ip"
+  echo "Refreshed direct origin: $DIRECT_ORIGIN"
 fi
 
 RUNTIME_REPORT="${CHECKPOINT_RUNTIME_REPORT:-$ROOT/backups/checkpoint-runtime-${CHART_BUILD_ID}.json}"
