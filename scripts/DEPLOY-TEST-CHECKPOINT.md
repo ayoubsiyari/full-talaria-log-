@@ -1,5 +1,28 @@
 # TEST checkpoint deployment
 
+## Stable operator command
+
+Use `ckpt-ship.sh` for new checkpoints:
+
+```bash
+bash ./scripts/ckpt-ship.sh --checkpoint=CKPT-69 --build-id=20260725b69 --plan
+bash ./scripts/ckpt-ship.sh --checkpoint=CKPT-69 --build-id=20260725b69
+```
+
+It fixes TEST to `http://31.97.192.82:3000` and the existing `talaria` Compose
+project, verifies that the pushed annotated source tag peels to pushed HEAD, and
+selects the latest prior accepted manifest as rollback. Use
+`--rollback-build-id=<id>` to override that selection, `--create-source-tag=<tag>`
+to create and push the annotated source tag, and `--no-build` only when both
+strictly labelled build-ID images are already published. Under SSH it refuses
+to run outside tmux. Evidence and `SHIP-LOG-<build-id>.txt` remain under the
+external state root.
+
+`deploy-test-checkpoint.sh` remains the compatible low-level engine and accepted
+manifest rollback entry point. Existing automation may keep its explicit
+arguments; operators should migrate to `ckpt-ship.sh`. There is no guard-off or
+force translation.
+
 Run this workflow only from the deployment-tooling checkout on the TEST VPS. It
 creates a detached worktree from the pushed source tag, performs strict chart
 and homepage builds, publishes both images, resolves repository digests, creates
