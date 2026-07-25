@@ -140,6 +140,15 @@ mapfile -t ROLLBACK_MANIFESTS < <(
 ROLLBACK_MANIFEST="${ROLLBACK_MANIFESTS[0]}"
 node "$ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
   --manifest="$ROLLBACK_MANIFEST" >/dev/null
+ROLLBACK_MANIFEST_BUILD_ID="$(
+  node - "$ROLLBACK_MANIFEST" <<'NODE'
+const fs = require('fs');
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(manifest.buildId || '');
+NODE
+)"
+[[ "$ROLLBACK_MANIFEST_BUILD_ID" == "$ROLLBACK_BUILD_ID" ]] \
+  || die "rollback manifest build ID mismatch: requested $ROLLBACK_BUILD_ID, manifest has $ROLLBACK_MANIFEST_BUILD_ID"
 
 RUN_DIR="$STATE_ROOT/$BUILD_ID"
 LOG="$RUN_DIR/SHIP-LOG-$BUILD_ID.txt"
@@ -168,6 +177,7 @@ else
     bash "$ROOT/scripts/deploy-test-checkpoint.sh"
     "--source-tag=$SOURCE_TAG" "--build-id=$BUILD_ID" "--checkpoint=$CHECKPOINT"
     "--registry=$REGISTRY" "--rollback-manifest=$ROLLBACK_MANIFEST"
+    "--rollback-build-id=$ROLLBACK_BUILD_ID"
     "--public-origin=$PUBLIC_ORIGIN" "--compose-project=$COMPOSE_PROJECT"
     "--state-root=$STATE_ROOT" "--remote=$REMOTE"
   )
