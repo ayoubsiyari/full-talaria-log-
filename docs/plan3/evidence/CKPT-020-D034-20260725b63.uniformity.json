@@ -1,0 +1,207 @@
+{
+  "signature": "TALARIA_CHECKPOINT_UNIFORMITY_V1",
+  "expectedBuildId": "20260725b63",
+  "sourceSha": "0048865cf0b58a9c4bc552e56822c914089fae52",
+  "ok": true,
+  "checks": [
+    {
+      "name": "canonical dist window build",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical dist drawing module query",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical dist cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage dist window build",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage dist drawing module query",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage dist cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "live source window build",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "live source drawing module query",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "live source cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical engine",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage engine",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical embed default",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical embed cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage embed default",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage embed cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical harness",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage harness",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical SW",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical dist SW",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage SW",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage dist SW",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "live SW",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "canonical legacy cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "homepage legacy cache ids",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 dist-v9 (8 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 modules (174 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 workers (3 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 vendor (2 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 fonts (42 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 multichart-prod (59 files)",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 chart.js",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 legacy-index.html",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    },
+    {
+      "name": "I8 sw.js",
+      "actual": "20260725b63",
+      "expected": "20260725b63",
+      "ok": true
+    }
+  ],
+  "failures": []
+}
