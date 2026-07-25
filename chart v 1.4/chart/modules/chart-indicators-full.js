@@ -9586,7 +9586,13 @@
             if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
             if (typeof chart.bumpIndicatorRenderVersion === 'function') chart.bumpIndicatorRenderVersion();
             syncReplayLegendAfterIndicatorRecalc(chart);
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            // updateChartData paints this synchronous host generation immediately
+            // after returning. Avoid a second full synchronous replay render here.
+            // Embed-lite, async I-f OFF, and kill-switch OFF never set the hold.
+            if (!chart._m20HostIndicatorAtomicPaintPending
+                && typeof chart.scheduleRender === 'function') {
+                chart.scheduleRender();
+            }
         };
 
         if (_m19ifFrameCoherentEnabled()) {

@@ -3751,7 +3751,28 @@ class ReplaySystem {
         }
 
         if (typeof chart.scheduleReplayIndicatorRecalc === 'function') {
-            chart.scheduleReplayIndicatorRecalc(effectivePlaying);
+            const atomicHostPaint = effectivePlaying
+                && (typeof window === 'undefined'
+                    || window.__TALARIA_DISABLE_M20_HOST_INDICATOR_ATOMIC_PAINT_V1 !== true)
+                && (typeof chart._isMultichartEmbedPanel !== 'function'
+                    || !chart._isMultichartEmbedPanel());
+            const hadAtomicHostPaintOwner = atomicHostPaint
+                && Object.prototype.hasOwnProperty.call(chart, '_m20HostIndicatorAtomicPaintPending');
+            const priorAtomicHostPaintOwner = atomicHostPaint
+                ? chart._m20HostIndicatorAtomicPaintPending
+                : undefined;
+            if (atomicHostPaint) chart._m20HostIndicatorAtomicPaintPending = true;
+            try {
+                chart.scheduleReplayIndicatorRecalc(effectivePlaying);
+            } finally {
+                if (atomicHostPaint) {
+                    if (hadAtomicHostPaintOwner) {
+                        chart._m20HostIndicatorAtomicPaintPending = priorAtomicHostPaintOwner;
+                    } else {
+                        delete chart._m20HostIndicatorAtomicPaintPending;
+                    }
+                }
+            }
             return;
         }
 
