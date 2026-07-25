@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const workflowPath = path.join(root, 'scripts/deploy-test-checkpoint.sh');
 const deployPath = path.join(root, 'scripts/deploy.sh');
+const profilesPath = path.join(root, 'scripts/test-deployment-profiles.json');
 
 function run(command, cwd, env = {}) {
   const result = spawnSync(command[0], command.slice(1), {
@@ -46,13 +47,37 @@ test('checkpoint wrapper is fail-closed and never handles passwords', () => {
 
 test('invalid inputs are rejected before tools or deployment are invoked', () => {
   const source = fs.readFileSync(workflowPath, 'utf8');
-  const testTarget = source.indexOf('--compose-project must explicitly name a TEST project');
+  const testTarget = source.indexOf('public origin and Compose project are not an exact committed TEST profile');
   const validation = source.indexOf('invalid or missing --source-tag');
   const toolChecks = source.indexOf('for tool in git node docker sha256sum');
   const deployment = source.indexOf('deploy through guarded deploy.sh');
   assert.ok(testTarget >= 0 && testTarget < validation);
   assert.ok(validation >= 0 && validation < toolChecks && toolChecks < deployment);
   assert.match(source, /--compose-project='\$COMPOSE_PROJECT_NAME'/);
+});
+
+test('exact TEST profile binds origin to existing talaria project only', () => {
+  const document = JSON.parse(fs.readFileSync(profilesPath, 'utf8'));
+  assert.equal(document.schema, 'talaria.test-deployment-profiles/v1');
+  const allowed = (origin, project) => document.profiles.filter(
+    (profile) => profile.publicOrigin === origin && profile.composeProject === project,
+  ).length === 1;
+  assert.equal(allowed('http://31.97.192.82:3000', 'talaria'), true);
+  assert.equal(allowed('http://31.97.192.82:3000', 'talaria-test'), false);
+  assert.equal(allowed('https://talaria-log.com', 'talaria'), false);
+  assert.equal(allowed('http://31.97.192.82:3000', 'production'), false);
+});
+
+test('existing TEST stack inventory is checked before any build or deploy mutation', () => {
+  const source = fs.readFileSync(workflowPath, 'utf8');
+  const service = source.indexOf('ps -q "$service"');
+  const volume = source.indexOf('docker volume inspect');
+  const network = source.indexOf('docker network inspect');
+  const profileCall = source.indexOf('verify_existing_test_project');
+  const build = source.indexOf('strict chart and homepage builds');
+  assert.ok(service >= 0 && volume > service && network > volume);
+  assert.ok(profileCall >= 0 && profileCall < build);
+  assert.doesNotMatch(source, /--provision|provision mode/);
 });
 
 test('deploy refreshes auto direct-origin after container recreation', () => {
