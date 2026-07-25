@@ -178,3 +178,46 @@ test('generated evidence defaults outside and does not dirty source', (t) => {
   assert.match(source, /STATE_ROOT="\$\{TEST_CHECKPOINT_STATE_ROOT:-\/var\/lib\/talaria\/checkpoints\}"/);
   assert.match(source, /--state-root must be outside the deployment-tooling repository/);
 });
+
+test('b69 binds the selected b68 candidate, never b68 nested b65 rollback', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'talaria-rollback-chain-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const candidate = JSON.parse(fs.readFileSync(
+    path.join(root, 'scripts/fixtures/checkpoint-provenance/green-manifest.json'),
+    'utf8',
+  ));
+  candidate.checkpoint = 'CKPT-68';
+  candidate.buildId = '20260725b68';
+  candidate.source.sha = '8'.repeat(40);
+  candidate.images.chart = {
+    ref: `registry/chart@sha256:${'8'.repeat(64)}`,
+    digest: `sha256:${'8'.repeat(64)}`,
+  };
+  candidate.images.homepage = {
+    ref: `registry/homepage@sha256:${'9'.repeat(64)}`,
+    digest: `sha256:${'9'.repeat(64)}`,
+  };
+  candidate.rollback.buildId = '20260725b65';
+  candidate.rollback.sourceSha = '5'.repeat(40);
+  const candidatePath = path.join(dir, 'b68.json');
+  fs.writeFileSync(candidatePath, JSON.stringify(candidate));
+
+  const fields = spawnSync(process.execPath, [
+    path.join(root, 'scripts/checkpoint-provenance.mjs'),
+    'fields', `--manifest=${candidatePath}`,
+  ], { encoding: 'utf8' });
+  assert.equal(fields.status, 0, fields.stderr);
+  assert.deepEqual(fields.stdout.trim().split(/\r?\n/), [
+    candidate.source.sha,
+    '20260725b68',
+    candidate.images.chart.ref,
+    candidate.images.homepage.ref,
+    candidate.images.chart.digest,
+    candidate.images.homepage.digest,
+  ]);
+
+  const source = fs.readFileSync(workflowPath, 'utf8');
+  assert.match(source, /fields \\\n\s+--manifest="\$ROLLBACK_MANIFEST"\n/);
+  assert.doesNotMatch(source, /--manifest="\$ROLLBACK_MANIFEST" --rollback/);
+  assert.match(source, /rollback manifest build ID mismatch/);
+});

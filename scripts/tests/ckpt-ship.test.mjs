@@ -65,6 +65,7 @@ esac
 `);
   fs.writeFileSync(path.join(bin, 'node'), `#!/usr/bin/env bash
 [[ "$*" == *"checkpoint-provenance.mjs validate-manifest"* ]] && exit 0
+if [[ "$1" == "-" ]]; then printf '%s' "\${MANIFEST_BUILD_ID:-20260725b68}"; exit 0; fi
 printf 'unexpected node: %s\\n' "$*" >&2
 exit 9
 `);
@@ -103,7 +104,10 @@ function invoke(harness, extra = [], env = {}) {
   ];
   const quoted = args.map((arg) => `'${arg.replaceAll("'", "'\\''")}'`).join(' ');
   const failOnce = env.FAIL_ONCE ? ` FAIL_ONCE='${env.FAIL_ONCE}'` : '';
-  const command = `export PATH='${shPath(harness.bin)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' HARNESS_CALLS='${shPath(harness.calls)}'${failOnce}; exec bash ${quoted}`;
+  const manifestBuild = env.MANIFEST_BUILD_ID
+    ? ` MANIFEST_BUILD_ID='${env.MANIFEST_BUILD_ID}'`
+    : '';
+  const command = `export PATH='${shPath(harness.bin)}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' HARNESS_CALLS='${shPath(harness.calls)}'${failOnce}${manifestBuild}; exec bash ${quoted}`;
   return spawnSync(bash, ['-c', command], {
     cwd: harness.fixture,
     encoding: 'utf8',
@@ -122,6 +126,7 @@ test('cold-shell plan and full mocked chain use exact TEST profile', (t) => {
   const plan = invoke(harness, ['--plan', '--no-build']);
   assert.equal(plan.status, 0, plan.stderr);
   assert.match(plan.stdout, /DRY RUN: mocked complete chain/);
+  assert.match(plan.stdout, /rollback:\s+20260725b68/);
   let calls = fs.readFileSync(harness.calls, 'utf8');
   assert.match(calls, /--public-origin=http:\/\/31\.97\.192\.82:3000/);
   assert.match(calls, /--compose-project=talaria/);
@@ -164,6 +169,14 @@ test('wrong digest prints the underlying manifest refusal verbatim', (t) => {
   ], { encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(`${result.stderr}${result.stdout}`, /images\.chart\.digest differs from its ref/);
+});
+
+test('explicit rollback build ID mismatch fails before the engine', (t) => {
+  const harness = makeHarness(t);
+  const result = invoke(harness, [], { MANIFEST_BUILD_ID: '20260725b65' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /requested 20260725b68, manifest has 20260725b65/);
+  assert.equal(fs.existsSync(harness.calls), false);
 });
 
 test('stable command and engine expose no guard bypass', () => {

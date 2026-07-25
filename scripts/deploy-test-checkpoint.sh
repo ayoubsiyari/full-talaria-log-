@@ -68,6 +68,7 @@ REGISTRY="${TEST_CHECKPOINT_REGISTRY:-}"
 PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-}"
 DIRECT_ORIGIN="${DIRECT_ORIGIN:-auto}"
 ROLLBACK_MANIFEST=""
+ROLLBACK_BUILD_ID=""
 REMOTE="${TEST_CHECKPOINT_REMOTE:-origin}"
 STATE_ROOT="${TEST_CHECKPOINT_STATE_ROOT:-/var/lib/talaria/checkpoints}"
 COMPOSE_PROJECT_NAME=""
@@ -93,6 +94,7 @@ Options:
   --keep-worktree                Keep the clean detached source worktree after success
   --no-build                     Reuse already-published images after digest resolution
   --deploy-existing=<manifest>   Deploy/rollback an already accepted pinned manifest
+  --rollback-build-id=<id>       Assert the selected rollback candidate identity
 
 The registry may be a remote registry or a TEST-local registry such as
 localhost:5000/talaria. Images are always pushed and consumed by repository
@@ -107,6 +109,7 @@ for arg in "$@"; do
     --checkpoint=*) CHECKPOINT="${arg#*=}" ;;
     --registry=*) REGISTRY="${arg#*=}" ;;
     --rollback-manifest=*) ROLLBACK_MANIFEST="${arg#*=}" ;;
+    --rollback-build-id=*) ROLLBACK_BUILD_ID="${arg#*=}" ;;
     --public-origin=*) PUBLIC_ORIGIN="${arg#*=}" ;;
     --direct-origin=*) DIRECT_ORIGIN="${arg#*=}" ;;
     --compose-project=*) COMPOSE_PROJECT_NAME="${arg#*=}" ;;
@@ -222,9 +225,12 @@ resolve_remote_annotated_tag "$REMOTE_URL" "$REMOTE_REF"
 ROLLBACK_FIELDS=()
 mapfile -t ROLLBACK_FIELDS < <(
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" fields \
-    --manifest="$ROLLBACK_MANIFEST" --rollback
+    --manifest="$ROLLBACK_MANIFEST"
 )
 [[ "${#ROLLBACK_FIELDS[@]}" -eq 6 ]] || die "could not extract immutable rollback fields"
+if [[ -n "$ROLLBACK_BUILD_ID" && "${ROLLBACK_FIELDS[1]}" != "$ROLLBACK_BUILD_ID" ]]; then
+  die "rollback manifest build ID mismatch: requested $ROLLBACK_BUILD_ID, manifest has ${ROLLBACK_FIELDS[1]}"
+fi
 
 RUN_DIR="$STATE_ROOT/$BUILD_ID"
 SOURCE_DIR="$RUN_DIR/source"
