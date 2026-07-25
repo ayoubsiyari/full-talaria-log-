@@ -142,7 +142,7 @@ NODE
     || die "rollback worktree is dirty"
   export DIRECT_ORIGIN PUBLIC_ORIGIN
   ROOT="$EXISTING_SOURCE" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
-    "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$DEPLOY_EXISTING"
+    bash "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$DEPLOY_EXISTING"
   printf 'Deployed accepted checkpoint %s from %s\n' "$EXISTING_BUILD" "$EXISTING_SHA"
   exit 0
 fi
@@ -201,6 +201,31 @@ fi
 mkdir -p "$RUN_DIR"
 exec 9>"$RUN_DIR/.lock"
 flock -n 9 || die "another checkpoint run is active for $BUILD_ID"
+
+PREVIOUS_SOURCE_SHA=""
+if [[ -f "$RUN_DIR/.source-sha" ]]; then
+  PREVIOUS_SOURCE_SHA="$(<"$RUN_DIR/.source-sha")"
+elif [[ -f "$MANIFEST" ]]; then
+  PREVIOUS_SOURCE_SHA="$(
+    node - "$MANIFEST" <<'NODE'
+const fs = require('fs');
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(manifest.source?.sha || '');
+NODE
+  )"
+fi
+if [[ -n "$PREVIOUS_SOURCE_SHA" && "$PREVIOUS_SOURCE_SHA" != "$SOURCE_SHA" ]]; then
+  [[ "$PREVIOUS_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] \
+    || die "existing run evidence has an invalid source SHA"
+  STALE_DIR="$RUN_DIR/stale-$PREVIOUS_SOURCE_SHA-$(date +%s)"
+  mkdir -p "$STALE_DIR"
+  for stale in "$PROOF" "$MANIFEST" "$RUN_DIR/runtime.json"; do
+    [[ ! -e "$stale" ]] || mv "$stale" "$STALE_DIR/"
+  done
+  printf 'Source changed from %s to %s; archived stale evidence in %s.\n' \
+    "$PREVIOUS_SOURCE_SHA" "$SOURCE_SHA" "$STALE_DIR"
+fi
+printf '%s\n' "$SOURCE_SHA" >"$RUN_DIR/.source-sha"
 printf '%s\n' "$$" >"$RUN_DIR/.in-progress"
 
 cleanup() {
@@ -279,7 +304,7 @@ fi
 export PUBLIC_ORIGIN
 CHECKPOINT_RUNTIME_REPORT="$RUN_DIR/runtime.json" \
   ROOT="$SOURCE_DIR" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
-  "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
+  bash "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
 
 touch "$RUN_DIR/.complete"
 ROLLBACK_COMMAND="'$ORCHESTRATOR_ROOT/scripts/deploy-test-checkpoint.sh' --deploy-existing='$ROLLBACK_MANIFEST' --public-origin='$PUBLIC_ORIGIN' --direct-origin='$DIRECT_ORIGIN' --compose-project='$COMPOSE_PROJECT_NAME' --state-root='$STATE_ROOT'"
