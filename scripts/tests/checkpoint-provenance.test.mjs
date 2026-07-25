@@ -9,6 +9,7 @@ import {
   MANIFEST_SCHEMA,
   createDeployPlan,
   loadManifest,
+  resolveAdvertisedTagCommit,
   sha256File,
   simulateLegacyTripleIncrement,
   validateManifest,
@@ -156,6 +157,35 @@ test('dirty, wrong-HEAD, and wrong-remote repository evidence fail closed', () =
   });
   assert.equal(result.ok, false);
   assert.equal(result.failures.length, 3);
+});
+
+test('annotated remote tag preflight resolves the peeled commit', (t) => {
+  const repository = fs.mkdtempSync(path.join(os.tmpdir(), 'talaria-preflight-tag-'));
+  t.after(() => fs.rmSync(repository, { recursive: true, force: true }));
+  const run = (args) => {
+    const result = spawnSync('git', args, { cwd: repository, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  run(['init', '--quiet']);
+  run(['config', 'user.name', 'Checkpoint Test']);
+  run(['config', 'user.email', 'checkpoint@example.invalid']);
+  write(path.join(repository, 'tracked.txt'), 'checkpoint\n');
+  run(['add', 'tracked.txt']);
+  run(['commit', '--quiet', '-m', 'checkpoint source']);
+  const commitSha = run(['rev-parse', 'HEAD']);
+  run(['tag', '-a', 'checkpoint-source', '-m', 'annotated source']);
+  const tagObjectSha = run(['rev-parse', 'checkpoint-source^{object}']);
+  const advertisement = run([
+    'ls-remote', repository,
+    'refs/tags/checkpoint-source', 'refs/tags/checkpoint-source^{}',
+  ]);
+  const resolved = resolveAdvertisedTagCommit(
+    advertisement,
+    'refs/tags/checkpoint-source',
+  );
+  assert.deepEqual(resolved, { tagObjectSha, commitSha, annotated: true });
+  assert.equal(run(['cat-file', '-t', resolved.commitSha]), 'commit');
 });
 
 test('uniform tree passes exact build and I8 checks', () => {
