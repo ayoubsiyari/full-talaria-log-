@@ -132,3 +132,24 @@ test('interrupted rerun archives evidence from a different source SHA', () => {
   assert.match(source, /stale-\$PREVIOUS_SOURCE_SHA-\$\(date \+%s\)/);
   assert.match(source, /SOURCE_COMMIT_SHA="\$SOURCE_SHA"/);
 });
+
+test('generated evidence defaults outside and does not dirty source', (t) => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'talaria-state-isolation-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const repository = path.join(parent, 'source');
+  const state = path.join(parent, 'state', '20260725b68');
+  fs.mkdirSync(repository);
+  run(['git', 'init', '--quiet'], repository);
+  run(['git', 'config', 'user.name', 'Checkpoint Test'], repository);
+  run(['git', 'config', 'user.email', 'checkpoint@example.invalid'], repository);
+  fs.writeFileSync(path.join(repository, 'tracked.txt'), 'source\n');
+  run(['git', 'add', 'tracked.txt'], repository);
+  run(['git', 'commit', '--quiet', '-m', 'clean source'], repository);
+  fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(path.join(state, 'uniformity.json'), '{}\n');
+  assert.equal(run(['git', 'status', '--porcelain', '--untracked-files=all'], repository), '');
+
+  const source = fs.readFileSync(workflowPath, 'utf8');
+  assert.match(source, /STATE_ROOT="\$\{TEST_CHECKPOINT_STATE_ROOT:-\/var\/lib\/talaria\/checkpoints\}"/);
+  assert.match(source, /--state-root must be outside the deployment-tooling repository/);
+});

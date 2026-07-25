@@ -208,6 +208,32 @@ export function verifyRepositoryEvidence(manifest, evidence) {
   return { ok: failures.length === 0, failures };
 }
 
+export function resolveAdvertisedTagCommit(output, remoteRef) {
+  const refs = new Map();
+  for (const line of String(output || '').split(/\r?\n/).filter(Boolean)) {
+    const [sha, ref, ...extra] = line.trim().split(/\s+/);
+    if (extra.length || !SOURCE_SHA_RE.test(sha || '')) {
+      throw new Error('remote tag advertisement contains an invalid object id or line');
+    }
+    if (ref !== remoteRef && ref !== `${remoteRef}^{}`) {
+      throw new Error(`remote tag advertisement contains unexpected ref ${ref || '<missing>'}`);
+    }
+    if (refs.has(ref)) throw new Error(`remote tag advertisement is ambiguous for ${ref}`);
+    refs.set(ref, sha);
+  }
+  const tagObjectSha = refs.get(remoteRef);
+  if (!tagObjectSha) throw new Error(`remote tag is missing: ${remoteRef}`);
+  const peeledSha = refs.get(`${remoteRef}^{}`) || null;
+  if (peeledSha === tagObjectSha) {
+    throw new Error('remote tag object and peeled target unexpectedly match');
+  }
+  return {
+    tagObjectSha,
+    commitSha: peeledSha || tagObjectSha,
+    annotated: peeledSha !== null,
+  };
+}
+
 export function createDeployPlan(manifest, { rollback = false } = {}) {
   const source = rollback
     ? {
