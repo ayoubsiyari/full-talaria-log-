@@ -136,12 +136,15 @@ const evidence = {
   generatedAt: new Date().toISOString(),
 };
 
-const evidenceDir = join(REPO_ROOT, 'docs', 'plan3', 'evidence');
-await mkdir(evidenceDir, { recursive: true });
-const evidencePath = join(evidenceDir, `W3-M21-2-BROWSER-HARNESS-${STAMP}.PRELIMINARY.json`);
-await writeFile(evidencePath, JSON.stringify(evidence, null, 2) + '\n', 'utf8');
+const evidenceDisabled = process.env.M21_2_BROWSER_HARNESS_NO_EVIDENCE === '1';
+const evidencePath = process.env.M21_2_BROWSER_HARNESS_EVIDENCE_PATH
+  || join(REPO_ROOT, 'docs', 'plan3', 'evidence', `W3-M21-2-BROWSER-HARNESS-${STAMP}.PRELIMINARY.json`);
+if (!evidenceDisabled) {
+  await mkdir(dirname(evidencePath), { recursive: true });
+  await writeFile(evidencePath, JSON.stringify(evidence, null, 2) + '\n', 'utf8');
+}
 
-console.log(`\n[run] evidence → ${evidencePath}`);
+console.log(`\n[run] evidence → ${evidenceDisabled ? 'disabled by M21_2_BROWSER_HARNESS_NO_EVIDENCE=1' : evidencePath}`);
 for (const r of runs) {
   if (r.timedOut) { console.log(`  ${r.tree}: TIMEOUT — ${r.detail}`); continue; }
   console.log(`  ${r.tree}: ${r.report.verdict} (${r.report.pass} pass / ${r.report.fail} fail)`);

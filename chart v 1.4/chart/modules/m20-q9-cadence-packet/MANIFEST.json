@@ -1,0 +1,25 @@
+{
+  "packetId": "m20-q9-cadence-packet-20260725",
+  "generatedBy": "m20-q9-cadence-rework.test.mjs",
+  "runtime": {
+    "node": "v24.15.0",
+    "platform": "win32",
+    "arch": "x64"
+  },
+  "files": {
+    "results": "RESULTS.json",
+    "report": "REPORT.md",
+    "commands": "COMMANDS.txt",
+    "externalObservation": "EXTERNAL-OBSERVATION.json"
+  },
+  "physicalHashes": {
+    "chartReplaySystemSha256": "47483a402a431fa58c606725baa95f2328ddaa4b84162df934807802d6c7dcdb",
+    "homepageReplaySystemSha256": "47483a402a431fa58c606725baa95f2328ddaa4b84162df934807802d6c7dcdb",
+    "q9CadenceTestSha256": "5428f1031a1240a32327c4b84217b63795fca1a3ace5cd886268081a17fa1b9d",
+    "resultsSha256": "286bea3e0d849d6f665924b43cced9a00bfb398cefda626ec75f9f5e3d3ef964",
+    "reportSha256": "ffc203f1f89ba30deede3b44f42cbe844b23ea511e682e72a202ba432b1d8d82",
+    "commandsSha256": "e25daa8cac22302e81f893d0a6bba5defbb241aa5963b1d140010933adebc080",
+    "externalObservationSha256": "18fb041ee27a0441b96edea2912abfa92931dc1942bbed0697a284c774c5b9c5"
+  },
+  "note": "Manifest deliberately excludes MANIFEST.json hash to avoid a self-hash cycle."
+}

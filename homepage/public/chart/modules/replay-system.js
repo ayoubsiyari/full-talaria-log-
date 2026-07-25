@@ -3855,6 +3855,7 @@ class ReplaySystem {
             for (let i = buf.length; i < end; i++) buf.push(master[i]);
         }
         this._m20Q9DropConsumerResampleCache(consumerChart);
+        this._m20Q9MarkConsumerReplayGeneration(consumerChart);
         return buf;
     }
 
@@ -3879,6 +3880,36 @@ class ReplaySystem {
         const pipeline = consumerChart.dataPipeline;
         if (pipeline && typeof pipeline.invalidateResampleCache === 'function') {
             pipeline.invalidateResampleCache();
+        }
+    }
+
+    /**
+     * Q9 keeps rawData identity stable, so replay consumers need a per-install
+     * generation to invalidate their own same-frame paint dedupe without losing
+     * the owned-prefix allocation win.
+     */
+    _m20Q9MarkConsumerReplayGeneration(consumerChart) {
+        if (!consumerChart || !this._m20Q9PrefixSliceFixEnabled()) return;
+        const prev = Number(consumerChart._m20Q9ReplayDataGeneration) || 0;
+        consumerChart._m20Q9ReplayDataGeneration = prev + 1;
+    }
+
+    /**
+     * Prepare indicator replay dedupe after the consumer has resampled the new
+     * prefix. Rewind at most one display bar so the bounded tail bridge refreshes
+     * the active bucket instead of waiting for a coarse bar-count change.
+     */
+    _m20Q9PrepareConsumerReplayRefresh(consumerChart) {
+        if (!consumerChart || !this._m20Q9PrefixSliceFixEnabled()) return;
+        const gen = Number(consumerChart._m20Q9ReplayDataGeneration);
+        if (!Number.isFinite(gen) || gen <= 0 || consumerChart._m20Q9ReplayPreparedGeneration === gen) return;
+        consumerChart._m20Q9ReplayPreparedGeneration = gen;
+        consumerChart._sessionIndReplayFp = null;
+        consumerChart._sessionIndReplayTipFp = null;
+        const snap = consumerChart._indCalcSnapshot;
+        const len = Array.isArray(consumerChart.data) ? consumerChart.data.length : 0;
+        if (snap && len > 0 && Number(snap.barCount) >= len) {
+            snap.barCount = Math.max(0, len - 1);
         }
     }
 
@@ -3999,6 +4030,7 @@ class ReplaySystem {
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
+            this._m20Q9PrepareConsumerReplayRefresh(this.chart);
             this._syncCompareOverlaysForReplay();
         } catch (error) {
             console.error('❌ Error resampling data:', error);
@@ -5763,6 +5795,7 @@ class ReplaySystem {
         if (typeof this.chart.bumpDataVersion === 'function') {
             this.chart.bumpDataVersion();
         }
+        this._m20Q9PrepareConsumerReplayRefresh(this.chart);
         this._syncCompareOverlaysForReplay();
         
         // Recalculate indicators
@@ -6445,6 +6478,7 @@ class ReplaySystem {
                     if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
                         pc._trimLastDataBarToReplayPlayhead();
                     }
+                    this._m20Q9PrepareConsumerReplayRefresh(pc);
                     appliedSlice = true;
                 }
 
@@ -7963,6 +7997,7 @@ class ReplaySystem {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            this._m20Q9PrepareConsumerReplayRefresh(chart);
             if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0 && chart.fitToView) {
                 chart.fitToView();
             }
@@ -8072,6 +8107,7 @@ class ReplaySystem {
             }
 
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            this._m20Q9PrepareConsumerReplayRefresh(chart);
             if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
@@ -8154,6 +8190,7 @@ class ReplaySystem {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            this._m20Q9PrepareConsumerReplayRefresh(chart);
         }
 
         this._applyCanonicalReplayMarkFromDetail(detail);
@@ -9000,6 +9037,7 @@ class ReplaySystem {
                     if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
                         pc._trimLastDataBarToReplayPlayhead();
                     }
+                    this._m20Q9PrepareConsumerReplayRefresh(pc);
                     appliedSlice = true;
                 } else if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
@@ -9013,6 +9051,7 @@ class ReplaySystem {
                     if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
                         pc._trimLastDataBarToReplayPlayhead();
                     }
+                    this._m20Q9PrepareConsumerReplayRefresh(pc);
                     appliedSlice = true;
                 }
 

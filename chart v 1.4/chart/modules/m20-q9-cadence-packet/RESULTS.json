@@ -1,0 +1,72 @@
+{
+  "stamp": "READY-Q9-CADENCE-FINAL-REVIEW-PENDING-INDEPENDENT-ACCEPTANCE",
+  "generatedAt": "2026-07-25T09:08:47.966Z",
+  "b63": {
+    "commit": "0048865cf0b58a9c4bc552e56822c914089fae52",
+    "replaySha256": "e461cff70a92912b3e98919d717d8de3bee543346c374af78ece40ccbab39618",
+    "redRows": {
+      "host": {
+        "steps": 72,
+        "paints": 2,
+        "maxGap": 40,
+        "firstPaint": 1,
+        "lastPaint": 41,
+        "prefixIds": 1,
+        "invalidations": 72
+      },
+      "expectedFailure": "reused prefix without Q9 replay refresh starves host indicator repaint cadence"
+    }
+  },
+  "correctedCurrent": {
+    "host": {
+      "steps": 72,
+      "paints": 72,
+      "maxGap": 1,
+      "firstPaint": 1,
+      "lastPaint": 72,
+      "prefixIds": 1,
+      "invalidations": 72
+    },
+    "acceptedFullRenderCadence": {
+      "maxGap": 1,
+      "bound": 2
+    },
+    "allocationWinRetained": true
+  },
+  "offPanelParity": {
+    "rows": [
+      {
+        "name": "off-fresh-legacy-identity-churn",
+        "pass": true,
+        "detail": ""
+      },
+      {
+        "name": "off-fresh-four-panels-not-black",
+        "pass": true,
+        "detail": ""
+      },
+      {
+        "name": "off-reload-reenter-four-panels-not-black",
+        "pass": true,
+        "detail": ""
+      },
+      {
+        "name": "off-static-mirror-own-data-not-black",
+        "pass": true,
+        "detail": "rawLen=43 dataLen=1"
+      }
+    ],
+    "blackPanelResult": "not reproduced in isolated OFF fresh/reload/re-enter/static-mirror runs"
+  },
+  "scopeSeparation": {
+    "q9AcceptanceCommands": "cadence rework harness plus existing Q9 prefix suite",
+    "m21W6Scaffold": "external checkpoint gate; Q9 does not touch M21-2 scaffold dependencies or candle-worker fixtures",
+    "b62Neighbor": "external protected neighbor; counted from its own runner/evidence, not claimed as Q9 packet rows"
+  },
+  "externalPoObservation": {
+    "classification": "declared external observation, not automated proof",
+    "q9Kill": "host replay noticeably faster; indicator lag improved approximately 70%, still present",
+    "originalProfileBlackPanels": "3 of 4 multichart panels became black and persisted in that browser profile",
+    "freshPrivateProfile": "fresh private profile restored all panels"
+  }
+}

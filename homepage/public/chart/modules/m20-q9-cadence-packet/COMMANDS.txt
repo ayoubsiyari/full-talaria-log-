@@ -1,0 +1,3 @@
+node --test --test-concurrency=1 "chart v 1.4/chart/modules/m20-q9-cadence-rework.test.mjs"
+$env:M20_Q9_CADENCE_PACKET="1"; node --test --test-concurrency=1 "chart v 1.4/chart/modules/m20-q9-cadence-rework.test.mjs"
+node --test --test-concurrency=1 "chart v 1.4/chart/modules/m20-q9-prefix-slice.test.mjs"
