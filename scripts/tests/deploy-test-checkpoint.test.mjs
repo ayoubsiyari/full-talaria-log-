@@ -20,6 +20,11 @@ function run(command, cwd, env = {}) {
   return result.stdout.trim();
 }
 
+function shellPath(value) {
+  const normalized = value.replaceAll('\\', '/');
+  return normalized.replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`);
+}
+
 test('checkpoint wrapper is fail-closed and never handles passwords', () => {
   const source = fs.readFileSync(workflowPath, 'utf8');
   assert.match(source, /--rollback-manifest is required/);
@@ -30,7 +35,10 @@ test('checkpoint wrapper is fail-closed and never handles passwords', () => {
   assert.match(source, /docker push "\$CHART_TAG"/);
   assert.match(source, /@sha256:\[a-f0-9\]\{64\}/);
   assert.match(source, /checkpoint-provenance\.mjs" create-manifest/);
-  assert.match(source, /"\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh" --manifest/);
+  assert.equal(
+    [...source.matchAll(/bash "\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh" --manifest/g)].length,
+    2,
+  );
   assert.match(source, /DRY RUN:.*no files, images, or containers changed/);
   assert.doesNotMatch(source, /password|sshpass/i);
   assert.doesNotMatch(source, /:latest/);
@@ -98,4 +106,29 @@ test('annotated source tag resolves to its peeled commit and rejects ambiguity',
   assert.match(source, /remote peeled tag is ambiguous/);
   assert.match(source, /fetched tag object differs from verified remote tag object/);
   assert.match(source, /fetched peeled commit differs from verified remote peeled commit/);
+});
+
+test('non-executable deploy script is reached through bash', (t) => {
+  const fixture = fs.mkdtempSync(path.join(root, '.talaria-deploy-mode-'));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const deploy = path.join(fixture, 'deploy.sh');
+  fs.writeFileSync(deploy, '#!/usr/bin/env bash\nprintf "%s" "$1"\n');
+  fs.chmodSync(deploy, 0o644);
+  assert.equal(fs.statSync(deploy).mode & 0o111, 0);
+  assert.equal(
+    run(['bash', shellPath(path.relative(root, deploy)), '--manifest=fixture.json'], root),
+    '--manifest=fixture.json',
+  );
+});
+
+test('interrupted rerun archives evidence from a different source SHA', () => {
+  const source = fs.readFileSync(workflowPath, 'utf8');
+  const mismatch = source.indexOf('"$PREVIOUS_SOURCE_SHA" != "$SOURCE_SHA"');
+  const archive = source.indexOf('mv "$stale" "$STALE_DIR/"');
+  const sourceMarker = source.indexOf('>"$RUN_DIR/.source-sha"');
+  const build = source.indexOf('strict chart and homepage builds');
+  assert.ok(mismatch >= 0 && mismatch < archive);
+  assert.ok(archive < sourceMarker && sourceMarker < build);
+  assert.match(source, /stale-\$PREVIOUS_SOURCE_SHA-\$\(date \+%s\)/);
+  assert.match(source, /SOURCE_COMMIT_SHA="\$SOURCE_SHA"/);
 });
