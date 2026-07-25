@@ -18,6 +18,14 @@ strictly labelled build-ID images are already published. Under SSH it refuses
 to run outside tmux. Evidence and `SHIP-LOG-<build-id>.txt` remain under the
 external state root.
 
+Set `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` in the operator
+environment, or pass an absolute `--env-file=<file>` containing all three.
+The ship log records only whether each variable came from the environment or
+env-file; values are never printed. After a guarded deployment has begun, a
+source-, proof-, manifest-, and image-matched retry may accept the allowlisted
+containers in stopped, unhealthy, or restarting state. Missing containers,
+wrong Compose project/service labels, volumes, or network still fail closed.
+
 `deploy-test-checkpoint.sh` remains the compatible low-level engine and accepted
 manifest rollback entry point. Existing automation may keep its explicit
 arguments; operators should migrate to `ckpt-ship.sh`. There is no guard-off or
