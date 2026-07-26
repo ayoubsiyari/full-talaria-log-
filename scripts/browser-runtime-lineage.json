@@ -1,0 +1,11 @@
+{
+  "schema": "talaria.browser-runtime-lineage/v1",
+  "featureLineage": [
+    "12668c87f24297e94a94eaf2456930ba822b52e5",
+    "98a41b602e986bf0ee864f4d46ad83bc9e0b2d3e",
+    "d811ba5a1",
+    "ccac99bb8"
+  ],
+  "hermeticRuntimeCommit": "be9e86140774d9353e7e367bd5745f57bec8a736",
+  "reconciliation": "ccac99bb8 is a git descendant of be9e86140, but its prior VPS artifact omitted the untracked sealed node_modules and Chrome closure; staging must copy and reseal those exact bytes."
+}

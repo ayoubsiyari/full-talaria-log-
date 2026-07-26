@@ -111,4 +111,9 @@ test('runtime pins exact module and Chrome bundle paths', () => {
     'chart v 1.4/chart/multichart-prod/harness/node_modules');
   assert.equal(pins.chromePath, 'browser/chrome-linux64/chrome');
   assert.match(pins.chromeExecutableSha256, /^[a-f0-9]{64}$/);
+  const lineage = JSON.parse(fs.readFileSync(path.join(root,
+    'scripts/browser-runtime-lineage.json'), 'utf8'));
+  assert.equal(lineage.hermeticRuntimeCommit,
+    'be9e86140774d9353e7e367bd5745f57bec8a736');
+  assert.equal(lineage.featureLineage.at(-1), 'ccac99bb8');
 });
