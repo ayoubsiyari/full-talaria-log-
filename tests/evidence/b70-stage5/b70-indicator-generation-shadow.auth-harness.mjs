@@ -154,9 +154,9 @@ async function runExternalSeekLifecycle(page, diagnostics) {
           workerBusy: !!c?._indicatorWorkerBusy,
           currentIndex: c?.replaySystem?.currentIndex ?? null,
           panels,
-          terminal: !c?._indicatorWorkerBusy && panels.length > 0
+          terminal: !c?._indicatorWorkerBusy && panels.length === 2
             && panels.every((panel) => panel.committed),
-          generationFresh: panels.length > 0 && panels.every((panel, index) =>
+          generationFresh: panels.length === 2 && panels.every((panel, index) =>
             panel.generationId != null
               && panel.generationId !== probe?.preSeekGenerationIds?.[index]),
         };
