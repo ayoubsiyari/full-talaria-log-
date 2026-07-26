@@ -27,6 +27,7 @@ COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/h
 COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
+COPY ["homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs", "/homepage/public/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs"]
 WORKDIR /build/talaria-design
 ENV NODE_ENV=production
 RUN if [ "$CHECKPOINT_BUILD" = "1" ]; then \
