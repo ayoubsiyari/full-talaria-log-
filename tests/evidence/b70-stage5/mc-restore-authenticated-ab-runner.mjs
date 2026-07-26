@@ -6,7 +6,13 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { deriveSessionAssignments, readBackPanelPassports } from './session-assignment-contract.mjs';
 import { classifyPanel, strictIdentity, summarizeAb, validateLayout } from './mc-restore-evidence-model.mjs';
-import { classifyArmPanel, observableReady, stageForSnapshot } from './mc-snapshot-contract.mjs';
+import {
+  classifyArmPanel,
+  classifyOffDeadline,
+  observableReady,
+  stageForSnapshot,
+  transitionAbState,
+} from './mc-snapshot-contract.mjs';
 import { ExternalPollTimeoutError, pollExternally } from './puppeteer-external-poll.mjs';
 
 const require = createRequire(new URL(
@@ -98,6 +104,7 @@ async function snapshot(page, assignments) {
           : entry._mcRestoreAppliedGeneration,
         bars: Array.isArray(chart?.data) ? chart.data.length : 0,
         nonblack,
+        errors: win?.__mcAbObserver?.errors?.slice(-8) || [],
         expected: expectedRows[index],
       };
     });
@@ -112,12 +119,13 @@ async function snapshot(page, assignments) {
         completedGeneration: manager?._mcRestoreCompletedGeneration ?? null,
       },
       lifecycle: window.__mcAbObserver?.events?.slice(-40) || [],
+      errors: window.__mcAbObserver?.errors?.slice(-8) || [],
       panels,
     };
   }, assignments.map((row) => ({ ...row, sessionId })));
 }
 
-async function waitSnapshot(page, assignments, enabled) {
+async function waitOnSnapshot(page, assignments) {
   const started = Date.now();
   let result;
   try {
@@ -140,9 +148,53 @@ async function waitSnapshot(page, assignments, enabled) {
   return result.value.panels.map((panel) => ({
     ...panel,
     paintMs: Date.now() - started,
-    pass: classifyArmPanel({ ...panel, paintMs: Date.now() - started }, enabled,
+    pass: classifyArmPanel({ ...panel, paintMs: Date.now() - started }, true,
       strictIdentity, classifyPanel),
   }));
+}
+
+async function waitOffWitness(page, assignments) {
+  const started = Date.now();
+  let observations;
+  try {
+    await pollExternally({
+      evaluate: () => snapshot(page, assignments),
+      isTerminal: () => false,
+      timeoutMs: 10_000,
+      intervalMs: 100,
+      evaluateTimeoutMs: 5_000,
+    });
+    throw new Error('OFF bounded observer returned before its deadline');
+  } catch (error) {
+    if (!(error instanceof ExternalPollTimeoutError)) throw error;
+    observations = error.observations;
+  }
+  const verdict = classifyOffDeadline(observations);
+  if (!verdict.pass) {
+    const last = observations.at(-1)?.value || null;
+    throw new Error(`MC OFF deadline failure reason=${verdict.reason} stage=${stageForSnapshot(last)} diagnostics=${JSON.stringify({
+      elapsedMs: Date.now() - started,
+      observationCount: observations.length,
+      navigation: last?.navigation,
+      layout: last?.layout,
+      manager: last?.manager,
+      panels: last?.panels,
+      lifecycle: last?.lifecycle,
+      errors: last?.errors,
+      observationErrors: observations.filter((row) => row.error).slice(-8),
+    })}`);
+  }
+  return {
+    verdict: 'RED',
+    reason: verdict.reason,
+    elapsedMs: Date.now() - started,
+    stableMs: verdict.stableMs,
+    firstStableAtMs: verdict.firstStableAtMs,
+    deadlineAtMs: verdict.deadlineAtMs,
+    observationCount: observations.length,
+    observations,
+    snapshot: verdict.snapshot,
+  };
 }
 
 async function exercisePlayback(page) {
@@ -165,17 +217,24 @@ async function exercisePlayback(page) {
   });
 }
 
-async function runArm(browser, enabled, repetitions, assignments) {
+async function runAbProfile(browser, repetitions, assignments) {
   const page = await browser.newPage();
   let claimedClientId;
   let claimStatus;
+  let state = 'OFF_ARMED';
   try {
-    await page.evaluateOnNewDocument((flag) => {
-      window.__TALARIA_ENABLE_MC_RESTORE_V1 = flag;
-      window.__mcAbObserver = { events: [] };
+    await page.evaluateOnNewDocument(() => {
+      window.__TALARIA_ENABLE_MC_RESTORE_V1
+        = localStorage.getItem('__talaria_mc_ab_arm') === 'on';
+      window.__mcAbObserver = { events: [], errors: [] };
       const record = (type, detail = {}) => {
         window.__mcAbObserver.events.push({ type, at: performance.now(), ...detail });
       };
+      const recordError = (value) => {
+        window.__mcAbObserver.errors.push(String(value?.message || value || '').slice(0, 300));
+      };
+      addEventListener('error', (event) => recordError(event.error || event.message));
+      addEventListener('unhandledrejection', (event) => recordError(event.reason));
       addEventListener('DOMContentLoaded', () => record('domcontentloaded'));
       addEventListener('load', () => record('load'));
       addEventListener('pageshow', (event) => record('pageshow', { persisted: event.persisted }));
@@ -186,37 +245,67 @@ async function runArm(browser, enabled, repetitions, assignments) {
           record('message', { messageType: String(data.type || ''), source: data.source || null });
         }
       });
-    }, enabled);
+    });
     await login(page);
+    await page.evaluate(() => {
+      localStorage.setItem('__talaria_mc_ab_arm', 'off');
+      window.__TALARIA_ENABLE_MC_RESTORE_V1 = false;
+    });
     await seed(page, assignments);
     const claim = page.waitForResponse((response) =>
       response.url() === `${origin}/api/chart/windows/claim`
         && response.request().method() === 'POST', { timeout: 30_000 });
     const target = `${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=3v&sessionId=${sessionId}`;
+    await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+    const claimResponse = await claim;
+    const claimBody = await claimResponse.json().catch(() => null);
+    assert.equal(claimResponse.ok(), true);
+    assert.equal((claimBody?.evicted_client_ids || []).length, 0);
+    claimStatus = claimResponse.status();
+    claimedClientId = await page.evaluate(() =>
+      window.__talariaChartWindowLimit?.getClientId?.() || null);
+    assert.ok(claimedClientId, 'claim must expose releasable client identity');
+    await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
+      { timeout: 60_000 }, expectedBuild);
+
+    const off = await waitOffWitness(page, assignments);
+    state = transitionAbState(state, 'OFF_RED_WITNESSED');
+    const switchReadback = await page.evaluate(() => {
+      localStorage.setItem('__talaria_mc_ab_arm', 'on');
+      window.__TALARIA_ENABLE_MC_RESTORE_V1 = true;
+      return {
+        stored: localStorage.getItem('__talaria_mc_ab_arm'),
+        runtime: window.__TALARIA_ENABLE_MC_RESTORE_V1,
+      };
+    });
+    assert.deepEqual(switchReadback, { stored: 'on', runtime: true });
+    state = transitionAbState(state, 'ON_SWITCH_READBACK');
+
     const snapshots = [];
     for (let index = 0; index < repetitions; index += 1) {
-      if (index === 0) {
-        await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-        const claimResponse = await claim;
-        const claimBody = await claimResponse.json().catch(() => null);
-        assert.equal(claimResponse.ok(), true);
-        assert.equal((claimBody?.evicted_client_ids || []).length, 0);
-        claimStatus = claimResponse.status();
-        claimedClientId = await page.evaluate(() =>
-          window.__talariaChartWindowLimit?.getClientId?.() || null);
-        assert.ok(claimedClientId, 'claim must expose releasable client identity');
-      } else {
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 120_000 });
-      }
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 120_000 });
       await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
         { timeout: 60_000 }, expectedBuild);
-      snapshots.push(await waitSnapshot(page, assignments, enabled));
+      const onReadback = await page.evaluate(() => ({
+        stored: localStorage.getItem('__talaria_mc_ab_arm'),
+        runtime: window.__TALARIA_ENABLE_MC_RESTORE_V1,
+      }));
+      assert.deepEqual(onReadback, { stored: 'on', runtime: true });
+      snapshots.push(await waitOnSnapshot(page, assignments));
     }
+    state = transitionAbState(state, 'ON_GREEN');
     const saved = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('chart_panel_state') || 'null'));
     const passports = readBackPanelPassports(saved, assignments);
-    const playback = enabled ? await exercisePlayback(page) : null;
-    return { enabled, claimStatus, passports, snapshots, playback };
+    const playback = await exercisePlayback(page);
+    return {
+      state,
+      claimStatus,
+      passports,
+      switchReadback,
+      off,
+      on: { enabled: true, snapshots, playback },
+    };
   } finally {
     if (claimedClientId) {
       await page.evaluate(async (clientId) => {
@@ -258,14 +347,14 @@ export async function main(argv = process.argv.slice(2)) {
     await login(bootstrap);
     const assignments = await fixture(bootstrap);
     await bootstrap.close();
-    const off = await runArm(browser, false, 1, assignments);
-    const on = await runArm(browser, true, runs, assignments);
-    const offClassified = off.snapshots[0].map((panel) => ({ pass: panel.pass }));
-    const summary = summarizeAb(offClassified, on.snapshots);
+    const result = await runAbProfile(browser, runs, assignments);
+    const summary = summarizeAb([{ pass: false }, { pass: false }, { pass: false }],
+      result.on.snapshots);
     assert.equal(summary.offRed, true, 'OFF must reproduce RED');
     assert.equal(summary.onGreen, true, 'ON must sustain ten GREEN reloads');
-    assert.equal(on.playback?.pass, true, 'play/pause-resume must advance');
-    const evidence = sanitize({ verdict: 'PASS', summary, off, on });
+    assert.equal(result.on.playback?.pass, true, 'play/pause-resume must advance');
+    assert.equal(result.state, 'COMPLETE', 'A/B state machine must complete in one profile');
+    const evidence = sanitize({ verdict: 'PASS', summary, ...result });
     fs.writeFileSync(path.join(outDir, 'mc-restore-authenticated-ab.json'),
       `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
     process.stdout.write(`${JSON.stringify(evidence)}\n`);

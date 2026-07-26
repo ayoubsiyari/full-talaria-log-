@@ -40,6 +40,11 @@ test('runner contracts pin identity, claims, cleanup, and reject old layout', ()
   assert.match(source, /pollExternally/);
   assert.match(source, /evaluateTimeoutMs: 5_000/);
   assert.match(source, /classifyArmPanel/);
+  assert.match(source, /classifyOffDeadline/);
+  assert.match(source, /isTerminal: \(\) => false/);
+  assert.match(source, /__talaria_mc_ab_arm/);
+  assert.match(source, /transitionAbState/);
+  assert.match(source, /result\.state, 'COMPLETE'/);
   assert.match(source, /MC snapshot timeout stage=/);
   assert.match(source, /strictIdentity/);
   assert.match(source, /nonblack/);
@@ -58,7 +63,7 @@ test('runner closure and reviewed version hashes are exact', () => {
   ]) {
     assert.equal(sha(path.join(root, pins[pinName].path)), pins[pinName].sha256);
   }
-  assert.deepEqual(pins.diagnosticSource.lineage, ['877fb093f', '33733b9e7']);
+  assert.deepEqual(pins.diagnosticSource.lineage, ['877fb093f', '33733b9e7', '98a41b602']);
   assert.equal(pins.diagnosticSource.upstreamRunnerSha256,
     'ffbb3cd99646348089baae6c72f524b66a82c8e44014793664778a34b5299bfd');
   for (const dependency of pins.minimalClosure) {
