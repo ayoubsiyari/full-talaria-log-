@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import puppeteer from '../../../chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
+import { evaluateBounded, pollExternally } from './puppeteer-external-poll.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const modulesDir = path.join(here, '..', '..', '..', 'chart v 1.4', 'chart', 'modules');
@@ -12,6 +13,7 @@ const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const sessionId = process.env.B70_SESSION_ID || '827';
 const expectedBuild = process.env.B70_EXPECTED_BUILD || '20260725b70';
+const baselineBuild = process.env.B70_BASELINE_BUILD || '20260725b70';
 const workloadIterations = 12;
 const evaluationTimeoutMs = Number(process.env.B70_EVALUATION_TIMEOUT_MS || 60_000);
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
@@ -62,6 +64,143 @@ async function login() {
   }, { email, password });
   if (!result.ok) throw new Error(`authentication failed: ${result.status}`);
   await page.close();
+}
+
+async function runExternalSeekLifecycle(page, diagnostics) {
+  const frameEventsBefore = diagnostics.frameEvents.length;
+  const issued = await evaluateBounded(() => page.evaluate(() => {
+    const c = window.chart;
+    const panels = Array.from(document.querySelectorAll('iframe')).map((frame) => {
+      try { return frame.contentWindow?.chart || null; } catch (_) { return null; }
+    }).filter(Boolean);
+    const replay = c.replaySystem;
+    const seekFrom = Number.isSafeInteger(replay?.currentIndex) ? replay.currentIndex : null;
+    const seekTo = seekFrom == null || !Array.isArray(replay.fullRawData)
+      ? null : Math.max(replay.sessionStartIndex || 0, seekFrom - 1);
+    const actualSeekIssued = seekTo != null && seekTo !== seekFrom
+      && typeof replay.seekTo === 'function';
+    const beforePanelCalculations = panels.map((panel) =>
+      panel._b70IndicatorGenerationShadow?.metrics?.calculationStarts ?? null);
+    const preSeekGenerationIds = panels.map((panel) =>
+      panel._b70IndicatorGenerationShadow?.currentEnvelope?.metadata?.generationId || null);
+    window.__b70ExternalHeartbeat = 0;
+    clearInterval(window.__b70ExternalHeartbeatTimer);
+    window.__b70ExternalHeartbeatTimer = setInterval(() => {
+      window.__b70ExternalHeartbeat++;
+    }, 20);
+    for (const panel of panels) {
+      panel.replaySystem.isPlaying = false;
+      panel.recalculateIndicators();
+      panel.replaySystem.isPlaying = true;
+      panel.recalculateIndicators();
+    }
+    const afterPauseResumePanelCalculations = panels.map((panel) =>
+      panel._b70IndicatorGenerationShadow?.metrics?.calculationStarts ?? null);
+    if (actualSeekIssued) replay.seekTo(seekTo);
+    else c._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
+    for (const panel of panels) {
+      panel.data = structuredClone(c.data);
+      panel.rawData = structuredClone(c.rawData || c.data);
+      panel.dataVersion = c.dataVersion;
+      panel.currentTimeframe = c.currentTimeframe;
+      panel.currentSymbol = c.currentSymbol;
+      panel.currentFileId = c.currentFileId;
+      panel.masterGeneration = c.masterGeneration;
+      panel._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
+      window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1(panel, c);
+      panel.recalculateIndicators();
+    }
+    c.recalculateIndicators();
+    window.__b70ExternalSeekProbe = {
+      actualSeekIssued,
+      seekFrom,
+      seekTo,
+      beforePanelCalculations,
+      afterPauseResumePanelCalculations,
+      preSeekGenerationIds,
+      issuedAt: performance.now(),
+    };
+    return window.__b70ExternalSeekProbe;
+  }), 15_000, 'synchronous seek dispatch');
+
+  let poll;
+  try {
+    poll = await pollExternally({
+      timeoutMs: 8_000,
+      evaluate: () => page.evaluate(() => {
+        const c = window.chart;
+        const probe = window.__b70ExternalSeekProbe;
+        const panels = Array.from(document.querySelectorAll('iframe')).map((frame) => {
+          try {
+            const panel = frame.contentWindow?.chart;
+            return panel ? {
+              connected: frame.isConnected,
+              committed: !!panel._b70HasCommittedIndicatorGeneration?.(),
+              generationId:
+                panel._b70IndicatorGenerationShadow?.currentEnvelope?.metadata?.generationId || null,
+              calculations:
+                panel._b70IndicatorGenerationShadow?.metrics?.calculationStarts ?? null,
+              valueParity: JSON.stringify(Object.values(panel.indicators?.data || {}))
+                === JSON.stringify(Object.values(c.indicators?.data || {})),
+            } : null;
+          } catch (error) {
+            return { connected: frame.isConnected, accessError: String(error) };
+          }
+        }).filter(Boolean);
+        return {
+          buildId: window.__TALARIA_CHART_BUILD_ID || null,
+          heartbeat: window.__b70ExternalHeartbeat || 0,
+          workerBusy: !!c?._indicatorWorkerBusy,
+          currentIndex: c?.replaySystem?.currentIndex ?? null,
+          panels,
+          terminal: !c?._indicatorWorkerBusy && panels.length > 0
+            && panels.every((panel) => panel.committed),
+          generationFresh: panels.length > 0 && panels.every((panel, index) =>
+            panel.generationId != null
+              && panel.generationId !== probe?.preSeekGenerationIds?.[index]),
+        };
+      }),
+      isTerminal: (value) => value.terminal && value.generationFresh,
+    });
+  } catch (error) {
+    diagnostics.externalSeek = {
+      issued,
+      observations: error.observations || [],
+      frameEvents: diagnostics.frameEvents.slice(frameEventsBefore),
+      error: String(error?.message || error),
+    };
+    const prefix = diagnostics.preflight.buildId === baselineBuild
+      ? 'NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED'
+      : 'CANDIDATE_POST_SEEK_TERMINAL_FRESHNESS_FAILED';
+    throw new Error(`${prefix}: external product-state polling found no terminal freshness witness`,
+      { cause: error });
+  } finally {
+    page.evaluate(() => clearInterval(window.__b70ExternalHeartbeatTimer)).catch(() => {});
+  }
+  const terminal = poll.value;
+  diagnostics.externalSeek = {
+    issued,
+    observations: poll.observations,
+    contextErrors: poll.contextErrors,
+    frameEvents: diagnostics.frameEvents.slice(frameEventsBefore),
+  };
+  return {
+    pauseResumePanelCalculationsStable: issued.afterPauseResumePanelCalculations.every(
+      (value, index) => value === issued.beforePanelCalculations[index]),
+    actualSeekIssued: issued.actualSeekIssued,
+    seekFrom: issued.seekFrom,
+    seekTo: issued.seekTo,
+    seekCommitted: terminal.panels.every((panel) => panel.committed),
+    seekValueParity: terminal.panels.every((panel) => panel.valueParity),
+    terminalTimedOut: false,
+    terminalCommitted: terminal.panels.map((panel) => panel.committed),
+    terminalGenerationFresh: terminal.generationFresh,
+    preSeekGenerationIds: issued.preSeekGenerationIds,
+    terminalGenerationIds: terminal.panels.map((panel) => panel.generationId),
+    externalObservationCount: poll.observations.length,
+    inPageTimerProgressed: terminal.heartbeat > 0,
+    executionContextErrors: poll.contextErrors,
+  };
 }
 
 async function runCell(enabled, indicatorCount = 1) {
@@ -221,10 +360,17 @@ async function runCell(enabled, indicatorCount = 1) {
   if (diagnostics.preflight.host.replay.seekTo !== 'function') missing.push('replay.seekTo');
   if (readyFrames.length === 0) missing.push('same-origin product iframe chart');
   if (enabled && missing.length > 0) {
+    if (diagnostics.preflight.buildId !== baselineBuild) {
+      throw new Error(
+        `CANDIDATE_STAGE5_PREREQUISITE_MISSING: build ${diagnostics.preflight.buildId}; `
+        + `missing ${missing.join(', ')}`
+      );
+    }
     await page.close();
     return {
       verdict: 'NOT-APPLICABLE',
-      prerequisite: `authenticated B71 candidate required: missing ${missing.join(', ')}`,
+      prerequisite: `baseline ${baselineBuild}: candidate execution required; `
+        + `missing ${missing.join(', ')}`,
       diagnostics,
       errors,
     };
@@ -497,104 +643,7 @@ async function runCell(enabled, indicatorCount = 1) {
     const workloadTailDataAfter = JSON.stringify(c.data[c.data.length - 1] || null);
     const workloadIndicatorDataAfter = calculationPayload();
     const workloadPaintedLagBars = paintedLagBars();
-    let lifecycle = null;
-    if (on) {
-      mark('lifecycle:start');
-      const beforePanelCalculations = panels.map(
-        (panel) => panel._b70IndicatorGenerationShadow.metrics.calculationStarts
-      );
-      const preSeekGenerationIds = panels.map((panel) =>
-        panel._b70IndicatorGenerationShadow.currentEnvelope?.metadata?.generationId || null);
-      for (const panel of panels) {
-        panel.replaySystem.isPlaying = false;
-        panel.recalculateIndicators();
-        panel.replaySystem.isPlaying = true;
-        panel.recalculateIndicators();
-      }
-      const replay = c.replaySystem;
-      const seekFrom = Number.isSafeInteger(replay?.currentIndex)
-        ? replay.currentIndex : null;
-      const seekTo = seekFrom == null || !Array.isArray(replay.fullRawData)
-        ? null
-        : Math.max(replay.sessionStartIndex || 0, seekFrom - 1);
-      const actualSeekIssued = seekTo != null && seekTo !== seekFrom
-        && typeof replay.seekTo === 'function';
-      mark('lifecycle:seek', {
-        actualSeekIssued,
-        seekFrom,
-        seekTo,
-        seekToArity: replay?.seekTo?.length ?? null,
-      });
-      if (actualSeekIssued) await bounded('lifecycle-seekTo',
-        () => replay.seekTo(seekTo), 15_000);
-      else c._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
-      await bounded('lifecycle-post-seek-frame-yield', () =>
-        new Promise((resolve) => requestAnimationFrame(resolve)), 5_000);
-      const connectedPanels = panels.map((panel) => {
-        try {
-          return panel.ownerDocument?.defaultView?.frameElement?.isConnected === true;
-        } catch (_) {
-          return false;
-        }
-      });
-      mark('lifecycle:post-seek-frame-state', { connectedPanels });
-      if (connectedPanels.some((connected) => !connected)) {
-        throw new Error(
-          'NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED: '
-          + 'authenticated B71 candidate execution required'
-        );
-      }
-      for (const panel of panels) {
-        panel.data = structuredClone(c.data);
-        panel.rawData = structuredClone(c.rawData || c.data);
-        panel.dataVersion = c.dataVersion;
-        panel.currentTimeframe = c.currentTimeframe;
-        panel.currentSymbol = c.currentSymbol;
-        panel.currentFileId = c.currentFileId;
-        panel.masterGeneration = c.masterGeneration;
-        panel._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
-        window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1(panel, c);
-        panel.recalculateIndicators();
-      }
-      c.recalculateIndicators();
-      let terminalWaitIterations = 0;
-      for (; terminalWaitIterations < 500; terminalWaitIterations++) {
-        const terminal = !c._indicatorWorkerBusy && panels.every((panel) =>
-          panel._b70HasCommittedIndicatorGeneration());
-        if (terminal) break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      const terminalGenerationIds = panels.map((panel) =>
-        panel._b70IndicatorGenerationShadow.currentEnvelope?.metadata?.generationId || null);
-      const terminalCommitted = panels.map((panel) =>
-        !!panel._b70HasCommittedIndicatorGeneration());
-      lifecycle = {
-        pauseResumePanelCalculationsStable: panels.every((panel, index) =>
-          panel._b70IndicatorGenerationShadow.metrics.calculationStarts
-            === beforePanelCalculations[index]),
-        seekCommitted: panels.every((panel) =>
-          panel._b70HasCommittedIndicatorGeneration()),
-        seekValueParity: panels.every((panel) =>
-          JSON.stringify(Object.values(panel.indicators?.data || {}))
-            === calculationPayload()),
-        actualSeekIssued,
-        seekFrom,
-        seekTo,
-        terminalWaitIterations,
-        terminalWaitLimit: 500,
-        terminalTimedOut: terminalWaitIterations === 500,
-        terminalCommitted,
-        terminalGenerationFresh: terminalGenerationIds.every(
-          (id, index) => id != null && id !== preSeekGenerationIds[index]
-        ),
-        preSeekGenerationIds,
-        terminalGenerationIds,
-      };
-      mark('lifecycle:done', {
-        terminalWaitIterations,
-        terminalTimedOut: terminalWaitIterations === 500,
-      });
-    }
+    const lifecycle = null;
     mark('evaluation:return');
     return {
       enabled: on,
@@ -640,29 +689,18 @@ async function runCell(enabled, indicatorCount = 1) {
       }),
     ]);
     clearTimeout(timeout);
+    if (enabled) result.lifecycle = await runExternalSeekLifecycle(page, diagnostics);
     await page.close();
     return { ...result, diagnostics, errors };
   } catch (error) {
     clearTimeout(timeout);
-    const blockedAfterSeek = enabled
-      && diagnostics.lastStage?.stage === 'lifecycle-post-seek-frame-yield:start';
-    const detachedAfterSeek = blockedAfterSeek
-      && diagnostics.frameEvents.some((event) => event.event === 'detached');
     diagnostics.timeout = {
       limitMs: evaluationTimeoutMs,
       message: String(error?.message || error),
       lastStage: diagnostics.lastStage,
       pendingOperation: diagnostics.lastStage?.stage || 'evaluation-dispatch',
-      eventLoopProgressedAfterSeek: false,
-      frameDetachedAfterSeek: detachedAfterSeek,
     };
     await closeBounded(page);
-    if (blockedAfterSeek) {
-      error.message = 'NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED: '
-        + 'B70 post-seek rAF and timeout callbacks did not run'
-        + (detachedAfterSeek ? ' and its product iframe detached; ' : '; ')
-        + 'authenticated B71 candidate execution required';
-    }
     error.b70Diagnostics = diagnostics;
     throw error;
   }
@@ -859,5 +897,5 @@ try {
   process.exitCode = notApplicable ? 2 : 1;
 } finally {
   await closeBounded(browser);
-  if (browser.connected) browser.process()?.kill();
+  browser.process()?.kill();
 }
