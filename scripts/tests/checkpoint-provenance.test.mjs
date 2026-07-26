@@ -209,10 +209,11 @@ test('uniformity proof is bound by hash, source SHA, and build id', () => {
   try {
     const proofPath = path.join(root, 'proof.json');
     write(proofPath, `${JSON.stringify({
-      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V1',
+      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V2',
       ok: true,
       expectedBuildId: greenManifest.buildId,
       sourceSha: greenManifest.source.sha,
+      forwardingMirrors: [],
     })}\n`);
     const manifestPath = path.join(root, 'manifest.json');
     const manifest = structuredClone(greenManifest);
