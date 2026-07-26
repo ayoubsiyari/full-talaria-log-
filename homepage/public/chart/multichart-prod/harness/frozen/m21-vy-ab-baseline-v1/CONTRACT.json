@@ -1,0 +1,182 @@
+{
+  "contractId": "m21-vy-ab-baseline-v1",
+  "status": "PENDING-GPT-FRESH-BASELINE-ACCEPTANCE",
+  "frozenAtUtc": "2026-07-24T12:54:43.231Z",
+  "noGreenClaim": true,
+  "noAcceptedRedClaim": true,
+  "noProductEdits": true,
+  "buildPin": {
+    "expectedBuildId": "20260724b61",
+    "deployedOrigin": "http://31.97.192.82:3000"
+  },
+  "protocol": {
+    "speeds": [
+      15,
+      60,
+      100
+    ],
+    "playMsFixed": 20000,
+    "primaryType": "tema",
+    "primaryTypeSource": "default:tema-provisional-most-sensitive",
+    "pairing": "sortY-at-priceX",
+    "maxAttemptsPerSpeed": 5,
+    "targetDensityOk": 3,
+    "densityOkRule": "evaluated>=60 AND oracleCoverage>=0.5",
+    "auth": "none (measurement 1a separate)",
+    "predocOnRedBaseline": "omit M21_VY_PREDOC_FLAGS (noop)"
+  },
+  "thresholds": {
+    "minEvaluatedSamples": 60,
+    "maxYPx": 2.5,
+    "maxValueAbs": 0.00001,
+    "maxValueRel": 0.000001,
+    "maxStaleRatio": 0.08,
+    "maxConsecStaleBusy": 1,
+    "minOracleCoverage": 0.5,
+    "dataArrayOracleForbidden": true,
+    "pixelOccupancyAloneForbidden": true,
+    "provenance": {
+      "sourceEvidence": "docs/plan3/evidence/W5-GPT56-M21-VY-b61-RERUN-3Q.json",
+      "sourceField": "thresholds",
+      "matchesProbeDefaults": true
+    }
+  },
+  "thresholdEvidenceSha256": "1eb4bf56d68d4ceed57a62413ac16d4e339b2f0a43f2c3d5e7799d87ade010a3",
+  "sortYPolicy": {
+    "method": "sortY-at-priceX",
+    "note": "Five tip-column strokes paired to five expected tips by sorted Y; never nearest-expected-Y."
+  },
+  "predocAllowlist": [
+    "__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1",
+    "__TALARIA_DISABLE_M19I_TAIL_SEND_V1",
+    "__TALARIA_DISABLE_M19I_SYNCONLY_TAIL_V1",
+    "__TALARIA_DISABLE_M19I_WORKER_PORT_V1",
+    "__TALARIA_DISABLE_M19I_FORCE_DEDUPE_V1",
+    "__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1",
+    "__TALARIA_DISABLE_M19I_TICK_COHERENT_V1"
+  ],
+  "abSwitchOnly": "__TALARIA_DISABLE_M19I_EXACT_TAIL_PAINT_V1",
+  "pins": {
+    "probeSha256": "b1a5438d1e57f85f7fd9dd2d09dc3e7337c6e8eedff43b1fc0876cc1bfdbe984",
+    "probeGitBlobSha1": "f2b3dc92655911c2dc02242a832597542b3fa3f7",
+    "predocSha256": "38cace82a6a3295423211347ec83edcdf923c3fb6e96719e1d18fc516350b3bf",
+    "adapterSha256": "0eae0e9fb9b3853045a140d2e062322126b0a0d570ac4e4a3a9cdf473c5931f2",
+    "oracleSelftestSha256": "eb1b0160689521cbc89e6b6ecbc05ce327b49c26815b2c14c6d7584fc849cd66",
+    "oracleSelftestGitBlobSha1": "e665629e46a38033e9511fd0bfc28d850db8b8f9"
+  },
+  "dualTreeLive": {
+    "homepageProbeSha256": "b1a5438d1e57f85f7fd9dd2d09dc3e7337c6e8eedff43b1fc0876cc1bfdbe984",
+    "v14ProbeSha256": "b1a5438d1e57f85f7fd9dd2d09dc3e7337c6e8eedff43b1fc0876cc1bfdbe984",
+    "homepagePredocSha256": "38cace82a6a3295423211347ec83edcdf923c3fb6e96719e1d18fc516350b3bf",
+    "liveEqualsFrozenProbe": true,
+    "dualTreeIdentical": true
+  },
+  "blobs": {
+    "m19i-b62-exact-tail-vy-adapter.mjs": {
+      "sha256": "0eae0e9fb9b3853045a140d2e062322126b0a0d570ac4e4a3a9cdf473c5931f2",
+      "gitBlobSha1": "0956f422c9ba941ec6c4c831726bf602e699c8e7",
+      "bytes": 11861
+    },
+    "m21-painted-endpoint-value-y-auth-bound-runner.mjs": {
+      "sha256": "829dfab7c9bf8429d21cf41ad154c983859e2ada49dfac216a1df59e11392f59",
+      "gitBlobSha1": "a33527be19784242dddd71cb4b64801b29229c5e",
+      "bytes": 15645
+    },
+    "m21-painted-endpoint-value-y-causal-trace.mjs": {
+      "sha256": "60fa1c470a16019fe5ab216df8e9135865eda2db492e0c7294315d235ccc6abb",
+      "gitBlobSha1": "7240d042d1068b10c614ff11a710ab7f8135d467",
+      "bytes": 43143
+    },
+    "m21-painted-endpoint-value-y-oracle-selftest.mjs": {
+      "sha256": "eb1b0160689521cbc89e6b6ecbc05ce327b49c26815b2c14c6d7584fc849cd66",
+      "gitBlobSha1": "e665629e46a38033e9511fd0bfc28d850db8b8f9",
+      "bytes": 12711
+    },
+    "m21-painted-endpoint-value-y-red-probe.mjs": {
+      "sha256": "b1a5438d1e57f85f7fd9dd2d09dc3e7337c6e8eedff43b1fc0876cc1bfdbe984",
+      "gitBlobSha1": "f2b3dc92655911c2dc02242a832597542b3fa3f7",
+      "bytes": 85220
+    },
+    "m21-vy-predoc-flags-smoke.mjs": {
+      "sha256": "2a7a94113db8f948af77673707077110222cbdfe3909a4b4ccda0e31d16265b3",
+      "gitBlobSha1": "64e0586f2114a84d418dd8d9e655022a30e8f911",
+      "bytes": 5362
+    },
+    "m21-vy-predoc-flags.mjs": {
+      "sha256": "38cace82a6a3295423211347ec83edcdf923c3fb6e96719e1d18fc516350b3bf",
+      "gitBlobSha1": "332498a89e12b69fe254706231c44a667c66acd1",
+      "bytes": 8984
+    },
+    "m21-vy-predoc-flags.test.mjs": {
+      "sha256": "6d2f53ec77b2419dbe82413077236f7cbf6a46b83f13c26d3135ba3da01b6d49",
+      "gitBlobSha1": "b458786b22fd95c8de79f2efe6096dd80f681f20",
+      "bytes": 7882
+    }
+  },
+  "acceptedQualifyingProbe": {
+    "executedProbeGitBlobSha1": "dbcfff6f2faec2ce93e2140639c808ae6621d2de",
+    "recovered": false,
+    "recoverySearched": [
+      "git object store",
+      "Cursor User History",
+      "agent project files",
+      "frozen blobs"
+    ],
+    "intermediateDisclosedGitBlobSha1": "887bb100cab75322322a57cbe9294c608f9d575e",
+    "currentGitBlobSha1": "f2b3dc92655911c2dc02242a832597542b3fa3f7",
+    "continuity": "BLOCKED-PROVENANCE — accepted blob unrecoverable; cannot assert measurement equivalence to ACCEPT-B61-VALUE-Y-RED qualifying set"
+  },
+  "selfTests": {
+    "predocUnitBrowser": "node m21-vy-predoc-flags.test.mjs (M21_VY_PREDOC_BROWSER=1)",
+    "oracleSelftest": "node m21-painted-endpoint-value-y-oracle-selftest.mjs",
+    "oracleSelftestMatchesGptAcceptedBlob": true
+  },
+  "eligibility": {
+    "forFutureB62AbComparison": "ONLY runs that execute this exact probeSha256 under this contractId",
+    "continuityWithAcceptedB61Red": "BLOCKED-PROVENANCE"
+  },
+  "signature": "W5 — PENDING-GPT-FRESH-BASELINE-ACCEPTANCE — blobs immutable — 20s+30s qualified",
+  "baselineRun": {
+    "evidencePath": "docs/plan3/evidence/W5-M21-VY-AB-BASELINE-v1-b61.PRELIMINARY-PENDING-GPT56-BASELINE-ACCEPTANCE.json",
+    "evidenceSha256": "ded99fc07c493b189ded0197a7dc6f7df541eebc2a1894eeb6ab63298d5dd797",
+    "completedAtUtc": "2026-07-24T12:59:34.867Z",
+    "counts": {
+      "x15": {
+        "attempts": 5,
+        "densityOk": 3,
+        "densityShort": 2,
+        "paintedFailAmongDensityOk": 1,
+        "paintedPassAmongDensityOk": 2,
+        "stoppedReason": "REACHED_3_DENSITY_OK"
+      },
+      "x60": {
+        "attempts": 3,
+        "densityOk": 3,
+        "densityShort": 0,
+        "paintedFailAmongDensityOk": 3,
+        "paintedPassAmongDensityOk": 0,
+        "stoppedReason": "REACHED_3_DENSITY_OK"
+      },
+      "x100": {
+        "attempts": 3,
+        "densityOk": 3,
+        "densityShort": 0,
+        "paintedFailAmongDensityOk": 3,
+        "paintedPassAmongDensityOk": 0,
+        "stoppedReason": "REACHED_3_DENSITY_OK"
+      }
+    },
+    "densityQualifiedAllSpeeds": true,
+    "continuityWithAcceptedB61Red": "BLOCKED-PROVENANCE",
+    "eligibleFutureB62AbPin": true
+  },
+  "historicalContinuity": "HISTORICAL-CONTINUITY-UNRECOVERED",
+  "protocolBridge30s": {
+    "evidence": "docs/plan3/evidence/W5-M21-VY-AB-BASELINE-v1-b61-30S-BRIDGE.PENDING-GPT-FRESH-BASELINE-ACCEPTANCE.json",
+    "playMs": 30000,
+    "method": "DENSITY_DIAG M21_VY_PLAY_MS_FIXED (frozen BOUNDED_MATRIX hardcodes 20000)",
+    "frozenBytesAltered": false,
+    "densityQualifiedBoundedEq": true
+  },
+  "freshAcceptancePackage": "docs/plan3/evidence/W5-M21-VY-AB-BASELINE-v1-FRESH-ACCEPTANCE.PENDING-GPT-FRESH-BASELINE-ACCEPTANCE.json"
+}
