@@ -227,3 +227,34 @@ test('manual loadFile remains on the legacy args.fileId contract', () => {
   assert.match(panelBridgeSource,
     /if \(restoreIdentity\) \{\s*throw new Error\('MC_RESTORE canonical loader did not return/);
 });
+
+test('cold restore bootstraps the exact file through the canonical panel loader before replay apply', () => {
+  assert.match(panelBridgeSource,
+    /function loadColdRestorePanelFile\(ch, fileId\)[\s\S]*ch\.loadPanelFileData\(String\(fileId\)\)/);
+  assert.match(panelBridgeSource,
+    /var coldRestore = !!\(restoreIdentity && !panelHasLoadedFile\(ch, fidStr\)\);[\s\S]*loadColdRestorePanelFile\(ch, fidStr\)/);
+  assert.match(panelBridgeSource,
+    /if \(loaded === false\) \{\s*throw new Error\('MC_RESTORE authenticated file bootstrap failed'\)/);
+});
+
+for (const failure of ['401 Unauthorized', '409 stale lease', '503 unavailable', 'partial fetch']) {
+  test(`restore bounds retries for ${failure}`, async () => {
+    const { manager } = makeRuntime({
+      panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'GBPUSD')],
+    });
+    const entry = addFakePanel(manager, 'B', '22', 0);
+    entry.ready = true;
+    const generation = begin(manager);
+    let attempts = 0;
+    manager.sendCommand = async () => {
+      attempts += 1;
+      throw new Error(failure);
+    };
+    manager.completeMcRestoreGeneration(generation, '827');
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    assert.equal(attempts, 3);
+    assert.match(entry._mcRestoreFailure, new RegExp(failure.split(' ')[0]));
+    assert.equal(entry._mcRestoreAppliedGeneration, null);
+    manager.dispose();
+  });
+}

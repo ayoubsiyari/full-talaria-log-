@@ -681,6 +681,25 @@
     }
 
     /**
+     * MC_RESTORE cold-start entry. A freshly-created iframe has no replay
+     * master to clone/apply yet, so use the same authenticated file loader as
+     * manual panel ticker assignment. That loader owns the API fetch, ingest,
+     * fullRawData seed and first paint; the restore bridge only validates its
+     * completion.
+     */
+    function loadColdRestorePanelFile(ch, fileId) {
+        if (!ch || typeof ch.loadPanelFileData !== 'function') return null;
+        var load = ch.loadPanelFileData(String(fileId));
+        if (!load || typeof load.then !== 'function') return load;
+        return load.then(function (loaded) {
+            if (loaded === false) {
+                throw new Error('MC_RESTORE authenticated file bootstrap failed');
+            }
+            return loaded;
+        });
+    }
+
+    /**
      * Load host file on an iframe tile — prefer host master clone (no server fetch).
      * Runs async; callers that need fire-and-forget should not return this promise.
      */
@@ -3184,7 +3203,11 @@
                     var primedPlayheadTs = primeIframeReplayPlayheadFromParent(ch);
                     var useMcLoader = shouldUseMultichartPanelLoader(ch);
                     var loadPromise;
-                    if (useMcLoader) {
+                    var coldRestore = !!(restoreIdentity && !panelHasLoadedFile(ch, fidStr));
+                    if (coldRestore) {
+                        loadPromise = loadColdRestorePanelFile(ch, fidStr);
+                        useMcLoader = false;
+                    } else if (useMcLoader) {
                         if (typeof ch.loadMultichartPanelFile === 'function') {
                             loadPromise = ch.loadMultichartPanelFile(fidStr, {
                                 force: !!args.force,
