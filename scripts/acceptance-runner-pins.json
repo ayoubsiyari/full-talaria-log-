@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "mcRestoreAuthenticatedAb": {
+    "path": "tests/evidence/b70-stage5/mc-restore-authenticated-ab-runner.mjs",
+    "sha256": "bda3dbedbc5a6e554683de9efda54c17bf8da84580d2fa2afa373bc3bea7dae8"
+  },
+  "indicatorLedgerShortCell": {
+    "path": "chart v 1.4/chart/multichart-prod/harness/m23-3-indicator-ledger-short-cell.mjs",
+    "sha256": "006c2de21be2f7edd4a63228f51df2b5f26def0037f27a114fca73dc432b3edd"
+  },
+  "minimalClosure": [
+    "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
+    "tests/evidence/b70-stage5/session-assignment-contract.mjs",
+    "chart v 1.4/chart/multichart-prod/harness/package.json",
+    "chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs",
+    "chart v 1.4/chart/modules/indicator-performance.js",
+    "chart v 1.4/chart/modules/chart-indicators-full.js"
+  ]
+}

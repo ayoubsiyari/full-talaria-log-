@@ -1,0 +1,12 @@
+{
+  "id": 849,
+  "config": {
+    "tickers": ["EURUSD", "GBPUSD", "AUDUSD"],
+    "files": [
+      {"id": 25, "ticker": "EURUSD", "name": "EURUSD_1min.csv", "asset_class": "Forex"},
+      {"id": 26, "ticker": "GBPUSD", "name": "GBPUSD_1min.csv", "asset_class": "Forex"},
+      {"id": 27, "ticker": "AUDUSD", "name": "AUDUSD_1min.csv", "asset_class": "Forex"}
+    ],
+    "instruments": {}
+  }
+}
