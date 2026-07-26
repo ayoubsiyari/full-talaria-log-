@@ -459,6 +459,7 @@
         // can push `window.chart` well past 5s after the iframe `load` event
         // even though init is still healthy — embed-bridge polls up to 30s.
         var BRIDGE_READY_TIMEOUT_MS = 30000;
+        var bridgeReadyTimer = null;
         frame.addEventListener('load', function () {
             scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
@@ -467,9 +468,13 @@
                 if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
                     + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
             }
-            setTimeout(function () {
+            const loadedEntry = self.charts.get(cfg.id);
+            if (loadedEntry && loadedEntry.frame === frame && loadedEntry.ready) {
+                return;
+            }
+            bridgeReadyTimer = setTimeout(function () {
                 const c = self.charts.get(cfg.id);
-                if (c && !c.ready) {
+                if (c && c.frame === frame && !c.ready) {
                     const reason = 'bridge never reported ready within '
                         + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's '
                         + '(chart.js init stalled or failed)';
@@ -483,6 +488,10 @@
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
+            const registered = self.charts.get(cfg.id);
+            if (registered && registered.frame === frame) {
+                registered.bridgeReadyTimer = bridgeReadyTimer;
+            }
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
@@ -500,6 +509,7 @@
             frame:   frame,
             overlay: overlay,
             ready:   false,
+            bridgeReadyTimer: bridgeReadyTimer,
             state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
         });
@@ -515,6 +525,10 @@
             this.charts.delete(id);
             this._log('info', 'removeChart ' + id + ' (host — DOM left intact)');
             return;
+        }
+        if (c.bridgeReadyTimer) {
+            clearTimeout(c.bridgeReadyTimer);
+            c.bridgeReadyTimer = null;
         }
         try {
             const panelWindow = c.frame && c.frame.contentWindow;
@@ -1001,6 +1015,10 @@
         switch (msg.type) {
             case 'bridge-ready':
                 if (sourceChart) {
+                    if (sourceChart.bridgeReadyTimer) {
+                        clearTimeout(sourceChart.bridgeReadyTimer);
+                        sourceChart.bridgeReadyTimer = null;
+                    }
                     sourceChart.ready = true;
                     if (sourceChart.overlay && sourceChart.overlay.parentNode) {
                         sourceChart.overlay.parentNode.removeChild(sourceChart.overlay);
@@ -1036,6 +1054,17 @@
                     try { this.onPanelCacheReady(sourceId); } catch (e) {
                         this._log('warn', 'onPanelCacheReady threw: ' + (e && e.message || e));
                     }
+                }
+                return;
+
+            case 'panel-boot-failed':
+                if (sourceChart && !sourceChart.host
+                    && (!sourceChart.frame || ev.source === sourceChart.frame.contentWindow)) {
+                    sourceChart.ready = false;
+                    sourceChart.bootFailed = true;
+                    const reason = String(msg.reason || msg.code || 'panel boot failed');
+                    this._log('error', 'panel boot failed: ' + sourceId + ' — ' + reason);
+                    try { this.onChartBootFailed(sourceId, reason, sourceChart.frame && sourceChart.frame.src); } catch (_) {}
                 }
                 return;
 

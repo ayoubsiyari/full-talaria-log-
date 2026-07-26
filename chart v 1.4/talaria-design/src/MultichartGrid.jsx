@@ -8625,6 +8625,9 @@ export default function MultichartGrid({
                         {!isReady && failure && (
                             <div
                                 className="multichart-loading-overlay multichart-error-overlay"
+                                role="alert"
+                                aria-live="assertive"
+                                aria-atomic="true"
                                 style={{ pointerEvents: "auto" }}
                             >
                                 <div className="multichart-error-title">Panel {tile.id} failed to load</div>

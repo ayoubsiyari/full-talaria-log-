@@ -36,12 +36,33 @@
      *   onLog: (entry) => void       — receives log lines for the verification panel
      *   onState: (id, state) => void — receives chart-state updates per chart
      *   onAssertion: (msg) => void   — receives assertion reports
+     *   iframeSrcBuilder: (cfg, params) => url   — optional. When set, addChart()
+     *     uses this to compute the iframe URL instead of the hardcoded sandbox
+     *     `chart-host.html?...`. Production callers pass a builder that returns
+     *     `/chart/dist-v9/index.html?multichart=1&panelId=...`. `params` is
+     *     the URLSearchParams already populated with id/tf/fileId/etc — the
+     *     builder may inspect, modify, or ignore it.
+     *     SANDBOX BEHAVIOR PRESERVED: omit the option to keep existing
+     *     chart-host.html URL.
      */
     function MultichartManager(opts) {
         this.container = opts.container;
         this.onLog    = opts.onLog    || function () {};
         this.onState  = opts.onState  || function () {};
         this.onAssertion = opts.onAssertion || function () {};
+        // Phase 7.2.4 hook: fired (with the chart id) AFTER the iframe's
+        // bridge has reported ready and the manager's loading overlay has
+        // been removed. Production callers use this to dismiss their own
+        // per-tile loading overlay (TradingView-style 3-dot indicator).
+        this.onChartReady = (typeof opts.onChartReady === 'function')
+            ? opts.onChartReady
+            : function () {};
+        this.onChartBootFailed = (typeof opts.onChartBootFailed === 'function')
+            ? opts.onChartBootFailed
+            : function () {};
+        this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
+            ? opts.iframeSrcBuilder
+            : null;
 
         this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
@@ -125,7 +146,16 @@
         mountEl.appendChild(overlay);
 
         const frame = document.createElement('iframe');
-        frame.src = 'chart-host.html?' + params.toString();
+        if (this.iframeSrcBuilder) {
+            try {
+                frame.src = this.iframeSrcBuilder(cfg, params);
+            } catch (e) {
+                this._log('error', 'iframeSrcBuilder threw for ' + cfg.id + ': ' + (e && e.message || e));
+                frame.src = 'about:blank';
+            }
+        } else {
+            frame.src = 'chart-host.html?' + params.toString();
+        }
         frame.title = 'Chart ' + cfg.id;
         frame.setAttribute('data-chart-id', cfg.id);
         // No `sandbox` attribute — iframe is same-origin (file:// or local
@@ -241,6 +271,19 @@
                     }
                     if (sourceChart.mountEl) sourceChart.mountEl.classList.add('ready');
                     this._log('info', 'bridge ready: ' + sourceId);
+                    try { this.onChartReady(sourceId); } catch (e) {
+                        this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
+                    }
+                }
+                return;
+
+            case 'panel-boot-failed':
+                if (sourceChart && !sourceChart.host) {
+                    sourceChart.ready = false;
+                    sourceChart.bootFailed = true;
+                    const reason = String(msg.reason || msg.code || 'panel boot failed');
+                    this._log('error', 'panel boot failed: ' + sourceId + ' — ' + reason);
+                    try { this.onChartBootFailed(sourceId, reason, sourceChart.frame && sourceChart.frame.src); } catch (_) {}
                 }
                 return;
 

@@ -57,6 +57,9 @@
         this.onChartReady = (typeof opts.onChartReady === 'function')
             ? opts.onChartReady
             : function () {};
+        this.onChartBootFailed = (typeof opts.onChartBootFailed === 'function')
+            ? opts.onChartBootFailed
+            : function () {};
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -271,6 +274,16 @@
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }
+                }
+                return;
+
+            case 'panel-boot-failed':
+                if (sourceChart && !sourceChart.host) {
+                    sourceChart.ready = false;
+                    sourceChart.bootFailed = true;
+                    const reason = String(msg.reason || msg.code || 'panel boot failed');
+                    this._log('error', 'panel boot failed: ' + sourceId + ' — ' + reason);
+                    try { this.onChartBootFailed(sourceId, reason, sourceChart.frame && sourceChart.frame.src); } catch (_) {}
                 }
                 return;
 

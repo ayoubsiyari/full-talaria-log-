@@ -2327,6 +2327,7 @@ class Chart {
         this.backtestingStarted = true;
 
         const sessionIdForTf = this.getActiveTradingSessionId();
+        const hostRestoreToken = this._beginMultichartHostRestore(sessionIdForTf, null);
         let initialTf = this._resolveBacktestInitialTimeframe(sessionIdForTf);
         const serverTf = await this._fetchSavedSessionTimeframe(sessionIdForTf);
         if (serverTf) initialTf = serverTf;
@@ -2368,11 +2369,21 @@ class Chart {
             alert(`No data loaded for: ${missingInstrumentData.join(', ')}. Please load data or remove these instruments from the session.`);
         }
         const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session);
+        if (hostRestoreToken != null
+            && this._multichartHostRestoreState
+            && this._multichartHostRestoreState.generation === hostRestoreToken) {
+            this._multichartHostRestoreState = Object.assign(
+                {},
+                this._multichartHostRestoreState,
+                { fileId: fileId != null ? String(fileId) : null },
+            );
+        }
         
         if (!fileId) {
             console.error('❌ No file ID provided');
             alert('No chart data file for this session. Upload a CSV for your symbol (Chart → Data), create a new session, or pick datasets in the legacy backtest setup.');
             this.backtestingStarted = false;
+            this._finishMultichartHostRestore(hostRestoreToken, 'failed', 'missing-file-id');
             return;
         }
         
@@ -2575,8 +2586,76 @@ class Chart {
             console.error('❌ Failed to load file data:', error);
             alert('Failed to load backtesting data: ' + error.message);
             this.backtestingStarted = false;
+            this._finishMultichartHostRestore(hostRestoreToken, 'failed', error);
             this.hideLoader();
         }
+    }
+
+    _multichartReloadBootGateEnabled() {
+        try {
+            return !(typeof window !== 'undefined'
+                && window.__TALARIA_DISABLE_B70_RELOAD_PANEL_BOOT_GATE_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    _beginMultichartHostRestore(sessionId, fileId) {
+        if (!this._multichartReloadBootGateEnabled()) return null;
+        let isTop = true;
+        try { isTop = window.top === window; } catch (_) {}
+        if (!isTop) return null;
+        const generation = Number(this._multichartHostRestoreGeneration || 0) + 1;
+        this._multichartHostRestoreGeneration = generation;
+        const state = {
+            generation,
+            status: 'pending',
+            sessionId: sessionId != null ? String(sessionId) : null,
+            fileId: fileId != null ? String(fileId) : null,
+            timeframe: this.currentTimeframe || null,
+            startedAt: Date.now(),
+        };
+        this._multichartHostRestoreState = state;
+        try {
+            window.dispatchEvent(new CustomEvent('talariaMultichartHostRestoreState', {
+                detail: Object.assign({}, state),
+            }));
+        } catch (_) {}
+        return generation;
+    }
+
+    _finishMultichartHostRestore(generation, status, error) {
+        if (!this._multichartReloadBootGateEnabled() || generation == null) return false;
+        const current = this._multichartHostRestoreState;
+        if (!current || current.generation !== generation || current.status !== 'pending') {
+            return false;
+        }
+        const next = Object.assign({}, current, {
+            status: status === 'ready' ? 'ready' : 'failed',
+            timeframe: this.currentTimeframe || current.timeframe || null,
+            finishedAt: Date.now(),
+            errorCode: status === 'ready'
+                ? null
+                : String((error && (error.code || error.name)) || error || 'restore-failed').slice(0, 120),
+        });
+        this._multichartHostRestoreState = next;
+        try {
+            window.dispatchEvent(new CustomEvent('talariaMultichartHostRestoreState', {
+                detail: Object.assign({}, next),
+            }));
+        } catch (_) {}
+        return true;
+    }
+
+    _publishNoSessionMultichartHostReady() {
+        if (!this._multichartReloadBootGateEnabled()) return;
+        let isTop = true;
+        try { isTop = window.top === window; } catch (_) {}
+        if (!isTop || this.getActiveTradingSessionId()) return;
+        const current = this._multichartHostRestoreState;
+        if (current && current.status === 'pending') return;
+        const token = this._beginMultichartHostRestore(null, this.currentFileId);
+        this._finishMultichartHostRestore(token, 'ready');
     }
 
     _isMultichartEmbedPanel() {
@@ -10754,6 +10833,11 @@ class Chart {
                     this._pendingReplayRestore = null;
                     this.updateLoaderProgress(100, 'Replay mode active!');
                     this.updateLoaderStep(3, 'completed');
+                    const hostRestoreState = this._multichartHostRestoreState;
+                    this._finishMultichartHostRestore(
+                        hostRestoreState && hostRestoreState.generation,
+                        'ready',
+                    );
                     requestAnimationFrame(() => this.hideLoader());
                     // Prefetch common TFs in idle time so first 1m/5m switch during replay is faster.
                     const fid = this.currentFileId;
@@ -10767,6 +10851,12 @@ class Chart {
                     }, 2000);
                 } catch (e) {
                     console.warn('[backtest] replay session restore failed', e);
+                    const hostRestoreState = this._multichartHostRestoreState;
+                    this._finishMultichartHostRestore(
+                        hostRestoreState && hostRestoreState.generation,
+                        'failed',
+                        e,
+                    );
                     this.hideLoader();
                 }
             });
@@ -24574,6 +24664,7 @@ class Chart {
             }
         }));
         this._emitMultichartHostDataCommit();
+        this._publishNoSessionMultichartHostReady();
     }
 
     /** Notify hosts (e.g. V9 React toolbar) when `currentTimeframe` has been applied. */

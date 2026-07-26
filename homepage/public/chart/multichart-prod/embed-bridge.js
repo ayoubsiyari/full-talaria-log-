@@ -34,6 +34,80 @@
     var params  = new URLSearchParams(location.search);
     var chartId = params.get('panelId') || params.get('id') || ('chart-' + Math.random().toString(36).slice(2, 6));
     var verbose = params.get('verbose') === '1';
+    var initialContextBootStarted = false;
+    var initialContextBootTerminal = false;
+    var initialContextCleanup = null;
+    var PANEL_BOOT_TIMEOUT_MS = 30000;
+
+    function reloadBootGateEnabled() {
+        try {
+            return !(window.parent
+                && window.parent.__TALARIA_DISABLE_B70_RELOAD_PANEL_BOOT_GATE_V1 === true);
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function notifyPanelBootFailed(reason, code) {
+        if (initialContextBootTerminal) return;
+        initialContextBootTerminal = true;
+        if (typeof initialContextCleanup === 'function') initialContextCleanup();
+        try {
+            if (window.chart) window.chart._multichartPairLoadInFlight = false;
+        } catch (_) {}
+        try {
+            window.parent.postMessage({
+                type: 'panel-boot-failed',
+                source: chartId,
+                reason: String(reason || 'panel boot failed').slice(0, 240),
+                code: String(code || 'PANEL_BOOT_FAILED').slice(0, 80),
+            }, '*');
+        } catch (_) {}
+    }
+
+    function finishInitialContextBoot() {
+        if (initialContextBootTerminal) return false;
+        initialContextBootTerminal = true;
+        if (typeof initialContextCleanup === 'function') initialContextCleanup();
+        return true;
+    }
+
+    function withPanelBootTimeout(value, label, onSuccess) {
+        if (!reloadBootGateEnabled()) {
+            if (value && typeof value.then === 'function') {
+                value.then(onSuccess, function (err) {
+                    try {
+                        if (window.chart) window.chart._multichartPairLoadInFlight = false;
+                    } catch (_) {}
+                    reportToShell('error', label + ' failed: ' + (err && err.message || err));
+                });
+            } else {
+                onSuccess();
+            }
+            return;
+        }
+        var settled = false;
+        var timer = setTimeout(function () {
+            if (settled || initialContextBootTerminal) return;
+            settled = true;
+            notifyPanelBootFailed(label + ' timed out', 'PANEL_BOOT_TIMEOUT');
+        }, PANEL_BOOT_TIMEOUT_MS);
+        var ok = function () {
+            if (settled || initialContextBootTerminal) return;
+            settled = true;
+            clearTimeout(timer);
+            onSuccess();
+        };
+        var fail = function (err) {
+            if (settled || initialContextBootTerminal) return;
+            settled = true;
+            clearTimeout(timer);
+            reportToShell('error', label + ' failed: ' + (err && err.message || err));
+            notifyPanelBootFailed(label + ' failed', 'PANEL_BOOT_REJECTED');
+        };
+        if (value && typeof value.then === 'function') value.then(ok, fail);
+        else ok();
+    }
 
     function cb01MountSigEmbedRecord(source, schedule) {
         try {
@@ -340,7 +414,70 @@
     // Without this, each iframe would land on whatever default the dist-v9
     // React app picks (usually empty, "No data to display"), even though the
     // user just picked a layout from a /chart/ that already had data.
+    function waitForAuthoritativeHostRestore(sessionId, fileId, onReady) {
+        if (!reloadBootGateEnabled()) {
+            onReady();
+            return;
+        }
+        var parentWindow = null;
+        try { parentWindow = window.parent && window.parent !== window ? window.parent : null; } catch (_) {}
+        if (!parentWindow) {
+            notifyPanelBootFailed('authoritative host unavailable', 'HOST_UNAVAILABLE');
+            return;
+        }
+        var expectedSession = sessionId != null && String(sessionId) !== '' ? String(sessionId) : null;
+        var expectedFile = fileId != null && String(fileId) !== '' ? String(fileId) : null;
+        var done = false;
+        var timer = null;
+        var matches = function (state) {
+            if (!state || typeof state !== 'object') return false;
+            if (expectedSession !== (state.sessionId != null ? String(state.sessionId) : null)) return false;
+            if (expectedFile && state.fileId != null && String(state.fileId) !== expectedFile) return false;
+            return state.status === 'ready' || state.status === 'failed';
+        };
+        var consume = function (state) {
+            if (done || !matches(state)) return false;
+            done = true;
+            clearTimeout(timer);
+            parentWindow.removeEventListener('talariaMultichartHostRestoreState', onState);
+            initialContextCleanup = null;
+            if (state.status === 'failed') {
+                notifyPanelBootFailed('host session restore failed', 'HOST_RESTORE_FAILED');
+            } else {
+                onReady();
+            }
+            return true;
+        };
+        var onState = function (ev) {
+            var state = ev && ev.detail;
+            if (consume(state)) return;
+            var stateSession = state && state.sessionId != null ? String(state.sessionId) : null;
+            if (!done && state && state.status === 'pending' && stateSession !== expectedSession) {
+                done = true;
+                clearTimeout(timer);
+                parentWindow.removeEventListener('talariaMultichartHostRestoreState', onState);
+                initialContextCleanup = null;
+                notifyPanelBootFailed('host session changed during panel boot', 'HOST_RESTORE_SUPERSEDED');
+            }
+        };
+        initialContextCleanup = function () {
+            clearTimeout(timer);
+            parentWindow.removeEventListener('talariaMultichartHostRestoreState', onState);
+            initialContextCleanup = null;
+        };
+        parentWindow.addEventListener('talariaMultichartHostRestoreState', onState);
+        if (consume(parentWindow.chart && parentWindow.chart._multichartHostRestoreState)) return;
+        timer = setTimeout(function () {
+            if (done) return;
+            done = true;
+            parentWindow.removeEventListener('talariaMultichartHostRestoreState', onState);
+            initialContextCleanup = null;
+            notifyPanelBootFailed('host session restore timed out', 'HOST_RESTORE_TIMEOUT');
+        }, PANEL_BOOT_TIMEOUT_MS);
+    }
+
     function applyInitialContext() {
+        if (initialContextBootStarted || initialContextBootTerminal) return;
         cb01MountSigEmbedRecord(
             'embed-bridge.js:applyInitialContext:begin',
             'sync'
@@ -404,19 +541,24 @@
                     if (pc && pc.currentFileId != null) {
                         params.set('fileId', String(pc.currentFileId));
                     }
+                    initialContextBootStarted = false;
                     applyInitialContext();
                 },
                 function () {
                     reportToShell('error', 'fileId never available from parent — no data load');
+                    notifyPanelBootFailed('fileId never available from host', 'HOST_FILE_ID_TIMEOUT');
                 }
             );
+            initialContextBootStarted = true;
             return;
         }
         var ch = window.chart;
         if (!ch || typeof ch.loadFileData !== 'function') {
             reportToShell('warn', 'cannot apply fileId=' + fileId + ': window.chart.loadFileData missing');
+            notifyPanelBootFailed('panel chart loader unavailable', 'PANEL_LOADER_UNAVAILABLE');
             return;
         }
+        initialContextBootStarted = true;
         try {
             markViewportBootSettle(ch, 3200);
             // Hint timeframe BEFORE load so first-paint resamples to the
@@ -1073,6 +1215,7 @@
                         })
                         : ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
+                        if (!finishInitialContextBoot()) return;
                         ch._multichartPairLoadInFlight = false;
                         if (samePairBoot) {
                             notifyPanelCacheReady();
@@ -1108,17 +1251,11 @@
                         } catch (_) {}
                         afterLoad();
                     };
-                    if (lp && typeof lp.then === 'function') {
-                        lp.then(bootReplay, function (err) {
-                            ch._multichartPairLoadInFlight = false;
-                            reportToShell('error', 'loadFileData failed: '
-                                + (err && err.message || err));
-                        });
-                    } else {
-                        bootReplay();
-                    }
+                    withPanelBootTimeout(lp, 'loadMultichartPanelFile', bootReplay);
                 };
-                if (hostReadyForMirror()) {
+                if (reloadBootGateEnabled()) {
+                    waitForAuthoritativeHostRestore(sessionId, fileId, runPanelLoad);
+                } else if (hostReadyForMirror()) {
                     runPanelLoad();
                 } else {
                     // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
@@ -1152,6 +1289,7 @@
                         }
                     } catch (_) {}
                     reportToShell('info', 'boot: parent mirror viewport (no fetch) fileId=' + loadFid);
+                    if (!finishInitialContextBoot()) return;
                     notifyPanelCacheReady();
                     markViewportBootSettle(ch, 3200);
                     try {
@@ -1170,24 +1308,19 @@
                     return;
                 }
                 p = ch.loadFileData(loadFid);
-                if (p && typeof p.then === 'function') {
-                    p.then(function () {
+                withPanelBootTimeout(p, 'loadFileData', function () {
+                        if (!finishInitialContextBoot()) return;
                         if (samePairBoot) notifyPanelCacheReady();
                         cb01MountSigEmbedRecord(
                             'embed-bridge.js:applyInitialContext:live-load-complete',
                             'microtask'
                         );
                         afterLoad();
-                    }, function (err) {
-                        reportToShell('error', 'loadFileData failed: '
-                            + (err && err.message || err));
                     });
-                } else {
-                    if (samePairBoot) notifyPanelCacheReady();
-                    afterLoad();
-                }
             };
-            if (hostReadyForPanelClone()) {
+            if (reloadBootGateEnabled()) {
+                waitForAuthoritativeHostRestore(null, fileId, runLivePanelLoad);
+            } else if (hostReadyForPanelClone()) {
                 runLivePanelLoad();
             } else {
                 pollFor(hostReadyForPanelClone, 100, 8000, runLivePanelLoad, runLivePanelLoad);
@@ -1212,6 +1345,7 @@
 
     window.addEventListener('pagehide', function () {
         clearInterval(heartbeatId);
+        if (typeof initialContextCleanup === 'function') initialContextCleanup();
     }, { once: true });
 
     function boot() {
