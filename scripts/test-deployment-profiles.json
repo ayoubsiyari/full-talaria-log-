@@ -7,7 +7,18 @@
       "composeFile": "/opt/talaria/docker-compose.yml",
       "workingDirectory": "/opt/talaria",
       "envFile": "/opt/talaria/.env",
-      "services": ["trading-chart", "trading-chart-worker", "homepage"]
+      "hostName": "srv904606",
+      "services": ["trading-chart", "trading-chart-worker", "homepage"],
+      "deploymentContract": {
+        "checkpoint": "CKPT-73",
+        "buildId": "20260726b73",
+        "sourceSha": "11f5787df0ff8b29a85f533716a4ca2e96e025df",
+        "manifestSha256": "cc9bc55cc986142b4426b20c690c447c1ea620ab5e0e33ea3eb38f67258cc8b0",
+        "proofSha256": "fd64533ca1b788b9f8c56a285183714b66dea077c15e86c92f7549af99b40313",
+        "chartDigest": "sha256:8feee17897d28d6b1a402de4f5ad899de5e55690969d3d2ab3f31a8bcd406960",
+        "homepageDigest": "sha256:b5affe87f1e2629cb2d112f3333ef4a8c0ffe642e595ecbe64ee5e889196bf95",
+        "rollbackBuildId": "20260726b70"
+      }
     }
   ]
 }

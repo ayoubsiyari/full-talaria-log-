@@ -13,6 +13,12 @@ set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 TOOL_ROOT="${TOOL_ROOT:-$ROOT}"
 cd "$ROOT"
+COMPOSE=(docker compose)
+if [ -n "${COMPOSE_PROJECT_DIRECTORY:-}" ]; then
+  [[ "$COMPOSE_PROJECT_DIRECTORY" == /* ]] \
+    || { echo "ERROR: COMPOSE_PROJECT_DIRECTORY must be absolute." >&2; exit 2; }
+  COMPOSE+=(--project-directory "$COMPOSE_PROJECT_DIRECTORY")
+fi
 
 MANIFEST=""
 for arg in "$@"; do
@@ -85,25 +91,25 @@ if [[ "$TRADING_CHART_IMAGE" != *@sha256:* ]] || [[ "$HOMEPAGE_IMAGE" != *@sha25
 fi
 
 echo "=== pull exact candidate image digests (NO BUILD) ==="
-docker compose pull trading-chart trading-chart-worker homepage
+"${COMPOSE[@]}" pull trading-chart trading-chart-worker homepage
 
 echo "=== disposable image uniformity preflight ==="
 node "$TOOL_ROOT/scripts/checkpoint-image-preflight.mjs" --manifest="$MANIFEST"
 
 echo "=== recreate exact checkpoint services (NO BUILD) ==="
-docker compose up -d --no-build --no-deps trading-chart trading-chart-worker homepage
+"${COMPOSE[@]}" up -d --no-build --no-deps trading-chart trading-chart-worker homepage
 
 EXPECTED_CHART_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$TRADING_CHART_IMAGE")"
 EXPECTED_HOMEPAGE_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$HOMEPAGE_IMAGE")"
 for service in trading-chart trading-chart-worker; do
-  container_id="$(docker compose ps -q "$service")"
+  container_id="$("${COMPOSE[@]}" ps -q "$service")"
   actual_image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
   if [ "$actual_image_id" != "$EXPECTED_CHART_IMAGE_ID" ]; then
     echo "ERROR: $service is not running expected digest $EXPECTED_CHART_DIGEST." >&2
     exit 1
   fi
 done
-homepage_container_id="$(docker compose ps -q homepage)"
+homepage_container_id="$("${COMPOSE[@]}" ps -q homepage)"
 homepage_image_id="$(docker inspect --format '{{.Image}}' "$homepage_container_id")"
 if [ "$homepage_image_id" != "$EXPECTED_HOMEPAGE_IMAGE_ID" ]; then
   echo "ERROR: homepage is not running expected digest $EXPECTED_HOMEPAGE_DIGEST." >&2

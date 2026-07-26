@@ -94,15 +94,21 @@ const profile = loadTestDeploymentProfile(process.argv[2], {
 });
 for (const value of [
   profile.composeFile, profile.workingDirectory, profile.envFile,
-  profile.services.join(','),
+  profile.services.join(','), profile.hostName,
+  profile.deploymentContract.checkpoint, profile.deploymentContract.buildId,
+  profile.deploymentContract.sourceSha, profile.deploymentContract.manifestSha256,
+  profile.deploymentContract.proofSha256, profile.deploymentContract.chartDigest,
+  profile.deploymentContract.homepageDigest, profile.deploymentContract.rollbackBuildId,
 ]) console.log(value);
 NODE
 )
-[[ "${#PROFILE_FIELDS[@]}" -eq 4 ]] || die "approved TEST deployment profile is incomplete"
+[[ "${#PROFILE_FIELDS[@]}" -eq 13 ]] || die "approved TEST deployment profile is incomplete"
 PROFILE_COMPOSE_FILE="${PROFILE_FIELDS[0]}"
 PROFILE_WORKING_DIRECTORY="${PROFILE_FIELDS[1]}"
 PROFILE_ENV_FILE="${PROFILE_FIELDS[2]}"
 IFS=',' read -r -a PROFILE_SERVICES <<<"${PROFILE_FIELDS[3]}"
+PROFILE_HOST_NAME="${PROFILE_FIELDS[4]}"
+[[ "$(hostname)" == "$PROFILE_HOST_NAME" ]] || die "current host is not the approved TEST host"
 [[ "$ENV_FILE" == "$PROFILE_ENV_FILE" ]] || die "--env-file must equal the approved TEST profile path"
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || die "approved env file is missing or not regular"
 ENV_OWNER="$(stat -c '%U' "$ENV_FILE")"
@@ -119,6 +125,8 @@ NODE
 )
 export COMPOSE_PROJECT_NAME
 export COMPOSE_ENV_FILES="$ENV_FILE"
+export COMPOSE_FILE="$PROFILE_COMPOSE_FILE"
+export COMPOSE_PROJECT_DIRECTORY="$PROFILE_WORKING_DIRECTORY"
 
 for service in "${PROFILE_SERVICES[@]}"; do
   container_id="$(docker compose --project-name "$COMPOSE_PROJECT_NAME" \
@@ -145,14 +153,17 @@ const fs = require('fs');
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 for (const value of [
   manifest.source?.sha, manifest.source?.remote, manifest.source?.ref, manifest.buildId,
+  manifest.checkpoint, manifest.proof?.sha256,
 ]) console.log(value || '');
 NODE
   )
-  [[ "${#EXISTING_FIELDS[@]}" -eq 4 ]] || die "accepted manifest source fields are missing"
+  [[ "${#EXISTING_FIELDS[@]}" -eq 6 ]] || die "accepted manifest source fields are missing"
   EXISTING_SHA="${EXISTING_FIELDS[0]}"
   EXISTING_REMOTE="${EXISTING_FIELDS[1]}"
   EXISTING_REF="${EXISTING_FIELDS[2]}"
   EXISTING_BUILD="${EXISTING_FIELDS[3]}"
+  EXISTING_CHECKPOINT="${EXISTING_FIELDS[4]}"
+  EXISTING_PROOF_SHA256="${EXISTING_FIELDS[5]}"
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
     --manifest="$DEPLOY_EXISTING" >/dev/null
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" verify-manifest \
@@ -168,6 +179,16 @@ NODE
   [[ "${#EXISTING_PLAN[@]}" -eq 6 ]] || die "accepted manifest immutable fields are incomplete"
   [[ "${#EXISTING_ROLLBACK_PLAN[@]}" -eq 6 ]] \
     || die "accepted manifest rollback fields are incomplete"
+  MANIFEST_SHA256="$(sha256sum "$DEPLOY_EXISTING" | awk '{print $1}')"
+  [[ "$EXISTING_CHECKPOINT" == "${PROFILE_FIELDS[5]}"
+      && "$EXISTING_BUILD" == "${PROFILE_FIELDS[6]}"
+      && "$EXISTING_SHA" == "${PROFILE_FIELDS[7]}"
+      && "$MANIFEST_SHA256" == "${PROFILE_FIELDS[8]}"
+      && "$EXISTING_PROOF_SHA256" == "${PROFILE_FIELDS[9]}"
+      && "$EXISTING_PLAN[4]" == "${PROFILE_FIELDS[10]}"
+      && "$EXISTING_PLAN[5]" == "${PROFILE_FIELDS[11]}"
+      && "$EXISTING_ROLLBACK_PLAN[1]" == "${PROFILE_FIELDS[12]}" ]] \
+    || die "manifest differs from the approved TEST deployment contract"
   REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$EXISTING_REMOTE")"
   REMOTE_SHA="$(cd "$ORCHESTRATOR_ROOT" && resolve_remote_tag_commit "$REMOTE_URL" "$EXISTING_REF")"
   [[ "$REMOTE_SHA" == "$EXISTING_SHA" ]] || die "accepted manifest source tag is not immutable remotely"
@@ -324,7 +345,7 @@ CHECKPOINT_RUNTIME_REPORT="$RUN_DIR/runtime.json" \
   "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
 
 touch "$RUN_DIR/.complete"
-ROLLBACK_COMMAND="'$ORCHESTRATOR_ROOT/scripts/deploy-test-checkpoint.sh' --deploy-existing='$ROLLBACK_MANIFEST' --public-origin='$PUBLIC_ORIGIN' --direct-origin='$DIRECT_ORIGIN' --compose-project='$COMPOSE_PROJECT_NAME' --state-root='$STATE_ROOT'"
+ROLLBACK_COMMAND="'$ORCHESTRATOR_ROOT/scripts/deploy-test-checkpoint.sh' --deploy-existing='$ROLLBACK_MANIFEST' --public-origin='$PUBLIC_ORIGIN' --direct-origin='$DIRECT_ORIGIN' --compose-project='$COMPOSE_PROJECT_NAME' --env-file='$ENV_FILE' --state-root='$STATE_ROOT'"
 cat <<EOF
 
 DEPLOYED TEST CHECKPOINT

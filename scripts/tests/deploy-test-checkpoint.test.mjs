@@ -38,12 +38,13 @@ test('invalid inputs are rejected before tools or deployment are invoked', () =>
 
 test('deploy refreshes auto direct-origin after container recreation', () => {
   const source = fs.readFileSync(deployPath, 'utf8');
-  const recreate = source.indexOf('docker compose up -d --no-build');
+  const recreate = source.indexOf('"${COMPOSE[@]}" up -d --no-build');
   const resolution = source.indexOf('NetworkSettings.Networks');
   const probe = source.indexOf('checkpoint-runtime-probe.mjs');
   assert.ok(recreate >= 0 && resolution > recreate);
   assert.ok(probe >= 0);
   assert.match(source, /TOOL_ROOT/);
+  assert.match(source, /COMPOSE_PROJECT_DIRECTORY/);
 });
 
 test('runtime probe defaults to static auth-compatible tripwire', () => {

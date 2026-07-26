@@ -354,7 +354,7 @@ test('Docker and deploy wiring preserve separate SHA/build ids and copy generate
   assert.match(deploy, /checkpoint-provenance\.mjs" preflight/);
   assert.match(deploy, /checkpoint-image-preflight\.mjs/);
   assert.match(deploy, /checkpoint-runtime-probe\.mjs/);
-  assert.match(deploy, /docker compose up -d --no-build/);
+  assert.match(deploy, /"\$\{COMPOSE\[@\]\}" up -d --no-build/);
   assert.doesNotMatch(deploy, /IMAGE_TAG:-latest|docker compose build/);
 
   const vpsDeploy = fs.readFileSync(
