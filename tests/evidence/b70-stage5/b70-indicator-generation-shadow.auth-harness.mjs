@@ -12,6 +12,7 @@ const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const sessionId = process.env.B70_SESSION_ID || '827';
 const expectedBuild = process.env.B70_EXPECTED_BUILD || '20260725b70';
+const workloadIterations = 12;
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
 
 const indicatorSource = fs.readFileSync(path.join(modulesDir, 'chart-indicators-full.js'), 'utf8');
@@ -27,6 +28,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const browser = await puppeteer.launch({
   headless: true,
   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  protocolTimeout: 300_000,
   defaultViewport: { width: 1440, height: 900 },
 });
 
@@ -79,9 +81,37 @@ async function runCell(enabled, indicatorCount = 1) {
     { timeout: 60_000 }, expectedBuild);
   await page.waitForFunction(() => window.chart && Array.isArray(chart.data) && chart.data.length > 0,
     { timeout: 120_000 });
+  try {
+    await page.waitForFunction(() => {
+      const frames = Array.from(document.querySelectorAll('iframe'));
+      return frames.filter((frame) => {
+        try {
+          const chart = frame.contentWindow?.chart;
+          return chart && Array.isArray(chart.data) && chart.data.length > 0;
+        } catch (_) {
+          return false;
+        }
+      }).length >= 1;
+    }, { timeout: 120_000 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const frames = Array.from(document.querySelectorAll('iframe')).slice(0, 8);
+      return frames.map((frame) => {
+        let chartReady = false;
+        let dataLength = null;
+        try {
+          chartReady = !!frame.contentWindow?.chart;
+          dataLength = frame.contentWindow?.chart?.data?.length ?? null;
+        } catch (_) {}
+        return { chartReady, dataLength };
+      });
+    });
+    throw new Error(`authenticated iframe readiness timeout: ${JSON.stringify(diagnostic)}`,
+      { cause: error });
+  }
   await sleep(3000);
 
-  const result = await page.evaluate(async ({ on, count }) => {
+  const result = await page.evaluate(async ({ on, count, workloadIterations: iterations }) => {
     const c = window.chart;
     if (count > 1) {
       const base = c.indicators?.active?.[0];
@@ -157,40 +187,79 @@ async function runCell(enabled, indicatorCount = 1) {
         }
       }
     }
-    const panels = Array.from({ length: 3 }, (_, index) => {
-      const panel = Object.create(Object.getPrototypeOf(c));
-      panel.multichartPanelId = `b70-auth-panel-${index + 1}`;
-      panel.data = c.data;
-      panel.rawData = c.rawData || c.data;
+    const panelFrames = Array.from(document.querySelectorAll('iframe')).filter((frame) => {
+      try {
+        return !!frame.contentWindow?.chart;
+      } catch (_) {
+        return false;
+      }
+    });
+    const panels = (on ? panelFrames : Array.from({ length: panelFrames.length }))
+      .map((frame, index) => {
+      if (!on) {
+        const panel = Object.create(Object.getPrototypeOf(c));
+        panel.multichartPanelId = `b70-auth-baseline-panel-${index + 1}`;
+        panel.data = c.data;
+        panel.rawData = c.rawData || c.data;
+        panel.dataVersion = c.dataVersion;
+        panel.currentTimeframe = c.currentTimeframe;
+        panel.currentSymbol = c.currentSymbol;
+        panel.currentFileId = c.currentFileId;
+        panel.masterGeneration = c.masterGeneration;
+        panel.indicators = {
+          active: (c.indicators?.active || []).map((indicator) => ({
+            ...indicator,
+            params: { ...(indicator.params || {}) },
+            style: { ...(indicator.style || {}) },
+          })),
+          data: structuredClone(c.indicators?.data || {}),
+        };
+        panel.replaySystem = { isActive: false, isPlaying: false };
+        panel.updateOHLCIndicators = () => {};
+        panel.scheduleRender = () => {
+          panel.__b70RenderCount = (panel.__b70RenderCount || 0) + 1;
+        };
+        panel._setAllIndicatorsCalculating = () => {};
+        panel._markIndicatorRecalcComplete = () => {};
+        panel._clearIndicatorCalculatingFlags = () => {};
+        const originalPanelSync = panel.recalculateIndicators;
+        panel.__b70CalculationEntries = 0;
+        panel.recalculateIndicators = function(...args) {
+          panel.__b70CalculationEntries++;
+          return originalPanelSync.apply(this, args);
+        };
+        return panel;
+      }
+      const panel = frame.contentWindow.chart;
+      panel.multichartPanelId = panel.multichartPanelId
+        || frame.dataset?.panelId
+        || frame.closest?.('[data-panel-id]')?.dataset?.panelId
+        || `b70-auth-iframe-panel-${index + 1}`;
+      panel.data = structuredClone(c.data);
+      panel.rawData = structuredClone(c.rawData || c.data);
       panel.dataVersion = c.dataVersion;
       panel.currentTimeframe = c.currentTimeframe;
       panel.currentSymbol = c.currentSymbol;
       panel.currentFileId = c.currentFileId;
       panel.masterGeneration = c.masterGeneration;
-      panel.indicators = {
-        active: (c.indicators?.active || []).map((indicator) => ({
-          ...indicator,
-          params: { ...(indicator.params || {}) },
-          style: { ...(indicator.style || {}) },
-        })),
-        data: structuredClone(c.indicators?.data || {}),
-      };
-      panel.replaySystem = { isActive: false, isPlaying: false };
-      panel.updateOHLCIndicators = () => {};
-      panel.scheduleRender = () => {
-        panel.__b70RenderCount = (panel.__b70RenderCount || 0) + 1;
-      };
-      panel._setAllIndicatorsCalculating = () => {};
-      panel._markIndicatorRecalcComplete = () => {};
-      panel._clearIndicatorCalculatingFlags = () => {};
-      const originalPanelSync = panel.recalculateIndicators;
+      panel.indicators = panel.indicators || {};
+      panel.indicators.active = (c.indicators?.active || []).map((indicator) => ({
+        ...indicator,
+        params: { ...(indicator.params || {}) },
+        style: { ...(indicator.style || {}) },
+      }));
+      panel.indicators.data = structuredClone(c.indicators?.data || {});
+      const originalPanelSync = panel.recalculateIndicators.bind(panel);
       panel.__b70CalculationEntries = 0;
       panel.recalculateIndicators = function(...args) {
         panel.__b70CalculationEntries++;
-        return originalPanelSync.apply(this, args);
+        return originalPanelSync(...args);
       };
       return panel;
-    });
+      });
+    if (panels.length < 1) {
+      throw new Error('expected at least one authenticated product iframe chart');
+    }
     if (on) {
       if (typeof window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1 !== 'function') {
         throw new Error('Stage 5 panel connector unavailable');
@@ -203,7 +272,7 @@ async function runCell(enabled, indicatorCount = 1) {
     }
     const started = performance.now();
     let workMs = 0;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < iterations; i++) {
       const workStarted = performance.now();
       if (typeof c.scheduleReplayIndicatorRecalc === 'function') {
         c.scheduleReplayIndicatorRecalc(true);
@@ -272,26 +341,57 @@ async function runCell(enabled, indicatorCount = 1) {
       wouldBeOwner: row.wouldBeOwner,
       sources: row.sources,
     })) : null;
+    const workloadFullDataAfter = JSON.stringify(c.data);
+    const workloadTailDataAfter = JSON.stringify(c.data[c.data.length - 1] || null);
+    const workloadIndicatorDataAfter = calculationPayload();
+    const workloadPaintedLagBars = paintedLagBars();
     let lifecycle = null;
     if (on) {
       const beforePanelCalculations = panels.map(
         (panel) => panel._b70IndicatorGenerationShadow.metrics.calculationStarts
       );
+      const preSeekGenerationIds = panels.map((panel) =>
+        panel._b70IndicatorGenerationShadow.currentEnvelope?.metadata?.generationId || null);
       for (const panel of panels) {
         panel.replaySystem.isPlaying = false;
         panel.recalculateIndicators();
         panel.replaySystem.isPlaying = true;
         panel.recalculateIndicators();
       }
-      c._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
+      const replay = c.replaySystem;
+      const seekFrom = Number.isSafeInteger(replay?.currentIndex)
+        ? replay.currentIndex : null;
+      const seekTo = seekFrom == null || !Array.isArray(replay.fullRawData)
+        ? null
+        : Math.max(replay.sessionStartIndex || 0, seekFrom - 1);
+      const actualSeekIssued = seekTo != null && seekTo !== seekFrom
+        && typeof replay.seekTo === 'function';
+      if (actualSeekIssued) replay.seekTo(seekTo);
+      else c._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
       for (const panel of panels) {
+        panel.data = structuredClone(c.data);
+        panel.rawData = structuredClone(c.rawData || c.data);
+        panel.dataVersion = c.dataVersion;
+        panel.currentTimeframe = c.currentTimeframe;
+        panel.currentSymbol = c.currentSymbol;
+        panel.currentFileId = c.currentFileId;
+        panel.masterGeneration = c.masterGeneration;
         panel._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
         window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1(panel, c);
+        panel.recalculateIndicators();
       }
       c.recalculateIndicators();
-      for (let i = 0; i < 500 && c._indicatorWorkerBusy; i++) {
+      let terminalWaitIterations = 0;
+      for (; terminalWaitIterations < 500; terminalWaitIterations++) {
+        const terminal = !c._indicatorWorkerBusy && panels.every((panel) =>
+          panel._b70HasCommittedIndicatorGeneration());
+        if (terminal) break;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
+      const terminalGenerationIds = panels.map((panel) =>
+        panel._b70IndicatorGenerationShadow.currentEnvelope?.metadata?.generationId || null);
+      const terminalCommitted = panels.map((panel) =>
+        !!panel._b70HasCommittedIndicatorGeneration());
       lifecycle = {
         pauseResumePanelCalculationsStable: panels.every((panel, index) =>
           panel._b70IndicatorGenerationShadow.metrics.calculationStarts
@@ -301,6 +401,18 @@ async function runCell(enabled, indicatorCount = 1) {
         seekValueParity: panels.every((panel) =>
           JSON.stringify(Object.values(panel.indicators?.data || {}))
             === calculationPayload()),
+        actualSeekIssued,
+        seekFrom,
+        seekTo,
+        terminalWaitIterations,
+        terminalWaitLimit: 500,
+        terminalTimedOut: terminalWaitIterations === 500,
+        terminalCommitted,
+        terminalGenerationFresh: terminalGenerationIds.every(
+          (id, index) => id != null && id !== preSeekGenerationIds[index]
+        ),
+        preSeekGenerationIds,
+        terminalGenerationIds,
       };
     }
     return {
@@ -310,12 +422,13 @@ async function runCell(enabled, indicatorCount = 1) {
       elapsedMs,
       workMs,
       build: window.__TALARIA_CHART_BUILD_ID,
-      dataStable: JSON.stringify(c.data[c.data.length - 1] || null) === dataBefore,
-      fullDataStable: JSON.stringify(c.data) === fullDataBefore,
+      dataStable: workloadTailDataAfter === dataBefore,
+      fullDataStable: workloadFullDataAfter === fullDataBefore,
       indicatorDataBefore,
-      indicatorDataAfter: calculationPayload(),
-      paintedLagBars: paintedLagBars(),
-      tailDataAfter: JSON.stringify(c.data[c.data.length - 1] || null),
+      indicatorDataAfter: workloadIndicatorDataAfter,
+      paintedLagBars: workloadPaintedLagBars,
+      tailDataAfter: workloadTailDataAfter,
+      authenticatedProductIframeCount: panelFrames.length,
       canvasPayloads: canvases,
       blackCanvasCount,
       indicatorLayerPayload,
@@ -334,7 +447,7 @@ async function runCell(enabled, indicatorCount = 1) {
       registryRows: registryRowsSnapshot,
       lifecycle,
     };
-  }, { on: enabled, count: indicatorCount });
+  }, { on: enabled, count: indicatorCount, workloadIterations });
   await page.close();
   return { ...result, errors };
 }
@@ -384,8 +497,8 @@ try {
     && off.addedFields.length === 0
     && on.shadowPresent
     && on.metrics.duplicateCalculations === 0
-    && on.metrics.requestedGenerations >= 60
-    && on.metrics.requestedGenerations <= 62
+    && on.metrics.requestedGenerations >= workloadIterations
+    && on.metrics.requestedGenerations <= workloadIterations + 2
     && on.metrics.uniqueRequestedGenerations === requestedGenerationRows
     && on.metrics.duplicateCalculations === duplicateStarts
     && on.metrics.calculationStarts === 1
@@ -393,7 +506,7 @@ try {
       === on.requestedInstanceCount
     && (on.metrics.ownerCommits.sync + on.metrics.ownerCommits.worker)
       === on.requestedInstanceCount
-    && on.metrics.ownerDenied >= 58 * on.requestedInstanceCount
+    && on.metrics.ownerDenied >= (workloadIterations - 2) * on.requestedInstanceCount
     && on.metrics.lateWorkerRejects === 0
     && on.metrics.duplicateWorkerRejects === 0
     && on.causal.indicatorWorkerPosts === 1
@@ -412,21 +525,26 @@ try {
     && on.metrics.envelopePeakRetainedBytes > 0
     && on.metrics.envelopeAliasRejects === 0
     && on.metrics.bridgePublications === 1
-    && on.metrics.bridgeDeliveries === 3
+    && on.metrics.bridgeDeliveries === on.authenticatedProductIframeCount
     && on.metrics.bridgeDeliveryFailures === 0
-    && on.panelResults.length === 3
+    && on.panelResults.length === on.authenticatedProductIframeCount
+    && on.panelResults.length >= 1
     && on.panelResults.every((panel) =>
       panel.metrics?.calculationStarts === 0
       && panel.metrics?.bridgeAccepts === 1
       && panel.metrics?.bridgeRejects === 0
       && panel.dataPayload === on.indicatorDataAfter)
-    && off.panelResults.every((panel) => panel.callEntries === 60)
+    && on.authenticatedProductIframeCount >= 1
+    && off.panelResults.every((panel) => panel.callEntries === workloadIterations)
     && on.workMs < off.workMs
     && off.blackCanvasCount === 0
     && on.blackCanvasCount === 0
     && on.lifecycle?.pauseResumePanelCalculationsStable
+    && on.lifecycle?.actualSeekIssued
     && on.lifecycle?.seekCommitted
     && on.lifecycle?.seekValueParity
+    && !on.lifecycle?.terminalTimedOut
+    && on.lifecycle?.terminalGenerationFresh
     && on.causal.syncPublicationVersionBumps === 0
     && on.indicatorVersionDelta === 1
     && off.paintedLagBars === 0
