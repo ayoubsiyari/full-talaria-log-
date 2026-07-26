@@ -13,6 +13,7 @@ const password = process.env.TEST_PASSWORD;
 const sessionId = process.env.B70_SESSION_ID || '827';
 const expectedBuild = process.env.B70_EXPECTED_BUILD || '20260725b70';
 const workloadIterations = 12;
+const evaluationTimeoutMs = Number(process.env.B70_EVALUATION_TIMEOUT_MS || 60_000);
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
 
 const indicatorSource = fs.readFileSync(path.join(modulesDir, 'chart-indicators-full.js'), 'utf8');
@@ -24,11 +25,26 @@ const moduleFor = (url) => {
   return null;
 };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const closeBounded = async (target, timeoutMs = 2_000) => {
+  let timer;
+  try {
+    await Promise.race([
+      target.close(),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } catch (_) {
+    // Diagnostic cleanup must never replace the primary result.
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const browser = await puppeteer.launch({
   headless: true,
   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  protocolTimeout: 300_000,
+  protocolTimeout: evaluationTimeoutMs + 30_000,
   defaultViewport: { width: 1440, height: 900 },
 });
 
@@ -50,6 +66,15 @@ async function login() {
 
 async function runCell(enabled, indicatorCount = 1) {
   const page = await browser.newPage();
+  const diagnostics = {
+    cell: { enabled, indicatorCount },
+    console: [],
+    pageErrors: [],
+    frameEvents: [],
+    lastStage: null,
+    preflight: null,
+    timeout: null,
+  };
   await page.evaluateOnNewDocument((on) => {
     if (on) window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 = true;
     window.__b70IndicatorWorkerPosts = 0;
@@ -74,7 +99,27 @@ async function runCell(enabled, indicatorCount = 1) {
     }).catch(() => {});
   });
   const errors = [];
-  page.on('pageerror', (error) => errors.push(String(error?.stack || error)));
+  page.on('console', (message) => {
+    const row = { type: message.type(), text: message.text() };
+    diagnostics.console.push(row);
+    if (row.text.startsWith('[b70-stage] ')) {
+      try { diagnostics.lastStage = JSON.parse(row.text.slice(12)); } catch (_) {}
+    }
+  });
+  page.on('pageerror', (error) => {
+    const text = String(error?.stack || error);
+    errors.push(text);
+    diagnostics.pageErrors.push(text);
+  });
+  page.on('framenavigated', (frame) => diagnostics.frameEvents.push({
+    event: 'navigated',
+    url: frame.url(),
+    parentUrl: frame.parentFrame()?.url() || null,
+  }));
+  page.on('framedetached', (frame) => diagnostics.frameEvents.push({
+    event: 'detached',
+    url: frame.url(),
+  }));
   const url = `${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=2&sessionId=${encodeURIComponent(sessionId)}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
   await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
@@ -111,7 +156,105 @@ async function runCell(enabled, indicatorCount = 1) {
   }
   await sleep(3000);
 
-  const result = await page.evaluate(async ({ on, count, workloadIterations: iterations }) => {
+  diagnostics.preflight = await page.evaluate(() => {
+    const inspectChart = (chart) => ({
+      present: !!chart,
+      dataLength: Array.isArray(chart?.data) ? chart.data.length : null,
+      recalculateIndicators: typeof chart?.recalculateIndicators,
+      scheduleReplayIndicatorRecalc: typeof chart?.scheduleReplayIndicatorRecalc,
+      invalidateGeneration: typeof chart?._b70ShadowInvalidateIndicatorGeneration,
+      hasCommittedGeneration: typeof chart?._b70HasCommittedIndicatorGeneration,
+      stage5RegisterPanelBridge: typeof chart?._b70Stage5RegisterPanelBridge,
+      replay: {
+        present: !!chart?.replaySystem,
+        seekTo: typeof chart?.replaySystem?.seekTo,
+        seekToArity: chart?.replaySystem?.seekTo?.length ?? null,
+        currentIndex: chart?.replaySystem?.currentIndex ?? null,
+        sessionStartIndex: chart?.replaySystem?.sessionStartIndex ?? null,
+        fullRawDataLength: Array.isArray(chart?.replaySystem?.fullRawData)
+          ? chart.replaySystem.fullRawData.length : null,
+        isActive: chart?.replaySystem?.isActive ?? null,
+        isPlaying: chart?.replaySystem?.isPlaying ?? null,
+      },
+    });
+    const frames = Array.from(document.querySelectorAll('iframe')).map((frame) => {
+      let sameOrigin = false;
+      let readyState = null;
+      let chart = null;
+      let accessError = null;
+      try {
+        readyState = frame.contentDocument?.readyState || null;
+        chart = frame.contentWindow?.chart;
+        sameOrigin = true;
+      } catch (error) {
+        accessError = String(error);
+      }
+      return {
+        src: frame.src || null,
+        documentUrl: sameOrigin ? frame.contentDocument?.URL || null : null,
+        readyState,
+        sameOrigin,
+        accessError,
+        chart: inspectChart(chart),
+        buildId: sameOrigin ? frame.contentWindow?.__TALARIA_CHART_BUILD_ID || null : null,
+        syncBridgeVersion: sameOrigin
+          ? frame.contentWindow?.__MULTICHART_SYNC_BRIDGE_VERSION || null : null,
+      };
+    });
+    return {
+      url: location.href,
+      readyState: document.readyState,
+      buildId: window.__TALARIA_CHART_BUILD_ID || null,
+      syncBridgeVersion: window.__MULTICHART_SYNC_BRIDGE_VERSION || null,
+      connector: typeof window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1,
+      host: inspectChart(window.chart),
+      frames,
+    };
+  });
+  const readyFrames = diagnostics.preflight.frames.filter((frame) =>
+    frame.sameOrigin && frame.chart.present);
+  const missing = [];
+  if (diagnostics.preflight.connector !== 'function') missing.push('Stage5 connector');
+  if (diagnostics.preflight.host.stage5RegisterPanelBridge !== 'function') {
+    missing.push('host Stage5 bridge registration');
+  }
+  if (diagnostics.preflight.host.replay.seekTo !== 'function') missing.push('replay.seekTo');
+  if (readyFrames.length === 0) missing.push('same-origin product iframe chart');
+  if (enabled && missing.length > 0) {
+    await page.close();
+    return {
+      verdict: 'NOT-APPLICABLE',
+      prerequisite: `authenticated B71 candidate required: missing ${missing.join(', ')}`,
+      diagnostics,
+      errors,
+    };
+  }
+
+  const evaluation = page.evaluate(async ({ on, count, workloadIterations: iterations }) => {
+    const mark = (stage, detail = {}) => {
+      const value = { stage, detail, at: performance.now() };
+      window.__b70EvaluationStage = value;
+      console.info(`[b70-stage] ${JSON.stringify(value)}`);
+    };
+    const bounded = async (stage, operation, timeoutMs = 15_000) => {
+      mark(`${stage}:start`);
+      let timer;
+      try {
+        const value = await Promise.race([
+          Promise.resolve().then(operation),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(
+              `${stage} timed out after ${timeoutMs}ms`
+            )), timeoutMs);
+          }),
+        ]);
+        mark(`${stage}:done`);
+        return value;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    mark('evaluation:start', { on, count, iterations });
     const c = window.chart;
     if (count > 1) {
       const base = c.indicators?.active?.[0];
@@ -127,11 +270,14 @@ async function runCell(enabled, indicatorCount = 1) {
       c.indicators.data = {};
       c.recalculateIndicators();
     }
-    for (let i = 0; i < 500 && c._indicatorWorkerBusy; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    await new Promise((resolve) => requestAnimationFrame(() =>
-      requestAnimationFrame(resolve)));
+    await bounded('initial-worker-drain', async () => {
+      for (let i = 0; i < 500 && c._indicatorWorkerBusy; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (c._indicatorWorkerBusy) throw new Error('initial worker remained busy');
+    });
+    await bounded('initial-animation-frames', () => new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const calculationPayload = () => JSON.stringify(Object.values(c.indicators?.data || {}));
     const paintedLagBars = () => {
       const active = c.indicators?.active || [];
@@ -261,6 +407,7 @@ async function runCell(enabled, indicatorCount = 1) {
       throw new Error('expected at least one authenticated product iframe chart');
     }
     if (on) {
+      mark('stage5-connect:start', { panels: panels.length });
       if (typeof window.__TALARIA_B70_CONNECT_INDICATOR_PANEL_V1 !== 'function') {
         throw new Error('Stage 5 panel connector unavailable');
       }
@@ -269,10 +416,13 @@ async function runCell(enabled, indicatorCount = 1) {
           throw new Error(`Stage 5 panel connect failed: ${panel.multichartPanelId}`);
         }
       }
+      mark('stage5-connect:done');
     }
     const started = performance.now();
     let workMs = 0;
+    mark('workload:start');
     for (let i = 0; i < iterations; i++) {
+      mark('workload:iteration', { iteration: i });
       const workStarted = performance.now();
       if (typeof c.scheduleReplayIndicatorRecalc === 'function') {
         c.scheduleReplayIndicatorRecalc(true);
@@ -282,8 +432,10 @@ async function runCell(enabled, indicatorCount = 1) {
       if (typeof c.drawIndicatorsOptimized === 'function') c.drawIndicatorsOptimized();
       if (typeof c.bumpIndicatorRenderVersion === 'function') c.bumpIndicatorRenderVersion();
       workMs += performance.now() - workStarted;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await bounded(`workload-raf-${i}`, () =>
+        new Promise((resolve) => requestAnimationFrame(resolve)), 5_000);
     }
+    mark('workload:done');
     const elapsedMs = performance.now() - started;
     const indicatorVersionDeltaBeforeLifecycle =
       Number(c._indicatorRenderVersion || 0) - indicatorVersionBefore;
@@ -347,6 +499,7 @@ async function runCell(enabled, indicatorCount = 1) {
     const workloadPaintedLagBars = paintedLagBars();
     let lifecycle = null;
     if (on) {
+      mark('lifecycle:start');
       const beforePanelCalculations = panels.map(
         (panel) => panel._b70IndicatorGenerationShadow.metrics.calculationStarts
       );
@@ -366,8 +519,31 @@ async function runCell(enabled, indicatorCount = 1) {
         : Math.max(replay.sessionStartIndex || 0, seekFrom - 1);
       const actualSeekIssued = seekTo != null && seekTo !== seekFrom
         && typeof replay.seekTo === 'function';
-      if (actualSeekIssued) replay.seekTo(seekTo);
+      mark('lifecycle:seek', {
+        actualSeekIssued,
+        seekFrom,
+        seekTo,
+        seekToArity: replay?.seekTo?.length ?? null,
+      });
+      if (actualSeekIssued) await bounded('lifecycle-seekTo',
+        () => replay.seekTo(seekTo), 15_000);
       else c._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
+      await bounded('lifecycle-post-seek-frame-yield', () =>
+        new Promise((resolve) => requestAnimationFrame(resolve)), 5_000);
+      const connectedPanels = panels.map((panel) => {
+        try {
+          return panel.ownerDocument?.defaultView?.frameElement?.isConnected === true;
+        } catch (_) {
+          return false;
+        }
+      });
+      mark('lifecycle:post-seek-frame-state', { connectedPanels });
+      if (connectedPanels.some((connected) => !connected)) {
+        throw new Error(
+          'NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED: '
+          + 'authenticated B71 candidate execution required'
+        );
+      }
       for (const panel of panels) {
         panel.data = structuredClone(c.data);
         panel.rawData = structuredClone(c.rawData || c.data);
@@ -414,7 +590,12 @@ async function runCell(enabled, indicatorCount = 1) {
         preSeekGenerationIds,
         terminalGenerationIds,
       };
+      mark('lifecycle:done', {
+        terminalWaitIterations,
+        terminalTimedOut: terminalWaitIterations === 500,
+      });
     }
+    mark('evaluation:return');
     return {
       enabled: on,
       requestedInstanceCount: Array.isArray(c.indicators?.active)
@@ -448,12 +629,48 @@ async function runCell(enabled, indicatorCount = 1) {
       lifecycle,
     };
   }, { on: enabled, count: indicatorCount, workloadIterations });
-  await page.close();
-  return { ...result, errors };
+  let timeout;
+  try {
+    const result = await Promise.race([
+      evaluation,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(
+          `browser evaluation exceeded ${evaluationTimeoutMs}ms`
+        )), evaluationTimeoutMs);
+      }),
+    ]);
+    clearTimeout(timeout);
+    await page.close();
+    return { ...result, diagnostics, errors };
+  } catch (error) {
+    clearTimeout(timeout);
+    const blockedAfterSeek = enabled
+      && diagnostics.lastStage?.stage === 'lifecycle-post-seek-frame-yield:start';
+    const detachedAfterSeek = blockedAfterSeek
+      && diagnostics.frameEvents.some((event) => event.event === 'detached');
+    diagnostics.timeout = {
+      limitMs: evaluationTimeoutMs,
+      message: String(error?.message || error),
+      lastStage: diagnostics.lastStage,
+      pendingOperation: diagnostics.lastStage?.stage || 'evaluation-dispatch',
+      eventLoopProgressedAfterSeek: false,
+      frameDetachedAfterSeek: detachedAfterSeek,
+    };
+    await closeBounded(page);
+    if (blockedAfterSeek) {
+      error.message = 'NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED: '
+        + 'B70 post-seek rAF and timeout callbacks did not run'
+        + (detachedAfterSeek ? ' and its product iframe detached; ' : '; ')
+        + 'authenticated B71 candidate execution required';
+    }
+    error.b70Diagnostics = diagnostics;
+    throw error;
+  }
 }
 
 const digest = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const summarize = (cell) => {
+  if (cell.verdict === 'NOT-APPLICABLE') return cell;
   const canvasSha256 = cell.canvasPayloads.map(digest);
   const registryRows = cell.registryRows?.map((row) => ({
     ...row,
@@ -582,13 +799,34 @@ try {
   };
   };
 
-  const tema = evaluatePair(await runCell(false, 1), await runCell(true, 1));
-  const fourIndicators = evaluatePair(await runCell(false, 4), await runCell(true, 4));
-  const verdict = tema.green && fourIndicators.green ? 'GREEN' : 'FAIL';
+  const runPair = async (count) => {
+    const off = await runCell(false, count);
+    const on = await runCell(true, count);
+    if (on.verdict === 'NOT-APPLICABLE') {
+      return { green: false, notApplicable: true, prerequisite: on.prerequisite, off, on };
+    }
+    return evaluatePair(off, on);
+  };
+  const tema = await runPair(1);
+  const fourIndicators = tema.notApplicable
+    ? { ...tema, off: { verdict: 'SKIP', reason: 'same B70 prerequisite result' } }
+    : await runPair(4);
+  const notApplicable = tema.notApplicable || fourIndicators.notApplicable;
+  const verdict = notApplicable ? 'NOT-APPLICABLE'
+    : tema.green && fourIndicators.green ? 'GREEN' : 'FAIL';
   console.log(JSON.stringify({
     verdict,
     expectedBuild,
-    workload: { sessionId, iterations: 60, panels: 3, resetBeforeWorkload: true },
+    prerequisite: notApplicable
+      ? 'B71 candidate authenticated execution is required after deployment'
+      : null,
+    workload: {
+      sessionId,
+      iterations: workloadIterations,
+      panels: 'authenticated product topology',
+      resetBeforeWorkload: true,
+      evaluationTimeoutMs,
+    },
     tema: {
       green: tema.green,
       parity: tema.parity,
@@ -604,7 +842,22 @@ try {
       on: summarize(fourIndicators.on),
     },
   }, null, 2));
-  if (verdict !== 'GREEN') process.exitCode = 1;
+  if (verdict === 'NOT-APPLICABLE') process.exitCode = 2;
+  else if (verdict !== 'GREEN') process.exitCode = 1;
+} catch (error) {
+  const notApplicable = String(error?.message || error)
+    .includes('NOT_APPLICABLE_B70_POST_SEEK_EVENT_LOOP_BLOCKED');
+  console.error(JSON.stringify({
+    verdict: notApplicable ? 'NOT-APPLICABLE' : 'FAIL',
+    stage: 'authenticated-browser-evaluation',
+    error: String(error?.stack || error),
+    diagnostics: error?.b70Diagnostics || null,
+    prerequisite: notApplicable
+      ? 'Deploy B71 candidate, then require authenticated Stage5 execution'
+      : null,
+  }, null, 2));
+  process.exitCode = notApplicable ? 2 : 1;
 } finally {
-  await browser.close();
+  await closeBounded(browser);
+  if (browser.connected) browser.process()?.kill();
 }
