@@ -5,13 +5,14 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import puppeteer from '../../../chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
 import { evaluateBounded, pollExternally } from './puppeteer-external-poll.mjs';
+import { deriveSessionAssignments, readBackPanelPassports } from './session-assignment-contract.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const modulesDir = path.join(here, '..', '..', '..', 'chart v 1.4', 'chart', 'modules');
 const origin = String(process.env.TEST_VPS_URL || '').replace(/\/$/, '');
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
-const sessionId = process.env.B70_SESSION_ID || '827';
+const sessionId = process.env.B70_SESSION_ID || '849';
 const expectedBuild = process.env.B70_EXPECTED_BUILD || '20260725b70';
 const baselineBuild = process.env.B70_BASELINE_BUILD || '20260725b70';
 const workloadIterations = 12;
@@ -259,7 +260,35 @@ async function runCell(enabled, indicatorCount = 1) {
     event: 'detached',
     url: frame.url(),
   }));
-  const url = `${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=2&sessionId=${encodeURIComponent(sessionId)}`;
+  await page.goto(`${origin}/login/`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  const sessionPayload = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`session lookup failed: ${response.status}`);
+    return response.json();
+  }, sessionId);
+  const assignments = deriveSessionAssignments(sessionPayload?.session || sessionPayload);
+  await page.evaluate(({ id, rows }) => {
+    const panelState = {
+      layout: '3v',
+      selectedPanelIndex: 0,
+      sessionId: id,
+      panels: rows.map((row, index) => ({
+        index,
+        isMainChart: index === 0,
+        timeframe: row.timeframe,
+        fileId: row.fileId,
+        symbol: row.ticker,
+        offsetX: 0,
+        candleWidth: 6,
+      })),
+    };
+    localStorage.setItem('chart_panel_state', JSON.stringify(panelState));
+    localStorage.setItem('active_trading_session_id', id);
+  }, { id: sessionId, rows: assignments });
+  const url = `${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=3v&sessionId=${encodeURIComponent(sessionId)}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
   await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
     { timeout: 60_000 }, expectedBuild);
@@ -275,7 +304,7 @@ async function runCell(enabled, indicatorCount = 1) {
         } catch (_) {
           return false;
         }
-      }).length >= 1;
+      }).length === 2;
     }, { timeout: 120_000 });
   } catch (error) {
     const diagnostic = await page.evaluate(() => {
@@ -350,6 +379,9 @@ async function runCell(enabled, indicatorCount = 1) {
       frames,
     };
   });
+  diagnostics.preflight.passports = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('chart_panel_state') || 'null'));
+  readBackPanelPassports(diagnostics.preflight.passports, assignments);
   const readyFrames = diagnostics.preflight.frames.filter((frame) =>
     frame.sameOrigin && frame.chart.present);
   const missing = [];

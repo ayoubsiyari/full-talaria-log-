@@ -11,7 +11,8 @@ const deployPath = path.join(root, 'scripts/deploy.sh');
 test('checkpoint wrapper is fail-closed and never handles passwords', () => {
   const source = fs.readFileSync(workflowPath, 'utf8');
   assert.match(source, /--rollback-manifest is required/);
-  assert.match(source, /git ls-remote --refs/);
+  assert.match(source, /resolve_remote_tag_commit/);
+  assert.match(source, /git ls-remote "\$remote_url" "\$remote_ref" "\$\{remote_ref\}\^\{\}"/);
   assert.match(source, /FETCHED_SHA.*SOURCE_SHA/s);
   assert.match(source, /CHECKPOINT_BUILD=1/);
   assert.match(source, /docker compose.*build --pull/s);

@@ -20,7 +20,7 @@ export function deriveSessionAssignments(session, expectedSymbols = EXPECTED_SYM
     throw new Error('session ticker set differs from the exact three-symbol contract');
   }
 
-  return expected.map((symbol) => {
+  const assignments = expected.map((symbol) => {
     const file = files.find((row) => upper(row?.ticker || row?.symbol) === symbol);
     const instrument = instruments[symbol];
     const fileId = Number(file?.id ?? instrument?.fileId);
@@ -33,6 +33,10 @@ export function deriveSessionAssignments(session, expectedSymbols = EXPECTED_SYM
     if (!/_1min\.csv$/i.test(fileName)) throw new Error(`${symbol} is not backed by 1-minute data`);
     return Object.freeze({ ticker: symbol, fileId: String(fileId), timeframe: '1m', fileName });
   });
+  if (new Set(assignments.map((row) => row.fileId)).size !== assignments.length) {
+    throw new Error('session assigns the same file ID to multiple symbols');
+  }
+  return assignments;
 }
 
 export function readBackPanelPassports(panelState, assignments) {

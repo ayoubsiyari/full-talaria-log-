@@ -7,6 +7,20 @@ say() { printf '\n=== %s ===\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"; }
 
 ORCHESTRATOR_ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+resolve_remote_tag_commit() {
+  local remote_url="$1"
+  local remote_ref="$2"
+  git ls-remote "$remote_url" "$remote_ref" "${remote_ref}^{}" \
+    | node --input-type=module -e '
+        import fs from "node:fs";
+        import { resolveAdvertisedTagCommit } from "./scripts/lib/checkpoint-provenance.mjs";
+        const remoteRef = process.argv[1];
+        const result = resolveAdvertisedTagCommit(fs.readFileSync(0, "utf8"), remoteRef);
+        process.stdout.write(`${result.commitSha}\n`);
+      ' "$remote_ref"
+}
+
 SOURCE_TAG=""
 BUILD_ID=""
 CHECKPOINT=""
@@ -89,7 +103,7 @@ NODE
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
     --manifest="$DEPLOY_EXISTING" >/dev/null
   REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$EXISTING_REMOTE")"
-  REMOTE_SHA="$(git ls-remote --refs "$REMOTE_URL" "$EXISTING_REF" | awk 'NR==1 {print $1}')"
+  REMOTE_SHA="$(cd "$ORCHESTRATOR_ROOT" && resolve_remote_tag_commit "$REMOTE_URL" "$EXISTING_REF")"
   [[ "$REMOTE_SHA" == "$EXISTING_SHA" ]] || die "accepted manifest source tag is not immutable remotely"
   EXISTING_SOURCE="$STATE_ROOT/rollback-$EXISTING_BUILD/source"
   mkdir -p "$(dirname "$EXISTING_SOURCE")"
@@ -124,9 +138,7 @@ git -C "$ORCHESTRATOR_ROOT" remote get-url "$REMOTE" >/dev/null 2>&1 \
 
 REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$REMOTE")"
 REMOTE_REF="refs/tags/$SOURCE_TAG"
-REMOTE_LINE="$(git ls-remote --refs "$REMOTE_URL" "$REMOTE_REF")"
-[[ -n "$REMOTE_LINE" ]] || die "pushed source tag not found: $REMOTE_REF"
-SOURCE_SHA="${REMOTE_LINE%%[[:space:]]*}"
+SOURCE_SHA="$(cd "$ORCHESTRATOR_ROOT" && resolve_remote_tag_commit "$REMOTE_URL" "$REMOTE_REF")"
 [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || die "remote tag did not resolve to a commit SHA"
 
 ROLLBACK_FIELDS=()

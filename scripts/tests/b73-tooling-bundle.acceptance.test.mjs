@@ -111,4 +111,12 @@ test('B73 sealed tooling contracts remain integrated and fail closed', (t) => {
     'utf8',
   );
   assert.match(assignment, /\^3\(\?:v\|h\|l\|r\|t\|b\)\$/);
+  const harness = fs.readFileSync(
+    path.join(root, 'tests/evidence/b70-stage5/b70-indicator-generation-shadow.auth-harness.mjs'),
+    'utf8',
+  );
+  assert.match(harness, /B70_SESSION_ID \|\| '849'/);
+  assert.match(harness, /mcLayout=3v/);
+  assert.match(harness, /deriveSessionAssignments/);
+  assert.match(harness, /\.length === 2/);
 });

@@ -43,6 +43,12 @@ test('rejects missing, duplicate, or invalid file IDs', () => {
   assert.throws(() => deriveSessionAssignments({
     config: { ...session.config, files },
   }), /valid file ID/);
+  const duplicated = session.config.files.map((row) => (
+    row.ticker === 'GBPUSD' ? { ...row, id: session.config.files[0].id } : row
+  ));
+  assert.throws(() => deriveSessionAssignments({
+    config: { ...session.config, files: duplicated },
+  }), /same file ID/);
 });
 
 test('rejects non-Forex or non-minute datasets', () => {
