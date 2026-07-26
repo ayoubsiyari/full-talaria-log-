@@ -100,16 +100,21 @@ for (const value of [
   profile.deploymentContract.sourceSha, profile.deploymentContract.manifestSha256,
   profile.deploymentContract.proofSha256, profile.deploymentContract.chartDigest,
   profile.deploymentContract.homepageDigest, profile.deploymentContract.rollbackBuildId,
+  JSON.stringify(profile.currentIdentity), profile.composeFileSha256,
 ]) console.log(value);
 NODE
 )
-[[ "${#PROFILE_FIELDS[@]}" -eq 13 ]] || die "approved TEST deployment profile is incomplete"
+[[ "${#PROFILE_FIELDS[@]}" -eq 15 ]] || die "approved TEST deployment profile is incomplete"
 PROFILE_COMPOSE_FILE="${PROFILE_FIELDS[0]}"
 PROFILE_WORKING_DIRECTORY="${PROFILE_FIELDS[1]}"
 PROFILE_ENV_FILE="${PROFILE_FIELDS[2]}"
 IFS=',' read -r -a PROFILE_SERVICES <<<"${PROFILE_FIELDS[3]}"
 PROFILE_HOST_NAME="${PROFILE_FIELDS[4]}"
 [[ "$(hostname)" == "$PROFILE_HOST_NAME" ]] || die "current host is not the approved TEST host"
+[[ -f "$PROFILE_COMPOSE_FILE" && ! -L "$PROFILE_COMPOSE_FILE" ]] \
+  || die "approved target compose file is missing or not regular"
+[[ "$(sha256sum "$PROFILE_COMPOSE_FILE" | awk '{print $1}')" == "${PROFILE_FIELDS[14]}" ]] \
+  || die "approved target compose file hash mismatch"
 [[ "$ENV_FILE" == "$PROFILE_ENV_FILE" ]] || die "--env-file must equal the approved TEST profile path"
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || die "approved env file is missing or not regular"
 ENV_OWNER="$(stat -c '%U' "$ENV_FILE")"
@@ -130,18 +135,8 @@ export COMPOSE_FILE="$PROFILE_COMPOSE_FILE"
 export COMPOSE_PROJECT_DIRECTORY="$PROFILE_WORKING_DIRECTORY"
 
 for service in "${PROFILE_SERVICES[@]}"; do
-  container_id="$(docker compose --project-name "$COMPOSE_PROJECT_NAME" \
-    --project-directory "$PROFILE_WORKING_DIRECTORY" --file "$PROFILE_COMPOSE_FILE" \
-    --env-file "$ENV_FILE" ps --quiet "$service")"
-  [[ -n "$container_id" && "$container_id" != *$'\n'* ]] \
-    || die "approved TEST service is not uniquely present: $service"
-  mapfile -t identity < <(docker inspect --format \
-    '{{ index .Config.Labels "com.docker.compose.project" }}{{println}}{{ index .Config.Labels "com.docker.compose.service" }}{{println}}{{ index .Config.Labels "com.docker.compose.project.config_files" }}{{println}}{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' \
-    "$container_id")
-  [[ "${identity[0]}" == "$COMPOSE_PROJECT_NAME"
-      && "${identity[1]}" == "$service"
-      && "${identity[2]}" == "$PROFILE_COMPOSE_FILE"
-      && "${identity[3]}" == "$PROFILE_WORKING_DIRECTORY" ]] \
+  node "$ORCHESTRATOR_ROOT/scripts/test-deployment-profile-check.mjs" \
+    "$PROFILE_FILE" "$COMPOSE_PROJECT_NAME" "$PUBLIC_ORIGIN" "$service" >/dev/null \
     || die "existing service identity differs from approved TEST profile: $service"
 done
 

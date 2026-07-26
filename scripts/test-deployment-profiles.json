@@ -4,11 +4,39 @@
     {
       "publicOrigin": "http://31.97.192.82:3000",
       "composeProject": "talaria",
-      "composeFile": "/opt/talaria/docker-compose.yml",
-      "workingDirectory": "/opt/talaria",
+      "composeFile": "/var/lib/talaria/checkpoints/rollback-20260726b73/source/docker-compose.yml",
+      "workingDirectory": "/var/lib/talaria/checkpoints/rollback-20260726b73/source",
+      "composeFileSha256": "c3191f9eae8e088a385b12c249ad8034abacabcf29779cb7b8c374fbcff92a77",
       "envFile": "/opt/talaria/.env",
       "hostName": "srv904606",
       "services": ["trading-chart", "trading-chart-worker", "homepage"],
+      "currentIdentity": {
+        "buildId": "20260725b70",
+        "sourceSha": "6cb10495e6d5d329af3691cc13f6623812adbe31",
+        "composeFile": "/var/lib/talaria/checkpoints/rollback-20260725b70/source/docker-compose.yml",
+        "workingDirectory": "/var/lib/talaria/checkpoints/rollback-20260725b70/source",
+        "composeFileSha256": "c3191f9eae8e088a385b12c249ad8034abacabcf29779cb7b8c374fbcff92a77",
+        "services": {
+          "trading-chart": {
+            "containerName": "talaria-trading-chart-1",
+            "repository": "ghcr.io/ayoubsiyari/talaria-trading-chart",
+            "digest": "sha256:5127e3e82f63927f3d8ba988bb668da660f56c293605ec5314e16fbdae323aef",
+            "composeConfigHash": "88fe584e6e784c8708c30864ce867fc3d7cf144a84e9c08e6e271fb766859f4c"
+          },
+          "trading-chart-worker": {
+            "containerName": "talaria-trading-chart-worker-1",
+            "repository": "ghcr.io/ayoubsiyari/talaria-trading-chart",
+            "digest": "sha256:5127e3e82f63927f3d8ba988bb668da660f56c293605ec5314e16fbdae323aef",
+            "composeConfigHash": "7c416e58d8bf81ca95c32d7ec877861215b8a7804cdf988aa7845ea2a5dac6bc"
+          },
+          "homepage": {
+            "containerName": "talaria-homepage-1",
+            "repository": "ghcr.io/ayoubsiyari/talaria-homepage",
+            "digest": "sha256:d0cb0c78ac297c57e93ed239c3cc2503f546497f5e68f79917917dc24df32aa3",
+            "composeConfigHash": "a8eef9826e81f3553dbe625dfaac3d91dd79e1112f786fcff9f6e9306c215318"
+          }
+        }
+      },
       "deploymentContract": {
         "checkpoint": "CKPT-73",
         "buildId": "20260726b73",
