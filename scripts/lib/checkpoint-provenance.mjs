@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { HOMEPAGE_FORWARDING_CONTRACTS } from './homepage-forwarding-contracts.mjs';
 
 export const MANIFEST_SCHEMA = 'talaria.checkpoint-provenance/v1';
 export const UNIFORMITY_SIGNATURE = 'TALARIA_CHECKPOINT_UNIFORMITY_V1';
@@ -208,6 +209,32 @@ export function verifyRepositoryEvidence(manifest, evidence) {
   return { ok: failures.length === 0, failures };
 }
 
+export function resolveAdvertisedTagCommit(output, remoteRef) {
+  const refs = new Map();
+  for (const line of String(output || '').split(/\r?\n/).filter(Boolean)) {
+    const [sha, ref, ...extra] = line.trim().split(/\s+/);
+    if (extra.length || !SOURCE_SHA_RE.test(sha || '')) {
+      throw new Error('remote tag advertisement contains an invalid object id or line');
+    }
+    if (ref !== remoteRef && ref !== `${remoteRef}^{}`) {
+      throw new Error(`remote tag advertisement contains unexpected ref ${ref || '<missing>'}`);
+    }
+    if (refs.has(ref)) throw new Error(`remote tag advertisement is ambiguous for ${ref}`);
+    refs.set(ref, sha);
+  }
+  const tagObjectSha = refs.get(remoteRef);
+  if (!tagObjectSha) throw new Error(`remote tag is missing: ${remoteRef}`);
+  const peeledSha = refs.get(`${remoteRef}^{}`) || null;
+  if (peeledSha === tagObjectSha) {
+    throw new Error('remote tag object and peeled target unexpectedly match');
+  }
+  return {
+    tagObjectSha,
+    commitSha: peeledSha || tagObjectSha,
+    annotated: peeledSha !== null,
+  };
+}
+
 export function createDeployPlan(manifest, { rollback = false } = {}) {
   const source = rollback
     ? {
@@ -297,11 +324,8 @@ function listFiles(root, relative = '') {
 }
 
 const Q6_CANONICAL_FORWARDER = 'm20-q6-replay-lifecycle-binding.test.mjs';
-const Q6_HOMEPAGE_FORWARDER = [
-  '// Mirrored entrypoint: execute the canonical-root Q6 lifecycle harness.',
-  "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs';",
-  '',
-].join('\n');
+const Q6_HOMEPAGE_FORWARDER =
+  HOMEPAGE_FORWARDING_CONTRACTS[`modules/${Q6_CANONICAL_FORWARDER}`];
 
 function isExactQ6CanonicalForwarder(relativeFile, canonicalFile, homepageFile) {
   if (relativeFile !== Q6_CANONICAL_FORWARDER) return false;
