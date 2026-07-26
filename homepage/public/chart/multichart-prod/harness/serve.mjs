@@ -101,6 +101,7 @@ const FILES = {
   25: { originalName: 'EURUSD.csv', basePrice: 1.08000, decimals: 5 },
   27: { originalName: 'GBPUSD.csv', basePrice: 1.27000, decimals: 5 },
   28: { originalName: 'DEEPFX.csv', basePrice: 1.15000, decimals: 5, synthDays: DEEP_SYNTH_DAYS },
+  29: { originalName: 'USDJPY.csv', basePrice: 149.000, decimals: 3 },
 };
 
 const CONTENT_TYPES = {
@@ -622,6 +623,7 @@ function hostPageHtml(query) {
   const pair = (q.get('pair') || 'same').toLowerCase();
   const panels = Math.max(1, Math.min(4, parseInt(q.get('panels') || '4', 10) || 4));
   const tf = q.get('tf') || '1m';
+  const mcRestore = q.get('mcRestore') === '1';
   // hostFile lets a scenario pick the instrument the HOST (and same-pair panels)
   // load — default 25 keeps every pre-BL-14 scenario on the 90-day instrument.
   // H-S20 passes hostFile=28 (the deep 400-day instrument) to create a real
@@ -642,11 +644,24 @@ function hostPageHtml(query) {
   if (pair === 'multi-independent' && fileIds.C != null) {
     fileIds.C = independentFileIdC;
   }
+  const restorePassport = {
+    layout: String(panels),
+    sessionId: 'mc-restore-session-827',
+    panels: [
+      { index: 0, isMainChart: true, fileId: '25', symbol: 'FILE_25', timeframe: tf },
+      { index: 1, isMainChart: false, fileId: '27', symbol: 'FILE_27', timeframe: tf },
+      { index: 2, isMainChart: false, fileId: '28', symbol: 'FILE_28', timeframe: tf },
+      { index: 3, isMainChart: false, fileId: '29', symbol: 'FILE_29', timeframe: tf },
+    ].slice(0, panels),
+  };
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260726b70';
+  const buildId = '20260726b73';
 
-  const cfg = { pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows };
+  const cfg = {
+    pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows, mcRestore,
+    restorePassport,
+  };
 
   return `<!doctype html>
 <html lang="en">
@@ -657,6 +672,7 @@ function hostPageHtml(query) {
     // Host is the PARENT page (dist-v9 parent equivalent): NOT an embed panel,
     // NOT embed-lite. Only ?multichart=1 iframe panels set those.
     window.__TALARIA_CHART_BUILD_ID = '${buildId}';
+    window.__TALARIA_ENABLE_MC_RESTORE_V1 = ${mcRestore};
   </script>
   <style>
     html, body { margin: 0; width: 100%; height: 100%; background: #07080E; overflow: hidden; }
@@ -824,6 +840,21 @@ function hostPageHtml(query) {
         return;
       }
       var afterHostLoad = function () {
+        var hostPassport = CFG.restorePassport && CFG.restorePassport.panels[0];
+        if (hostPassport) {
+          ch.currentFileId = String(hostPassport.fileId);
+          ch.currentSymbol = String(hostPassport.symbol);
+          ch.currentTimeframe = String(hostPassport.timeframe);
+          ch.activeTradingSessionId = String(CFG.restorePassport.sessionId);
+          ch._sessionStateLoadedFor = String(CFG.restorePassport.sessionId);
+          window.__harnessHostLoadResult = {
+            panelId: 'A',
+            fileId: ch.currentFileId,
+            ticker: ch.currentSymbol,
+            sessionId: ch.activeTradingSessionId,
+            timeframe: ch.currentTimeframe,
+          };
+        }
         try { if (typeof ch.render === 'function') ch.render(); } catch (e) {}
         wireManager(ch);
       };
