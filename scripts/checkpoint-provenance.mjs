@@ -8,6 +8,7 @@ import {
   MANIFEST_SCHEMA,
   createDeployPlan,
   loadManifest,
+  resolveAdvertisedTagCommit,
   sha256File,
   validateManifest,
   verifyRepositoryEvidence,
@@ -87,6 +88,28 @@ function commandValidateManifest(args) {
   });
 }
 
+function commandVerifyManifest(args) {
+  const repoRoot = path.resolve(args['repo-root'] || defaultRepoRoot);
+  const { manifest, manifestPath } = loadManifest(required(args, 'manifest'));
+  const proof = verifyUniformityProof(manifest, manifestPath, { repoRoot });
+  const result = {
+    signature: 'TALARIA_CHECKPOINT_MANIFEST_VERIFIED_V1',
+    ok: proof.ok,
+    checkpoint: manifest.checkpoint,
+    buildId: manifest.buildId,
+    sourceSha: manifest.source.sha,
+    images: manifest.images,
+    proof: {
+      path: proof.proofPath,
+      sha256: proof.actualHash || null,
+      ok: proof.ok,
+    },
+    failures: proof.failures,
+  };
+  printJson(result);
+  if (!result.ok) process.exit(1);
+}
+
 function commandUniformity(args) {
   const repoRoot = path.resolve(args['repo-root'] || defaultRepoRoot);
   const expectedBuildId = required(args, 'build-id');
@@ -114,24 +137,43 @@ function commandPreflight(args) {
     'ls-remote',
     manifest.source.remote,
     manifest.source.ref,
+    `${manifest.source.ref}^{}`,
   ], { allowFailure: true });
-  const remoteLine = remoteOutput.status === 0
-    ? remoteOutput.stdout.split(/\r?\n/).find(Boolean)
-    : '';
-  const remoteSha = remoteLine?.split(/\s+/)[0] || null;
+  let remoteSha = null;
+  let remoteTagObjectSha = null;
+  let remoteAnnotated = null;
+  let remoteResolutionFailure = null;
+  if (remoteOutput.status === 0) {
+    try {
+      const resolved = resolveAdvertisedTagCommit(remoteOutput.stdout, manifest.source.ref);
+      remoteSha = resolved.commitSha;
+      remoteTagObjectSha = resolved.tagObjectSha;
+      remoteAnnotated = resolved.annotated;
+      const remoteType = git(repoRoot, ['cat-file', '-t', remoteSha], { allowFailure: true });
+      if (remoteType.status !== 0 || remoteType.stdout !== 'commit') {
+        remoteResolutionFailure = `remote tag target ${remoteSha} is not a locally verified commit`;
+        remoteSha = null;
+      }
+    } catch (error) {
+      remoteResolutionFailure = error.message;
+    }
+  } else {
+    remoteResolutionFailure = remoteOutput.stderr || 'remote tag lookup failed';
+  }
 
   const repository = verifyRepositoryEvidence(manifest, {
     dirty: status.length > 0,
     headSha,
     remoteSha,
   });
-  const proof = verifyUniformityProof(manifest, manifestPath);
+  const proof = verifyUniformityProof(manifest, manifestPath, { repoRoot });
   const uniformity = verifyTreeLayout({
     ...layoutForRepo(repoRoot),
     expectedBuildId: manifest.buildId,
     sourceSha: manifest.source.sha,
   });
   const failures = [
+    ...(remoteResolutionFailure ? [remoteResolutionFailure] : []),
     ...repository.failures,
     ...proof.failures,
     ...uniformity.failures,
@@ -147,6 +189,8 @@ function commandPreflight(args) {
       headSha,
       remote: manifest.source.remote,
       remoteRef: manifest.source.ref,
+      remoteTagObjectSha,
+      remoteAnnotated,
       remoteSha,
       ok: repository.ok,
     },
@@ -243,6 +287,11 @@ function commandCreateManifest(args) {
   if (fs.existsSync(outputPath) && args.force !== true) {
     fail(`Refusing to overwrite ${outputPath}; pass --force only for an intentional replacement`);
   }
+  const provisionalManifestPath = path.join(path.dirname(outputPath), path.basename(outputPath));
+  const proof = verifyUniformityProof(manifest, provisionalManifestPath, {
+    repoRoot: path.resolve(args['repo-root'] || defaultRepoRoot),
+  });
+  if (!proof.ok) fail(`Refusing manifest with invalid uniformity proof:\n- ${proof.failures.join('\n- ')}`);
   fs.writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   printJson({
     signature: 'TALARIA_CHECKPOINT_MANIFEST_CREATED_V1',
@@ -260,6 +309,7 @@ function usage() {
 
 Commands:
   validate-manifest --manifest=<file>
+  verify-manifest --manifest=<file> [--repo-root=<dir>]
   uniformity --build-id=YYYYMMDDbN --source-sha=<40hex> [--repo-root=<dir>] [--output=<json>]
   preflight --manifest=<file> [--repo-root=<dir>]
   plan --manifest=<file> [--rollback]
@@ -271,7 +321,7 @@ Commands:
     --proof-sha256=<64hex> --rollback-build-id=... --rollback-source-sha=...
     --rollback-chart-ref=<digest-ref> --rollback-chart-digest=sha256:...
     --rollback-homepage-ref=<digest-ref> --rollback-homepage-digest=sha256:...
-    --output=<manifest.json>
+    --output=<manifest.json> [--repo-root=<dir>]
 
 The test-only --provenance-guard-off discriminator is deliberately unavailable here.
 `);
@@ -289,6 +339,7 @@ if (!command || command === 'help' || args.help === true) {
 
 const commands = {
   'validate-manifest': commandValidateManifest,
+  'verify-manifest': commandVerifyManifest,
   uniformity: commandUniformity,
   preflight: commandPreflight,
   plan: commandPlan,
