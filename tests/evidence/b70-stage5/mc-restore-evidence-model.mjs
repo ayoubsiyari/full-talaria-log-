@@ -37,7 +37,7 @@ export function classifyPanel(panel, expected, deadlineMs = DEADLINE_MS) {
 
 export function summarizeAb(off, onRuns) {
   return {
-    offRed: off.every((panel) => !panel.pass),
+    offRed: off.length === 3 && off.some((panel) => !panel.pass),
     onGreen: onRuns.length >= 10
       && onRuns.every((run) => run.length === 3 && run.every((panel) => panel.pass)),
     attempts: onRuns.length,

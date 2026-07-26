@@ -36,8 +36,11 @@ test('runner contracts pin identity, claims, cleanup, and reject old layout', ()
   assert.doesNotMatch(source, /mcLayout=3(?:[&"`'])/);
   assert.match(source, /api\/chart\/windows\/claim/);
   assert.match(source, /api\/chart\/windows\/release/);
-  assert.match(source, /charts\?\.size === 3/);
-  assert.match(source, /filter\(\(entry\) => !entry\.host\)\.length === 2/);
+  assert.match(source, /const entries = \[\{ id: 'A', host: true \}, \.\.\.iframeEntries\]/);
+  assert.match(source, /pollExternally/);
+  assert.match(source, /evaluateTimeoutMs: 5_000/);
+  assert.match(source, /classifyArmPanel/);
+  assert.match(source, /MC snapshot timeout stage=/);
   assert.match(source, /strictIdentity/);
   assert.match(source, /nonblack/);
   assert.match(source, /exercisePlayback/);
@@ -49,6 +52,15 @@ test('runner closure and reviewed version hashes are exact', () => {
     'scripts/acceptance-runner-pins.json'), 'utf8'));
   assert.equal(sha(mc), pins.mcRestoreAuthenticatedAb.sha256);
   assert.equal(sha(component), pins.indicatorLedgerShortCell.sha256);
+  for (const pinName of [
+    'mcRestoreEvidenceModel', 'mcSnapshotContract', 'mcSnapshotContractTest',
+    'puppeteerExternalPoll',
+  ]) {
+    assert.equal(sha(path.join(root, pins[pinName].path)), pins[pinName].sha256);
+  }
+  assert.deepEqual(pins.diagnosticSource.lineage, ['877fb093f', '33733b9e7']);
+  assert.equal(pins.diagnosticSource.upstreamRunnerSha256,
+    'ffbb3cd99646348089baae6c72f524b66a82c8e44014793664778a34b5299bfd');
   for (const dependency of pins.minimalClosure) {
     assert.equal(fs.existsSync(path.join(root, dependency)), true, dependency);
   }

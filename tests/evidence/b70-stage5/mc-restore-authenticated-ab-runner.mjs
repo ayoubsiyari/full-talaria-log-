@@ -6,6 +6,8 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { deriveSessionAssignments, readBackPanelPassports } from './session-assignment-contract.mjs';
 import { classifyPanel, strictIdentity, summarizeAb, validateLayout } from './mc-restore-evidence-model.mjs';
+import { classifyArmPanel, observableReady, stageForSnapshot } from './mc-snapshot-contract.mjs';
+import { ExternalPollTimeoutError, pollExternally } from './puppeteer-external-poll.mjs';
 
 const require = createRequire(new URL(
   '../../../chart v 1.4/chart/multichart-prod/harness/package.json', import.meta.url,
@@ -67,11 +69,12 @@ async function seed(page, assignments) {
 async function snapshot(page, assignments) {
   return page.evaluate((expectedRows) => {
     const manager = window.__multichartManagerRef || window.__mcManager || window.__harnessManager;
-    const entries = manager?.charts ? [...manager.charts.values()].sort((left, right) => {
-      if (!!left.host !== !!right.host) return left.host ? -1 : 1;
-      return String(left.id).localeCompare(String(right.id));
-    }) : [];
-    return entries.map((entry, index) => {
+    const iframeEntries = manager?.charts
+      ? [...manager.charts.values()].filter((entry) => !entry.host)
+        .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+      : [];
+    const entries = [{ id: 'A', host: true }, ...iframeEntries];
+    const panels = entries.map((entry, index) => {
       const win = entry.host ? window : entry.frame?.contentWindow;
       const chart = win?.chart;
       const canvas = win?.document?.querySelector('#chartCanvas,canvas');
@@ -98,28 +101,47 @@ async function snapshot(page, assignments) {
         expected: expectedRows[index],
       };
     });
+    return {
+      navigation: { top: window === window.top, href: location.href },
+      layout: JSON.parse(localStorage.getItem('chart_panel_state') || 'null')?.layout || null,
+      manager: {
+        present: !!manager,
+        chartCount: manager?.charts?.size ?? null,
+        ids: manager?.charts ? [...manager.charts.keys()] : [],
+        generation: manager?._mcRestoreGeneration ?? null,
+        completedGeneration: manager?._mcRestoreCompletedGeneration ?? null,
+      },
+      lifecycle: window.__mcAbObserver?.events?.slice(-40) || [],
+      panels,
+    };
   }, assignments.map((row) => ({ ...row, sessionId })));
 }
 
-async function waitSnapshot(page, assignments) {
-  await page.waitForFunction(() => {
-    const manager = window.__multichartManagerRef || window.__mcManager || window.__harnessManager;
-    return manager?.charts?.size === 3
-      && [...manager.charts.values()].filter((entry) => !entry.host).length === 2;
-  }, { timeout: 30_000 });
+async function waitSnapshot(page, assignments, enabled) {
   const started = Date.now();
-  let panels;
-  do {
-    panels = await snapshot(page, assignments);
-    if (panels.length === 3 && panels.every((panel) => panel.bars > 0 && panel.nonblack > 0)) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } while (Date.now() - started < 10_000);
-  return panels.map((panel) => ({
+  let result;
+  try {
+    result = await pollExternally({
+      evaluate: () => snapshot(page, assignments),
+      isTerminal: observableReady,
+      timeoutMs: 10_000,
+      intervalMs: 100,
+      evaluateTimeoutMs: 5_000,
+    });
+  } catch (error) {
+    if (!(error instanceof ExternalPollTimeoutError)) throw error;
+    const last = error.observations.at(-1)?.value || null;
+    throw new Error(`MC snapshot timeout stage=${stageForSnapshot(last)} diagnostics=${JSON.stringify({
+      navigation: last?.navigation, layout: last?.layout, manager: last?.manager,
+      panels: last?.panels, lifecycle: last?.lifecycle,
+      contextErrors: error.observations.filter((row) => row.error).slice(-8),
+    })}`, { cause: error });
+  }
+  return result.value.panels.map((panel) => ({
     ...panel,
     paintMs: Date.now() - started,
-    pass: strictIdentity(panel, panel.expected, panel.generation)
-      && classifyPanel({ ...panel, nonblank: panel.nonblack > 0, paintMs: Date.now() - started },
-        panel.expected).pass,
+    pass: classifyArmPanel({ ...panel, paintMs: Date.now() - started }, enabled,
+      strictIdentity, classifyPanel),
   }));
 }
 
@@ -150,6 +172,20 @@ async function runArm(browser, enabled, repetitions, assignments) {
   try {
     await page.evaluateOnNewDocument((flag) => {
       window.__TALARIA_ENABLE_MC_RESTORE_V1 = flag;
+      window.__mcAbObserver = { events: [] };
+      const record = (type, detail = {}) => {
+        window.__mcAbObserver.events.push({ type, at: performance.now(), ...detail });
+      };
+      addEventListener('DOMContentLoaded', () => record('domcontentloaded'));
+      addEventListener('load', () => record('load'));
+      addEventListener('pageshow', (event) => record('pageshow', { persisted: event.persisted }));
+      addEventListener('pagehide', (event) => record('pagehide', { persisted: event.persisted }));
+      addEventListener('message', (event) => {
+        const data = event.data;
+        if (data && typeof data === 'object' && /ready|restore|state/i.test(String(data.type || ''))) {
+          record('message', { messageType: String(data.type || ''), source: data.source || null });
+        }
+      });
     }, enabled);
     await login(page);
     await seed(page, assignments);
@@ -174,7 +210,7 @@ async function runArm(browser, enabled, repetitions, assignments) {
       }
       await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
         { timeout: 60_000 }, expectedBuild);
-      snapshots.push(await waitSnapshot(page, assignments));
+      snapshots.push(await waitSnapshot(page, assignments, enabled));
     }
     const saved = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('chart_panel_state') || 'null'));

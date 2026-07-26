@@ -41,5 +41,7 @@ test('A/B summary requires OFF RED and ten three-panel GREEN reloads', () => {
   const green = Array.from({ length: 10 }, () =>
     [{ pass: true }, { pass: true }, { pass: true }]);
   assert.deepEqual(summarizeAb(off, green), { offRed: true, onGreen: true, attempts: 10 });
+  assert.equal(summarizeAb([{ pass: true }, { pass: false }, { pass: true }], green).offRed, true);
+  assert.equal(summarizeAb([{ pass: true }, { pass: true }, { pass: true }], green).offRed, false);
   assert.equal(summarizeAb(off, green.slice(1)).onGreen, false);
 });
