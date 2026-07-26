@@ -1,12 +1,14 @@
 # M20 Q4 trail path cap contract
 
 Status: RED-ready, additive lane only. Schema version `1`; canonical schema SHA-256
-`682578a0df2c6e8e8826f99ea758c9111097ee92525431fea6e8f6b7a44ba78d`.
+`7786f942356c15864c1f588326a54e3d20fcb70224894c8f4826bf51a0471d1d`.
 
 The oracle requires at most 256 retained points and at most one new point per
 logical tick. Repeated identical samples are no-ops; a changed sample in the
-same tick replaces the tail. Invalid, non-finite, malformed, and out-of-order
-samples fail closed without mutating retained geometry. Seek and timeframe
+same tick replaces the tail only when time does not move backward. Input fields
+must already have numeric types; invalid, non-finite, negative-time, malformed,
+and tick- or time-out-of-order samples fail closed without mutating retained
+geometry. Seek and timeframe
 changes begin a fresh ordering epoch. Removal clears retained points and seals
 the state against late callbacks.
 

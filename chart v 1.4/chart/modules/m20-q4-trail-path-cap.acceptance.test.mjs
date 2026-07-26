@@ -11,11 +11,18 @@ import {
 } from './m20-q4-trail-path-cap-model.mjs';
 import { makeTrailPoint, TRAIL_PATH_CAP_FIXTURES } from './m20-q4-trail-path-cap-fixtures.mjs';
 
-const PINNED_SCHEMA_SHA256 = '682578a0df2c6e8e8826f99ea758c9111097ee92525431fea6e8f6b7a44ba78d';
+const PINNED_SCHEMA_SHA256 = '7786f942356c15864c1f588326a54e3d20fcb70224894c8f4826bf51a0471d1d';
 
 test('schema and behavior contract are version/hash pinned', () => {
   assert.equal(TRAIL_PATH_CAP_SCHEMA.version, 1);
   assert.equal(TRAIL_PATH_CAP_SCHEMA_SHA256, PINNED_SCHEMA_SHA256);
+  assert.equal(Object.isFrozen(TRAIL_PATH_CAP_SCHEMA), true);
+  assert.equal(Object.isFrozen(TRAIL_PATH_CAP_SCHEMA.pointFields), true);
+  assert.equal(Object.isFrozen(TRAIL_PATH_CAP_SCHEMA.pointTypes), true);
+  assert.equal(Object.isFrozen(TRAIL_PATH_CAP_SCHEMA.resetEvents), true);
+  assert.throws(() => {
+    TRAIL_PATH_CAP_SCHEMA.maxPoints = 1;
+  }, TypeError);
 });
 
 test('maximum length and per-tick growth remain bounded deterministically', () => {
@@ -28,6 +35,11 @@ test('maximum length and per-tick growth remain bounded deterministically', () =
     assert.ok(retainedPointCount(state) - before <= 1);
   }
   assert.deepEqual(state.points.map((point) => point.tick), [9992, 9993, 9994, 9995, 9996, 9997, 9998, 9999]);
+
+  const onePointState = createTrailPathState({ maxPoints: 1 });
+  appendTrailPathPoint(onePointState, makeTrailPoint(0));
+  appendTrailPathPoint(onePointState, makeTrailPoint(1));
+  assert.deepEqual(onePointState.points.map((point) => point.tick), [1]);
 });
 
 test('duplicate points are no-ops and same-tick points coalesce', () => {
@@ -67,6 +79,19 @@ test('NaN, non-finite, malformed, and out-of-order inputs fail closed', () => {
     assert.equal(appendTrailPathPoint(state, point).status, 'rejected');
     assert.equal(JSON.stringify(state.points), snapshot);
   }
+});
+
+test('anti-vacuity probe rejects backward same-tick replacement', () => {
+  const state = createTrailPathState();
+  appendTrailPathPoint(state, TRAIL_PATH_CAP_FIXTURES.ordered[1]);
+  const snapshot = JSON.stringify(state.points);
+  const backwardReplacement = {
+    tick: TRAIL_PATH_CAP_FIXTURES.ordered[1].tick,
+    time: TRAIL_PATH_CAP_FIXTURES.ordered[1].time - 1,
+    value: 9.9,
+  };
+  assert.equal(appendTrailPathPoint(state, backwardReplacement).status, 'rejected');
+  assert.equal(JSON.stringify(state.points), snapshot);
 });
 
 test('memory retention is independent of session length', () => {
