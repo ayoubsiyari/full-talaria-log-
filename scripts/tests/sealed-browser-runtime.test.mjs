@@ -115,5 +115,5 @@ test('runtime pins exact module and Chrome bundle paths', () => {
     'scripts/browser-runtime-lineage.json'), 'utf8'));
   assert.equal(lineage.hermeticRuntimeCommit,
     'be9e86140774d9353e7e367bd5745f57bec8a736');
-  assert.equal(lineage.featureLineage.at(-1), 'ccac99bb8');
+  assert.equal(lineage.featureLineage.at(-1), '4427fb615');
 });

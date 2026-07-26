@@ -14,6 +14,14 @@ import {
   transitionAbState,
 } from './mc-snapshot-contract.mjs';
 import { ExternalPollTimeoutError, pollExternally } from './puppeteer-external-poll.mjs';
+import {
+  MANAGER_SCRIPT_PATH,
+  PRODUCT_DEADLINE_MS,
+  assertSafeLeaseTransition,
+  classifyPreManagerStage,
+  resolveStoredPassport,
+  sha256,
+} from './mc-pre-manager-diagnostics.mjs';
 
 const origin = String(process.env.TEST_VPS_URL || '').replace(/\/$/, '');
 const email = process.env.TEST_EMAIL;
@@ -22,6 +30,7 @@ const sessionId = String(process.env.MC_RESTORE_SESSION_ID || '849');
 const expectedBuild = process.env.MC_RESTORE_EXPECTED_BUILD || '20260726b73';
 const runs = Math.max(10, Number(process.env.MC_RESTORE_RUNS || 10));
 const outDir = path.resolve(process.env.MC_RESTORE_EVIDENCE_DIR || 'mc-restore-evidence');
+const diagnosticReloadOnly = process.env.MC_RESTORE_DIAGNOSTIC_RELOAD_ONLY === '1';
 
 const sanitize = (value) => {
   if (Array.isArray(value)) return value.map(sanitize);
@@ -64,13 +73,54 @@ async function seed(page, assignments) {
         fileId: row.fileId, timeframe: row.timeframe, offsetX: 0, candleWidth: 6,
       })),
     };
-    localStorage.setItem('chart_panel_state', JSON.stringify(state));
+    const encoded = JSON.stringify(state);
+    const uid = localStorage.getItem('_uid');
+    localStorage.setItem('chart_panel_state', encoded);
+    if (uid) localStorage.setItem(`u${uid}_chart_panel_state`, encoded);
     localStorage.setItem('active_trading_session_id', sid);
+    if (uid) localStorage.setItem(`u${uid}_active_trading_session_id`, sid);
   }, { sid: sessionId, rows: assignments });
 }
 
-async function snapshot(page, assignments) {
-  return page.evaluate((expectedRows) => {
+function installExternalDiagnostics(page) {
+  const events = [];
+  const push = (event) => {
+    events.push({ at: Date.now(), ...event });
+    if (events.length > 400) events.shift();
+  };
+  page.on('console', (message) => push({
+    kind: 'console', level: message.type(), text: message.text().slice(0, 600),
+    url: message.location().url || null,
+  }));
+  page.on('pageerror', (error) => push({
+    kind: 'pageerror', text: String(error?.stack || error).slice(0, 1200),
+  }));
+  page.on('requestfailed', (request) => push({
+    kind: 'requestfailed', url: request.url(), error: request.failure()?.errorText || null,
+  }));
+  page.on('response', async (response) => {
+    const url = response.url();
+    if (!url.includes('/api/chart/windows/') && !url.includes(MANAGER_SCRIPT_PATH)
+        && response.status() < 400) return;
+    const event = { kind: 'response', url, status: response.status(), ok: response.ok() };
+    if (url.endsWith('/claim') || url.endsWith('/heartbeat') || url.endsWith('/release')) {
+      event.body = await response.json().catch(() => null);
+    }
+    if (url.includes(MANAGER_SCRIPT_PATH) && response.ok()) {
+      const body = await response.text().catch(() => '');
+      event.bodyHash = body ? sha256(body) : null;
+      event.bodyBytes = Buffer.byteLength(body);
+    }
+    push(event);
+  });
+  return {
+    events,
+    since(at) { return events.filter((event) => event.at >= at); },
+  };
+}
+
+async function snapshot(page, assignments, external = []) {
+  const browserState = await page.evaluate((expectedRows) => {
     const manager = window.__multichartManagerRef || window.__mcManager || window.__harnessManager;
     const iframeEntries = manager?.charts
       ? [...manager.charts.values()].filter((entry) => !entry.host)
@@ -105,13 +155,45 @@ async function snapshot(page, assignments) {
         expected: expectedRows[index],
       };
     });
+    const uid = localStorage.getItem('_uid') || '';
+    const storage = {};
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (/chart_panel_state|active_trading_session_id|mc_ab_arm/.test(key || '')) {
+        storage[key] = localStorage.getItem(key);
+      }
+    }
     return {
-      navigation: { top: window === window.top, href: location.href },
-      layout: JSON.parse(localStorage.getItem('chart_panel_state') || 'null')?.layout || null,
+      navigation: {
+        top: window === window.top, href: location.href, origin: location.origin,
+        sameOrigin: true, authRedirect: /\/login\/?/.test(location.pathname),
+        readyState: document.readyState,
+      },
+      build: window.__TALARIA_CHART_BUILD_ID || null,
+      auth: { uid: uid || null, userPresent: !!window.__talariaUserId },
+      switch: {
+        arm: localStorage.getItem('__talaria_mc_ab_arm'),
+        runtime: window.__TALARIA_ENABLE_MC_RESTORE_V1 === true,
+        predocument: window.__mcAbObserver?.predocument || null,
+      },
+      storage: { uid, values: storage },
+      lease: {
+        clientId: window.__talariaChartWindowLimit?.getClientId?.() || null,
+        blocked: !!window.__talariaChartWindowBlocked,
+        readback: window.__mcAbLeaseReadback || null,
+      },
+      react: {
+        rootPresent: !!document.getElementById('root'),
+        rootChildren: document.getElementById('root')?.childElementCount || 0,
+        booted: !!document.querySelector('[data-v9-app],[data-multichart-grid]'),
+      },
       manager: {
         present: !!manager,
+        constructorSeen: !!window.MultichartManager,
+        hostRegistered: !!manager && !!window.chart,
         chartCount: manager?.charts?.size ?? null,
         ids: manager?.charts ? [...manager.charts.keys()] : [],
+        iframeCount: document.querySelectorAll('iframe').length,
         generation: manager?._mcRestoreGeneration ?? null,
         completedGeneration: manager?._mcRestoreCompletedGeneration ?? null,
       },
@@ -120,16 +202,43 @@ async function snapshot(page, assignments) {
       panels,
     };
   }, assignments.map((row) => ({ ...row, sessionId })));
+  const passport = resolveStoredPassport(browserState.storage.values, browserState.storage.uid);
+  const managerResponses = external.filter((event) =>
+    event.kind === 'response' && event.url?.includes(MANAGER_SCRIPT_PATH));
+  const managerFailures = external.filter((event) =>
+    (event.kind === 'requestfailed' && event.url?.includes(MANAGER_SCRIPT_PATH))
+      || (event.kind === 'response' && event.url?.includes(MANAGER_SCRIPT_PATH) && !event.ok));
+  const lease = assertSafeLeaseTransition(external, browserState.lease.clientId);
+  const directLease = browserState.lease.readback;
+  const result = {
+    ...browserState,
+    storage: { ...browserState.storage, passport },
+    lease: {
+      ...browserState.lease,
+      ...lease,
+      claimed: directLease?.claimed === true || lease.claimStatus === 200,
+      heartbeatOk: directLease?.heartbeatStatus === 200 || lease.heartbeatStatus === 200,
+    },
+    managerScript: {
+      requested: external.some((event) => event.url?.includes(MANAGER_SCRIPT_PATH)),
+      responseOk: managerResponses.some((event) => event.ok),
+      bodyHash: managerResponses.find((event) => event.bodyHash)?.bodyHash || null,
+      failures: managerFailures.slice(-4),
+    },
+    external: external.slice(-80),
+  };
+  result.preManagerStage = classifyPreManagerStage(result);
+  return result;
 }
 
-async function waitOnSnapshot(page, assignments) {
+async function waitOnSnapshot(page, assignments, diagnostics, navigationStartedAt) {
   const started = Date.now();
   let result;
   try {
     result = await pollExternally({
-      evaluate: () => snapshot(page, assignments),
+      evaluate: () => snapshot(page, assignments, diagnostics.since(navigationStartedAt)),
       isTerminal: observableReady,
-      timeoutMs: 10_000,
+      timeoutMs: PRODUCT_DEADLINE_MS,
       intervalMs: 100,
       evaluateTimeoutMs: 5_000,
     });
@@ -137,8 +246,12 @@ async function waitOnSnapshot(page, assignments) {
     if (!(error instanceof ExternalPollTimeoutError)) throw error;
     const last = error.observations.at(-1)?.value || null;
     throw new Error(`MC snapshot timeout stage=${stageForSnapshot(last)} diagnostics=${JSON.stringify({
-      navigation: last?.navigation, layout: last?.layout, manager: last?.manager,
+      preManagerStage: last?.preManagerStage, navigation: last?.navigation,
+      build: last?.build, auth: last?.auth, switch: last?.switch, storage: last?.storage,
+      lease: last?.lease, managerScript: last?.managerScript, react: last?.react,
+      manager: last?.manager,
       panels: last?.panels, lifecycle: last?.lifecycle,
+      external: last?.external,
       contextErrors: error.observations.filter((row) => row.error).slice(-8),
     })}`, { cause: error });
   }
@@ -157,7 +270,7 @@ async function waitOffWitness(page, assignments) {
     await pollExternally({
       evaluate: () => snapshot(page, assignments),
       isTerminal: () => false,
-      timeoutMs: 10_000,
+      timeoutMs: PRODUCT_DEADLINE_MS,
       intervalMs: 100,
       evaluateTimeoutMs: 5_000,
     });
@@ -218,14 +331,23 @@ async function exercisePlayback(page) {
 
 async function runAbProfile(browser, repetitions, assignments) {
   const page = await browser.newPage();
+  const diagnostics = installExternalDiagnostics(page);
   let claimedClientId;
   let claimStatus;
   let state = 'OFF_ARMED';
   try {
     await page.evaluateOnNewDocument(() => {
-      window.__TALARIA_ENABLE_MC_RESTORE_V1
-        = localStorage.getItem('__talaria_mc_ab_arm') === 'on';
-      window.__mcAbObserver = { events: [], errors: [] };
+      const arm = localStorage.getItem('__talaria_mc_ab_arm');
+      window.__TALARIA_ENABLE_MC_RESTORE_V1 = arm === 'on';
+      window.__mcAbObserver = {
+        events: [], errors: [],
+        predocument: {
+          arm,
+          runtime: window.__TALARIA_ENABLE_MC_RESTORE_V1 === true,
+          href: location.href,
+          readyState: document.readyState,
+        },
+      };
       const record = (type, detail = {}) => {
         window.__mcAbObserver.events.push({ type, at: performance.now(), ...detail });
       };
@@ -244,6 +366,30 @@ async function runAbProfile(browser, repetitions, assignments) {
           record('message', { messageType: String(data.type || ''), source: data.source || null });
         }
       });
+      const OriginalManager = Object.getOwnPropertyDescriptor(window, 'MultichartManager');
+      if (!OriginalManager) {
+        let managerConstructor;
+        Object.defineProperty(window, 'MultichartManager', {
+          configurable: true,
+          get() { return managerConstructor; },
+          set(value) {
+            managerConstructor = value;
+            record('manager-constructor-defined');
+          },
+        });
+      }
+      const observer = new MutationObserver((records) => {
+        for (const mutation of records) {
+          for (const node of mutation.addedNodes) {
+            if (node?.tagName === 'IFRAME') record('iframe-created', { src: node.src || null });
+            node?.querySelectorAll?.('iframe').forEach((frame) =>
+              record('iframe-created', { src: frame.src || null }));
+          }
+        }
+      });
+      const observe = () => observer.observe(document.documentElement, { childList: true, subtree: true });
+      if (document.documentElement) observe();
+      else addEventListener('DOMContentLoaded', observe, { once: true });
     });
     await login(page);
     await page.evaluate(() => {
@@ -255,6 +401,7 @@ async function runAbProfile(browser, repetitions, assignments) {
       response.url() === `${origin}/api/chart/windows/claim`
         && response.request().method() === 'POST', { timeout: 30_000 });
     const target = `${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=3v&sessionId=${sessionId}`;
+    const initialNavigationAt = Date.now();
     await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 120_000 });
     const claimResponse = await claim;
     const claimBody = await claimResponse.json().catch(() => null);
@@ -282,15 +429,70 @@ async function runAbProfile(browser, repetitions, assignments) {
 
     const snapshots = [];
     for (let index = 0; index < repetitions; index += 1) {
+      const navigationAt = Date.now();
+      const reloadClaim = page.waitForResponse((response) =>
+        response.url() === `${origin}/api/chart/windows/claim`
+          && response.request().method() === 'POST', { timeout: 30_000 });
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 120_000 });
       await page.waitForFunction((build) => window.__TALARIA_CHART_BUILD_ID === build,
         { timeout: 60_000 }, expectedBuild);
+      const claimAfterReload = await reloadClaim;
+      const claimAfterReloadBody = await claimAfterReload.json().catch(() => null);
+      assert.equal(claimAfterReload.ok(), true, `reload ${index + 1} claim failed`);
+      assert.equal((claimAfterReloadBody?.evicted_client_ids || []).length, 0,
+        `reload ${index + 1} claim evicted a client`);
+      const leaseReadback = await page.evaluate(async (expectedClientId) => {
+        const api = window.__talariaChartWindowLimit;
+        const clientId = api?.getClientId?.() || null;
+        const claimed = await api?.ensureClaimed?.();
+        const heartbeat = await fetch('/api/chart/windows/heartbeat', {
+          method: 'POST', credentials: 'include', cache: 'no-store',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId }),
+        });
+        const result = {
+          clientId,
+          sameClient: clientId === expectedClientId,
+          claimed: claimed === true,
+          blocked: !!api?.isBlocked?.(),
+          heartbeatStatus: heartbeat.status,
+        };
+        window.__mcAbLeaseReadback = result;
+        return result;
+      }, claimedClientId);
+      assert.deepEqual(leaseReadback, {
+        clientId: claimedClientId,
+        sameClient: true,
+        claimed: true,
+        blocked: false,
+        heartbeatStatus: 200,
+      });
       const onReadback = await page.evaluate(() => ({
         stored: localStorage.getItem('__talaria_mc_ab_arm'),
         runtime: window.__TALARIA_ENABLE_MC_RESTORE_V1,
       }));
       assert.deepEqual(onReadback, { stored: 'on', runtime: true });
-      snapshots.push(await waitOnSnapshot(page, assignments));
+      if (diagnosticReloadOnly) {
+        const diagnosticResult = await pollExternally({
+          evaluate: () => snapshot(page, assignments, diagnostics.since(navigationAt)),
+          isTerminal: (value) => value.preManagerStage === 'ready',
+          timeoutMs: PRODUCT_DEADLINE_MS,
+          intervalMs: 100,
+          evaluateTimeoutMs: 5_000,
+        });
+        const diagnostic = diagnosticResult.value;
+        assert.equal(diagnostic.preManagerStage, 'ready',
+          `pre-manager reload failed at ${diagnostic.preManagerStage}`);
+        return {
+          state: 'DIAGNOSTIC_COMPLETE',
+          claimStatus,
+          switchReadback,
+          diagnostic,
+          off,
+          on: { enabled: true, snapshots: [], playback: null },
+        };
+      }
+      snapshots.push(await waitOnSnapshot(page, assignments, diagnostics, navigationAt));
     }
     state = transitionAbState(state, 'ON_GREEN');
     const saved = await page.evaluate(() =>
@@ -302,6 +504,7 @@ async function runAbProfile(browser, repetitions, assignments) {
       claimStatus,
       passports,
       switchReadback,
+      initialNavigationAt,
       off,
       on: { enabled: true, snapshots, playback },
     };
@@ -361,6 +564,19 @@ export async function main(argv = process.argv.slice(2)) {
     const assignments = await fixture(bootstrap);
     await bootstrap.close();
     const result = await runAbProfile(browser, runs, assignments);
+    if (diagnosticReloadOnly) {
+      const evidence = sanitize({ verdict: 'DIAGNOSTIC_PASS', ...result });
+      fs.writeFileSync(path.join(outDir, 'mc-restore-pre-manager-diagnostic.json'),
+        `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+      process.stdout.write(`${JSON.stringify({
+        verdict: evidence.verdict,
+        stage: evidence.diagnostic?.preManagerStage,
+        build: evidence.diagnostic?.build,
+        lease: evidence.diagnostic?.lease,
+        managerScript: evidence.diagnostic?.managerScript,
+      })}\n`);
+      return;
+    }
     const summary = summarizeAb([{ pass: false }, { pass: false }, { pass: false }],
       result.on.snapshots);
     assert.equal(summary.offRed, true, 'OFF must reproduce RED');

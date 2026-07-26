@@ -8,7 +8,15 @@
   },
   "mcRestoreAuthenticatedAb": {
     "path": "tests/evidence/b70-stage5/mc-restore-authenticated-ab-runner.mjs",
-    "sha256": "cfd3dbc8b5b7ed7186020a1904b3a8ae2285e6e552975649a77f039772a3f210"
+    "sha256": "ec7ad25fc3fbd7ff4c0e977b2e8ad40baca46675680538b3c49d34c9ab2e003c"
+  },
+  "mcPreManagerDiagnostics": {
+    "path": "tests/evidence/b70-stage5/mc-pre-manager-diagnostics.mjs",
+    "sha256": "c1e926ace1bab830a0c63976e30d7fcc7642b1bdce6cc6e57d0421b09f0f9dab"
+  },
+  "mcPreManagerDiagnosticsTest": {
+    "path": "tests/evidence/b70-stage5/mc-pre-manager-diagnostics.test.mjs",
+    "sha256": "580e3e61cc57bdc49a4c3296a65f4cd019f44b5026054e82774891bd7c1bfdd8"
   },
   "mcRestoreEvidenceModel": {
     "path": "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
@@ -40,10 +48,12 @@
   },
   "browserRuntimeLineage": {
     "path": "scripts/browser-runtime-lineage.json",
-    "sha256": "764777ea7b9c31db1bf5f25c4eace7401e0ef26be358783a248b78c97712e803"
+    "sha256": "24f33d2c664c84e0c01f430c4ed0c22c2c044f46db73d51b64acbc559910065e"
   },
   "minimalClosure": [
     "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
+    "tests/evidence/b70-stage5/mc-pre-manager-diagnostics.mjs",
+    "tests/evidence/b70-stage5/mc-pre-manager-diagnostics.test.mjs",
     "tests/evidence/b70-stage5/mc-snapshot-contract.mjs",
     "tests/evidence/b70-stage5/puppeteer-external-poll.mjs",
     "tests/evidence/b70-stage5/session-assignment-contract.mjs",
