@@ -36,9 +36,10 @@ export function deriveSessionAssignments(session, expectedSymbols = EXPECTED_SYM
 }
 
 export function readBackPanelPassports(panelState, assignments) {
-  if (!panelState || panelState.layout !== '3' || !Array.isArray(panelState.panels)
+  if (!panelState || !/^3(?:v|h|l|r|t|b)$/.test(String(panelState.layout))
+      || !Array.isArray(panelState.panels)
       || panelState.panels.length !== 3) {
-    throw new Error('saved panel state is not exactly layout 3 with three panels');
+    throw new Error('saved panel state is not a valid three-panel layout');
   }
   const passports = panelState.panels.map((panel) => ({
     ticker: upper(panel?.symbol || panel?.ticker),

@@ -1,0 +1,39 @@
+{
+  "schema": "talaria.checkpoint-provenance/v1",
+  "checkpoint": "CKPT-73",
+  "buildId": "20260726b73",
+  "source": {
+    "sha": "11f5787df0ff8b29a85f533716a4ca2e96e025df",
+    "remote": "origin",
+    "ref": "refs/tags/mc-restore-20260726b73-source"
+  },
+  "images": {
+    "chart": {
+      "ref": "ghcr.io/ayoubsiyari/talaria-trading-chart@sha256:8feee17897d28d6b1a402de4f5ad899de5e55690969d3d2ab3f31a8bcd406960",
+      "digest": "sha256:8feee17897d28d6b1a402de4f5ad899de5e55690969d3d2ab3f31a8bcd406960"
+    },
+    "homepage": {
+      "ref": "ghcr.io/ayoubsiyari/talaria-homepage@sha256:b5affe87f1e2629cb2d112f3333ef4a8c0ffe642e595ecbe64ee5e889196bf95",
+      "digest": "sha256:b5affe87f1e2629cb2d112f3333ef4a8c0ffe642e595ecbe64ee5e889196bf95"
+    }
+  },
+  "proof": {
+    "uniformityReport": "uniformity.v2.r1.20260726T1928Z.json",
+    "sha256": "fd64533ca1b788b9f8c56a285183714b66dea077c15e86c92f7549af99b40313"
+  },
+  "rollback": {
+    "buildId": "20260726b70",
+    "sourceSha": "02d117978520c168132ba6fa0be239b781f9f1bf",
+    "images": {
+      "chart": {
+        "ref": "ghcr.io/ayoubsiyari/talaria-trading-chart@sha256:1cbfc1fcd235e176abe03acf1ba5509b01b16a91399de3da829792150e2f889d",
+        "digest": "sha256:1cbfc1fcd235e176abe03acf1ba5509b01b16a91399de3da829792150e2f889d"
+      },
+      "homepage": {
+        "ref": "ghcr.io/ayoubsiyari/talaria-homepage@sha256:9db970105b914f383071884c27ec4ba6c9d5fd1b7f1e4c5a2a76ce50f364ecfb",
+        "digest": "sha256:9db970105b914f383071884c27ec4ba6c9d5fd1b7f1e4c5a2a76ce50f364ecfb"
+      }
+    }
+  },
+  "createdAt": "2026-07-26T19:23:43.732Z"
+}

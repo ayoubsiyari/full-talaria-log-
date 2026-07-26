@@ -1,0 +1,225 @@
+{
+  "signature": "TALARIA_CHECKPOINT_UNIFORMITY_V2",
+  "expectedBuildId": "20260726b73",
+  "sourceSha": "11f5787df0ff8b29a85f533716a4ca2e96e025df",
+  "forwardingMirrors": [
+    {
+      "path": "modules/m20-q6-replay-lifecycle-binding.test.mjs",
+      "contractId": "q6-canonical-harness/homepage-forwarding-wrapper-v1",
+      "importTarget": "../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs",
+      "canonicalHash": "20dc8e49a58186e59a54c418dcfd684c1c3ec73642a7d3954bd47058672d685d",
+      "wrapperHash": "5c360a8c7878ab031daf9177fca77c4978e6e4fe43aa2d38edf1fcf66e5e773a",
+      "effectiveCanonicalTargetHash": "20dc8e49a58186e59a54c418dcfd684c1c3ec73642a7d3954bd47058672d685d"
+    }
+  ],
+  "ok": true,
+  "checks": [
+    {
+      "name": "canonical dist window build",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical dist drawing module query",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical dist cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage dist window build",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage dist drawing module query",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage dist cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "live source window build",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "live source drawing module query",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "live source cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical engine",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage engine",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical embed default",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical embed cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage embed default",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage embed cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical harness",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage harness",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical SW",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical dist SW",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage SW",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage dist SW",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "live SW",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "canonical legacy cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "homepage legacy cache ids",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 dist-v9 (8 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 modules/m20-q6-replay-lifecycle-binding.test.mjs forwarding-contract",
+      "mode": "contract-bound-forwarding-mirror",
+      "contractId": "q6-canonical-harness/homepage-forwarding-wrapper-v1",
+      "canonicalHash": "20dc8e49a58186e59a54c418dcfd684c1c3ec73642a7d3954bd47058672d685d",
+      "wrapperHash": "5c360a8c7878ab031daf9177fca77c4978e6e4fe43aa2d38edf1fcf66e5e773a",
+      "ok": true
+    },
+    {
+      "name": "I8 modules (172 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 workers (3 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 vendor (2 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 fonts (42 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 multichart-prod (59 files)",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 chart.js",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 legacy-index.html",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    },
+    {
+      "name": "I8 sw.js",
+      "actual": "20260726b73",
+      "expected": "20260726b73",
+      "ok": true
+    }
+  ],
+  "failures": []
+}

@@ -57,7 +57,7 @@ test('rejects non-Forex or non-minute datasets', () => {
 test('requires exact saved three-panel passport readback', () => {
   const assignments = deriveSessionAssignments(session);
   const state = {
-    layout: '3',
+    layout: '3v',
     panels: assignments.map((row, index) => ({
       index,
       symbol: row.ticker,
@@ -66,6 +66,10 @@ test('requires exact saved three-panel passport readback', () => {
     })),
   };
   assert.equal(readBackPanelPassports(state, assignments).length, 3);
+  assert.throws(
+    () => readBackPanelPassports({ ...state, layout: '3' }, assignments),
+    /valid three-panel layout/,
+  );
   state.panels[1].fileId = '631';
   assert.throws(() => readBackPanelPassports(state, assignments), /differs/);
 });
