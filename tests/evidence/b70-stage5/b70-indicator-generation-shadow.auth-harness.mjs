@@ -390,7 +390,7 @@ async function runCell(enabled, indicatorCount = 1) {
     missing.push('host Stage5 bridge registration');
   }
   if (diagnostics.preflight.host.replay.seekTo !== 'function') missing.push('replay.seekTo');
-  if (readyFrames.length === 0) missing.push('same-origin product iframe chart');
+  if (readyFrames.length !== 2) missing.push('exactly two same-origin product iframe charts');
   if (enabled && missing.length > 0) {
     if (diagnostics.preflight.buildId !== baselineBuild) {
       throw new Error(
@@ -581,8 +581,8 @@ async function runCell(enabled, indicatorCount = 1) {
       };
       return panel;
       });
-    if (panels.length < 1) {
-      throw new Error('expected at least one authenticated product iframe chart');
+    if (panels.length !== 2) {
+      throw new Error('expected exactly two authenticated product iframe charts');
     }
     if (on) {
       mark('stage5-connect:start', { panels: panels.length });
@@ -815,13 +815,13 @@ try {
     && on.metrics.bridgeDeliveries === on.authenticatedProductIframeCount
     && on.metrics.bridgeDeliveryFailures === 0
     && on.panelResults.length === on.authenticatedProductIframeCount
-    && on.panelResults.length >= 1
+    && on.panelResults.length === 2
     && on.panelResults.every((panel) =>
       panel.metrics?.calculationStarts === 0
       && panel.metrics?.bridgeAccepts === 1
       && panel.metrics?.bridgeRejects === 0
       && panel.dataPayload === on.indicatorDataAfter)
-    && on.authenticatedProductIframeCount >= 1
+    && on.authenticatedProductIframeCount === 2
     && off.panelResults.every((panel) => panel.callEntries === workloadIterations)
     && on.workMs < off.workMs
     && off.blackCanvasCount === 0
