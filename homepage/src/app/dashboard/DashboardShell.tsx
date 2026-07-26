@@ -602,7 +602,60 @@ export default function DashboardShell({
     }
   };
 
+  /**
+   * M20-A1 privacy clean on confirmed logout: ask any open same-origin chart
+   * instance (sibling tab — the shell navigates to /chart/, so there is no
+   * window handle) to run its IndexedDB privacy-clean API before the auth
+   * state is torn down. Security/data-loss policy:
+   *   - BroadcastChannel only (same-origin by construction; never a
+   *     wildcard postMessage);
+   *   - the authenticated owner is captured HERE, before tokens clear, and
+   *     the chart refuses requests whose owner does not match its own;
+   *   - the reply carries a truthful durable-confirmation result: the chart
+   *     NEVER bulk-deletes without a verified durable server ack (which this
+   *     architecture cannot observe), so `confirmDurable` is always false;
+   *   - bounded timeout, fail-soft: logout always proceeds.
+   */
+  const requestChartPrivacyClean = async (): Promise<{ ok: boolean; reason: string }> => {
+    try {
+      if (typeof window === "undefined" || typeof BroadcastChannel !== "function") {
+        return { ok: false, reason: "broadcast-unsupported" };
+      }
+      const owner = localStorage.getItem("_uid");
+      if (!owner) return { ok: false, reason: "no-authenticated-owner" };
+      const requestId = `logout-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const channel = new BroadcastChannel("talaria:m20-a1:privacy-clean");
+      try {
+        return await new Promise<{ ok: boolean; reason: string }>((resolve) => {
+          const timer = window.setTimeout(() => {
+            resolve({ ok: false, reason: "timeout-no-chart-open" });
+          }, 1500);
+          channel.onmessage = (event) => {
+            const msg = event?.data;
+            if (!msg || msg.type !== "talaria:m20-a1:privacy-clean:result" || msg.requestId !== requestId) {
+              return;
+            }
+            window.clearTimeout(timer);
+            resolve({ ok: msg.ok === true, reason: String(msg.reason ?? "cleaned") });
+          };
+          channel.postMessage({
+            type: "talaria:m20-a1:privacy-clean:request",
+            requestId,
+            owner,
+          });
+        });
+      } finally {
+        channel.close();
+      }
+    } catch {
+      return { ok: false, reason: "bridge-error" };
+    }
+  };
+
   const handleLogout = async () => {
+    // Fail-soft by design: privacy clean is attempted first (owner context
+    // still present), but logout NEVER blocks on it.
+    try { await requestChartPrivacyClean(); } catch { /* ignore */ }
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch { /* ignore */ }
