@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import puppeteer from '../multichart-prod/harness/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
+import puppeteer from '../../../chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const modulesDir = path.join(here, '..', '..', '..', 'chart v 1.4', 'chart', 'modules');
 const origin = String(process.env.TEST_VPS_URL || '').replace(/\/$/, '');
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
@@ -13,8 +14,8 @@ const sessionId = process.env.B70_SESSION_ID || '827';
 const expectedBuild = process.env.B70_EXPECTED_BUILD || '20260725b70';
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
 
-const indicatorSource = fs.readFileSync(path.join(here, 'chart-indicators-full.js'), 'utf8');
-const replaySource = fs.readFileSync(path.join(here, 'replay-system.js'), 'utf8');
+const indicatorSource = fs.readFileSync(path.join(modulesDir, 'chart-indicators-full.js'), 'utf8');
+const replaySource = fs.readFileSync(path.join(modulesDir, 'replay-system.js'), 'utf8');
 const moduleFor = (url) => {
   const pathname = new URL(url).pathname;
   if (pathname.endsWith('/modules/chart-indicators-full.js')) return indicatorSource;

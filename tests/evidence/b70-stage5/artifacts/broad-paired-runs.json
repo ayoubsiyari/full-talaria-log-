@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "role": "baseline-default-off-pre-product-wiring",
-  "capturedAt": "2026-07-26T02:48:00.000Z",
-  "command": "node --test <all chart v 1.4/chart/modules/*.test.mjs files>",
-  "sourceRun": {
-    "tests": 557,
-    "pass": 536,
-    "fail": 7,
-    "skipped": 14,
-    "durationMs": 177514.3092
+  "evidenceClass": "non-accepting-default-off-paired-comparison",
+  "verdict": "GREEN",
+  "contract": {
+    "pairCount": 3,
+    "concurrency": 1,
+    "seed": "7005",
+    "timezone": "UTC",
+    "uvThreadpoolSize": 4,
+    "sortedTestOrder": true
   },
   "failureTitles": [
     "M20-A TZ: RED(head-blob) — no subscribe; addListener census leaks; anonymous remove no-op",
@@ -19,8 +19,25 @@
     "S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures",
     "rapid switch during deferred play startup preserves playback intent and timestamp"
   ],
-  "notes": [
-    "Captured from the full default-OFF module suite before Stage 5 manager product wiring.",
-    "Candidate comparison requires exact title-set equality; any candidate-only failure blocks."
-  ]
+  "pairs": [
+    {
+      "pair": 1,
+      "baselineCandidateExact": true,
+      "baselineSnapshotExact": true,
+      "candidateSnapshotExact": true
+    },
+    {
+      "pair": 2,
+      "baselineCandidateExact": true,
+      "baselineSnapshotExact": true,
+      "candidateSnapshotExact": true
+    },
+    {
+      "pair": 3,
+      "baselineCandidateExact": true,
+      "baselineSnapshotExact": true,
+      "candidateSnapshotExact": true
+    }
+  ],
+  "acceptance": false
 }

@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..', '..');
-const artifactDir = path.join(here, 'b70-stage5-review-artifacts');
+const modulesDir = path.join(repoRoot, 'chart v 1.4', 'chart', 'modules');
+const artifactDir = path.join(here, 'artifacts');
 const pairCount = Math.max(1, Number(process.env.B70_BROAD_PAIRS) || 3);
 const seed = String(process.env.B70_BROAD_SEED || '7005');
 const concurrency = String(process.env.B70_BROAD_CONCURRENCY || '1');
@@ -23,10 +24,10 @@ const runTag = String(process.env.B70_BROAD_RUN_TAG || 'broad-paired-runs')
 const baseline = JSON.parse(
   fs.readFileSync(path.join(artifactDir, 'broad-baseline.json'), 'utf8')
 );
-const tests = fs.readdirSync(here)
+const tests = fs.readdirSync(modulesDir)
   .filter((name) => name.endsWith('.test.mjs'))
   .sort((a, b) => a.localeCompare(b))
-  .map((name) => path.join(here, name));
+  .map((name) => path.join(modulesDir, name));
 const args = [
   '--test',
   `--test-concurrency=${concurrency}`,

@@ -2,15 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer } from '../multichart-prod/harness/serve.mjs';
+import { startServer } from '../../../chart v 1.4/chart/multichart-prod/harness/serve.mjs';
 import {
   bootLayout,
   launchBrowser,
   sleep,
-} from '../multichart-prod/harness/harness-lib.mjs';
+} from '../../../chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const evidenceDir = path.join(here, 'b70-stage5-review-artifacts');
+const evidenceDir = path.join(here, 'artifacts');
 const mode = String(process.env.B70_STAGE5_MODE || 'local').toLowerCase();
 const outPath = process.env.B70_STAGE5_EVIDENCE
   ? path.resolve(process.env.B70_STAGE5_EVIDENCE)

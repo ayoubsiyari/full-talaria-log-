@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "evidenceClass": "non-accepting-root-cause-analysis",
+  "verdict": "GREEN",
+  "failureTitle": "incremental pass posts an O(tail) transfer-list payload, commits, and clears busy",
+  "contract": {
+    "testFile": "chart v 1.4/chart/modules/m19-i-indicator-tail.test.mjs",
+    "testDataSeed": 101,
+    "pairCount": 3,
+    "concurrency": 1,
+    "seed": 7005,
+    "timezone": "UTC",
+    "uvThreadpoolSize": 4
+  },
+  "rootCause": {
+    "scope": "test harness only",
+    "race": "An elapsed-time timer could become due before the queued fake-worker immediate after process descheduling.",
+    "candidateSharedStatePossible": false,
+    "correction": "Replace elapsed-time flushing with deterministic immediate/timer phase drains.",
+    "assertionsWeakened": false
+  },
+  "pairEquality": {
+    "allBaselineCandidateFailureSetsExact": true,
+    "allRunsMatchedHistoricalBaselineFailureSet": true
+  },
+  "acceptance": false
+}

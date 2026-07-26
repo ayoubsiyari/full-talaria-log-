@@ -3,7 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const require = createRequire(new URL('../multichart-prod/harness/package.json', import.meta.url));
+const require = createRequire(new URL(
+  '../../../chart v 1.4/chart/multichart-prod/harness/package.json',
+  import.meta.url,
+));
 const puppeteer = require('puppeteer');
 const endpoint = process.env.B70_CDP_ENDPOINT;
 const origin = process.env.TEST_VPS_URL;

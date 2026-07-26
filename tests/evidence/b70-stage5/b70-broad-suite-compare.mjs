@@ -6,13 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..', '..');
-const evidenceDir = path.join(here, 'b70-stage5-review-artifacts');
+const modulesDir = path.join(repoRoot, 'chart v 1.4', 'chart', 'modules');
+const evidenceDir = path.join(here, 'artifacts');
 const baselinePath = path.join(evidenceDir, 'broad-baseline.json');
 const candidatePath = path.join(evidenceDir, 'broad-candidate.json');
 const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
-const tests = fs.readdirSync(here)
+const tests = fs.readdirSync(modulesDir)
   .filter((name) => name.endsWith('.test.mjs'))
-  .map((name) => path.join(here, name));
+  .map((name) => path.join(modulesDir, name));
 
 const run = spawnSync(process.execPath, ['--test', ...tests], {
   cwd: repoRoot,

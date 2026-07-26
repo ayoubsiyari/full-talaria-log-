@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "evidenceClass": "non-accepting-default-off-baseline",
+  "verdict": "REFERENCE_ONLY",
+  "contract": {
+    "role": "baseline-default-off-pre-product-wiring",
+    "tests": 557,
+    "pass": 536,
+    "fail": 7,
+    "skipped": 14
+  },
+  "failureTitles": [
+    "M20-A TZ: RED(head-blob) — no subscribe; addListener census leaks; anonymous remove no-op",
+    "M20-A TZ: RED(head-blob) — same-timezone reentrancy recurses unboundedly; corrected product does not",
+    "M20-A TZ: provenance — corrected product bound; HEAD blob recoverable; pre-land claim verified",
+    "M22-H-S78B real product/browser RED cell (dual-tree)",
+    "S0 stable baseline: immutable b61 blob equals the block pin 62ee0911…; current tree is distinct, mirrored and hashed",
+    "S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures",
+    "rapid switch during deferred play startup preserves playback intent and timestamp"
+  ],
+  "acceptance": false
+}
