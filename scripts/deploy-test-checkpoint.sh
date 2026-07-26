@@ -31,6 +31,7 @@ ROLLBACK_MANIFEST=""
 REMOTE="${TEST_CHECKPOINT_REMOTE:-origin}"
 STATE_ROOT="${TEST_CHECKPOINT_STATE_ROOT:-$ORCHESTRATOR_ROOT/.checkpoint-test}"
 COMPOSE_PROJECT_NAME=""
+ENV_FILE=""
 DRY_RUN=0
 KEEP_WORKTREE=0
 DEPLOY_EXISTING=""
@@ -45,7 +46,8 @@ Usage:
 
 Options:
   --direct-origin=<origin|auto>  Re-resolve the recreated homepage container (default: auto)
-  --compose-project=<name>       Required TEST Compose project name; must contain "test"
+  --compose-project=<name>       Exact project from the approved TEST profile
+  --env-file=<file>              Profile-approved root-owned Compose env file
   --remote=<git-remote>          Remote containing the immutable source tag (default: origin)
   --state-root=<directory>       Durable manifests, proofs, logs, and source worktrees
   --dry-run                      Verify inputs and print the exact plan; change nothing
@@ -68,6 +70,7 @@ for arg in "$@"; do
     --public-origin=*) PUBLIC_ORIGIN="${arg#*=}" ;;
     --direct-origin=*) DIRECT_ORIGIN="${arg#*=}" ;;
     --compose-project=*) COMPOSE_PROJECT_NAME="${arg#*=}" ;;
+    --env-file=*) ENV_FILE="${arg#*=}" ;;
     --remote=*) REMOTE="${arg#*=}" ;;
     --state-root=*) STATE_ROOT="${arg#*=}" ;;
     --dry-run) DRY_RUN=1 ;;
@@ -79,9 +82,59 @@ for arg in "$@"; do
   esac
 done
 
-[[ "$COMPOSE_PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*test[a-z0-9_-]*$ ]] \
-  || die "--compose-project must explicitly name a TEST project (and contain 'test')"
+for tool in node docker stat; do need "$tool"; done
+PROFILE_FILE="$ORCHESTRATOR_ROOT/scripts/test-deployment-profiles.json"
+[[ -f "$PROFILE_FILE" ]] || die "TEST deployment profile document is missing"
+mapfile -t PROFILE_FIELDS < <(cd "$ORCHESTRATOR_ROOT" && node --input-type=module - "$PROFILE_FILE" \
+  "$COMPOSE_PROJECT_NAME" "$PUBLIC_ORIGIN" <<'NODE'
+import { loadTestDeploymentProfile } from './scripts/lib/test-deployment-profile.mjs';
+const profile = loadTestDeploymentProfile(process.argv[2], {
+  composeProject: process.argv[3],
+  publicOrigin: process.argv[4],
+});
+for (const value of [
+  profile.composeFile, profile.workingDirectory, profile.envFile,
+  profile.services.join(','),
+]) console.log(value);
+NODE
+)
+[[ "${#PROFILE_FIELDS[@]}" -eq 4 ]] || die "approved TEST deployment profile is incomplete"
+PROFILE_COMPOSE_FILE="${PROFILE_FIELDS[0]}"
+PROFILE_WORKING_DIRECTORY="${PROFILE_FIELDS[1]}"
+PROFILE_ENV_FILE="${PROFILE_FIELDS[2]}"
+IFS=',' read -r -a PROFILE_SERVICES <<<"${PROFILE_FIELDS[3]}"
+[[ "$ENV_FILE" == "$PROFILE_ENV_FILE" ]] || die "--env-file must equal the approved TEST profile path"
+[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || die "approved env file is missing or not regular"
+ENV_OWNER="$(stat -c '%U' "$ENV_FILE")"
+ENV_GROUP="$(stat -c '%G' "$ENV_FILE")"
+ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
+(cd "$ORCHESTRATOR_ROOT" && node --input-type=module - \
+  "$ENV_FILE" "$ENV_OWNER" "$ENV_GROUP" "$ENV_MODE" <<'NODE'
+import { validateEnvFileMetadata } from './scripts/lib/test-deployment-profile.mjs';
+validateEnvFileMetadata({
+  path: process.argv[2], owner: process.argv[3], group: process.argv[4],
+  mode: process.argv[5], type: 'regular',
+}, process.argv[2]);
+NODE
+)
 export COMPOSE_PROJECT_NAME
+export COMPOSE_ENV_FILES="$ENV_FILE"
+
+for service in "${PROFILE_SERVICES[@]}"; do
+  container_id="$(docker compose --project-name "$COMPOSE_PROJECT_NAME" \
+    --project-directory "$PROFILE_WORKING_DIRECTORY" --file "$PROFILE_COMPOSE_FILE" \
+    --env-file "$ENV_FILE" ps --quiet "$service")"
+  [[ -n "$container_id" && "$container_id" != *$'\n'* ]] \
+    || die "approved TEST service is not uniquely present: $service"
+  mapfile -t identity < <(docker inspect --format \
+    '{{ index .Config.Labels "com.docker.compose.project" }}{{println}}{{ index .Config.Labels "com.docker.compose.service" }}{{println}}{{ index .Config.Labels "com.docker.compose.project.config_files" }}{{println}}{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' \
+    "$container_id")
+  [[ "${identity[0]}" == "$COMPOSE_PROJECT_NAME"
+      && "${identity[1]}" == "$service"
+      && "${identity[2]}" == "$PROFILE_COMPOSE_FILE"
+      && "${identity[3]}" == "$PROFILE_WORKING_DIRECTORY" ]] \
+    || die "existing service identity differs from approved TEST profile: $service"
+done
 
 if [[ -n "$DEPLOY_EXISTING" ]]; then
   [[ -f "$DEPLOY_EXISTING" ]] || die "accepted manifest does not exist: $DEPLOY_EXISTING"
@@ -102,9 +155,29 @@ NODE
   EXISTING_BUILD="${EXISTING_FIELDS[3]}"
   node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" validate-manifest \
     --manifest="$DEPLOY_EXISTING" >/dev/null
+  node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" verify-manifest \
+    --manifest="$DEPLOY_EXISTING" >/dev/null
+  mapfile -t EXISTING_PLAN < <(
+    node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" fields \
+      --manifest="$DEPLOY_EXISTING"
+  )
+  mapfile -t EXISTING_ROLLBACK_PLAN < <(
+    node "$ORCHESTRATOR_ROOT/scripts/checkpoint-provenance.mjs" fields \
+      --manifest="$DEPLOY_EXISTING" --rollback
+  )
+  [[ "${#EXISTING_PLAN[@]}" -eq 6 ]] || die "accepted manifest immutable fields are incomplete"
+  [[ "${#EXISTING_ROLLBACK_PLAN[@]}" -eq 6 ]] \
+    || die "accepted manifest rollback fields are incomplete"
   REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$EXISTING_REMOTE")"
   REMOTE_SHA="$(cd "$ORCHESTRATOR_ROOT" && resolve_remote_tag_commit "$REMOTE_URL" "$EXISTING_REF")"
   [[ "$REMOTE_SHA" == "$EXISTING_SHA" ]] || die "accepted manifest source tag is not immutable remotely"
+  if (( DRY_RUN )); then
+    printf '  build: %s\n  source: %s\n  chart: %s\n  homepage: %s\n  rollback: %s\n' \
+      "${EXISTING_PLAN[1]}" "${EXISTING_PLAN[0]}" "${EXISTING_PLAN[4]}" \
+      "${EXISTING_PLAN[5]}" "${EXISTING_ROLLBACK_PLAN[1]}"
+    printf 'DRY RUN: verified approved TEST stack, env metadata, immutable tag, manifest, exact digests, and rollback target; no files, images, or containers changed.\n'
+    exit 0
+  fi
   EXISTING_SOURCE="$STATE_ROOT/rollback-$EXISTING_BUILD/source"
   mkdir -p "$(dirname "$EXISTING_SOURCE")"
   if [[ ! -e "$EXISTING_SOURCE/.git" ]]; then

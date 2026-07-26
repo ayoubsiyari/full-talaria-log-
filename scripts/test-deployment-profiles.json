@@ -1,0 +1,13 @@
+{
+  "schema": "talaria.test-deployment-profiles/v1",
+  "profiles": [
+    {
+      "publicOrigin": "http://31.97.192.82:3000",
+      "composeProject": "talaria",
+      "composeFile": "/opt/talaria/docker-compose.yml",
+      "workingDirectory": "/opt/talaria",
+      "envFile": "/opt/talaria/.env",
+      "services": ["trading-chart", "trading-chart-worker", "homepage"]
+    }
+  ]
+}

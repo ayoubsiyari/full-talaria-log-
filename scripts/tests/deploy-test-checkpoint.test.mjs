@@ -27,7 +27,7 @@ test('checkpoint wrapper is fail-closed and never handles passwords', () => {
 
 test('invalid inputs are rejected before tools or deployment are invoked', () => {
   const source = fs.readFileSync(workflowPath, 'utf8');
-  const testTarget = source.indexOf('--compose-project must explicitly name a TEST project');
+  const testTarget = source.indexOf('PROFILE_FILE=');
   const validation = source.indexOf('invalid or missing --source-tag');
   const toolChecks = source.indexOf('for tool in git node docker sha256sum');
   const deployment = source.indexOf('deploy through guarded deploy.sh');
