@@ -189,7 +189,11 @@ test('uniformity allows only the exact Q6 canonical-forwarding wrapper', () => {
     });
     assert.equal(report.ok, true, report.failures.join('\n'));
     assert.ok(report.checks.some((check) =>
-      check.name === `I8 ${relative} canonical-forwarder`));
+      check.name === `I8 ${relative} forwarding-contract`));
+    const mirror = report.forwardingMirrors[0];
+    assert.equal(mirror.contractId, 'q6-canonical-harness/homepage-forwarding-wrapper-v1');
+    assert.notEqual(mirror.canonicalHash, mirror.wrapperHash);
+    assert.equal(mirror.canonicalHash, mirror.effectiveCanonicalTargetHash);
   } finally {
     fs.rmSync(tree.root, { recursive: true, force: true });
   }
@@ -257,10 +261,11 @@ test('uniformity proof is bound by hash, source SHA, and build id', () => {
   try {
     const proofPath = path.join(root, 'proof.json');
     write(proofPath, `${JSON.stringify({
-      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V1',
+      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V2',
       ok: true,
       expectedBuildId: greenManifest.buildId,
       sourceSha: greenManifest.source.sha,
+      forwardingMirrors: [],
     })}\n`);
     const manifestPath = path.join(root, 'manifest.json');
     const manifest = structuredClone(greenManifest);
