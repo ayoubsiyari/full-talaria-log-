@@ -1,0 +1,9 @@
+{
+  "schema": "talaria.sealed-browser-runtime/v1",
+  "puppeteerVersion": "24.43.1",
+  "chromeVersion": "148.0.7778.97",
+  "chromeExecutableSha256": "7f5c687c69c06c2b49f80755087b0575fa67633f359b0cdbe2ee40c33235fc98",
+  "nodeModulesTreeSha256": "985fa14267ca0eee7f0f77c31fc3724b65f6799685a9617143ef1454792578e7",
+  "nodeModulesPath": "chart v 1.4/chart/multichart-prod/harness/node_modules",
+  "chromePath": "browser/chrome-linux64/chrome"
+}

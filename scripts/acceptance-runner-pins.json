@@ -8,7 +8,7 @@
   },
   "mcRestoreAuthenticatedAb": {
     "path": "tests/evidence/b70-stage5/mc-restore-authenticated-ab-runner.mjs",
-    "sha256": "8f1a6ee8cbc414fa3fd3bd8aff58f144b796f909096bb3792c1bd581b4888ae5"
+    "sha256": "2b84baf6fdef3c9bfaba23772ac4c5e0aee102ae845b71f2839103e12a0b8d20"
   },
   "mcRestoreEvidenceModel": {
     "path": "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
@@ -28,13 +28,23 @@
   },
   "indicatorLedgerShortCell": {
     "path": "chart v 1.4/chart/multichart-prod/harness/m23-3-indicator-ledger-short-cell.mjs",
-    "sha256": "006c2de21be2f7edd4a63228f51df2b5f26def0037f27a114fca73dc432b3edd"
+    "sha256": "c6aca3f187a53f1b615cb7a5aae9ca24359d9a2de38366800b9623abf52bf898"
+  },
+  "sealedBrowserRuntime": {
+    "path": "scripts/lib/sealed-browser-runtime.mjs",
+    "sha256": "df277da081757ae7d3549a50ce276859e76c2111905553be9a7deebba585114c"
+  },
+  "browserRuntimePins": {
+    "path": "scripts/browser-runtime-pins.json",
+    "sha256": "47c33ad45bbf8581dad0390ec4acd6cb530f1ed74051a3f2a735d6de23293c8c"
   },
   "minimalClosure": [
     "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
     "tests/evidence/b70-stage5/mc-snapshot-contract.mjs",
     "tests/evidence/b70-stage5/puppeteer-external-poll.mjs",
     "tests/evidence/b70-stage5/session-assignment-contract.mjs",
+    "scripts/browser-runtime-pins.json",
+    "scripts/lib/sealed-browser-runtime.mjs",
     "chart v 1.4/chart/multichart-prod/harness/package.json",
     "chart v 1.4/chart/multichart-prod/harness/harness-lib.mjs",
     "chart v 1.4/chart/modules/indicator-performance.js",

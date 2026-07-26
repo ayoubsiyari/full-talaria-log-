@@ -59,7 +59,7 @@ test('runner closure and reviewed version hashes are exact', () => {
   assert.equal(sha(component), pins.indicatorLedgerShortCell.sha256);
   for (const pinName of [
     'mcRestoreEvidenceModel', 'mcSnapshotContract', 'mcSnapshotContractTest',
-    'puppeteerExternalPoll',
+    'puppeteerExternalPoll', 'sealedBrowserRuntime', 'browserRuntimePins',
   ]) {
     assert.equal(sha(path.join(root, pins[pinName].path)), pins[pinName].sha256);
   }

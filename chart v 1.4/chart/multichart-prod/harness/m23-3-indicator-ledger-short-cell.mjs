@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { launchBrowser } from './harness-lib.mjs';
+import { launchSealedBrowser } from '../../../../scripts/lib/sealed-browser-runtime.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chartRoot = path.resolve(here, '..', '..');
@@ -68,7 +68,7 @@ async function runArm(browser, explicitOff) {
   }
 }
 
-const browser = await launchBrowser({ headful: false });
+const { browser, puppeteerEntry, chromeExecutable } = await launchSealedBrowser();
 try {
   const on = await runArm(browser, false);
   const off = await runArm(browser, true);
@@ -88,7 +88,8 @@ try {
   assert.notEqual(on.after.value, off.after.value);
   assert.equal(globalThis[KILL], undefined, 'runner must restore default state');
   process.stdout.write(`${JSON.stringify({
-    verdict: 'PASS', switch: KILL, defaultRestored: true, on, off,
+    verdict: 'PASS', switch: KILL, defaultRestored: true,
+    puppeteerEntry, chromeExecutable, on, off,
   }, null, 2)}\n`);
 } finally {
   await browser.close();

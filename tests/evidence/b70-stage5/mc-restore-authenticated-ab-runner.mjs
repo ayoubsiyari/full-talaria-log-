@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { launchSealedBrowser } from '../../../scripts/lib/sealed-browser-runtime.mjs';
 import { deriveSessionAssignments, readBackPanelPassports } from './session-assignment-contract.mjs';
 import { classifyPanel, strictIdentity, summarizeAb, validateLayout } from './mc-restore-evidence-model.mjs';
 import {
@@ -15,9 +15,6 @@ import {
 } from './mc-snapshot-contract.mjs';
 import { ExternalPollTimeoutError, pollExternally } from './puppeteer-external-poll.mjs';
 
-const require = createRequire(new URL(
-  '../../../chart v 1.4/chart/multichart-prod/harness/package.json', import.meta.url,
-));
 const origin = String(process.env.TEST_VPS_URL || '').replace(/\/$/, '');
 const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
@@ -322,6 +319,21 @@ async function runAbProfile(browser, repetitions, assignments) {
 
 export async function main(argv = process.argv.slice(2)) {
   validateLayout('3v');
+  if (argv.includes('--browser-smoke')) {
+    const { browser, puppeteerEntry, chromeExecutable } = await launchSealedBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.goto('data:text/html,<title>sealed-mc-smoke</title>');
+      assert.equal(await page.title(), 'sealed-mc-smoke');
+      await page.close();
+      process.stdout.write(`${JSON.stringify({
+        verdict: 'BROWSER_SMOKE_PASS', puppeteerEntry, chromeExecutable,
+      })}\n`);
+    } finally {
+      await browser.close();
+    }
+    return;
+  }
   if (argv.includes('--dry-run')) {
     const fixtureArg = argv.find((value) => value.startsWith('--fixture='));
     const fixturePath = fixtureArg ? path.resolve(fixtureArg.slice('--fixture='.length)) : null;
@@ -339,9 +351,8 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (!origin || !email || !password) throw new Error('TEST_VPS_URL, TEST_EMAIL and TEST_PASSWORD are required');
-  const puppeteer = require('puppeteer');
   fs.mkdirSync(outDir, { recursive: true });
-  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+  const { browser } = await launchSealedBrowser();
   try {
     const bootstrap = await browser.newPage();
     await login(bootstrap);
