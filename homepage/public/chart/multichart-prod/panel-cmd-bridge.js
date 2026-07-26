@@ -3112,7 +3112,47 @@
 
                 // ─── file / dataset switch ─────────────────────────────
                 case 'loadFile': {
-                    var fileId = args.fileId;
+                    var restoreIdentity = args.restoreIdentity;
+                    if (restoreIdentity) {
+                        var parentManager = null;
+                        var parentChart = null;
+                        try {
+                            if (!global.parent || global.parent === global
+                                || global.parent.__TALARIA_ENABLE_MC_RESTORE_V1 !== true) {
+                                throw new Error('MC_RESTORE disabled');
+                            }
+                            parentManager = global.parent.__multichartManagerRef;
+                            parentChart = global.parent.chart;
+                        } catch (restoreAccessError) {
+                            throw new Error('MC_RESTORE parent unavailable: '
+                                + (restoreAccessError && restoreAccessError.message || restoreAccessError));
+                        }
+                        var restoreGeneration = Number(restoreIdentity.generation);
+                        var currentGeneration = Number(parentManager && parentManager._mcRestoreGeneration);
+                        var expectedAssignment = parentManager
+                            && typeof parentManager._mcRestoreAssignmentForPanel === 'function'
+                            ? parentManager._mcRestoreAssignmentForPanel(panelId) : null;
+                        if (!Number.isFinite(restoreGeneration)
+                            || restoreGeneration !== currentGeneration
+                            || String(restoreIdentity.panelId || '') !== String(panelId)
+                            || !expectedAssignment
+                            || String(restoreIdentity.fileId || '') !== expectedAssignment.fileId
+                            || String(restoreIdentity.ticker || '') !== expectedAssignment.ticker
+                            || String(restoreIdentity.sessionId || '') !== expectedAssignment.sessionId
+                            || String(restoreIdentity.timeframe || '') !== expectedAssignment.timeframe) {
+                            throw new Error('MC_RESTORE stale or cross-panel identity');
+                        }
+                        var parentSession = parentChart && typeof parentChart.getActiveTradingSessionId === 'function'
+                            ? parentChart.getActiveTradingSessionId()
+                            : parentChart && parentChart.activeTradingSessionId;
+                        if (String(parentSession || '') !== expectedAssignment.sessionId) {
+                            throw new Error('MC_RESTORE cross-session identity');
+                        }
+                        ch.activeTradingSessionId = expectedAssignment.sessionId;
+                        if (expectedAssignment.timeframe) ch.currentTimeframe = expectedAssignment.timeframe;
+                        ch._mcRestoreGeneration = restoreGeneration;
+                    }
+                    var fileId = restoreIdentity ? restoreIdentity.fileId : args.fileId;
                     if (fileId === undefined || fileId === null || fileId === '') {
                         throw new Error('loadFile: missing args.fileId');
                     }
@@ -3166,6 +3206,27 @@
                         return loadPromise.then(function () {
                             ch._multichartPairLoadInFlight = false;
                             afterLoadFile(ch, useMcLoader);
+                            if (restoreIdentity) {
+                                var observedTicker = String(ch.currentSymbol || '')
+                                    .replace(/\//g, '').toUpperCase();
+                                var expectedTicker = String(restoreIdentity.ticker || '')
+                                    .replace(/\//g, '').toUpperCase();
+                                if (String(ch.currentFileId || '') !== fidStr
+                                    || observedTicker !== expectedTicker
+                                    || String(ch.activeTradingSessionId || '') !== String(restoreIdentity.sessionId)
+                                    || String(ch.currentTimeframe || '') !== String(restoreIdentity.timeframe || '')
+                                    || !Array.isArray(ch.data) || ch.data.length < 1) {
+                                    throw new Error('MC_RESTORE loaded identity mismatch');
+                                }
+                                return {
+                                    generation: Number(restoreIdentity.generation),
+                                    panelId: String(restoreIdentity.panelId),
+                                    fileId: fidStr,
+                                    ticker: String(ch.currentSymbol),
+                                    sessionId: String(ch.activeTradingSessionId),
+                                    timeframe: String(ch.currentTimeframe),
+                                };
+                            }
                         }).catch(function (e) {
                             ch._multichartPairLoadInFlight = false;
                             warn('loadFile: load failed', e && e.message);
@@ -3174,6 +3235,9 @@
                     }
                     ch._multichartPairLoadInFlight = false;
                     afterLoadFile(ch, useMcLoader);
+                    if (restoreIdentity) {
+                        throw new Error('MC_RESTORE canonical loader did not return a completion promise');
+                    }
                     return;
                 }
 
@@ -4420,6 +4484,13 @@
         var msg = ev && ev.data;
         if (!msg || typeof msg !== 'object') return;
         if (msg.type !== 'panel-cmd') return;
+        try {
+            if (ev.source !== global.parent) return;
+            var expectedOrigin = global.location && global.location.origin;
+            if (!expectedOrigin || String(ev.origin || '') !== String(expectedOrigin)) return;
+        } catch (_) {
+            return;
+        }
         // Targeted to a different panel? Ignore (each iframe filters its
         // own; broadcast '*' is delivered to all).
         if (msg.target && msg.target !== panelId && msg.target !== '*') return;
@@ -4484,7 +4555,11 @@
             applyReplayFrameHot(msg.args || {}, true);
             return;
         }
-        onMessage({ data: msg });
+        onMessage({
+            data: msg,
+            source: global.parent,
+            origin: global.location && global.location.origin,
+        });
     };
 
     global.addEventListener('message', onMessage);

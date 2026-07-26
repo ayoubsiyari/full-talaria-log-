@@ -54,6 +54,27 @@
         }
     }
 
+    /** §22.3: saved multichart identity restore. Explicit opt-in; default OFF. */
+    function mcRestoreV1Enabled() {
+        try {
+            return !!(global && global.__TALARIA_ENABLE_MC_RESTORE_V1 === true);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function readMcRestoreLayout() {
+        if (!mcRestoreV1Enabled()) return null;
+        try {
+            const raw = global.localStorage && global.localStorage.getItem('chart_panel_state');
+            if (!raw) return null;
+            const value = JSON.parse(raw);
+            return value && Array.isArray(value.panels) ? value : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
     /** panel-cmd `loadFile` / heavy ops: iframes may still be parsing dist-v9 after bridge-ready. */
     var PANEL_CMD_TIMEOUT_MS = 25000;
 
@@ -460,6 +481,14 @@
         // even though init is still healthy — embed-bridge polls up to 30s.
         var BRIDGE_READY_TIMEOUT_MS = 30000;
         frame.addEventListener('load', function () {
+            const loadedEntry = self.charts.get(cfg.id);
+            if (loadedEntry) loadedEntry._frameLoadCount = (loadedEntry._frameLoadCount || 0) + 1;
+            if (loadedEntry && loadedEntry._frameLoadCount > 1 && mcRestoreV1Enabled()) {
+                self._cancelMcRestoreAssignment(loadedEntry, 'iframe-reload');
+                loadedEntry.ready = false;
+                loadedEntry._mcRestoreAppliedGeneration = null;
+                loadedEntry._mcRestoreBootToken = (loadedEntry._mcRestoreBootToken || 0) + 1;
+            }
             scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
             if (overlay) {
@@ -503,12 +532,19 @@
             state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
         });
+        if (mcRestoreV1Enabled()) {
+            const entry = this.charts.get(cfg.id);
+            entry._mcRestoreGeneration = this._mcRestoreGeneration;
+            entry._mcRestoreAssignment = this._mcRestoreAssignmentForPanel(cfg.id);
+            entry._mcRestoreBootToken = 1;
+        }
         this._log('info', 'addChart ' + cfg.id + ' (tf=' + (cfg.tf || '?') + ')');
     };
 
     MultichartManager.prototype.removeChart = function (id) {
         const c = this.charts.get(id);
         if (!c) return;
+        this._cancelMcRestoreAssignment(c, 'panel-removed');
         if (c.host) {
             // Host charts are not iframes — never tear down their DOM.
             // The parent owns the chartWrapper element.
@@ -684,8 +720,180 @@
                 self._initialSyncToHost(c);
             }
         }, 0);
+        if (mcRestoreV1Enabled()) {
+            const generation = this.beginMcRestoreGeneration();
+            this._armMcRestoreHostBarrier(generation);
+        }
 
         return entry;
+    };
+
+    MultichartManager.prototype._armMcRestoreHostBarrier = function (generation) {
+        if (!mcRestoreV1Enabled() || generation !== this._mcRestoreGeneration) return;
+        const self = this;
+        const started = Date.now();
+        const poll = function () {
+            if (!mcRestoreV1Enabled() || generation !== self._mcRestoreGeneration) return;
+            const chart = global.chart;
+            let sessionId = null;
+            try {
+                sessionId = chart && typeof chart.getActiveTradingSessionId === 'function'
+                    ? chart.getActiveTradingSessionId()
+                    : chart && chart.activeTradingSessionId;
+            } catch (_) {}
+            const hasData = !!(chart && Array.isArray(chart.data) && chart.data.length > 0);
+            const sessionSettled = !sessionId
+                || String(chart && chart._sessionStateLoadedFor || '') === String(sessionId);
+            if (hasData && sessionSettled) {
+                self.completeMcRestoreGeneration(generation, sessionId);
+                return;
+            }
+            if (Date.now() - started >= 10000) {
+                self._log('error', 'MC_RESTORE host barrier timeout: data/session restore incomplete');
+                return;
+            }
+            self._mcRestoreHostBarrierTimer = setTimeout(poll, 50);
+        };
+        poll();
+    };
+
+    MultichartManager.prototype._mcRestoreAssignmentForPanel = function (panelId) {
+        if (!mcRestoreV1Enabled()) return null;
+        const state = this._mcRestoreLayout;
+        const index = Math.max(0, String(panelId || 'A').charCodeAt(0) - 65);
+        const saved = state && state.panels && state.panels.find(function (p) {
+            return p && Number(p.index) === index;
+        });
+        if (!saved) return null;
+        return {
+            panelId: String(panelId),
+            fileId: saved.fileId == null ? '' : String(saved.fileId).trim(),
+            ticker: saved.symbol == null ? '' : String(saved.symbol).trim(),
+            sessionId: state.sessionId == null ? '' : String(state.sessionId).trim(),
+            timeframe: saved.timeframe == null ? '' : String(saved.timeframe).trim(),
+        };
+    };
+
+    MultichartManager.prototype.completeMcRestoreGeneration = function (generation, sessionId) {
+        if (!mcRestoreV1Enabled() || generation !== this._mcRestoreGeneration) return false;
+        const expectedSession = this._mcRestoreLayout && this._mcRestoreLayout.sessionId != null
+            ? String(this._mcRestoreLayout.sessionId) : '';
+        const actualSession = sessionId == null ? '' : String(sessionId);
+        if (expectedSession && actualSession !== expectedSession) {
+            this._log('error', 'MC_RESTORE session mismatch generation=' + generation);
+            return false;
+        }
+        this._mcRestoreCompletedGeneration = generation;
+        this._scheduleAllMcRestoreAssignments();
+        return true;
+    };
+
+    MultichartManager.prototype._scheduleAllMcRestoreAssignments = function () {
+        if (!mcRestoreV1Enabled()) return;
+        for (const c of this.charts.values()) this._scheduleMcRestoreAssignment(c);
+    };
+
+    MultichartManager.prototype._cancelMcRestoreAssignment = function (entry, reason) {
+        if (!entry || !entry._mcRestoreJob) return;
+        const job = entry._mcRestoreJob;
+        job.cancelled = true;
+        if (job.timer) clearTimeout(job.timer);
+        entry._mcRestoreJob = null;
+        this._log('info', 'MC_RESTORE cancelled ' + entry.id + ': ' + reason);
+    };
+
+    MultichartManager.prototype._cancelAllMcRestoreAssignments = function (reason) {
+        if (this._mcRestoreHostBarrierTimer) {
+            clearTimeout(this._mcRestoreHostBarrierTimer);
+            this._mcRestoreHostBarrierTimer = null;
+        }
+        if (!this.charts) return;
+        for (const c of this.charts.values()) this._cancelMcRestoreAssignment(c, reason);
+    };
+
+    MultichartManager.prototype.beginMcRestoreGeneration = function () {
+        if (!mcRestoreV1Enabled()) return null;
+        this._cancelAllMcRestoreAssignments('new-restore-generation');
+        this._mcRestoreGeneration = (this._mcRestoreGeneration || 0) + 1;
+        this._mcRestoreLayout = readMcRestoreLayout();
+        this._mcRestoreCompletedGeneration = null;
+        for (const c of this.charts.values()) {
+            c._mcRestoreGeneration = this._mcRestoreGeneration;
+            c._mcRestoreAssignment = this._mcRestoreAssignmentForPanel(c.id);
+            c._mcRestoreAppliedGeneration = null;
+        }
+        return this._mcRestoreGeneration;
+    };
+
+    MultichartManager.prototype._scheduleMcRestoreAssignment = function (entry) {
+        if (!mcRestoreV1Enabled() || !entry || entry.host || !entry.ready
+            || this._mcRestoreCompletedGeneration !== this._mcRestoreGeneration) return;
+        const generation = this._mcRestoreGeneration;
+        if (entry._mcRestoreAppliedGeneration === generation || entry._mcRestoreJob) return;
+        const assignment = entry._mcRestoreAssignment || this._mcRestoreAssignmentForPanel(entry.id);
+        if (!assignment || !assignment.fileId || !assignment.ticker) {
+            this._log('error', 'MC_RESTORE ' + entry.id + ' failed closed: MISSING_SAVED_TICKER');
+            entry._mcRestoreFailure = 'MISSING_SAVED_TICKER';
+            return;
+        }
+        const self = this;
+        const job = { generation: generation, attempt: 0, cancelled: false, timer: null };
+        entry._mcRestoreJob = job;
+        const run = function () {
+            if (job.cancelled || self.charts.get(entry.id) !== entry
+                || self._mcRestoreGeneration !== generation || !entry.ready) return;
+            job.attempt += 1;
+            self._log('info', 'MC_RESTORE assign ' + entry.id + ' file='
+                + assignment.fileId + ' attempt=' + job.attempt);
+            self.sendCommand(entry.id, 'loadFile', {
+                force: job.attempt > 1,
+                restoreIdentity: {
+                    panelId: entry.id,
+                    fileId: assignment.fileId,
+                    ticker: assignment.ticker,
+                    sessionId: assignment.sessionId,
+                    timeframe: assignment.timeframe,
+                    generation: generation,
+                },
+            }).then(function (result) {
+                if (job.cancelled || self.charts.get(entry.id) !== entry
+                    || self._mcRestoreGeneration !== generation) return;
+                let chart = null;
+                try { chart = entry.frame.contentWindow.chart; } catch (_) {}
+                const actualFile = chart && chart.currentFileId != null
+                    ? String(chart.currentFileId) : '';
+                const bars = chart && Array.isArray(chart.data) ? chart.data.length : 0;
+                const actualTicker = String(chart && chart.currentSymbol || '')
+                    .replace(/\//g, '').toUpperCase();
+                const expectedTicker = assignment.ticker.replace(/\//g, '').toUpperCase();
+                const actualSession = String(chart && chart.activeTradingSessionId || '');
+                const actualTf = String(chart && chart.currentTimeframe || '');
+                if (!result || result.generation !== generation
+                    || actualFile !== assignment.fileId || actualTicker !== expectedTicker
+                    || actualSession !== assignment.sessionId
+                    || (assignment.timeframe && actualTf !== assignment.timeframe) || bars < 1) {
+                    throw new Error('identity/paint incomplete file=' + actualFile + ' bars=' + bars);
+                }
+                entry._mcRestoreAppliedGeneration = generation;
+                entry._mcRestoreResult = result;
+                entry._mcRestoreJob = null;
+                entry._mcRestoreFailure = null;
+                self._log('info', 'MC_RESTORE complete ' + entry.id + ' file='
+                    + assignment.fileId + ' bars=' + bars);
+                try { self.showPanelFrame(entry.id); } catch (_) {}
+            }).catch(function (error) {
+                if (job.cancelled || self._mcRestoreGeneration !== generation) return;
+                if (job.attempt >= 3) {
+                    entry._mcRestoreJob = null;
+                    entry._mcRestoreFailure = String(error && error.message || error);
+                    self._log('error', 'MC_RESTORE exhausted ' + entry.id + ': '
+                        + entry._mcRestoreFailure);
+                    return;
+                }
+                job.timer = setTimeout(run, 250 * job.attempt);
+            });
+        };
+        run();
     };
 
     /**
@@ -990,6 +1198,20 @@
 
     /** ───────────────────────────── inbound from iframes ─────────────────── */
 
+    MultichartManager.prototype._authenticatedPanelMessageSource = function (ev, sourceId) {
+        if (!ev || !sourceId) return null;
+        const entry = this.charts.get(String(sourceId));
+        if (!entry || entry.host || !entry.frame) return null;
+        let frameWindow = null;
+        try { frameWindow = entry.frame.contentWindow; } catch (_) { return null; }
+        if (!frameWindow || ev.source !== frameWindow) return null;
+        try {
+            const expectedOrigin = global.location && global.location.origin;
+            if (!expectedOrigin || String(ev.origin || '') !== String(expectedOrigin)) return null;
+        } catch (_) { return null; }
+        return entry;
+    };
+
     MultichartManager.prototype._onWindowMessage = function (ev) {
         const msg = ev.data;
         if (!msg || typeof msg !== 'object' || !msg.type) return;
@@ -1000,6 +1222,12 @@
 
         switch (msg.type) {
             case 'bridge-ready':
+                {
+                    const authenticated = this._authenticatedPanelMessageSource(ev, sourceId);
+                    if (!authenticated || authenticated !== sourceChart || authenticated.ready) return;
+                    if (mcRestoreV1Enabled()
+                        && authenticated._mcRestoreGeneration !== this._mcRestoreGeneration) return;
+                }
                 if (sourceChart) {
                     sourceChart.ready = true;
                     if (sourceChart.overlay && sourceChart.overlay.parentNode) {
@@ -1041,6 +1269,9 @@
                     setTimeout(function () {
                         self._scheduleInitialSyncToChart(sourceChart);
                     }, 0);
+                    if (mcRestoreV1Enabled()) {
+                        this._scheduleMcRestoreAssignment(sourceChart);
+                    }
                 }
                 return;
 
