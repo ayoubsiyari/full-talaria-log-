@@ -94,7 +94,7 @@ test('B73 sealed tooling contracts remain integrated and fail closed', (t) => {
   const workflow = fs.readFileSync(path.join(root, 'scripts/deploy-test-checkpoint.sh'), 'utf8');
   assert.match(workflow, /--deploy-existing=<manifest>/);
   assert.match(workflow, /DRY RUN: verified remote tag and rollback manifest; no files, images, or containers changed/);
-  assert.match(workflow, /"\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh" --manifest="\$DEPLOY_EXISTING"/);
+  assert.match(workflow, /invoke_guarded_deploy "\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh" "\$DEPLOY_EXISTING"/);
   assert.match(fs.readFileSync(path.join(root, 'scripts/deploy.sh'), 'utf8'), /--no-build --no-deps/);
 
   const probe = fs.readFileSync(path.join(root, 'scripts/checkpoint-runtime-probe.mjs'), 'utf8');

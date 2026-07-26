@@ -7,6 +7,7 @@ say() { printf '\n=== %s ===\n' "$*"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"; }
 
 ORCHESTRATOR_ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+source "$ORCHESTRATOR_ROOT/scripts/lib/invoke-guarded-deploy.sh"
 
 resolve_remote_tag_commit() {
   local remote_url="$1"
@@ -211,7 +212,7 @@ NODE
     || die "rollback worktree is dirty"
   export DIRECT_ORIGIN PUBLIC_ORIGIN
   ROOT="$EXISTING_SOURCE" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
-    "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$DEPLOY_EXISTING"
+    invoke_guarded_deploy "$ORCHESTRATOR_ROOT/scripts/deploy.sh" "$DEPLOY_EXISTING"
   printf 'Deployed accepted checkpoint %s from %s\n' "$EXISTING_BUILD" "$EXISTING_SHA"
   exit 0
 fi
@@ -342,7 +343,7 @@ fi
 export PUBLIC_ORIGIN
 CHECKPOINT_RUNTIME_REPORT="$RUN_DIR/runtime.json" \
   ROOT="$SOURCE_DIR" TOOL_ROOT="$ORCHESTRATOR_ROOT" \
-  "$ORCHESTRATOR_ROOT/scripts/deploy.sh" --manifest="$MANIFEST"
+  invoke_guarded_deploy "$ORCHESTRATOR_ROOT/scripts/deploy.sh" "$MANIFEST"
 
 touch "$RUN_DIR/.complete"
 ROLLBACK_COMMAND="'$ORCHESTRATOR_ROOT/scripts/deploy-test-checkpoint.sh' --deploy-existing='$ROLLBACK_MANIFEST' --public-origin='$PUBLIC_ORIGIN' --direct-origin='$DIRECT_ORIGIN' --compose-project='$COMPOSE_PROJECT_NAME' --env-file='$ENV_FILE' --state-root='$STATE_ROOT'"

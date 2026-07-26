@@ -19,7 +19,7 @@ test('checkpoint wrapper is fail-closed and never handles passwords', () => {
   assert.match(source, /docker push "\$CHART_TAG"/);
   assert.match(source, /@sha256:\[a-f0-9\]\{64\}/);
   assert.match(source, /checkpoint-provenance\.mjs" create-manifest/);
-  assert.match(source, /"\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh" --manifest/);
+  assert.match(source, /invoke_guarded_deploy "\$ORCHESTRATOR_ROOT\/scripts\/deploy\.sh"/);
   assert.match(source, /DRY RUN:.*no files, images, or containers changed/);
   assert.doesNotMatch(source, /password|sshpass/i);
   assert.doesNotMatch(source, /:latest/);
