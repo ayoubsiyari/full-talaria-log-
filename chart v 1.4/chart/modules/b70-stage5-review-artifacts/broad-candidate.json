@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "role": "candidate-default-off",
+  "capturedAt": "2026-07-26T03:05:17.311Z",
+  "command": "node chart v 1.4/chart/modules/b70-broad-suite-compare.mjs",
+  "summary": {
+    "tests": 559,
+    "pass": 537,
+    "fail": 8,
+    "skipped": 14
+  },
+  "exactBaselineFailureMatches": [
+    "M20-A TZ: RED(head-blob) — no subscribe; addListener census leaks; anonymous remove no-op",
+    "M20-A TZ: RED(head-blob) — same-timezone reentrancy recurses unboundedly; corrected product does not",
+    "M20-A TZ: provenance — corrected product bound; HEAD blob recoverable; pre-land claim verified",
+    "M22-H-S78B real product/browser RED cell (dual-tree)",
+    "S0 stable baseline: immutable b61 blob equals the block pin 62ee0911…; current tree is distinct, mirrored and hashed",
+    "S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures",
+    "rapid switch during deferred play startup preserves playback intent and timestamp"
+  ],
+  "historicalCandidateOnlyFailures": [
+    {
+      "title": "incremental pass posts an O(tail) transfer-list payload, commits, and clears busy",
+      "classification": "harness timer/immediate race; fixed by deterministic phase drain; isolated rerun now passes 22/22",
+      "isolatedCommand": "node --test chart v 1.4/chart/modules/m19-i-indicator-tail.test.mjs"
+    }
+  ],
+  "exactFailureMatch": true,
+  "supersededBy": "broad-paired-runs.json",
+  "verdict": "GREEN_AFTER_DETERMINISTIC_HARNESS_FIX"
+}

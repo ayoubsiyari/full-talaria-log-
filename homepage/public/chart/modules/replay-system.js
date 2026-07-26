@@ -3710,6 +3710,14 @@ class ReplaySystem {
     _renderReplayChartUpdate() {
         const chart = this.chart;
         if (!chart) return;
+        if (typeof window !== 'undefined'
+            && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true
+            && chart.indicators && Array.isArray(chart.indicators.active)
+            && chart.indicators.active.length
+            && typeof chart._b70HasCommittedIndicatorGeneration === 'function'
+            && !chart._b70HasCommittedIndicatorGeneration()) {
+            return;
+        }
         chart.renderPending = true;
         if (typeof chart.render === 'function') {
             chart.render();
@@ -6902,6 +6910,9 @@ class ReplaySystem {
     seekTo(index, { fromDrag = false } = {}) {
         const seekMinIdx = this.sessionStartIndex || 0;
         this.currentIndex = Math.max(seekMinIdx, Math.min(index, this.fullRawData.length - 1));
+        if (this.chart && typeof this.chart._b70ShadowInvalidateIndicatorGeneration === 'function') {
+            this.chart._b70ShadowInvalidateIndicatorGeneration('timeline-seek');
+        }
         
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -10166,6 +10177,9 @@ if (_m20Q6LifecycleRuntimeEnabled()) {
         }
 
         destroy() {
+            if (this.chart && typeof this.chart._b70ShadowDisposeIndicatorGeneration === 'function') {
+                this.chart._b70ShadowDisposeIndicatorGeneration();
+            }
             return m20Q6DrainState(m20Q6States.get(this), 'destroy');
         }
 
