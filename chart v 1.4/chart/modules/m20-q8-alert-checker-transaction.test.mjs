@@ -57,7 +57,8 @@ const PACKET_DIR = path.join(
     'chart v 1.4/chart/modules/m20-q8-transaction-packet'
 );
 const REJECTED_FIXTURE = path.join(
-    PACKET_DIR,
+    REPO_ROOT,
+    'tests/fixtures/m20-q8',
     'rejected-alert-system-89ec4e7b.fixture.js'
 );
 const EVIDENCE_DIR = path.join(PACKET_DIR, 'evidence');
