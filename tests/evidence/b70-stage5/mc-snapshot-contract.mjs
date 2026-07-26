@@ -17,19 +17,55 @@ function exactPassport(panel) {
     && panel?.timeframe === panel?.expected?.timeframe;
 }
 
-export function isExpectedOffRedSnapshot(snapshot) {
-  if (!topologyReady(snapshot) || snapshot.errors?.length) return false;
+const passport = (panel) => ({
+  ticker: panel?.ticker || '',
+  fileId: String(panel?.fileId || ''),
+  sessionId: panel?.sessionId || '',
+  timeframe: panel?.timeframe || '',
+});
+
+function samePassport(left, right) {
+  const a = passport(left);
+  const b = passport(right);
+  return a.ticker === b.ticker && a.fileId === b.fileId
+    && a.sessionId === b.sessionId && a.timeframe === b.timeframe;
+}
+
+export function classifyOffRedSnapshot(snapshot) {
+  if (!topologyReady(snapshot) || snapshot.errors?.length) {
+    return { pass: false, reason: 'INVALID_TOPOLOGY_OR_ERRORS' };
+  }
   const [host, ...iframes] = snapshot.panels;
   if (!host?.host || !exactPassport(host) || host.bars <= 0 || host.nonblack <= 0
-      || host.errors?.length) return false;
-  return iframes.length === 2 && iframes.every((panel) =>
-    !panel.host
-      && panel.bars === 0
-      && panel.nonblack === 0
-      && !panel.ticker
-      && !panel.fileId
-      && !panel.sessionId
-      && !panel.errors?.length);
+      || host.errors?.length) {
+    return { pass: false, reason: 'HOST_NOT_EXACT_HEALTHY' };
+  }
+  const panelModes = [];
+  for (const panel of iframes) {
+    if (panel.host || panel.errors?.length) return { pass: false, reason: 'PANEL_ERROR' };
+    const blank = panel.bars === 0 && panel.nonblack === 0
+      && !panel.ticker && !panel.fileId && !panel.sessionId;
+    const duplicatedHost = panel.bars > 0 && panel.nonblack > 0
+      && panel.sessionId === host.sessionId && samePassport(panel, host);
+    if (!blank && !duplicatedHost) {
+      return { pass: false, reason: 'FOREIGN_OR_NONCONTRACT_PANEL_IDENTITY' };
+    }
+    panelModes.push(blank ? 'BLANK' : 'DUPLICATED_HOST');
+  }
+  if (panelModes.length !== 2) return { pass: false, reason: 'INVALID_PANEL_COUNT' };
+  const subtype = panelModes.every((mode) => mode === 'BLANK')
+    ? 'BLANK_PANELS' : 'DUPLICATED_HOST_IDENTITY';
+  const passports = snapshot.panels.map((panel) => ({
+    id: panel.id,
+    mode: panel.host ? 'HOST' : panelModes.shift(),
+    observed: passport(panel),
+    expected: passport(panel.expected),
+  }));
+  return { pass: true, subtype, passports };
+}
+
+export function isExpectedOffRedSnapshot(snapshot) {
+  return classifyOffRedSnapshot(snapshot).pass;
 }
 
 export function classifyOffDeadline(observations, minStableMs = 1_000) {
@@ -38,18 +74,29 @@ export function classifyOffDeadline(observations, minStableMs = 1_000) {
   }
   const last = observations.at(-1);
   if (last.error) return { pass: false, reason: 'OFF_OBSERVATION_ERROR', last };
-  if (!isExpectedOffRedSnapshot(last.value)) {
+  const lastClassification = classifyOffRedSnapshot(last.value);
+  if (!lastClassification.pass) {
     return { pass: false, reason: `OFF_UNEXPECTED_DEADLINE_STATE:${stageForSnapshot(last.value)}`, last };
   }
+  const stableFingerprint = JSON.stringify({
+    subtype: lastClassification.subtype,
+    passports: lastClassification.passports,
+  });
   let firstStable = last;
   for (let index = observations.length - 2; index >= 0; index -= 1) {
     const row = observations[index];
-    if (row.error || !isExpectedOffRedSnapshot(row.value)) break;
+    if (row.error) break;
+    const classification = classifyOffRedSnapshot(row.value);
+    if (!classification.pass || JSON.stringify({
+      subtype: classification.subtype,
+      passports: classification.passports,
+    }) !== stableFingerprint) break;
     firstStable = row;
   }
   const stableMs = last.atMs - firstStable.atMs;
   return stableMs >= minStableMs
-    ? { pass: true, reason: 'EXPECTED_OFF_RED', stableMs, firstStableAtMs: firstStable.atMs,
+    ? { pass: true, reason: 'EXPECTED_OFF_RED', subtype: lastClassification.subtype,
+      passports: lastClassification.passports, stableMs, firstStableAtMs: firstStable.atMs,
       deadlineAtMs: last.atMs, snapshot: last.value }
     : { pass: false, reason: 'OFF_RED_NOT_STABLE_AT_DEADLINE', stableMs, last };
 }

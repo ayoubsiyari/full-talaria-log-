@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   classifyOffDeadline,
   classifyArmPanel,
+  classifyOffRedSnapshot,
   isExpectedOffRedSnapshot,
   observableReady,
   stageForSnapshot,
@@ -71,7 +72,7 @@ const offSnapshot = () => ({
     },
     {
       ...panel('C'), ticker: '', fileId: '', sessionId: '', bars: 0, nonblack: 0,
-      expected: { ticker: 'AUDUSD', fileId: '28', sessionId: '849', timeframe: '1m' },
+      expected: { ticker: 'AUDUSD', fileId: '22', sessionId: '849', timeframe: '1m' },
       errors: [],
     },
   ],
@@ -119,9 +120,80 @@ test('runtime errors are hard OFF failure', () => {
   assert.equal(classifyOffDeadline([{ atMs: 0, value }, { atMs: 1_100, value }]).pass, false);
 });
 
+const duplicateHostPanels = (value, indexes = [1, 2]) => {
+  for (const index of indexes) {
+    Object.assign(value.panels[index], {
+      ticker: 'EURUSD', fileId: '25', sessionId: '849', timeframe: '1m',
+      bars: 10, nonblack: 4,
+    });
+  }
+  return value;
+};
+
+test('stable duplicate-host passports are accepted OFF RED', () => {
+  const value = duplicateHostPanels(offSnapshot());
+  const classification = classifyOffRedSnapshot(value);
+  assert.equal(classification.pass, true);
+  assert.equal(classification.subtype, 'DUPLICATED_HOST_IDENTITY');
+  const verdict = classifyOffDeadline([{ atMs: 8_700, value }, { atMs: 9_900, value }]);
+  assert.equal(verdict.pass, true);
+  assert.equal(verdict.subtype, 'DUPLICATED_HOST_IDENTITY');
+  assert.deepEqual(verdict.passports[1], {
+    id: 'B', mode: 'DUPLICATED_HOST',
+    observed: { ticker: 'EURUSD', fileId: '25', sessionId: '849', timeframe: '1m' },
+    expected: { ticker: 'GBPUSD', fileId: '27', sessionId: '849', timeframe: '1m' },
+  });
+});
+
+test('foreign identity or cross-session duplicate is hard OFF failure', () => {
+  const foreign = offSnapshot();
+  Object.assign(foreign.panels[1], {
+    ticker: 'USDJPY', fileId: '99', sessionId: '849', timeframe: '1m', bars: 10, nonblack: 4,
+  });
+  assert.equal(classifyOffRedSnapshot(foreign).pass, false);
+  const crossSession = duplicateHostPanels(offSnapshot());
+  crossSession.panels[2].sessionId = 'other-session';
+  assert.equal(classifyOffRedSnapshot(crossSession).pass, false);
+});
+
+test('transient wrong identity that later restores exact is not OFF RED', () => {
+  const wrong = duplicateHostPanels(offSnapshot());
+  const restored = structuredClone(wrong);
+  Object.assign(restored.panels[1], {
+    ticker: 'GBPUSD', fileId: '27', sessionId: '849', timeframe: '1m', bars: 10, nonblack: 4,
+  });
+  Object.assign(restored.panels[2], {
+    ticker: 'AUDUSD', fileId: '22', sessionId: '849', timeframe: '1m', bars: 10, nonblack: 4,
+  });
+  assert.equal(classifyOffDeadline([
+    { atMs: 100, value: wrong },
+    { atMs: 9_900, value: restored },
+  ]).pass, false);
+});
+
+test('stable mixed blank and duplicate-host panels are contracted OFF RED', () => {
+  const value = duplicateHostPanels(offSnapshot(), [2]);
+  const verdict = classifyOffDeadline([{ atMs: 8_700, value }, { atMs: 9_900, value }]);
+  assert.equal(verdict.pass, true);
+  assert.equal(verdict.subtype, 'DUPLICATED_HOST_IDENTITY');
+  assert.deepEqual(verdict.passports.slice(1).map((row) => row.mode),
+    ['BLANK', 'DUPLICATED_HOST']);
+});
+
 test('OFF candidate must remain stable through deadline', () => {
   const value = offSnapshot();
   const verdict = classifyOffDeadline([{ atMs: 9_200, value }, { atMs: 9_900, value }], 1_000);
+  assert.equal(verdict.pass, false);
+  assert.equal(verdict.reason, 'OFF_RED_NOT_STABLE_AT_DEADLINE');
+});
+
+test('changing contracted OFF subtype before deadline is not stable', () => {
+  const blank = offSnapshot();
+  const duplicated = duplicateHostPanels(offSnapshot());
+  const verdict = classifyOffDeadline([
+    { atMs: 8_700, value: blank },
+    { atMs: 9_900, value: duplicated },
+  ]);
   assert.equal(verdict.pass, false);
   assert.equal(verdict.reason, 'OFF_RED_NOT_STABLE_AT_DEADLINE');
 });

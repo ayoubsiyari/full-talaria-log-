@@ -1,14 +1,14 @@
 {
-  "version": 3,
+  "version": 4,
   "diagnosticSource": {
     "worktree": "tooling-849",
-    "lineage": ["877fb093f", "33733b9e7", "98a41b602"],
+    "lineage": ["12668c87f", "98a41b602", "d811ba5a1", "be9e86140"],
     "sealedManifest": "B73-MC-RUNNER-SHA256SUMS",
     "upstreamRunnerSha256": "ffbb3cd99646348089baae6c72f524b66a82c8e44014793664778a34b5299bfd"
   },
   "mcRestoreAuthenticatedAb": {
     "path": "tests/evidence/b70-stage5/mc-restore-authenticated-ab-runner.mjs",
-    "sha256": "2b84baf6fdef3c9bfaba23772ac4c5e0aee102ae845b71f2839103e12a0b8d20"
+    "sha256": "cfd3dbc8b5b7ed7186020a1904b3a8ae2285e6e552975649a77f039772a3f210"
   },
   "mcRestoreEvidenceModel": {
     "path": "tests/evidence/b70-stage5/mc-restore-evidence-model.mjs",
@@ -16,11 +16,11 @@
   },
   "mcSnapshotContract": {
     "path": "tests/evidence/b70-stage5/mc-snapshot-contract.mjs",
-    "sha256": "6d390a5f527e60359cb655d55dc267b14551b54d4914e828fd46def164a2d6b6"
+    "sha256": "064b21c301531fdf177804bd239ebd41da612461a5e72b1c741a309c49765bcc"
   },
   "mcSnapshotContractTest": {
     "path": "tests/evidence/b70-stage5/mc-snapshot-contract.test.mjs",
-    "sha256": "445cd3af0ab7f20a16e282f381e07a8889494ffea25b140e460b17916f284bb3"
+    "sha256": "076863e03e30cdd28822e13e31290f8d3dd745a253663cef36f1ce7d4ec55e48"
   },
   "puppeteerExternalPoll": {
     "path": "tests/evidence/b70-stage5/puppeteer-external-poll.mjs",

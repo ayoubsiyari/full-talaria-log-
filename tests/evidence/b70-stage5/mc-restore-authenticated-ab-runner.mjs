@@ -184,6 +184,8 @@ async function waitOffWitness(page, assignments) {
   return {
     verdict: 'RED',
     reason: verdict.reason,
+    subtype: verdict.subtype,
+    passports: verdict.passports,
     elapsedMs: Date.now() - started,
     stableMs: verdict.stableMs,
     firstStableAtMs: verdict.firstStableAtMs,
