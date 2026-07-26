@@ -26,6 +26,8 @@ RUN npm ci
 WORKDIR /build
 COPY ["scripts/checkpoint-build-assert.mjs", "./checkpoint-tools/checkpoint-build-assert.mjs"]
 COPY ["scripts/lib/checkpoint-provenance.mjs", "./checkpoint-tools/lib/checkpoint-provenance.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "./checkpoint-tools/lib/homepage-forwarding-contracts.mjs"]
+COPY ["scripts/lib/homepage-forwarding-contracts.mjs", "/scripts/lib/homepage-forwarding-contracts.mjs"]
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
 COPY ["chart v 1.4/chart", "./chart/"]
 WORKDIR /build/talaria-design
