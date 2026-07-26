@@ -16,5 +16,9 @@
     "S0 stable baseline: immutable b61 blob equals the block pin 62ee0911…; current tree is distinct, mirrored and hashed",
     "S0b rejected R3 executable RED: exact recovered bbc17f6d bytes reproduce all ten R4 blocker failures"
   ],
+  "newlyPassingAttribution": [
+    "M22-H-S78B real product/browser RED cell (dual-tree) — accepted B70 Stage5 assembly b17b19591 and evidence relocation b2e063d41 own the now-satisfied RED-oracle contract.",
+    "rapid switch during deferred play startup preserves playback intent and timestamp — accepted replay fix c2e199435 preserves deferred playback intent and the saved timestamp across a rapid timeframe switch."
+  ],
   "acceptance": false
 }
