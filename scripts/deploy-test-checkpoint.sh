@@ -185,9 +185,9 @@ NODE
       && "$EXISTING_SHA" == "${PROFILE_FIELDS[7]}"
       && "$MANIFEST_SHA256" == "${PROFILE_FIELDS[8]}"
       && "$EXISTING_PROOF_SHA256" == "${PROFILE_FIELDS[9]}"
-      && "$EXISTING_PLAN[4]" == "${PROFILE_FIELDS[10]}"
-      && "$EXISTING_PLAN[5]" == "${PROFILE_FIELDS[11]}"
-      && "$EXISTING_ROLLBACK_PLAN[1]" == "${PROFILE_FIELDS[12]}" ]] \
+      && "${EXISTING_PLAN[4]}" == "${PROFILE_FIELDS[10]}"
+      && "${EXISTING_PLAN[5]}" == "${PROFILE_FIELDS[11]}"
+      && "${EXISTING_ROLLBACK_PLAN[1]}" == "${PROFILE_FIELDS[12]}" ]] \
     || die "manifest differs from the approved TEST deployment contract"
   REMOTE_URL="$(git -C "$ORCHESTRATOR_ROOT" remote get-url "$EXISTING_REMOTE")"
   REMOTE_SHA="$(cd "$ORCHESTRATOR_ROOT" && resolve_remote_tag_commit "$REMOTE_URL" "$EXISTING_REF")"
