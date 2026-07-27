@@ -10,6 +10,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { reactScenarioList } from './react-parity-scenarios.mjs';
+import {
+  H_A8_AUTHORIZATION,
+  loadAndValidateHA8Authorization,
+  validateHA8SemanticOutput,
+} from './h-a8-vp-2-policy-authorization.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = path.join(__dirname, 'known-failing.json');
@@ -67,8 +72,10 @@ function parseResults(output) {
 }
 
 async function main() {
+  await loadAndValidateHA8Authorization(__dirname);
   const { expectedTests, knownFailing } = await loadBaseline();
   const knownFailIds = Object.keys(knownFailing).sort();
+  const authorizedIds = [H_A8_AUTHORIZATION.id];
   const actualTests = reactScenarioList().map((s) => s.id);
   const expectedSorted = [...expectedTests].sort();
   const actualSorted = [...actualTests].sort();
@@ -91,8 +98,15 @@ async function main() {
   const resultIds = [...results.keys()].sort();
   const missingResults = expectedSorted.filter((id) => !results.has(id));
   const unexpectedResults = resultIds.filter((id) => !expectedTests.includes(id));
-  const regressions = expectedTests.filter((id) => !knownFailIds.includes(id) && results.get(id) === 'FAIL');
+  const semanticAuthorization = validateHA8SemanticOutput(
+    run.output,
+    results.get(H_A8_AUTHORIZATION.id),
+  );
+  const regressions = expectedTests.filter((id) => !knownFailIds.includes(id)
+    && !authorizedIds.includes(id) && results.get(id) === 'FAIL');
   const knownStillFailing = expectedTests.filter((id) => knownFailIds.includes(id) && results.get(id) === 'FAIL');
+  const authorizedStillFailing = expectedTests.filter((id) => authorizedIds.includes(id)
+    && results.get(id) === 'FAIL');
   const newlyFixed = expectedTests.filter((id) => knownFailIds.includes(id) && results.get(id) === 'PASS');
 
   console.log('\n================= REACT GATE SUMMARY =================');
@@ -100,6 +114,7 @@ async function main() {
   console.log(`Harness tests:  ${actualTests.join(', ')}`);
   console.log(`Known failing baseline: ${formatList(knownFailIds)}`);
   console.log(`Known-failing still red: ${formatList(knownStillFailing)}`);
+  console.log(`Exact policy-authorized still red: ${formatList(authorizedStillFailing)}`);
   console.log(`Regressions (not in baseline but failed): ${formatList(regressions)}`);
   console.log(`Newly fixed (remove from known-failing): ${formatList(newlyFixed)}`);
   if (missingResults.length || unexpectedResults.length) {
@@ -107,11 +122,17 @@ async function main() {
     console.log(`Unexpected RESULT lines: ${formatList(unexpectedResults)}`);
   }
   for (const id of expectedTests) {
-    console.log(`REACT-GATE ${id} ${results.get(id) || 'MISSING'}${knownFailIds.includes(id) ? ' (known-failing)' : ''}`);
+    const classification = knownFailIds.includes(id) ? ' (known-failing)'
+      : authorizedIds.includes(id) ? ' (exact policy authorization)' : '';
+    console.log(`REACT-GATE ${id} ${results.get(id) || 'MISSING'}${classification}`);
   }
 
   if (missingResults.length || unexpectedResults.length) {
     console.error('[react-gate] RESULT set changed; update reactParity.expectedTests deliberately.');
+    process.exit(1);
+  }
+  if (!semanticAuthorization.ok) {
+    console.error(`[react-gate] FAIL: exact H-A8 authorization mismatch: ${semanticAuthorization.errors.join('; ')}`);
     process.exit(1);
   }
   if (regressions.length) {
@@ -122,12 +143,14 @@ async function main() {
     console.error(`[react-gate] FAIL: baseline stale; remove fixed test(s) from reactParity.knownFailing: ${newlyFixed.join(', ')}`);
     process.exit(1);
   }
-  if (run.code !== 0 && knownStillFailing.length !== knownFailIds.length) {
+  if (run.code !== 0
+      && knownStillFailing.length + authorizedStillFailing.length
+        !== knownFailIds.length + authorizedIds.length) {
     console.error(`[react-gate] FAIL: raw harness exited ${run.code}, but failures did not match baseline.`);
     process.exit(1);
   }
 
-  console.log(`[react-gate] PASS: no new regressions; ${knownStillFailing.length} known-failing tracked.`);
+  console.log(`[react-gate] PASS: no new regressions; ${knownStillFailing.length} known-failing and ${authorizedStillFailing.length} exact policy-authorized tracked.`);
 }
 
 main().catch((err) => {
