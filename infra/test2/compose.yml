@@ -161,7 +161,7 @@ services:
     <<: *test2-service
     image: ${TEST2_HOMEPAGE_IMAGE:?immutable TEST2 homepage image required}
     ports:
-      - "3001:80"
+      - "127.0.0.1:3001:80"
     configs:
       - source: test2_nginx
         target: /etc/nginx/conf.d/default.conf

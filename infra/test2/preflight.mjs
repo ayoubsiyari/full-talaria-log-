@@ -29,6 +29,16 @@ export function auditCompose(config, policy) {
   if (!services['postgres-test2'] || !services['redis-test2'] || !services['questdb-test2']) {
     fail('dedicated PostgreSQL, Redis, and QuestDB services are mandatory');
   }
+  const environment = (service) => service?.environment || {};
+  if (String(environment(services['chart-test2']).AUTH_ENABLED).toLowerCase() !== 'true') {
+    fail('chart-test2 AUTH_ENABLED must be true');
+  }
+  if (String(environment(services['journal-test2']).AUTH_ENABLED).toLowerCase() !== 'true') {
+    fail('journal-test2 AUTH_ENABLED must be true');
+  }
+  if (String(environment(services['worker-test2']).AUTH_ENABLED).toLowerCase() !== 'false') {
+    fail('worker-test2 AUTH_ENABLED must be false');
+  }
   for (const [name, service] of Object.entries(services)) {
     if (service.container_name) fail(`${name}: container_name is prohibited`);
     if (service.network_mode) fail(`${name}: network_mode is prohibited`);
@@ -68,8 +78,9 @@ export function auditCompose(config, policy) {
     fail('TEST-1 cookie/origin reuse detected');
   }
   const homepagePorts = services['homepage-test2']?.ports || [];
-  if (!homepagePorts.some((port) => String(port.published ?? port).includes(EXPECTED.port))) {
-    fail('port 3001 is not published by homepage-test2');
+  if (homepagePorts.length !== 1 || String(homepagePorts[0].published ?? '') !== EXPECTED.port
+      || homepagePorts[0].host_ip !== '127.0.0.1') {
+    fail('port 3001 must be published exactly once on 127.0.0.1');
   }
 }
 

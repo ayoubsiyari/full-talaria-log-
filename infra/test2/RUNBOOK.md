@@ -4,7 +4,7 @@ Status: implementation only. This profile must not be started until the host-spe
 
 ## Fixed scope
 
-- Compose project `talaria-test2`; only host port `3001`; one internal network `talaria-test2-private`.
+- Compose project `talaria-test2`; host port `3001` is bound only to `127.0.0.1`; one internal network `talaria-test2-private`.
 - Dedicated PostgreSQL database `talaria_test2` and non-superuser bootstrap role `talaria_test2_app`; dedicated Redis and QuestDB.
 - Six explicit TEST-2 volumes. No external volumes, bind mounts, host networking, `container_name`, `volumes_from`, TEST-1 DNS, or shared persistence.
 - Separate QA cookie, origin, account IDs, DB/QuestDB credentials, application secret and JWT secret. Billing/OAuth/telemetry credentials are blank.
@@ -22,7 +22,7 @@ sudo install -m 0600 /dev/null /etc/talaria/test2/runtime.env
 sudoedit /etc/talaria/test2/runtime.env
 ```
 
-The file must define `TEST2_POSTGRES_ADMIN_PASSWORD`, `TEST2_POSTGRES_PASSWORD`, `TEST2_QUESTDB_PASSWORD`, `TEST2_SECRET_KEY`, `TEST2_JWT_SECRET_KEY`, `TEST2_ORIGIN`, and immutable digest-pinned `TEST2_CHART_IMAGE`, `TEST2_HOMEPAGE_IMAGE`, `TEST2_JOURNAL_IMAGE`. Values must be newly generated and must not equal TEST-1/prod values. Never copy a TEST-1/prod env file.
+The file must define `TEST2_POSTGRES_ADMIN_PASSWORD`, `TEST2_POSTGRES_PASSWORD`, `TEST2_QUESTDB_PASSWORD`, `TEST2_SECRET_KEY`, `TEST2_JWT_SECRET_KEY`, `TEST2_PROOF_HMAC_KEY`, `TEST2_ORIGIN`, and immutable digest-pinned `TEST2_CHART_IMAGE`, `TEST2_HOMEPAGE_IMAGE`, `TEST2_JOURNAL_IMAGE`. Values must be newly generated and must not equal TEST-1/prod values. Never copy a TEST-1/prod env file.
 
 Set:
 
@@ -32,6 +32,7 @@ export TEST1_SECRETS_FILE=/etc/talaria/test1/runtime.env
 export TEST1_ORIGIN=https://test1.example.invalid
 export TEST1_COOKIE_NAME=chart_session_id
 export TEST1_FORBIDDEN_TOKENS=talaria-test1,postgres-test1,redis-test1,questdb-test1
+export TEST2_PROOF_HMAC_KEY=<new-external-32+-character-proof-key>
 ```
 
 Replace the origin/token examples with the audited TEST-1 values. Preflight compares file and individual secret hashes and rejects reuse.
@@ -53,13 +54,26 @@ Create only IDs matching `qa-test2-*`. Seed the sentinel printed by `isolation-p
 
 ## TEST-1 precedence watchdog
 
-Run under a host service manager with restart-on-failure:
+Run under a host service manager with restart-on-failure. The guard pauses workloads before its first health read, after every monitoring error, and on SIGTERM/SIGINT. Install an independent stop-post pause because a process cannot handle SIGKILL or host OOM:
 
 ```sh
 export TEST2_COMPOSE_FILE="$PWD/infra/test2/compose.yml"
 export TEST1_HEALTH_URL=https://test1.example.invalid/api/status
 node infra/test2/guard.mjs
 ```
+
+Supervisor contract (systemd equivalent is mandatory):
+
+```ini
+[Service]
+ExecStart=/usr/bin/node /opt/talaria-test2/infra/test2/guard.mjs
+Restart=always
+KillSignal=SIGTERM
+TimeoutStopSec=20
+ExecStopPost=/bin/sh -c '/usr/bin/docker compose --project-name talaria-test2 -f /opt/talaria-test2/infra/test2/compose.yml ps -q chart-test2 worker-test2 questdb-test2 | /usr/bin/xargs -r /usr/bin/docker pause'
+```
+
+If `ExecStopPost` fails, the supervisor must alert and immediately stop the entire TEST-2 project. It must never address TEST-1 container IDs.
 
 The guard pauses TEST-2 chart, worker, and QuestDB when TEST-1 is unhealthy, available host memory is below 2 GiB, or CPU exceeds 85% for four samples. It resumes only after three consecutive safe samples and only unpauses TEST-2 workload IDs. Guard failure is an alert condition; stop TEST-2.
 
@@ -85,7 +99,7 @@ node infra/test2/isolation-proof.mjs verify /var/lib/talaria-test2/test1-before.
 
 Normal rollback is the previous digest-pinned TEST-2 image set in the external secret file followed by preflight and `up -d`; it never targets TEST-1. Destructive data rollback requires a separately approved TEST-2-only volume restore. Do not use `down -v` during acceptance.
 
-The isolation verifier scans every TEST-1 text column and Redis keyspace for the sentinel, then verifies TEST-1 container/image/mount inventory and read-only content hashes for every mounted volume are unchanged. Archive before/after JSON, rendered Compose config, preflight output, guard state, seed manifest, mixed-cell measurements, and teardown output.
+The isolation verifier accepts only sentinels matching `^qa-test2-[a-f0-9]{24}$`. It passes the value through a psql variable into `set_config`; JavaScript never interpolates SQL. It scans all TEST-1 text and JSON/JSONB columns (including session/trade tables), plus every Redis key and serialized value (queue/cache coverage). The proof artifact is HMAC-SHA256 sealed with the external `TEST2_PROOF_HMAC_KEY` before its sentinel or baseline is trusted. It then verifies TEST-1 container/image/mount inventory and read-only content hashes for every mounted volume are unchanged. Archive before/after JSON, rendered Compose config, preflight output, guard state, seed manifest, mixed-cell measurements, and teardown output.
 
 ## Security / I16 review checklist
 

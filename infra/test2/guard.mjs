@@ -54,30 +54,68 @@ async function signal(previousCpu) {
 }
 
 async function applyPause(paused) {
-  const ids = compose('ps', '-q', ...WORKLOADS).stdout.trim().split(/\s+/).filter(Boolean);
+  const listed = compose('ps', '-q', ...WORKLOADS);
+  if (listed.status !== 0) throw new Error(listed.stderr.trim() || 'could not resolve TEST-2 workloads');
+  const ids = listed.stdout.trim().split(/\s+/).filter(Boolean);
   if (!ids.length) return;
   const result = docker(paused ? 'pause' : 'unpause', ...ids);
   if (result.status !== 0) throw new Error(result.stderr.trim());
+}
+
+export async function failClosed(pause, cause) {
+  await pause(true);
+  return { paused: true, healthyStreak: 0, cpuHighStreak: 0,
+    lastError: String(cause?.message || cause), updatedAt: new Date().toISOString() };
 }
 
 async function main() {
   if (!process.env.TEST2_COMPOSE_FILE || !process.env.TEST1_HEALTH_URL) {
     throw new Error('TEST2_COMPOSE_FILE and TEST1_HEALTH_URL are required');
   }
-  let state = { paused: false, healthyStreak: 0, cpuHighStreak: 0 };
+  let state = { paused: true, healthyStreak: 0, cpuHighStreak: 0 };
   try { state = { ...state, ...JSON.parse(await readFile(STATE, 'utf8')) }; } catch {}
+  // Startup is fail-closed: workloads remain paused until three fresh safe samples.
+  await applyPause(true);
+  state.paused = true;
+  state.healthyStreak = 0;
+  await writeFile(STATE, JSON.stringify(state, null, 2), { mode: 0o600 });
+  let stopping = false;
+  const stop = async (signalName) => {
+    if (stopping) return;
+    stopping = true;
+    try {
+      state = await failClosed(applyPause, signalName);
+      await writeFile(STATE, JSON.stringify(state, null, 2), { mode: 0o600 });
+    } finally {
+      process.exitCode = 0;
+    }
+  };
+  process.once('SIGTERM', () => void stop('SIGTERM'));
+  process.once('SIGINT', () => void stop('SIGINT'));
   let previousCpu;
-  for (;;) {
-    const current = await signal(previousCpu);
-    previousCpu = current.cpu;
-    const next = transition(state, current.reading);
-    if (next.paused !== state.paused) await applyPause(next.paused);
-    state = { ...next, lastSignal: current.reading, updatedAt: new Date().toISOString() };
-    await writeFile(STATE, JSON.stringify(state, null, 2), { mode: 0o600 });
+  while (!stopping) {
+    try {
+      const current = await signal(previousCpu);
+      previousCpu = current.cpu;
+      const next = transition(state, current.reading);
+      if (next.paused !== state.paused) await applyPause(next.paused);
+      state = { ...next, lastSignal: current.reading, lastError: null, updatedAt: new Date().toISOString() };
+      await writeFile(STATE, JSON.stringify(state, null, 2), { mode: 0o600 });
+    } catch (error) {
+      state = await failClosed(applyPause, error);
+      await writeFile(STATE, JSON.stringify(state, null, 2), { mode: 0o600 });
+      console.error(`TEST-2 GUARD PAUSED AFTER ERROR: ${error.message}`);
+    }
     await sleep(CHECK_MS);
   }
 }
 
 if (process.argv[1]?.endsWith('guard.mjs')) {
-  main().catch((error) => { console.error(`TEST-2 GUARD FAIL-CLOSED: ${error.message}`); process.exitCode = 1; });
+  main().catch(async (error) => {
+    try { await applyPause(true); } catch (pauseError) {
+      console.error(`TEST-2 GUARD EMERGENCY PAUSE FAILED: ${pauseError.message}`);
+    }
+    console.error(`TEST-2 GUARD FAIL-CLOSED: ${error.message}`);
+    process.exitCode = 1;
+  });
 }
