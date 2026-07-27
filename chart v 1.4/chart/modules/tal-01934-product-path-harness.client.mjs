@@ -38,9 +38,10 @@ async function freshProduct() {
 
 async function runCase({ mutation, indicators, repeat }) {
   const { w, chart } = await freshProduct();
-  // Product fix defaults ON. Every negative control explicitly exercises the
-  // retained kill switch; add-invalidation is the unmodified GREEN path.
-  w.__TALARIA_DISABLE_REPLAY_CROSSHAIR_REFRESH = mutation !== 'add-invalidation';
+  // Product fix defaults ON. The real-render bypass stays ON to prove that
+  // invocation alone cannot forge the chart's committed-paint generation.
+  const productFixOn = mutation === 'add-invalidation' || mutation === 'bypass-real-render';
+  w.__TALARIA_DISABLE_REPLAY_CROSSHAIR_REFRESH = !productFixOn;
   const all = bars();
   const initial = all.slice(0, 12);
   chart.data = initial.slice();
