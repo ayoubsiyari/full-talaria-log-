@@ -2468,7 +2468,16 @@ class PanelManager {
             const state = JSON.parse(raw);
             const savedOwner = state && state.ownerId == null ? '' : String(state.ownerId).trim();
             const savedSession = state && state.sessionId == null ? '' : String(state.sessionId).trim();
-            return savedOwner === ownerId && savedSession ? state : null;
+            let activeSession = '';
+            try {
+                const ch = window.chart;
+                const sid = ch && typeof ch.getActiveTradingSessionId === 'function'
+                    ? ch.getActiveTradingSessionId()
+                    : ch && ch.activeTradingSessionId;
+                activeSession = sid == null ? '' : String(sid).trim();
+            } catch (_e) { /* fail closed below */ }
+            return savedOwner === ownerId && savedSession
+                && activeSession && savedSession === activeSession ? state : null;
         } catch (e) {
             return null;
         }

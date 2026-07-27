@@ -15418,26 +15418,77 @@ const TalariaV8bLive = () => {
   // Same session + refresh still restores multi (sessionIds match).
   useEffect(() => {
     if (!layoutPersistV2Enabled()) return;
-    try {
-      const ownerId = window.__talariaUserId == null
-        ? "" : String(window.__talariaUserId).trim();
-      const storage = window.userStorage;
-      if (!ownerId || typeof storage?.getScopedItem !== "function") return;
-      const raw = storage.getScopedItem("chart_panel_state");
-      if (!raw) return;
-      const state = JSON.parse(raw);
-      if (String(state?.ownerId || "").trim() !== ownerId) return;
-      const curSid = v9CurrentChartSessionId();
-      const savedSid = state && state.sessionId != null ? String(state.sessionId).trim() : "";
-      if (!savedSid || !curSid || savedSid !== curSid) return;
-      const layoutId = state && state.layout != null ? String(state.layout) : null;
-      if (!layoutId || layoutId === "1") return;
-      const normalized = layoutId === "2" ? "2v" : layoutId;
-      const tuple = layoutTupleFromId(normalized);
-      if (tuple) setLayoutPanels(tuple);
-    } catch (_) {
-      /* corrupt blob → silent single-chart fallback */
+    let disposed = false;
+    let timer = null;
+    let attempts = 0;
+    let appliedEpoch = null;
+    const activeSessionId = () => {
+      try {
+        const ch = window.chart;
+        const sid = ch && typeof ch.getActiveTradingSessionId === "function"
+          ? ch.getActiveTradingSessionId()
+          : ch?.activeTradingSessionId;
+        if (sid != null && String(sid).trim()) return String(sid).trim();
+      } catch (_) {}
+      return v9CurrentChartSessionId();
+    };
+    const hydrate = (event) => {
+      if (disposed) return true;
+      if (event?.type === "talaria-auth-changed" && event?.detail?.authenticated === false) {
+        appliedEpoch = null;
+        setLayoutPanels({ n: 1, li: 0 });
+        return true;
+      }
+      try {
+        const ownerId = window.__talariaUserId == null
+          ? "" : String(window.__talariaUserId).trim();
+        const curSid = activeSessionId();
+        const storage = window.userStorage;
+        if (!ownerId || !curSid || typeof storage?.getScopedItem !== "function") return false;
+        const epoch = `${ownerId}|${curSid}`;
+        if (appliedEpoch === epoch) return true;
+        const raw = storage.getScopedItem("chart_panel_state");
+        if (!raw) { appliedEpoch = epoch; return true; }
+        const state = JSON.parse(raw);
+        const savedOwner = String(state?.ownerId || "").trim();
+        const savedSid = String(state?.sessionId || "").trim();
+        if (savedOwner !== ownerId || savedSid !== curSid) {
+          appliedEpoch = epoch;
+          setLayoutPanels({ n: 1, li: 0 });
+          return true;
+        }
+        const layoutId = state?.layout != null ? String(state.layout) : "1";
+        const normalized = layoutId === "2" ? "2v" : layoutId;
+        const tuple = layoutTupleFromId(normalized) || { n: 1, li: 0 };
+        appliedEpoch = epoch;
+        setLayoutPanels(tuple);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+    const poll = () => {
+      timer = null;
+      if (hydrate() || disposed) return;
+      attempts += 1;
+      if (attempts < 100) timer = setTimeout(poll, 100);
+    };
+    const onEpochSignal = (event) => {
+      attempts = 0;
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!hydrate(event) && !disposed) timer = setTimeout(poll, 100);
+    };
+    for (const name of ["talaria-auth-changed", "tradingSessionChanged", "backtestingSessionChanged"]) {
+      window.addEventListener(name, onEpochSignal);
     }
+    poll();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      for (const name of ["talaria-auth-changed", "tradingSessionChanged", "backtestingSessionChanged"]) {
+        window.removeEventListener(name, onEpochSignal);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -24,6 +24,10 @@ const productIndexSource = fs.readFileSync(
   new URL('../dist-v9/index.html', import.meta.url),
   'utf8',
 );
+const panelManagerSource = fs.readFileSync(
+  new URL('./panel-managerv2.js', import.meta.url),
+  'utf8',
+);
 
 function makeRuntime({
   enabled, disabled = false, panels = [], persisted = true,
@@ -312,6 +316,69 @@ test('delayed auth polling is bounded and timeout fails closed', () => {
   manager.dispose();
 });
 
+test('panel manager production load branch requires exact active session equality', () => {
+  const state = {
+    ownerId: 'user-a',
+    sessionId: '827',
+    layout: '3',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  };
+  const runtime = {
+    window: {
+      __talariaUserId: 'user-a',
+      chart: {
+        activeTradingSessionId: '827',
+        getActiveTradingSessionId() { return this.activeTradingSessionId; },
+      },
+    },
+    userStorage: { getScopedItem() { return JSON.stringify(state); } },
+    module: { exports: {} },
+    URLSearchParams,
+    setTimeout,
+    clearTimeout,
+    console,
+  };
+  vm.runInNewContext(panelManagerSource, runtime);
+  const load = runtime.module.exports.prototype.loadPanelState;
+  assert.equal(structuredClone(load.call({})).sessionId, '827');
+  runtime.window.chart.activeTradingSessionId = '999';
+  assert.equal(load.call({}), null);
+  assert.match(panelManagerSource,
+    /activeSession && savedSession === activeSession \? state : null/);
+});
+
+test('restore barrier requires paused coherent replay timestamp and raw index before Play', () => {
+  const queue = [];
+  const timerApi = {
+    setTimeout(fn) { queue.push(fn); return fn; },
+    clearTimeout() {},
+  };
+  const { root, manager } = makeRuntime({
+    timerApi,
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  const generation = manager.beginMcRestoreGeneration();
+  root.chart.replaySystem = {
+    isActive: true,
+    isPlaying: true,
+    currentIndex: 1,
+    replayTimestamp: 2000,
+    fullRawData: [{ t: 1000 }, { t: 2000 }, { t: 3000 }],
+  };
+  let completed = 0;
+  manager.completeMcRestoreGeneration = () => { completed += 1; return true; };
+  manager._armMcRestoreHostBarrier(generation);
+  assert.equal(completed, 0, 'Play cannot start before restored state is coherent and paused');
+  root.chart.replaySystem.isPlaying = false;
+  root.chart.replaySystem.replayTimestamp = 3500;
+  queue.shift()();
+  assert.equal(completed, 0, 'timestamp outside current raw bar remains blocked');
+  root.chart.replaySystem.replayTimestamp = 2500;
+  queue.shift()();
+  assert.equal(completed, 1);
+  manager.dispose();
+});
+
 test('actual product boot explicitly enables restore unless killed', () => {
   assert.match(productGridSource,
     /if \(window\.__TALARIA_ENABLE_MC_RESTORE_V1 === undefined\)[\s\S]*window\.__TALARIA_DISABLE_MC_RESTORE_V1 !== true/);
@@ -325,6 +392,10 @@ test('actual product boot explicitly enables restore unless killed', () => {
   assert.doesNotMatch(productGridSource, /sessionStorage\.(?:getItem|setItem)\(mcPanelFilePersistStorageKey/);
   assert.match(productIndexSource,
     /if \(key === 'chart_panel_state'\) return this\.getScopedItem\(key\)/);
+  assert.match(productShellSource,
+    /\["talaria-auth-changed", "tradingSessionChanged", "backtestingSessionChanged"\]/);
+  assert.match(productShellSource, /attempts < 100/);
+  assert.match(productShellSource, /layoutTupleFromId\(normalized\) \|\| \{ n: 1, li: 0 \}/);
 });
 
 test('delayed host completion assigns once after duplicate bridge-ready', async () => {

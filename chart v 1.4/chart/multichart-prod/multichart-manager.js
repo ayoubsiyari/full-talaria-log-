@@ -773,7 +773,22 @@
             const hasData = !!(chart && Array.isArray(chart.data) && chart.data.length > 0);
             const sessionSettled = !sessionId
                 || String(chart && chart._sessionStateLoadedFor || '') === String(sessionId);
-            if (hasData && sessionSettled) {
+            let replayCoherent = true;
+            try {
+                const replay = chart && chart.replaySystem;
+                if (replay && replay.isActive) {
+                    const index = Number(replay.currentIndex);
+                    const raw = replay.fullRawData;
+                    const timestamp = Number(replay.replayTimestamp);
+                    const bar = Array.isArray(raw) && Number.isInteger(index) ? raw[index] : null;
+                    const next = Array.isArray(raw) ? raw[index + 1] : null;
+                    replayCoherent = replay.isPlaying !== true
+                        && !!bar && Number.isFinite(Number(bar.t)) && Number.isFinite(timestamp)
+                        && Number(bar.t) <= timestamp
+                        && (!next || !Number.isFinite(Number(next.t)) || timestamp < Number(next.t));
+                }
+            } catch (_) { replayCoherent = false; }
+            if (hasData && sessionSettled && replayCoherent) {
                 self.completeMcRestoreGeneration(generation, sessionId);
                 return;
             }
