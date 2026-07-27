@@ -2079,6 +2079,157 @@ export async function reactPanelLoadFile(page, panelId, fileId) {
   }, panelId, fileId);
 }
 
+/**
+ * Establish panel-B ownership through the authenticated MC_RESTORE API.
+ * The product manager owns bounded transient dispatch retries; this helper
+ * performs one generation and waits for its explicit identity acknowledgement.
+ */
+export async function establishAuthenticatedPanelFileOwnership(page, {
+  panelId = 'B',
+  fileId = '27',
+  ticker = 'GBPUSD',
+  timeoutMs = 30_000,
+} = {}) {
+  const frame = panelFrameMap(page)[panelId];
+  if (!frame) return { ok: false, reason: 'panel frame unavailable' };
+  await frame.evaluate((targetFile) => {
+    const probe = {
+      targetFile: String(targetFile),
+      chartDataLoaded: 0,
+      lastDetail: null,
+    };
+    window.__hA7bR2OwnershipProbe = probe;
+    window.addEventListener('chartDataLoaded', (event) => {
+      const ch = window.chart;
+      if (String(ch?.currentFileId || '') !== probe.targetFile) return;
+      probe.chartDataLoaded += 1;
+      probe.lastDetail = event?.detail || null;
+    });
+  }, fileId);
+
+  const dispatch = await page.evaluate(({ pid, fid, symbol }) => {
+    const manager = window.__multichartManagerRef;
+    const storage = window.userStorage;
+    const ownerId = storage?.getAuthenticatedOwnerId?.()
+      || (window.__talariaUserId == null ? '' : String(window.__talariaUserId));
+    const host = window.chart;
+    if (!ownerId) return { ok: false, reason: 'authenticated owner unavailable' };
+    if (!manager || typeof manager._refreshMcRestoreEpoch !== 'function') {
+      return { ok: false, reason: 'MC_RESTORE ownership API unavailable' };
+    }
+    if (!storage || typeof storage.setItem !== 'function') {
+      return { ok: false, reason: 'authenticated scoped storage unavailable' };
+    }
+    const sessionId = 'h-a7b-r2-auth-session';
+    const timeframe = String(host?.currentTimeframe || '1m');
+    host.activeTradingSessionId = sessionId;
+    host._sessionStateLoadedFor = sessionId;
+    const state = {
+      ownerId: String(ownerId),
+      sessionId,
+      layout: '2v',
+      panels: [
+        { index: 0, isMainChart: true, fileId: '25', symbol: 'EURUSD', timeframe },
+        { index: 1, isMainChart: false, fileId: String(fid), symbol: String(symbol), timeframe },
+      ],
+    };
+    storage.setItem('chart_panel_state', JSON.stringify(state));
+    const refreshed = manager._refreshMcRestoreEpoch();
+    const generation = manager._mcRestoreGeneration;
+    if (!Number.isFinite(Number(generation))) {
+      return { ok: false, reason: 'ownership generation unavailable' };
+    }
+    return {
+      ok: refreshed === true,
+      ownerId: String(ownerId),
+      sessionId,
+      generation: Number(generation),
+      panelId: String(pid),
+      fileId: String(fid),
+      ticker: String(symbol),
+      timeframe,
+    };
+  }, { pid: panelId, fid: fileId, symbol: ticker });
+  if (!dispatch.ok) return dispatch;
+
+  const deadline = Date.now() + timeoutMs;
+  let observed = null;
+  while (Date.now() < deadline) {
+    observed = await page.evaluate(({ pid, expected }) => {
+      const manager = window.__multichartManagerRef;
+      const entry = manager?.charts?.get?.(pid);
+      let ch = null;
+      try { ch = entry?.frame?.contentWindow?.chart || null; } catch (_) {}
+      const bars = Array.isArray(ch?.data) ? ch.data : [];
+      const probe = entry?.frame?.contentWindow?.__hA7bR2OwnershipProbe || null;
+      const canvas = entry?.frame?.contentDocument?.getElementById?.('chartCanvas') || null;
+      const result = entry?._mcRestoreResult || null;
+      return {
+        generation: Number(manager?._mcRestoreGeneration),
+        appliedGeneration: Number(entry?._mcRestoreAppliedGeneration),
+        acknowledgedGeneration: Number(result?.generation),
+        acknowledgedPanelId: result?.panelId == null ? null : String(result.panelId),
+        acknowledgedFileId: result?.fileId == null ? null : String(result.fileId),
+        fileId: ch?.currentFileId == null ? null : String(ch.currentFileId),
+        ticker: String(ch?.currentSymbol || '').replace(/\//g, '').toUpperCase(),
+        sessionId: ch?.activeTradingSessionId == null ? null : String(ch.activeTradingSessionId),
+        timeframe: ch?.currentTimeframe == null ? null : String(ch.currentTimeframe),
+        dataLength: bars.length,
+        firstTime: Number(bars[0]?.t),
+        lastTime: Number(bars[bars.length - 1]?.t),
+        chartDataLoaded: Number(probe?.chartDataLoaded || 0),
+        pairLoadInFlight: ch?._multichartPairLoadInFlight === true,
+        renders: Number(ch?._mcDiag?.renders || 0),
+        canvasWidth: Number(canvas?.width || 0),
+        canvasHeight: Number(canvas?.height || 0),
+        dispatchPending: Boolean(entry?._mcRestoreJob),
+        dispatchFailure: entry?._mcRestoreFailure || null,
+        expected,
+      };
+    }, { pid: panelId, expected: dispatch });
+    const ready = observed.generation === dispatch.generation
+      && observed.appliedGeneration === dispatch.generation
+      && observed.acknowledgedGeneration === dispatch.generation
+      && observed.acknowledgedPanelId === panelId
+      && observed.acknowledgedFileId === fileId
+      && observed.fileId === fileId
+      && observed.ticker === ticker
+      && observed.sessionId === dispatch.sessionId
+      && observed.timeframe === dispatch.timeframe
+      && observed.dataLength > 50
+      && Number.isFinite(observed.firstTime)
+      && Number.isFinite(observed.lastTime)
+      && observed.lastTime >= observed.firstTime
+      && observed.chartDataLoaded > 0
+      && observed.pairLoadInFlight === false
+      && observed.renders > 0
+      && observed.canvasWidth > 0
+      && observed.canvasHeight > 0;
+    if (ready) {
+      return {
+        ok: true,
+        dispatch,
+        observed,
+        snapshot: {
+          owner: 'authenticated',
+          panelId,
+          fileId,
+          ticker,
+          sessionId: dispatch.sessionId,
+          timeframe: dispatch.timeframe,
+          generationAcknowledged: true,
+          chartDataLoaded: true,
+          dataReady: true,
+          renderReady: true,
+        },
+      };
+    }
+    if (observed.dispatchFailure && !observed.dispatchPending) break;
+    await sleep(100);
+  }
+  return { ok: false, reason: 'authenticated ownership readiness timeout', dispatch, observed };
+}
+
 export async function readReactPanelFileIds(page) {
   const host = await page.evaluate(() => {
     const ch = window.chart;

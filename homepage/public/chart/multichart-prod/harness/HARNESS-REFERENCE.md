@@ -21,9 +21,12 @@ Every **trusted** react-parity row must have a **named discriminator** that prov
 
 ### H-A7b-R2 setup integrity controls
 
-H-A7b-R2 reaches geometry only after command acknowledgement, panel-B file identity
-`27`, file-bound valid data, one finite anchor, and a placed VP id. Any failed
-stage terminates as `SETUP_INVALID`, never PASS or known failure.
+H-A7b-R2 establishes panel B through the authenticated, owner-scoped
+`MC_RESTORE` generation API. It reaches geometry only after the manager
+acknowledges the exact generation/panel/file identity, `chartDataLoaded`,
+file-bound data, completed pair load, and canvas render readiness, followed by
+one finite anchor and a placed VP id. Any failed stage terminates the packet as
+`SETUP_INVALID`; it is neither RED nor GREEN.
 
 ```bash
 node react-run.mjs --only=H-A7b-R2 --ha7b-r2-identity-invalid

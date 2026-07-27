@@ -55,6 +55,7 @@ import {
   actuateAnchoredVpHandleDragInPanel,
   dragPointerPath,
   reactPanelLoadFile,
+  establishAuthenticatedPanelFileOwnership,
   readReactPanelFileIds,
   readAxisMarginCrushProbe,
   waitForVpDrawingSettle,
@@ -631,36 +632,36 @@ async function hA7bR2(ctx) {
     checks.check('H-A7b-R2 L1: real bar data in panel B iframe', boot.iframeBars > 50,
       `dataLen=${boot.iframeBars}`);
 
-    const loadResult = await reactPanelLoadFile(page, 'B', '27');
-    await waitForPanelData(page, 'B', 60_000);
-    const fileDeadline = Date.now() + 30_000;
-    let fileIds = await readReactPanelFileIds(page);
-    while (Date.now() < fileDeadline && fileIds.B !== '27') {
-      await sleep(250);
-      fileIds = await readReactPanelFileIds(page);
+    const ownership = await establishAuthenticatedPanelFileOwnership(page, {
+      panelId: 'B',
+      fileId: '27',
+      ticker: 'GBPUSD',
+    });
+    console.log(`H-A7b-R2 PROVEN-SETUP ${JSON.stringify(ownership)}`);
+    if (!ownership.ok) {
+      const setupInvalid = {
+        ok: false,
+        classification: 'SETUP_INVALID',
+        firstInvalidStage: 'authenticated-ownership',
+        ownership,
+        oracle,
+      };
+      checks.setupInvalid = setupInvalid;
+      checks.check('H-A7b-R2 SETUP_INVALID: authenticated-ownership',
+        false, JSON.stringify(setupInvalid));
+      return checks;
     }
-    const commandAcknowledged = loadResult !== false || fileIds.B === '27';
+    let fileIds = await readReactPanelFileIds(page);
     if (ctx.hA7bR2IdentityInvalid) fileIds = { ...fileIds, B: '25' };
     checks.check('H-A7b-R2 setup: independent pair A=file25 B=file27',
       fileIds.A === '25' && fileIds.B === '27', JSON.stringify(fileIds));
 
-    const dataDeadline = Date.now() + 30_000;
-    let panelData = null;
-    while (Date.now() < dataDeadline) {
-      const frameB = panelFrameMap(page).B;
-      panelData = frameB ? await frameB.evaluate(() => {
-        const ch = window.chart;
-        const bars = Array.isArray(ch?.data) ? ch.data : [];
-        return {
-          fileId: ch?.currentFileId == null ? null : String(ch.currentFileId),
-          length: bars.length,
-          firstTime: Number(bars[0]?.t),
-          lastTime: Number(bars[bars.length - 1]?.t),
-        };
-      }) : null;
-      if (panelData?.length > 50 && panelData.fileId === '27') break;
-      await sleep(200);
-    }
+    let panelData = {
+      fileId: ownership.observed.fileId,
+      length: ownership.observed.dataLength,
+      firstTime: ownership.observed.firstTime,
+      lastTime: ownership.observed.lastTime,
+    };
     if (ctx.hA7bR2DataInvalid) panelData = { ...panelData, fileId: '25', length: 0 };
     checks.check('H-A7b-R2 setup: panel B file27 data identity and bars loaded',
       panelData?.fileId === '27' && panelData?.length > 50, JSON.stringify(panelData));
@@ -696,7 +697,7 @@ async function hA7bR2(ctx) {
       placed ? placed.id : JSON.stringify({ anchorError, placementError, pts }));
 
     const setup = validateHA7bR2Setup({
-      commandAcknowledged,
+      commandAcknowledged: ownership.observed.acknowledgedGeneration === ownership.dispatch.generation,
       fileIds,
       data: panelData,
       anchorPoints: pts,

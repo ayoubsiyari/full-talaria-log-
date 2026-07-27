@@ -119,7 +119,7 @@ async function runScenarioOnce(s, ctx, verdicts, runIndex = null) {
     console.log(`[react-run] ${s.id} threw: ${(err && err.stack) || err}`);
     verdicts[s.id].push('FAIL');
     console.log(`RESULT ${s.id} FAIL`);
-    return;
+    return 'FAIL';
   }
   const v = verdictOf(result);
   const verdict = result.setupInvalid ? 'SETUP_INVALID' : (v.pass ? 'PASS' : 'FAIL');
@@ -134,6 +134,7 @@ async function runScenarioOnce(s, ctx, verdicts, runIndex = null) {
     console.log(`   [SETUP_INVALID] ${JSON.stringify(result.setupInvalid)}`);
   }
   console.log(`RESULT ${s.id} ${verdict}`);
+  return verdict;
 }
 
 async function main() {
@@ -155,16 +156,22 @@ async function main() {
   const verdicts = {};
   const notesById = {};
   for (const s of scenarios) verdicts[s.id] = [];
+  let packetSetupInvalid = false;
 
   try {
     if (isolateSession) {
+      isolatedRuns:
       for (let run = 1; run <= args.runs; run++) {
         console.log(`\n========== REACT RUN ${run}/${args.runs} (isolate-session) ==========`);
         for (const s of scenarios) {
           const browser = await launchBrowser({ headful: args.headful });
           try {
             const ctx = buildScenarioCtx(args, browser, stack);
-            await runScenarioOnce(s, ctx, verdicts, run);
+            const verdict = await runScenarioOnce(s, ctx, verdicts, run);
+            if (verdict === 'SETUP_INVALID') {
+              packetSetupInvalid = true;
+              break isolatedRuns;
+            }
           } finally {
             await browser.close().catch(() => {});
             await sleep(2000);
@@ -174,11 +181,16 @@ async function main() {
     } else {
       const browser = await launchBrowser({ headful: args.headful });
       try {
+        sharedRuns:
         for (let run = 1; run <= args.runs; run++) {
           console.log(`\n========== REACT RUN ${run}/${args.runs} ==========`);
           for (const s of scenarios) {
             const ctx = buildScenarioCtx(args, browser, stack);
-            await runScenarioOnce(s, ctx, verdicts, run);
+            const verdict = await runScenarioOnce(s, ctx, verdicts, run);
+            if (verdict === 'SETUP_INVALID') {
+              packetSetupInvalid = true;
+              break sharedRuns;
+            }
             await sleep(1500);
           }
         }
@@ -197,10 +209,10 @@ async function main() {
     const vs = verdicts[s.id];
     const allPass = vs.every((v) => v === 'PASS');
     const allFail = vs.every((v) => v === 'FAIL');
-    const allSetupInvalid = vs.every((v) => v === 'SETUP_INVALID');
+    const hasSetupInvalid = vs.includes('SETUP_INVALID');
     let cls;
     if (allPass) cls = 'PASS';
-    else if (allSetupInvalid) cls = 'SETUP_INVALID';
+    else if (hasSetupInvalid) cls = 'SETUP_INVALID';
     else if (allFail) cls = 'FAIL-REAL-BUG';
     else cls = 'FAIL-FLAKE';
     if (cls !== 'PASS') anyFail = true;
@@ -211,6 +223,9 @@ async function main() {
     console.log(`FINAL ${s.id} ${rows.find((r) => r.id === s.id).verdict}`);
   }
   console.log('=================================================');
+  if (packetSetupInvalid) {
+    console.log('[react-run] packet terminated: SETUP_INVALID is neither RED nor GREEN');
+  }
 
   process.exit(anyFail ? 1 : 0);
 }
