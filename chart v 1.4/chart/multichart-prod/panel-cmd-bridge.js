@@ -839,6 +839,16 @@
         var ts = Number(args.timestamp);
         if (!Number.isFinite(ts)) return;
 
+        // B75: independent saved-session Play has an asynchronous ownership
+        // transition (raw coverage -> indexed seek -> committed playhead). Keep
+        // only the newest host frame behind that transition. Applying/painting a
+        // frame here lets frame-coherent indicators synchronously observe the old
+        // raw/index owner and can later rewind the replay lifecycle.
+        if (args.isPlaying && ch._mcReplayOwnershipCommitPending === true) {
+            ch._mcReplayFrameAfterOwnershipCommit = Object.assign({}, args);
+            return;
+        }
+
         // Stash host market mark for coalesced coarse seeks (candle-mode has no animatedCandle).
         try {
             var frameMark = Number(args.canonicalMark);
@@ -2438,17 +2448,45 @@
             forceReplaySeek(ch, coverTs, false);
             return;
         }
+        var coverGeneration = (Number(ch._mcPlayEagerCoverGeneration) || 0) + 1;
+        ch._mcPlayEagerCoverGeneration = coverGeneration;
         ch._mcPlayEagerCoverInflight = true;
-        ch.ensureReplayDataCoversTimestamp(coverTs).then(function () {
-            ch._mcPlayEagerCoverInflight = false;
-            if (!pendingPlayDesired) return;
-            if (!ch.replaySystem || !ch.replaySystem.isActive) return;
+        ch._mcReplayOwnershipCommitPending = true;
+        function ownsCoverGeneration() {
+            return ch._mcPlayEagerCoverGeneration === coverGeneration;
+        }
+        function commitCoveredOwnership() {
+            if (!ownsCoverGeneration()) return;
+            if (!pendingPlayDesired || !ch.replaySystem || !ch.replaySystem.isActive) {
+                ch._mcPlayEagerCoverInflight = false;
+                ch._mcReplayOwnershipCommitPending = false;
+                ch._mcReplayFrameAfterOwnershipCommit = null;
+                ch._mcReplayIndicatorRecalcDeferred = false;
+                return;
+            }
             clearIndependentCatchUpCooldown(ch);
-            forceReplaySeek(ch, coverTs, false);
+            forceReplaySeek(ch, coverTs, false, function () {
+                if (!ownsCoverGeneration()) return;
+                ch._mcPlayEagerCoverInflight = false;
+                ch._mcReplayOwnershipCommitPending = false;
+                var pendingFrame = ch._mcReplayFrameAfterOwnershipCommit;
+                ch._mcReplayFrameAfterOwnershipCommit = null;
+                var deferredIndicators = ch._mcReplayIndicatorRecalcDeferred === true;
+                ch._mcReplayIndicatorRecalcDeferred = false;
+                if (pendingPlayDesired && pendingFrame) {
+                    applyReplayFrame(ch, pendingFrame);
+                } else if (pendingPlayDesired && deferredIndicators
+                    && typeof ch.scheduleReplayIndicatorRecalc === 'function') {
+                    ch.scheduleReplayIndicatorRecalc(true);
+                }
+            });
+        }
+        ch.ensureReplayDataCoversTimestamp(coverTs).then(function () {
+            commitCoveredOwnership();
         }).catch(function (e) {
-            ch._mcPlayEagerCoverInflight = false;
+            if (!ownsCoverGeneration()) return;
             warn('eagerCoverIndependentOnPlay failed', e && e.message);
-            if (pendingPlayDesired) forceReplaySeek(ch, coverTs, false);
+            commitCoveredOwnership();
         });
     }
 
@@ -3959,7 +3997,9 @@
                         } else {
                             playPayload.isPlaying = true;
                         }
-                        if (playPayload && typeof rsP.applyMultichartMirrorFrame === 'function') {
+                        if (playPayload && ch._mcReplayOwnershipCommitPending === true) {
+                            ch._mcReplayFrameAfterOwnershipCommit = Object.assign({}, playPayload);
+                        } else if (playPayload && typeof rsP.applyMultichartMirrorFrame === 'function') {
                             var prevOx = ch.offsetX;
                             var prevCw = ch.candleWidth;
                             var hadPan = !!rsP.userHasPanned;
@@ -3983,6 +4023,11 @@
                 }
                 case 'replayPause': {
                     pendingPlayDesired = false;
+                    ch._mcPlayEagerCoverGeneration = (Number(ch._mcPlayEagerCoverGeneration) || 0) + 1;
+                    ch._mcPlayEagerCoverInflight = false;
+                    ch._mcReplayOwnershipCommitPending = false;
+                    ch._mcReplayFrameAfterOwnershipCommit = null;
+                    ch._mcReplayIndicatorRecalcDeferred = false;
                     ch._multichartPassivePlayActive = false;
                     ch._mcPassivePlayPausedOnce = false;
                     var rsPa = ch.replaySystem;

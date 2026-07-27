@@ -11286,6 +11286,16 @@
     Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
         if (!Array.isArray(this.data) || !this.data.length) return;
+        // B75: an independent multichart panel must atomically commit replay
+        // raw/index ownership before frame-coherent work can calculate or paint.
+        // Record one deferred request; the bridge drains it after the covered
+        // seek commits. This guard is lifecycle ordering, not the I-f cure, so
+        // the legacy __TALARIA_DISABLE_M19I_FRAME_COHERENT_V1 discriminator is
+        // intentionally preserved.
+        if (this._mcReplayOwnershipCommitPending === true) {
+            this._mcReplayIndicatorRecalcDeferred = true;
+            return;
+        }
         if (typeof window !== 'undefined'
             && window.__TALARIA_ENABLE_B70_SINGLE_INDICATOR_OWNER_V1 === true) {
             _b70ShadowRecordRequest(this, 'scheduleReplayIndicatorRecalc');
