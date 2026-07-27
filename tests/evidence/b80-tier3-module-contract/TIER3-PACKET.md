@@ -41,8 +41,10 @@ IndicatorPerf registers after publishing its APIs. At DOM readiness the tripwire
 - provider script precedes `chart-indicators-full.js`.
 
 Before any order script executes, each shell publishes the exact Lane-5 contract
-`window.__TALARIA_DEGRADED_STATE__ = { degradedModules: [] }`.
+`window.__TALARIA_DEGRADED_STATE = { degradedModules: [] }`.
 `window.__TALARIA_DEGRADED_MODE__` remains a compatibility alias.
+The incorrectly suffixed `window.__TALARIA_DEGRADED_STATE__` is also retained only
+as a compatibility alias to the same object.
 
 Absence/misorder preserves fallback execution, emits one loud correctness-degraded
 event/error, updates the canonical degraded state, adds a bounded module ID once,
@@ -68,6 +70,8 @@ The Puppeteer proof loads the maintained source host HTML and production panel s
 HTML through an HTTP server in real Chromium. It proves APIs, ledger records, exact
 degraded-state shape, runtime-before-order-script timing, real `submitOrder` timing,
 independent cross-window state, withheld-IndicatorPerf RED, and the visible badge.
+The focused Node proof imports the consumer token parsed from both order-manager
+surfaces in accepted Lane-5 commit `1f9ec3275` and requires exact publisher equality.
 
 Commands:
 
@@ -89,6 +93,7 @@ Generated source/public runtime and IndicatorPerf module mirrors must be byte-id
 - `scripts/module-contracts.json`
 - `scripts/module-contract-preflight.mjs`
 - `scripts/tests/module-contract-preflight.test.mjs`
+- `scripts/tests/lane5-order-manager-consumer-token.mjs`
 - `scripts/tests/module-presence-runtime.test.mjs`
 - `scripts/tests/module-presence-browser.test.mjs`
 - `chart v 1.4/talaria-design/live/index.html`

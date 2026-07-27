@@ -3,6 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import {
+  actualOrderManagerConsumerTokens,
+  CANONICAL_DEGRADED_STATE_TOKEN,
+} from './lane5-order-manager-consumer-token.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const runtimeCode = fs.readFileSync(path.join(root, 'chart v 1.4/chart/modules/module-presence-runtime.js'), 'utf8');
@@ -47,22 +51,35 @@ test('host/panel tripwire accepts symbols, ledger, and order', () => {
     Array.from(window.__TALARIA_LOADED_MODULES, (item) => item.module),
     ['ModulePresenceRuntime', 'IndicatorPerf'],
   );
-  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE__), ['degradedModules']);
-  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE__.degradedModules), []);
+  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE), ['degradedModules']);
+  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE.degradedModules), []);
+  assert.equal(window.__TALARIA_DEGRADED_STATE__, window.__TALARIA_DEGRADED_STATE);
   assert.equal(window.__TALARIA_DEGRADED_MODE__.active, false);
   assert.equal(
     window.__TALARIA_DEGRADED_MODE__.degradedModules,
-    window.__TALARIA_DEGRADED_STATE__.degradedModules,
+    window.__TALARIA_DEGRADED_STATE.degradedModules,
   );
   assert.equal(badges.length, 0);
   assert.equal(errors.length, 0);
 });
 
+test('publisher token equals accepted Lane-5 order-manager consumer token', () => {
+  assert.deepEqual(
+    actualOrderManagerConsumerTokens.map(({ token }) => token),
+    [CANONICAL_DEGRADED_STATE_TOKEN, CANONICAL_DEGRADED_STATE_TOKEN],
+  );
+  assert.match(runtimeCode, /global\.__TALARIA_DEGRADED_STATE = degraded;/);
+  assert.doesNotMatch(
+    actualOrderManagerConsumerTokens.map(({ helper }) => helper).join('\n'),
+    /window\.__TALARIA_DEGRADED_STATE__/,
+  );
+});
+
 test('correctness absence is loud once and non-blocking', () => {
   const { window, badges, events, errors } = boot({ includePerf: false });
   window.__talariaMarkMissingModule('IndicatorPerf');
-  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE__), ['degradedModules']);
-  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE__.degradedModules), ['IndicatorPerf']);
+  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE), ['degradedModules']);
+  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE.degradedModules), ['IndicatorPerf']);
   assert.equal(window.__TALARIA_DEGRADED_MODE__.active, true);
   assert.equal(errors.length, 1);
   assert.equal(events.length, 1);

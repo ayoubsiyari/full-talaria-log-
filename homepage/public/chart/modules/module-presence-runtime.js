@@ -9,13 +9,16 @@
     var VERSION = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
     var loaded = Array.isArray(global.__TALARIA_LOADED_MODULES)
         ? global.__TALARIA_LOADED_MODULES : [];
-    var priorDegraded = global.__TALARIA_DEGRADED_STATE__ || global.__TALARIA_DEGRADED_MODE__;
+    var priorDegraded = global.__TALARIA_DEGRADED_STATE ||
+        global.__TALARIA_DEGRADED_STATE__ ||
+        global.__TALARIA_DEGRADED_MODE__;
     var priorModules = priorDegraded && Array.isArray(priorDegraded.degradedModules)
         ? priorDegraded.degradedModules : [];
     var degraded = { degradedModules: priorModules };
     var degradedCompat = { active: priorModules.length > 0, degradedModules: priorModules };
     global.__TALARIA_LOADED_MODULES = loaded;
     // Lane-5 consumer contract: publish this exact shape before order scripts load.
+    global.__TALARIA_DEGRADED_STATE = degraded;
     global.__TALARIA_DEGRADED_STATE__ = degraded;
     global.__TALARIA_DEGRADED_MODE__ = degradedCompat;
 

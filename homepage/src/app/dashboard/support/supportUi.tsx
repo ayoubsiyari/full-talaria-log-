@@ -49,6 +49,7 @@ export function buildSupportContext(): Record<string, string | string[]> {
   const boundedId = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
   try {
     const values = (
+      window.__TALARIA_DEGRADED_STATE ??
       window.__TALARIA_DEGRADED_STATE__ ??
       window.__TALARIA_DEGRADED_MODE__
     )?.degradedModules;

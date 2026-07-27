@@ -6,7 +6,7 @@
       "id": "ModulePresenceRuntime",
       "version": "20260727b80",
       "provides": [
-        "__TALARIA_DEGRADED_STATE__",
+        "__TALARIA_DEGRADED_STATE",
         "__TALARIA_LOADED_MODULES",
         "__talariaRegisterModule",
         "__talariaMarkMissingModule"

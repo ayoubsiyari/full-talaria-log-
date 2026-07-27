@@ -42,8 +42,8 @@ function startServer() {
       let body = fs.readFileSync(path.join(root, relative));
       if (url.pathname === '/chart/modules/order-service.js') {
         const probe = `window.__ORDER_SCRIPT_STATE_SNAPSHOT = {
-          keys: Object.keys(window.__TALARIA_DEGRADED_STATE__ || {}),
-          modules: Array.from(window.__TALARIA_DEGRADED_STATE__?.degradedModules || []),
+          keys: Object.keys(window.__TALARIA_DEGRADED_STATE || {}),
+          modules: Array.from(window.__TALARIA_DEGRADED_STATE?.degradedModules || []),
           runtimeLoaded: (window.__TALARIA_LOADED_MODULES || []).some(x => x.module === 'ModulePresenceRuntime')
         };\n`;
         body = Buffer.concat([Buffer.from(probe), body]);
@@ -79,8 +79,9 @@ async function snapshot(page) {
     indicatorPerf: typeof window.IndicatorPerf,
     perfApi: typeof window.IndicatorPerf?.mergeIndicatorTailWindow,
     ledger: window.__TALARIA_LOADED_MODULES,
-    degradedKeys: Object.keys(window.__TALARIA_DEGRADED_STATE__ || {}),
-    degradedModules: window.__TALARIA_DEGRADED_STATE__?.degradedModules,
+    degradedKeys: Object.keys(window.__TALARIA_DEGRADED_STATE || {}),
+    degradedModules: window.__TALARIA_DEGRADED_STATE?.degradedModules,
+    trailingAliasSame: window.__TALARIA_DEGRADED_STATE__ === window.__TALARIA_DEGRADED_STATE,
     aliasActive: window.__TALARIA_DEGRADED_MODE__?.active,
     orderScript: window.__ORDER_SCRIPT_STATE_SNAPSHOT,
     providerSrc: document.querySelector('script[src*="indicator-performance.js"]')?.src,
@@ -105,7 +106,7 @@ test('maintained host and panel execute contracts before order placement', { tim
     ]);
     await Promise.all([host, panel].map((page) => page.waitForFunction(() =>
       (window.__TALARIA_LOADED_MODULES || []).some((item) => item.module === 'IndicatorPerf')
-      && window.__TALARIA_DEGRADED_STATE__
+      && window.__TALARIA_DEGRADED_STATE
     )));
     const [hostState, panelState] = await Promise.all([snapshot(host), snapshot(panel)]);
     for (const state of [hostState, panelState]) {
@@ -114,13 +115,14 @@ test('maintained host and panel execute contracts before order placement', { tim
       assert.deepEqual(state.ledger.map((item) => item.module), ['ModulePresenceRuntime', 'IndicatorPerf']);
       assert.deepEqual(state.degradedKeys, ['degradedModules']);
       assert.deepEqual(state.degradedModules, [], JSON.stringify(state));
+      assert.equal(state.trailingAliasSame, true);
       assert.equal(state.aliasActive, false);
       assert.deepEqual(state.orderScript, { keys: ['degradedModules'], modules: [], runtimeLoaded: true });
     }
     const placed = await host.evaluate(() => {
       const before = {
-        keys: Object.keys(window.__TALARIA_DEGRADED_STATE__ || {}),
-        modules: Array.from(window.__TALARIA_DEGRADED_STATE__?.degradedModules || []),
+        keys: Object.keys(window.__TALARIA_DEGRADED_STATE || {}),
+        modules: Array.from(window.__TALARIA_DEGRADED_STATE?.degradedModules || []),
       };
       const service = new window.OrderService({ chart: null, replaySystem: null, eventBus: { emit() {} } });
       const order = service.submitOrder({ orderType: 'market', symbol: 'EURUSD' });
@@ -128,8 +130,8 @@ test('maintained host and panel execute contracts before order placement', { tim
     });
     assert.deepEqual(placed, { before: { keys: ['degradedModules'], modules: [] }, placed: true });
 
-    await host.evaluate(() => window.__TALARIA_DEGRADED_STATE__.degradedModules.push('HostOnlyProbe'));
-    assert.deepEqual(await panel.evaluate(() => window.__TALARIA_DEGRADED_STATE__.degradedModules), []);
+    await host.evaluate(() => window.__TALARIA_DEGRADED_STATE.degradedModules.push('HostOnlyProbe'));
+    assert.deepEqual(await panel.evaluate(() => window.__TALARIA_DEGRADED_STATE.degradedModules), []);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -145,7 +147,7 @@ test('withheld IndicatorPerf is browser-visible RED on host and panel', { timeou
       const page = await browser.newPage();
       await page.goto(`${origin}/${shell}`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() =>
-        window.__TALARIA_DEGRADED_STATE__?.degradedModules?.includes('IndicatorPerf')
+        window.__TALARIA_DEGRADED_STATE?.degradedModules?.includes('IndicatorPerf')
       );
       const state = await snapshot(page);
       assert.equal(state.indicatorPerf, 'undefined');
