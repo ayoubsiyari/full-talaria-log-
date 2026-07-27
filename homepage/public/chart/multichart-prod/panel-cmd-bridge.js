@@ -687,9 +687,9 @@
      * fullRawData seed and first paint; the restore bridge only validates its
      * completion.
      */
-    function loadColdRestorePanelFile(ch, fileId) {
+    function loadColdRestorePanelFile(ch, fileId, ticker) {
         if (!ch || typeof ch.loadPanelFileData !== 'function') return null;
-        var load = ch.loadPanelFileData(String(fileId));
+        var load = ch.loadPanelFileData(String(fileId), String(ticker));
         if (!load || typeof load.then !== 'function') return load;
         return load.then(function (loaded) {
             if (loaded === false) {
@@ -3205,7 +3205,7 @@
                     var loadPromise;
                     var coldRestore = !!(restoreIdentity && !panelHasLoadedFile(ch, fidStr));
                     if (coldRestore) {
-                        loadPromise = loadColdRestorePanelFile(ch, fidStr);
+                        loadPromise = loadColdRestorePanelFile(ch, fidStr, restoreIdentity.ticker);
                         useMcLoader = false;
                     } else if (useMcLoader) {
                         if (typeof ch.loadMultichartPanelFile === 'function') {

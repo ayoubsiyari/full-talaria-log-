@@ -11,6 +11,7 @@ const panelBridgeSource = fs.readFileSync(
   new URL('../multichart-prod/panel-cmd-bridge.js', import.meta.url),
   'utf8',
 );
+const chartSource = fs.readFileSync(new URL('../chart.js', import.meta.url), 'utf8');
 
 function makeRuntime({ enabled = true, panels = [] } = {}) {
   const listeners = new Map();
@@ -230,11 +231,43 @@ test('manual loadFile remains on the legacy args.fileId contract', () => {
 
 test('cold restore bootstraps the exact file through the canonical panel loader before replay apply', () => {
   assert.match(panelBridgeSource,
-    /function loadColdRestorePanelFile\(ch, fileId\)[\s\S]*ch\.loadPanelFileData\(String\(fileId\)\)/);
+    /function loadColdRestorePanelFile\(ch, fileId, ticker\)[\s\S]*ch\.loadPanelFileData\(String\(fileId\), String\(ticker\)\)/);
   assert.match(panelBridgeSource,
-    /var coldRestore = !!\(restoreIdentity && !panelHasLoadedFile\(ch, fidStr\)\);[\s\S]*loadColdRestorePanelFile\(ch, fidStr\)/);
+    /var coldRestore = !!\(restoreIdentity && !panelHasLoadedFile\(ch, fidStr\)\);[\s\S]*loadColdRestorePanelFile\(ch, fidStr, restoreIdentity\.ticker\)/);
   assert.match(panelBridgeSource,
     /if \(loaded === false\) \{\s*throw new Error\('MC_RESTORE authenticated file bootstrap failed'\)/);
+  assert.match(chartSource,
+    /async loadPanelFileData\(fileId, restoredTicker = null\)[\s\S]*const exactRestoredTicker = String\(restoredTicker \|\| ''\)\.trim\(\);/);
+  assert.match(chartSource,
+    /const targetTicker = exactRestoredTicker[\s\S]*\|\| \(resolveTicker && resolveTicker\(session, targetFileId\)\)/);
+});
+
+test('distinct saved panel identities preserve exact ticker with file id', async () => {
+  const { manager } = makeRuntime({
+    panels: [
+      panel(0, '25', 'EURUSD'),
+      panel(1, '677', 'XAUUSD'),
+      panel(2, '673', 'HOG'),
+    ],
+  });
+  const entries = [
+    addFakePanel(manager, 'B', '25'),
+    addFakePanel(manager, 'C', '25'),
+  ];
+  const generation = begin(manager);
+  const calls = [];
+  manager.sendCommand = async (id, command, args) => {
+    calls.push({ id, command, identity: structuredClone(args.restoreIdentity) });
+    return { ...args.restoreIdentity, generation };
+  };
+  for (const entry of entries) entry.ready = true;
+  manager.completeMcRestoreGeneration(generation, '827');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(
+    calls.map(({ id, identity }) => [id, identity.fileId, identity.ticker]),
+    [['B', '677', 'XAUUSD'], ['C', '673', 'HOG']],
+  );
+  manager.dispose();
 });
 
 for (const failure of ['401 Unauthorized', '409 stale lease', '503 unavailable', 'partial fetch']) {

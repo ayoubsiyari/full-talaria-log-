@@ -10331,9 +10331,10 @@ class Chart {
         }
     }
 
-    async loadPanelFileData(fileId) {
+    async loadPanelFileData(fileId, restoredTicker = null) {
         const loadSeq = (this._panelFileLoadSeq = (this._panelFileLoadSeq || 0) + 1);
         const targetFileId = String(fileId);
+        const exactRestoredTicker = String(restoredTicker || '').trim();
         const mainChart = window.chart;
         this._isLoadingOwnPairData = true;
         this._showPanelLoadingOverlay();
@@ -10355,7 +10356,8 @@ class Chart {
                 : (typeof this.resolveTickerFromFileSelect === 'function'
                     ? this.resolveTickerFromFileSelect.bind(this)
                     : null);
-            const targetTicker = (resolveTicker && resolveTicker(session, targetFileId))
+            const targetTicker = exactRestoredTicker
+                || (resolveTicker && resolveTicker(session, targetFileId))
                 || (resolveFileSelect && resolveFileSelect(targetFileId))
                 || (panelSwitchingPair ? `FILE_${targetFileId}` : this.currentSymbol);
 
