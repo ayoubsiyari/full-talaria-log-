@@ -557,3 +557,104 @@ Concrete partial-visibility candidates inside my own territory, which is the par
 **Gap that must close before any RED is authored, and it is load-bearing:** whether `yScale`'s pixel range always aligns with `[margin.t, plotBottom]`. B-A4 flagged this as unverified and it is exactly where predicate and clip would disagree *numerically* rather than by node coverage — the difference between a two-line fix and a wrong test. Next read-only dispatch closes it; I am not authoring the V6-P2 RED until it is closed.
 
 Write packets in flight: **2 of 3, one slot deliberately empty**. Read-only in flight: **1** (B-T1). Packets awaiting review: **1** (B-W1+B-W2 as one). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Unowned/cross-territory files blocking or affecting my rows: **8**.
+
+---
+
+## B-0033 — REJECT · B-W3 is not a gate. It is a transcription of the mechanism, and it must not be called a RED.
+
+B-W3 returned 2 pass / 10 fail with a clean four-state proof and byte-identical repeats, and disclosed the thing that matters without being pressed: *"It is a labelled transcription, not live `order-manager.js`."* The real drag code is bound to DOM, D3, SVG, rAF and document listeners, so it could not be loaded as a Node unit, and the agent modelled the mechanism instead.
+
+**Rejected as a RED gate, and this is not a criticism of the work.** The disclosure is exactly what I asked for and the honest call. But a test that re-implements the mechanism it is meant to police cannot fail when the product regresses, and it goes green when the *model* is fixed. §A5 names that a lying gate, and this one would lie in the most expensive direction: it would sit in CI reading green across a V6-P1 regression. Its own report concedes the load: *"must be kept aligned with product code"* — a gate whose correctness depends on someone hand-syncing it to the code it guards is not a gate.
+
+Retained, with its role renamed: **`b-m6-sltp-entry-drag-follow.red.mjs` is a behavioural specification, not a regression test.** Its twelve cells are a precise, agreed statement of what entry-drag must do to SL/TP, and that is genuinely valuable input to the fix and to whoever builds the real harness. It must be renamed off the `.red.` convention before it can sit in the tree, or it will be mistaken for a gate by exactly the CI preflight that is supposed to catch this. I am not renaming it inside this entry; it goes in the packet that supersedes it.
+
+**The structural consequence is much larger than one packet, and it is the real finding here.** All five V6 defects live in drag, paint and hit-test code that is DOM/D3/rAF-bound. B-W3 hit that wall honestly; any agent I dispatch will hit the same wall. So **RED-first is currently unsatisfiable for the entire V6 family in Node**, and the two options are a browser-hosted harness — Manager C's territory, not mine — or gates that only assert structure rather than behaviour. I cannot resolve this inside my own territory and I am not going to paper over it with more transcriptions. Escalated in B-0036.
+
+---
+
+## B-0034 — VERDICT (V6-P1 root cause) · surface=`updateOrderLines` registry eviction, coverage=chain proven, ignition unproven. **Supersedes B-0018's Family 1 description.**
+
+B-T1 returned a triage that contradicts my own inventory on the single most consequential point, so I verified its two decisive claims against my worktree myself rather than accepting them:
+
+1. **`updateOrderLines` never rebuilds.** I extracted the method body (44563–44931 in my tree) and searched it for `drawOrderLine`, `drawPendingOrderLine` and `.append(`. **Zero matches** — the sole hit is a comment mentioning `drawPendingOrderLine`. Two `_disposeOrderLineElements` calls are present. **Confirmed: the function repositions and destroys, and cannot create.**
+2. **The eviction filters lack the discriminator their siblings carry.** At **44624** and **44635**: `(ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)`. At **41767/41770**: `... && !ol.isPending`. **Confirmed by direct read: no `isPending` at the two eviction sites, present at the siblings.**
+
+**I was wrong, and the correction changes the defect's character rather than its detail.** B-0018 recorded Family 1 as "purge-then-fail-to-rebuild", which I framed as a race that can be lost occasionally. It is not a race. Because nothing in the frame loop can create a line, **once a row leaves the registry it is gone until reload or symbol switch.** Permanent absence is the steady state, not an unlucky interleaving. That is why the symptom reads as "disappeared and stayed gone" rather than as flicker, and it is why a retry- or ordering-flavoured fix would have been aimed at nothing.
+
+**What is proven versus what is not, kept strictly apart because a fix hangs on the difference:**
+- **Proven statically:** the eviction over-reaches. A row is evicted on `orderId` + chart identity alone, so disposing a stale pending row also disposes a live executed row sharing that id — and the file documents that pending and executed do share ids. The missing discriminator is a defect on its own terms, independent of what triggers the lookup miss.
+- **Not proven:** what makes the lookup miss for a live order. Three candidates (id type drift through the multichart bridge, array swap on restore/replay, the pending→open fill window). B-T1 is explicit that it would not fix on this until the ignition is observed, and I agree.
+
+**So V6-P1 splits, and only one half is actionable now.** The discriminator fix is proven, narrow, and strictly reduces damage regardless of ignition — it converts "evicts a live row" into "evicts only the stale row". It does not cure the disappearance, because the miss still evicts *something*; it bounds the blast radius. I will not describe it as the V6-P1 cure, and it must not close the row.
+
+**The ignition needs a runtime observation, and the build already prints it free:** `⚠️ Position not found for order #<id>` at **44632** and the pending twin at **44621**, both confirmed present in my tree. If that line appears as a row vanishes, Rank 1 is confirmed and the logged id names the case. That is one console filter, not an instrumented build — but it still needs a human or an agent in a browser, which lands on the missing §Part 6 standard again (B-0036).
+
+**Ownership split, and two items leave my territory:**
+- **Manager A** — `hasOrderLines` at `chart.js:28635` decides whether the *entire* order overlay repaint runs, based only on whether any entry row belongs to this chart. When false it also skips SL/TP, BE, split/avg lines, pending targets and label alignment for that panel, freezing them in screen space until mouse-up. That is a scope error independent of anything in my file, and it is a third instance of the "froze until mouse-up" family A's own comments record. Not mine; reported to A as its own item.
+- **Unowned** — `drawing-tools-manager.js` `deleteDrawing` (~12075–12088) matches live open positions partly on `createdFromTool && toolType`, which matches any tool-created position of that type **at any price**; then attempts DOM removal with classes that **do not exist** (`.order-line-<id>` etc., where the product writes `order-line order-<id>`), so the DOM removal is a no-op; then removes the registry row with, again, **no `isPending` discriminator**. Net effect: a live position keeps its DOM and loses its registry row, feeding directly into the reconciler that then deletes the orphan. Same bug class as the proven half above, different trigger, permanent symptom. This is the ninth cross-territory file and it needs an owner before anyone touches it.
+
+**Retraction.** B-T1 checked my earlier claim that the workspace search tool was unreliable and found it returns identical results to ripgrep on tracked source; my zero-match experience was confined to gitignored paths such as `docs/`. **I withdraw the general claim** — the tool was fine and my diagnosis of it was wrong. It cost nothing here, but an unretracted false claim about tooling is the kind of thing another manager would plan around.
+
+Also dead, correctly: my hypothesis that the `chartViewPanning` gate suppresses the repaint. `updateOrderLines` and `updatePreviewLinePositions` are called unconditionally; only draft-preview redraw and MFE/MAE markers sit behind that gate. Several of my line anchors were off by one or two and are corrected in B-T1's report; I am not re-listing them here because the report is the record and its citations verified against my tree.
+
+---
+
+## B-0035 — RESERVATIONS · eviction-invariant gate
+
+For the packet in B-0037, and taking up B-T1's suggestion of a permanent oracle rather than a one-shot probe:
+
+- Gate/oracle module: **`b-order-registry-eviction-invariant.red.mjs`** (mine, new).
+- Fixture: **`b-fixtures/order-registry-eviction-sites.json`** (mine, new).
+- Counter global, for the later behavioural oracle only, not used by the static gate: **`window.__TALARIA_ORDER_LIVE_EVICTION_COUNT_V1`** (reserved now, so it is not minted mid-packet as happened in B-0028).
+- No kill-switch reserved: adding a missing discriminator to a filter has no meaningful "off" state, and reserving a switch I will not wire would be noise in the registry.
+
+---
+
+## B-0036 — ESCALATION · RED-first is unsatisfiable for V6 in Node, and two rows now wait on the same missing standard
+
+Three separate things converged on one gap tonight, so I am raising them as one item rather than three.
+
+1. **V6 cannot have behavioural REDs without a browser harness.** B-W3 established this by trying and failing honestly (B-0033). Every V6 defect is in DOM/D3/rAF-bound code. Policy mandates RED-first; my territory cannot satisfy it in Node. Either Manager C's harness work must include a browser-hosted runner for order-overlay behaviour, or V6's gates will be structural only and the Director should decide that deliberately rather than discover it at consolidation. **I am not authorising more transcription-style tests in the meantime.**
+2. **V6-P1's ignition needs one console observation** — an existing log line, no instrumentation — and I have no sanctioned route to it. This is the second row blocked on the absent **§Part 6 agent smoke sweep standard**, after the V8 pin lifecycle. `PO-REQ` remains at 0 because §A12.2 requires that standard to be met and I cannot meet a standard that does not exist. I would rather state that plainly than emit a request I know is non-compliant.
+3. **Ninth unowned file, and the pattern is now the point.** `drawing-tools-manager.js`'s `deleteDrawing` carries the same undiscriminated-eviction bug as my own code. Two independent files corrupting the same registry the same way is a sign the registry has no owner-enforced invariant, which is why I am building the invariant gate in B-0037 rather than only patching two call sites.
+
+---
+
+## B-0037 — DISPATCH · B-W4, eviction invariant gate plus the proven discriminator fix
+
+Write slot: B-W3 rejected and B-W2 held, so B-W1 is the only packet in flight. I am taking **one** slot, not two, for the same reason as B-0029 — review debt, not the cap, is the binding constraint.
+
+**B-W4**, row V6-P1, **Tier 2**, model **`claude-opus-5-thinking-high`**. Tier reason: the change is two filter predicates in one file and would read as Tier 1, but it governs the registry that decides whether a live order's controls exist on screen, and §B3 routes order-state-adjacent correctness to top tier. §A13.2 escalation trigger **is** met — an undetected error here removes a live order's UI, so cost of undetected error is high and the fix is not mechanically verifiable by inspection alone.
+
+Scope, deliberately narrow: author `b-order-registry-eviction-invariant.red.mjs` and its fixture, which must **fail today** by asserting that every registry-eviction filter in `order-manager.js` carries a pending/executed discriminator — the two sites at 44624/44635 violate it, the siblings at 41767/41770 satisfy it. Then add the discriminator at both sites so the gate passes. Also rename B-W3's file off the `.red.` convention to reflect its demoted role per B-0033.
+
+Explicitly out of scope, and the brief says so: any attempt to fix the lookup miss itself, anything in `chart.js`, anything in `drawing-tools-manager.js`, and any claim that this closes V6-P1. Partition per B-0031: worktree `manager-b-plan3`, uncommitted state, writable set is the two new files plus `order-manager.js` plus the B-W3 rename; runtime read set is `order-manager.js` only, which no other agent is writing.
+
+Write packets in flight: **2 of 3** (B-W1, B-W4). Read-only in flight: **0**. Packets awaiting review: **1** (B-W1+B-W2). Packets rejected pending supersede: **1** (B-W3). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Cross-territory/unowned files affecting my rows: **9**.
+
+---
+
+## B-0038 — VERDICT (B-W4) · surface=`orderLines` eviction sites, coverage=all five inventoried, structural only. Accepted into review, not into integration.
+
+B-W4 returned the gate, the two-line fix and the B-W3 rename. I verified independently rather than reading its proof:
+
+- **Gate passes on the fixed tree**, 6/6, exit 0.
+- **Gate fails on a reverted copy**, exit 1, cell 05 naming both sites. I built that copy myself with a regex revert and ran the gate against it via `--source=`. This is the check that matters: it proves the gate is coupled to the product file rather than passing vacuously.
+- **Product diff is exactly two lines**, one per site, with correct polarity — `ol.isPending` on the pending branch, `!ol.isPending` on the executed branch. Nothing else in `order-manager.js` moved.
+- **The semantics the fix rests on hold.** `isPending: true` appears at exactly two registry pushes (38085, 39041), both pending; executed pushes omit the key. So `!ol.isPending` selects executed rows correctly, and the partition is sound rather than incidentally true.
+
+**It corrected my ground truth, which I had verified myself and still had incomplete.** I gave it two eviction sites and two discriminated siblings; there are **five** orderId-keyed eviction sites. It found a third eviction site (`removeOrderLine`, 41969, undiscriminated) and a third discriminated sibling (39133). Crucially it did **not** quietly scope the invariant to dodge the inconvenient one: `removeOrderLine` is undiscriminated but safe, because it collects, disposes every matched row, and only then removes — removal set equals disposal set. It encoded that as an explicit fixture exemption with a machine-checked evidence requirement rather than an exception in prose. That is the right instinct and it is the difference between a gate and a rubber stamp.
+
+**On whether the gate can be fooled — the part I actually cared about.** Its strongest self-test is the one I would not have thought to ask for: `updateOrderLines` destructures `isPending` from `olEntry` in scope, so `(ol) => !(ol.orderId === orderId && isPending && …)` is syntactically plausible, reads correct, and discriminates *nothing* because it is constant across the filter. A grep-flavoured gate accepts it; this one rejects it, because the discriminator must be a property access on the predicate's own parameter. It also rejects the same identifier hidden in comments, strings, templates, and on the wrong object, and it survives reformatting, parameter renaming and optional chaining. I did not re-run all of those; I re-ran the one that subsumes them, which is red-on-reverted-source.
+
+**The limitation I am recording against my own instruction, because it is mine and not the agent's.** I told it to follow the sibling convention. It complied and then flagged, correctly, that the strictly minimal fix is `(ol) => ol !== olEntry` — evict exactly the row that was disposed. The residual hole in the `isPending` form: if two rows of the **same** class share an orderId on the same chart, eviction still removes both while disposal removes one, which reproduces the orphan bug in miniature. That is not hypothetical hand-wringing — a DOM dedupe reconciler exists in this file, which implies duplicate rows do occur in practice.
+
+So the gate as written **encodes a convention (`must carry isPending`) rather than the safety property (`removal set equals disposal set`)** — and it would therefore *reject* the strictly better `ol !== olEntry` fix. Cell 06 already expresses the real property for exempt sites, so the gate contains the better invariant and applies it only to the exemptions. This is the single most substantive question in the packet and I am not settling it unilaterally at the end of a long session: **it goes to the adversarial reviewer as a named question**, with my provisional position that the current fix is a verified strict improvement that should not be blocked, and that the gate should be strengthened to the removal-equals-disposal property in a follow-up rather than in this packet.
+
+**Stated plainly, because the packet must not overclaim:** this is a **source-text gate with zero behavioural evidence**. No browser, no runtime, no proof that anything on screen changed. It bounds the blast radius of an eviction; it does **not** cure "order lines disappear", the lookup-miss ignition remains unproven, and **V6-P1 does not close.** The agent volunteered that limit rather than letting me infer it.
+
+**Naming.** It minted cell IDs, CLI flags, an exemption code and JSON keys inside the two reserved artefacts, disclosed all of them, and asked whether I read the rule more strictly. Ruling: identifiers **internal to a reserved artefact** are part of that artefact and need no separate reservation; the reservation rule in §A13.3 governs the shared namespace — globals, kill-switches, storage keys, message names, files. No renaming required. Recorded here so the standard is consistent for future packets rather than decided ad hoc each time.
+
+**Status: accepted into review, blocked from integration** — like every packet I hold, by Manager C's `TERRITORY.yml` and ownership preflight, and additionally by the top-tier adversarial review that has not yet run on anything.
+
+Write packets in flight: **1 of 3** (B-W1). Read-only in flight: **0**. Packets awaiting review: **2** (B-W1+B-W2 as one; B-W4). Packets rejected pending supersede: **0** — B-W3 superseded by the rename in B-W4. Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Cross-territory/unowned files affecting my rows: **9**.
