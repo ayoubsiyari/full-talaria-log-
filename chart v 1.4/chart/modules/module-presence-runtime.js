@@ -9,12 +9,15 @@
     var VERSION = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
     var loaded = Array.isArray(global.__TALARIA_LOADED_MODULES)
         ? global.__TALARIA_LOADED_MODULES : [];
-    var degraded = global.__TALARIA_DEGRADED_MODE__ || {
-        active: false,
-        degradedModules: []
-    };
+    var priorDegraded = global.__TALARIA_DEGRADED_STATE__ || global.__TALARIA_DEGRADED_MODE__;
+    var priorModules = priorDegraded && Array.isArray(priorDegraded.degradedModules)
+        ? priorDegraded.degradedModules : [];
+    var degraded = { degradedModules: priorModules };
+    var degradedCompat = { active: priorModules.length > 0, degradedModules: priorModules };
     global.__TALARIA_LOADED_MODULES = loaded;
-    global.__TALARIA_DEGRADED_MODE__ = degraded;
+    // Lane-5 consumer contract: publish this exact shape before order scripts load.
+    global.__TALARIA_DEGRADED_STATE__ = degraded;
+    global.__TALARIA_DEGRADED_MODE__ = degradedCompat;
 
     function bounded(value) {
         value = String(value || '');
@@ -49,9 +52,10 @@
     function markMissing(id) {
         id = bounded(id);
         if (!id || degraded.degradedModules.indexOf(id) >= 0) return;
-        degraded.active = true;
+        degradedCompat.active = true;
         degraded.degradedModules.push(id);
         degraded.degradedModules = degraded.degradedModules.slice(0, MAX_MODULES);
+        degradedCompat.degradedModules = degraded.degradedModules;
         try {
             console.error('[TALARIA][CORRECTNESS-DEGRADED] Required module absent:', id);
             global.dispatchEvent(new CustomEvent('talaria:correctness-degraded', {
@@ -68,7 +72,7 @@
         status: 'loaded'
     });
 
-    function tripwire() {
+    function tripwirePasses() {
         var perf = global.IndicatorPerf;
         var required = ['rollingSmaFast', 'rollingWmaFast', 'packBarsRangeCompact',
             'mergeIndicatorTailWindow', 'estimateTailLookback', 'hashIndicatorParams'];
@@ -78,11 +82,24 @@
         var provider = document.querySelector('script[src*="indicator-performance.js"]');
         var orderOk = provider && consumer &&
             !!(provider.compareDocumentPosition(consumer) & Node.DOCUMENT_POSITION_FOLLOWING);
-        if (ledger.length !== 1 || !symbolsOk || !orderOk) markMissing('IndicatorPerf');
+        return ledger.length === 1 && symbolsOk && orderOk;
+    }
+
+    function runTripwire(attempt) {
+        if (tripwirePasses()) return;
+        if (attempt < 20) {
+            setTimeout(function () { runTripwire(attempt + 1); }, 25);
+            return;
+        }
+        markMissing('IndicatorPerf');
     }
 
     if (typeof document !== 'undefined') {
-        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tripwire, { once: true });
-        else setTimeout(tripwire, 0);
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(function () { runTripwire(0); }, 0);
+            }, { once: true });
+        }
+        else setTimeout(function () { runTripwire(0); }, 0);
     }
 })(typeof window !== 'undefined' ? window : self);

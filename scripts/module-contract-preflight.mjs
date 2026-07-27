@@ -64,10 +64,16 @@ export function validateModuleContracts({
     assertBoundedIdentifier(surface.id, 'surface id');
     assert.ok(!inventoryIds.has(surface.id), `${surface.id}: duplicate inventory entry`);
     inventoryIds.add(surface.id);
-    assert.ok(['owned-stamped', 'excluded', 'removed'].includes(surface.status), `${surface.id}: invalid status`);
+    assert.ok(['owned-stamped', 'excluded', 'removed', 'removal-pending'].includes(surface.status), `${surface.id}: invalid status`);
+    if (surface.status === 'removal-pending') {
+      assert.fail(`${surface.id}: deploy blocked until accidental public surface is removed`);
+    }
     if (surface.status !== 'owned-stamped') {
       assert.ok(surface.reason, `${surface.id}: exclusion reason absent`);
       assert.equal(surface.servable, false, `${surface.id}: excluded/removed surface cannot be servable`);
+      if (surface.status === 'removed') {
+        assert.equal(fs.existsSync(path.resolve(root, surface.path)), false, `${surface.id}: removed surface still exists`);
+      }
       continue;
     }
     const absolute = path.resolve(root, surface.path);

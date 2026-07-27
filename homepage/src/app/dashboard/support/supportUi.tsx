@@ -48,7 +48,10 @@ export function buildSupportContext(): Record<string, string | string[]> {
   }
   const boundedId = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
   try {
-    const values = window.__TALARIA_DEGRADED_MODE__?.degradedModules;
+    const values = (
+      window.__TALARIA_DEGRADED_STATE__ ??
+      window.__TALARIA_DEGRADED_MODE__
+    )?.degradedModules;
     ctx.degradedModules = Array.isArray(values)
       ? [...new Set(values.filter((value): value is string =>
           typeof value === "string" && boundedId.test(value)

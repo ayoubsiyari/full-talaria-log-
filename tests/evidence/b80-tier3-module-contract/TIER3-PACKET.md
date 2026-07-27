@@ -12,6 +12,11 @@ Last proven RED on: `20260727b80`
 
 Oracle state: PROVEN
 
+Independent-review correction commits:
+
+- `d071c858f` removes the stale accidental public live shell as a deletion-only commit.
+- The review handoff records the follow-up implementation commit hash after authoring proof.
+
 ## Contract and inventory
 
 `scripts/module-contracts.json` is the machine-readable authority. Every module has
@@ -35,8 +40,12 @@ IndicatorPerf registers after publishing its APIs. At DOM readiness the tripwire
 - required IndicatorPerf callable APIs;
 - provider script precedes `chart-indicators-full.js`.
 
+Before any order script executes, each shell publishes the exact Lane-5 contract
+`window.__TALARIA_DEGRADED_STATE__ = { degradedModules: [] }`.
+`window.__TALARIA_DEGRADED_MODE__` remains a compatibility alias.
+
 Absence/misorder preserves fallback execution, emits one loud correctness-degraded
-event/error, sets `window.__TALARIA_DEGRADED_MODE__`, adds a bounded module ID once,
+event/error, updates the canonical degraded state, adds a bounded module ID once,
 and displays a discreet non-interactive badge. It never throws, blocks, or opens a modal.
 Support context includes bounded `degradedModules[]` (32 IDs, 64 characters each).
 
@@ -50,9 +59,15 @@ Permanent fault injection mutates an in-memory owned shell:
 4. Inverted assertion: fixed state fails the inverted assertion.
 
 Additional negative controls mutate servability classification and inventory path.
+Removal-pending is deploy-blocking; a supposedly removed shell reappearing is RED.
 The suite copies all sources/surfaces/mirrors to an alternate temporary host path and
 runs with a fixed alternate clock. Assertion payloads contain no UUID, wall clock,
 rAF ordering, or float equality.
+
+The Puppeteer proof loads the maintained source host HTML and production panel shell
+HTML through an HTTP server in real Chromium. It proves APIs, ledger records, exact
+degraded-state shape, runtime-before-order-script timing, real `submitOrder` timing,
+independent cross-window state, withheld-IndicatorPerf RED, and the visible badge.
 
 Commands:
 
@@ -75,6 +90,7 @@ Generated source/public runtime and IndicatorPerf module mirrors must be byte-id
 - `scripts/module-contract-preflight.mjs`
 - `scripts/tests/module-contract-preflight.test.mjs`
 - `scripts/tests/module-presence-runtime.test.mjs`
+- `scripts/tests/module-presence-browser.test.mjs`
 - `chart v 1.4/talaria-design/live/index.html`
 - `chart v 1.4/chart/dist-v9/index.html`
 - `homepage/public/chart/dist-v9/index.html`

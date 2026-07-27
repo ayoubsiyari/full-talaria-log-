@@ -5,7 +5,12 @@
     {
       "id": "ModulePresenceRuntime",
       "version": "20260727b80",
-      "provides": ["__talariaRegisterModule", "__talariaMarkMissingModule"],
+      "provides": [
+        "__TALARIA_DEGRADED_STATE__",
+        "__TALARIA_LOADED_MODULES",
+        "__talariaRegisterModule",
+        "__talariaMarkMissingModule"
+      ],
       "requiredSurfaces": ["host", "panel"],
       "class": "correctness",
       "order": {
@@ -77,6 +82,14 @@
       "path": "homepage/public/chart/multichart-prod/chart-embed.html",
       "status": "owned-stamped",
       "servable": true
+    },
+    {
+      "id": "accidental-public-live-copy",
+      "surface": "host",
+      "path": "homepage/public/chart/talaria-design/live/index.html",
+      "status": "removed",
+      "servable": false,
+      "reason": "stale non-production accidental public copy removed by d071c858f"
     },
     {
       "id": "legacy-source-shell",

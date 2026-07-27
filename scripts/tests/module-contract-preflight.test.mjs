@@ -49,6 +49,18 @@ test('servable inventory mutation and exclusion controls RED', () => {
   row.status = 'excluded';
   row.reason = 'fault';
   assert.throws(() => validateModuleContracts({ manifest: falseExclusion, root }), /cannot be servable/);
+  const removalPending = structuredClone(manifest);
+  const removed = removalPending.inventory.find((entry) => entry.id === 'accidental-public-live-copy');
+  removed.status = 'removal-pending';
+  removed.servable = true;
+  assert.throws(
+    () => validateModuleContracts({ manifest: removalPending, root }),
+    /deploy blocked until accidental public surface is removed/,
+  );
+  const reappeared = structuredClone(manifest);
+  reappeared.inventory.find((entry) => entry.id === 'accidental-public-live-copy').path =
+    'chart v 1.4/talaria-design/live/index.html';
+  assert.throws(() => validateModuleContracts({ manifest: reappeared, root }), /removed surface still exists/);
 });
 
 test('alternate host path and clock remain deterministic', () => {

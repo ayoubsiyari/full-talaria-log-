@@ -122,6 +122,10 @@ declare global {
     /** Left nav Support button anchor for popover positioning. */
     __TALARIA_SUPPORT_NAV_ANCHOR__?: HTMLElement;
     /** Required chart modules that failed presence checks; bounded IDs only. */
+    __TALARIA_DEGRADED_STATE__?: {
+      degradedModules: string[];
+    };
+    /** Compatibility alias; Lane 5 consumes __TALARIA_DEGRADED_STATE__. */
     __TALARIA_DEGRADED_MODE__?: {
       active: boolean;
       degradedModules: string[];

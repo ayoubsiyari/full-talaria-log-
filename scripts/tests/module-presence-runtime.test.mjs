@@ -47,7 +47,13 @@ test('host/panel tripwire accepts symbols, ledger, and order', () => {
     Array.from(window.__TALARIA_LOADED_MODULES, (item) => item.module),
     ['ModulePresenceRuntime', 'IndicatorPerf'],
   );
+  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE__), ['degradedModules']);
+  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE__.degradedModules), []);
   assert.equal(window.__TALARIA_DEGRADED_MODE__.active, false);
+  assert.equal(
+    window.__TALARIA_DEGRADED_MODE__.degradedModules,
+    window.__TALARIA_DEGRADED_STATE__.degradedModules,
+  );
   assert.equal(badges.length, 0);
   assert.equal(errors.length, 0);
 });
@@ -55,8 +61,9 @@ test('host/panel tripwire accepts symbols, ledger, and order', () => {
 test('correctness absence is loud once and non-blocking', () => {
   const { window, badges, events, errors } = boot({ includePerf: false });
   window.__talariaMarkMissingModule('IndicatorPerf');
+  assert.deepEqual(Object.keys(window.__TALARIA_DEGRADED_STATE__), ['degradedModules']);
+  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_STATE__.degradedModules), ['IndicatorPerf']);
   assert.equal(window.__TALARIA_DEGRADED_MODE__.active, true);
-  assert.deepEqual(Array.from(window.__TALARIA_DEGRADED_MODE__.degradedModules), ['IndicatorPerf']);
   assert.equal(errors.length, 1);
   assert.equal(events.length, 1);
   assert.equal(badges.length, 1);
