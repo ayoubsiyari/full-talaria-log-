@@ -1,0 +1,73 @@
+{
+  "schema": "talaria.module-contracts.v1",
+  "kind": "pending-module-contract-sidecar",
+  "note": "Sidecar, NOT yet merged into scripts/module-contracts.json. The build preflight (scripts/module-contract-preflight.mjs) asserts that every module declared required for a surface has a matching <script> tag in every owned-stamped shell for that surface. Merging this entry BEFORE the product wiring lands would therefore fail the build by design. Manager A must move the `module` object below into scripts/module-contracts.json in the SAME change that adds the script tags to the servable shells.",
+  "packet": "session-calendar-red",
+  "row": "Session-calendar bucketing (canary blocker)",
+  "finding": "docs/plan3/FINDING-SESSION-CALENDAR-20260727.md",
+  "module": {
+    "id": "SessionCalendar",
+    "version": "20260727b81",
+    "provides": [
+      "bucketStart",
+      "epochAlignedBucketStart",
+      "sessionLabel",
+      "openLocalTime",
+      "classifyTimeframe",
+      "resolveInstrumentClass",
+      "instrumentClasses",
+      "describeClass",
+      "explain",
+      "isEnabled",
+      "resetCaches",
+      "stats"
+    ],
+    "requiredSurfaces": ["host", "panel"],
+    "class": "correctness",
+    "classRationale": "Absence changes displayed OHLC values on every daily and weekly bar (wrong 24h window, wrong bar dates, missing Friday bar). Per §A4c this is a correctness-class dependency, not a performance one.",
+    "order": {
+      "after": ["/chart/modules/module-presence-runtime.js"],
+      "before": ["/chart/chart.js", "/chart/modules/chart-data-pipeline.js"]
+    },
+    "source": "chart v 1.4/chart/modules/session-calendar.js",
+    "mirrors": ["homepage/public/chart/modules/session-calendar.js"],
+    "script": "/chart/modules/session-calendar.js"
+  },
+  "killSwitch": {
+    "name": "__TALARIA_DISABLE_SESSION_CALENDAR_V1",
+    "class": "correctness",
+    "default": "absent (session calendar ACTIVE)",
+    "offBehaviour": "Every bucketStart call returns Math.floor(t / timeframeMs) * timeframeMs — byte-identical to pre-fix output for every timeframe.",
+    "negativeControlCell": "g-kill-switch-off-restores-epoch-behaviour"
+  },
+  "labelConvention": {
+    "id": "stamp-at-open/session-date-naming",
+    "barTimestamp": "the session OPEN instant (FX: 17:00 America/New_York, DST-aware)",
+    "displayName": "the session DATE, which is the open's local date plus labelOffsetDays",
+    "fxLabelOffsetDays": 1,
+    "worked": "A bucket opening Sunday 17:00 ET is NAMED MONDAY; a bucket opening Thursday 17:00 ET is NAMED FRIDAY.",
+    "decidedBy": "Director ruling, docs/plan3/FINDING-SESSION-CALENDAR-20260727.md 'Fix shape'"
+  },
+  "instrumentClasses": [
+    { "id": "fx", "status": "implemented", "zone": "America/New_York", "dailyOpen": "17:00 local (DST-aware)", "weekOpen": "Sunday 17:00 local", "labelOffsetDays": 1 },
+    { "id": "crypto", "status": "implemented", "zone": "UTC", "dailyOpen": "00:00 UTC", "weekOpen": "Monday 00:00 UTC", "labelOffsetDays": 0 },
+    { "id": "cme-index-futures", "status": "declared", "zone": "America/Chicago", "fallback": "legacy epoch alignment", "requires": ["cme-holiday-calendar", "cme-daily-maintenance-break", "cme-early-close-table"] },
+    { "id": "unknown", "status": "declared", "fallback": "legacy epoch alignment" }
+  ],
+  "sharedCallSites": [
+    { "file": "chart v 1.4/chart/chart.js", "function": "_resampleDataFull", "wired": false },
+    { "file": "chart v 1.4/chart/modules/chart-data-pipeline.js", "function": "_tryIncrementalResample", "wired": false }
+  ],
+  "notTouched": [
+    "chart.js _resampleDataFull monthly branch (^(\\d+)mo$) — already correct calendar months, byte-identity asserted by cell d"
+  ],
+  "oracle": {
+    "file": "chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs",
+    "harness": "chart v 1.4/chart/modules/m22-session-calendar-harness.mjs",
+    "fourStateDriver": "chart v 1.4/chart/modules/m22-session-calendar-fourstate.mjs",
+    "authoredAgainstBuild": "634448817",
+    "authoredAgainstRow": "Session-calendar bucketing (canary blocker)",
+    "lastProvenRedOnBuild": "634448817",
+    "epsilon": "0 — exact equality. Fixture prices are dyadic rationals (1.25 + k/4096) and resampling performs only selection (first/last/max/min) plus integer volume sums, so no rounding can occur. Not a fitted tolerance."
+  }
+}

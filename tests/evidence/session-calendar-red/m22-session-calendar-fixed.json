@@ -1,0 +1,1046 @@
+{
+  "packet": "session-calendar-red",
+  "manager": "A",
+  "row": "Session-calendar bucketing (canary blocker)",
+  "tier": 3,
+  "state": "fixed",
+  "mode": "simulate-wired",
+  "verdict": "GREEN",
+  "expectedVerdict": "GREEN",
+  "buildSha": "63444881723174b9f7cf0f1be0e07018310e1233",
+  "authoredAgainstBuild": "634448817",
+  "lastProvenRedOnBuild": "634448817",
+  "epsilon": 0,
+  "epsilonJustification": "Fixture prices are dyadic rationals (1.25 + k/4096); resampling performs only selection (first/last/max/min) and integer volume sums, so no rounding can occur. Exact equality, not a fitted tolerance.",
+  "labelConvention": "stamp-at-open/session-date-naming",
+  "killSwitch": "__TALARIA_DISABLE_SESSION_CALENDAR_V1",
+  "productWired": false,
+  "harnessPatched": true,
+  "digests": {
+    "liftedMethods": {
+      "parseTimeframe": "9a469f6f422884a4ca35a96aa4b83b9299688f992d4a1e09bc0d02c71dbd3150",
+      "_prepareBarsForResampling": "01d71f25dfee94986e6e91a6ff76c44f3811f71c0cd1d6c7a9c8536c3946efb2",
+      "_resampleDataFull": "a7a6c6098d3f718f121f8b743a938cb85a09c77b0b5aaa3a1798cc371b32650e"
+    },
+    "chartJs": "616c2208909b63021b2c2f0d37b8a2a7bc5ea3d68cce2e8871228f145941d9c8",
+    "chartDataPipelineJs": "2bf874ebbfaf1c071a278955b622b3ac735e49b1ec57f8c437aa9c36bd31d724",
+    "sessionCalendarJs": "f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6"
+  },
+  "frozenTodayBaseline": {
+    "po1d": {
+      "sha256": "89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242",
+      "length": 24
+    },
+    "po1w": {
+      "sha256": "2507c75e36684a9dc6150cf59cc393569b2adbd8cbe77928f2c6d3986ce01642",
+      "length": 5
+    },
+    "po1h": {
+      "sha256": "c53e9dc1b2890946ea541bad02c6b035796db8acce78b3f82fd55054bd7aa4ec",
+      "length": 480
+    },
+    "cont1mo": {
+      "sha256": "a6a6e0e3ef377361d033dc2cf5e6c1adc145edd7179095433f186f45708102a5",
+      "length": 4
+    },
+    "cont3mo": {
+      "sha256": "fef11fafd634fa79338ace522873edce7ad3a1faf544dab0c3bf26cf00d2421a",
+      "length": 2
+    },
+    "cont4h": {
+      "sha256": "a69546357238be469ee792b29340cbbc2e289226f1611ab8e77cd9491e12e7bd",
+      "length": 720
+    },
+    "cont1h": {
+      "sha256": "e2dbbb48cf314abdfacda7864b09a3aaf2850d70f275c35a4e49689eb78ac202",
+      "length": 2880
+    },
+    "min5m": {
+      "sha256": "5945310b18b956391b4d6252ffc1946119f93f9f7d8b8c0af6fa6dae5ba3e7d4",
+      "length": 864
+    },
+    "min15m": {
+      "sha256": "ec56fed613d58f87c354ae85ccbc2eba630275fff1bc7f36dcc80643482c39b5",
+      "length": 288
+    },
+    "min1h": {
+      "sha256": "19d1896515d0cbe7cf2d5316d1128785ea66fc939f6104a79bc569f9eecba31d",
+      "length": 72
+    },
+    "min4h": {
+      "sha256": "3df802d25dcb4e5ed283d9d907659cbbea1c44647149cdd04a7bdb3abebf43df",
+      "length": 18
+    },
+    "crypto1d": {
+      "sha256": "69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec",
+      "length": 120
+    },
+    "crypto1w": {
+      "sha256": "6376497b0e7cebfa0fe230fc47faaa577034977b3b861e4a33475d1fb2e47e9b",
+      "length": 18
+    }
+  },
+  "failedAssertions": [],
+  "rows": [
+    {
+      "cell": "0",
+      "name": "mode",
+      "pass": true,
+      "detail": "state=fixed mode=simulate-wired patched=true productWired=false"
+    },
+    {
+      "cell": "0",
+      "name": "lifted-method-digests",
+      "pass": true,
+      "detail": "{\"parseTimeframe\":\"9a469f6f422884a4ca35a96aa4b83b9299688f992d4a1e09bc0d02c71dbd3150\",\"_prepareBarsForResampling\":\"01d71f25dfee94986e6e91a6ff76c44f3811f71c0cd1d6c7a9c8536c3946efb2\",\"_resampleDataFull\":\"a7a6c6098d3f718f121f8b743a938cb85a09c77b0b5aaa3a1798cc371b32650e\"}"
+    },
+    {
+      "cell": "0",
+      "name": "defect-formula-present-in-lifted-product-text",
+      "pass": true,
+      "detail": "Math.floor(candle.t / timeframeMs) * timeframeMs"
+    },
+    {
+      "cell": "0",
+      "name": "real-parseTimeframe-1d",
+      "pass": true,
+      "detail": "actual=86400000 expected=86400000"
+    },
+    {
+      "cell": "0",
+      "name": "real-parseTimeframe-1w",
+      "pass": true,
+      "detail": "actual=604800000 expected=604800000"
+    },
+    {
+      "cell": "0",
+      "name": "inventory-parseTimeframe-1wk-resolves-to-minutes",
+      "pass": true,
+      "detail": "parseTimeframe('1wk')=60000 (expected 604800000 if 1wk is reachable)"
+    },
+    {
+      "cell": "0",
+      "name": "real-ChartDataPipeline-loaded",
+      "pass": true,
+      "detail": "RENDER_BAR_BUDGET=500"
+    },
+    {
+      "cell": "0",
+      "name": "fixture-bar-count",
+      "pass": true,
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "0",
+      "name": "fixture-has-no-saturday-utc-bars",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "0",
+      "name": "fixture-sunday-reopen-bars",
+      "pass": true,
+      "detail": "actual=2 expected=2"
+    },
+    {
+      "cell": "0",
+      "name": "fixture-friday-4-jan-session-bar-count",
+      "pass": true,
+      "detail": "actual=24 expected=24"
+    },
+    {
+      "cell": "A",
+      "name": "api-surface",
+      "pass": true,
+      "detail": "bucketStart,epochAlignedBucketStart,sessionLabel,openLocalTime,classifyTimeframe,resolveInstrumentClass,instrumentClasses,describeClass,explain,isEnabled,resetCaches,stats"
+    },
+    {
+      "cell": "A",
+      "name": "kill-switch-name",
+      "pass": true,
+      "detail": "actual=__TALARIA_DISABLE_SESSION_CALENDAR_V1 expected=__TALARIA_DISABLE_SESSION_CALENDAR_V1"
+    },
+    {
+      "cell": "A",
+      "name": "label-convention",
+      "pass": true,
+      "detail": "actual=stamp-at-open/session-date-naming expected=stamp-at-open/session-date-naming"
+    },
+    {
+      "cell": "A",
+      "name": "classify-1d",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "A",
+      "name": "classify-1w",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "A",
+      "name": "classify-1mo-excluded",
+      "pass": true,
+      "detail": "actual=calendar-month-branch-owns-this expected=calendar-month-branch-owns-this"
+    },
+    {
+      "cell": "A",
+      "name": "classify-5m-epoch-aligned-is-correct",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "A",
+      "name": "classify-15m-epoch-aligned-is-correct",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "A",
+      "name": "classify-1h-epoch-aligned-is-correct",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "A",
+      "name": "classify-4h-epoch-aligned-is-correct",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "A",
+      "name": "class-ids",
+      "pass": true,
+      "detail": "actual=fx,crypto,cme-index-futures,unknown expected=fx,crypto,cme-index-futures,unknown"
+    },
+    {
+      "cell": "A",
+      "name": "fx-zone",
+      "pass": true,
+      "detail": "actual=America/New_York expected=America/New_York"
+    },
+    {
+      "cell": "A",
+      "name": "fx-daily-open-minute-of-day",
+      "pass": true,
+      "detail": "actual=1020 expected=1020"
+    },
+    {
+      "cell": "A",
+      "name": "fx-week-open-weekday-sunday",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "A",
+      "name": "fx-label-offset-days",
+      "pass": true,
+      "detail": "actual=1 expected=1"
+    },
+    {
+      "cell": "A",
+      "name": "crypto-zone",
+      "pass": true,
+      "detail": "actual=UTC expected=UTC"
+    },
+    {
+      "cell": "A",
+      "name": "crypto-daily-open-minute-of-day",
+      "pass": true,
+      "detail": "actual=0 expected=0"
+    },
+    {
+      "cell": "A",
+      "name": "cme-declared-not-implemented",
+      "pass": true,
+      "detail": "actual=declared expected=declared"
+    },
+    {
+      "cell": "A",
+      "name": "cme-requires-unsourced-calendar-inputs",
+      "pass": true,
+      "detail": "actual=3 expected=3"
+    },
+    {
+      "cell": "A",
+      "name": "resolve-EURUSD",
+      "pass": true,
+      "detail": "actual=fx expected=fx"
+    },
+    {
+      "cell": "A",
+      "name": "resolve-BTCUSD",
+      "pass": true,
+      "detail": "actual=crypto expected=crypto"
+    },
+    {
+      "cell": "A",
+      "name": "resolve-NQ",
+      "pass": true,
+      "detail": "actual=cme-index-futures expected=cme-index-futures"
+    },
+    {
+      "cell": "A",
+      "name": "resolve-unclassifiable-is-not-guessed",
+      "pass": true,
+      "detail": "actual=unknown expected=unknown"
+    },
+    {
+      "cell": "A",
+      "name": "cme-falls-back-to-epoch",
+      "pass": true,
+      "detail": "actual=1357257600000 expected=1357257600000"
+    },
+    {
+      "cell": "A",
+      "name": "unknown-falls-back-to-epoch",
+      "pass": true,
+      "detail": "actual=1357257600000 expected=1357257600000"
+    },
+    {
+      "cell": "A",
+      "name": "sunday-1700ET-open-is-named-monday",
+      "pass": true,
+      "detail": "actual=2013-01-07/Mon expected=2013-01-07/Mon"
+    },
+    {
+      "cell": "A",
+      "name": "sunday-open-local-weekday-is-sunday",
+      "pass": true,
+      "detail": "actual=Sun expected=Sun"
+    },
+    {
+      "cell": "A",
+      "name": "sunday-open-local-minute-of-day",
+      "pass": true,
+      "detail": "actual=1020 expected=1020"
+    },
+    {
+      "cell": "A",
+      "name": "thursday-1700ET-open-is-named-friday",
+      "pass": true,
+      "detail": "actual=2013-01-04/Fri expected=2013-01-04/Fri"
+    },
+    {
+      "cell": "A2",
+      "name": "winter-anchor-local-minute-of-day",
+      "pass": true,
+      "detail": "actual=1020 expected=1020"
+    },
+    {
+      "cell": "A2",
+      "name": "summer-anchor-local-minute-of-day",
+      "pass": true,
+      "detail": "actual=1020 expected=1020"
+    },
+    {
+      "cell": "A2",
+      "name": "winter-utc-offset-minutes",
+      "pass": true,
+      "detail": "actual=300 expected=300"
+    },
+    {
+      "cell": "A2",
+      "name": "summer-utc-offset-minutes",
+      "pass": true,
+      "detail": "actual=240 expected=240"
+    },
+    {
+      "cell": "A2",
+      "name": "anchor-offset-is-not-constant",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "B",
+      "name": "daily-bucket-count",
+      "pass": true,
+      "detail": "actual=20 expected=20 todayBaseline=24"
+    },
+    {
+      "cell": "B",
+      "name": "friday-session-open-bucket-exists",
+      "pass": true,
+      "detail": "actual=2013-01-03T22:00:00.000Z expected=2013-01-03T22:00:00.000Z"
+    },
+    {
+      "cell": "B",
+      "name": "friday-bucket-ohlcv-equals-friday-session",
+      "pass": true,
+      "detail": "actual={\"o\":1.3671875,\"h\":1.508056640625,\"l\":1.238037109375,\"c\":1.289794921875,\"v\":42060} expected={\"o\":1.3671875,\"h\":1.508056640625,\"l\":1.238037109375,\"c\":1.289794921875,\"v\":42060} rawBars=24"
+    },
+    {
+      "cell": "B",
+      "name": "friday-bucket-label",
+      "pass": true,
+      "detail": "actual=2013-01-04/Fri expected=2013-01-04/Fri"
+    },
+    {
+      "cell": "B",
+      "name": "friday-bucket-screen-stamp",
+      "pass": true,
+      "detail": "actual=Thu 03 01 '13 17:00 expected=Thu 03 01 '13 17:00"
+    },
+    {
+      "cell": "B",
+      "name": "no-weekend-named-daily-bars",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "B",
+      "name": "every-daily-bar-named-a-weekday",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "B",
+      "name": "every-daily-open-is-1700-eastern",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "B",
+      "name": "sunday-reopen-folds-into-monday-open",
+      "pass": true,
+      "detail": "actual=1.25 expected=1.25 mondayLabel=2012-12-31"
+    },
+    {
+      "cell": "B",
+      "name": "phantom-saturday-5-jan-1900-bar-absent",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "B",
+      "name": "friday-session-bar-is-stamped-thu-1700-et",
+      "pass": true,
+      "detail": "actual=true expected=true stamp-at-open: Friday's session bar opens Thu 17:00 ET and is NAMED Fri 4 Jan"
+    },
+    {
+      "cell": "C",
+      "name": "weekly-bucket-count",
+      "pass": true,
+      "detail": "actual=4 expected=4 todayBaseline=5"
+    },
+    {
+      "cell": "C",
+      "name": "weekly-open-instants",
+      "pass": true,
+      "detail": "actual=[\"2012-12-30T22:00:00.000Z\",\"2013-01-06T22:00:00.000Z\",\"2013-01-13T22:00:00.000Z\",\"2013-01-20T22:00:00.000Z\"] expected=[\"2012-12-30T22:00:00.000Z\",\"2013-01-06T22:00:00.000Z\",\"2013-01-13T22:00:00.000Z\",\"2013-01-20T22:00:00.000Z\"]"
+    },
+    {
+      "cell": "C",
+      "name": "weekly-labels-are-mondays",
+      "pass": true,
+      "detail": "actual=[\"2012-12-31/Mon\",\"2013-01-07/Mon\",\"2013-01-14/Mon\",\"2013-01-21/Mon\"] expected=[\"2012-12-31/Mon\",\"2013-01-07/Mon\",\"2013-01-14/Mon\",\"2013-01-21/Mon\"]"
+    },
+    {
+      "cell": "C",
+      "name": "weekly-opens-render-sunday-1700-eastern",
+      "pass": true,
+      "detail": "actual=[\"Sun 17:00\",\"Sun 17:00\",\"Sun 17:00\",\"Sun 17:00\"] expected=[\"Sun 17:00\",\"Sun 17:00\",\"Sun 17:00\",\"Sun 17:00\"]"
+    },
+    {
+      "cell": "C",
+      "name": "legacy-epoch-week-open-absent",
+      "pass": true,
+      "detail": "actual=false expected=false legacyOpen=2013-01-03T00:00:00.000Z rendersAs=Wed 02 01 '13 19:00"
+    },
+    {
+      "cell": "C",
+      "name": "no-weekly-open-renders-wednesday-1900",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "C",
+      "name": "week-2012-12-31-ohlcv",
+      "pass": true,
+      "detail": "actual={\"o\":1.25,\"h\":1.508056640625,\"l\":1.238037109375,\"c\":1.289794921875,\"v\":169980} expected={\"o\":1.25,\"h\":1.508056640625,\"l\":1.238037109375,\"c\":1.289794921875,\"v\":169980} rawBars=120"
+    },
+    {
+      "cell": "C",
+      "name": "week-2013-01-07-ohlcv",
+      "pass": true,
+      "detail": "actual={\"o\":1.267578125,\"h\":1.511962890625,\"l\":1.239990234375,\"c\":1.463623046875,\"v\":188216} expected={\"o\":1.267578125,\"h\":1.511962890625,\"l\":1.239990234375,\"c\":1.463623046875,\"v\":188216} rawBars=120"
+    },
+    {
+      "cell": "C",
+      "name": "week-2013-01-14-ohlcv",
+      "pass": true,
+      "detail": "actual={\"o\":1.28515625,\"h\":1.508056640625,\"l\":1.239990234375,\"c\":1.387451171875,\"v\":183659} expected={\"o\":1.28515625,\"h\":1.508056640625,\"l\":1.239990234375,\"c\":1.387451171875,\"v\":183659} rawBars=120"
+    },
+    {
+      "cell": "C",
+      "name": "week-2013-01-21-ohlcv",
+      "pass": true,
+      "detail": "actual={\"o\":1.302734375,\"h\":1.511962890625,\"l\":1.239013671875,\"c\":1.311279296875,\"v\":180093} expected={\"o\":1.302734375,\"h\":1.511962890625,\"l\":1.239013671875,\"c\":1.311279296875,\"v\":180093} rawBars=120"
+    },
+    {
+      "cell": "D1",
+      "name": "local-anchor-minute-of-day-is-constant-1020",
+      "pass": true,
+      "detail": "actual=[1020] expected=[1020]"
+    },
+    {
+      "cell": "D1",
+      "name": "both-utc-offsets-observed",
+      "pass": true,
+      "detail": "actual=[240,300] expected=[240,300]"
+    },
+    {
+      "cell": "D1",
+      "name": "exactly-one-23h-session",
+      "pass": true,
+      "detail": "actual=1 expected=1 spanHistogramHours={\"23\":1,\"24\":13}"
+    },
+    {
+      "cell": "D1",
+      "name": "all-other-sessions-24h",
+      "pass": true,
+      "detail": "actual=[\"24\"] expected=[\"24\"]"
+    },
+    {
+      "cell": "D1",
+      "name": "transition-open-instant-present",
+      "pass": true,
+      "detail": "actual=2013-03-10T21:00:00.000Z expected=2013-03-10T21:00:00.000Z"
+    },
+    {
+      "cell": "D1",
+      "name": "session-before-transition-open",
+      "pass": true,
+      "detail": "actual=2013-03-09T22:00:00.000Z expected=2013-03-09T22:00:00.000Z"
+    },
+    {
+      "cell": "D1",
+      "name": "transition-session-span-is-23h",
+      "pass": true,
+      "detail": "actual=82800000 expected=82800000"
+    },
+    {
+      "cell": "D1",
+      "name": "matrix",
+      "pass": true,
+      "detail": "[{\"openIso\":\"2013-03-03T22:00:00.000Z\",\"localDate\":\"2013-03-03\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-04T22:00:00.000Z\",\"localDate\":\"2013-03-04\",\"localWeekday\":\"Mon\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-05T22:00:00.000Z\",\"localDate\":\"2013-03-05\",\"localWeekday\":\"Tue\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-06T22:00:00.000Z\",\"localDate\":\"2013-03-06\",\"localWeekday\":\"Wed\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-07T22:00:00.000Z\",\"localDate\":\"2013-03-07\",\"localWeekday\":\"Thu\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-08T22:00:00.000Z\",\"localDate\":\"2013-03-08\",\"localWeekday\":\"Fri\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-09T22:00:00.000Z\",\"localDate\":\"2013-03-09\",\"localWeekday\":\"Sat\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-03-10T21:00:00.000Z\",\"localDate\":\"2013-03-10\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-11T21:00:00.000Z\",\"localDate\":\"2013-03-11\",\"localWeekday\":\"Mon\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-12T21:00:00.000Z\",\"localDate\":\"2013-03-12\",\"localWeekday\":\"Tue\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-13T21:00:00.000Z\",\"localDate\":\"2013-03-13\",\"localWeekday\":\"Wed\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-14T21:00:00.000Z\",\"localDate\":\"2013-03-14\",\"localWeekday\":\"Thu\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-15T21:00:00.000Z\",\"localDate\":\"2013-03-15\",\"localWeekday\":\"Fri\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-16T21:00:00.000Z\",\"localDate\":\"2013-03-16\",\"localWeekday\":\"Sat\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-03-17T21:00:00.000Z\",\"localDate\":\"2013-03-17\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240}]"
+    },
+    {
+      "cell": "D2",
+      "name": "local-anchor-minute-of-day-is-constant-1020",
+      "pass": true,
+      "detail": "actual=[1020] expected=[1020]"
+    },
+    {
+      "cell": "D2",
+      "name": "both-utc-offsets-observed",
+      "pass": true,
+      "detail": "actual=[240,300] expected=[240,300]"
+    },
+    {
+      "cell": "D2",
+      "name": "exactly-one-25h-session",
+      "pass": true,
+      "detail": "actual=1 expected=1 spanHistogramHours={\"24\":13,\"25\":1}"
+    },
+    {
+      "cell": "D2",
+      "name": "all-other-sessions-24h",
+      "pass": true,
+      "detail": "actual=[\"24\"] expected=[\"24\"]"
+    },
+    {
+      "cell": "D2",
+      "name": "transition-open-instant-present",
+      "pass": true,
+      "detail": "actual=2013-11-03T22:00:00.000Z expected=2013-11-03T22:00:00.000Z"
+    },
+    {
+      "cell": "D2",
+      "name": "session-before-transition-open",
+      "pass": true,
+      "detail": "actual=2013-11-02T21:00:00.000Z expected=2013-11-02T21:00:00.000Z"
+    },
+    {
+      "cell": "D2",
+      "name": "transition-session-span-is-25h",
+      "pass": true,
+      "detail": "actual=90000000 expected=90000000"
+    },
+    {
+      "cell": "D2",
+      "name": "matrix",
+      "pass": true,
+      "detail": "[{\"openIso\":\"2013-10-27T21:00:00.000Z\",\"localDate\":\"2013-10-27\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-10-28T21:00:00.000Z\",\"localDate\":\"2013-10-28\",\"localWeekday\":\"Mon\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-10-29T21:00:00.000Z\",\"localDate\":\"2013-10-29\",\"localWeekday\":\"Tue\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-10-30T21:00:00.000Z\",\"localDate\":\"2013-10-30\",\"localWeekday\":\"Wed\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-10-31T21:00:00.000Z\",\"localDate\":\"2013-10-31\",\"localWeekday\":\"Thu\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-11-01T21:00:00.000Z\",\"localDate\":\"2013-11-01\",\"localWeekday\":\"Fri\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-11-02T21:00:00.000Z\",\"localDate\":\"2013-11-02\",\"localWeekday\":\"Sat\",\"localMinuteOfDay\":1020,\"offsetMinutes\":240},{\"openIso\":\"2013-11-03T22:00:00.000Z\",\"localDate\":\"2013-11-03\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-04T22:00:00.000Z\",\"localDate\":\"2013-11-04\",\"localWeekday\":\"Mon\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-05T22:00:00.000Z\",\"localDate\":\"2013-11-05\",\"localWeekday\":\"Tue\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-06T22:00:00.000Z\",\"localDate\":\"2013-11-06\",\"localWeekday\":\"Wed\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-07T22:00:00.000Z\",\"localDate\":\"2013-11-07\",\"localWeekday\":\"Thu\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-08T22:00:00.000Z\",\"localDate\":\"2013-11-08\",\"localWeekday\":\"Fri\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-09T22:00:00.000Z\",\"localDate\":\"2013-11-09\",\"localWeekday\":\"Sat\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300},{\"openIso\":\"2013-11-10T22:00:00.000Z\",\"localDate\":\"2013-11-10\",\"localWeekday\":\"Sun\",\"localMinuteOfDay\":1020,\"offsetMinutes\":300}]"
+    },
+    {
+      "cell": "D3",
+      "name": "spring-weekly-opens-sunday-1020",
+      "pass": true,
+      "detail": "actual=[\"Sun 1020\"] expected=[\"Sun 1020\"]"
+    },
+    {
+      "cell": "D3",
+      "name": "fall-weekly-opens-sunday-1020",
+      "pass": true,
+      "detail": "actual=[\"Sun 1020\"] expected=[\"Sun 1020\"]"
+    },
+    {
+      "cell": "E",
+      "name": "cont1mo-length",
+      "pass": true,
+      "detail": "actual=4 expected=4"
+    },
+    {
+      "cell": "E",
+      "name": "cont1mo-sha256",
+      "pass": true,
+      "detail": "actual=a6a6e0e3ef377361d033dc2cf5e6c1adc145edd7179095433f186f45708102a5 expected=a6a6e0e3ef377361d033dc2cf5e6c1adc145edd7179095433f186f45708102a5"
+    },
+    {
+      "cell": "E",
+      "name": "cont3mo-length",
+      "pass": true,
+      "detail": "actual=2 expected=2"
+    },
+    {
+      "cell": "E",
+      "name": "cont3mo-sha256",
+      "pass": true,
+      "detail": "actual=fef11fafd634fa79338ace522873edce7ad3a1faf544dab0c3bf26cf00d2421a expected=fef11fafd634fa79338ace522873edce7ad3a1faf544dab0c3bf26cf00d2421a"
+    },
+    {
+      "cell": "E",
+      "name": "monthly-never-enters-session-branch",
+      "pass": true,
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":0,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":0}"
+    },
+    {
+      "cell": "F",
+      "name": "min5m-length",
+      "pass": true,
+      "detail": "actual=864 expected=864"
+    },
+    {
+      "cell": "F",
+      "name": "min5m-sha256",
+      "pass": true,
+      "detail": "actual=5945310b18b956391b4d6252ffc1946119f93f9f7d8b8c0af6fa6dae5ba3e7d4 expected=5945310b18b956391b4d6252ffc1946119f93f9f7d8b8c0af6fa6dae5ba3e7d4"
+    },
+    {
+      "cell": "F",
+      "name": "min15m-length",
+      "pass": true,
+      "detail": "actual=288 expected=288"
+    },
+    {
+      "cell": "F",
+      "name": "min15m-sha256",
+      "pass": true,
+      "detail": "actual=ec56fed613d58f87c354ae85ccbc2eba630275fff1bc7f36dcc80643482c39b5 expected=ec56fed613d58f87c354ae85ccbc2eba630275fff1bc7f36dcc80643482c39b5"
+    },
+    {
+      "cell": "F",
+      "name": "min1h-length",
+      "pass": true,
+      "detail": "actual=72 expected=72"
+    },
+    {
+      "cell": "F",
+      "name": "min1h-sha256",
+      "pass": true,
+      "detail": "actual=19d1896515d0cbe7cf2d5316d1128785ea66fc939f6104a79bc569f9eecba31d expected=19d1896515d0cbe7cf2d5316d1128785ea66fc939f6104a79bc569f9eecba31d"
+    },
+    {
+      "cell": "F",
+      "name": "min4h-length",
+      "pass": true,
+      "detail": "actual=18 expected=18"
+    },
+    {
+      "cell": "F",
+      "name": "min4h-sha256",
+      "pass": true,
+      "detail": "actual=3df802d25dcb4e5ed283d9d907659cbbea1c44647149cdd04a7bdb3abebf43df expected=3df802d25dcb4e5ed283d9d907659cbbea1c44647149cdd04a7bdb3abebf43df"
+    },
+    {
+      "cell": "F",
+      "name": "cont1h-length",
+      "pass": true,
+      "detail": "actual=2880 expected=2880"
+    },
+    {
+      "cell": "F",
+      "name": "cont1h-sha256",
+      "pass": true,
+      "detail": "actual=e2dbbb48cf314abdfacda7864b09a3aaf2850d70f275c35a4e49689eb78ac202 expected=e2dbbb48cf314abdfacda7864b09a3aaf2850d70f275c35a4e49689eb78ac202"
+    },
+    {
+      "cell": "F",
+      "name": "cont4h-length",
+      "pass": true,
+      "detail": "actual=720 expected=720"
+    },
+    {
+      "cell": "F",
+      "name": "cont4h-sha256",
+      "pass": true,
+      "detail": "actual=a69546357238be469ee792b29340cbbc2e289226f1611ab8e77cd9491e12e7bd expected=a69546357238be469ee792b29340cbbc2e289226f1611ab8e77cd9491e12e7bd"
+    },
+    {
+      "cell": "F",
+      "name": "po1h-length",
+      "pass": true,
+      "detail": "actual=480 expected=480"
+    },
+    {
+      "cell": "F",
+      "name": "po1h-sha256",
+      "pass": true,
+      "detail": "actual=c53e9dc1b2890946ea541bad02c6b035796db8acce78b3f82fd55054bd7aa4ec expected=c53e9dc1b2890946ea541bad02c6b035796db8acce78b3f82fd55054bd7aa4ec"
+    },
+    {
+      "cell": "F",
+      "name": "intraday-never-enters-session-branch",
+      "pass": true,
+      "detail": "actual=0 expected=0 stats={\"zoneOffsetLookups\":0,\"formatterCalls\":0,\"bucketStartCalls\":17284,\"boundaryCacheHits\":0,\"boundaryRecomputes\":0,\"epochFallbacks\":17284}"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1d-length",
+      "pass": true,
+      "detail": "actual=120 expected=120"
+    },
+    {
+      "cell": "F2",
+      "name": "crypto1d-sha256",
+      "pass": true,
+      "detail": "actual=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec expected=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec"
+    },
+    {
+      "cell": "G",
+      "name": "1d-incremental-path-actually-ran",
+      "pass": true,
+      "detail": "actual=479 expected=479"
+    },
+    {
+      "cell": "G",
+      "name": "1d-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=20 fullLen=20"
+    },
+    {
+      "cell": "G",
+      "name": "1d-incremental-sha256-equals-full",
+      "pass": true,
+      "detail": "actual=2494a31213a98d6c263cdd670489c0e69312b581e73e454e998dd93df9ef219e expected=2494a31213a98d6c263cdd670489c0e69312b581e73e454e998dd93df9ef219e"
+    },
+    {
+      "cell": "G",
+      "name": "1w-incremental-path-actually-ran",
+      "pass": true,
+      "detail": "actual=479 expected=479"
+    },
+    {
+      "cell": "G",
+      "name": "1w-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=4 fullLen=4"
+    },
+    {
+      "cell": "G",
+      "name": "1w-incremental-sha256-equals-full",
+      "pass": true,
+      "detail": "actual=0bbb1e7242ff995941039becb7ae94d00779fde6e9a18b1a4b5e49badc74d55b expected=0bbb1e7242ff995941039becb7ae94d00779fde6e9a18b1a4b5e49badc74d55b"
+    },
+    {
+      "cell": "G2",
+      "name": "1d-unsorted-append-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=9 fullLen=9"
+    },
+    {
+      "cell": "G2",
+      "name": "1w-unsorted-append-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=none expected=none incLen=2 fullLen=2"
+    },
+    {
+      "cell": "H",
+      "name": "kill-switch-engaged",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "H",
+      "name": "po1d-length-returns-to-today",
+      "pass": true,
+      "detail": "actual=24 expected=24"
+    },
+    {
+      "cell": "H",
+      "name": "po1d-sha256-returns-to-today",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "H",
+      "name": "po1w-length-returns-to-today",
+      "pass": true,
+      "detail": "actual=5 expected=5"
+    },
+    {
+      "cell": "H",
+      "name": "po1w-sha256-returns-to-today",
+      "pass": true,
+      "detail": "actual=2507c75e36684a9dc6150cf59cc393569b2adbd8cbe77928f2c6d3986ce01642 expected=2507c75e36684a9dc6150cf59cc393569b2adbd8cbe77928f2c6d3986ce01642"
+    },
+    {
+      "cell": "H",
+      "name": "switch-off-friday-session-bucket-absent-again",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "H",
+      "name": "switch-off-phantom-saturday-present-again",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "H",
+      "name": "switch-off-epoch-week-open-present-again",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "H",
+      "name": "min5m-switch-off-sha256",
+      "pass": true,
+      "detail": "actual=5945310b18b956391b4d6252ffc1946119f93f9f7d8b8c0af6fa6dae5ba3e7d4 expected=5945310b18b956391b4d6252ffc1946119f93f9f7d8b8c0af6fa6dae5ba3e7d4"
+    },
+    {
+      "cell": "H",
+      "name": "cont1mo-switch-off-sha256",
+      "pass": true,
+      "detail": "actual=a6a6e0e3ef377361d033dc2cf5e6c1adc145edd7179095433f186f45708102a5 expected=a6a6e0e3ef377361d033dc2cf5e6c1adc145edd7179095433f186f45708102a5"
+    },
+    {
+      "cell": "H",
+      "name": "switch-off-incremental-equals-full",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 incrementalCalls=479"
+    },
+    {
+      "cell": "I",
+      "name": "host-and-panel-are-distinct-realms",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "I",
+      "name": "1d-host-full-equals-panel-incremental",
+      "pass": true,
+      "detail": "actual=2494a31213a98d6c263cdd670489c0e69312b581e73e454e998dd93df9ef219e expected=2494a31213a98d6c263cdd670489c0e69312b581e73e454e998dd93df9ef219e incrementalCalls=479"
+    },
+    {
+      "cell": "I",
+      "name": "1w-host-full-equals-panel-incremental",
+      "pass": true,
+      "detail": "actual=0bbb1e7242ff995941039becb7ae94d00779fde6e9a18b1a4b5e49badc74d55b expected=0bbb1e7242ff995941039becb7ae94d00779fde6e9a18b1a4b5e49badc74d55b incrementalCalls=479"
+    },
+    {
+      "cell": "I",
+      "name": "dst-window-host-equals-panel",
+      "pass": true,
+      "detail": "actual=a5a539d880facce6954bdf0a55cbc28436093e9d280159a1c029851dc3af20d6 expected=a5a539d880facce6954bdf0a55cbc28436093e9d280159a1c029851dc3af20d6"
+    },
+    {
+      "cell": "I",
+      "name": "crypto-panel-keeps-utc-days",
+      "pass": true,
+      "detail": "actual=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec expected=69ff1adb2e56bd039e2b87759db5debad67540df67a937d497d399cac30ef6ec"
+    },
+    {
+      "cell": "I",
+      "name": "fx-host-differs-from-crypto-panel",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "I",
+      "name": "fx-host-stable-after-mixed-symbol-traffic",
+      "pass": true,
+      "detail": "actual=3043d51a3568f52ae465c77e6ddb10bddd60a28d8501b6f2596cad9cade106c4 expected=3043d51a3568f52ae465c77e6ddb10bddd60a28d8501b6f2596cad9cade106c4"
+    },
+    {
+      "cell": "J",
+      "name": "module-absent-from-realm",
+      "pass": true,
+      "detail": "actual=true expected=true"
+    },
+    {
+      "cell": "J",
+      "name": "absent-module-falls-back-to-legacy-output",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    },
+    {
+      "cell": "J",
+      "name": "absent-module-is-reported-not-silent",
+      "pass": true,
+      "detail": "actual=[\"SessionCalendar\"] expected=[\"SessionCalendar\"]"
+    },
+    {
+      "cell": "J",
+      "name": "absent-module-degrades-both-paths-identically",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 incrementalCalls=479"
+    },
+    {
+      "cell": "K",
+      "name": "stats",
+      "pass": true,
+      "detail": "{\"zoneOffsetLookups\":128,\"formatterCalls\":194,\"bucketStartCalls\":44641,\"boundaryCacheHits\":44609,\"boundaryRecomputes\":32,\"epochFallbacks\":0} bars=44640"
+    },
+    {
+      "cell": "K",
+      "name": "zone-formatter-calls-bounded-by-session-count",
+      "pass": true,
+      "detail": "actual=true expected=true formatterCalls=194 bound=264 bars=44640"
+    },
+    {
+      "cell": "K",
+      "name": "zone-work-is-per-session-not-per-bar",
+      "pass": true,
+      "detail": "actual=true expected=true formatterCalls=194 bars=44640"
+    },
+    {
+      "cell": "K",
+      "name": "boundary-cache-absorbs-the-rest",
+      "pass": true,
+      "detail": "actual=true expected=true hits=44609 recomputes=32"
+    },
+    {
+      "cell": "L",
+      "name": "no-nondeterministic-inputs:m22-session-calendar-bucketing.red.test.mjs",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "L",
+      "name": "no-nondeterministic-inputs:m22-session-calendar-harness.mjs",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "L",
+      "name": "no-nondeterministic-inputs:session-calendar.js",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "L",
+      "name": "no-epsilon-tolerance-in-assertions",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "L",
+      "name": "no-closeTo-style-comparison",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "M",
+      "name": "contract-schema",
+      "pass": true,
+      "detail": "actual=talaria.module-contracts.v1 expected=talaria.module-contracts.v1"
+    },
+    {
+      "cell": "M",
+      "name": "contract-module-id",
+      "pass": true,
+      "detail": "actual=SessionCalendar expected=SessionCalendar"
+    },
+    {
+      "cell": "M",
+      "name": "contract-class-is-correctness",
+      "pass": true,
+      "detail": "actual=correctness expected=correctness"
+    },
+    {
+      "cell": "M",
+      "name": "contract-required-surfaces",
+      "pass": true,
+      "detail": "actual=[\"host\",\"panel\"] expected=[\"host\",\"panel\"]"
+    },
+    {
+      "cell": "M",
+      "name": "contract-version-matches-helper",
+      "pass": true,
+      "detail": "actual=20260727b81 expected=20260727b81"
+    },
+    {
+      "cell": "M",
+      "name": "contract-kill-switch-matches-helper",
+      "pass": true,
+      "detail": "actual=__TALARIA_DISABLE_SESSION_CALENDAR_V1 expected=__TALARIA_DISABLE_SESSION_CALENDAR_V1"
+    },
+    {
+      "cell": "M",
+      "name": "contract-label-convention-matches-helper",
+      "pass": true,
+      "detail": "actual=stamp-at-open/session-date-naming expected=stamp-at-open/session-date-naming"
+    },
+    {
+      "cell": "M",
+      "name": "contract-provides-all-resolve",
+      "pass": true,
+      "detail": "actual=none expected=none"
+    },
+    {
+      "cell": "M",
+      "name": "not-yet-in-build-manifest-pre-wiring",
+      "pass": true,
+      "detail": "actual=false expected=false"
+    },
+    {
+      "cell": "M",
+      "name": "dual-tree-mirror-byte-identical",
+      "pass": true,
+      "detail": "actual=f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6 expected=f30433cca88b767f96ec1cc8d812d56a94c88eb2eed05822d5983eda19fbf2d6"
+    },
+    {
+      "cell": "M",
+      "name": "contract-records-both-call-sites",
+      "pass": true,
+      "detail": "actual=[\"_resampleDataFull\",\"_tryIncrementalResample\"] expected=[\"_resampleDataFull\",\"_tryIncrementalResample\"]"
+    },
+    {
+      "cell": "M",
+      "name": "contract-wiring-state-matches-product",
+      "pass": true,
+      "detail": "actual=true expected=true productIsWired=false"
+    },
+    {
+      "cell": "M2",
+      "name": "full-path-consumes-the-shared-helper",
+      "pass": true,
+      "detail": "actual=false expected=false before=2494a31213a98d6c after=89a9337f2df78ee8"
+    },
+    {
+      "cell": "M2",
+      "name": "incremental-path-consumes-the-shared-helper",
+      "pass": true,
+      "detail": "actual=false expected=false before=2494a31213a98d6c after=89a9337f2df78ee8"
+    },
+    {
+      "cell": "M2",
+      "name": "stubbing-one-helper-moves-both-paths-together",
+      "pass": true,
+      "detail": "actual=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242 expected=89a9337f2df78ee8f00462d31e534898d1a1e1d71e6e147ecb76459b4aec1242"
+    }
+  ]
+}
