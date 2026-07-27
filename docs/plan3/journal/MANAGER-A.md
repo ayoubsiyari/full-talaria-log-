@@ -695,3 +695,145 @@ at 00:00 UTC was specified; crypto *weekly* was not. The author chose Monday 00:
 crypto weekly output relative to today's Thursday-aligned epoch weeks. That is a user-visible
 convention change on an instrument class outside the stated scope of the fix, so it goes to the Director
 with the migration disposition rather than being settled inside a RED packet.
+
+---
+
+## 2026-07-28T01:30 · CORRECTION · my 00:52 correction was itself wrong; the PO sweep was right
+
+Superseding the `CORRECTION` of 2026-07-28T00:52. I told the Director that
+`PO-SWEEP-RESULTS-20260727.md` was wrong to claim per-tick cost scales with total history, on the
+strength of a design report asserting the backtest replay path is bounded at ~5,000 raw bars.
+Independent top-tier verification **refutes that assertion**. The sweep was right and I was wrong, and
+the wrong version is the one I put in front of the Director.
+
+The cap is real and has the stated values, but it is **not a bound on the replay path**.
+`capReplayFullRawData` is wired at exactly one call site, guarded on `direction === 'forward'` viewport
+prefetch, and it only ever runs as a side effect of a successful forward history fetch. Meanwhile
+backtest boot requests the high-limit bulk history and the initial ingest takes the `startIndex === 0`
+branch, which assigns `this.rawData = newData` with no cap at all; replay entry then copies that
+wholesale into `fullRawData`. The playhead prefix installed on every tick clamps only to master length.
+So per-tick resample cost **does** grow with session length, up to roughly 100,000 bars.
+
+The reconciliation of the two numbers, which is the sentence for the dossier: the 5,000-bar cap and the
+100,000-bar bulk fetch are both real and do not conflict, because the host loads up to 100,000 bars
+uncapped at backtest boot and the 5,000 cap is only applied behind a forward-prefetch guard, so it trims
+nothing for any session the initial fetch already covers.
+
+The practical shape is a **bifurcation on session length** that nobody had distinguished. A session that
+fits inside the initial bulk window — roughly 69 days of 1m bars — is fully preloaded, forward prefetch
+is then blocked by the session-end gate, the cap never fires, and the prefix grows to the whole session.
+Only sessions longer than the bulk window ever reach the cap. So 5,000 is not a steady-state bound; it is
+a one-off eviction that the common configuration never reaches.
+
+Consequences I am obliged to restate because I argued the opposite an hour ago:
+
+- **The C3a de-scoping is withdrawn.** Per-tick resampling is O(session length) on the common path, and
+  Rayan's single-layout 1m case is exactly the configuration that preloads the most bars. This mechanism
+  is back in contention for the headline symptom.
+- **The 1.97× 1m-versus-1H churn ratio still stands** and is unaffected — that arithmetic was about
+  per-raw-bar prepare cost, not about the cap.
+- **A host-side residency cap is now materially more interesting than I said at 01:05**, because bounding
+  resident history would cut per-tick work proportionally rather than only saving retained bytes. The
+  panel-side do-not-build is untouched; the safe dial is still the cache bounds rather than the
+  undocumented fetch limit.
+
+**A third linear-in-session-length cost was found on the same path and is not in any measurement yet.**
+`_getWalkForwardOhlcToPlayhead` scans `fullRawData` from index 0 to the playhead on every tick via
+`_aggregateFinerBarsWalkForward`, called from `_trimLastDataBarToReplayPlayhead`. The guard exempts 1m
+display over 1m raw, so every coarser display timeframe pays a second O(playhead) scan per tick. Opened
+as a row.
+
+`_REPLAY_RAW_CAP` is confirmed double-assigned, effective value 120000, and **unread in production** —
+its only reader sits in a ternary arm reachable only when `_getRawDataCap` is not a function, which never
+holds for a real chart. Inert, cosmetic, worth correcting so nobody reasons from it later.
+
+---
+
+## 2026-07-28T01:33 · CORRECTION · the per-tick figure I reported was half the real one
+
+I reported 1.000 full resamples per tick as the product figure. It is **2.000**. The review established
+that `updateChartData` calls `_renderReplayChartUpdate()`, which calls `chart.render()` **synchronously
+inside the tick**, and `render()` nulls the frame display series and then reaches `getDisplaySeries()`
+through `calculateScales()`. The render resample is therefore unconditional and inside the tick, not the
+modelled optional extra the packet described. The cells I quoted as the product were the
+stub-suppressed configuration; the cells labelled as carrying an extra render frame are the product.
+
+Direction of the error: the finding is **more** severe than I reported, not less. And it confirms two
+packets are required, because removing the cache drop leaves the tick/render source alternation intact.
+
+---
+
+## 2026-07-28T01:35 · VERDICT · measurement packet ACCEPTED and merged
+
+Packet `mcdiag-resample-measurement`, merged at `243dda5eb`. Adversarial review reproduced every reported
+number **bit-exactly in independent processes** — zero mismatches across 14 counters × 12 cells × both
+scale sets — and confirmed each mechanism in product source with positive controls proving the counters
+discriminate rather than merely agree. It specifically attacked the stub set and found that the two stubs
+upstream of the resample decision bias **in favour** of incrementality: the harness advances the playhead
+by exactly one index where the real product can jump several, which would break the incremental guard
+outright. The harness gives incrementality its best possible chance and still measures zero.
+
+`surface=` real `ReplaySystem.prototype.updateChartData` over unmodified product sources in a `node:vm`,
+independently reproduced. `coverage=` no browser, no panels, no indicators, no open trades, fast mode not
+driven; the §A5.4 different-clock-or-host leg is **not** satisfied, since the reproduction ran on the same
+machine; and the harness always exits 0, so it is a measurement instrument and not usable as a CI cell as
+written.
+
+Two defects in the packet's own reasoning, both recorded rather than waved through. Its closing claim that
+this fits the single-layout report better than per-panel duplication is **unsupported** — panel sync was
+stubbed, so per-panel duplication was measured at zero by construction and the two cannot be ranked. And
+the packet counts **allocation churn, not retained heap**; 3.5 GB retained is a different quantity from
+~3,300 short-lived objects per tick. §A9.3's "measure before building" is satisfied for the CPU question
+and explicitly **not** satisfied for the memory question, which §A9.1 requires indicators and open trades
+to close.
+
+---
+
+## 2026-07-28T01:38 · CORRECTION · §A10's motivating example is factually wrong
+
+§A10 opens on magnet-mode snapping as its instance of feature-level capability loss, stating the current
+shell contains zero references to `magnet`. That is true of the shell HTML file and false of the product:
+the magnet button, dropdown and Off/Weak/Strong selector exist in the V9 React toolbar, are wired to the
+engine, and are present in the shipped bundle, which is newer than the last source change. The shell
+renders from its React entry point, so grepping the HTML sees nothing. **Magnet mode is reachable today.**
+
+The ruling's conclusion survives its example. The inventory found 10 genuine migration-loss rows out of
+324 controls, plus 14 retired with no recorded reason. But the *method* implied by the example — grep the
+shell — is the one method the inventory explicitly recommends against, and it produced this false positive.
+
+**The largest row is worse than magnet ever was.** A 2,064-line price-alert engine is loaded *and
+instantiated* on every host page and wraps `chart.render` to draw alert lines every frame, while its
+entire UI is legacy-only. The shipped FAQ answers "Can I set price alerts?" with "a full alert and
+notification system is coming in a future release." The product denies a feature it is already running,
+and pays a per-frame render cost for it. That last part makes it my row and not only a UI row.
+
+One structural finding worth keeping: a control inventory **cannot** be asserted at build time the way
+§A4c asserts modules. The hide-positions row proves it — both the icon and its dispatch branch are in the
+bundle and only the menu entry is missing, so a bundle grep goes green over a real loss. A runtime control
+census against a declared capability manifest is the only gate that catches it, and the manifest, not the
+gate, is the load-bearing work.
+
+---
+
+## 2026-07-28T01:41 · PO-REQ · one number, ten seconds, and it decides whether C3a is aimed correctly
+
+My first `PO-REQ`. Emitted because it **cannot** be an assertion under §A12.4: the answer depends on what
+the history server actually returns for a real session, and no harness in the tree can simulate that. The
+client asks for 100,000 bars and raises its own ceiling to permit it; whether the server delivers that,
+or silently clamps lower, is not establishable from source.
+
+1. **Surface and build.** TEST-1 host chart, backtest mode, any real EURUSD session — session 877 is fine
+   and is already loaded in the PO's earlier sweeps. Confirm the build ID on screen before starting.
+2. **Steps.** Enter replay as normal. Open DevTools console. Record exactly three values:
+   `window.chart.replaySystem.fullRawData.length`, `window.chart.rawData.length`, and
+   `window.chart.currentTimeframe`. One number each, no interpretation.
+3. **Expected result, stated before looking.** `fullRawData.length` is in the tens of thousands — on the
+   order of 10,000 to 100,000 — and **not** approximately 5,000. If it reads ~5,000 my correction above is
+   wrong again and the de-scoping stands after all.
+4. **Time estimate.** Under two minutes, against the 15-minute cap and the 45-minute per-train budget
+   shared across all three managers.
+5. **What is blocked.** C3a shape selection (§A9.3 / §A1), the host-side residency re-scope, and the
+   priority of the per-tick resample row against the journal-marker freeze row. All three currently rest
+   on an upper bound verified in source but never observed live.
+
+Outstanding `PO-REQ` count: **1**.
