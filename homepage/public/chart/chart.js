@@ -801,6 +801,17 @@ const MC_DIAG_COUNTER_FIELDS = [
     'fetchedBars',
     'extendsFromParent',
     'resamples',
+    // M20-Q9 measurement (Manager A, packet mcdiag-resample-measurement).
+    // `resamples` is left exactly as it was — it sums replay ticks and
+    // full-array resampleData() calls into one field and cannot answer
+    // "resamples per tick". These three are separate and never summed:
+    //   replayTicks          — one per replay tick (updateChartData/-Fast)
+    //   fullResamples        — one per _resampleDataFull() body, every caller
+    //                          including the pipeline-internal call site
+    //   incrementalResamples — one per ChartDataPipeline incremental hit
+    'replayTicks',
+    'fullResamples',
+    'incrementalResamples',
     'renders',
     'seams',
     'ownerFetches',
@@ -2594,6 +2605,9 @@ class Chart {
             fetchedBars: 0,
             extendsFromParent: 0,
             resamples: 0,
+            replayTicks: 0,
+            fullResamples: 0,
+            incrementalResamples: 0,
             renders: 0,
             seams: 0,
             ownerFetches: 0,
@@ -2613,8 +2627,20 @@ class Chart {
         const originalUpdateChartData = replay.updateChartData;
         replay.updateChartData = function mcDiagUpdateChartDataWrapper(...args) {
             chart._mcDiag && chart._mcDiag.resamples++;
+            chart._mcDiag && chart._mcDiag.replayTicks++;
             return originalUpdateChartData.apply(this, args);
         };
+        // Fast mode (speed >= 60x) ticks through updateChartDataFast, which the
+        // legacy `resamples` wrapper never covered. replayTicks counts both entry
+        // points so "per tick" is well defined at every playback speed; `resamples`
+        // is deliberately NOT incremented here (its semantics stay unchanged).
+        if (typeof replay.updateChartDataFast === 'function') {
+            const originalUpdateChartDataFast = replay.updateChartDataFast;
+            replay.updateChartDataFast = function mcDiagUpdateChartDataFastWrapper(...args) {
+                chart._mcDiag && chart._mcDiag.replayTicks++;
+                return originalUpdateChartDataFast.apply(this, args);
+            };
+        }
         replay._mcDiagUpdateChartDataWrapped = true;
         this._installLazyReplayMasterGuards();
     }
@@ -25430,6 +25456,12 @@ class Chart {
 
     _resampleDataFull(data, timeframe) {
         if (!Array.isArray(data) || data.length === 0) return [];
+
+        // Counted HERE, not at resampleData(), so every full resample registers
+        // regardless of caller — including ChartDataPipeline.getResampledSeries's
+        // direct chart._resampleDataFull() call, which bypasses resampleData()
+        // and therefore bypasses the legacy `resamples` field entirely.
+        if (this._mcDiag) this._mcDiag.fullResamples++;
 
         const prepared = this._prepareBarsForResampling(data);
         if (prepared.length === 0) return [];
