@@ -10,7 +10,14 @@ on:
   pull_request:
     paths:
       - "chart v 1.4/chart/**/*.py"
+      - "chart v 1.4/chart/modules/indicator-performance.js"
+      - "chart v 1.4/chart/dist-v9/index.html"
+      - "chart v 1.4/chart/multichart-prod/chart-embed.html"
+      - "chart v 1.4/talaria-design/live/index.html"
+      - "homepage/public/chart/dist-v9/index.html"
       - "journal-backend/**/*.py"
+      - "tests/evidence/b70-stage5/b75-indicator-performance-product-surface.gate.mjs"
+      - "package.json"
       - ".github/workflows/tests.yml"
   workflow_dispatch:
 
@@ -72,3 +79,20 @@ jobs:
         env:
           FLASK_ENV: development
         run: python -m pytest tests/ -q
+
+  indicator-performance-loader:
+    name: indicator performance loader (A5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install browser gate dependencies
+        working-directory: "chart v 1.4/chart/multichart-prod/harness"
+        run: npm ci
+
+      - name: Run permanent A5 loader gate
+        run: npm run test:indicator-performance-loader

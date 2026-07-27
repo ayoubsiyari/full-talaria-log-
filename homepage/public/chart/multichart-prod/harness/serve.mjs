@@ -665,7 +665,7 @@ function hostPageHtml(query) {
   };
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260727b79';
+  const buildId = '20260727b80';
 
   const cfg = {
     pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows, mcRestore,

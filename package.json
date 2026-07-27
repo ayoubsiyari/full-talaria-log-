@@ -13,7 +13,8 @@
     "docker:build-chart": "docker compose build trading-chart",
     "docker:up-chart": "docker compose up -d --build trading-chart",
     "checkpoint:provenance": "node scripts/checkpoint-provenance.mjs",
-    "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs"
+    "test:checkpoint-provenance": "node --test scripts/tests/checkpoint-provenance.test.mjs",
+    "test:indicator-performance-loader": "node tests/evidence/b70-stage5/b75-indicator-performance-product-surface.gate.mjs"
   },
   "dependencies": {
     "dukascopy-node": "^1.46.3",
