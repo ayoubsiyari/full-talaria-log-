@@ -30,6 +30,12 @@ jobs:
           cache: npm
           cache-dependency-path: "chart v 1.4/chart/multichart-prod/harness/package-lock.json"
 
+      - name: Enforce chart module contracts
+        run: node scripts/module-contract-preflight.mjs
+
+      - name: Prove module contract negative controls
+        run: npm run test:module-contracts
+
       - name: Install harness dependencies
         working-directory: "chart v 1.4/chart/multichart-prod/harness"
         run: npm ci

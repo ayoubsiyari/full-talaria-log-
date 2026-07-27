@@ -3,7 +3,9 @@
   "private": true,
   "description": "Root convenience scripts; V9 live UI is built only from chart v 1.4/talaria-design (npm run build:chart-v9).",
   "scripts": {
-    "build:chart-v9": "npm run build:live --prefix \"chart v 1.4/talaria-design\"",
+    "preflight:module-contracts": "node scripts/module-contract-preflight.mjs",
+    "test:module-contracts": "node --test scripts/tests/module-contract-preflight.test.mjs scripts/tests/module-presence-runtime.test.mjs",
+    "build:chart-v9": "npm run preflight:module-contracts && npm run build:live --prefix \"chart v 1.4/talaria-design\"",
     "sync:chart-v9": "node \"chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs\"",
     "dev:chart-v9": "npm run dev:live --prefix \"chart v 1.4/talaria-design\"",
     "dev:handoff-v16": "npm run dev --prefix \"Sources Handoff/prototype_reference_v16\"",

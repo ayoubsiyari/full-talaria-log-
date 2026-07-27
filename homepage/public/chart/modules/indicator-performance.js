@@ -271,4 +271,12 @@
         estimateTailLookback: estimateTailLookback,
         hashIndicatorParams: hashIndicatorParams
     };
+    if (typeof global.__talariaRegisterModule === 'function') {
+        global.__talariaRegisterModule({
+            module: 'IndicatorPerf',
+            version: '20260727b80',
+            class: 'correctness',
+            status: 'loaded'
+        });
+    }
 })(typeof window !== 'undefined' ? window : self);

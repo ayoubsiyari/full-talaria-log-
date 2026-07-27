@@ -1,0 +1,106 @@
+{
+  "schema": "talaria.module-contracts.v1",
+  "source": "chart v 1.4/talaria-design/live/index.html",
+  "modules": [
+    {
+      "id": "ModulePresenceRuntime",
+      "version": "20260727b80",
+      "provides": ["__talariaRegisterModule", "__talariaMarkMissingModule"],
+      "requiredSurfaces": ["host", "panel"],
+      "class": "correctness",
+      "order": {
+        "after": [],
+        "before": ["/chart/chart.js", "/chart/modules/indicator-performance.js"]
+      },
+      "source": "chart v 1.4/chart/modules/module-presence-runtime.js",
+      "mirrors": ["homepage/public/chart/modules/module-presence-runtime.js"],
+      "script": "/chart/modules/module-presence-runtime.js"
+    },
+    {
+      "id": "IndicatorPerf",
+      "version": "20260727b80",
+      "provides": [
+        "rollingSmaFast",
+        "rollingWmaFast",
+        "packBarsCompact",
+        "packBarsRangeCompact",
+        "unpackBarsCompact",
+        "mergeIndicatorTail",
+        "mergeIndicatorTailWindow",
+        "estimateTailLookback",
+        "hashIndicatorParams"
+      ],
+      "requiredSurfaces": ["host", "panel"],
+      "class": "correctness",
+      "order": {
+        "after": ["/chart/chart.js"],
+        "before": ["/chart/modules/chart-indicators-full.js"]
+      },
+      "source": "chart v 1.4/chart/modules/indicator-performance.js",
+      "mirrors": ["homepage/public/chart/modules/indicator-performance.js"],
+      "script": "/chart/modules/indicator-performance.js"
+    }
+  ],
+  "inventory": [
+    {
+      "id": "source-host",
+      "surface": "host",
+      "path": "chart v 1.4/talaria-design/live/index.html",
+      "status": "owned-stamped",
+      "servable": false,
+      "reason": "source-owned generated shell"
+    },
+    {
+      "id": "chart-host",
+      "surface": "host",
+      "path": "chart v 1.4/chart/dist-v9/index.html",
+      "status": "owned-stamped",
+      "servable": true
+    },
+    {
+      "id": "public-host",
+      "surface": "host",
+      "path": "homepage/public/chart/dist-v9/index.html",
+      "status": "owned-stamped",
+      "servable": true
+    },
+    {
+      "id": "chart-panel",
+      "surface": "panel",
+      "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "status": "owned-stamped",
+      "servable": true
+    },
+    {
+      "id": "public-panel",
+      "surface": "panel",
+      "path": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "status": "owned-stamped",
+      "servable": true
+    },
+    {
+      "id": "legacy-source-shell",
+      "surface": "host",
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "status": "excluded",
+      "servable": false,
+      "reason": "stale public source shell; route-removal debt"
+    },
+    {
+      "id": "legacy-public-shell",
+      "surface": "host",
+      "path": "homepage/public/chart/legacy-index.html",
+      "status": "excluded",
+      "servable": false,
+      "reason": "stale public source shell; route-removal debt"
+    },
+    {
+      "id": "frozen-harness",
+      "surface": "harness",
+      "path": "chart v 1.4/chart/multichart-prod/harness/frozen",
+      "status": "excluded",
+      "servable": false,
+      "reason": "immutable non-production evidence"
+    }
+  ]
+}

@@ -121,6 +121,17 @@ declare global {
     __TALARIA_CHART_TOGGLE_SUPPORT__?: () => void;
     /** Left nav Support button anchor for popover positioning. */
     __TALARIA_SUPPORT_NAV_ANCHOR__?: HTMLElement;
+    /** Required chart modules that failed presence checks; bounded IDs only. */
+    __TALARIA_DEGRADED_MODE__?: {
+      active: boolean;
+      degradedModules: string[];
+    };
+    __TALARIA_LOADED_MODULES__?: Array<{
+      module: string;
+      version: string;
+      class: string;
+      status: string;
+    }>;
   }
 }
 

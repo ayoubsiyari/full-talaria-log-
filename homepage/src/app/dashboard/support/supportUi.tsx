@@ -35,9 +35,9 @@ export function SupportCategoryBadge({ category }: { category: string }) {
   return <span className={`support-cat-badge ${css}`}>{supportCategoryLabel(category)}</span>;
 }
 
-export function buildSupportContext(): Record<string, string> {
+export function buildSupportContext(): Record<string, string | string[]> {
   if (typeof window === "undefined") return {};
-  const ctx: Record<string, string> = {
+  const ctx: Record<string, string | string[]> = {
     app: "talaria-dashboard",
     url: window.location.href.slice(0, 500),
   };
@@ -45,6 +45,17 @@ export function buildSupportContext(): Record<string, string> {
     ctx.user_agent = navigator.userAgent.slice(0, 200);
   } catch {
     /* ignore */
+  }
+  const boundedId = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+  try {
+    const values = window.__TALARIA_DEGRADED_MODE__?.degradedModules;
+    ctx.degradedModules = Array.isArray(values)
+      ? [...new Set(values.filter((value): value is string =>
+          typeof value === "string" && boundedId.test(value)
+        ))].slice(0, 32)
+      : [];
+  } catch {
+    ctx.degradedModules = [];
   }
   return ctx;
 }
