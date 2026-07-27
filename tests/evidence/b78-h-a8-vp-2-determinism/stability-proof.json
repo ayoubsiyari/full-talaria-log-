@@ -1,0 +1,398 @@
+{
+  "schema": "talaria.h-a8-vp-2-determinism-proof/v1",
+  "pass": true,
+  "stableSignature": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+  "repetitions": {
+    "b75": 10,
+    "b77": 10,
+    "b78": 10,
+    "total": 30
+  },
+  "products": {
+    "b75": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+    "b77": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+    "b78": "prepared B78 working tree"
+  },
+  "pinnedEnvironment": {
+    "browserVersion": "Chrome/148.0.7778.97",
+    "viewport": {
+      "width": 1440,
+      "height": 960,
+      "deviceScaleFactor": 1
+    },
+    "killSwitchInputs": false,
+    "fixedSyntheticNowMs": 1785150000000,
+    "freshBrowserAndServerPerRun": true
+  },
+  "correctedHarness": {
+    "correctedScenarioSha256": "d18e5d4342eaca3f1360f71c54d2fbf9f2b152e8b13a744349bea21a8811e16a",
+    "signatureModuleSha256": "0f9fea76e60dddbce64d3382d7a3801bde1654281b2474c4ce6aaa3c4b84e6e5"
+  },
+  "failurePoint": [
+    "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+  ],
+  "normalizedSemanticRecord": {
+    "schema": "talaria.h-a8-vp-2-semantic/v1",
+    "scenario": "H-A8-VP-2",
+    "assertions": [
+      {
+        "id": "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "passed": false
+      },
+      {
+        "id": "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag",
+        "passed": true
+      }
+    ],
+    "thresholds": {
+      "barMove": 0.5,
+      "priceMove": 0.00001,
+      "barMatch": 0.05,
+      "priceMatch": 0.00001
+    },
+    "dragCheckpoint": {
+      "before": {
+        "barIndex": 614,
+        "price": 1.10963,
+        "type": "anchored-volume-profile"
+      },
+      "after": {
+        "barIndex": 614,
+        "price": 1.10963,
+        "type": "anchored-volume-profile"
+      }
+    },
+    "recoveryCheckpoint": {
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865,
+        "type": "anchored-volume-profile"
+      },
+      "coordinates": {
+        "anchorBar": 614,
+        "anchorPrice": 1.10865,
+        "inputCount": 2
+      }
+    }
+  },
+  "excludedVolatileFields": [
+    "drawing UUID",
+    "wall-clock timestamps",
+    "server port",
+    "performance.now",
+    "requestAnimationFrame/event number"
+  ],
+  "rawArtifactsAllDifferent": true,
+  "mutationTests": {
+    "command": "node --test chart v 1.4/chart/multichart-prod/harness/h-a8-vp-2-semantic-signature.test.mjs",
+    "expectedTests": 6,
+    "rejects": [
+      "assertion identifier",
+      "failure point",
+      "drag geometry value",
+      "recovery coordinate value"
+    ]
+  },
+  "rows": [
+    {
+      "file": "b75-run-1.json",
+      "product": "b75",
+      "run": 1,
+      "rawSha256": "5688e85d343c9c6664e3ea4c1c8c55c96917190f45451b02aa07127c50c1a0c3",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-2.json",
+      "product": "b75",
+      "run": 2,
+      "rawSha256": "896b1f1cd36583c51668ebd6ac9d50364fb4d41714a31c9b6dce38ddd0cfe316",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-3.json",
+      "product": "b75",
+      "run": 3,
+      "rawSha256": "9ae46e8199b3c9165af07a2556c499b1452b9efbc526421e7a2cf7c93fbe44e4",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-4.json",
+      "product": "b75",
+      "run": 4,
+      "rawSha256": "698a90a242130331474ac1b65da8776c71cf12cf7a913a26b4e43b0b05eea36d",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-5.json",
+      "product": "b75",
+      "run": 5,
+      "rawSha256": "512f40e95c34f0a0c73a1e57deff5aef383b852ee7fba4b453e3f581dbc23c2f",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-6.json",
+      "product": "b75",
+      "run": 6,
+      "rawSha256": "f237038b0c307dae11d4d76ccd696d0c85a73bef481b5562ed3d3a3ebd76c022",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-7.json",
+      "product": "b75",
+      "run": 7,
+      "rawSha256": "51ac47f3cad6c42cfedfb609550e909d681a1cc5edab36724205291ec3d42ec4",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-8.json",
+      "product": "b75",
+      "run": 8,
+      "rawSha256": "a13faa7e7f51882ed9958fd69431e8fd94af2e25be4a937944c3ac534bf2a934",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-9.json",
+      "product": "b75",
+      "run": 9,
+      "rawSha256": "dc6b23c5e73fe80f0ce4a64b1e9810a9f70e217c5bac044fdb2ada4adb95123a",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b75-run-10.json",
+      "product": "b75",
+      "run": 10,
+      "rawSha256": "1ed7f71520dc90385d5f7b683ba73f670964bc3c74841ffb97458870b5532be8",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-1.json",
+      "product": "b77",
+      "run": 1,
+      "rawSha256": "c7fbfad31bc758db4e53f481f7f0eeae4c3b76c58f2ec24982f710a0db469fff",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-2.json",
+      "product": "b77",
+      "run": 2,
+      "rawSha256": "aa7e007bb454a5264da3935be3c08fba4083de121f40717752c96c90dd54c487",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-3.json",
+      "product": "b77",
+      "run": 3,
+      "rawSha256": "857439695d1340dcd51ef274db2907598221556fbc66aa4207e719cce161e7bb",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-4.json",
+      "product": "b77",
+      "run": 4,
+      "rawSha256": "a2f55f7c9d69caf535dc62eddb98b84032dcf9d617319f3a80a4254909136e33",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-5.json",
+      "product": "b77",
+      "run": 5,
+      "rawSha256": "e11e1c1d3f173fe2883159edc7f8a7ea68e5cdc596b72400626d309e7ddd0c48",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-6.json",
+      "product": "b77",
+      "run": 6,
+      "rawSha256": "cab41afa1a16c45ad1d17785db05113c31efb237f347dc524b9ccdfc65ac64ac",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-7.json",
+      "product": "b77",
+      "run": 7,
+      "rawSha256": "ca90c514d6880b6665ce0f1cf933d892fa8e0e22c7d53e51e6dcb2c5ada6420b",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-8.json",
+      "product": "b77",
+      "run": 8,
+      "rawSha256": "9ea238506714a9210944ec57d497671983abac7e4e09e679710c61ef9c928af8",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-9.json",
+      "product": "b77",
+      "run": 9,
+      "rawSha256": "fd99add5ca1c1837703c87f905340bde2defaa8e608896aefa2c6d4cfc0fb957",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b77-run-10.json",
+      "product": "b77",
+      "run": 10,
+      "rawSha256": "4904f8c98a1fe6100091b5146dde5eb4eb8af7f1e08a3901c322fe6c9b89d8cd",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-1.json",
+      "product": "b78",
+      "run": 1,
+      "rawSha256": "8a385a2ad76041bc251a338c1df55f23b965fbf6bda50c9645f3966591b2b75a",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-2.json",
+      "product": "b78",
+      "run": 2,
+      "rawSha256": "446595c31ff5ab525b18c99647ef66c88e34a9873638c1e14264d9ddfe68da12",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-3.json",
+      "product": "b78",
+      "run": 3,
+      "rawSha256": "9e9dd62900cac270480bc0fb866133069acd70d348f40c7b283631e588f714a2",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-4.json",
+      "product": "b78",
+      "run": 4,
+      "rawSha256": "a79ed54f653c97bdd2e274a0dc9a7ce0091436a9b59d87070360cc7638488da4",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-5.json",
+      "product": "b78",
+      "run": 5,
+      "rawSha256": "f069fc61e97f6d750bb88351dc892a58cc6a05aabf9578f29771a902b19cc295",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-6.json",
+      "product": "b78",
+      "run": 6,
+      "rawSha256": "26aca8bcbc16adb9352983343f2a3c869c65346d40e48fb6d5d82c81dbee7258",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-7.json",
+      "product": "b78",
+      "run": 7,
+      "rawSha256": "b0d2dafcc2ff85cc7b8b4b89a4d8a81112b634fef158bd033e76d278f3d8432e",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-8.json",
+      "product": "b78",
+      "run": 8,
+      "rawSha256": "ad355de30324a2b42aa7ad0872b8a37539c95362aa7a1370d589a0cee6cf61e9",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-9.json",
+      "product": "b78",
+      "run": 9,
+      "rawSha256": "f04ed8cd69694e92b21fd52cf0fe632b8f3e33918c16e322f3b8a723ac8ff0b2",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    },
+    {
+      "file": "b78-run-10.json",
+      "product": "b78",
+      "run": 10,
+      "rawSha256": "24d673a85ead5307c19e95200d4096e2a7c151c09ba4a7527b3ba56d179d16dc",
+      "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "failurePoints": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+      ]
+    }
+  ]
+}

@@ -47,7 +47,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // harness/ -> multichart-prod/ (..) -> chart/ (../..): the canonical tree root.
-const CHART_ROOT = path.resolve(__dirname, '..', '..');
+const CHART_ROOT = process.env.TALARIA_HARNESS_CHART_ROOT
+  ? path.resolve(process.env.TALARIA_HARNESS_CHART_ROOT)
+  : path.resolve(__dirname, '..', '..');
 // Diagnostic builds may be emitted outside the repo so validation never stamps
 // or overwrites canonical dist-v9. Default serving remains byte-for-byte unchanged.
 const DIST_V9_OVERRIDE_ROOT = process.env.REACT_PARITY_DIST_DIR
@@ -85,6 +87,13 @@ export function normalizeDeployedOrigin(raw = process.env.M19_DEPLOYED_ORIGIN) {
 const DEPLOYED_ORIGIN = normalizeDeployedOrigin();
 
 const MIN_MS = 60_000;
+const FIXED_SYNTH_NOW_MS = process.env.TALARIA_HARNESS_FIXED_NOW_MS == null
+  ? null
+  : Number(process.env.TALARIA_HARNESS_FIXED_NOW_MS);
+if (FIXED_SYNTH_NOW_MS != null && !Number.isFinite(FIXED_SYNTH_NOW_MS)) {
+  throw new Error('TALARIA_HARNESS_FIXED_NOW_MS must be a finite epoch-millisecond value');
+}
+const syntheticNow = () => FIXED_SYNTH_NOW_MS ?? Date.now();
 const SYNTH_DAYS = 90;
 const SYNTH_COUNT = SYNTH_DAYS * 24 * 60; // 129,600 one-minute candles
 
@@ -148,7 +157,7 @@ function getCandles(fileId) {
   if (!meta) return null;
   const rnd = mulberry32(1000 + fileId * 7919);
   const count = (Number.isFinite(meta.synthDays) ? meta.synthDays : SYNTH_DAYS) * 24 * 60;
-  const endMinute = Math.floor(Date.now() / MIN_MS) * MIN_MS;
+  const endMinute = Math.floor(syntheticNow() / MIN_MS) * MIN_MS;
   const startMs = endMinute - (count - 1) * MIN_MS;
   const factor = Math.pow(10, meta.decimals);
   const round = (x) => Math.round(x * factor) / factor;
@@ -656,7 +665,7 @@ function hostPageHtml(query) {
   };
   const cols = panels === 1 ? 1 : 2;
   const rows = panels <= 2 ? 1 : 2;
-  const buildId = '20260727b77';
+  const buildId = '20260727b78';
 
   const cfg = {
     pair, panels, tf, ids, iframeIds, fileIds, hostFileId, cols, rows, mcRestore,

@@ -69,6 +69,7 @@ import {
   countV9LayerSelectedRows,
   countV9LayerInventoryRows,
 } from './react-parity-lib.mjs';
+import { hA8Vp2SemanticSignature } from './h-a8-vp-2-semantic-signature.mjs';
 import {
   chartTarget,
   placeTool,
@@ -911,6 +912,54 @@ async function hA8Vp1(ctx) {
 }
 
 // ── H-A8-VP-2 — Anchored VP coord tab ↔ canvas sync (TAL-01664) ─────────
+async function waitForStableHA8Geometry(page, panelId, drawingId, {
+  timeoutMs = 2000,
+  stableReads = 3,
+  intervalMs = 50,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    const current = await readAvVpAnchorGeometryProbe(page, panelId, drawingId);
+    if (!current.ok) throw new Error(`H-A8-VP-2 geometry checkpoint unavailable: ${current.reason || 'unknown'}`);
+    const key = `${current.barIndex}|${current.price}|${current.type}`;
+    stable = key === previous ? stable + 1 : 1;
+    previous = key;
+    if (stable >= stableReads) return current;
+    await sleep(intervalMs);
+  }
+  throw new Error('H-A8-VP-2 geometry checkpoint did not settle');
+}
+
+async function waitForHA8RecoveryCheckpoint(page, panelId, drawingId, {
+  timeoutMs = 2500,
+  stableReads = 3,
+  intervalMs = 50,
+} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    const geometry = await readAvVpAnchorGeometryProbe(page, panelId, drawingId);
+    const coordinates = await readAvVpCoordTabFields(page);
+    const synchronized = geometry.ok && coordinates.ok
+      && Math.abs(parseFloat(coordinates.anchorBar) - geometry.barIndex) <= 0.05
+      && Math.abs(parseFloat(coordinates.anchorPrice) - geometry.price) <= 1e-5;
+    if (synchronized) {
+      const key = `${geometry.barIndex}|${geometry.price}|${coordinates.anchorBar}|${coordinates.anchorPrice}`;
+      stable = key === previous ? stable + 1 : 1;
+      previous = key;
+      if (stable >= stableReads) return { geometry, coordinates };
+    } else {
+      previous = null;
+      stable = 0;
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error('H-A8-VP-2 recovery checkpoint did not settle');
+}
+
 async function hA8Vp2(ctx) {
   return runWithReact(ctx, async (boot) => {
     const { page } = boot;
@@ -964,25 +1013,38 @@ async function hA8Vp2(ctx) {
       await page.mouse.down();
       await dragPointerPath(page, handle.x, handle.y, handle.x - 70, handle.y + 18, { steps: 12 });
       await page.mouse.up();
-      await sleep(250);
     }
-    const geo2 = await readAvVpAnchorGeometryProbe(page, panelId, placed.id);
+    const geo2 = await waitForStableHA8Geometry(page, panelId, placed.id);
     let fields2 = await readAvVpCoordTabFields(page);
     if (!fields2.ok && fields2.reason === 'panel closed') {
       await openAvVolumeProfileSettings(page, panelId, placed.id);
       await clickAvSettingsTab(page, 'coordinates');
-      await sleep(200);
-      fields2 = await readAvVpCoordTabFields(page);
     }
-    const moved = geo2.ok && (Math.abs(geo2.barIndex - geo1.barIndex) >= 0.5
-      || Math.abs(geo2.price - geo1.price) >= 1e-5);
+    const recovery = await waitForHA8RecoveryCheckpoint(page, panelId, placed.id);
+    fields2 = recovery.coordinates;
+    const recoveryGeo = recovery.geometry;
+    const barMove = 0.5;
+    const priceMove = 1e-5;
+    const moved = geo2.ok && (Math.abs(geo2.barIndex - geo1.barIndex) >= barMove
+      || Math.abs(geo2.price - geo1.price) >= priceMove);
     checks.check('H-A8-VP-2 CORE-B: canvas drag moves anchor', moved, JSON.stringify({ geo1, geo2 }));
     const priceTick = 1e-5;
+    const coordinatesTrack = fields2.ok && recoveryGeo.ok
+      && Math.abs(parseFloat(fields2.anchorBar) - recoveryGeo.barIndex) <= 0.05
+      && Math.abs(parseFloat(fields2.anchorPrice) - recoveryGeo.price) <= priceTick;
     checks.check('H-A8-VP-2 CORE-B′: coord tab tracks canvas drag',
-      fields2.ok && geo2.ok
-        && Math.abs(parseFloat(fields2.anchorBar) - geo2.barIndex) <= 0.05
-        && Math.abs(parseFloat(fields2.anchorPrice) - geo2.price) <= priceTick,
-      JSON.stringify({ fields1, fields2, geo2 }));
+      coordinatesTrack, JSON.stringify({ fields1, fields2, recoveryGeo }));
+
+    const semanticSignature = hA8Vp2SemanticSignature({
+      assertions: [
+        { id: 'H-A8-VP-2 CORE-B: canvas drag moves anchor', passed: moved },
+        { id: 'H-A8-VP-2 CORE-B′: coord tab tracks canvas drag', passed: coordinatesTrack },
+      ],
+      thresholds: { barMove, priceMove, barMatch: 0.05, priceMatch: priceTick },
+      dragCheckpoint: { before: geo1, after: geo2 },
+      recoveryCheckpoint: { geometry: recoveryGeo, coordinates: fields2 },
+    });
+    console.log(`H-A8-VP-2 SEMANTIC-SIGNATURE ${semanticSignature.sha256} ${semanticSignature.canonical}`);
 
     return checks;
   });

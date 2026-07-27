@@ -1,0 +1,79 @@
+{
+  "schema": "talaria.h-a8-vp-2-corrected-run/v1",
+  "product": "b78",
+  "productCommit": "prepared-b78-working-tree",
+  "buildId": "20260727b78",
+  "run": 2,
+  "port": 8952,
+  "startedAt": "2026-07-27T14:14:42.809Z",
+  "endedAt": "2026-07-27T14:15:03.247Z",
+  "browserVersion": "Chrome/148.0.7778.97",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+  "viewport": {
+    "width": 1440,
+    "height": 960,
+    "deviceScaleFactor": 1
+  },
+  "killSwitchInputs": false,
+  "fixedSyntheticNowMs": 1785150000000,
+  "checks": [
+    {
+      "label": "H-A8-VP-2 setup: placed",
+      "ok": true,
+      "detail": "8a3fc57e-6431-401e-8caf-1775a9a63237"
+    },
+    {
+      "label": "H-A8-VP-2 setup: settings open actuation",
+      "ok": true,
+      "detail": "{\"ok\":true,\"method\":\"editDrawing-fallback\",\"open\":{\"ok\":true,\"hasLabelsRow\":true,\"hasCoordinatesTab\":true,\"snippet\":\"Anchored Volume Profile\\nStyle\\nInputs\\nCoordinates\\nVisibility\\nValues\\nWidth (% of box)\\n▲\\n▼\\n%\\nPlacement\\nLeft\\nZone Background\\n85%\\nUp Volume\\nDown Volume\\nValue Area Up\\nValue Area Down\\nPOC\\nVAH\\nVAL\\nDeveloping \"}}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: settings open",
+      "ok": true,
+      "detail": "{\"ok\":true,\"hasLabelsRow\":true,\"hasCoordinatesTab\":true,\"snippet\":\"Anchored Volume Profile\\nStyle\\nInputs\\nCoordinates\\nVisibility\\nValues\\nWidth (% of box)\\n▲\\n▼\\n%\\nPlacement\\nLeft\\nZone Background\\n85%\\nUp Volume\\nDown Volume\\nValue Area Up\\nValue Area Down\\nPOC\\nVAH\\nVAL\\nDeveloping \"}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: coord fields readable",
+      "ok": true,
+      "detail": "{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"604\",\"inputCount\":2}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: initial tab/geo bar match",
+      "ok": true,
+      "detail": "tab=604 geo=604"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-A: coord tab Bar +10 moves anchor",
+      "ok": true,
+      "detail": "dBar=10 geo1={\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-A′: tab Bar field matches geometry",
+      "ok": true,
+      "detail": "{\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: anchor handle resolved",
+      "ok": true,
+      "detail": "{\"ok\":true,\"x\":468,\"y\":664,\"source\":\"handle\"}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+      "ok": false,
+      "detail": "{\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag",
+      "ok": true,
+      "detail": "{\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"recoveryGeo\":{\"ok\":true,\"barIndex\":614,\"price\":1.10865,\"priceFormatted\":\"1.10865\",\"type\":\"anchored-volume-profile\"}}"
+    }
+  ],
+  "failurePoints": [
+    "H-A8-VP-2 CORE-B: canvas drag moves anchor"
+  ],
+  "semanticSignatureSha256": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+  "semanticCanonical": "{\"schema\":\"talaria.h-a8-vp-2-semantic/v1\",\"scenario\":\"H-A8-VP-2\",\"assertions\":[{\"id\":\"H-A8-VP-2 CORE-B: canvas drag moves anchor\",\"passed\":false},{\"id\":\"H-A8-VP-2 CORE-B′: coord tab tracks canvas drag\",\"passed\":true}],\"thresholds\":{\"barMove\":0.5,\"priceMove\":0.00001,\"barMatch\":0.05,\"priceMatch\":0.00001},\"dragCheckpoint\":{\"before\":{\"barIndex\":614,\"price\":1.10963,\"type\":\"anchored-volume-profile\"},\"after\":{\"barIndex\":614,\"price\":1.10963,\"type\":\"anchored-volume-profile\"}},\"recoveryCheckpoint\":{\"geometry\":{\"barIndex\":614,\"price\":1.10865,\"type\":\"anchored-volume-profile\"},\"coordinates\":{\"anchorBar\":614,\"anchorPrice\":1.10865,\"inputCount\":2}}}",
+  "correctedScenarioSha256": "d18e5d4342eaca3f1360f71c54d2fbf9f2b152e8b13a744349bea21a8811e16a",
+  "correctedSignatureModuleSha256": "0f9fea76e60dddbce64d3382d7a3801bde1654281b2474c4ce6aaa3c4b84e6e5",
+  "error": null
+}
