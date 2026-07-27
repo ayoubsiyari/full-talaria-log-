@@ -1,0 +1,13 @@
+{
+  "schema": "talaria.test2-seed/v1",
+  "qaOnly": true,
+  "accountIds": ["qa-test2-operator", "qa-test2-soak"],
+  "sizeBytes": 0,
+  "symbols": [],
+  "overlappingOneMinuteBars": 0,
+  "cells": {
+    "mixed-2-predictive": {"loaded": false, "ran": false, "evidence": null},
+    "mixed-4-characterization": {"loaded": false, "ran": false, "evidence": null}
+  },
+  "status": "BLOCKED_UNTIL_HOST_SEED_EVIDENCE"
+}
