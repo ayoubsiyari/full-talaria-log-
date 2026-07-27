@@ -1,4 +1,5 @@
 const finite = (value) => Number.isFinite(Number(value));
+const same = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 
 export const RED = Object.freeze({
   FORMING_STATE_OMITTED: 'RED_FORMING_TICK_STATE_OMITTED',
@@ -11,6 +12,17 @@ export function classifyReplayRestoreCell(cell) {
   if (!cell?.before || !cell?.after) return { verdict: 'BLOCKED', reason: 'missing snapshots' };
   const before = cell.before;
   const after = cell.after;
+  const scope = {
+    expectedSessionId: cell.scope?.expectedSessionId ?? null,
+    observedSessionId: cell.scope?.observedSessionId ?? null,
+    ownerValidated: cell.scope?.ownerValidated ?? null,
+  };
+  if (scope.expectedSessionId != null && (
+    String(scope.observedSessionId) !== String(scope.expectedSessionId)
+    || scope.ownerValidated !== true
+  )) {
+    return { verdict: 'BLOCKED_SCOPE_MISMATCH', scope };
+  }
   const secondsLost = finite(before.rawTickTimestamp) && finite(after.rawTickTimestamp)
     ? Math.max(0, (Number(before.rawTickTimestamp) - Number(after.rawTickTimestamp)) / 1000)
     : null;
@@ -31,28 +43,52 @@ export function classifyReplayRestoreCell(cell) {
     && finite(after.rawTickTimestamp)
     && Number(before.rawTickTimestamp) === Number(after.rawTickTimestamp);
   const exactSubstep = Number(before.tickProgress) === Number(after.tickProgress);
-  const exactForming = JSON.stringify(before.formingCandle) === JSON.stringify(after.formingCandle);
+  const exactTickElapsed = Number(before.tickElapsedMs) === Number(after.tickElapsedMs);
+  const exactForming = same(before.formingCandle, after.formingCandle);
   const exactCommitted = Number(before.committedCandleIndex) === Number(after.committedCandleIndex);
+  const exactMode = before.replayMode === after.replayMode;
+  const exactPlayPause = before.playPauseState === after.playPauseState;
+  const exactCadence = same(before.cadence ?? before.loopKind, after.cadence ?? after.loopKind);
+  const exactFormingOhlc = same(
+    before.formingCandle && {
+      open: before.formingCandle.open, high: before.formingCandle.high,
+      low: before.formingCandle.low, close: before.formingCandle.close,
+    },
+    after.formingCandle && {
+      open: after.formingCandle.open, high: after.formingCandle.high,
+      low: after.formingCandle.low, close: after.formingCandle.close,
+    },
+  );
+  const exact = {
+    mode: exactMode,
+    playPause: exactPlayPause,
+    cadence: exactCadence,
+    rawTick: exactTick,
+    tickElapsed: exactTickElapsed,
+    substep: exactSubstep,
+    formingCandle: exactForming,
+    formingOhlc: exactFormingOhlc,
+    committedIndex: exactCommitted,
+  };
 
   if (cell.kind === 'candle-mode-control') {
     return {
-      // currentIndex is raw-timeframe-relative and may legitimately differ after 1h
-      // hydrate; the wall-clock candle playhead is the cross-refresh invariant.
-      verdict: exactTick ? 'GREEN_EXACT_CANDLE_CONTROL' : RED.CANDLE_CONTROL_RESTORE,
-      secondsLost,
+      verdict: exactTick && exactMode && exactPlayPause
+        ? 'GREEN_EXACT_CANDLE_CONTROL' : RED.CANDLE_CONTROL_RESTORE,
+      exact, secondsLost, scope,
     };
   }
   if (cell.kind === 'playing-refresh') {
     return {
       verdict: exactTick ? 'GREEN_EXACT_PLAYHEAD' : RED.PLAYING_CHECKPOINT_STALE,
-      secondsLost,
+      exact, secondsLost, scope,
     };
   }
   return {
-    verdict: exactTick && exactSubstep && exactForming && exactCommitted
+    verdict: exactTick && exactTickElapsed && exactSubstep && exactForming
+      && exactFormingOhlc && exactCommitted && exactMode
       ? 'GREEN_EXACT_FORMING_RESTORE' : RED.FORMING_STATE_OMITTED,
-    exact: { rawTick: exactTick, substep: exactSubstep, formingCandle: exactForming, committedIndex: exactCommitted },
-    secondsLost,
+    exact, secondsLost, scope,
   };
 }
 

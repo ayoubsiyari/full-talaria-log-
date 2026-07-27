@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { summarizeReplayRestoreMatrix } from './b75-po-v4-replay-restore-oracle.mjs';
 
@@ -12,6 +13,15 @@ const email = process.env.TEST_EMAIL;
 const password = process.env.TEST_PASSWORD;
 const sessionId = String(process.env.MC_RESTORE_SESSION_ID || '849');
 const expectedBuild = String(process.env.MC_RESTORE_EXPECTED_BUILD || '20260726b75');
+const allowCheckpointWrites = process.env.B75_ALLOW_QA_CHECKPOINT_WRITES === 'true';
+const qaSessionId = String(process.env.B75_QA_SESSION_ID || '');
+const checkpointWriteCap = Math.max(0, Number(process.env.B75_QA_CHECKPOINT_WRITE_CAP || 0));
+if (allowCheckpointWrites && (
+  !qaSessionId || qaSessionId !== sessionId
+  || !Number.isInteger(checkpointWriteCap) || checkpointWriteCap < 1
+)) {
+  throw new Error('write-enabled capture requires matching B75_QA_SESSION_ID and positive B75_QA_CHECKPOINT_WRITE_CAP');
+}
 const output = path.resolve(process.env.B75_PO_V4_EVIDENCE
   || path.join(os.tmpdir(), `b75-po-v4-replay-restore-${Date.now()}.json`));
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
@@ -23,8 +33,53 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--disable-extensions', '--no-first-run'],
 });
 const page = await browser.newPage();
+let ownerScopeValidated = false;
+let allowedCheckpointWriteCount = 0;
+const interceptedSessionStateRequests = [];
+await page.setRequestInterception(true);
+page.on('request', async (request) => {
+  const method = request.method().toUpperCase();
+  let pathname = '';
+  try { pathname = new URL(request.url()).pathname; } catch (_) {}
+  const match = pathname.match(/^\/api\/sessions\/([^/]+)\/state$/);
+  if (method !== 'PATCH' || !match) {
+    await request.continue().catch(() => {});
+    return;
+  }
+  const observedSessionId = decodeURIComponent(match[1]);
+  const bodyText = request.postData() || '';
+  let parsed = null;
+  try { parsed = JSON.parse(bodyText); } catch (_) {}
+  const exactScope = observedSessionId === qaSessionId;
+  const allowed = allowCheckpointWrites && ownerScopeValidated && exactScope
+    && allowedCheckpointWriteCount < checkpointWriteCap;
+  interceptedSessionStateRequests.push({
+    method,
+    endpoint: '/api/sessions/[qa-owner]/state',
+    observedScope: exactScope ? 'configured-qa-session' : 'unexpected-session',
+    ownerValidated: ownerScopeValidated,
+    payloadSha256: createHash('sha256').update(bodyText).digest('hex'),
+    payloadBytes: Buffer.byteLength(bodyText),
+    payloadCategories: parsed && typeof parsed === 'object' ? Object.keys(parsed).sort() : ['unparsed'],
+    stateCategories: parsed?.state && typeof parsed.state === 'object'
+      ? Object.keys(parsed.state).sort() : [],
+    disposition: allowed ? 'allowed-bounded-qa-write' : 'prevented',
+  });
+  if (allowed) {
+    allowedCheckpointWriteCount += 1;
+    await request.continue().catch(() => {});
+    return;
+  }
+  await request.respond({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, diagnosticWritePrevented: true }),
+  }).catch(() => {});
+});
 const evidence = {
-  evidenceClass: 'authenticated-session-849-owner-scoped-b75-po-v4-read-only-diagnostic',
+  evidenceClass: allowCheckpointWrites
+    ? 'authenticated-owner-scoped-b75-po-v4-bounded-qa-checkpoint-write-diagnostic'
+    : 'authenticated-owner-scoped-b75-po-v4-network-observe-write-prevented-diagnostic',
   generatedAt: new Date().toISOString(),
   expectedBuild,
   browserProfile: 'fresh-ephemeral',
@@ -33,11 +88,24 @@ const evidence = {
   writes: [],
   lifecycle: [],
   pageErrors: [],
+  networkPolicy: {
+    mode: allowCheckpointWrites ? 'explicit-bounded-qa-checkpoint-writes' : 'prevent-session-state-writes',
+    qaSessionId: qaSessionId ? 'qa-session-[configured]' : null,
+    checkpointWriteCap,
+  },
 };
 page.on('pageerror', (error) => evidence.pageErrors.push(String(error?.message || error).slice(0, 500)));
 
-await page.evaluateOnNewDocument(() => {
-  const probe = window.__poV4 = { writes: [], lifecycle: [] };
+await page.evaluateOnNewDocument(({ allowWrites, expectedQaSessionId, writeCap }) => {
+  const probe = window.__poV4 = {
+    writes: [], lifecycle: [], allowedWriteCount: 0, preventedWriteCount: 0,
+  };
+  const sha256 = async (text) => {
+    if (!crypto?.subtle) return null;
+    const bytes = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
+  };
   for (const type of ['pagehide', 'beforeunload', 'unload', 'pageshow', 'visibilitychange']) {
     const target = type === 'visibilitychange' ? document : window;
     target.addEventListener(type, () => probe.lifecycle.push({
@@ -48,14 +116,30 @@ await page.evaluateOnNewDocument(() => {
   window.fetch = async function observedFetch(input, init = {}) {
     const url = String(typeof input === 'string' ? input : input?.url || '');
     const method = String(init.method || 'GET').toUpperCase();
-    if (method === 'PATCH' && /\/api\/sessions\/[^/]+\/state/.test(url)) {
+    const match = new URL(url, location.href).pathname.match(/^\/api\/sessions\/([^/]+)\/state$/);
+    if (method === 'PATCH' && match) {
+      const bodyText = String(init.body || '');
       let parsed = null;
-      try { parsed = JSON.parse(String(init.body || '')); } catch (_) {}
+      try { parsed = JSON.parse(bodyText); } catch (_) {}
       const replay = parsed?.state?.replay || parsed?.replay || null;
-      probe.writes.push({
+      const observedSessionId = decodeURIComponent(match[1]);
+      const ownerValidated = sessionStorage.getItem('__b75PoV4OwnerSession') === observedSessionId;
+      const boundedQaWrite = allowWrites
+        && ownerValidated
+        && observedSessionId === expectedQaSessionId
+        && probe.allowedWriteCount < writeCap;
+      const record = {
         at: performance.now(),
         method,
-        path: new URL(url, location.href).pathname.replace(/\/sessions\/[^/]+/, '/sessions/[owner]'),
+        endpoint: '/api/sessions/[qa-owner]/state',
+        observedScope: observedSessionId === expectedQaSessionId ? 'configured-qa-session' : 'unexpected-session',
+        ownerValidated,
+        payloadSha256: await sha256(bodyText),
+        payloadBytes: new TextEncoder().encode(bodyText).byteLength,
+        payloadCategories: parsed && typeof parsed === 'object' ? Object.keys(parsed).sort() : ['unparsed'],
+        stateCategories: parsed?.state && typeof parsed.state === 'object'
+          ? Object.keys(parsed.state).sort() : [],
+        disposition: boundedQaWrite ? 'allowed-bounded-qa-write' : 'prevented',
         replay: replay && {
           keys: Object.keys(replay).sort(),
           replayTimestamp: replay.replayTimestamp ?? null,
@@ -67,10 +151,17 @@ await page.evaluateOnNewDocument(() => {
           hasTickProgress: Object.hasOwn(replay, 'tickProgress'),
           hasTickPath: Object.hasOwn(replay, 'tickPath'),
         },
-      });
+      };
+      probe.writes.push(record);
+      if (boundedQaWrite) probe.allowedWriteCount += 1;
+      else probe.preventedWriteCount += 1;
     }
     return originalFetch.apply(this, arguments);
   };
+}, {
+  allowWrites: allowCheckpointWrites,
+  expectedQaSessionId: qaSessionId,
+  writeCap: checkpointWriteCap,
 });
 
 const chartUrl = `${origin}/chart/dist-v9/index.html?mode=backtest&sessionId=${encodeURIComponent(sessionId)}`;
@@ -222,6 +313,8 @@ async function addCell(kind, action) {
 
 try {
   evidence.preflight = await ownerPreflight();
+  ownerScopeValidated = true;
+  await page.evaluate((sid) => sessionStorage.setItem('__b75PoV4OwnerSession', sid), sessionId);
   await page.goto(chartUrl, { waitUntil: 'domcontentloaded', timeout: 120_000 });
   await waitReady();
   await setOneHour();
@@ -283,10 +376,7 @@ try {
 
   evidence.matrix = summarizeReplayRestoreMatrix(evidence.cells);
   evidence.verdict = evidence.matrix.verdict;
-  evidence.writes = evidence.cells.flatMap((cell) => [
-    ...(cell.before?.persistence?.writes || []),
-    ...(cell.after?.persistence?.writes || []),
-  ]);
+  evidence.writes = interceptedSessionStateRequests;
   evidence.lifecycle = evidence.cells.flatMap((cell) => [
     ...(cell.before?.persistence?.lifecycle || []),
     ...(cell.after?.persistence?.lifecycle || []),

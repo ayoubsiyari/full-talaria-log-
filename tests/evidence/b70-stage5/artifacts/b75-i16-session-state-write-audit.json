@@ -1,0 +1,90 @@
+{
+  "incident": "I16",
+  "classification": "diagnostic-harness-issued-unacknowledged-session-state-writes",
+  "auditGeneratedAt": "2026-07-27T09:08:00Z",
+  "externalWritesIssuedDuringAudit": 0,
+  "affectedRoute": {
+    "method": "PATCH",
+    "exactEndpoint": "/api/sessions/849/state",
+    "sanitizedEndpoint": "/api/sessions/[qa-owner]/state",
+    "observedSessionId": "849",
+    "ownerScopeValidatedAtRunTime": true,
+    "qaClassificationProven": false
+  },
+  "runAccounting": {
+    "blockedAuthenticatedRun": {
+      "generatedAt": "2026-07-27T09:01:29.215Z",
+      "patchRequests": 0
+    },
+    "successfulAuthenticatedRuns": 3,
+    "perSuccessfulRun": {
+      "flattenedArtifactEntries": 29,
+      "uniqueObservedPatchRequests": 14,
+      "replayPayloadClassified": 5,
+      "payloadCategoryOpaque": 9
+    },
+    "accountedPatchRequestsAcrossSuccessfulRuns": 42,
+    "replayPayloadClassifiedAcrossRuns": 15,
+    "payloadCategoryOpaqueAcrossRuns": 27,
+    "countingCaveat": "The top-level evidence.writes array flattened cumulative page snapshots. Its 29 entries are not 29 distinct network requests; exact duplicate records reduce to 14 requests per successful run."
+  },
+  "knownReplayPayload": {
+    "keys": [
+      "currentIndex",
+      "dashboard",
+      "isActive",
+      "playbackMode",
+      "replayTimestamp",
+      "speed",
+      "tickElapsedMs",
+      "timeframe"
+    ],
+    "omittedFromCheckpoint": [
+      "animatingCandle",
+      "tickProgress",
+      "tickPath",
+      "isPlaying"
+    ],
+    "cause": "Normal product replay persistence triggered by PO-equivalent play, pause, refresh, exit and re-entry actions."
+  },
+  "unknownPayloads": {
+    "requestCountAcrossRuns": 27,
+    "reason": "The original observer retained only replay subobjects. For requests without a replay subobject it stored replay:null and discarded the full payload.",
+    "exactPayloadHashesAvailable": false,
+    "payloadCategoriesAvailable": false,
+    "safeInference": "They targeted the same session-state PATCH endpoint and were emitted during page initialization/refresh or replay actions, but their fields cannot be reconstructed."
+  },
+  "stateComparison": {
+    "preRunServerSnapshotAvailable": false,
+    "postRunServerSnapshotFetchedDuringIncidentAudit": false,
+    "exactBeforeAfterComparisonPossible": false,
+    "retainedRuntimeEvidence": "Replay checkpoint values and visible replay state only; not a complete server state snapshot."
+  },
+  "scopeConclusion": {
+    "otherSessionEndpointObserved": false,
+    "customerOrNonQaRowExcluded": false,
+    "reason": "Only session 849 was addressed and ownership was validated, but retained evidence does not establish that session 849 is a designated disposable QA row."
+  },
+  "rollback": {
+    "attempted": false,
+    "status": "BLOCKED",
+    "blocker": "No retained exact pre-run session-state snapshot or payload hashes exist. Current state was not fetched because the incident order forbids further authenticated writes and login itself uses POST. Any rollback value would be a guess."
+  },
+  "futureCapturePolicy": {
+    "default": "Observe and hash attempted session-state payloads, then return a synthetic success without sending the PATCH.",
+    "writeEnabledMode": "Requires B75_ALLOW_QA_CHECKPOINT_WRITES=true, exact matching B75_QA_SESSION_ID, owner validation and a positive hard B75_QA_CHECKPOINT_WRITE_CAP.",
+    "evidenceFields": [
+      "payloadSha256",
+      "payloadBytes",
+      "payloadCategories",
+      "stateCategories",
+      "scope",
+      "disposition"
+    ]
+  },
+  "sanitization": {
+    "credentialsRetained": false,
+    "authCookieNamesRetained": false,
+    "customerDataRetained": false
+  }
+}
