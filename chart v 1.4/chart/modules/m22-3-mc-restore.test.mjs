@@ -16,18 +16,32 @@ const productGridSource = fs.readFileSync(
   new URL('../../talaria-design/src/MultichartGrid.jsx', import.meta.url),
   'utf8',
 );
+const productShellSource = fs.readFileSync(
+  new URL('../../talaria-design/src/TalariaV8bLive.jsx', import.meta.url),
+  'utf8',
+);
+const productIndexSource = fs.readFileSync(
+  new URL('../dist-v9/index.html', import.meta.url),
+  'utf8',
+);
 
-function makeRuntime({ enabled, disabled = false, panels = [], persisted = true } = {}) {
+function makeRuntime({
+  enabled, disabled = false, panels = [], persisted = true,
+  ownerId = 'user-a', savedOwnerId = ownerId, sessionId = '827',
+} = {}) {
   const listeners = new Map();
   const logs = [];
   const root = {
     __TALARIA_DISABLE_MC_RESTORE_V1: disabled,
+    __talariaUserId: ownerId,
     location: { origin: 'https://talaria.test' },
     MultichartGuards: {},
     userStorage: {
-      getItem(key) {
+      getScopedItem(key) {
         return persisted && key === 'chart_panel_state'
-          ? JSON.stringify({ layout: '3', sessionId: '827', panels })
+          ? JSON.stringify({
+            ownerId: savedOwnerId, layout: '3', sessionId, panels,
+          })
           : null;
       },
     },
@@ -155,6 +169,46 @@ test('missing user-scoped persistence fails closed without host storage fallback
   manager.dispose();
 });
 
+test('logout then user switch cannot restore the previous owner identity', () => {
+  const { root, manager } = makeRuntime({
+    ownerId: 'user-a',
+    savedOwnerId: 'user-a',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '677', 'XAUUSD')],
+  });
+  manager.beginMcRestoreGeneration();
+  assert.equal(manager._mcRestoreAssignmentForPanel('B').fileId, '677');
+  root.__talariaUserId = 'user-b';
+  manager.beginMcRestoreGeneration();
+  assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
+  manager.dispose();
+});
+
+test('private window without authenticated owner fails closed', () => {
+  const { manager } = makeRuntime({
+    ownerId: null,
+    savedOwnerId: 'user-a',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  manager.beginMcRestoreGeneration();
+  assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
+  manager.dispose();
+});
+
+test('cross-owner and malformed session identities fail closed', () => {
+  for (const options of [
+    { ownerId: 'user-b', savedOwnerId: 'user-a', sessionId: '827' },
+    { ownerId: 'user-a', savedOwnerId: 'user-a', sessionId: '' },
+  ]) {
+    const { manager } = makeRuntime({
+      ...options,
+      panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+    });
+    manager.beginMcRestoreGeneration();
+    assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
+    manager.dispose();
+  }
+});
+
 test('actual product boot explicitly enables restore unless killed', () => {
   assert.match(productGridSource,
     /if \(window\.__TALARIA_ENABLE_MC_RESTORE_V1 === undefined\)[\s\S]*window\.__TALARIA_DISABLE_MC_RESTORE_V1 !== true/);
@@ -162,6 +216,12 @@ test('actual product boot explicitly enables restore unless killed', () => {
     /global\.__TALARIA_DISABLE_MC_RESTORE_V1 !== true[\s\S]*global\.__TALARIA_ENABLE_MC_RESTORE_V1 !== false/);
   assert.doesNotMatch(managerSource, /localStorage\.getItem\('chart_panel_state'\)/);
   assert.doesNotMatch(managerSource, /sessionStorage\.getItem\('chart_panel_state'\)/);
+  assert.match(productShellSource, /storage\.getScopedItem\("chart_panel_state"\)/);
+  assert.doesNotMatch(productShellSource, /localStorage\.getItem\("chart_panel_state"\)/);
+  assert.doesNotMatch(productShellSource, /localStorage\.setItem\("chart_panel_state"/);
+  assert.doesNotMatch(productGridSource, /sessionStorage\.(?:getItem|setItem)\(mcPanelFilePersistStorageKey/);
+  assert.match(productIndexSource,
+    /if \(key === 'chart_panel_state'\) return this\.getScopedItem\(key\)/);
 });
 
 test('delayed host completion assigns once after duplicate bridge-ready', async () => {

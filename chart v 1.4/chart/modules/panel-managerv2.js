@@ -2425,6 +2425,9 @@ class PanelManager {
 
     _doSavePanelState() {
         try {
+            const ownerId = window.__talariaUserId == null
+                ? '' : String(window.__talariaUserId).trim();
+            if (!ownerId || !userStorage || typeof userStorage.setItem !== 'function') return;
             let sessionId = null;
             try {
                 const p = new URLSearchParams(window.location.search || '');
@@ -2432,6 +2435,7 @@ class PanelManager {
                 if (sid != null && String(sid).trim() !== '') sessionId = String(sid).trim();
             } catch (_e) { /* ignore */ }
             const state = {
+                ownerId,
                 layout: this.currentLayout,
                 selectedPanelIndex: this.selectedPanelIndex,
                 sessionId,
@@ -2456,9 +2460,15 @@ class PanelManager {
 
     loadPanelState() {
         try {
-            const raw = userStorage.getItem('chart_panel_state');
+            const ownerId = window.__talariaUserId == null
+                ? '' : String(window.__talariaUserId).trim();
+            if (!ownerId || !userStorage || typeof userStorage.getScopedItem !== 'function') return null;
+            const raw = userStorage.getScopedItem('chart_panel_state');
             if (!raw) return null;
-            return JSON.parse(raw);
+            const state = JSON.parse(raw);
+            const savedOwner = state && state.ownerId == null ? '' : String(state.ownerId).trim();
+            const savedSession = state && state.sessionId == null ? '' : String(state.sessionId).trim();
+            return savedOwner === ownerId && savedSession ? state : null;
         } catch (e) {
             return null;
         }

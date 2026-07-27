@@ -15413,32 +15413,23 @@ const TalariaV8bLive = () => {
     }
   };
 
-  // Row 13 (D-008): hydrate layout from existing chart_panel_state blob before URL defaults.
+  // Row 13 (D-008): hydrate only authenticated, owner-bound panel state.
   // Multi-panel is session-scoped: a new/different sessionId must not inherit another session's layout.
   // Same session + refresh still restores multi (sessionIds match).
   useEffect(() => {
     if (!layoutPersistV2Enabled()) return;
     try {
-      const raw = localStorage.getItem("chart_panel_state");
+      const ownerId = window.__talariaUserId == null
+        ? "" : String(window.__talariaUserId).trim();
+      const storage = window.userStorage;
+      if (!ownerId || typeof storage?.getScopedItem !== "function") return;
+      const raw = storage.getScopedItem("chart_panel_state");
       if (!raw) return;
       const state = JSON.parse(raw);
+      if (String(state?.ownerId || "").trim() !== ownerId) return;
       const curSid = v9CurrentChartSessionId();
       const savedSid = state && state.sessionId != null ? String(state.sessionId).trim() : "";
-      if (savedSid && curSid && savedSid !== curSid) {
-        try {
-          localStorage.setItem(
-            "chart_panel_state",
-            JSON.stringify({
-              ...state,
-              layout: "1",
-              selectedPanelIndex: 0,
-              panels: [],
-              sessionId: curSid,
-            })
-          );
-        } catch (_) { /* ignore */ }
-        return;
-      }
+      if (!savedSid || !curSid || savedSid !== curSid) return;
       const layoutId = state && state.layout != null ? String(state.layout) : null;
       if (!layoutId || layoutId === "1") return;
       const normalized = layoutId === "2" ? "2v" : layoutId;
@@ -15548,18 +15539,25 @@ const TalariaV8bLive = () => {
     if (!id) return;
     if (layoutPersistV2Enabled()) {
       try {
+        const ownerId = window.__talariaUserId == null
+          ? "" : String(window.__talariaUserId).trim();
+        const storage = window.userStorage;
         const sid = v9CurrentChartSessionId();
-        let blob = { layout: id, selectedPanelIndex: 0, panels: [], sessionId: sid || null };
-        const raw = localStorage.getItem("chart_panel_state");
+        if (!ownerId || !sid || typeof storage?.getScopedItem !== "function"
+            || typeof storage?.setItem !== "function") throw new Error("scoped panel persistence unavailable");
+        let blob = { ownerId, layout: id, selectedPanelIndex: 0, panels: [], sessionId: sid };
+        const raw = storage.getScopedItem("chart_panel_state");
         if (raw) {
           try {
             const prev = JSON.parse(raw);
-            if (prev && typeof prev === "object") {
-              blob = { ...prev, layout: id, sessionId: sid || prev.sessionId || null };
+            if (prev && typeof prev === "object"
+                && String(prev.ownerId || "").trim() === ownerId
+                && String(prev.sessionId || "").trim() === sid) {
+              blob = { ...prev, ownerId, layout: id, sessionId: sid };
             }
           } catch (_) { /* ignore corrupt */ }
         }
-        localStorage.setItem("chart_panel_state", JSON.stringify(blob));
+        storage.setItem("chart_panel_state", JSON.stringify(blob));
         try {
           const pm = window.panelManager;
           if (pm && typeof pm.savePanelState === "function") pm.savePanelState();

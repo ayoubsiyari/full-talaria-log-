@@ -1167,27 +1167,17 @@ async function handleFormSubmit(e) {
         // New prop session starts single-chart — do not inherit prior multi-panel layout.
         try {
             var sid = sessionId != null ? String(sessionId) : null;
-            var panelBlob = { layout: '1', selectedPanelIndex: 0, panels: [], sessionId: sid };
-            var rawPanel = (typeof userStorage.getItem === 'function'
-                ? userStorage.getItem('chart_panel_state')
-                : localStorage.getItem('chart_panel_state'));
-            if (rawPanel) {
-                try {
-                    var prevPanel = JSON.parse(rawPanel);
-                    if (prevPanel && typeof prevPanel === 'object') {
-                        panelBlob = Object.assign({}, prevPanel, {
-                            layout: '1',
-                            selectedPanelIndex: 0,
-                            panels: [],
-                            sessionId: sid,
-                        });
-                    }
-                } catch (_pe) { /* ignore corrupt */ }
-            }
-            if (typeof userStorage.setItem === 'function') {
+            var ownerId = window.__talariaUserId == null
+                ? null : String(window.__talariaUserId);
+            var panelBlob = {
+                ownerId: ownerId,
+                layout: '1',
+                selectedPanelIndex: 0,
+                panels: [],
+                sessionId: sid,
+            };
+            if (ownerId && sid && typeof userStorage.setItem === 'function') {
                 userStorage.setItem('chart_panel_state', JSON.stringify(panelBlob));
-            } else {
-                localStorage.setItem('chart_panel_state', JSON.stringify(panelBlob));
             }
         } catch (_panelErr) { /* ignore */ }
     } catch (e) {}

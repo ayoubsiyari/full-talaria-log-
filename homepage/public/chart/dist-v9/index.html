@@ -1484,29 +1484,51 @@
     // 2. Per-user localStorage isolation. All user-specific data is prefixed
     //    with the user ID so different accounts on the same browser stay separate.
     (function() {
-        var uid = null;
-        try { uid = localStorage.getItem('_uid'); } catch(e) {}
-
         window.userKey = function(key) {
-            var id = uid || window.__talariaUserId;
+            var id = window.__talariaUserId;
             if (!id) { try { id = localStorage.getItem('_uid'); } catch(e) {} }
-            if (id) { uid = id; return 'u' + id + '_' + key; }
+            if (id) return 'u' + id + '_' + key;
             return key;
         };
 
         window.userStorage = {
+            getAuthenticatedOwnerId: function() {
+                var id = window.__talariaUserId;
+                return id == null || String(id).trim() === '' ? null : String(id);
+            },
+            getScopedItem: function(key) {
+                var id = this.getAuthenticatedOwnerId();
+                return id ? localStorage.getItem('u' + id + '_' + key) : null;
+            },
             getItem: function(key) {
+                if (key === 'chart_panel_state') return this.getScopedItem(key);
                 var scoped = localStorage.getItem(window.userKey(key));
                 if (scoped !== null) return scoped;
                 // Migrate: check legacy un-scoped key
                 var legacy = localStorage.getItem(key);
-                if (legacy !== null && uid) {
+                if (legacy !== null && this.getAuthenticatedOwnerId()) {
                     try { localStorage.setItem(window.userKey(key), legacy); localStorage.removeItem(key); } catch(e) {}
                 }
                 return legacy;
             },
-            setItem: function(key, val) { localStorage.setItem(window.userKey(key), val); },
-            removeItem: function(key) { localStorage.removeItem(window.userKey(key)); }
+            setItem: function(key, val) {
+                if (key === 'chart_panel_state') {
+                    var id = this.getAuthenticatedOwnerId();
+                    if (!id) return;
+                    localStorage.setItem('u' + id + '_' + key, val);
+                    return;
+                }
+                localStorage.setItem(window.userKey(key), val);
+            },
+            removeItem: function(key) {
+                if (key === 'chart_panel_state') {
+                    var id = this.getAuthenticatedOwnerId();
+                    if (!id) return;
+                    localStorage.removeItem('u' + id + '_' + key);
+                    return;
+                }
+                localStorage.removeItem(window.userKey(key));
+            }
         };
     })();
     </script>
