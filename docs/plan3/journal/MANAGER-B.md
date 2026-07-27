@@ -406,3 +406,64 @@ Both briefs carry the same explicitly stated contract, so parallel authoring can
 Each will receive a separate top-tier adversarial review that did not author it, reconciled by me (§A13.1). Reviews are not dispatched until the packets return.
 
 Write packets in flight: **2 of 3**. Read-only in flight: **2** (B-A3, B-T1). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**.
+
+---
+
+## B-0023 — VERDICT · trade duration is computed twice, by different rules, and one of them uses the wrong clock
+
+surface=`source (working tree)` · coverage=`static; two independent compute paths traced end to end. NOT reproduced on a served build; the specific TAL-01896 report has no attached scenario, so which of the two paths the reporter saw is unconfirmed.`
+
+B-A3's evidence, my verdict. Two findings, and the second is the defect.
+
+**(1) The product stores one duration and displays a different one.** `order-manager.js` computes and persists `holdingTimeMs` / `holdingTimeHours` / `holdingTimeDays` at close (`7836`, `12411–12510`, `30920`, `33680`), and `_enrichJournalEntryForPersistence` @ `7863–7868` only fills them when absent, so they are stable once written. The legacy All Trades view renders the stored `holdingTimeHours` (`9998`, `10897`, `10927`, `11103`). But the **React trades table does not read the stored value at all** — `orderManagerTradeRows.js` recomputes a `dur` string on every row build (`1369`, `1505`, `1549`) and `TalariaV8bLive.jsx` renders that (`38149`, `38272`, `41940`, `42029`). Two answers to one question, in a journaling product, with no gate asserting they agree. Even after the clock bug below is fixed, they can still disagree.
+
+**(2) The clock defect: a wall-clock `now` is subtracted from a historical bar timestamp.** `v9TradeDuration(openMs, closeMs, nowMs = Date.now())` @ `orderManagerTradeRows.js:106–112` computes `end - openMs` where `end = closeMs` if finite, **else `nowMs`**. Three ways that goes wrong:
+- `orderManagerTradeRows.js:1549`, the closed-position path, calls `v9TradeDuration(tOpen, tClose)` **with no third argument**, so `nowMs` silently defaults to `Date.now()`. Any closed trade whose `tClose` is not finite therefore reports *"wall-clock now minus a historical bar timestamp"* — for a backtest on 2024 data that is months, not minutes. This is the cleanest available explanation of "wrong duration in all-trades".
+- `resolveTradeRowNowMs` @ `61–84` prefers replay/session time but falls back to `Date.now()` when no replay timestamp is finite, so open rows in a replay session can tick against wall time.
+- `order-manager.js:33329–33330` seeds `closeTime` as `bgCloseTime || evalCandle.t || Date.now()` and that value is subtracted from a bar-based `position.openTime` @ `33680` — a mixed-clock subtraction inside **my own** file.
+- `order-service.js:626` writes `openTime: request.timestamp || Date.now()`, a wall-clock fallback for an open time that closes against bar time. Also mine.
+
+**The spec, which I am stating as engineering and not sending to the PO:** trade duration is always measured in session/bar time, never wall-clock time. A trade opened at the 09:00 bar and closed at the 11:00 bar lasted two hours regardless of when the user clicked, and in replay at 60× the wall-clock elapsed time is meaningless. I am confident enough in that to spec it; there is no business judgement in it. What I am *not* doing is deciding whether the stored field or the recomputed string becomes canonical, because that determines what historical journal rows display, and that has product consequences.
+
+**Territory split, which is the problem.** The mis-rendered value is produced in `chart v 1.4/talaria-design/src/orderManagerTradeRows.js` — a React source file **not in my six-file territory** and not obviously in anyone's. Mine are the two seed sites (`order-manager.js:33329`, `order-service.js:626`) and the stored fields. So §B3's "Tier 1, same-day routine" calibration example is, as it actually sits in the tree, a cross-territory fix. Escalated in B-0025.
+
+---
+
+## B-0024 — VERDICT · the order side holds a retained set that plausibly contributes to the REOPENED memory row
+
+surface=`source (the six territory files only; panel/chart teardown deliberately out of scope)` · coverage=`static census. No heap measurement, no runtime retention proof. Contribution to the ~230 MB residual is inferred from structure, NOT measured — this is the premise most in need of a measurement before anyone acts on it.`
+
+Scoped strictly to my own files per B-0008 item 3. The numbers are lopsided:
+
+- **`this.chart` is assigned once @ `order-manager.js:451` and never nulled — zero nulling sites in the file.** An OrderManager therefore retains its chart, and transitively the chart's SVG, scales and data, for the lifetime of the manager.
+- **107 timer allocations** in `order-manager.js` against **one** `setInterval` with a matching `clearInterval`. Named timers with **no clear found**: `__m20A1KillTransitionTimer` @ `5119`, `_rrPanelSyncTimer` @ `26692`, `_closedJournalRedrawTimer` @ `40193`, and the animation frames `_pendingMirrorSyncRaf` @ `1454` and `_pendingPositionsPanelRaf` @ `29895`.
+- **91 `addEventListener` against 22 `removeEventListener`**, and many of the survivors are **inline closures**, which cannot be removed even in principle — that is a structural leak, not a missing call. Permanent `window`/`document` listeners include `keydown` @ `770`, `multichartFocusChanged` @ `775`, `blur` @ `779`, `message` @ `5321`, a `BroadcastChannel.onmessage` @ `5328`, `chartDataLoaded` @ `8187`, and a `pagehide`/`beforeunload` `flush` pair @ `8529–8530`.
+- **`_miSeriesByFileId`** @ `624–625` is a per-file **bar-series cache with no prune path found**. This is the one that concerns me: it holds market data keyed by file id, and nothing observed releases it.
+- **`order-service.js` holds `orders`, `openPositions`, `closedPositions`, `pendingOrders`, `tradeJournal`, `mfeMaeTrackingPositions` and `listeners` and has no teardown, dispose or clear method at all.**
+- The only real lifecycle teardown in the whole set is `_m20A1Teardown` @ `4410–4437`, which releases six things and closes an IndexedDB handle.
+
+**Why this is worth the Director's attention beyond my own row.** §A9 reopened the memory closure on Rayan reaching **3.5 GB on a single layout** with **indicators and live trades present**, and required every future memory cell to include open trades. The retained set above is order-side, grows with trades, holds a never-pruned market-data cache, and never releases its chart. That does not make it the cause — §A9 rule 3 says measure before building, and I am not going to violate that from the opposite direction by asserting a cause from a static census. It does mean **the order side is a candidate contributor to a row currently framed as a rendering-and-dataset problem**, and that a memory cell run "with trades present" may be measuring my territory as much as anyone's. Cheap way to settle it: include an order-side retained-set probe in the §A2 re-baseline that C is configuring. That is a measurement request, not a fix, and it is the honest next step.
+
+---
+
+## B-0025 — ESCALATION · a seventh unassigned file, and the duration fix straddles it
+
+`chart v 1.4/talaria-design/src/orderManagerTradeRows.js` produces the wrong duration and is in no manager's territory. It is not `chart.js`, not the data pipeline, not `replay-system.js`, not an indicator module, and not servable shell HTML — so it is not excluded from me by name — but it is a React source under `talaria-design/`, which is where V8's pin state also lives and which I have already been told is not mine. It is now the **seventh** unowned file bearing on rows assigned to me, after `drawing-tools-manager.js`, `drawing-tools-advanced.js`, `panel-cmd-bridge.js`, `order-interaction-guard.mjs`, `journal-backend/`, and the homepage logout path.
+
+**Ask, and I think this is now the highest-value ruling available:** rather than adjudicating these one at a time as I trip over them, the territory manifest that Manager C is building should enumerate **every** file that reads or writes order state, preference state or trade records, and assign each one. I have now found seven by accident, in one session, purely as a by-product of two audits. A manifest built only from the six files named in my brief will pass its own preflight while leaving every real seam unowned.
+
+Specific asks meanwhile: (a) assign `orderManagerTradeRows.js` — if it comes to me, TAL-01896 is a single coherent packet; if it goes to A, I fix only the two seed sites and A fixes the renderer, which needs a shared RED; (b) rule whether the stored `holdingTime*` fields or the recomputed `dur` string is canonical for historical journal rows, since that one is genuinely product-shaped.
+
+---
+
+## B-0026 — DISPATCH · B-W3, the V6-P1 RED. Write cap now reached.
+
+RED-first is mandatory before the V6-P1 fix (README: "one gated fix per mechanism, RED-first"; §B3 floor requires RED→GREEN artefacts and a regression test in the packet), so the RED is dispatched ahead of the implementation rather than beside it.
+
+**B-W3** — RED for the deferred-until-release recompute mechanism. Writable set: exactly the two new files `b-m6-sltp-entry-drag-follow.red.mjs` and `b-fixtures/m6-entry-drag-sltp.json`. **Mid tier, `gpt-5.5-medium-fast`**, §A13.2 row "test, oracle and harness authoring against stated criteria" — the criteria are stated, and running the test verifies the test, which is the stated reason to stay off top tier. Disjoint from every other in-flight file set; touches no product file, so it does not take lane α.
+
+Scope corrected per B-0018: it must cover **both** drag implementations — the `d3.drag()` preview path at `22940` and the native `document` mousemove/mouseup path at `34389` that executed orders actually use — and must exercise the two **existing** kill-switches rather than any new name.
+
+**Write packets in flight: 3 of 3 — cap reached (§A13.3).** No further write dispatch until one returns. This is the throttle behaving as designed rather than an obstruction: the cap exists because top-tier review is the binding constraint, and I have three packets that will each need an adversarial reviewer. Consequently **V6-P1's implementation, the V6-P2 visibility fix, the duration-clock RED and the order-side teardown work are all queued, not forgotten**, in that order. Read-only work remains uncapped, so triage and audit continue regardless.
+
+Read-only in flight: **1** (B-T1). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**.
