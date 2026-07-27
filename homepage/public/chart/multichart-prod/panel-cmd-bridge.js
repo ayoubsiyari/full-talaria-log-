@@ -2434,6 +2434,45 @@
         } catch (_) {}
     }
 
+    function invalidateReplayOwnershipCommit(ch, code, error) {
+        if (!ch) return;
+        ch._mcPlayEagerCoverGeneration = (Number(ch._mcPlayEagerCoverGeneration) || 0) + 1;
+        ch._mcPlayEagerCoverInflight = false;
+        ch._mcReplayOwnershipCommitPending = false;
+        ch._mcReplayFrameAfterOwnershipCommit = null;
+        ch._mcReplayIndicatorRecalcDeferred = false;
+        if (code) {
+            ch._mcReplayOwnershipError = {
+                code: String(code),
+                message: String(error && error.message ? error.message : (error || code)),
+                timestamp: Date.now(),
+            };
+            warn('replay ownership commit failed', code, ch._mcReplayOwnershipError.message);
+        }
+    }
+
+    function replayRawIndexOwnerCommitted(ch, rs, ts) {
+        if (!ch || !rs || !rs.isActive || !Number.isFinite(ts)) return false;
+        var master = Array.isArray(rs.fullRawData) && rs.fullRawData.length
+            ? rs.fullRawData
+            : (Array.isArray(ch._panelFullRawData) && ch._panelFullRawData.length
+                ? ch._panelFullRawData
+                : ch.rawData);
+        if (!Array.isArray(master) || !master.length) return false;
+        var firstTs = Number(master[0] && master[0].t);
+        var lastTs = Number(master[master.length - 1] && master[master.length - 1].t);
+        if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)
+            || ts < firstTs || ts > lastTs) return false;
+        var index = Number(rs.currentIndex);
+        if (!Number.isInteger(index) || index < 0 || index >= master.length) return false;
+        var indexTs = Number(master[index] && master[index].t);
+        var nextTs = index + 1 < master.length ? Number(master[index + 1] && master[index + 1].t) : Infinity;
+        return Number.isFinite(indexTs)
+            && indexTs <= ts
+            && (!Number.isFinite(nextTs) || ts < nextTs)
+            && Number(rs.replayTimestamp) === ts;
+    }
+
     function eagerCoverIndependentOnPlay(ch) {
         if (!ch || !isPlayEagerCoverEnabled()) return;
         if (isSameSymbolAsHost(ch)) return;
@@ -2452,21 +2491,30 @@
         ch._mcPlayEagerCoverGeneration = coverGeneration;
         ch._mcPlayEagerCoverInflight = true;
         ch._mcReplayOwnershipCommitPending = true;
+        ch._mcReplayOwnershipError = null;
         function ownsCoverGeneration() {
             return ch._mcPlayEagerCoverGeneration === coverGeneration;
         }
-        function commitCoveredOwnership() {
+        function commitCoveredOwnership(covered) {
             if (!ownsCoverGeneration()) return;
+            if (covered !== true) {
+                invalidateReplayOwnershipCommit(ch, 'COVERAGE_NOT_CONFIRMED');
+                return;
+            }
             if (!pendingPlayDesired || !ch.replaySystem || !ch.replaySystem.isActive) {
-                ch._mcPlayEagerCoverInflight = false;
-                ch._mcReplayOwnershipCommitPending = false;
-                ch._mcReplayFrameAfterOwnershipCommit = null;
-                ch._mcReplayIndicatorRecalcDeferred = false;
+                invalidateReplayOwnershipCommit(ch, 'REPLAY_INACTIVE_BEFORE_SEEK');
                 return;
             }
             clearIndependentCatchUpCooldown(ch);
-            forceReplaySeek(ch, coverTs, false, function () {
+            forceReplaySeek(ch, coverTs, false, function (result) {
                 if (!ownsCoverGeneration()) return;
+                if (!result || result.ok !== true
+                    || !replayRawIndexOwnerCommitted(ch, ch.replaySystem, coverTs)) {
+                    invalidateReplayOwnershipCommit(ch,
+                        result && result.code ? result.code : 'RAW_INDEX_OWNER_UNCOMMITTED',
+                        result && result.error);
+                    return;
+                }
                 ch._mcPlayEagerCoverInflight = false;
                 ch._mcReplayOwnershipCommitPending = false;
                 var pendingFrame = ch._mcReplayFrameAfterOwnershipCommit;
@@ -2479,14 +2527,13 @@
                     && typeof ch.scheduleReplayIndicatorRecalc === 'function') {
                     ch.scheduleReplayIndicatorRecalc(true);
                 }
-            });
+            }, { coverageAlreadyConfirmed: true, failClosedCoverage: true });
         }
-        ch.ensureReplayDataCoversTimestamp(coverTs).then(function () {
-            commitCoveredOwnership();
+        ch.ensureReplayDataCoversTimestamp(coverTs).then(function (covered) {
+            commitCoveredOwnership(covered !== false);
         }).catch(function (e) {
             if (!ownsCoverGeneration()) return;
-            warn('eagerCoverIndependentOnPlay failed', e && e.message);
-            commitCoveredOwnership();
+            invalidateReplayOwnershipCommit(ch, 'COVERAGE_REJECTED', e);
         });
     }
 
@@ -2522,16 +2569,17 @@
         } catch (_) { /* ignore */ }
     }
 
-    function forceReplaySeek(ch, ts, isEnter, onDone) {
+    function forceReplaySeek(ch, ts, isEnter, onDone, options) {
         global.__talariaBl2bMark && global.__talariaBl2bMark(ch, 'replay-seek', 'panel-cmd-bridge.js:forceReplaySeek');
         markHostReplayContext(ch);
+        options = options || {};
         if (!Number.isFinite(ts)) {
-            if (typeof onDone === 'function') onDone();
+            if (typeof onDone === 'function') onDone({ ok: false, code: 'INVALID_TIMESTAMP' });
             return;
         }
         var rs = ch.replaySystem;
         if (!rs) {
-            if (typeof onDone === 'function') onDone();
+            if (typeof onDone === 'function') onDone({ ok: false, code: 'REPLAY_MISSING' });
             return;
         }
 
@@ -2541,13 +2589,15 @@
             clearIndependentCatchUpCooldown(ch);
         }
 
-        function finish() {
-            if (typeof onDone === 'function') onDone();
+        function finish(result) {
+            if (typeof onDone === 'function') onDone(result || { ok: false, code: 'SEEK_UNACKNOWLEDGED' });
         }
 
         function doSeek() {
-            if (!rs.isActive) return;
-            if (typeof rs.goToReplayTimestamp !== 'function') return;
+            if (!rs.isActive) return { ok: false, code: 'REPLAY_INACTIVE_AT_SEEK' };
+            if (typeof rs.goToReplayTimestamp !== 'function') {
+                return { ok: false, code: 'SEEK_METHOD_MISSING' };
+            }
             // Enter: keep each tile's visible window (avoid 1→2 jump / jumpToLatest).
             // Unset = ON. Set window.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT = false to revert.
             var preserveEnter = isEnter
@@ -2559,6 +2609,7 @@
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
+                return { ok: false, code: 'SEEK_THROW', error: e };
             }
             // D-015: multichart shared playhead is wall-clock ts (host broadcast),
             // even when the panel's display TF is coarser than the seek step.
@@ -2597,13 +2648,14 @@
                     });
                 } catch (_) {}
             }
+            return { ok: true, code: 'SEEK_COMMITTED' };
         }
 
         // Independent ticker: while /bars catch-up is in flight, paint the furthest
         // loaded bar immediately so the fine panel does not hard-freeze mid-play.
         // Do NOT pin host wall-clock ts onto replayTimestamp until cover succeeds —
         // that made the X-axis claim Jul 31 while candles were still Jul 24.
-        if (!isEnter && !isSameSymbolAsHost(ch)) {
+        if (!options.failClosedCoverage && !isEnter && !isSameSymbolAsHost(ch)) {
             try {
                 renderFurthestLoadedMirrorFrame(ch, rs, {
                     timestamp: ts,
@@ -2638,31 +2690,35 @@
             scheduleMultichartPanelReplayFollow(ch);
         }
 
-        if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
+        if (!options.coverageAlreadyConfirmed && typeof ch.ensureReplayDataCoversTimestamp === 'function') {
             ch.ensureReplayDataCoversTimestamp(ts).then(function () {
-                doSeek();
+                var result = doSeek();
                 maybeFollowAfterEnter();
-                if (followHere) {
+                if (result.ok && followHere) {
                     try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 }
-                finish();
+                finish(result);
             }).catch(function (e) {
                 warn('forceReplaySeek: ensureReplayDataCoversTimestamp failed', e && e.message);
-                doSeek();
+                if (options.failClosedCoverage) {
+                    finish({ ok: false, code: 'COVERAGE_REJECTED', error: e });
+                    return;
+                }
+                var result = doSeek();
                 maybeFollowAfterEnter();
-                if (followHere) {
+                if (result.ok && followHere) {
                     try { maybePanelPlayViewportFollow(ch); } catch (_) {}
                 }
-                finish();
+                finish(result);
             });
             return;
         }
-        doSeek();
+        var result = doSeek();
         maybeFollowAfterEnter();
-        if (followHere) {
+        if (result.ok && followHere) {
             try { maybePanelPlayViewportFollow(ch); } catch (_) {}
         }
-        finish();
+        finish(result);
     }
 
     /**
@@ -3037,6 +3093,7 @@
 
                 // ─── timeframe ─────────────────────────────────────────
                 case 'setTimeframe': {
+                    invalidateReplayOwnershipCommit(ch);
                     // A setTimeframe panel-cmd is only broadcast by the host fan-out
                     // when Interval sync is ON (see MultichartGrid.jsx timeframeChanged
                     // effect). Any other path here is a direct/manual pick on this panel.
@@ -3169,6 +3226,7 @@
 
                 // ─── file / dataset switch ─────────────────────────────
                 case 'loadFile': {
+                    invalidateReplayOwnershipCommit(ch);
                     var restoreIdentity = args.restoreIdentity;
                     if (restoreIdentity) {
                         var parentManager = null;
@@ -3857,6 +3915,7 @@
                     if (!Number.isFinite(tsCut)) return;
                     pendingPlayDesired = false;
                     pendingReplayTs = null;
+                    invalidateReplayOwnershipCommit(ch);
                     var rsCut = ch.replaySystem;
                     if (rsCut) {
                         rsCut.isPlaying = false;
@@ -3909,6 +3968,7 @@
                     pendingReplayTs = null;
                     pendingReplayDesired = false;
                     pendingPlayDesired = null;
+                    invalidateReplayOwnershipCommit(ch);
                     if (ch) ch._mcPassivePlayPausedOnce = false;
                     // Make sure chartDataLoaded re-applies the exit if
                     // a later autoLoad / tf-change re-enters replay
@@ -4023,11 +4083,7 @@
                 }
                 case 'replayPause': {
                     pendingPlayDesired = false;
-                    ch._mcPlayEagerCoverGeneration = (Number(ch._mcPlayEagerCoverGeneration) || 0) + 1;
-                    ch._mcPlayEagerCoverInflight = false;
-                    ch._mcReplayOwnershipCommitPending = false;
-                    ch._mcReplayFrameAfterOwnershipCommit = null;
-                    ch._mcReplayIndicatorRecalcDeferred = false;
+                    invalidateReplayOwnershipCommit(ch);
                     ch._multichartPassivePlayActive = false;
                     ch._mcPassivePlayPausedOnce = false;
                     var rsPa = ch.replaySystem;
@@ -5089,6 +5145,12 @@
     }
     global.addEventListener('mousedown', onDismissHostContextMenu, { capture: true });
     global.addEventListener('pointerdown', onDismissHostContextMenu, { capture: true });
+    global.addEventListener('pagehide', function () {
+        invalidateReplayOwnershipCommit(global.chart);
+    });
+    global.addEventListener('beforeunload', function () {
+        invalidateReplayOwnershipCommit(global.chart);
+    });
 
     global.MultichartCmdBridge = {
         panelId:      panelId,
