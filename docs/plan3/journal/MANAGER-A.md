@@ -438,3 +438,114 @@ still running and is the current best hope of naming it.
 
 I am not editing the finding myself; it is not my document. Escalated to the Director as an amendment
 request with the measured numbers attached.
+
+---
+
+## 2026-07-28T00:35 · CORRECTION · §A13 and §A12.2 are now in the workspace copy; my 00:20 reading was substantially right
+
+Superseding the ASSUMPTION of 2026-07-28T00:20. `docs/plan3/DIRECTOR-RULINGS-20260727.md` now contains
+§A13 at line 209 with §A13.1–§A13.4, and §A12.2 at line 188. Checked against the eight rules I
+extracted from the dispatch text: all eight hold. Two details worth recording because they change my
+own past routing calls rather than confirming them.
+
+- §A13.2's table routes **"Test, oracle and harness authoring against stated criteria"** to mid tier
+  (`gpt-5.5-medium-fast`). That confirms my 00:22 self-assessment: the session-calendar RED was
+  over-tiered on the letter, and the §A10 control inventory clearly was.
+- The same table routes **"any edit to `chart.js` shared paths (resample, pipeline, replay, indicator,
+  render)"** to top tier. That retroactively justifies the `_mcDiag` counter packet at top tier, which
+  I had recorded at 00:22 as merely "defensible."
+
+Still absent from the file: **§Part 4** (cited by §A13.1 for reviewer non-downgrade) and **§Part 6**
+(cited by §A12.3 as the agent smoke sweep standard). The document contains Part A and Part B only. The
+00:20 assumption therefore stands for those two, unchanged and still unverified.
+
+---
+
+## 2026-07-28T00:37 · DECISION · what counts as a write packet "in flight"
+
+§A13.3 caps me at three write packets in flight. I am reading that cap as **subagents actively holding
+a worktree**, not as committed-but-unmerged branches, and recording the reading so it can be overruled
+rather than discovered later.
+
+Basis: the cap's two stated purposes are collision avoidance and top-tier review throughput.
+`manager-a-mcdiag` is committed at `3e1fdc05e` with a clean tree and no subagent attached, so it can
+collide with nothing. It does still consume review capacity, which is the other half of the rationale,
+so I am not treating the slot as free without saying so.
+
+Current occupancy: `session-calendar-red` and `shell-control-inventory` hold worktrees; the new
+`indicator-lag-data-effect` packet takes the third slot. Its writable set is **harness and evidence
+only, no product file at all**, so it is disjoint from both siblings by construction rather than by my
+judgement. Read-only work in flight: the residency-cap review, the measurement review, the raw-cap
+reconciliation, and the daily/weekly anchoring audit. Those are uncapped per §A13.3.
+
+---
+
+## 2026-07-28T00:39 · OPEN · re-dispatch reconciled against work already completed
+
+The re-dispatch supersedes prior dispatches, but four of its six items already have results, so I am
+recording state rather than re-running them.
+
+| Item | State |
+|---|---|
+| 1 · Loader fix + §A4c presence assertions | Accepted locally at `634448817`. Not verified on TEST-1; no train has run. |
+| 2 · `_mcDiag.resamples` across a replay run | **Answered**, with the instrument corrected first — see 00:40. |
+| 3 · Indicator lag as a data effect | **New tonight.** Dispatched top tier, harness-only writable set. |
+| 4 · Trim redesign | Design returned twice, re-priced. Implementation not dispatched; blocked on item 3's verdict and on the write cap. |
+| 5 · Session calendar | RED in flight; the required anchoring enumeration dispatched read-only at 00:34. Product wiring still withheld. |
+| 6 · §A2 re-baseline, then surviving C3a shape | Blocked. See the amendment request below. |
+| §1.2 residency cap, in writing | **Answered** at 00:48. |
+
+**Amendment requests to the Director, three, all evidenced.**
+
+1. **§A9.3 names an instrument that cannot gate.** The ruling requires the per-tick resample hypothesis
+   be settled "using the existing `_mcDiag.resamples` counter." Measured, that field reads exactly 2.00
+   per tick at zero, one and two real full resamples. §A9.3 should name the three separated counters.
+   The underlying question §A9.3 asked is nonetheless **answered**: per-tick full resampling is
+   confirmed, and the incremental branch never fires.
+2. **§A1's "not greenfield" premise is factually wrong.** It states that `visible-window-mirror.mjs`,
+   `reusable-buffer-pool.mjs` and `m21-3a-single-data-owner-model.mjs` already exist in-tree and that
+   C3a is "wiring audited components into the product path." All three carry headers marking them
+   reference/test-only with explicit instructions not to wire them into product runtime, and they have
+   zero product importers. The files exist; the capability does not. C3a is closer to greenfield than
+   the ruling assumes, and the estimate should move accordingly.
+3. **The item-2 result does not license item 6.** §A9.1 states that any memory cell without indicators
+   and open trades does not close the memory row, and the measurement had neither, plus no panels and
+   no browser. It confirmed a CPU and allocation mechanism, not a memory attribution. Rayan's 3.5 GB
+   single-layout 1m term remains unattributed, so choosing a C3a shape now would still be choosing
+   against an unmeasured target.
+
+**Outstanding `PO-REQ` count: 0.** Nothing I hold requires PO time that an assertion could not answer,
+and the 45-minute per-train budget is shared across three managers.
+
+---
+
+## 2026-07-28T00:41 · ASSUMPTION · I have treated the two PO price readings as different sessions
+
+The completed-bar finding is EURUSD backtest session 877 around 1.305; tonight's D3 readings are around
+1.415. I have assumed these are different playheads, sessions or instruments rather than an
+inconsistency in the reports, and I briefed the indicator-lag worker to reproduce the D3 **signature** —
+exact agreement across resampled timeframes with the native timeframe differing — rather than the
+literal values.
+
+Risk if wrong: if the two readings are meant to be the same session, one of them is mis-transcribed and
+the monotonic 0 / −0.6 / +13 / +72 table may be measuring something other than I think. Mitigation: the
+worker is required to state that it matched the signature and not the values, so no literal number
+enters the record unverified.
+
+---
+
+## 2026-07-28T00:43 · DECISION · item 4 implementation does not dispatch until item 3 reports
+
+The trim redesign is the highest-leverage change available and I am still holding it, deliberately.
+
+Item 3 tests the hypothesis that the trim is why every resampled timeframe reports a close truncated at
+the playhead — which would make the exact six-way agreement at 1.41477 and the monotonic post-completion
+jump two consequences of one mechanism, and would fold the indicator lag into the same fix. If that is
+right, the trim packet's scope, its oracle and its acceptance criterion all change: it stops being a
+completed-bar-immutability fix with a performance side effect and becomes the fix for the painted-value
+lag as well, which raises its tier of evidence.
+
+If it is wrong — if the shared value turns out to be a cache-identity artefact rather than the trim —
+then the trim packet is narrower than currently priced and something else owns the lag. Either answer
+changes what I dispatch, so dispatching now would mean authoring the wrong oracle. Item 3 is hours; the
+trim packet is 10–13 days. Waiting is cheap.
