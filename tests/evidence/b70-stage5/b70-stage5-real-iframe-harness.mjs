@@ -44,13 +44,43 @@ async function login(page, origin) {
     return { ok: response.ok, status: response.status };
   }, { email, password });
   if (!auth.ok) throw new Error(`authentication failed with HTTP ${auth.status}`);
+  const session = await page.evaluate(async (requestedId) => {
+    const response = await fetch('/api/sessions', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!response.ok) return { ok: false, status: response.status };
+    const payload = await response.json();
+    const sessions = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.sessions) ? payload.sessions : []);
+    const requested = String(requestedId || '').trim();
+    const selected = requested
+      ? sessions.find((entry) => String(entry?.id) === requested)
+      : sessions[0];
+    return {
+      ok: true,
+      requested,
+      selectedId: selected?.id == null ? '' : String(selected.id),
+      availableCount: sessions.length,
+    };
+  }, process.env.B70_SESSION_ID || '');
+  if (!session.ok) {
+    throw new Error(`session discovery failed with HTTP ${session.status}`);
+  }
+  if (!session.selectedId) {
+    const detail = session.requested
+      ? `requested session ${session.requested} is not owned by the authenticated account`
+      : 'authenticated account has no trading sessions';
+    throw new Error(`${detail} (available=${session.availableCount})`);
+  }
+  return session.selectedId;
 }
 
 async function authenticatedPreflight(browser) {
   const origin = String(process.env.TEST_VPS_URL || '').replace(/\/$/, '');
   const page = await browser.newPage();
-  await login(page, origin);
-  const sessionId = String(process.env.B70_SESSION_ID || '827');
+  const sessionId = await login(page, origin);
   await page.goto(`${origin}/chart/dist-v9/index.html?mode=backtest&mcLayout=2&sessionId=${encodeURIComponent(sessionId)}`, {
     waitUntil: 'domcontentloaded',
     timeout: 120_000,
