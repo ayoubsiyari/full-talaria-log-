@@ -4731,6 +4731,7 @@ class ReplaySystem {
 
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
+        if (!this.isPlaying || !this.isActive) return;
         const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
         const n = Math.max(1, stepsPerTick | 0);
         const evaluateSkippedMoneyPath = orderMoneyPath === true
@@ -4745,6 +4746,20 @@ class ReplaySystem {
             });
             // Stop batching if playback ended / waiting on forward edge.
             if (!this.isPlaying || this._nextCandleTimer) break;
+        }
+        const chart = this.chart;
+        const refreshDisabled = typeof window !== 'undefined'
+            && window.__TALARIA_DISABLE_REPLAY_CROSSHAIR_REFRESH === true;
+        if (!refreshDisabled
+            && !this._refreshingCrosshairFromReplayTick
+            && chart
+            && typeof chart.refreshCrosshairFromLastPointer === 'function') {
+            this._refreshingCrosshairFromReplayTick = true;
+            try {
+                chart.refreshCrosshairFromLastPointer();
+            } finally {
+                this._refreshingCrosshairFromReplayTick = false;
+            }
         }
     }
     

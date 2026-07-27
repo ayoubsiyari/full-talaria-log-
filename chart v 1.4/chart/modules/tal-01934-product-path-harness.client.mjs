@@ -38,6 +38,9 @@ async function freshProduct() {
 
 async function runCase({ mutation, indicators, repeat }) {
   const { w, chart } = await freshProduct();
+  // Product fix defaults ON. Every negative control explicitly exercises the
+  // retained kill switch; add-invalidation is the unmodified GREEN path.
+  w.__TALARIA_DISABLE_REPLAY_CROSSHAIR_REFRESH = mutation !== 'add-invalidation';
   const all = bars();
   const initial = all.slice(0, 12);
   chart.data = initial.slice();
@@ -98,13 +101,7 @@ async function runCase({ mutation, indicators, repeat }) {
   const before = timeBadge.textContent;
 
   const realTick = replay._runCandlePlaybackTick.bind(replay);
-  if (mutation === 'add-invalidation') {
-    replay._runCandlePlaybackTick = (...args) => {
-      const result = realTick(...args);
-      chart.refreshCrosshairFromLastPointer();
-      return result;
-    };
-  } else if (mutation === 'fake-badge-write') {
+  if (mutation === 'fake-badge-write') {
     replay._runCandlePlaybackTick = (...args) => {
       const result = realTick(...args);
       diag.fakeWrites += 1;
