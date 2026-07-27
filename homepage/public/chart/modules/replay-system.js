@@ -5354,8 +5354,8 @@ class ReplaySystem {
         // Calculate how long each raw candle should take in REAL time
         let realTimeCandleDuration = rawCandleTimeframeMs / effectivePlaybackSpeed;
         const cadenceSubdivisions = this._finestTfCadenceSubdivisions();
-        if (cadenceSubdivisions > 1) {
-            // D-016: keep selected-panel wall-clock pace; subdivide within one finest bar.
+        if (!_m19iTickSpeedCoherenceEnabled() && cadenceSubdivisions > 1) {
+            // Kill-bar legacy: cadence subdivisions incorrectly accelerated raw wall-clock time.
             realTimeCandleDuration = realTimeCandleDuration / cadenceSubdivisions;
         }
         
