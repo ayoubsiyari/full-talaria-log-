@@ -3720,7 +3720,12 @@ class ReplaySystem {
         }
         chart.renderPending = true;
         if (typeof chart.render === 'function') {
+            const beforePaintGeneration = chart._committedPaintGeneration || 0;
             chart.render();
+            const committedPaintGeneration = chart._committedPaintGeneration || 0;
+            if (committedPaintGeneration > beforePaintGeneration) {
+                this._replayPaintGeneration = committedPaintGeneration;
+            }
         }
         if (this.isPlaying) return;
         // Pause/scrub settle: layout + rAF only. Do NOT call getImageData() here —
@@ -4731,7 +4736,21 @@ class ReplaySystem {
 
     /** Advance one candle-mode timer tick (1..N steps, single chart paint). */
     _runCandlePlaybackTick() {
+        if (this._runningCandlePlaybackTick) return;
+        this._runningCandlePlaybackTick = true;
+        try {
+            return this._runCommittedCandlePlaybackTick();
+        } finally {
+            this._runningCandlePlaybackTick = false;
+        }
+    }
+
+    _runCommittedCandlePlaybackTick() {
         if (!this.isPlaying || !this.isActive) return;
+        const owner = this.chart;
+        const tickGeneration = (this._candlePlaybackTickGeneration || 0) + 1;
+        this._candlePlaybackTickGeneration = tickGeneration;
+        let committedAdvance = null;
         const { stepsPerTick, orderMoneyPath } = this.getCandlePlaybackCadence();
         const n = Math.max(1, stepsPerTick | 0);
         const evaluateSkippedMoneyPath = orderMoneyPath === true
@@ -4740,23 +4759,49 @@ class ReplaySystem {
             if (!this.isPlaying || !this.isActive) break;
             if (this._nextCandleTimer) break;
             const skipChartUpdate = i < n - 1;
+            const beforeIndex = this.currentIndex;
+            const beforeTimestamp = this.replayTimestamp;
+            const beforePaintGeneration = this._replayPaintGeneration || 0;
             this.simpleStepForward({
                 skipChartUpdate,
                 evaluateOrderMoneyPath: evaluateSkippedMoneyPath,
             });
+            const paintGeneration = this._replayPaintGeneration || 0;
+            const advanced = this.currentIndex !== beforeIndex
+                || this.replayTimestamp !== beforeTimestamp;
+            if (advanced && paintGeneration > beforePaintGeneration) {
+                committedAdvance = {
+                    owner,
+                    tickGeneration,
+                    paintGeneration,
+                };
+            }
             // Stop batching if playback ended / waiting on forward edge.
             if (!this.isPlaying || this._nextCandleTimer) break;
         }
-        const chart = this.chart;
         const refreshDisabled = typeof window !== 'undefined'
             && window.__TALARIA_DISABLE_REPLAY_CROSSHAIR_REFRESH === true;
         if (!refreshDisabled
+            && committedAdvance
+            && committedAdvance.tickGeneration === this._candlePlaybackTickGeneration
+            && committedAdvance.paintGeneration === this._replayPaintGeneration
+            && committedAdvance.owner === owner
+            && this.chart === owner
+            && this.isPlaying
+            && this.isActive
             && !this._refreshingCrosshairFromReplayTick
-            && chart
-            && typeof chart.refreshCrosshairFromLastPointer === 'function') {
+            && owner
+            && owner.canvas
+            && Number.isFinite(owner.mouseX)
+            && Number.isFinite(owner.mouseY)
+            && owner.mouseX >= ((owner.margin && owner.margin.l) || 0)
+            && owner.mouseX <= owner.w - ((owner.margin && owner.margin.r) || 0)
+            && owner.mouseY >= ((owner.margin && owner.margin.t) || 0)
+            && owner.mouseY <= owner.h - ((owner.margin && owner.margin.b) || 0)
+            && typeof owner.refreshCrosshairFromLastPointer === 'function') {
             this._refreshingCrosshairFromReplayTick = true;
             try {
-                chart.refreshCrosshairFromLastPointer();
+                owner.refreshCrosshairFromLastPointer();
             } finally {
                 this._refreshingCrosshairFromReplayTick = false;
             }

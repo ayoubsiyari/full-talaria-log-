@@ -15,7 +15,6 @@ const types = {
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
 };
 let resolveReport;
-const reportPromise = new Promise((r) => { resolveReport = r; });
 const server = http.createServer(async (req, res) => {
   res.setHeader('cache-control', 'no-store');
   if (req.method === 'POST' && req.url === '/report') {
@@ -46,38 +45,53 @@ const server = http.createServer(async (req, res) => {
 await new Promise((r) => server.listen(port, '127.0.0.1', r));
 
 const candidates = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  { name: 'edge-x86', path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
+  { name: 'edge-x64', path: 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe' },
+  { name: 'chrome-x64', path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
 ];
-const browser = candidates.find(existsSync);
-if (!browser) {
+const browsers = candidates.filter((candidate) => existsSync(candidate.path));
+if (!browsers.length) {
   server.close();
   throw new Error('no installed Chromium browser');
 }
-const profile = await mkdtemp(join(tmpdir(), 'tal01934-realpath-'));
 const url = `http://127.0.0.1:${port}/chart/modules/tal-01934-product-path-harness.html`;
-const child = spawn(browser, [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
-  '--disable-background-networking', `--user-data-dir=${profile}`, '--window-size=1200,900', url,
-], { stdio: ['ignore', 'ignore', 'pipe'] });
-let stderr = '';
-child.stderr.on('data', (d) => { stderr = (stderr + d.toString()).slice(-4000); });
-
-const report = await Promise.race([
-  reportPromise,
-  new Promise((r) => setTimeout(() => r({ verdict: 'HARNESS-FAIL', timeout: true, stderr }), 180000)),
-]);
-await new Promise((r) => execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], () => r()));
-await new Promise((r) => server.close(r));
-console.log(JSON.stringify(report, null, 2));
-for (let attempt = 0; attempt < 6; attempt += 1) {
-  try {
-    await rm(profile, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
-    break;
-  } catch (error) {
-    if (attempt === 5) console.error(`[cleanup] bounded profile removal failed: ${error}`);
-    else await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+const modes = [
+  { name: 'headless-new', flag: '--headless=new' },
+  { name: 'headless-default', flag: '--headless' },
+];
+const runs = [];
+for (const browser of browsers) {
+  for (const mode of modes) {
+    const profile = await mkdtemp(join(tmpdir(), 'tal01934-realpath-'));
+    let reportPromise;
+    reportPromise = new Promise((r) => { resolveReport = r; });
+    const child = spawn(browser.path, [
+      mode.flag, '--disable-gpu', '--no-first-run', '--disable-extensions',
+      '--disable-background-networking', `--user-data-dir=${profile}`, '--window-size=1200,900', url,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => { stderr = (stderr + d.toString()).slice(-4000); });
+    const report = await Promise.race([
+      reportPromise,
+      new Promise((r) => setTimeout(() => r({ verdict: 'HARNESS-FAIL', timeout: true, stderr }), 180000)),
+    ]);
+    resolveReport = null;
+    await new Promise((r) => execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], () => r()));
+    runs.push({ browser: browser.name, executable: browser.path, mode: mode.name, report });
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        await rm(profile, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+        break;
+      } catch (error) {
+        if (attempt === 5) console.error(`[cleanup] bounded profile removal failed: ${error}`);
+        else await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
   }
 }
-process.exit(report.verdict === 'HARNESS-PASS' ? 0 : 1);
+await new Promise((r) => server.close(r));
+const verdict = runs.every((run) => run.report.verdict === 'HARNESS-PASS')
+  ? 'HARNESS-PASS'
+  : 'HARNESS-FAIL';
+console.log(JSON.stringify({ verdict, availableChromiumRuns: runs.length, runs }, null, 2));
+process.exit(verdict === 'HARNESS-PASS' ? 0 : 1);

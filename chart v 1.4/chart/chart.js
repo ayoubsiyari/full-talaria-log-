@@ -28872,6 +28872,7 @@ class Chart {
             if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
             }
+            this._committedPaintGeneration = (this._committedPaintGeneration || 0) + 1;
             return;
         }
         
@@ -28973,6 +28974,7 @@ class Chart {
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
             }
+            this._committedPaintGeneration = (this._committedPaintGeneration || 0) + 1;
             return;
         }
 
@@ -29096,6 +29098,7 @@ class Chart {
             this.syncOverlayIndicatorSelectionOverlay();
         }
         cb01MountSigV1Record(this, 'chart.js:Chart.render:visible-boundary', 'raf');
+        this._committedPaintGeneration = (this._committedPaintGeneration || 0) + 1;
     }
     
     /**
