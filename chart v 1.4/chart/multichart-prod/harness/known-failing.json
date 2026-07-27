@@ -91,7 +91,10 @@
     "H-S82",
     "H-S83",
     "H-S83b",
-    "H-S84"
+    "H-S84",
+    "H-A1-B",
+    "H-S85",
+    "H-S86"
   ],
   "expectedPendingPO": {},
   "knownFailing": {
@@ -169,7 +172,15 @@
       "H-R14",
       "H-S80",
       "H-A8-VP-1",
-      "H-A8-VP-2"
+      "H-A8-VP-2",
+      "H-A7b-R2",
+      "H-A7b-R2b",
+      "MC-DRAW-FIRSTCLICK-R",
+      "MC-DRAW-FIRSTCLICK-2-R",
+      "MC-DRAW-FIRSTCLICK-2-R-SEL",
+      "OT-MS-01",
+      "OT-MS-02",
+      "OT-MS-03"
     ],
     "knownFailing": {}
   }

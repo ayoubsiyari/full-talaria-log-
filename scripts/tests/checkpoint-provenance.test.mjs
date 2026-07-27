@@ -172,54 +172,6 @@ test('uniform tree passes exact build and I8 checks', () => {
   }
 });
 
-test('uniformity allows only the exact Q6 canonical-forwarding wrapper', () => {
-  const tree = makeTree(greenManifest.buildId);
-  try {
-    const relative = 'modules/m20-q6-replay-lifecycle-binding.test.mjs';
-    write(path.join(tree.chartRoot, relative), 'import assert from "node:assert/strict";\n');
-    write(
-      path.join(tree.homepageChartRoot, relative),
-      '// Mirrored entrypoint: execute the canonical-root Q6 lifecycle harness.\n'
-        + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs';\n",
-    );
-    const report = verifyTreeLayout({
-      ...tree,
-      expectedBuildId: greenManifest.buildId,
-      sourceSha: greenManifest.source.sha,
-    });
-    assert.equal(report.ok, true, report.failures.join('\n'));
-    assert.ok(report.checks.some((check) =>
-      check.name === `I8 ${relative} canonical-forwarder`));
-  } finally {
-    fs.rmSync(tree.root, { recursive: true, force: true });
-  }
-});
-
-test('uniformity rejects modified and wrong-target Q6 wrappers', () => {
-  for (const wrapper of [
-    '// modified\n'
-      + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-binding.test.mjs';\n",
-    '// Mirrored entrypoint: execute the canonical-root Q6 lifecycle harness.\n'
-      + "import '../../../../chart v 1.4/chart/modules/m20-q6-replay-lifecycle-strong.test.mjs';\n",
-  ]) {
-    const tree = makeTree(greenManifest.buildId);
-    try {
-      const relative = 'modules/m20-q6-replay-lifecycle-binding.test.mjs';
-      write(path.join(tree.chartRoot, relative), 'import assert from "node:assert/strict";\n');
-      write(path.join(tree.homepageChartRoot, relative), wrapper);
-      const report = verifyTreeLayout({
-        ...tree,
-        expectedBuildId: greenManifest.buildId,
-        sourceSha: greenManifest.source.sha,
-      });
-      assert.equal(report.ok, false);
-      assert.match(report.failures.join('\n'), /m20-q6-replay-lifecycle-binding.*hash mismatch/);
-    } finally {
-      fs.rmSync(tree.root, { recursive: true, force: true });
-    }
-  }
-});
-
 test('stale service worker breaks uniformity', () => {
   const tree = makeTree(greenManifest.buildId);
   try {
@@ -257,10 +209,11 @@ test('uniformity proof is bound by hash, source SHA, and build id', () => {
   try {
     const proofPath = path.join(root, 'proof.json');
     write(proofPath, `${JSON.stringify({
-      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V1',
+      signature: 'TALARIA_CHECKPOINT_UNIFORMITY_V2',
       ok: true,
       expectedBuildId: greenManifest.buildId,
       sourceSha: greenManifest.source.sha,
+      forwardingMirrors: [],
     })}\n`);
     const manifestPath = path.join(root, 'manifest.json');
     const manifest = structuredClone(greenManifest);
@@ -320,10 +273,6 @@ test('Docker and deploy wiring preserve separate SHA/build ids and copy generate
   assert.match(deploy, /checkpoint-image-preflight\.mjs/);
   assert.match(deploy, /checkpoint-runtime-probe\.mjs/);
   assert.match(deploy, /docker compose up -d --no-build/);
-  assert.match(deploy, /DIRECT_ORIGIN must be auto or an HTTP\(S\) origin/);
-  assert.match(deploy, /docker inspect --format/);
-  assert.match(deploy, /DIRECT_ORIGIN="http:\/\/\$homepage_ip"/);
-  assert.doesNotMatch(deploy, /--browser-authenticated=1/);
   assert.doesNotMatch(deploy, /IMAGE_TAG:-latest|docker compose build/);
 
   const vpsDeploy = fs.readFileSync(

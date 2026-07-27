@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOMEPAGE_FORWARDING_CONTRACTS } from './homepage-forwarding-contracts.mjs';
+import { FORWARDING_MIRROR_CONTRACTS } from './homepage-forwarding-contracts.mjs';
 
 export const MANIFEST_SCHEMA = 'talaria.checkpoint-provenance/v1';
-export const UNIFORMITY_SIGNATURE = 'TALARIA_CHECKPOINT_UNIFORMITY_V1';
+export const UNIFORMITY_SIGNATURE = 'TALARIA_CHECKPOINT_UNIFORMITY_V2';
 export const BUILD_ID_RE = /^\d{8}b\d+$/;
 export const SOURCE_SHA_RE = /^[a-f0-9]{40}$/;
 export const DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
@@ -163,7 +163,43 @@ export function sha256File(filePath) {
   return sha256Buffer(fs.readFileSync(filePath));
 }
 
-export function verifyUniformityProof(manifest, manifestPath) {
+function validateForwardingMirrorRecord(record, failures, repoRoot = null) {
+  const contract = FORWARDING_MIRROR_CONTRACTS[record?.path];
+  if (!contract) {
+    failures.push(`unapproved forwarding mirror path: ${record?.path || '<missing>'}`);
+    return;
+  }
+  const expected = {
+    contractId: contract.contractId,
+    importTarget: contract.importTarget,
+    canonicalHash: record?.canonicalHash,
+    wrapperHash: sha256Buffer(contract.wrapper),
+    effectiveCanonicalTargetHash: record?.canonicalHash,
+  };
+  for (const [field, value] of Object.entries(expected)) {
+    if (record?.[field] !== value || (field.endsWith('Hash') && !/^[a-f0-9]{64}$/.test(value || ''))) {
+      failures.push(`forwarding mirror ${record.path}.${field} is invalid`);
+    }
+  }
+  if (repoRoot) {
+    const canonicalFile = path.join(repoRoot, 'chart v 1.4/chart', record.path);
+    const wrapperFile = path.join(repoRoot, 'homepage/public/chart', record.path);
+    const effectiveTarget = path.resolve(path.dirname(wrapperFile), contract.importTarget);
+    if (!fs.existsSync(canonicalFile) || sha256File(canonicalFile) !== record.canonicalHash) {
+      failures.push(`forwarding mirror ${record.path} canonical hash is stale`);
+    }
+    if (!fs.existsSync(wrapperFile) || sha256File(wrapperFile) !== record.wrapperHash) {
+      failures.push(`forwarding mirror ${record.path} wrapper hash is stale`);
+    }
+    if (effectiveTarget !== path.resolve(canonicalFile)
+        || !fs.existsSync(effectiveTarget)
+        || sha256File(effectiveTarget) !== record.effectiveCanonicalTargetHash) {
+      failures.push(`forwarding mirror ${record.path} effective canonical target is invalid`);
+    }
+  }
+}
+
+export function verifyUniformityProof(manifest, manifestPath, { repoRoot = null } = {}) {
   const failures = [];
   const proofPath = path.resolve(path.dirname(manifestPath), manifest.proof.uniformityReport);
   if (!fs.existsSync(proofPath)) {
@@ -189,6 +225,16 @@ export function verifyUniformityProof(manifest, manifestPath) {
     }
     if (report.sourceSha !== manifest.source.sha) {
       failures.push('uniformity proof source SHA differs from manifest');
+    }
+    if (!Array.isArray(report.forwardingMirrors)) {
+      failures.push('uniformity proof forwardingMirrors is missing');
+    } else {
+      const seen = new Set();
+      for (const record of report.forwardingMirrors) {
+        if (seen.has(record?.path)) failures.push(`duplicate forwarding mirror: ${record?.path}`);
+        seen.add(record?.path);
+        validateForwardingMirrorRecord(record, failures, repoRoot);
+      }
     }
   }
   return { ok: failures.length === 0, failures, proofPath, actualHash, report };
@@ -323,20 +369,30 @@ function listFiles(root, relative = '') {
   return files.sort();
 }
 
-const Q6_CANONICAL_FORWARDER = 'm20-q6-replay-lifecycle-binding.test.mjs';
-const Q6_HOMEPAGE_FORWARDER =
-  HOMEPAGE_FORWARDING_CONTRACTS[`modules/${Q6_CANONICAL_FORWARDER}`];
-
-function isExactQ6CanonicalForwarder(relativeFile, canonicalFile, homepageFile) {
-  if (relativeFile !== Q6_CANONICAL_FORWARDER) return false;
-  if (!fs.existsSync(canonicalFile) || !fs.existsSync(homepageFile)) return false;
-  const homepageContent = fs.readFileSync(homepageFile, 'utf8');
-  if (homepageContent !== Q6_HOMEPAGE_FORWARDER) return false;
-  // Hashing the canonical executable keeps this exception bound to the actual target.
-  return /^[a-f0-9]{64}$/.test(sha256File(canonicalFile));
+function forwardingMirrorRecord(relativePath, canonicalFile, homepageFile) {
+  const contract = FORWARDING_MIRROR_CONTRACTS[`modules/${relativePath}`];
+  if (!contract || !fs.existsSync(canonicalFile) || !fs.existsSync(homepageFile)) return null;
+  if (fs.readFileSync(homepageFile, 'utf8') !== contract.wrapper) return null;
+  const canonicalHash = sha256File(canonicalFile);
+  return {
+    path: `modules/${relativePath}`,
+    contractId: contract.contractId,
+    importTarget: contract.importTarget,
+    canonicalHash,
+    wrapperHash: sha256File(homepageFile),
+    effectiveCanonicalTargetHash: canonicalHash,
+  };
 }
 
-function compareMirrorTree(checks, failures, canonicalRoot, homepageRoot, name, expected) {
+function compareMirrorTree(
+  checks,
+  failures,
+  forwardingMirrors,
+  canonicalRoot,
+  homepageRoot,
+  name,
+  expected,
+) {
   const canonicalFiles = listFiles(canonicalRoot);
   const homepageFiles = listFiles(homepageRoot);
   const allFiles = [...new Set([...canonicalFiles, ...homepageFiles])].sort();
@@ -351,15 +407,19 @@ function compareMirrorTree(checks, failures, canonicalRoot, homepageRoot, name, 
       continue;
     }
     if (sha256File(canonicalFile) !== sha256File(homepageFile)) {
-      if (name === 'modules'
-          && isExactQ6CanonicalForwarder(relativeFile, canonicalFile, homepageFile)) {
-        record(
-          checks,
-          failures,
-          `I8 modules/${relativeFile} canonical-forwarder`,
-          expected,
-          expected,
-        );
+      const forwardingMirror = name === 'modules'
+        ? forwardingMirrorRecord(relativeFile, canonicalFile, homepageFile)
+        : null;
+      if (forwardingMirror) {
+        forwardingMirrors.push(forwardingMirror);
+        checks.push({
+          name: `I8 modules/${relativeFile} forwarding-contract`,
+          mode: 'contract-bound-forwarding-mirror',
+          contractId: forwardingMirror.contractId,
+          canonicalHash: forwardingMirror.canonicalHash,
+          wrapperHash: forwardingMirror.wrapperHash,
+          ok: true,
+        });
       } else {
         mismatches.push(`${relativeFile}: hash mismatch`);
       }
@@ -384,6 +444,7 @@ export function verifyTreeLayout({
 }) {
   const checks = [];
   const failures = [];
+  const forwardingMirrors = [];
   const shellFiles = [
     [path.join(chartRoot, 'dist-v9/index.html'), 'canonical dist'],
     [path.join(homepageChartRoot, 'dist-v9/index.html'), 'homepage dist'],
@@ -482,6 +543,7 @@ export function verifyTreeLayout({
     compareMirrorTree(
       checks,
       failures,
+      forwardingMirrors,
       path.join(chartRoot, canonicalName),
       path.join(homepageChartRoot, homepageName),
       canonicalName,
@@ -507,6 +569,7 @@ export function verifyTreeLayout({
     signature: UNIFORMITY_SIGNATURE,
     expectedBuildId,
     sourceSha,
+    forwardingMirrors,
     ok: failures.length === 0,
     checks,
     failures,

@@ -1,0 +1,18 @@
+{
+  "schema": "talaria.test-deployment-profiles/v1",
+  "profiles": [
+    {
+      "publicOrigin": "http://31.97.192.82:3000",
+      "composeProject": "talaria",
+      "services": ["trading-chart", "trading-chart-worker", "homepage"],
+      "volumes": [
+        "postgres_data",
+        "questdb_data",
+        "chart_uploads",
+        "journal_uploads",
+        "chart_data"
+      ],
+      "network": "default"
+    }
+  ]
+}
