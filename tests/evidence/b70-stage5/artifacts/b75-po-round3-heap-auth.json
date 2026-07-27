@@ -1,0 +1,590 @@
+{
+  "schema": "talaria-b75-po-round3-heap-v1",
+  "generatedAt": "2026-07-27T13:12:45.271Z",
+  "run": {
+    "cycles": 5,
+    "speed": 60,
+    "playMs": 30000,
+    "settleMs": 5000,
+    "delayedGcMs": 15000
+  },
+  "controls": [
+    "four-panel-none",
+    "four-panel-sma20",
+    "four-panel-sma20-local-orders"
+  ],
+  "mutationPolicy": {
+    "mode": "default-block",
+    "allowed": [
+      "POST /api/auth/login",
+      "POST /api/chart/windows/claim",
+      "POST /api/chart/windows/heartbeat",
+      "POST /api/chart/windows/release"
+    ],
+    "i16CleanRequired": true
+  },
+  "blockedMutations": [
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "none",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    },
+    {
+      "arm": "sma20-local-orders",
+      "method": "PATCH",
+      "pathHash": "8f9ab3a93fc129a17d982da8127f3cd91ffaa1fd6e4124dcf237cbb582ab367b",
+      "disposition": "prevented"
+    }
+  ],
+  "pageErrors": [],
+  "arms": [
+    {
+      "name": "none",
+      "cycles": [],
+      "baseline": {
+        "panels": [
+          {
+            "panel": "A",
+            "raw": 2001,
+            "processed": 2001,
+            "replayRaw": 72989,
+            "indicatorSeries": 0,
+            "indicatorActive": 0,
+            "queues": {
+              "currentTimeframe": 1,
+              "_pendingSessionStatePatch": 1,
+              "_sessionPatchFlushQueued": 0,
+              "_pendingChartViewSanityCheck": 0,
+              "_timeframeLoadSeq": 0,
+              "_timeframeFetchAbort": 0,
+              "_mcCommittedTimeframe": 0,
+              "renderPending": 0,
+              "_pendingCrosshairMoveEvent": 0,
+              "lastFrameTime": 1,
+              "frameCount": 1,
+              "_frameDisplaySeries": 128,
+              "_applyChartSettingsPending": 0,
+              "_pendingCriticalSessionStatePatch": 0,
+              "_pendingReplayState": 0,
+              "_sessionPatchDrainQueued": 0,
+              "_pendingReplayRestore": 0
+            },
+            "generation": null,
+            "replayGeneration": null,
+            "canvases": 1,
+            "canvasPixels": 378741,
+            "timers": 14,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenerBalance": 693
+          }
+        ],
+        "resources": {
+          "panelCount": 1,
+          "canvases": 1,
+          "canvasPixels": 378741,
+          "timers": 14,
+          "workersAlive": 0,
+          "detachedIframes": 0
+        },
+        "label": "none-baseline-single",
+        "cdp": {
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 1339,
+          "Nodes": 8293,
+          "TaskDuration": 2.774327,
+          "JSHeapUsedSize": 46662544,
+          "JSHeapTotalSize": 57151488
+        },
+        "arrayBuffers": {
+          "measured": false,
+          "reason": "CDP does not expose reliable backing-store bytes by panel"
+        },
+        "heapUsage": {
+          "usedSize": 46662628,
+          "totalSize": 57151488,
+          "embedderHeapUsedSize": 13015600,
+          "backingStorageSize": 13830916
+        },
+        "heap": {
+          "serializedBytes": 147967197,
+          "sha256": "cba0f18f16b60faf2b5e2c4d444b0b8d851d1a51e61ca8d86172b44913a99973",
+          "rawDeleted": true
+        }
+      },
+      "blocker": "Waiting failed: 120000ms exceeded",
+      "classification": "INCONCLUSIVE"
+    },
+    {
+      "name": "sma20",
+      "cycles": [],
+      "baseline": {
+        "panels": [
+          {
+            "panel": "A",
+            "raw": 2001,
+            "processed": 2001,
+            "replayRaw": 72989,
+            "indicatorSeries": 0,
+            "indicatorActive": 0,
+            "queues": {
+              "currentTimeframe": 1,
+              "_pendingSessionStatePatch": 1,
+              "_sessionPatchFlushQueued": 0,
+              "_pendingChartViewSanityCheck": 0,
+              "_timeframeLoadSeq": 0,
+              "_timeframeFetchAbort": 0,
+              "_mcCommittedTimeframe": 0,
+              "renderPending": 0,
+              "_pendingCrosshairMoveEvent": 0,
+              "lastFrameTime": 1,
+              "frameCount": 1,
+              "_frameDisplaySeries": 128,
+              "_applyChartSettingsPending": 0,
+              "_pendingCriticalSessionStatePatch": 0,
+              "_pendingReplayState": 0,
+              "_sessionPatchDrainQueued": 0,
+              "_pendingReplayRestore": 0
+            },
+            "generation": null,
+            "replayGeneration": null,
+            "canvases": 1,
+            "canvasPixels": 378741,
+            "timers": 15,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenerBalance": 550
+          }
+        ],
+        "resources": {
+          "panelCount": 1,
+          "canvases": 1,
+          "canvasPixels": 378741,
+          "timers": 15,
+          "workersAlive": 0,
+          "detachedIframes": 0
+        },
+        "label": "sma20-baseline-single",
+        "cdp": {
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 1032,
+          "Nodes": 4091,
+          "TaskDuration": 2.219116,
+          "JSHeapUsedSize": 48206620,
+          "JSHeapTotalSize": 61083648
+        },
+        "arrayBuffers": {
+          "measured": false,
+          "reason": "CDP does not expose reliable backing-store bytes by panel"
+        },
+        "heapUsage": {
+          "usedSize": 48206620,
+          "totalSize": 61083648,
+          "embedderHeapUsedSize": 9594248,
+          "backingStorageSize": 16218245
+        },
+        "heap": {
+          "serializedBytes": 147849816,
+          "sha256": "8997d527348ed26845b39a241235e349af030b1cc481b8c8282b341a57a63095",
+          "rawDeleted": true
+        }
+      },
+      "blocker": "Waiting failed: 120000ms exceeded",
+      "classification": "INCONCLUSIVE"
+    },
+    {
+      "name": "sma20-local-orders",
+      "cycles": [],
+      "baseline": {
+        "panels": [
+          {
+            "panel": "A",
+            "raw": 2001,
+            "processed": 2001,
+            "replayRaw": 72989,
+            "indicatorSeries": 0,
+            "indicatorActive": 0,
+            "queues": {
+              "currentTimeframe": 1,
+              "_pendingSessionStatePatch": 1,
+              "_sessionPatchFlushQueued": 0,
+              "_pendingChartViewSanityCheck": 0,
+              "_timeframeLoadSeq": 0,
+              "_timeframeFetchAbort": 0,
+              "_mcCommittedTimeframe": 0,
+              "renderPending": 0,
+              "_pendingCrosshairMoveEvent": 0,
+              "lastFrameTime": 1,
+              "frameCount": 1,
+              "_frameDisplaySeries": 128,
+              "_applyChartSettingsPending": 0,
+              "_pendingCriticalSessionStatePatch": 0,
+              "_pendingReplayState": 0,
+              "_sessionPatchDrainQueued": 0,
+              "_pendingReplayRestore": 0
+            },
+            "generation": null,
+            "replayGeneration": null,
+            "canvases": 1,
+            "canvasPixels": 378741,
+            "timers": 15,
+            "workersCreated": 0,
+            "workersAlive": 0,
+            "listenerBalance": 550
+          }
+        ],
+        "resources": {
+          "panelCount": 1,
+          "canvases": 1,
+          "canvasPixels": 378741,
+          "timers": 15,
+          "workersAlive": 0,
+          "detachedIframes": 0
+        },
+        "label": "sma20-local-orders-baseline-single",
+        "cdp": {
+          "Documents": 2,
+          "Frames": 2,
+          "JSEventListeners": 1032,
+          "Nodes": 3611,
+          "TaskDuration": 2.170208,
+          "JSHeapUsedSize": 46122584,
+          "JSHeapTotalSize": 60035072
+        },
+        "arrayBuffers": {
+          "measured": false,
+          "reason": "CDP does not expose reliable backing-store bytes by panel"
+        },
+        "heapUsage": {
+          "usedSize": 46122584,
+          "totalSize": 60035072,
+          "embedderHeapUsedSize": 8291616,
+          "backingStorageSize": 16215226
+        },
+        "heap": {
+          "serializedBytes": 147164049,
+          "sha256": "4afefb70a080e1f3711112ccb9a404a5007e4adb45674e9f1d5d67af5fb2c017",
+          "rawDeleted": true
+        }
+      },
+      "blocker": "Waiting failed: 120000ms exceeded",
+      "classification": "INCONCLUSIVE"
+    }
+  ],
+  "rawHeapPolicy": {
+    "committed": false,
+    "ephemeral": true,
+    "cleanupComplete": true
+  },
+  "verdict": "INCONCLUSIVE",
+  "ownerScope": {
+    "validated": true,
+    "sessionAlias": "owner-qa-session",
+    "requestedQa123": true,
+    "exactQa123Validated": true,
+    "files": [
+      "file-A",
+      "file-B",
+      "file-C",
+      "file-D"
+    ]
+  },
+  "i16Clean": true
+}
