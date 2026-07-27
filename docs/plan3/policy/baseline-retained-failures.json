@@ -1,0 +1,43 @@
+[
+  {
+    "id": "H-A8-VP-2",
+    "category": "baseline-retained failure",
+    "scope": "coordinate-tab/canvas-drag synchronization and gesture/render recovery for anchored volume-profile geometry",
+    "excludedScopes": [
+      "D-030-money-paths",
+      "I16-customer-data",
+      "security-controls"
+    ],
+    "debtBoardRow": "BRF-H-A8-VP-2",
+    "owner": "Lane 4 — Interaction/UX",
+    "targetCheckpoint": "B79",
+    "status": "RED",
+    "requester": "B78 promotion review",
+    "authorizer": "Director",
+    "activationCheckpoint": "B78",
+    "signatureProof": {
+      "kind": "byte-and-assertion-identical",
+      "evidenceCommit": "7e9a12631879894affba30ea17e9d54da17f24bc",
+      "baselineDigest": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "candidateDigest": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "baselineAssertionDigest": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "candidateAssertionDigest": "ff470c3aafb0040bf28e6c4319f21a334e66035651b301b1a6899e5c5e1075b3",
+      "testRunId": "H-A8-VP-2-B75-B77-B78-STABILITY",
+      "testCheckpoint": "B78",
+      "repetitions": {
+        "B75": "10/10",
+        "B77": "10/10",
+        "B78": "10/10"
+      },
+      "mutationTests": "6/6"
+    },
+    "directorSignOff": {
+      "decision": "APPROVED",
+      "directorIdentity": "Director",
+      "signedAt": "2026-07-27T16:54:00Z",
+      "scope": "coordinate-tab/canvas-drag synchronization and gesture/render recovery for anchored volume-profile geometry",
+      "ruling": "Director activated H-A8-VP-2 on the immutable B78 stability evidence"
+    },
+    "activation": "ACTIVE"
+  }
+]
