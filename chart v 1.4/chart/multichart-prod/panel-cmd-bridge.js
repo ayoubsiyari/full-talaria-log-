@@ -2451,8 +2451,13 @@
         }
     }
 
-    function replayRawIndexOwnerCommitted(ch, rs, ts) {
+    function replayRawIndexOwnerCommitted(ch, rs, ts, token, generation) {
         if (!ch || !rs || !rs.isActive || !Number.isFinite(ts)) return false;
+        if (!token
+            || token.generation !== generation
+            || token.target !== ts
+            || token.replaySystem !== rs
+            || ch._mcPlayEagerCoverGeneration !== generation) return false;
         var master = Array.isArray(rs.fullRawData) && rs.fullRawData.length
             ? rs.fullRawData
             : (Array.isArray(ch._panelFullRawData) && ch._panelFullRawData.length
@@ -2470,7 +2475,9 @@
         return Number.isFinite(indexTs)
             && indexTs <= ts
             && (!Number.isFinite(nextTs) || ts < nextTs)
-            && Number(rs.replayTimestamp) === ts;
+            && Number(rs.replayTimestamp) === ts
+            && token.index === index
+            && token.timestamp === Number(rs.replayTimestamp);
     }
 
     function eagerCoverIndependentOnPlay(ch) {
@@ -2495,21 +2502,30 @@
         function ownsCoverGeneration() {
             return ch._mcPlayEagerCoverGeneration === coverGeneration;
         }
-        function commitCoveredOwnership(covered) {
-            if (!ownsCoverGeneration()) return;
-            if (covered !== true) {
-                invalidateReplayOwnershipCommit(ch, 'COVERAGE_NOT_CONFIRMED');
+        var seekAttempts = 0;
+        function attemptOwnershipSeek() {
+            if (!ownsCoverGeneration()
+                || !pendingPlayDesired
+                || !ch.replaySystem
+                || !ch.replaySystem.isActive) {
+                if (ownsCoverGeneration()) {
+                    invalidateReplayOwnershipCommit(ch, 'REPLAY_INACTIVE_BEFORE_SEEK');
+                }
                 return;
             }
-            if (!pendingPlayDesired || !ch.replaySystem || !ch.replaySystem.isActive) {
-                invalidateReplayOwnershipCommit(ch, 'REPLAY_INACTIVE_BEFORE_SEEK');
-                return;
-            }
+            seekAttempts++;
             clearIndependentCatchUpCooldown(ch);
             forceReplaySeek(ch, coverTs, false, function (result) {
                 if (!ownsCoverGeneration()) return;
+                if (result && result.code === 'SEEK_REJECTED' && seekAttempts < 2) {
+                    setTimeout(function () {
+                        if (ownsCoverGeneration()) attemptOwnershipSeek();
+                    }, 0);
+                    return;
+                }
                 if (!result || result.ok !== true
-                    || !replayRawIndexOwnerCommitted(ch, ch.replaySystem, coverTs)) {
+                    || !replayRawIndexOwnerCommitted(
+                        ch, ch.replaySystem, coverTs, result.token, coverGeneration)) {
                     invalidateReplayOwnershipCommit(ch,
                         result && result.code ? result.code : 'RAW_INDEX_OWNER_UNCOMMITTED',
                         result && result.error);
@@ -2527,7 +2543,24 @@
                     && typeof ch.scheduleReplayIndicatorRecalc === 'function') {
                     ch.scheduleReplayIndicatorRecalc(true);
                 }
-            }, { coverageAlreadyConfirmed: true, failClosedCoverage: true });
+            }, {
+                coverageAlreadyConfirmed: true,
+                failClosedCoverage: true,
+                ownershipGeneration: coverGeneration,
+                ownershipTarget: coverTs,
+            });
+        }
+        function commitCoveredOwnership(covered) {
+            if (!ownsCoverGeneration()) return;
+            if (covered !== true) {
+                invalidateReplayOwnershipCommit(ch, 'COVERAGE_NOT_CONFIRMED');
+                return;
+            }
+            if (!pendingPlayDesired || !ch.replaySystem || !ch.replaySystem.isActive) {
+                invalidateReplayOwnershipCommit(ch, 'REPLAY_INACTIVE_BEFORE_SEEK');
+                return;
+            }
+            attemptOwnershipSeek();
         }
         ch.ensureReplayDataCoversTimestamp(coverTs).then(function (covered) {
             commitCoveredOwnership(covered !== false);
@@ -2602,14 +2635,18 @@
             // Unset = ON. Set window.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT = false to revert.
             var preserveEnter = isEnter
                 && !(global && global.__TALARIA_FIX_REPLAY_ENTER_PRESERVE_VIEWPORT === false);
+            var accepted;
             try {
-                rs.goToReplayTimestamp(ts, {
+                accepted = rs.goToReplayTimestamp(ts, {
                     preserveVisibleWindow: !!preserveEnter,
                     centerOnCandle: !!(isEnter && !preserveEnter),
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
                 return { ok: false, code: 'SEEK_THROW', error: e };
+            }
+            if (accepted !== true) {
+                return { ok: false, code: 'SEEK_REJECTED' };
             }
             // D-015: multichart shared playhead is wall-clock ts (host broadcast),
             // even when the panel's display TF is coarser than the seek step.
@@ -2648,7 +2685,17 @@
                     });
                 } catch (_) {}
             }
-            return { ok: true, code: 'SEEK_COMMITTED' };
+            return {
+                ok: true,
+                code: 'SEEK_COMMITTED',
+                token: {
+                    generation: options.ownershipGeneration,
+                    target: options.ownershipTarget,
+                    replaySystem: rs,
+                    index: Number(rs.currentIndex),
+                    timestamp: Number(rs.replayTimestamp),
+                },
+            };
         }
 
         // Independent ticker: while /bars catch-up is in flight, paint the furthest
