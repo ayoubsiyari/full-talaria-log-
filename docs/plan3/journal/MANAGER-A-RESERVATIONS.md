@@ -82,3 +82,24 @@ half can be disabled without reverting the correctness half.
 callers are counted), `_mcDiag.incrementalResamples`. The pre-existing `_mcDiag.resamples` field is
 retained untouched and is now formally **not usable for any verdict** — see the journal entry of
 2026-07-28T00:40.
+
+---
+
+## Rows opened 2026-07-28, not yet dispatched (write cap is the constraint)
+
+| Row | Territory | Class |
+|---|---|---|
+| Weekly-map indicator computes a 14-week average from ~3.5 days of 1m data, silently | **Manager A** | §A4c, painted as a value, live today |
+| `_tryIncrementalResample` mis-buckets out-of-order appends | **Manager A** | data integrity, pre-existing |
+| `parseTimeframe('1wk')` returns 60000 ms; `1wk` listed as weekly elsewhere | **Manager A** | latent |
+| Non-converging journal-marker restore cascade (90-second freeze) | **Manager B** | escalated, not mine |
+| `_retainCurrentOrderExecutionSeries` pins whole master arrays by reference | **Manager B** | escalated, not mine |
+| Single-layout 1m at 3.5 GB — retention source unidentified | **unassigned** | escalated; no manager owns it yet |
+
+## Frozen shared interface
+
+`_trimBarOhlcToReplayPlayhead` must be treated as a published contract, not a private helper.
+`order-manager.js` calls it itself at read time on two separate branches, which is *why* the trim
+overlay is money-path-safe and needs no Manager B co-merge. If the overlay packet ever changes that
+function's signature or its idempotence, those call sites break silently. Recorded here so the
+constraint survives the packet that discovered it.

@@ -549,3 +549,149 @@ If it is wrong — if the shared value turns out to be a cache-identity artefact
 then the trim packet is narrower than currently priced and something else owns the lag. Either answer
 changes what I dispatch, so dispatching now would mean authoring the wrong oracle. Item 3 is hours; the
 trim packet is 10–13 days. Waiting is cheap.
+
+---
+
+## 2026-07-28T01:05 · CORRECTION · I recommended a host-side dial that is a trap; retracting it
+
+Superseding the recommendation in my 00:48 `ANSWER`. I told the Director that re-scoping the residency
+row from panel-side to host-side was an "hours, not days" measurement because
+`_highLimitBulkHistorySmartLimit` is "already switchable via a documented global." Adversarial review
+refuted both halves and I am retracting the recommendation rather than softening it.
+
+`__TALARIA_MC_HIGH_LIMIT_BULK_LIMIT` appears **exactly once in the repository** — the read itself. No
+documentation, no test, no harness scenario, no kill-switch registry entry. It is an undocumented read,
+not a documented switch. Worse, the sibling switch that *is* harness-covered records what happens when
+this class of limit is turned down: the scenario cell's own assertion text is "replay enter reverts to
+**many small fetches**." That is precisely the hazard the same analysis used to reject paging — a
+smaller resident forward window means the playhead reaches the loaded edge more often, and every edge
+hit is a network round trip with a stall. I would have been proposing the rejected mechanism through a
+different door. Two further defects: the dial floors at 2000, and a **second** independent 100,000 dial
+exists for host panels that turning the first one down does not touch.
+
+**The do-not-build verdict itself survives, and strengthens** — reviewer confidence 92% against the
+author's 80%. But the reason changed, and the new reason is the more useful one: the mixed-4 symptom is
+**allocation churn, not residency**. The analysis divided a retained-bytes numerator by a browser-memory
+denominator that sawtooths, which is the signature of short-lived allocation. If the symptom is churn, a
+residency cap cannot touch it at any size, and the byte arithmetic — which was wrong in both directions,
+too high per bar and far too low on total retainers — stops mattering. Recorded per §A4b: I reached the
+right verdict partly for the wrong reason, and the record should say so.
+
+**The replacement instrument, which I did not have at 00:48: bound the caches, not the master.** Four
+constants — the cached-fileId count, per-file timeframe-cache breadth, the 12,000-bar cache depth and
+the decoded-tile ceiling — are pure caches whose read paths are already miss-tolerant. Eviction costs a
+refetch or a resample; it cannot change a painted value, cannot move a drawing anchor, and cannot starve
+indicator warm-up, because a miss falls back to the fetch path that would have run anyway. That is a
+materially safer dial than the fetch limit and it is measurable in hours. This is the host-side
+measurement I should have named.
+
+---
+
+## 2026-07-28T01:08 · VERDICT · the 90-second freeze is named, and it is not in my territory
+
+Read-only triage returned a named primary mechanism for §A9.2, and it is a different animal from
+everything I have been measuring.
+
+`surface=` static source analysis across `chart.js`, `replay-system.js`, `chart-data-pipeline.js` and
+`order-manager.js`. `coverage=` **no timing measured, nothing executed, and the loop was not observed
+firing in the reporting session.** Every duration below is derived from complexity plus conventional
+per-operation costs. This is a well-supported hypothesis, not an established fact, and I am recording it
+as such.
+
+**Mechanism: a non-converging journal-marker restore cascade in `order-manager.js`.** Six `setTimeout`
+callbacks are armed per `chartDataLoaded` event with no `clearTimeout` and no stored handle — and the
+sibling function immediately below it *does* clear its timer, so the omission is asymmetric rather than
+house style. `chartDataLoaded` fires on every replay frame advance. Each queued pass begins by
+invalidating its own delta cache, so the incremental fast path can never engage and **every pass is a
+full pass by construction**. The exit condition compares drawn-marker count against an expected count,
+but the expected-count function omits the open-positions and pending-orders filter that the drawing
+function applies — so any journal row whose id is also an open or pending position is **counted as
+expected and never drawn**, the comparison can never be satisfied, the pending flag never clears, and
+every subsequent event adds six more full passes to a queue that already drains slower than it fills.
+
+That last detail is why this needs open trades plus journal rows to appear, and it is exactly the
+configuration the earlier memory sweeps did not have. The arithmetic reaches ninety seconds: roughly one
+to two seconds per pass at four panels, and about sixty queued passes, all with expiry times already in
+the past, so the browser runs them back to back and the compositor never gets a frame. Sixty deep at 1.5
+seconds is one wall, not sixty stutters — and that is the specific thing the per-tick resample cannot
+produce, because it yields the thread between units of work. It also explains the parts that are hard to
+fake: fine for five minutes then a wall, because per-pass cost grows as trades close; one layout
+restoring responsiveness *immediately* without anything being fixed, because dropping from four renders
+to one puts drain rate back above fill rate.
+
+**This is Manager B's file. I am not touching it, and I am not opening a row on it.** Escalated to the
+Director with the discriminating experiment attached. My territory's contribution to the same symptom —
+per-tick full resampling and per-panel synchronous work on the host thread — is real, bounded, and
+explains sustained high CPU and the sawtooth, not the wall.
+
+**One trap worth recording before anyone acts:** the allocation rate from my side is part of what pushes
+the heap into the regime where those passes are slowest. So fixing the per-tick resample will make the
+wall *shorter* without removing it, which is an excellent way to record a false "fixed."
+
+---
+
+## 2026-07-28T01:11 · DECISION · no `PO-REQ` for the freeze experiment, despite it being cheap and decisive
+
+The triage supplies a genuinely good fifteen-minute experiment: with four mixed panels, indicators, an
+open position and a non-empty journal, read the pending-restore flag during steady play and see whether
+it stays set, then enable the existing read-only marker-debug global and watch whether the pass count
+per second climbs rather than holds. It would confirm or exclude the mechanism in one session.
+
+I am not emitting it. The row lives in Manager B's territory, and §A12.3 caps requested PO time at 45
+minutes per train **across all three managers combined** — spending it on another manager's row is not
+mine to do. The experiment goes to the Director with the escalation so that whoever owns the row can
+spend the budget on it. Outstanding `PO-REQ` count from me remains **0**.
+
+---
+
+## 2026-07-28T01:14 · OPEN · new defect in my own territory, painted as a value, live today
+
+Found incidentally by the residency-cap reviewer while verifying an unrelated claim, and it is the
+clearest §A4c instance of the night.
+
+The weekly-map indicator reads `ctx.rawData` and needs roughly 36 calendar weeks of 1h bars — its own
+comment says so and its constant encodes it. But non-replay `rawData` is **already ring-buffer capped at
+5,000 bars for 1m**. On a 1m chart that is about three and a half days. The slice helper returns the
+short array without complaint, so the engine computes what it presents as a fourteen-week average from
+days of data, and paints it. No error, no degraded badge, no warning.
+
+Capability loss without failure, painted as a value, live on the product right now, and independent of
+every packet currently in flight. Opened as its own row in my territory. Not dispatched tonight — the
+canary blockers outrank it and the write cap is the binding constraint — but it is exactly the class
+§A4c exists to catch, and it was found by a reviewer looking at something else, which is worth noting
+about how much of this the gates are still missing.
+
+---
+
+## 2026-07-28T01:17 · VERDICT · session-calendar RED landed and reproduces the PO evidence exactly
+
+Packet `session-calendar-red`, commit `91cf6218f`, worktree `manager-a-session-calendar`. No product
+file modified; the module-contracts preflight still exits 0. **Adversarial review dispatched and not yet
+returned — this verdict is provisional and the packet is not accepted.**
+
+40 of 160 value assertions fail against the product as committed, and they are the right 40: the Friday
+4 Jan 2013 session bucket is absent, the phantom Saturday bar exists, four daily bars are named Sunday,
+the daily bucket count is 24 where 20 is correct, and weekly opens render Wednesday 19:00 five times
+instead of Sunday 17:00 four times. The DST evidence is the part I find most convincing — the local
+anchor minute-of-day currently reads both 19:00 EST and 20:00 EDT where a correct implementation holds
+one constant value, and the session-span histogram is all-24h where exactly one 23-hour session must
+exist. That histogram is a structural falsifier for any fixed-offset implementation, which is the
+failure mode I was most worried about when I briefed this.
+
+`surface=` the real `parseTimeframe`, `_prepareBarsForResampling` and `_resampleDataFull`, lifted as
+verbatim source text and executed in a `node:vm` realm alongside the unmodified pipeline.
+`coverage=` no browser, no PO verification, no real session-877 data, panels simulated as VM realms
+rather than iframes, and timezone varied in place of a different physical host so ICU/tzdata version
+coverage is unverified. The GREEN half is a **patch applied in memory only**, so the 0/160 pass is a
+claim about wiring that has not shipped. All of that is in the reviewer's brief.
+
+Two incidental defects reported and correctly not fixed: `_tryIncrementalResample` mis-buckets
+out-of-order appends, reproducing in the pre-fix state and therefore pre-existing, with a three-line fix
+offered; and `parseTimeframe('1wk')` returns 60000 ms because there is no `wk` unit, while the
+max-bars-on-screen table lists `1wk` as weekly. Both get their own rows rather than riding this packet.
+
+**One decision the author made that was not theirs to make, and I am not ratifying it.** Crypto *daily*
+at 00:00 UTC was specified; crypto *weekly* was not. The author chose Monday 00:00 UTC, which changes
+crypto weekly output relative to today's Thursday-aligned epoch weeks. That is a user-visible
+convention change on an instrument class outside the stated scope of the fix, so it goes to the Director
+with the migration disposition rather than being settled inside a RED packet.
