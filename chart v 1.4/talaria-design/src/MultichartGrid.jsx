@@ -75,14 +75,9 @@ function cb01MountSigGridSetTrigger(trigger, details) {
     } catch (_) { /* instrumentation must never affect product flow */ }
 }
 
-/** Per-tile fileId across F5 (sessionStorage). Unset = ON. */
+/** Legacy per-tile session fallback is permanently retired for identity safety. */
 function mcPanelFilePersistV1Enabled() {
-    try {
-        return !(typeof window !== "undefined"
-            && window.__TALARIA_DISABLE_MC_PANEL_FILE_PERSIST_V1 === true);
-    } catch (_) {
-        return true;
-    }
+    return false;
 }
 
 function mcPanelFilePersistStorageKey() {
@@ -99,39 +94,18 @@ function mcPanelFilePersistStorageKey() {
 }
 
 function readPersistedPanelFileMap() {
-    if (!mcPanelFilePersistV1Enabled()) return {};
-    try {
-        const raw = sessionStorage.getItem(mcPanelFilePersistStorageKey());
-        if (!raw) return {};
-        const obj = JSON.parse(raw);
-        return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
-    } catch (_) {
-        return {};
-    }
+    return {};
 }
 
 function persistPanelFileId(panelId, fileId) {
-    if (!mcPanelFilePersistV1Enabled()) return;
-    const pid = panelId != null ? String(panelId) : "";
-    const fid = fileId != null ? String(fileId).trim() : "";
-    if (!pid || pid === HOST_PANEL_ID || !fid) return;
-    try {
-        const map = readPersistedPanelFileMap();
-        if (String(map[pid] || "") === fid) return;
-        map[pid] = fid;
-        sessionStorage.setItem(mcPanelFilePersistStorageKey(), JSON.stringify(map));
-    } catch (_) { /* ignore */ }
+    void panelId;
+    void fileId;
 }
 
 /** Boot iframe tiles on their last independent pair (else host/fallback fileId). */
 function resolveBootFileIdForPanel(panelId, fallbackFileId) {
     const fb = fallbackFileId != null ? String(fallbackFileId).trim() : "";
-    if (!mcPanelFilePersistV1Enabled()) return fb || null;
-    try {
-        const map = readPersistedPanelFileMap();
-        const saved = map[panelId] != null ? String(map[panelId]).trim() : "";
-        if (saved) return saved;
-    } catch (_) { /* ignore */ }
+    void panelId;
     return fb || null;
 }
 

@@ -71,11 +71,16 @@
             // Identity is user-scoped persisted state. Never recover it from the
             // host's unscoped local/session storage or an iframe boot fallback.
             const storage = global.userStorage;
-            if (!storage || typeof storage.getItem !== 'function') return null;
-            const raw = storage.getItem('chart_panel_state');
+            const ownerId = global.__talariaUserId == null
+                ? '' : String(global.__talariaUserId).trim();
+            if (!ownerId || !storage || typeof storage.getScopedItem !== 'function') return null;
+            const raw = storage.getScopedItem('chart_panel_state');
             if (!raw) return null;
             const value = JSON.parse(raw);
-            return value && Array.isArray(value.panels) ? value : null;
+            const savedOwner = value && value.ownerId == null ? '' : String(value.ownerId).trim();
+            const savedSession = value && value.sessionId == null ? '' : String(value.sessionId).trim();
+            return value && savedOwner === ownerId && savedSession && Array.isArray(value.panels)
+                ? value : null;
         } catch (_) {
             return null;
         }
