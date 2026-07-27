@@ -1,0 +1,56 @@
+{
+  "schema": "talaria.required-global-audit.v1",
+  "generatedFrom": "working-tree",
+  "scope": "diagnostics-only",
+  "acceptanceChanged": false,
+  "productFilesChanged": false,
+  "verdict": "STOP_THE_LINE",
+  "stopTheLine": [
+    {
+      "id": "STL-INDICATOR-PERF-LEGACY",
+      "module": "modules/indicator-performance.js",
+      "global": "IndicatorPerf",
+      "requiredBefore": "modules/chart-indicators-full.js",
+      "missingSurfaces": [
+        "chart v 1.4/chart/legacy-index.html",
+        "homepage/public/chart/legacy-index.html",
+        "homepage/public/chart/talaria-design/live/index.html"
+      ],
+      "presentOrderedSurfaces": [
+        "chart v 1.4/talaria-design/live/index.html",
+        "chart v 1.4/chart/dist-v9/index.html",
+        "homepage/public/chart/dist-v9/index.html",
+        "chart v 1.4/chart/multichart-prod/chart-embed.html",
+        "homepage/public/chart/multichart-prod/chart-embed.html"
+      ],
+      "fallback": "raw bar clone/transfer, full or synchronous calculation paths, weaker parameter hash",
+      "impact": ["performance", "replay-lag", "worker-transfer", "cache-correctness-risk"],
+      "existingGate": "tests/evidence/b70-stage5/b75-indicator-performance-product-surface.gate.mjs"
+    }
+  ],
+  "contracts": [
+    {"module":"preferences-sync.js","globals":["preferencesSync"],"class":"required-infrastructure","negativeControl":"missing"},
+    {"module":"viewport-data-manager.js","globals":["ViewportDataManager"],"class":"required-optimization-role-scoped","negativeControl":"missing"},
+    {"module":"talaria-toast-stack.js","globals":["__TalariaToastStack"],"class":"required-v9-ux-role-scoped","negativeControl":"missing"},
+    {"module":"compare-overlay.js","globals":["CompareOverlay"],"class":"required-host-feature-optional-embed","negativeControl":"missing"},
+    {"module":"replay-system.js","globals":["ReplaySystem"],"class":"required-feature","negativeControl":"missing"},
+    {"module":"order-event-bus.js","globals":["OrderEventBus"],"class":"required-infrastructure","negativeControl":"missing"},
+    {"module":"order-service.js","globals":["OrderService"],"class":"required-infrastructure","negativeControl":"missing"},
+    {"module":"tool-lifecycle-store.js","globals":["ToolLifecycleStore"],"class":"required-drawing-infrastructure","negativeControl":"kill-switch-only-no-absence-cell"},
+    {"module":"drawing-tools-text.js","globals":["DrawingTextHelpers"],"class":"required-drawing-correctness","negativeControl":"missing"},
+    {"module":"talaria-*-indicator.js","globals":["TalariaFvgIndicator","TalariaRatioGapIndicator","TalariaWeeklyMapIndicator","TalariaSimpleSmcIndicator"],"class":"required-catalog-feature","negativeControl":"missing"},
+    {"module":"indicator-rc6 modules","globals":["rc6IndicatorLifecycleStoreEnabled","rc6IndicatorVisibilityV2Enabled","rc6IndicatorSettingsApplyV2Enabled","rc6IndicatorPersistRehydrateV2Enabled","rc6IndicatorReplayUiSyncV2Enabled"],"class":"required-when-enabled","negativeControl":"partial"},
+    {"module":"indicator-ui.js","globals":["INDICATOR_DEFINITIONS","__v9OpenIndicatorSettings"],"class":"required-indicator-feature","negativeControl":"missing"}
+  ],
+  "proposal": {
+    "static": ["explicit role manifest","ordered subsequences","global/API declarations","guard-site census","generated-forward digest checks"],
+    "browser": ["byte-real accepted shells","request/response/resource order","frame-local global witnesses","feature witnesses","fail-before-performance"],
+    "faultInjection": ["blocked response","empty response","API-corrupt response","wrong order","one plugin/module removed per cell"],
+    "antiLying": ["four-state proof","three repeats","alternate host/clock","last-proven-RED","staleness stamp"]
+  },
+  "openRuling": {
+    "id": "V9-REPLAY-UI-SYNC-ROLE",
+    "fact": "indicator-replay-ui-sync.js is loaded by embed and legacy but not the maintained/generated V9 host",
+    "action": "determine intended role; encode explicit exclusion or promote missing host module to STOP_THE_LINE"
+  }
+}
