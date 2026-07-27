@@ -320,6 +320,10 @@ test('Docker and deploy wiring preserve separate SHA/build ids and copy generate
   assert.match(deploy, /checkpoint-image-preflight\.mjs/);
   assert.match(deploy, /checkpoint-runtime-probe\.mjs/);
   assert.match(deploy, /docker compose up -d --no-build/);
+  assert.match(deploy, /DIRECT_ORIGIN must be auto or an HTTP\(S\) origin/);
+  assert.match(deploy, /docker inspect --format/);
+  assert.match(deploy, /DIRECT_ORIGIN="http:\/\/\$homepage_ip"/);
+  assert.doesNotMatch(deploy, /--browser-authenticated=1/);
   assert.doesNotMatch(deploy, /IMAGE_TAG:-latest|docker compose build/);
 
   const vpsDeploy = fs.readFileSync(
