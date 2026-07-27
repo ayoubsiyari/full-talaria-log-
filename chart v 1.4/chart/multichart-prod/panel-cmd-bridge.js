@@ -3137,7 +3137,8 @@
                         var parentChart = null;
                         try {
                             if (!global.parent || global.parent === global
-                                || global.parent.__TALARIA_ENABLE_MC_RESTORE_V1 !== true) {
+                                || global.parent.__TALARIA_DISABLE_MC_RESTORE_V1 === true
+                                || global.parent.__TALARIA_ENABLE_MC_RESTORE_V1 === false) {
                                 throw new Error('MC_RESTORE disabled');
                             }
                             parentManager = global.parent.__multichartManagerRef;

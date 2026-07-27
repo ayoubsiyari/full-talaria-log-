@@ -54,19 +54,25 @@
         }
     }
 
-    /** §22.3: saved multichart identity restore. Explicit opt-in; default OFF. */
+    /** §22.3: saved multichart identity restore. Product default ON; explicit kill switch. */
     function mcRestoreV1Enabled() {
         try {
-            return !!(global && global.__TALARIA_ENABLE_MC_RESTORE_V1 === true);
+            return !!(global
+                && global.__TALARIA_DISABLE_MC_RESTORE_V1 !== true
+                && global.__TALARIA_ENABLE_MC_RESTORE_V1 !== false);
         } catch (_) {
-            return false;
+            return true;
         }
     }
 
     function readMcRestoreLayout() {
         if (!mcRestoreV1Enabled()) return null;
         try {
-            const raw = global.localStorage && global.localStorage.getItem('chart_panel_state');
+            // Identity is user-scoped persisted state. Never recover it from the
+            // host's unscoped local/session storage or an iframe boot fallback.
+            const storage = global.userStorage;
+            if (!storage || typeof storage.getItem !== 'function') return null;
+            const raw = storage.getItem('chart_panel_state');
             if (!raw) return null;
             const value = JSON.parse(raw);
             return value && Array.isArray(value.panels) ? value : null;
