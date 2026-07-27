@@ -467,3 +467,93 @@ Scope corrected per B-0018: it must cover **both** drag implementations — the 
 **Write packets in flight: 3 of 3 — cap reached (§A13.3).** No further write dispatch until one returns. This is the throttle behaving as designed rather than an obstruction: the cap exists because top-tier review is the binding constraint, and I have three packets that will each need an adversarial reviewer. Consequently **V6-P1's implementation, the V6-P2 visibility fix, the duration-clock RED and the order-side teardown work are all queued, not forgotten**, in that order. Read-only work remains uncapped, so triage and audit continue regardless.
 
 Read-only in flight: **1** (B-T1). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**.
+
+---
+
+## B-0027 — SELF-CORRECTION · my write partition was disjoint for writes and coupled at read time
+
+B-W2 returned and reported 1 pass / 11 fail with every failing cell citing `window.TalariaPreferences is absent`, and three identical runs. I re-ran it myself as provenance rather than accepting the report. **The output differed from the report:** cell 1 now fails with `window.TalariaPreferences.getItem must exist` instead of `... is absent`. Cause established immediately — `git status` shows B-W1 has already written **524 lines** into `preferences-sync.js` and `preferences-init.js` and is still in flight, so a partial facade now exists.
+
+**The defect is mine, in the dispatch, not in either subagent's work.** §A13.3 requires write subagents to hold disjoint file sets, and B-W1 and B-W2 do — B-W1 writes the two preference modules, B-W2 writes two new test files, no overlap. But **B-W2's test imports B-W1's files at runtime.** Disjoint write sets are necessary and not sufficient; I partitioned for write collision and missed a read-time coupling, so the RED's output is non-deterministic for as long as its subject is being edited. B-W2's "three identical runs" was true when it ran; the tree moved underneath it.
+
+Consequences I am acting on:
+1. **No RED output taken while B-W1 is in flight has any provenance value.** The three-run evidence must be re-established on a quiescent tree after B-W1 lands. Recorded as an outstanding evidence obligation, not as a completed four-state proof.
+2. **Standing rule for my own future dispatches:** a brief's partition must state both the writable set *and* the runtime read set, and a RED whose subject is concurrently being authored is serialised behind it, not run beside it. Cheap to state now, expensive to discover during consolidation.
+3. Ratified retroactively: the honest way to run these two in parallel was to dispatch the RED against a **stated contract only** — which I did — and simply not to execute it until the implementation settled. The authoring was parallel-safe; the *execution* was not, and I did not distinguish those.
+
+**One positive finding falls out of the same evidence.** The changed message proves B-W2's test loads the **real** product modules rather than a transcription of them, which was the single largest risk in that brief and the thing I told it to be blunt about. That is confirmed by observation, not by its self-report.
+
+---
+
+## B-0028 — REVIEW · B-W2 held, not accepted. Two substantive concerns and one name ratified.
+
+Not accepted, and no adversarial reviewer dispatched yet (reasons in B-0029). My own review findings, to be handed to that reviewer rather than resolved by me alone:
+
+1. **The RED is currently red for a trivial reason.** Eleven of twelve cells fail on facade absence, which is one cause reported twelve times. That proves the contract is unimplemented; it does **not** yet prove each contract property is independently violated. Once B-W1 publishes a facade the cells will begin exercising real logic, and the hazard is that they then fail on **API shape** rather than on contract violation — at which point the tempting move is to edit the test to match the implementation, which would convert the gate into a mirror of whatever was built. The four-state proof was performed against a stub the subagent wrote inside its own test and then removed, so "passes on fixed state" is currently evidence about that stub, not about B-W1's code. **Obligation:** re-prove all four states against the real implementation before this packet may claim RED→GREEN.
+2. **Cell 11, the kill-switch OFF cell, is `UNPROVEN` in §A5-5 terms and I am labelling it so.** It passes today with "contract satisfied", and it passes for the same reason the feature is absent: today's behaviour *is* the OFF behaviour. A cell that cannot distinguish "the switch correctly reverts a working implementation" from "there is nothing to revert" is not yet a negative control — §A5-1 is explicit that a gate whose negative control is green for the wrong reason is a lying gate. It must be re-proven against a landed, working implementation with the switch flipped, and until then it is not GREEN.
+3. **Name ratified retroactively.** B-W2 needed a test-only key for the unknown-key-preservation cell and used `pref.v1.pins.__qa_unknown__`. My brief said stop and report rather than mint; it minted *and* reported, which is the lesser failure and it disclosed clearly. The name sits under my reserved `pref.v1.` prefix, is test-only, and collides with nothing, so I am **reserving it now** rather than leaving an unreserved name in the tree: `pref.v1.pins.__qa_unknown__`, reserved, test-only, never written by product code.
+
+Confirmed good: exactly the two reserved paths were created and nothing else; the fixture holds the matrix data and the test holds the logic, as specified; no real account ids; exit code 1 on failure, so it is CI-usable as a gate.
+
+---
+
+## B-0029 — DECISIONS · one review over both halves, and I am deliberately leaving a write slot empty
+
+**(a) B-W1 and B-W2 are one packet and get one adversarial review.** They are two halves of a single mechanism — the V8-P1 contract and its RED — and §B3 requires a packet to ship RED→GREEN together. Reviewing the RED before its implementation exists would ask a reviewer to judge whether cells fail for the right reason without the code that determines the answer. So the top-tier adversarial review (`claude-opus-5-thinking-high`, an agent that authored neither half, per §A13.1) is dispatched when B-W1 returns, over both halves plus my B-0028 findings. This also spends one top-tier review instead of two, which matters because review is the binding constraint the write cap exists to protect.
+
+**(b) B-W2 finishing frees a write slot and I am not filling it.** In flight: B-W1 and B-W3, so 2 of 3, and policy would permit a third. I am declining, and the reason is the constraint behind the cap rather than the cap itself: **three packets now exist and none has been reviewed**, one of them is blocked on an evidence obligation I created, and every one needs a top-tier adversarial pass. Adding a fourth would grow review debt against precisely the bottleneck §A13.3 names — and it would put me at four awaiting consolidation, which is the pre-registered §A11.4 throttle threshold, before a single train boundary. Filling the slot would satisfy the letter of the cap and defeat its purpose.
+
+Queued in order, unchanged, and each blocked on a stated thing rather than on my attention: V6-P1 implementation (blocked on B-W3's RED landing, RED-first); V6-P2 visibility fix (blocked on the mechanism question in B-0030); duration-clock RED (ready, awaiting a slot, and see the assignment ask in B-0025); order-side teardown release (ready, awaiting a slot; its fix needs lane α, which V6-P1 holds first).
+
+---
+
+## B-0030 — DISPATCH · B-A4, plot-clip and outside-plot visibility investigation (read-only, cheap)
+
+Read-only, so uncapped and free of review debt — which is how I keep the queue moving while declining to fill the write slot.
+
+**B-A4** — settle the V6-P2 mechanism question raised in B-0018 before its RED is authored. I changed direction once already on this defect, from "missing clamp" to "bug inside deliberate machinery", and authoring a RED against a mechanism I have already misjudged once would encode the wrong assertion into a permanent gate. **Tier cheap, `composer-2.5-fast`**, §A13.2 row "audits, file:line inventories". Escalation trigger not met: the output is an inventory whose correctness I can check against the code myself, and no product change follows directly from it. Writable file set: **NONE**. Reads only `order-manager.js`, which no subagent is currently writing, so no repeat of the B-0027 coupling.
+
+It must determine whether hiding order rows outside the main plot is intentional, how the plot bounds are computed when an indicator stack is present, and whether the clip region and the visibility predicate can disagree — and it must report, not decide.
+
+Write packets in flight: **2 of 3, one slot deliberately empty**. Read-only in flight: **2** (B-T1, B-A4). Packets awaiting review: **1** (B-W1+B-W2 as one). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**.
+
+---
+
+## B-0031 — SELF-CORRECTION · B-A4 audited a different tree. Mechanism survives, every line number does not.
+
+B-A4 returned and disclosed unprompted that it had searched `full-talaria-log--main` rather than the `manager-b-plan3` worktree I named, and that its line numbers were therefore assumed. I verified rather than accepting either the citations or the disclaimer:
+
+- `order-manager.js` **differs** between the two trees (SHA-256 `EB70D1A5…` in mine vs `8C7E4080…` in main). `chart-indicators-full.js` also differs (`7716CDC8…` vs `7169223A…`).
+- The Chart-side helpers it cited at 14201 / 14213 / 14242 are at **12072 / 12084 / 12113** in my tree — roughly 2,100 lines off.
+- The four order-side helpers are **present** in my tree (`_isOrderYInMainPlot`, `_applyOrderRowMainPlotVisibility`, `_applyPlotClipToOrderOverlays`, `_syncMainPlotSvgClip`, 6–7 references each), so the machinery it described is real here.
+
+**Verdict: mechanism findings usable, every file:line citation unusable.** Any RED authored from this must re-locate its sites in my own tree, and I will say so in the brief.
+
+Two corrections against myself, one of which is the same mistake as B-0027 wearing different clothes:
+
+1. **I named the repo path and assumed that bound the search.** It did not. Briefs must state the tree *and* require the agent to confirm which tree it actually read before reporting — a disclosure after the fact only helped because this agent was honest about it.
+2. **Citing across trees is structurally unsafe here, not merely untidy.** The main tree is a live workspace that Managers A and C are editing right now, so its line numbers drift under anyone reading it. B-0027 was a race in *execution*; this is a race in *citation*. The common root is that I have twice failed to pin **what state the work is measured against**, so I am fixing the general form rather than the two instances: every brief I issue from now states the tree, the commit or "uncommitted worktree", and whether the agent may read anything outside it.
+
+My own bad search deserves a note too: I first concluded these helpers were absent from my tree because I searched for `name = ` prototype-assignment syntax when they are class methods. I re-ran before recording anything, which is the only reason a wrong finding did not enter this journal.
+
+---
+
+## B-0032 — VERDICT (V6-P2 mechanism) · surface=order-row visibility and clipping, coverage=mechanism established, sites not re-located
+
+Ratifies the direction change in B-0018 — **the hiding is deliberate, and now confirmed by code comments rather than inference.** Order rows whose Y maps into the separate-indicator stack are hidden on purpose, paired with an SVG clip on the main price pane: *"Hide order row when its Y maps into the indicator stack; clip when inside main plot."* So V6-P2 is a bug inside intended machinery, and any fix that simply stops hiding rows would be a regression, not a fix.
+
+**The escalation, and it is the sharpest one yet.** The deciding predicate and the clip definition — `_getMainPricePlotLayout`, `_isYInMainPricePlot`, `_ensureMainPlotSvgClipDef`, and the `separateIndicatorPanelHeight` value all three depend on — live in **`chart-indicators-full.js`**. Not in `chart.js` as I assumed in B-0018, and not in my territory. That file is an **indicator module**, which my brief forbids me from touching by name. So:
+
+> **The root mechanism of a P0 defect assigned to me sits in code I am explicitly forbidden to modify.** `order-manager.js` only consumes the predicate, with a local fallback that recomputes the same formula. I can fix which *DOM nodes* obey the rule; I cannot fix the rule. This is the **eighth** unowned-or-cross-territory file bearing on my rows, and unlike the previous seven it blocks a P0 rather than merely muddying ownership.
+
+Concrete partial-visibility candidates inside my own territory, which is the part I *can* act on and which explains "not fully visible" better than the predicate does:
+1. **Entry-row `slBadge` / `tpBadge` / `tpBadgesContainer` are gated by neither rule** — not in the per-row visibility parts map, and not in the bulk clip selector list. They can stay on screen while the row they annotate is hidden. Best single candidate.
+2. **Preview SL/TP lines get clip only, never `display:none`**, so an off-pane preview is truncated rather than hidden.
+3. **Duplicate SL at the same price hides labels but keeps the line**, a deliberately partial row that looks identical to the reported symptom.
+4. **Interactive buttons are deliberately left unclipped when in-plot**, per comment — so "controls visible outside the clip" is intended and must not be asserted against.
+
+**No kill-switch exists for this behaviour** — searched and not found; the three related globals gate pan-lite and trade markers, not row hiding. V6-P2 therefore needs a new name, reserved here: **`window.__TALARIA_DISABLE_ORDER_ROW_PLOT_VISIBILITY_V1`** (kill-switch, default off, reverts to pre-fix node gating).
+
+**Gap that must close before any RED is authored, and it is load-bearing:** whether `yScale`'s pixel range always aligns with `[margin.t, plotBottom]`. B-A4 flagged this as unverified and it is exactly where predicate and clip would disagree *numerically* rather than by node coverage — the difference between a two-line fix and a wrong test. Next read-only dispatch closes it; I am not authoring the V6-P2 RED until it is closed.
+
+Write packets in flight: **2 of 3, one slot deliberately empty**. Read-only in flight: **1** (B-T1). Packets awaiting review: **1** (B-W1+B-W2 as one). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**. Unowned/cross-territory files blocking or affecting my rows: **8**.
