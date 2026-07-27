@@ -22,7 +22,11 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function makePanelRuntime({ indicatorTypes = ['sma', 'ema', 'wma'], panelId = 'B' } = {}) {
+function makePanelRuntime({
+  indicatorTypes = ['sma', 'ema', 'wma'],
+  panelId = 'B',
+  seekOutcomes = [true],
+} = {}) {
   const cover = deferred();
   const applied = [];
   const seeks = [];
@@ -57,6 +61,9 @@ function makePanelRuntime({ indicatorTypes = ['sma', 'ema', 'wma'], panelId = 'B
       return true;
     },
     goToReplayTimestamp(timestamp) {
+      const outcome = seekOutcomes.length > 1 ? seekOutcomes.shift() : seekOutcomes[0];
+      if (outcome instanceof Error) throw outcome;
+      if (outcome !== true) return false;
       seeks.push(timestamp);
       this.replayTimestamp = timestamp;
       this.currentIndex = Math.max(0, Math.min(
@@ -64,6 +71,7 @@ function makePanelRuntime({ indicatorTypes = ['sma', 'ema', 'wma'], panelId = 'B
         Math.floor((timestamp - this.fullRawData[0].t) / 60_000),
       ));
       chart.scheduleReplayIndicatorRecalc?.(chart._multichartPassivePlayActive === true);
+      return true;
     },
     setSpeed() {},
     setPlaybackMode() {},
@@ -154,6 +162,8 @@ function makePanelRuntime({ indicatorTypes = ['sma', 'ema', 'wma'], panelId = 'B
 async function settle() {
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
 }
 
@@ -341,4 +351,77 @@ test('timeframe replacement invalidates pending ownership before delayed coverag
   assert.equal(panel.chart._mcReplayOwnershipCommitPending, false);
   assert.equal(panel.seeks.length, 0);
   assert.equal(panel.indicatorPasses.length, 0);
+});
+
+test('false seek cannot synthesize ownership from matching stale timestamp/index', async () => {
+  const panel = makePanelRuntime({ seekOutcomes: [false, false] });
+  panel.replaySystem.replayTimestamp = 1_700_000_540_000;
+  panel.replaySystem.currentIndex = 9;
+  await panel.root.MultichartCmdBridge.applyCommand('replayPlay', { speed: 60 });
+  await panel.root.MultichartCmdBridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    isPlaying: true,
+  });
+  panel.cover.resolve(true);
+  await settle();
+
+  assert.equal(panel.chart._mcReplayOwnershipError.code, 'SEEK_REJECTED');
+  assert.equal(panel.seeks.length, 0);
+  assert.equal(panel.indicatorPasses.length, 0);
+  assert.equal(panel.chart._mcReplayFrameAfterOwnershipCommit, null);
+});
+
+test('throwing seek fails closed without restamping or painting', async () => {
+  const panel = makePanelRuntime({ seekOutcomes: [new Error('injected seek throw')] });
+  const staleTimestamp = panel.replaySystem.replayTimestamp;
+  const staleIndex = panel.replaySystem.currentIndex;
+  await panel.root.MultichartCmdBridge.applyCommand('replayPlay', { speed: 60 });
+  await panel.root.MultichartCmdBridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    isPlaying: true,
+  });
+  panel.cover.resolve(true);
+  await settle();
+
+  assert.equal(panel.chart._mcReplayOwnershipError.code, 'SEEK_THROW');
+  assert.equal(panel.replaySystem.replayTimestamp, staleTimestamp);
+  assert.equal(panel.replaySystem.currentIndex, staleIndex);
+  assert.equal(panel.indicatorPasses.length, 0);
+});
+
+test('false seek retries once in the same epoch and then commits true acknowledgement', async () => {
+  const panel = makePanelRuntime({ seekOutcomes: [false, true] });
+  const generationBefore = Number(panel.chart._mcPlayEagerCoverGeneration) || 0;
+  await panel.root.MultichartCmdBridge.applyCommand('replayPlay', { speed: 60 });
+  const activeGeneration = panel.chart._mcPlayEagerCoverGeneration;
+  assert.ok(activeGeneration > generationBefore);
+  await panel.root.MultichartCmdBridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    isPlaying: true,
+  });
+  panel.cover.resolve(true);
+  await settle();
+
+  assert.equal(panel.chart._mcPlayEagerCoverGeneration, activeGeneration);
+  assert.equal(panel.chart._mcReplayOwnershipError, null);
+  assert.equal(panel.seeks.at(-1), 1_700_000_600_000);
+  assert.ok(panel.indicatorPasses.every((pass) => pass.coveragePending === false));
+});
+
+test('teardown between bounded seek attempts cancels the retry epoch', async () => {
+  const panel = makePanelRuntime({ seekOutcomes: [false, true] });
+  await panel.root.MultichartCmdBridge.applyCommand('replayPlay', { speed: 60 });
+  await panel.root.MultichartCmdBridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    isPlaying: true,
+  });
+  panel.cover.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  panel.dispatch('beforeunload');
+  await settle();
+
+  assert.equal(panel.seeks.length, 0);
+  assert.equal(panel.indicatorPasses.length, 0);
+  assert.equal(panel.chart._mcReplayOwnershipCommitPending, false);
 });
