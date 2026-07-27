@@ -319,3 +319,90 @@ Filed as **`NEEDS-PO-CLARIFY`**, not as a `PO-REQ`, and the distinction is delib
 **Acceptance criterion:** a mechanism stated as a causal chain with file:line at every step, an explicit verdict of `order-manager.js` / `chart.js` / `both`, and — required — the discriminating observation that would distinguish the two attributions on a live build, so the attribution is falsifiable rather than argued.
 
 Write packets in flight: **0 of 3**. Read-only subagents in flight: **4** (B-A1, B-A2, B-A3, B-T1). Outstanding `PO-REQ` count: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1** (V6 cell C).
+
+---
+
+## B-0018 — RECONCILIATION of B-A1 · four corrections to B-0005, which is superseded in part
+
+B-A1 returned. Its output is **evidence, not verdict** (§A13.2: no cheap-tier judgement enters the record); the four findings below are my own, reconciled against my independent B-0005 enumeration. It confirmed my core attribution — paint, hit-testing and drag all implement in `order-manager.js`, and `chart.js` registers exactly one `d3.drag()` which is a legacy drawing handle at 40966, not an order path. It corrected me on four things that matter, and **B-0005 is superseded on each**.
+
+**(1) My "all seven `d3.drag()`" statement was incomplete, and the gap is exactly where two defects live.** Beyond the seven `d3.drag()` registrations there are **three native `document`-level mousemove/mouseup drag systems** in the same file: `makeLineDraggable` @ 34389 (open entry / SL / TP / BE), `_setupPendingEntryDragToCreateTPSL` @ 35160, `_setupEntryDragToCreateTPSL` @ 35374. **Open, executed orders drag through the native path, not through d3.** V6-P1's scope must therefore cover both, and the store-write behaviour differs between them: the native path commits via `_oiCommitOpenSltpToStore` @ 34791 at mouseup while writing a provisional price during drag @ 34561–34578, gated on `_orderSltpApplyOnReleaseFixEnabled()`. Same defect shape, two implementations. A packet scoped only to the d3 path would have half-fixed it and looked green.
+
+**(2) `chart.js` deletes my DOM by class allow-list — a mechanism candidate I did not have.** `chart.js:37783` defines `_preserveOrderOverlay` and `chart.js:37811` runs `svg.selectAll('*:not(...)').remove()` during the legacy `redrawDrawings` purge, preserving order overlays **by class name**. Any order-line class absent from that allow-list is destroyed by A's redraw. That is a first-class candidate for "lines disappearing" and it is structurally fragile: every new class I create in `order-manager.js` must be registered in a list living in A's file, with no gate asserting the two agree. Forwarded to the defect-1 triage.
+
+**(3) Three unassigned files touch order paint, not one.** Beyond `drawing-tools-manager.js` (which I already reported): `drawing-tools-advanced.js` calls `updatePreviewLines()` @ 1964, 1978, 2014; `multichart-prod/panel-cmd-bridge.js` calls `drawOrderLine`, `drawSLTPLines`, `updateOrderLines`, `updateSLTPLines`, `updateBELines` and `removePreviewLines` across ~13 sites (261–317, 4590–4655, 4781). Also **`order-interaction-guard.mjs`**, which *declares* the kill-switches `order-manager.js` reads — a file gating my own behaviour that is in nobody's territory. And `replay-system.js` (A's) calls `orderManager.updatePositions` @ 4074, 5813. My territory's public paint surface is consumed by at least five files outside it.
+
+**(4) Nineteen kill-switches already gate these three concerns, and two of them own behaviour I had minted new names for.** Most consequential: `__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX` (declared `order-interaction-guard.mjs:45`, read `order-manager.js:250–252`, branches at 22977+, 23127, 23204, 23237, 34561, 34791) and `__TALARIA_DISABLE_EXEC_SLTP_DRAG_FOLLOW_FIX_V1` (read `order-manager.js:274–275`, 970). **An apply-on-release switch and an exec-drag-follow switch already exist for precisely the mechanism V6-P1 addresses.** Minting a second switch over the same behaviour would produce two switches for one mechanism and a negative-control cell that proves nothing — the `852420adc` "a declared switch is not a switch" failure in a new costume. Reservations corrected in B-0019. Also newly recorded: `__TALARIA_DISABLE_ORDER_OVERLAY_PAN_ALWAYS_V1` (`chart.js:29418/29422`), a second A-owned invalidation switch I had not listed.
+
+**Consequence for V6-P2, recorded as a change of direction.** I assumed defect 4 was a *missing* clamp. There is instead substantial deliberate visibility machinery in my file: `_isOrderYInMainPlot` @ 44465 (margin top/bottom versus the indicator stack), `_applyOrderRowMainPlotVisibility` @ 44473 which **hides rows outside the plot**, and `_applyPlotClipToOrderOverlays` @ 44507 applying a `clip-path` to order selectors. So "SL and TP lines not fully visible" is most likely this machinery computing plot bounds wrongly when an indicator stack is present — a bug *in* an intentional feature, not an absence. It stays mid tier because the RED is still a deterministic geometry assertion, but the brief must establish whether hiding outside-plot rows is intended before changing it, and report back rather than decide if it is ambiguous.
+
+**Confirmed clean:** no order-line paint, hit-test or `orderLines` read/write exists in `order-service.js`, `order-event-bus.js`, `preferences-init.js`, `preferences-sync.js` or `indicator-persist-rehydrate.js`. Lane γ is genuinely disjoint from lane α, so my write partition in B-0015 holds.
+
+---
+
+## B-0019 — RESERVATIONS CORRECTED · supersedes B-0009 on three points
+
+**Withdrawn, because an existing switch already owns the mechanism** (§B3: a second switch over one mechanism makes both untrustworthy):
+- ~~`__TALARIA_DISABLE_ORDER_SLTP_ENTRY_DRAG_FOLLOW_V2`~~ → V6-P1 extends the existing `__TALARIA_DISABLE_EXEC_SLTP_DRAG_FOLLOW_FIX_V1` and `__TALARIA_DISABLE_ORDER_SLTP_APPLY_ON_RELEASE_FIX`.
+- ~~`__TALARIA_DISABLE_ORDER_PREVIEW_LIVE_RECALC_V1`~~ → same two switches.
+
+If V6-P1's implementer finds the existing switches cannot express the new behaviour cleanly, it must **stop and report** rather than mint a name; I will then reserve one deliberately, with the reason recorded here.
+
+**Retained unchanged:** `__TALARIA_DISABLE_ORDER_TP_COINCIDENT_STACK_V1`, `__TALARIA_DISABLE_ORDER_LINE_EDGE_VISIBILITY_V1`, `__TALARIA_DISABLE_ORDER_LINE_DRAG_PERSIST_V1`, `__TALARIA_DISABLE_PREF_OWNER_SCOPED_PINS_V1`, `__TALARIA_DISABLE_TRADE_DURATION_CLOCK_V1`, `__TALARIA_DISABLE_ORDER_TEARDOWN_RELEASE_V1`. No existing switch collides with any of these.
+
+**Storage-key grammar corrected.** B-0009 reserved `tal.pref.v1.u.<accountId>.pins.*`, embedding the account id myself. That was wrong: the shells already apply owner scoping automatically — `window.userKey(key)` returns `'u' + id + '_' + key` and `window.userStorage` wraps `localStorage` through it (`live/index.html:1487–1509`, mirrored in `chart-embed.html:276–296` and `legacy-index.html:91–98`). Embedding a second owner prefix would create two competing scoping schemes over one store. **Corrected reservation — plain keys passed through `userStorage`, owner scoping delegated to the shell:**
+- `pref.v1.pins.timeframes` · `pref.v1.pins.tools` · `pref.v1.pinbar.open` · `pref.v1.pinbar.pos` · `pref.v1.meta.schemaVersion`
+
+With one hard condition, which is the subject of B-0020: `userKey()` returns an **unscoped** key when the owner id is unresolved, so delegating scoping is only safe if my facade refuses to write until the owner is known. That is a fail-safe-on-write requirement, not an optimisation.
+
+---
+
+## B-0020 — VERDICT · V8 is not "build persistence", it is "wire persistence that already exists", plus three defects nobody has a row for
+
+surface=`source (working tree; React sources, chart modules, journal-backend, all servable shells)` · coverage=`static inventory cross-checked against the b925f7d2d V8 RED. NOT verified on a served build; no runtime confirmation that the unwired path is unreachable in production; backend behaviour not exercised.`
+
+B-A2 returned; findings below are my verdict on its evidence.
+
+**The core correction to my own framing, and to the premise I was given.** The brief described pins as "React-only state with no owner-scoped persistence". The first half is exact — `TalariaV8bLive.jsx:12420` (`tfPinned`), `:12028` (`toolPinned`), `:14200`/`:14201` (`pinnedBarOpen`, `pinnedBarPos`), all `useState` with hardcoded defaults, no read or write of any storage key. The second half is not: **a complete owner-scoped, per-field, local-plus-cloud preference path already exists in my own territory and is simply never called by the pin UI.** `preferences-sync.js` implements per-field writes (`updatePreference` @ 295–308, `saveToLocalStorage` @ 313–374), local-first with cloud fallback (`loadPreferences` @ 22–68, `syncToAPI` posting only `pendingUpdates` @ 379–436); `preferences-init.js` exposes `saveTimeframeFavorites`/`loadTimeframeFavorites` @ 39–44; and `timeframe_favorites` is a **real DB column** (`journal-backend/models.py:786`, migration `add_user_preferences_table.py:30`) served by `GET`/`POST /api/chart/preferences` (`chart_routes.py:487–490`, `551–594`).
+
+So the timeframe-pin half of V8 is a **wiring** job, and the wiring point is one React file in Manager A's territory. That materially reduces the engineering and sharpens B-0008 item 4: the useful thing I can do in my own files is make the contract safe and callable, and the thing that actually closes the row is a call site I may not write.
+
+**Three defects that need rows and have no owner.**
+
+1. **A new §A4c "capability loss without failure" instance.** `timeframe-favorites.js` — which reads and writes `chart_timeframe_favorites` through `userStorage` @ 34/54 and delegates to the cloud helpers @ 27–28/56–57 — is **not loaded by the canonical V9 shell at all**. Its only script tag is `legacy-index.html:44052`. `chart.js:42139–42140` constructs `TimeframeFavorites` when the global exists, so on `dist-v9` the global never exists and the feature silently does not run. A backend column, a sync path and a module, all present, all unreachable on the served surface, nothing erroring. This is the exact class §A4c was opened for and §A10 extends; it is a **second confirmed instance after the `IndicatorPerf` loader finding**, which strengthens the case that the build-time presence preflight is the right gate. Reported to Manager C's queue item 2 by way of the Director; not mine to fix, since script tags live in servable shells.
+2. **`_uid` is never cleared on logout — I16-relevant.** Logout removes `token` and `refresh_token` (`homepage/src/app/dashboard/DashboardShell.tsx:662–663`) and leaves `_uid` in place; no `removeItem('_uid')` exists anywhere in `homepage/src` or the chart React source. On a shared device the next user's chart surface therefore runs under the **previous account's key prefix** until `/api/auth/me` resolves, reading and potentially writing the prior owner's preferences. §A4's first line keys preferences to account id and requires them excludable per I16; this breaks that in the logout path. Not my territory (homepage app shell), and I judge it more serious than the pin row it was found under.
+3. **An unscoped-key write window at every boot.** The `userStorage` shim is created **synchronously** from a cached `_uid`, while `/api/auth/me` resolves **asynchronously** (`live/index.html:1469–1477` versus `1487–1494`). When the cache is empty, `userKey()` returns the **bare key**, so anything written before identity resolves lands in a global, unowned slot, and the later owner-scoped read misses it. This is a mechanism by which preferences legitimately appear to "reset to defaults" even once wiring exists, and it is why B-0019 requires my facade to refuse writes until the owner is known.
+
+**One defect in my own file, which is mine and which I am fixing:** `preferences-sync.js` has **no schema version anywhere**, violating §A4 guardrail 3 ("schema version from day one; preserve unknown keys on write"). Its `saveToLocalStorage` switch @ 313–374 also enumerates known fields, so an older client can drop keys it does not recognise — the second half of the same guardrail. This is the load-bearing part of V8 that is unambiguously in my territory, and it protects every existing preference field, not just pins.
+
+**Backend gap:** `tool_pins` and `pin_bar` have no column, no API field and no migration. Only `timeframe_favorites` exists. `journal-backend/` is in no manager's territory.
+
+---
+
+## B-0021 — ESCALATION · V8 contains a migration, so it collides with the migration monopoly
+
+I hold the only migration-authoring permission while M24's ledger migration is live, and migrations are strictly serialised. **§A4 requires "lazy migration on read, old key retained one full release cycle" — so V8's absorption of the legacy keys (`chart_timeframe_favorites`, `chart_favorite_tools`, `chart_favorites_position`, `chart_favorites_visible`, `talaria_v9_ind_pinned`, `v9TlBarPosition`) is a migration** and falls under that serialisation, against a ledger migration in a different file for a different row.
+
+Rather than let a preference row queue behind a ledger migration, I have split V8 so the serialised part is small and isolated:
+
+- **V8-P1 — owner-scoped pin persistence contract, no migration.** Schema version, per-key writes, owner-gated writes, fail-open read / fail-safe write, unknown-key preservation, reset path. Contains **no** legacy-key reads, so it is not a migration and is not serialised. Dispatched now (B-0022).
+- **V8-P2 — legacy-key lazy migration.** Strictly serialised under the migration rule, sequenced by the Director against M24's ledger migration. Not dispatched.
+
+**Ask:** confirm this split satisfies the serialisation rule, and place V8-P2 in the migration order relative to M24. If you consider a schema-version field to be itself a migration, say so and I will move V8-P1 into the serialised slot instead — I would rather over-serialise than discover mid-flight that I ran two migrations concurrently.
+
+**Also newly unassigned, all found today, all touching my territory's surface:** `order-interaction-guard.mjs` (declares kill-switches `order-manager.js` obeys), `drawing-tools-advanced.js`, `multichart-prod/panel-cmd-bridge.js`, `journal-backend/` (preference columns), and the homepage logout path holding the `_uid` defect. With `drawing-tools-manager.js` from B-0005 that is **six** unowned files bearing on rows assigned to me.
+
+---
+
+## B-0022 — DISPATCH · V8-P1, two write subagents on disjoint file sets
+
+First write packets of the session. Partition, for which I am accountable (§A13.3): the two subagents share **no** file, and neither touches lane α (`order-manager.js`), so nothing serialises against V6 or M24.
+
+- **B-W1 — persistence contract implementation.** Writable set: exactly `chart v 1.4/chart/modules/preferences-sync.js` and `chart v 1.4/chart/modules/preferences-init.js`. **Top tier, `claude-opus-5-thinking-high`.** Reason on the §A13.2 trigger, not on difficulty: `preferences-sync.js` is loaded by nine shells and mediates every preference in the product, so a schema or write-path error silently corrupts settings for all users — which is the precise incident §A4's guardrails were written to prevent — and **no preference oracle exists**, so nothing automatic would catch it. Expensive plus unverified equals top tier. Tier 3 ceremony (data durability).
+- **B-W2 — RED and fixture.** Writable set: exactly the two new files `b-m15-owner-scoped-pins.red.mjs` and `b-fixtures/m15-pin-lifecycle-matrix.json`. **Mid tier, `gpt-5.5-medium-fast`**, §A13.2 row "test, oracle and harness authoring against stated criteria". Must fail against the current tree, and must fail for the stated reason rather than incidentally.
+
+Both briefs carry the same explicitly stated contract, so parallel authoring cannot diverge; the contract is mine, which is the decomposition §A13 assigns me. Both are forbidden from touching React sources, any servable shell HTML, `journal-backend/`, `order-manager.js`, and from performing any legacy-key migration.
+
+Each will receive a separate top-tier adversarial review that did not author it, reconciled by me (§A13.1). Reviews are not dispatched until the packets return.
+
+Write packets in flight: **2 of 3**. Read-only in flight: **2** (B-A3, B-T1). Outstanding `PO-REQ`: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1**.
