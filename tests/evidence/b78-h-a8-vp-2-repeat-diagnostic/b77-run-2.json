@@ -1,0 +1,3171 @@
+{
+  "schema": "talaria.h-a8-vp-2-repeat-run/v1",
+  "repo": "C:\\Users\\user\\Desktop\\talaria1\\release-worktrees\\mc-restore-20260727b77-f5-v1-v2-v5",
+  "requestedCommit": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+  "run": 2,
+  "port": 8822,
+  "startedAt": "2026-07-27T14:02:47.658Z",
+  "endedAt": "2026-07-27T14:03:09.756Z",
+  "browserVersion": "Chrome/148.0.7778.97",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+  "launch": {
+    "headless": true,
+    "args": [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu"
+    ],
+    "defaultViewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "scenarioViewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "pinnedDeviceScaleFactor": 1
+  },
+  "source": {
+    "scenarioSha256": "d36c1f4362e12d28ccb3158d7611a8e51c28aed0f9ca1687d8a26e3d47f1ff24",
+    "helperSha256": "c3e17964c7d788ad36ab17fa6a09e09c9d390c018705dbb3039cb53f05f83db0",
+    "functionSha256": "5bd8ae7bbc55fe36ac17a07d9ad1f96d5a332e7abd73c8d2c14eb614ef2b3be8",
+    "assertionSha256": "d36fc6c02f7e95739259fb8ea939f12aa54e7a935cf6bfd24e2127557f0d70a1",
+    "assertionText": "    const moved = geo2.ok && (Math.abs(geo2.barIndex - geo1.barIndex) >= 0.5\n      || Math.abs(geo2.price - geo1.price) >= 1e-5);\n    checks.check('H-A8-VP-2 CORE-B: canvas drag moves anchor', moved, JSON.stringify({ geo1, geo2 }));\n    const priceTick = 1e-5;\n    checks.check('H-A8-VP-2 CORE-B′: coord tab tracks canvas drag',\n      fields2.ok && geo2.ok\n        && Math.abs(parseFloat(fields2.anchorBar) - geo2.barIndex) <= 0.05\n        && Math.abs(parseFloat(fields2.anchorPrice) - geo2.price) <= priceTick,\n      JSON.stringify({ fields1, fields2, geo2 }));"
+  },
+  "checks": [
+    {
+      "label": "H-A8-VP-2 setup: placed",
+      "ok": true,
+      "detail": "9820efb9-9c52-47a8-b328-52b0ad9e7c7f"
+    },
+    {
+      "label": "H-A8-VP-2 setup: settings open actuation",
+      "ok": true,
+      "detail": "{\"ok\":true,\"method\":\"editDrawing-fallback\",\"open\":{\"ok\":true,\"hasLabelsRow\":true,\"hasCoordinatesTab\":true,\"snippet\":\"Anchored Volume Profile\\nStyle\\nInputs\\nCoordinates\\nVisibility\\nValues\\nWidth (% of box)\\n▲\\n▼\\n%\\nPlacement\\nLeft\\nZone Background\\n85%\\nUp Volume\\nDown Volume\\nValue Area Up\\nValue Area Down\\nPOC\\nVAH\\nVAL\\nDeveloping \"}}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: settings open",
+      "ok": true,
+      "detail": "{\"ok\":true,\"hasLabelsRow\":true,\"hasCoordinatesTab\":true,\"snippet\":\"Anchored Volume Profile\\nStyle\\nInputs\\nCoordinates\\nVisibility\\nValues\\nWidth (% of box)\\n▲\\n▼\\n%\\nPlacement\\nLeft\\nZone Background\\n85%\\nUp Volume\\nDown Volume\\nValue Area Up\\nValue Area Down\\nPOC\\nVAH\\nVAL\\nDeveloping \"}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: coord fields readable",
+      "ok": true,
+      "detail": "{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"604\",\"inputCount\":2}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: initial tab/geo bar match",
+      "ok": true,
+      "detail": "tab=604 geo=604"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-A: coord tab Bar +10 moves anchor",
+      "ok": true,
+      "detail": "dBar=10 geo1={\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-A′: tab Bar field matches geometry",
+      "ok": true,
+      "detail": "{\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "H-A8-VP-2 setup: anchor handle resolved",
+      "ok": true,
+      "detail": "{\"ok\":true,\"x\":468,\"y\":664,\"source\":\"handle\"}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+      "ok": false,
+      "detail": "{\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag",
+      "ok": false,
+      "detail": "{\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    }
+  ],
+  "failures": [
+    {
+      "label": "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+      "ok": false,
+      "detail": "{\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag",
+      "ok": false,
+      "detail": "{\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    }
+  ],
+  "failureSignature": "[FAIL] H-A8-VP-2 CORE-B: canvas drag moves anchor — {\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}\n[FAIL] H-A8-VP-2 CORE-B′: coord tab tracks canvas drag — {\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}",
+  "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+  "normalizedFailureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+  "events": [
+    {
+      "seq": 1,
+      "type": "mouse.move.before",
+      "args": [
+        391,
+        664
+      ],
+      "state": {
+        "raf": 257,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5771.4000000059605
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218589681900"
+    },
+    {
+      "seq": 2,
+      "type": "mouse.down.before",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 257,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5771.70000000298
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218590414700"
+    },
+    {
+      "seq": 3,
+      "type": "mouse.move.after",
+      "args": [
+        391,
+        664
+      ],
+      "state": {
+        "raf": 258,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5799.4000000059605
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218631071800"
+    },
+    {
+      "seq": 4,
+      "type": "mouse.down.after",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 258,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5802.100000008941
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218631233600"
+    },
+    {
+      "seq": 5,
+      "type": "mouse.up.before",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 262,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5857.5
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218674378600"
+    },
+    {
+      "seq": 6,
+      "type": "mouse.up.after",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 262,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 5868.9000000059605
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91218686520500"
+    },
+    {
+      "seq": 7,
+      "type": "mouse.move.before",
+      "args": [
+        762.25,
+        299
+      ],
+      "state": {
+        "raf": 531,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10347
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91223163266700"
+    },
+    {
+      "seq": 8,
+      "type": "mouse.down.before",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 531,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10347.20000000298
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91223163473600"
+    },
+    {
+      "seq": 9,
+      "type": "mouse.up.before",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 531,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10347.40000000596
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91223163636400"
+    },
+    {
+      "seq": 10,
+      "type": "mouse.move.after",
+      "args": [
+        762.25,
+        299
+      ],
+      "state": {
+        "raf": 533,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10377.60000000894
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223194433900"
+    },
+    {
+      "seq": 11,
+      "type": "mouse.down.after",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 533,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10377.90000000596
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223194507300"
+    },
+    {
+      "seq": 12,
+      "type": "mouse.up.after",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 533,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10378.5
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223194657000"
+    },
+    {
+      "seq": 13,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 540,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10502.10000000894
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223321678600"
+    },
+    {
+      "seq": 14,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 542,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10529.90000000596
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223348910000"
+    },
+    {
+      "seq": 15,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 542,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10534.800000011921
+      },
+      "geometry": {
+        "barIndex": 603,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "603",
+        "inputCount": 2
+      },
+      "hostNs": "91223350920600"
+    },
+    {
+      "seq": 16,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 544,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10577.10000000894
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223396798200"
+    },
+    {
+      "seq": 17,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 544,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10582.70000000298
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223398931100"
+    },
+    {
+      "seq": 18,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 545,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10589.800000011921
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223411459700"
+    },
+    {
+      "seq": 19,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 563,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10893.300000011921
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223709537800"
+    },
+    {
+      "seq": 20,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 564,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10906
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223722329000"
+    },
+    {
+      "seq": 21,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 564,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10908
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "604",
+        "inputCount": 2
+      },
+      "hostNs": "91223723720200"
+    },
+    {
+      "seq": 22,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 564,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10916.10000000894
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223731803100"
+    },
+    {
+      "seq": 23,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 564,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10917.40000000596
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223732995700"
+    },
+    {
+      "seq": 24,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 564,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10920.40000000596
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223739906200"
+    },
+    {
+      "seq": 25,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 567,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10968
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223784726400"
+    },
+    {
+      "seq": 26,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 569,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10988.40000000596
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223805472300"
+    },
+    {
+      "seq": 27,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 569,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 10991.40000000596
+      },
+      "geometry": {
+        "barIndex": 604,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "605",
+        "inputCount": 2
+      },
+      "hostNs": "91223807938400"
+    },
+    {
+      "seq": 28,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 571,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11034.40000000596
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223861619400"
+    },
+    {
+      "seq": 29,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 572,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11047.40000000596
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223863452300"
+    },
+    {
+      "seq": 30,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 572,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11051
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223867887500"
+    },
+    {
+      "seq": 31,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 575,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11096.40000000596
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223912426100"
+    },
+    {
+      "seq": 32,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 576,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11106.40000000596
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223923350000"
+    },
+    {
+      "seq": 33,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 576,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11109.300000011921
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "606",
+        "inputCount": 2
+      },
+      "hostNs": "91223925543200"
+    },
+    {
+      "seq": 34,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 576,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11119.300000011921
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91223938612400"
+    },
+    {
+      "seq": 35,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 577,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11124.5
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91223940647400"
+    },
+    {
+      "seq": 36,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 577,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11127.800000011921
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91223944601300"
+    },
+    {
+      "seq": 37,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 580,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11172.5
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91223989163100"
+    },
+    {
+      "seq": 38,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 581,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11188.70000000298
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91224006125100"
+    },
+    {
+      "seq": 39,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 581,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11192.20000000298
+      },
+      "geometry": {
+        "barIndex": 606,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "607",
+        "inputCount": 2
+      },
+      "hostNs": "91224008646900"
+    },
+    {
+      "seq": 40,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 582,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11216.60000000894
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224047637100"
+    },
+    {
+      "seq": 41,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 583,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11234
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224050935700"
+    },
+    {
+      "seq": 42,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 584,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11237.90000000596
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224059242700"
+    },
+    {
+      "seq": 43,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 586,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11287.300000011921
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224104109900"
+    },
+    {
+      "seq": 44,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 588,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11304.90000000596
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224121110500"
+    },
+    {
+      "seq": 45,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 588,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11306.800000011921
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "608",
+        "inputCount": 2
+      },
+      "hostNs": "91224122661500"
+    },
+    {
+      "seq": 46,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 588,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11315.5
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224132462200"
+    },
+    {
+      "seq": 47,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 588,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11318.20000000298
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224134261100"
+    },
+    {
+      "seq": 48,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 589,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11323.40000000596
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224140021900"
+    },
+    {
+      "seq": 49,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 591,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11369.40000000596
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224186616800"
+    },
+    {
+      "seq": 50,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 593,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11388
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224203927700"
+    },
+    {
+      "seq": 51,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 593,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11389.70000000298
+      },
+      "geometry": {
+        "barIndex": 608,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "609",
+        "inputCount": 2
+      },
+      "hostNs": "91224205731200"
+    },
+    {
+      "seq": 52,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 594,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11416.20000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224234693800"
+    },
+    {
+      "seq": 53,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 594,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11420.70000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224246062500"
+    },
+    {
+      "seq": 54,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 595,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11434
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224250489400"
+    },
+    {
+      "seq": 55,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 598,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11477.70000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224294036100"
+    },
+    {
+      "seq": 56,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 599,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11488.70000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224305432000"
+    },
+    {
+      "seq": 57,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 599,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11491.40000000596
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "610",
+        "inputCount": 2
+      },
+      "hostNs": "91224307488600"
+    },
+    {
+      "seq": 58,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 599,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11502.300000011921
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224322209500"
+    },
+    {
+      "seq": 59,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 600,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11508.20000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224324625600"
+    },
+    {
+      "seq": 60,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 600,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11512.10000000894
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224328433100"
+    },
+    {
+      "seq": 61,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 603,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11556.90000000596
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224373856200"
+    },
+    {
+      "seq": 62,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 604,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11573.20000000298
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224390241300"
+    },
+    {
+      "seq": 63,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 604,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11576.10000000894
+      },
+      "geometry": {
+        "barIndex": 610,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "611",
+        "inputCount": 2
+      },
+      "hostNs": "91224392158800"
+    },
+    {
+      "seq": 64,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 605,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11602.90000000596
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224435616700"
+    },
+    {
+      "seq": 65,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 607,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11628.90000000596
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224446423700"
+    },
+    {
+      "seq": 66,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 607,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11633.20000000298
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224449651100"
+    },
+    {
+      "seq": 67,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 610,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11676.90000000596
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224493232700"
+    },
+    {
+      "seq": 68,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 611,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11687.70000000298
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224504364000"
+    },
+    {
+      "seq": 69,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 611,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11690.40000000596
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "612",
+        "inputCount": 2
+      },
+      "hostNs": "91224507579700"
+    },
+    {
+      "seq": 70,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 611,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11701
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224517076500"
+    },
+    {
+      "seq": 71,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 611,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11702.70000000298
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224522390100"
+    },
+    {
+      "seq": 72,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 612,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11709.300000011921
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224525868900"
+    },
+    {
+      "seq": 73,
+      "type": "mouse.move.before",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 615,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11754.20000000298
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224570407600"
+    },
+    {
+      "seq": 74,
+      "type": "mouse.move.after",
+      "args": [
+        884,
+        408.25
+      ],
+      "state": {
+        "raf": 616,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11773.90000000596
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224591482900"
+    },
+    {
+      "seq": 75,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 616,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11777.300000011921
+      },
+      "geometry": {
+        "barIndex": 612,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "613",
+        "inputCount": 2
+      },
+      "hostNs": "91224593497300"
+    },
+    {
+      "seq": 76,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 617,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11801.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91224628540000"
+    },
+    {
+      "seq": 77,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 618,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11814.5
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91224631083700"
+    },
+    {
+      "seq": 78,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 618,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 11818.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91224634146800"
+    },
+    {
+      "seq": 79,
+      "type": "mouse.move.before",
+      "args": [
+        468,
+        664
+      ],
+      "state": {
+        "raf": 644,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12250.10000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225065862400"
+    },
+    {
+      "seq": 80,
+      "type": "mouse.move.after",
+      "args": [
+        468,
+        664
+      ],
+      "state": {
+        "raf": 645,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12261.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225079756500"
+    },
+    {
+      "seq": 81,
+      "type": "mouse.down.before",
+      "args": [],
+      "state": {
+        "raf": 645,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12265.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225082449900"
+    },
+    {
+      "seq": 82,
+      "type": "mouse.down.after",
+      "args": [],
+      "state": {
+        "raf": 646,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12280.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225098047500"
+    },
+    {
+      "seq": 83,
+      "type": "mouse.move.before",
+      "args": [
+        462.1666666666667,
+        665.5
+      ],
+      "state": {
+        "raf": 646,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12284
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225099929000"
+    },
+    {
+      "seq": 84,
+      "type": "mouse.move.after",
+      "args": [
+        462.1666666666667,
+        665.5
+      ],
+      "state": {
+        "raf": 647,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12292.800000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225110456500"
+    },
+    {
+      "seq": 85,
+      "type": "mouse.move.before",
+      "args": [
+        456.3333333333333,
+        667
+      ],
+      "state": {
+        "raf": 648,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12314.10000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225131471700"
+    },
+    {
+      "seq": 86,
+      "type": "mouse.move.after",
+      "args": [
+        456.3333333333333,
+        667
+      ],
+      "state": {
+        "raf": 649,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12325.40000000596
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225142553800"
+    },
+    {
+      "seq": 87,
+      "type": "mouse.move.before",
+      "args": [
+        450.5,
+        668.5
+      ],
+      "state": {
+        "raf": 650,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12345.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225161537800"
+    },
+    {
+      "seq": 88,
+      "type": "mouse.move.after",
+      "args": [
+        450.5,
+        668.5
+      ],
+      "state": {
+        "raf": 651,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12357.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225176492700"
+    },
+    {
+      "seq": 89,
+      "type": "mouse.move.before",
+      "args": [
+        444.6666666666667,
+        670
+      ],
+      "state": {
+        "raf": 652,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12379.10000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225195831800"
+    },
+    {
+      "seq": 90,
+      "type": "mouse.move.after",
+      "args": [
+        444.6666666666667,
+        670
+      ],
+      "state": {
+        "raf": 653,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12391.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225209738100"
+    },
+    {
+      "seq": 91,
+      "type": "mouse.move.before",
+      "args": [
+        438.8333333333333,
+        671.5
+      ],
+      "state": {
+        "raf": 654,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12411.300000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225228721900"
+    },
+    {
+      "seq": 92,
+      "type": "mouse.move.after",
+      "args": [
+        438.8333333333333,
+        671.5
+      ],
+      "state": {
+        "raf": 655,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12424.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91225241676700"
+    },
+    {
+      "seq": 93,
+      "type": "mouse.move.before",
+      "args": [
+        433,
+        673
+      ],
+      "state": {
+        "raf": 656,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12446.40000000596
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225265391300"
+    },
+    {
+      "seq": 94,
+      "type": "mouse.move.after",
+      "args": [
+        433,
+        673
+      ],
+      "state": {
+        "raf": 657,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12458.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225275727200"
+    },
+    {
+      "seq": 95,
+      "type": "mouse.move.before",
+      "args": [
+        427.1666666666667,
+        674.5
+      ],
+      "state": {
+        "raf": 658,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12478.5
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225294369500"
+    },
+    {
+      "seq": 96,
+      "type": "mouse.move.after",
+      "args": [
+        427.1666666666667,
+        674.5
+      ],
+      "state": {
+        "raf": 659,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12492.40000000596
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225309697600"
+    },
+    {
+      "seq": 97,
+      "type": "mouse.move.before",
+      "args": [
+        421.3333333333333,
+        676
+      ],
+      "state": {
+        "raf": 660,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12512
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225328306300"
+    },
+    {
+      "seq": 98,
+      "type": "mouse.move.after",
+      "args": [
+        421.3333333333333,
+        676
+      ],
+      "state": {
+        "raf": 661,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12526.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225343370600"
+    },
+    {
+      "seq": 99,
+      "type": "mouse.move.before",
+      "args": [
+        415.5,
+        677.5
+      ],
+      "state": {
+        "raf": 662,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12545.800000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225361932100"
+    },
+    {
+      "seq": 100,
+      "type": "mouse.move.after",
+      "args": [
+        415.5,
+        677.5
+      ],
+      "state": {
+        "raf": 663,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12556.90000000596
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225374188700"
+    },
+    {
+      "seq": 101,
+      "type": "mouse.move.before",
+      "args": [
+        409.6666666666667,
+        679
+      ],
+      "state": {
+        "raf": 664,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12578.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225395638400"
+    },
+    {
+      "seq": 102,
+      "type": "mouse.move.after",
+      "args": [
+        409.6666666666667,
+        679
+      ],
+      "state": {
+        "raf": 665,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12590.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225412858700"
+    },
+    {
+      "seq": 103,
+      "type": "mouse.move.before",
+      "args": [
+        403.83333333333337,
+        680.5
+      ],
+      "state": {
+        "raf": 666,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12615.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225431832200"
+    },
+    {
+      "seq": 104,
+      "type": "mouse.move.after",
+      "args": [
+        403.83333333333337,
+        680.5
+      ],
+      "state": {
+        "raf": 667,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12624.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225441476000"
+    },
+    {
+      "seq": 105,
+      "type": "mouse.move.before",
+      "args": [
+        398,
+        682
+      ],
+      "state": {
+        "raf": 668,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12646.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225465495900"
+    },
+    {
+      "seq": 106,
+      "type": "mouse.move.after",
+      "args": [
+        398,
+        682
+      ],
+      "state": {
+        "raf": 669,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12659.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225476314000"
+    },
+    {
+      "seq": 107,
+      "type": "mouse.up.before",
+      "args": [],
+      "state": {
+        "raf": 670,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12678.10000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225494246900"
+    },
+    {
+      "seq": 108,
+      "type": "mouse.up.after",
+      "args": [],
+      "state": {
+        "raf": 670,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 12680.800000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91225496287300"
+    },
+    {
+      "seq": 109,
+      "type": "mouse.move.before",
+      "args": [
+        468,
+        664
+      ],
+      "state": {
+        "raf": 852,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15706.10000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228522221100"
+    },
+    {
+      "seq": 110,
+      "type": "mouse.down.before",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 852,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15706.300000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228522356400"
+    },
+    {
+      "seq": 111,
+      "type": "mouse.move.after",
+      "args": [
+        468,
+        664
+      ],
+      "state": {
+        "raf": 852,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15713.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228531122200"
+    },
+    {
+      "seq": 112,
+      "type": "mouse.down.after",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 852,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15714.800000011921
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228531401000"
+    },
+    {
+      "seq": 113,
+      "type": "mouse.up.before",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 855,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15757.20000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228573348300"
+    },
+    {
+      "seq": 114,
+      "type": "mouse.up.after",
+      "args": [
+        {
+          "clickCount": 2,
+          "delay": 40
+        }
+      ],
+      "state": {
+        "raf": 855,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 15764.5
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10963
+      },
+      "coordinates": {
+        "ok": false,
+        "reason": "panel closed"
+      },
+      "hostNs": "91228582199100"
+    },
+    {
+      "seq": 115,
+      "type": "mouse.move.before",
+      "args": [
+        762.25,
+        299
+      ],
+      "state": {
+        "raf": 1128,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20312.40000000596
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91233128735100"
+    },
+    {
+      "seq": 116,
+      "type": "mouse.down.before",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 1128,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20312.5
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91233128867500"
+    },
+    {
+      "seq": 117,
+      "type": "mouse.up.before",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 1128,
+        "focus": true,
+        "activeElement": "BODY",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20312.60000000894
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "30",
+        "anchorBar": "",
+        "inputCount": 1
+      },
+      "hostNs": "91233129368100"
+    },
+    {
+      "seq": 118,
+      "type": "mouse.move.after",
+      "args": [
+        762.25,
+        299
+      ],
+      "state": {
+        "raf": 1129,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20333.5
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91233152307600"
+    },
+    {
+      "seq": 119,
+      "type": "mouse.down.after",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 1129,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20333.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91233155667700"
+    },
+    {
+      "seq": 120,
+      "type": "mouse.up.after",
+      "args": [
+        {
+          "clickCount": 1
+        }
+      ],
+      "state": {
+        "raf": 1129,
+        "focus": true,
+        "activeElement": "BUTTON",
+        "dpr": 1,
+        "visibility": "visible",
+        "now": 20333.70000000298
+      },
+      "geometry": {
+        "barIndex": 614,
+        "price": 1.10865
+      },
+      "coordinates": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "hostNs": "91233155722300"
+    }
+  ],
+  "error": null,
+  "serverOutput": "[serve] canonical chart tree: C:\\Users\\user\\Desktop\\talaria1\\release-worktrees\\mc-restore-20260727b77-f5-v1-v2-v5\\chart v 1.4\\chart\n[serve] listening on http://127.0.0.1:8822\n[serve] host page: http://127.0.0.1:8822/harness/host.html\n[api] GET /api/auth/me\n[api] GET /api/auth/me\n[api] POST /api/chart/windows/claim\n[api] GET /api/auth/me\n[api] GET /api/notifications?limit=50\n[api] GET /api/files\n[api] GET /api/files\n[api] GET /api/auth/me\n[api] GET /api/file/25/smart?timeframe=1m&limit=100000&anchor=end&response_format=candles\n[api] GET /api/file/25/candles?timeframe=1m&limit=2000&direction=backward&cursor=1779160980000\n[api] GET /api/file/25/tile-meta/1m\n[api] GET /api/finnhub/calendar/economic?from=2026-05-17&to=2026-05-26\n[api] GET /api/auth/me\n[api] GET /api/files\n[api] GET /api/file/25/bars?resolution=5m&limit=2000&from=1778597580000&to=1779197580000\n[api] GET /api/file/25/bars?resolution=15m&limit=2000&from=1777469580000&to=1779269580000\n[api] GET /api/file/25/bars?resolution=1h&limit=2000&from=1772393580000&to=1779593580000\n[api] POST /api/chart/windows/release\n"
+}

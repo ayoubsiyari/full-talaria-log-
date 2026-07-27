@@ -1,0 +1,1155 @@
+{
+  "schema": "talaria.h-a8-vp-2-repeat-diagnostic/v1",
+  "verdict": "(A) same mechanism with environment-dependent/flaky output, identifying nondeterministic field/source",
+  "repetitionsPerCommit": 3,
+  "corpus": {
+    "scenarioSha256": "d36c1f4362e12d28ccb3158d7611a8e51c28aed0f9ca1687d8a26e3d47f1ff24",
+    "helperSha256": "c3e17964c7d788ad36ab17fa6a09e09c9d390c018705dbb3039cb53f05f83db0",
+    "functionSha256": "5bd8ae7bbc55fe36ac17a07d9ad1f96d5a332e7abd73c8d2c14eb614ef2b3be8",
+    "assertionSemanticSha256": "d36fc6c02f7e95739259fb8ea939f12aa54e7a935cf6bfd24e2127557f0d70a1",
+    "assertionText": "    const moved = geo2.ok && (Math.abs(geo2.barIndex - geo1.barIndex) >= 0.5\n      || Math.abs(geo2.price - geo1.price) >= 1e-5);\n    checks.check('H-A8-VP-2 CORE-B: canvas drag moves anchor', moved, JSON.stringify({ geo1, geo2 }));\n    const priceTick = 1e-5;\n    checks.check('H-A8-VP-2 CORE-B′: coord tab tracks canvas drag',\n      fields2.ok && geo2.ok\n        && Math.abs(parseFloat(fields2.anchorBar) - geo2.barIndex) <= 0.05\n        && Math.abs(parseFloat(fields2.anchorPrice) - geo2.price) <= priceTick,\n      JSON.stringify({ fields1, fields2, geo2 }));"
+  },
+  "environment": {
+    "browserVersion": "Chrome/148.0.7778.97",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+    "launch": {
+      "headless": true,
+      "args": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+      ],
+      "defaultViewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "scenarioViewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "pinnedDeviceScaleFactor": 1
+    },
+    "pinnedInputs": {
+      "migrationOn": false,
+      "allScenarioKillSwitches": false,
+      "freshServerAndBrowserPerRun": true
+    }
+  },
+  "deterministic": {
+    "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+    "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+    "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+    "eventCount": 120,
+    "allFocused": true,
+    "allDprOne": true,
+    "failurePoint": "[\"H-A8-VP-2 CORE-B: canvas drag moves anchor\",\"H-A8-VP-2 CORE-B′: coord tab tracks canvas drag\"]",
+    "geometryBefore": "{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}",
+    "geometryAfter": "{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}",
+    "coordinateBefore": "{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2}",
+    "coordinateAfter": "{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2}",
+    "firstExpectedDragFrame": "{\"seq\":83,\"pointer\":[462.1666666666667,665.5],\"geometry\":{\"barIndex\":614,\"price\":1.10963}}",
+    "dragEnd": "{\"seq\":108,\"geometry\":{\"barIndex\":614,\"price\":1.10963}}",
+    "coordinatesReady": "{\"seq\":118,\"geometry\":{\"barIndex\":614,\"price\":1.10865},\"coordinates\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2}}"
+  },
+  "volatility": {
+    "rawArtifactsAllDifferent": true,
+    "nondeterministicFields": [
+      "setup drawing UUID",
+      "wall-clock startedAt/endedAt",
+      "diagnostic server port",
+      "process hostNs",
+      "performance.now",
+      "requestAnimationFrame counter at each event",
+      "frame/event where the asynchronous settings-recovery double-click applies price 1.10865"
+    ],
+    "source": "browser/process scheduling and generated drawing identity; recovery-update frame varies, but final geometry/coordinates, assertion semantics, event order/arguments, focus, DPR, and failure mechanism do not",
+    "firstDivergentObservedField": "events[0].state.raf",
+    "firstEventRafByRun": [
+      {
+        "label": "b75",
+        "run": 1,
+        "firstEventRaf": 250
+      },
+      {
+        "label": "b75",
+        "run": 2,
+        "firstEventRaf": 266
+      },
+      {
+        "label": "b75",
+        "run": 3,
+        "firstEventRaf": 263
+      },
+      {
+        "label": "b77",
+        "run": 1,
+        "firstEventRaf": 277
+      },
+      {
+        "label": "b77",
+        "run": 2,
+        "firstEventRaf": 257
+      },
+      {
+        "label": "b77",
+        "run": 3,
+        "firstEventRaf": 256
+      },
+      {
+        "label": "b78",
+        "run": 1,
+        "firstEventRaf": 248
+      },
+      {
+        "label": "b78",
+        "run": 2,
+        "firstEventRaf": 265
+      },
+      {
+        "label": "b78",
+        "run": 3,
+        "firstEventRaf": 260
+      }
+    ],
+    "durationMsByRun": [
+      {
+        "label": "b75",
+        "run": 1,
+        "durationMs": 22905
+      },
+      {
+        "label": "b75",
+        "run": 2,
+        "durationMs": 22269
+      },
+      {
+        "label": "b75",
+        "run": 3,
+        "durationMs": 22170
+      },
+      {
+        "label": "b77",
+        "run": 1,
+        "durationMs": 23028
+      },
+      {
+        "label": "b77",
+        "run": 2,
+        "durationMs": 22098
+      },
+      {
+        "label": "b77",
+        "run": 3,
+        "durationMs": 21998
+      },
+      {
+        "label": "b78",
+        "run": 1,
+        "durationMs": 22821
+      },
+      {
+        "label": "b78",
+        "run": 2,
+        "durationMs": 22138
+      },
+      {
+        "label": "b78",
+        "run": 3,
+        "durationMs": 21967
+      }
+    ],
+    "recoveryGeometryChangeByRun": [
+      {
+        "label": "b75",
+        "run": 1,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 114,
+          "type": "mouse.up.after",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 858
+        }
+      },
+      {
+        "label": "b75",
+        "run": 2,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1145
+        }
+      },
+      {
+        "label": "b75",
+        "run": 3,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1141
+        }
+      },
+      {
+        "label": "b77",
+        "run": 1,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1156
+        }
+      },
+      {
+        "label": "b77",
+        "run": 2,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1128
+        }
+      },
+      {
+        "label": "b77",
+        "run": 3,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1137
+        }
+      },
+      {
+        "label": "b78",
+        "run": 1,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1125
+        }
+      },
+      {
+        "label": "b78",
+        "run": 2,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1140
+        }
+      },
+      {
+        "label": "b78",
+        "run": 3,
+        "firstGeometryChangeAfterDrag": {
+          "seq": 115,
+          "type": "mouse.move.before",
+          "geometry": {
+            "barIndex": 614,
+            "price": 1.10865
+          },
+          "raf": 1138
+        }
+      }
+    ]
+  },
+  "firstDivergentFrameOrValue": {
+    "betweenCommits": null,
+    "mechanism": "At event 83, the first post-mousedown drag move reaches [462.1666666666667,665.5], but geometry remains barIndex=614 price=1.10963. It remains unchanged through drag mouse-up event 108.",
+    "recovery": "The later settings-recovery double-click asynchronously changes geometry price to 1.10865 at a scheduling-dependent event/frame; event 118 exposes coordinates bar=614 price=1.10865. The earlier geo2 assertion snapshot remains 614/1.10963.",
+    "statement": "No geometry, coordinate, assertion, focus, DPR, event-order, or event-argument difference between commits or repetitions in 9/9 runs.",
+    "firstVolatileFrameField": "The first observed mouse event has differing parent-window rAF counters; ranges overlap across commits."
+  },
+  "rows": [
+    {
+      "label": "b75",
+      "run": 1,
+      "requestedCommit": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22905,
+      "rawArtifactSha256": "9dc98e35583156f2acdb20e109d9db85810da65c1c31d2b656110080b3fc7440",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 250,
+      "lastEventRaf": 1133,
+      "firstEventPerfNow": 6136.800000011921,
+      "lastEventPerfNow": 20851.30000001192,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 114,
+        "type": "mouse.up.after",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 858
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b75",
+      "run": 2,
+      "requestedCommit": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22269,
+      "rawArtifactSha256": "10496c3449c27bb719a63809c3e43b00ba269eecb2d517f808a205847fcc6d6c",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 266,
+      "lastEventRaf": 1146,
+      "firstEventPerfNow": 6315.5999999940395,
+      "lastEventPerfNow": 20991,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1145
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b75",
+      "run": 3,
+      "requestedCommit": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22170,
+      "rawArtifactSha256": "f98fe7618c7c58df570dc76a666cb6aa02d5d55ea8bb99d56d2e5f5c42a93a9d",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 263,
+      "lastEventRaf": 1142,
+      "firstEventPerfNow": 6069.5999999940395,
+      "lastEventPerfNow": 20731.89999999106,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1141
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b77",
+      "run": 1,
+      "requestedCommit": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 23028,
+      "rawArtifactSha256": "9cbb6dc7a02c2e150f879f56cf2ce5aa31cd24410d151d8d22c5e2fcb79627e2",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 277,
+      "lastEventRaf": 1158,
+      "firstEventPerfNow": 6305,
+      "lastEventPerfNow": 20984.39999999106,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1156
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b77",
+      "run": 2,
+      "requestedCommit": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22098,
+      "rawArtifactSha256": "c83280cb393a06b488d9ff9f657229dbe0ed83515498652a179eda043b1aec56",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 257,
+      "lastEventRaf": 1129,
+      "firstEventPerfNow": 5771.4000000059605,
+      "lastEventPerfNow": 20333.70000000298,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1128
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b77",
+      "run": 3,
+      "requestedCommit": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 21998,
+      "rawArtifactSha256": "4465bb09b580326ff11f8eed1d3b831faa7d942400a9cc91df673dfb906719a0",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 256,
+      "lastEventRaf": 1138,
+      "firstEventPerfNow": 5840.5,
+      "lastEventPerfNow": 20561.20000000298,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1137
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b78",
+      "run": 1,
+      "requestedCommit": "prepared-b78-ad4b8b06e-plus-working-tree",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22821,
+      "rawArtifactSha256": "9d395a024e53d081964609d64659282ef26669e9a13754565f3c0b6a77f3978b",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 248,
+      "lastEventRaf": 1126,
+      "firstEventPerfNow": 6346.79999999702,
+      "lastEventPerfNow": 20999.5,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1125
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b78",
+      "run": 2,
+      "requestedCommit": "prepared-b78-ad4b8b06e-plus-working-tree",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 22138,
+      "rawArtifactSha256": "7a66d4e9e61e0e422ed49d0d041b5dbeb67277e287602974f93b72b751d75ad2",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 265,
+      "lastEventRaf": 1141,
+      "firstEventPerfNow": 6266.29999999702,
+      "lastEventPerfNow": 20872.59999999404,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1140
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    },
+    {
+      "label": "b78",
+      "run": 3,
+      "requestedCommit": "prepared-b78-ad4b8b06e-plus-working-tree",
+      "browserVersion": "Chrome/148.0.7778.97",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36",
+      "durationMs": 21967,
+      "rawArtifactSha256": "c8247f74bd9dc0d1ef4167dedea3369d0fe6d21c02262bca984883889c49c566",
+      "failureSignatureSha256": "0aa54b27c1a97e87a5ab9ebf3bd223c56e68d4ef7c1d0be9f61b0a8a2fc071a4",
+      "normalizedChecksSha256": "3ddff28dd0f1fdcc9498dd2b92f393cbd7ea2c18d032bc7386965bb833b5b260",
+      "eventShapeSha256": "f0240cf871cf81ec8e59ab09c047dbceea83572057e551b391dfeec9ade50d43",
+      "eventCount": 120,
+      "firstEventRaf": 260,
+      "lastEventRaf": 1140,
+      "firstEventPerfNow": 6161.399999991059,
+      "lastEventPerfNow": 20826.59999999404,
+      "allFocused": true,
+      "allDprOne": true,
+      "geometryBefore": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "geometryAfter": {
+        "ok": true,
+        "barIndex": 614,
+        "price": 1.10963,
+        "priceFormatted": "1.10963",
+        "type": "anchored-volume-profile"
+      },
+      "coordinateBefore": {
+        "ok": true,
+        "anchorPrice": "1.10963",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "coordinateAfter": {
+        "ok": true,
+        "anchorPrice": "1.10865",
+        "anchorBar": "614",
+        "inputCount": 2
+      },
+      "failurePoint": [
+        "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+        "H-A8-VP-2 CORE-B′: coord tab tracks canvas drag"
+      ],
+      "firstExpectedDragFrame": {
+        "seq": 83,
+        "pointer": [
+          462.1666666666667,
+          665.5
+        ],
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "dragEnd": {
+        "seq": 108,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "recoveryDoubleClickEnd": {
+        "seq": 114,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10963
+        }
+      },
+      "firstGeometryChangeAfterDrag": {
+        "seq": 115,
+        "type": "mouse.move.before",
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "raf": 1138
+      },
+      "coordinatesReady": {
+        "seq": 118,
+        "geometry": {
+          "barIndex": 614,
+          "price": 1.10865
+        },
+        "coordinates": {
+          "ok": true,
+          "anchorPrice": "1.10865",
+          "anchorBar": "614",
+          "inputCount": 2
+        }
+      }
+    }
+  ]
+}
