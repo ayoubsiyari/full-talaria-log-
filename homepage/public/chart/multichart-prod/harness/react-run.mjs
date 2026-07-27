@@ -26,6 +26,9 @@ function parseArgs(argv) {
     armedDrawFocusForwardOff: false,
     ctrlMarqueeOff: false,
     otMsHighlightOff: false,
+    hA7bR2IdentityInvalid: false,
+    hA7bR2DataInvalid: false,
+    hA7bR2AnchorInvalid: false,
     bugSwitches: null,
   };
   for (const a of argv.slice(2)) {
@@ -52,6 +55,9 @@ function parseArgs(argv) {
     else if (a === '--multichart-armed-draw-focus-forward-off') args.armedDrawFocusForwardOff = true;
     else if (a === '--ctrl-marquee-off') args.ctrlMarqueeOff = true;
     else if (a === '--ot-ms-highlight-off') args.otMsHighlightOff = true;
+    else if (a === '--ha7b-r2-identity-invalid') args.hA7bR2IdentityInvalid = true;
+    else if (a === '--ha7b-r2-data-invalid') args.hA7bR2DataInvalid = true;
+    else if (a === '--ha7b-r2-anchor-invalid') args.hA7bR2AnchorInvalid = true;
     else if (a === '--hr02-actuation-miss' || a === '--hr02-discriminator-off') args.hr02ActuationMiss = true;
     else if (a === '--isolate-session') args.isolateSession = true;
     else if (a.startsWith('--runs=')) args.runs = Math.max(1, parseInt(a.slice(7), 10) || 1);
@@ -97,6 +103,9 @@ function buildScenarioCtx(args, browser, stack) {
     armedDrawFocusForwardOff: args.armedDrawFocusForwardOff,
     ctrlMarqueeOff: args.ctrlMarqueeOff,
     otMsHighlightOff: args.otMsHighlightOff,
+    hA7bR2IdentityInvalid: args.hA7bR2IdentityInvalid,
+    hA7bR2DataInvalid: args.hA7bR2DataInvalid,
+    hA7bR2AnchorInvalid: args.hA7bR2AnchorInvalid,
     bugSwitches: args.bugSwitches,
   };
 }
@@ -113,14 +122,18 @@ async function runScenarioOnce(s, ctx, verdicts, runIndex = null) {
     return;
   }
   const v = verdictOf(result);
-  verdicts[s.id].push(v.pass ? 'PASS' : 'FAIL');
+  const verdict = result.setupInvalid ? 'SETUP_INVALID' : (v.pass ? 'PASS' : 'FAIL');
+  verdicts[s.id].push(verdict);
   for (const c of result.checks.items) {
     console.log(`   [${c.ok ? ' ok ' : 'FAIL'}] ${c.label}${c.detail ? ' — ' + c.detail : ''}`);
   }
   if (result.d032Tripwire) {
     console.log(`   [D-032] tripwireClass=${result.d032Tripwire.tripwireClass} sig=${JSON.stringify(result.d032Tripwire.signature)}`);
   }
-  console.log(`RESULT ${s.id} ${v.pass ? 'PASS' : 'FAIL'}`);
+  if (result.setupInvalid) {
+    console.log(`   [SETUP_INVALID] ${JSON.stringify(result.setupInvalid)}`);
+  }
+  console.log(`RESULT ${s.id} ${verdict}`);
 }
 
 async function main() {
@@ -184,8 +197,10 @@ async function main() {
     const vs = verdicts[s.id];
     const allPass = vs.every((v) => v === 'PASS');
     const allFail = vs.every((v) => v === 'FAIL');
+    const allSetupInvalid = vs.every((v) => v === 'SETUP_INVALID');
     let cls;
     if (allPass) cls = 'PASS';
+    else if (allSetupInvalid) cls = 'SETUP_INVALID';
     else if (allFail) cls = 'FAIL-REAL-BUG';
     else cls = 'FAIL-FLAKE';
     if (cls !== 'PASS') anyFail = true;

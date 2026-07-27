@@ -70,6 +70,7 @@ import {
   countV9LayerInventoryRows,
 } from './react-parity-lib.mjs';
 import { hA8Vp2SemanticSignature } from './h-a8-vp-2-semantic-signature.mjs';
+import { hA7bR2OracleStamp, validateHA7bR2Setup } from './h-a7b-r2-setup-contract.mjs';
 import {
   chartTarget,
   placeTool,
@@ -621,6 +622,8 @@ async function hA7bR2(ctx) {
   return runWithReact(ctx, async (boot) => {
     const { page } = boot;
     const checks = makeChecks();
+    const oracle = hA7bR2OracleStamp(currentReactBuildId());
+    console.log(`H-A7b-R2 ORACLE ${JSON.stringify(oracle)}`);
     checks.check('H-A7b-R2 L1: build id on host + panel B iframe', boot.buildIds.ok,
       JSON.stringify(boot.buildIds));
     checks.check('H-A7b-R2 L1: iframe boundary (panel B embed)', boot.boundary && boot.boundary.ok,
@@ -628,7 +631,7 @@ async function hA7bR2(ctx) {
     checks.check('H-A7b-R2 L1: real bar data in panel B iframe', boot.iframeBars > 50,
       `dataLen=${boot.iframeBars}`);
 
-    await reactPanelLoadFile(page, 'B', '27');
+    const loadResult = await reactPanelLoadFile(page, 'B', '27');
     await waitForPanelData(page, 'B', 60_000);
     const fileDeadline = Date.now() + 30_000;
     let fileIds = await readReactPanelFileIds(page);
@@ -636,20 +639,31 @@ async function hA7bR2(ctx) {
       await sleep(250);
       fileIds = await readReactPanelFileIds(page);
     }
+    const commandAcknowledged = loadResult !== false || fileIds.B === '27';
+    if (ctx.hA7bR2IdentityInvalid) fileIds = { ...fileIds, B: '25' };
     checks.check('H-A7b-R2 setup: independent pair A=file25 B=file27',
       fileIds.A === '25' && fileIds.B === '27', JSON.stringify(fileIds));
 
     const dataDeadline = Date.now() + 30_000;
-    let bBars = 0;
+    let panelData = null;
     while (Date.now() < dataDeadline) {
       const frameB = panelFrameMap(page).B;
-      bBars = frameB
-        ? await frameB.evaluate(() => (window.chart && window.chart.data ? window.chart.data.length : 0))
-        : 0;
-      if (bBars > 50) break;
+      panelData = frameB ? await frameB.evaluate(() => {
+        const ch = window.chart;
+        const bars = Array.isArray(ch?.data) ? ch.data : [];
+        return {
+          fileId: ch?.currentFileId == null ? null : String(ch.currentFileId),
+          length: bars.length,
+          firstTime: Number(bars[0]?.t),
+          lastTime: Number(bars[bars.length - 1]?.t),
+        };
+      }) : null;
+      if (panelData?.length > 50 && panelData.fileId === '27') break;
       await sleep(200);
     }
-    checks.check('H-A7b-R2 setup: panel B bars loaded after file27 switch', bBars > 50, `len=${bBars}`);
+    if (ctx.hA7bR2DataInvalid) panelData = { ...panelData, fileId: '25', length: 0 };
+    checks.check('H-A7b-R2 setup: panel B file27 data identity and bars loaded',
+      panelData?.fileId === '27' && panelData?.length > 50, JSON.stringify(panelData));
 
     await focusReactPanel(page, 'B');
     await waitForPanelSettle(page, 'B');
@@ -658,16 +672,48 @@ async function hA7bR2(ctx) {
     await waitForPanelSettle(page, 'B', 2000);
     await page.setViewport({ width: 1440, height: 960 });
     await waitForPanelSettle(page, 'B', 2000);
-    let pts;
+    let pts = [];
+    let anchorError = null;
     try {
       pts = await defaultVolumeAnchorPoints(page, 1, 'B');
     } catch (err) {
-      checks.check('H-A7b-R2 setup: anchor points resolved', false, String(err && err.message || err));
+      anchorError = String(err && err.message || err);
+    }
+    if (ctx.hA7bR2AnchorInvalid) pts = [];
+    const anchorInputValid = Array.isArray(pts) && pts.length === 1
+      && Number.isFinite(pts[0]?.x) && Number.isFinite(pts[0]?.y)
+      && pts[0].x >= 0 && pts[0].x < Number(panelData?.length);
+    let placed = null;
+    let placementError = null;
+    if (anchorInputValid) {
+      try {
+        placed = await placeTool(page, 'B', 'anchored-volume-profile', pts);
+      } catch (err) {
+        placementError = String(err && err.message || err);
+      }
+    }
+    checks.check('H-A7b-R2 setup: anchored VP placed on panel B', placed && placed.id,
+      placed ? placed.id : JSON.stringify({ anchorError, placementError, pts }));
+
+    const setup = validateHA7bR2Setup({
+      commandAcknowledged,
+      fileIds,
+      data: panelData,
+      anchorPoints: pts,
+      placement: placed,
+    });
+    if (!setup.ok || oracle.status !== 'PROVEN') {
+      const setupInvalid = {
+        ...setup,
+        oracle,
+        anchorError,
+        placementError,
+      };
+      checks.setupInvalid = setupInvalid;
+      checks.check(`H-A7b-R2 SETUP_INVALID: ${setup.firstInvalidStage || 'oracle-unproven'}`,
+        false, JSON.stringify(setupInvalid));
       return checks;
     }
-    const placed = await placeTool(page, 'B', 'anchored-volume-profile', pts);
-    checks.check('H-A7b-R2 setup: anchored VP placed on panel B', placed && placed.id,
-      placed ? placed.id : 'null');
     await waitForVpDrawingSettle(page, 'B', placed.id, 3000);
     await waitForPanelSettle(page, 'B', 1500);
 

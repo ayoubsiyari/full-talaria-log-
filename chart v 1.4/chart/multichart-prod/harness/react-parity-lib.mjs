@@ -2235,9 +2235,11 @@ export async function runWithReact(ctx, body) {
   const boot = await bootReactMultichart(ctx.browser, ctx.stack, ctx);
   const notes = [];
   let checks;
+  let setupInvalid = null;
   let d032Tripwire = null;
   try {
     checks = await body(boot, notes);
+    setupInvalid = checks?.setupInvalid || null;
     const fails = (checks || makeChecks()).failures();
     if (fails.length && ctx.scenarioId && D032_TRIPWIRE_SCENARIO_IDS.includes(ctx.scenarioId)) {
       d032Tripwire = await captureAndLogD032Tripwire({
@@ -2252,5 +2254,5 @@ export async function runWithReact(ctx, body) {
   } finally {
     await boot.close();
   }
-  return { checks: checks || makeChecks(), inv: makeChecks(), notes, d032Tripwire };
+  return { checks: checks || makeChecks(), inv: makeChecks(), notes, d032Tripwire, setupInvalid };
 }

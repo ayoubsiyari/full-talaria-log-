@@ -17,6 +17,23 @@ Every **trusted** react-parity row must have a **named discriminator** that prov
 | **H-R05** | `--only=H-R05 --runs=10` → 10/10 PASS | `--chrome-dom-ready-off` → FAIL (non-vacuous) | `__TALARIA_DISABLE_MULTICHART_CHROME_DOM_READY_V4` (D-024) |
 | **H-R09-LR** | `--only=H-R09-LR --runs=10` → PASS (lag pin) | `--v9-quickbar-live-resolve-off --chrome-dom-ready-off` → FAIL | `__TALARIA_DISABLE_V9_QUICKBAR_LIVE_RESOLVE_V1` (D-027) + D-024 for non-vacuous OFF |
 | **MC-DRAW-FIRSTCLICK** | `node run.mjs --only=MC-DRAW-FIRSTCLICK --runs=10` → 10/10 PASS | `--multichart-armed-draw-focus-forward-off` → 10/10 FAIL | `__TALARIA_DISABLE_MULTICHART_ARMED_DRAW_FOCUS_FORWARD_V1` |
+| **H-A7b-R2** | `--only=H-A7b-R2 --runs=3` → 3/3 PASS | `--axis-margin-floor-off` → 3/3 FAIL-REAL-BUG; setup controls below → SETUP_INVALID | `__TALARIA_DISABLE_AXIS_MARGIN_FLOOR_AFTER_VP_FIX` |
+
+### H-A7b-R2 setup integrity controls
+
+H-A7b-R2 reaches geometry only after command acknowledgement, panel-B file identity
+`27`, file-bound valid data, one finite anchor, and a placed VP id. Any failed
+stage terminates as `SETUP_INVALID`, never PASS or known failure.
+
+```bash
+node react-run.mjs --only=H-A7b-R2 --ha7b-r2-identity-invalid
+node react-run.mjs --only=H-A7b-R2 --ha7b-r2-data-invalid
+node react-run.mjs --only=H-A7b-R2 --ha7b-r2-anchor-invalid
+```
+
+Oracle: `H-A7b-R2 setup contract v1`, authored and last proven RED on
+`20260727b78` for D-029 R2. It becomes `UNPROVEN` after three build ordinals
+without a refreshed RED and then fails closed before geometry.
 
 ### D-024 chrome DOM-ready wait primitive
 
