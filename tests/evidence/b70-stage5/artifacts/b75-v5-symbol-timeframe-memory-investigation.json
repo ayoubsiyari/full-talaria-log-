@@ -1,0 +1,67 @@
+{
+  "schema": "talaria-v5-symbol-timeframe-memory-v1",
+  "generatedAt": "2026-07-27T12:02:00.000Z",
+  "hypothesis": "Repeated A-B-C-A symbol changes combined with 1m-1D timeframe switches may retain memory; causality is not assumed.",
+  "thresholdsDeclaredBeforeResults": true,
+  "thresholds": {
+    "leak": {
+      "minPostGcRetainedSlopeBytesPerCycle": 2097152,
+      "minPostGcGrowthBytes": 104857600,
+      "minOutgoingGenerationsStronglyReachable": 5,
+      "maxTeardownReleaseFraction": 0.8
+    },
+    "expectedBounded": {
+      "maxPostGcRetainedSlopeBytesPerCycle": 262144,
+      "maxPostGcGrowthBytes": 33554432,
+      "minTeardownReleaseFraction": 0.8
+    }
+  },
+  "ownerScope": {
+    "validated": true,
+    "sessionAlias": "owner-qa-session-1",
+    "configuredSymbols": ["symbol-A", "symbol-B", "symbol-C"]
+  },
+  "readinessMutationClassification": {
+    "method": "POST",
+    "path": "/api/chart/windows/claim",
+    "class": "operational-authenticated-window-concurrency-lease",
+    "dataMutation": false,
+    "requiredBecause": "heavy chart file and session-state reads are gated on a server-recognized chart-window lease and window-id header",
+    "priorFailure": "the prior read-only interceptor returned a synthetic response instead of establishing the server lease"
+  },
+  "mutationPolicy": {
+    "default": "block",
+    "allowedOperationalLifecycle": [
+      "POST /api/auth/login",
+      "POST /api/chart/windows/claim",
+      "POST /api/chart/windows/heartbeat",
+      "POST /api/chart/windows/release"
+    ],
+    "blockedDataMutationsObserved": 4,
+    "i16Clean": true
+  },
+  "capture": {
+    "authenticatedProductPathReached": true,
+    "baselineCapturedAfterExplicitGc": true,
+    "baselineJsHeapUsedBytes": 86001752,
+    "baselineJsHeapTotalBytes": 119590912,
+    "baselineDomNodes": 7224,
+    "baselineEventListeners": 1176,
+    "baselineWorkersAlive": 1,
+    "baselineTimers": 20,
+    "baselineCanvases": 1,
+    "baselineRawBars": 64948,
+    "baselineProcessedBars": 64948,
+    "requiredCycleCheckpointsCaptured": [],
+    "rawHeapsCommitted": false,
+    "rawHeapsDeleted": true
+  },
+  "verdict": "INCONCLUSIVE",
+  "exactBlocker": "The authenticated disposable owner chart reached a GC-settled baseline, but the first symbol transition did not satisfy the complete load/render readiness predicate within 120000 ms. Therefore checkpoints 10/25/50, controls, retained slopes, dominator paths, and teardown release could not be measured without weakening readiness or allowing session-state writes.",
+  "claimsNotMade": [
+    "No leak determination",
+    "No causality attribution",
+    "No retained-object or dominator-path conclusion",
+    "No product fix"
+  ]
+}
