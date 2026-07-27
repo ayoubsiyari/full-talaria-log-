@@ -70,26 +70,42 @@ test('RED: 1D tick mode retains tick loop while 1m order cadence enables subdivi
     'retained order cadence activates the finest-timeframe scheduler');
 });
 
-test('RED: 1D/1m subdivision multiplies every selected speed by 1440', () => {
-  const replay = makeProductPath();
-  assert.equal(replay._finestTfCadenceSubdivisions(), 1440);
+test('RED/control: 1D display keeps 1m raw wall-clock units unless kill switch restores subdivisions', () => {
+  const captureMatrix = (killSwitchEngaged) => {
+    window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1 = killSwitchEngaged;
+    return [1, 5, 15, 30].map((configuredSpeed) => {
+      const replay = makeProductPath();
+      replay.speed = configuredSpeed;
+      return startAndCaptureScheduler(replay);
+    });
+  };
 
-  const matrix = [];
-  for (const configuredSpeed of [1, 5, 15, 30]) {
-    replay.speed = configuredSpeed;
-    const scheduler = startAndCaptureScheduler(replay);
-    matrix.push(scheduler);
-    assert.equal(scheduler.effectiveSpeed, configuredSpeed,
-      'reported effective speed does not expose scheduler subdivision');
-    assert.equal(scheduler.subdivisions, 1440);
+  try {
+    const coherent = captureMatrix(false);
+    for (const scheduler of coherent) {
+      assert.equal(scheduler.effectiveSpeed, scheduler.configuredSpeed);
+      assert.equal(scheduler.subdivisions, 1440,
+        'order cadence remains subdivided independently from raw wall-clock pacing');
+      assert.equal(scheduler.fastMode, false);
+      const expectedInterval = Math.max(
+        16,
+        60_000 / scheduler.configuredSpeed / scheduler.ticks,
+      );
+      assert.ok(Math.abs(scheduler.interval - expectedInterval) < 0.001,
+        'scheduler interval is measured from the 1m raw candle, in milliseconds per tick');
+    }
+
+    const legacyControl = captureMatrix(true);
+    assert.equal(legacyControl[0].fastMode, false);
+    assert.equal(legacyControl[0].interval, 16,
+      'kill switch restores the legacy 1D/1m subdivision acceleration at 1x');
+    assert.deepEqual(legacyControl.map((row) => row.fastMode), [false, false, false, false],
+      'the existing M19-I kill switch also restores its legacy raw-bars-per-second threshold');
+    assert.deepEqual(legacyControl.map((row) => row.interval), [16, 16, 16, 16],
+      'the subdivided legacy control is deterministically clamped to one frame');
+  } finally {
+    delete window.__TALARIA_DISABLE_M19I_TICK_SPEED_COHERENCE_V1;
   }
-  assert.equal(matrix[0].fastMode, false);
-  assert.ok(matrix[0].interval < 32,
-    '1x enters a sub-frame-adjacent smooth interval only because the 1D/1m ratio is applied');
-  assert.deepEqual(matrix.slice(1).map((row) => row.fastMode), [true, true, true],
-    'subdivision mutation flips the remaining low speeds into product fast mode');
-  assert.ok(matrix[1].interval > matrix[2].interval && matrix[2].interval > matrix[3].interval,
-    'actual fast scheduler intervals remain speed-sensitive');
 });
 
 test('mutation-sensitive display/replay TF ratios and equal-TF control execute product functions', () => {
