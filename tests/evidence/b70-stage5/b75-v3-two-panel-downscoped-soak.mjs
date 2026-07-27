@@ -5,7 +5,10 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
-import { classifyOrganicTopology } from './b75-v3-two-panel-topology-contract.mjs';
+import {
+  classifyDeterministicTeardown,
+  classifyOrganicTopology,
+} from './b75-v3-two-panel-topology-contract.mjs';
 
 const require = createRequire(new URL('../../../chart v 1.4/chart/multichart-prod/harness/package.json', import.meta.url));
 const puppeteer = require('puppeteer');
@@ -48,10 +51,12 @@ const evidence = {
   errors: [],
   verdict: 'BLOCKED',
 };
+let leaseReleased = false;
 
 const profile = fs.mkdtempSync(path.join(process.env.TEMP || process.cwd(), 'v3-2p-'));
 const browser = await puppeteer.launch({
   headless: 'new', userDataDir: profile,
+  protocolTimeout: 600_000,
   args: ['--no-sandbox', '--disable-extensions', '--no-first-run', '--enable-precise-memory-info'],
 });
 const page = await browser.newPage();
@@ -125,8 +130,8 @@ const api = (url, init = {}) => page.evaluate(async ({ target, options }) => {
 }, { target: url, options: structuredClone(init) });
 
 let lastOsMemory = { at: 0, bytes: null };
-async function osProcessPrivateMemory() {
-  if (Date.now() - lastOsMemory.at < 5_000) return lastOsMemory.bytes;
+async function osProcessPrivateMemory(force = false) {
+  if (!force && Date.now() - lastOsMemory.at < 5_000) return lastOsMemory.bytes;
   const script = [
     `$rootPid=${browser.process().pid}`,
     '$rows=Get-CimInstance Win32_Process',
@@ -396,22 +401,109 @@ try {
   }
   evidence.completedDurationMs = evidence.conditions.reduce((sum, cell) => sum + cell.completedDurationMs, 0);
   evidence.verdict = evidence.completedDurationMs >= totalMs ? 'CAPTURE_PENDING_TEARDOWN' : 'INCOMPLETE';
-  evidence.readiness.stage = 'teardown-navigation';
+  evidence.readiness.stage = 'deterministic-multichart-teardown';
   const teardownBefore = await performanceMetrics();
-  await cdp.send('Page.stopLoading').catch(() => {});
-  await cdp.send('Page.navigate', { url: 'about:blank' });
+  const teardownCheckpoints = [];
+  const pauseAck = await page.evaluate(() => {
+    const manager = window.__multichartManagerRef || window.__mcManager;
+    const entries = manager?.charts ? [...manager.charts.values()] : [];
+    const peerWorkersBefore = entries.reduce((sum, entry) => {
+      const probe = entry.frame?.contentWindow?.__v3p;
+      return sum + (probe?.workers?.filter((row) => row.alive).length || 0);
+    }, 0);
+    const charts = [window.chart, ...entries.map((entry) => entry.frame?.contentWindow?.chart)];
+    for (const chart of charts) {
+      chart?.replaySystem?.pause?.();
+    }
+    return {
+      replayPaused: charts.every((chart) => !chart?.replaySystem?.isPlaying),
+      peerWorkersBefore,
+      peerIds: entries.map((entry) => entry.id),
+    };
+  });
+  teardownCheckpoints.push({ stage: 'replay-paused', acknowledged: pauseAck.replayPaused });
+  if (!pauseAck.replayPaused) throw new Error('teardown replay pause was not acknowledged');
   await sleep(2_000);
+  const removalAck = await page.evaluate((peerIds) => {
+    const manager = window.__multichartManagerRef || window.__mcManager;
+    for (const id of peerIds) manager?.removeChart?.(id);
+    return {
+      managerEntries: manager?.charts?.size ?? null,
+      iframeCount: document.querySelectorAll('iframe').length,
+    };
+  }, pauseAck.peerIds);
+  teardownCheckpoints.push({
+    stage: 'peers-removed',
+    acknowledged: removalAck.managerEntries === 0 && removalAck.iframeCount === 0,
+  });
+  await page.waitForFunction(() => {
+    const manager = window.__multichartManagerRef || window.__mcManager;
+    return manager?.charts?.size === 0 && document.querySelectorAll('iframe').length === 0;
+  }, { timeout: 30_000 });
   await cdp.send('HeapProfiler.enable').catch(() => {});
   await cdp.send('HeapProfiler.collectGarbage').catch(() => {});
   await sleep(5_000);
-  const teardownAfter = await performanceMetrics();
+  const afterPeerRemoval = await performanceMetrics();
+  const lifecycle = {
+    ...pauseAck,
+    ...removalAck,
+    frames: afterPeerRemoval.Frames,
+  };
+  teardownCheckpoints.push({
+    stage: 'resource-drain-observed',
+    acknowledged: lifecycle.managerEntries === 0
+      && lifecycle.iframeCount === 0
+      && afterPeerRemoval.JSEventListeners < teardownBefore.JSEventListeners
+      && afterPeerRemoval.JSHeapUsedSize < teardownBefore.JSHeapUsedSize
+      && afterPeerRemoval.processPrivateMemory < teardownBefore.processPrivateMemory,
+  });
+  const release = await api('/api/chart/windows/release', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId }), windowId: clientId,
+  });
+  leaseReleased = release.status === 200;
+  if (!leaseReleased) throw new Error(`operational window release failed HTTP ${release.status}`);
+  const browserCdp = await browser.target().createCDPSession();
+  const targetId = page.target()._targetId;
+  const closeResult = await browserCdp.send('Target.closeTarget', { targetId });
+  const closeStarted = Date.now();
+  while (!page.isClosed() && Date.now() - closeStarted < 30_000) await sleep(100);
+  const targetDestroyed = page.isClosed();
+  teardownCheckpoints.push({
+    stage: 'target-closed',
+    acknowledged: closeResult?.success === true && targetDestroyed,
+  });
+  await sleep(5_000);
+  const processMemoryAfterTargetClose = await osProcessPrivateMemory(true);
+  await browserCdp.detach().catch(() => {});
+  const classification = classifyDeterministicTeardown({
+    ...lifecycle,
+    listenersBefore: teardownBefore.JSEventListeners,
+    listenersAfterPeerRemoval: afterPeerRemoval.JSEventListeners,
+    jsHeapReleasedAfterPeerRemovalBytes:
+      teardownBefore.JSHeapUsedSize - afterPeerRemoval.JSHeapUsedSize,
+    processMemoryReleasedAfterPeerRemovalBytes:
+      teardownBefore.processPrivateMemory - afterPeerRemoval.processPrivateMemory,
+    targetCloseAcknowledged: closeResult?.success === true,
+    targetDestroyed,
+  });
   evidence.teardownRecovery = {
     before: teardownBefore,
-    after: teardownAfter,
-    jsHeapReleasedBytes: teardownBefore.JSHeapUsedSize - teardownAfter.JSHeapUsedSize,
-    processMemoryReleasedBytes: teardownBefore.processPrivateMemory - teardownAfter.processPrivateMemory,
-    iframeCountAfter: await page.evaluate(() => document.querySelectorAll('iframe').length),
+    afterPeerRemoval,
+    processMemoryAfterTargetClose,
+    jsHeapReleasedAfterPeerRemovalBytes: teardownBefore.JSHeapUsedSize - afterPeerRemoval.JSHeapUsedSize,
+    processMemoryReleasedAfterPeerRemovalBytes:
+      teardownBefore.processPrivateMemory - afterPeerRemoval.processPrivateMemory,
+    processMemoryReleasedAfterTargetCloseBytes:
+      teardownBefore.processPrivateMemory - processMemoryAfterTargetClose,
+    lifecycle,
+    targetCloseAcknowledged: closeResult?.success === true,
+    targetDestroyed,
+    operationalLeaseReleased: leaseReleased,
+    checkpoints: teardownCheckpoints,
+    classification,
   };
+  if (!classification.complete) throw new Error(`deterministic teardown assertions failed: ${JSON.stringify(classification)}`);
   evidence.verdict = 'CAPTURE_COMPLETE';
 } catch (error) {
   evidence.blocker = String(error?.message || error)
@@ -421,10 +513,12 @@ try {
   evidence.completedDurationMs = evidence.conditions.reduce((sum, cell) => sum + (cell.completedDurationMs || 0), 0);
   if (evidence.verdict === 'CAPTURE_PENDING_TEARDOWN') evidence.verdict = 'INCOMPLETE_TEARDOWN';
 } finally {
-  await api('/api/chart/windows/release', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ client_id: clientId }), windowId: clientId,
-  }).catch(() => {});
+  if (!leaseReleased && !page.isClosed()) {
+    await api('/api/chart/windows/release', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId }), windowId: clientId,
+    }).catch(() => {});
+  }
   evidence.completedAt = new Date().toISOString();
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`);

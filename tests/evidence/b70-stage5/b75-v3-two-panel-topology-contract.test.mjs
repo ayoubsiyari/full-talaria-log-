@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  classifyDeterministicTeardown,
   classifyOrganicTopology,
   expectedPeerCount,
 } from './b75-v3-two-panel-topology-contract.mjs';
@@ -80,4 +81,76 @@ test('invalid panel counts fail closed', () => {
   for (const value of [0, -1, 1.5, NaN, '2']) {
     assert.throws(() => expectedPeerCount(value), /positive integer/);
   }
+});
+
+test('RED: navigation-only teardown cannot satisfy lifecycle release', () => {
+  assert.deepEqual(classifyDeterministicTeardown({
+    replayPaused: true,
+    managerEntries: 1,
+    iframeCount: 1,
+    peerWorkersBefore: 1,
+    listenersBefore: 200,
+    listenersAfterPeerRemoval: 100,
+    jsHeapReleasedAfterPeerRemovalBytes: 1,
+    processMemoryReleasedAfterPeerRemovalBytes: 1,
+    targetCloseAcknowledged: false,
+    targetDestroyed: false,
+  }), {
+    complete: false,
+    replayPaused: true,
+    peerReleaseObserved: false,
+    targetCloseAcknowledged: false,
+    targetDestroyed: false,
+  });
+});
+
+test('RED: target close without peer lifecycle release fails closed', () => {
+  assert.equal(classifyDeterministicTeardown({
+    replayPaused: true,
+    managerEntries: 1,
+    iframeCount: 1,
+    peerWorkersBefore: 1,
+    listenersBefore: 200,
+    listenersAfterPeerRemoval: 100,
+    jsHeapReleasedAfterPeerRemovalBytes: 1,
+    processMemoryReleasedAfterPeerRemovalBytes: 1,
+    targetCloseAcknowledged: true,
+    targetDestroyed: true,
+  }).complete, false);
+});
+
+test('control: pause, peer removal, and acknowledged target close completes teardown', () => {
+  assert.deepEqual(classifyDeterministicTeardown({
+    replayPaused: true,
+    managerEntries: 0,
+    iframeCount: 0,
+    peerWorkersBefore: 1,
+    listenersBefore: 200,
+    listenersAfterPeerRemoval: 100,
+    jsHeapReleasedAfterPeerRemovalBytes: 1,
+    processMemoryReleasedAfterPeerRemovalBytes: 1,
+    targetCloseAcknowledged: true,
+    targetDestroyed: true,
+  }), {
+    complete: true,
+    replayPaused: true,
+    peerReleaseObserved: true,
+    targetCloseAcknowledged: true,
+    targetDestroyed: true,
+  });
+});
+
+test('RED: peer removal without listener and memory release fails closed', () => {
+  assert.equal(classifyDeterministicTeardown({
+    replayPaused: true,
+    managerEntries: 0,
+    iframeCount: 0,
+    peerWorkersBefore: 1,
+    listenersBefore: 200,
+    listenersAfterPeerRemoval: 200,
+    jsHeapReleasedAfterPeerRemovalBytes: 0,
+    processMemoryReleasedAfterPeerRemovalBytes: 0,
+    targetCloseAcknowledged: true,
+    targetDestroyed: true,
+  }).complete, false);
 });

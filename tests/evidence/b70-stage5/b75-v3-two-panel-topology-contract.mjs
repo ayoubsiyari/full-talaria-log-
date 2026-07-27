@@ -34,3 +34,34 @@ export function classifyOrganicTopology({
     peersReady,
   };
 }
+
+export function classifyDeterministicTeardown({
+  replayPaused,
+  managerEntries,
+  iframeCount,
+  peerWorkersBefore,
+  listenersBefore,
+  listenersAfterPeerRemoval,
+  jsHeapReleasedAfterPeerRemovalBytes,
+  processMemoryReleasedAfterPeerRemovalBytes,
+  targetCloseAcknowledged,
+  targetDestroyed,
+}) {
+  const peerReleaseObserved = managerEntries === 0
+    && iframeCount === 0
+    && Number.isInteger(peerWorkersBefore)
+    && peerWorkersBefore >= 0
+    && listenersAfterPeerRemoval < listenersBefore
+    && jsHeapReleasedAfterPeerRemovalBytes > 0
+    && processMemoryReleasedAfterPeerRemovalBytes > 0;
+  return {
+    complete: replayPaused
+      && peerReleaseObserved
+      && targetCloseAcknowledged
+      && targetDestroyed,
+    replayPaused: !!replayPaused,
+    peerReleaseObserved,
+    targetCloseAcknowledged: !!targetCloseAcknowledged,
+    targetDestroyed: !!targetDestroyed,
+  };
+}
