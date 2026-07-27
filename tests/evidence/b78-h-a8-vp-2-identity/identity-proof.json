@@ -1,0 +1,93 @@
+{
+  "schema": "talaria.h-a8-vp-2-identity/v1",
+  "verdict": "IDENTICAL-RETAINED-BASELINE-FAILURE",
+  "failClosed": true,
+  "commits": {
+    "b75": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+    "b77": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+    "b78Base": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88"
+  },
+  "scenarioInputs": {
+    "scenario": "H-A8-VP-2",
+    "runs": 1,
+    "isolateSession": false,
+    "migrationOn": false,
+    "allPrintedKillSwitchInputs": false,
+    "freshIsolatedServers": true
+  },
+  "source": {
+    "scenarioPath": "chart v 1.4/chart/multichart-prod/harness/react-parity-scenarios.mjs",
+    "helperPath": "chart v 1.4/chart/multichart-prod/harness/react-parity-lib.mjs",
+    "assertionIdentifiers": [
+      "H-A8-VP-2 CORE-B: canvas drag moves anchor",
+      "H-A8-VP-2 CORE-B-prime: coord tab tracks canvas drag"
+    ],
+    "sourceLines": "977-985",
+    "corpus": [
+      {
+        "label": "b75",
+        "scenarioSha256": "d36c1f4362e12d28ccb3158d7611a8e51c28aed0f9ca1687d8a26e3d47f1ff24",
+        "helperSha256": "c3e17964c7d788ad36ab17fa6a09e09c9d390c018705dbb3039cb53f05f83db0",
+        "scenarioFunctionSha256": "5bd8ae7bbc55fe36ac17a07d9ad1f96d5a332e7abd73c8d2c14eb614ef2b3be8",
+        "assertionSemanticSha256": "d36fc6c02f7e95739259fb8ea939f12aa54e7a935cf6bfd24e2127557f0d70a1"
+      },
+      {
+        "label": "b77",
+        "scenarioSha256": "d36c1f4362e12d28ccb3158d7611a8e51c28aed0f9ca1687d8a26e3d47f1ff24",
+        "helperSha256": "c3e17964c7d788ad36ab17fa6a09e09c9d390c018705dbb3039cb53f05f83db0",
+        "scenarioFunctionSha256": "5bd8ae7bbc55fe36ac17a07d9ad1f96d5a332e7abd73c8d2c14eb614ef2b3be8",
+        "assertionSemanticSha256": "d36fc6c02f7e95739259fb8ea939f12aa54e7a935cf6bfd24e2127557f0d70a1"
+      },
+      {
+        "label": "b78",
+        "scenarioSha256": "d36c1f4362e12d28ccb3158d7611a8e51c28aed0f9ca1687d8a26e3d47f1ff24",
+        "helperSha256": "c3e17964c7d788ad36ab17fa6a09e09c9d390c018705dbb3039cb53f05f83db0",
+        "scenarioFunctionSha256": "5bd8ae7bbc55fe36ac17a07d9ad1f96d5a332e7abd73c8d2c14eb614ef2b3be8",
+        "assertionSemanticSha256": "d36fc6c02f7e95739259fb8ea939f12aa54e7a935cf6bfd24e2127557f0d70a1"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "label": "b75",
+      "buildId": "20260726b75",
+      "rawLogSha256": "aabe7fb7094f1ad8fb2a92704c1c05c31698f6563052c57bb76c8306bc56720a",
+      "rawFailureSignatureSha256": "46ab10cc9fd5d8d3a787c8691bb8baeb1ee5404b38d3dfd6c0ace5b4cc408834",
+      "normalizedFailureSignatureSha256": "d82a395280479ea68e0fc4210fa88f983316c4b9016c51197034d0ea9766a426",
+      "normalizedFailureSignature": "[FAIL] H-A8-VP-2 CORE-B: canvas drag moves anchor — {\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}\n\n   [FAIL] H-A8-VP-2 CORE-B′: coord tab tracks canvas drag — {\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "b77",
+      "buildId": "20260727b77",
+      "rawLogSha256": "2887dadf64d0827ce9b3e11ef1fe8136c2e6d562c127c321c204752b646f4fe9",
+      "rawFailureSignatureSha256": "46ab10cc9fd5d8d3a787c8691bb8baeb1ee5404b38d3dfd6c0ace5b4cc408834",
+      "normalizedFailureSignatureSha256": "d82a395280479ea68e0fc4210fa88f983316c4b9016c51197034d0ea9766a426",
+      "normalizedFailureSignature": "[FAIL] H-A8-VP-2 CORE-B: canvas drag moves anchor — {\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}\n\n   [FAIL] H-A8-VP-2 CORE-B′: coord tab tracks canvas drag — {\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    },
+    {
+      "label": "b78",
+      "buildId": "20260727b78",
+      "rawLogSha256": "3335eb031ed4d4015585434ed9e3b56c12d0c6a74f328879379b40276e6d5d62",
+      "rawFailureSignatureSha256": "46ab10cc9fd5d8d3a787c8691bb8baeb1ee5404b38d3dfd6c0ace5b4cc408834",
+      "normalizedFailureSignatureSha256": "d82a395280479ea68e0fc4210fa88f983316c4b9016c51197034d0ea9766a426",
+      "normalizedFailureSignature": "[FAIL] H-A8-VP-2 CORE-B: canvas drag moves anchor — {\"geo1\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}\n\n   [FAIL] H-A8-VP-2 CORE-B′: coord tab tracks canvas drag — {\"fields1\":{\"ok\":true,\"anchorPrice\":\"1.10963\",\"anchorBar\":\"614\",\"inputCount\":2},\"fields2\":{\"ok\":true,\"anchorPrice\":\"1.10865\",\"anchorBar\":\"614\",\"inputCount\":2},\"geo2\":{\"ok\":true,\"barIndex\":614,\"price\":1.10963,\"priceFormatted\":\"1.10963\",\"type\":\"anchored-volume-profile\"}}"
+    }
+  ],
+  "identity": {
+    "sameCorpusBytes": true,
+    "sameScenarioInputs": true,
+    "sameAssertionSemantics": true,
+    "sameNormalizedExpectedActual": true,
+    "sameCausalTrace": true,
+    "sameFailurePoint": true,
+    "rawFailureSignatureSha256": "46ab10cc9fd5d8d3a787c8691bb8baeb1ee5404b38d3dfd6c0ace5b4cc408834",
+    "normalizedFailureSignatureSha256": "d82a395280479ea68e0fc4210fa88f983316c4b9016c51197034d0ea9766a426"
+  },
+  "causalTrace": [
+    "coordinate tab Bar +10 updates anchor geometry",
+    "anchor handle resolves at x=468 y=664",
+    "canvas drag leaves geometry barIndex=614 and price=1.10963 unchanged",
+    "coordinate field price becomes 1.10865 while geometry remains 1.10963",
+    "CORE-B and CORE-B-prime fail identically"
+  ]
+}
