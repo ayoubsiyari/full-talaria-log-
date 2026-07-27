@@ -74,3 +74,19 @@ export function summarizeRollbackMechanisms(cells) {
     cells: classified,
   };
 }
+
+export function applyPoManualDisposition(summary, evidence = {}) {
+  const allNormalDoorsClean = evidence.stepBack === 'clean'
+    && evidence.activeReplayHandleDrag === 'clean'
+    && evidence.cleanReplayBarCut === 'clean';
+  return {
+    ...summary,
+    poManualEvidence: evidence,
+    productDisposition: allNormalDoorsClean
+      ? 'NO_M23_PRODUCT_CHANGE'
+      : 'M23_REQUIRES_FURTHER_DIAGNOSTIC',
+    diagnosticOracleDisposition: allNormalDoorsClean
+      ? 'OVERRIDDEN_BY_PO_MANUAL_EVIDENCE'
+      : 'RETAIN_DIAGNOSTIC_RED',
+  };
+}

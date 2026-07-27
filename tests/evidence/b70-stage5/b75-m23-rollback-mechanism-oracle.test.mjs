@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  applyPoManualDisposition,
   classifyRollbackCell,
   M23_RED,
   summarizeRollbackMechanisms,
@@ -94,4 +95,21 @@ test('read-only source audit maps each gesture to its actual product call path',
   assert.doesNotMatch(step, /forceCloseAllOrders/);
   assert.doesNotMatch(seek, /forceCloseAllOrders/);
   assert.match(cut, /forceCloseAllOrders\(orderCutoff\)/);
+});
+
+test('PO manual evidence overrides M23 product disposition when all normal doors are clean', () => {
+  const diagnostic = summarizeRollbackMechanisms([
+    { mechanism: 'replay-step-back', cutoff, before, after: before },
+    { mechanism: 'active-replay-handle-drag', cutoff, before, after: before },
+    { mechanism: 'clean-replay-bar-cut', cutoff, before, after: restored },
+  ]);
+  const disposition = applyPoManualDisposition(diagnostic, {
+    stepBack: 'clean',
+    activeReplayHandleDrag: 'clean',
+    cleanReplayBarCut: 'clean',
+    source: 'PO manual evidence',
+  });
+  assert.equal(diagnostic.verdict, 'RED');
+  assert.equal(disposition.diagnosticOracleDisposition, 'OVERRIDDEN_BY_PO_MANUAL_EVIDENCE');
+  assert.equal(disposition.productDisposition, 'NO_M23_PRODUCT_CHANGE');
 });
