@@ -25,6 +25,7 @@ const settleMs = Math.max(500, Number(process.env.B75_V5_SETTLE_MS || 1500));
 const loadTimeoutMs = Math.max(30_000, Number(process.env.B75_V5_LOAD_TIMEOUT_MS || 120_000));
 const arms = String(process.env.B75_V5_ARMS || 'churn,no-churn,symbol-only,timeframe-only')
   .split(',').map((v) => v.trim()).filter(Boolean);
+const transitionTrigger = String(process.env.B75_V5_TRANSITION_TRIGGER || 'manual-equivalent');
 if (!origin || !email || !password) throw new Error('TEST_VPS_URL/TEST_EMAIL/TEST_PASSWORD required');
 
 const thresholds = Object.freeze({
@@ -72,6 +73,7 @@ const evidence = {
     note: 'Only authentication and disposable chart-window lease lifecycle are allowed; session, trading, drawing, preference, and settings writes remain blocked.',
   },
   arms: [],
+  transitionTrigger,
   blockedMutations: [],
   pageErrors: [],
   rawHeapPolicy: {
@@ -146,8 +148,15 @@ async function newInstrumentedPage(browser) {
   page.on('pageerror', (error) => evidence.pageErrors.push(String(error?.message || error).slice(0, 400)));
   await page.evaluateOnNewDocument(() => {
     const p = window.__v5MemoryProbe = {
-      timers: new Map(), workers: [], fetches: [], controllers: [], generations: [], sequence: 0,
+      timers: new Map(), workers: [], fetches: [], controllers: [], generations: [], lifecycle: [], sequence: 0,
     };
+    const lifecycle = (kind, detail = {}) => {
+      p.lifecycle.push({ kind, at: performance.now(), ...detail });
+      if (p.lifecycle.length > 500) p.lifecycle.splice(0, p.lifecycle.length - 500);
+    };
+    for (const name of ['chartDataLoaded', 'timeframeChanged', 'talaria-chart-window-blocked']) {
+      window.addEventListener(name, () => lifecycle(`event:${name}`));
+    }
     const ot = window.setTimeout;
     const oi = window.setInterval;
     const oct = window.clearTimeout;
@@ -191,15 +200,26 @@ async function newInstrumentedPage(browser) {
     }
     const nativeFetch = window.fetch.bind(window);
     window.fetch = async function observedFetch(input, init) {
-      const row = { startedAt: performance.now(), settledAt: null, aborted: false };
+      let pathClass = 'other';
+      try {
+        const pathname = new URL(typeof input === 'string' ? input : input.url, location.href).pathname;
+        pathClass = pathname.startsWith('/api/file/') ? 'file'
+          : (pathname.includes('/state') ? 'session-state'
+            : (pathname.startsWith('/api/chart/windows/') ? 'window-lease' : 'other-api'));
+      } catch {}
+      const row = { startedAt: performance.now(), settledAt: null, aborted: false, pathClass };
       p.fetches.push(row);
+      lifecycle('fetch:start', { pathClass });
       try {
         const response = await nativeFetch(input, init);
         row.settledAt = performance.now();
+        row.status = response.status;
+        lifecycle('fetch:settle', { pathClass, status: response.status });
         return response;
       } catch (error) {
         row.settledAt = performance.now();
         row.aborted = error?.name === 'AbortError';
+        lifecycle('fetch:error', { pathClass, aborted: row.aborted });
         throw error;
       }
     };
@@ -317,24 +337,46 @@ async function snapshot(page, cdp, label, cycle) {
   return runtime;
 }
 
-async function waitReady(page, expectedFileId, expectedTf) {
-  await page.waitForFunction(({ fid, tf }) => {
-    const chart = window.chart;
-    return chart && String(chart.currentFileId) === String(fid)
-      && chart.currentTimeframe === tf
-      && Array.isArray(chart.data) && chart.data.length > 2;
-  }, { timeout: loadTimeoutMs }, { fid: expectedFileId, tf: expectedTf });
+async function waitReady(page, expectedFileId, expectedTf, phase = 'unspecified') {
+  try {
+    await page.waitForFunction(({ fid, tf }) => {
+      const chart = window.chart;
+      return chart && String(chart.currentFileId) === String(fid)
+        && chart.currentTimeframe === tf
+        && Array.isArray(chart.data) && chart.data.length > 2;
+    }, { timeout: loadTimeoutMs }, { fid: expectedFileId, tf: expectedTf });
+  } catch (error) {
+    const state = await page.evaluate(({ fid, tf }) => {
+      const chart = window.chart;
+      const p = window.__v5MemoryProbe;
+      return {
+        fileMatches: String(chart?.currentFileId || '') === String(fid),
+        expectedTf: tf,
+        actualTf: chart?.currentTimeframe ?? null,
+        bars: chart?.data?.length ?? null,
+        rawBars: chart?.rawData?.length ?? null,
+        timeframeSwitching: !!chart?._timeframeSwitching,
+        pairSwitchLoading: !!chart?._pairSwitchLoading,
+        fetchesPending: p?.fetches?.filter((row) => row.settledAt == null).length ?? null,
+        lastEvents: p?.lifecycle?.slice(-20) || [],
+      };
+    }, { fid: expectedFileId, tf: expectedTf });
+    throw new Error(`readiness timeout at ${phase}: ${JSON.stringify(state)}`, { cause: error });
+  }
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 async function performStep(page, fileId, tf, alias) {
-  const loaded = await page.evaluate(({ fid, timeframe, symbolAlias }) => {
+  const loaded = await page.evaluate(({ fid, timeframe, symbolAlias, trigger }) => {
     window.__v5RememberGeneration();
     window.__v5ExpectedGeneration = { symbolAlias, timeframe };
-    return window.chart.loadFileData(fid);
-  }, { fid: fileId, timeframe: tf, symbolAlias: alias });
-  if (loaded !== true) {
+    const chart = window.chart;
+    return trigger === 'direct-api'
+      ? chart.loadFileData(fid)
+      : chart.loadMultichartPanelFile(fid, { force: true, timeframe: chart.currentTimeframe });
+  }, { fid: fileId, timeframe: tf, symbolAlias: alias, trigger: transitionTrigger });
+  if (transitionTrigger === 'direct-api' && loaded !== true) {
     const state = await page.evaluate((target) => ({
       currentMatchesTarget: String(window.chart?.currentFileId || '') === String(target),
       timeframe: window.chart?.currentTimeframe ?? null,
@@ -342,9 +384,9 @@ async function performStep(page, fileId, tf, alias) {
     }), fileId);
     throw new Error(`product loadFileData rejected symbol switch (${JSON.stringify(state)})`);
   }
-  await waitReady(page, fileId, await page.evaluate(() => window.chart.currentTimeframe));
+  await waitReady(page, fileId, await page.evaluate(() => window.chart.currentTimeframe), 'after-symbol-load');
   await page.evaluate((timeframe) => window.chart.setTimeframe(timeframe), tf);
-  await waitReady(page, fileId, tf);
+  await waitReady(page, fileId, tf, 'after-timeframe-switch');
 }
 
 async function runArm(browser, armName, sessionId, assignments, matchedElapsedMs = null) {

@@ -1,6 +1,6 @@
 {
   "schema": "talaria-v5-symbol-timeframe-memory-v1",
-  "generatedAt": "2026-07-27T12:02:00.000Z",
+  "generatedAt": "2026-07-27T12:49:20.000Z",
   "hypothesis": "Repeated A-B-C-A symbol changes combined with 1m-1D timeframe switches may retain memory; causality is not assumed.",
   "thresholdsDeclaredBeforeResults": true,
   "thresholds": {
@@ -37,31 +37,81 @@
       "POST /api/chart/windows/heartbeat",
       "POST /api/chart/windows/release"
     ],
-    "blockedDataMutationsObserved": 4,
+    "blockedDataMutationsObserved": true,
     "i16Clean": true
+  },
+  "transitionDiagnosis": {
+    "directApiControl": {
+      "trigger": "chart.loadFileData(fileId) followed by setTimeframe(timeframe)",
+      "result": "HARNESS_ONLY_STALE_PATH",
+      "observedAtTimeout": {
+        "targetFileCurrent": true,
+        "targetTimeframeCurrent": true,
+        "processedBars": 1,
+        "pairSwitchLoading": true,
+        "pendingFetches": 0,
+        "chartDataLoadedObserved": true,
+        "timeframeChangedObserved": true,
+        "windowLeaseHeartbeatsHealthy": true
+      },
+      "reason": "The backtest symbol selector does not dispatch through loadFileData; it uses loadMultichartPanelFile with force=true. The direct control entered a stale pair-switch/timeframe sequencing path."
+    },
+    "manualEquivalent": {
+      "trigger": "chart.loadMultichartPanelFile(fileId, {force:true,timeframe:currentTimeframe}) followed by setTimeframe(timeframe)",
+      "result": "PASS",
+      "completionCriteriaRelaxed": false,
+      "returnContractCorrection": "The manual-equivalent API resolves undefined on success; readiness is established by target file/timeframe, bars > 2, and two animation-frame acknowledgments rather than an incorrect result === true assertion."
+    }
   },
   "capture": {
     "authenticatedProductPathReached": true,
-    "baselineCapturedAfterExplicitGc": true,
-    "baselineJsHeapUsedBytes": 86001752,
-    "baselineJsHeapTotalBytes": 119590912,
-    "baselineDomNodes": 7224,
-    "baselineEventListeners": 1176,
-    "baselineWorkersAlive": 1,
-    "baselineTimers": 20,
-    "baselineCanvases": 1,
-    "baselineRawBars": 64948,
-    "baselineProcessedBars": 64948,
-    "requiredCycleCheckpointsCaptured": [],
+    "checkpoints": [0, 10, 25, 50],
+    "explicitGcAndSettling": true,
     "rawHeapsCommitted": false,
-    "rawHeapsDeleted": true
+    "rawHeapsDeleted": true,
+    "arms": {
+      "churn": {
+        "completedCycles": 50,
+        "elapsedMs": 87366,
+        "heapAtCheckpointsBytes": [41685920, 40783488, 39369444, 43642500],
+        "nodesAtCheckpoints": [7216, 6547, 6067, 6563],
+        "listenersAtCheckpoints": [1034, 1040, 1040, 1040],
+        "outgoingGenerationsStronglyReachable": [0, 0, 0, 0],
+        "retainedSlopeBytesPerCycle": 40681.76211453744,
+        "postGcGrowthBytes": 1956580,
+        "teardownReleaseFraction": 0.9859468178954002,
+        "classification": "EXPECTED_BOUNDED_WORKING_SET"
+      },
+      "matchedNoChurn": {
+        "completedCycles": 50,
+        "elapsedMs": 105577,
+        "heapAtCheckpointsBytes": [38516016, 39688556, 39792960, 39540332],
+        "retainedSlopeBytesPerCycle": 14834.572687224669,
+        "postGcGrowthBytes": 1024316,
+        "teardownReleaseFraction": 0.9844888505235616,
+        "classification": "EXPECTED_BOUNDED_WORKING_SET"
+      },
+      "symbolOnly": {
+        "completedCycles": 50,
+        "heapAtCheckpointsBytes": [39362960, 35044392, 37667448, 38344908],
+        "retainedSlopeBytesPerCycle": 9132.493392070484,
+        "postGcGrowthBytes": -1018052,
+        "teardownReleaseFraction": 0.9840052817443192,
+        "classification": "EXPECTED_BOUNDED_WORKING_SET"
+      },
+      "timeframeOnly": {
+        "completedCycles": 50,
+        "heapAtCheckpointsBytes": [38777464, 39799684, 38212732, 42008780],
+        "retainedSlopeBytesPerCycle": 55882.01938325991,
+        "postGcGrowthBytes": 3231316,
+        "teardownReleaseFraction": 0.9854002901298252,
+        "classification": "EXPECTED_BOUNDED_WORKING_SET"
+      }
+    }
   },
-  "verdict": "INCONCLUSIVE",
-  "exactBlocker": "The authenticated disposable owner chart reached a GC-settled baseline, but the first symbol transition did not satisfy the complete load/render readiness predicate within 120000 ms. Therefore checkpoints 10/25/50, controls, retained slopes, dominator paths, and teardown release could not be measured without weakening readiness or allowing session-state writes.",
+  "verdict": "EXPECTED_BOUNDED_WORKING_SET",
   "claimsNotMade": [
-    "No leak determination",
     "No causality attribution",
-    "No retained-object or dominator-path conclusion",
     "No product fix"
   ]
 }
