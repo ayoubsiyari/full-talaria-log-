@@ -44621,7 +44621,7 @@ class OrderManager {
                         console.log(`   ⚠️ Pending order not found for #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }
@@ -44632,7 +44632,7 @@ class OrderManager {
                         console.log(`   ⚠️ Position not found for order #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
                         this.orderLines = (this.orderLines || []).filter(
-                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                            (ol) => !(ol.orderId === orderId && !ol.isPending && (ol.chart || this.chart) === ch)
                         );
                         return;
                     }

@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "id": "b-order-registry-eviction-sites",
+    "product": "chart v 1.4/chart/modules/order-manager.js",
+    "registryExpression": "this.orderLines",
+    "discriminatorProperty": "isPending",
+    "invariant": "Every site in order-manager.js that evicts entries from the this.orderLines registry using a predicate keyed on orderId must discriminate between pending and executed rows, UNLESS the site is an intentional remove-all whose disposal loop covers exactly the same set it removes.",
+    "hazard": "A pending order row and an executed order row can carry the same orderId (order-manager.js removeOrderLine: 'could be both active and pending'). An eviction keyed on orderId alone therefore removes BOTH rows from the registry while only one of them was resolved and disposed. updateOrderLines never creates order lines (it contains no drawOrderLine / drawPendingOrderLine / append call), so the frame loop can never restore the row it dropped.",
+    "gateKind": "structural",
+    "gateKindReason": "The eviction sites live inside DOM/D3/rAF-bound methods that cannot be loaded in Node. This fixture and its gate inspect source text.",
+    "siteKey": "ordinal = index of the site among all orderId-keyed this.orderLines eviction assignments, in source order. Deliberately NOT a line number.",
+    "exemptionCodes": [
+      "remove-all-with-set-wide-disposal"
+    ],
+    "exemptionCodeMeanings": {
+      "remove-all-with-set-wide-disposal": "The method intentionally removes every row carrying the orderId, and the same method first disposes every row it matched with an equivalently-keyed filter feeding a forEach. Removal set equals disposal set, so no live row is orphaned."
+    }
+  },
+  "sites": [
+    {
+      "ordinal": 0,
+      "enclosingMethod": "removePendingOrderLine",
+      "ordinalInMethod": 0,
+      "mustDiscriminate": true,
+      "expectedPolarity": "pending",
+      "exemption": null,
+      "note": "Sibling convention reference. Disposes the pending rows it matched, then removes exactly those. Executed rows sharing the orderId survive."
+    },
+    {
+      "ordinal": 1,
+      "enclosingMethod": "_refreshOpenPositionSlTpAfterPartialTpClose",
+      "ordinalInMethod": 0,
+      "mustDiscriminate": true,
+      "expectedPolarity": "executed",
+      "exemption": null,
+      "note": "Sibling convention reference. Disposes the executed rows it matched, then removes exactly those. Pending rows sharing the orderId survive."
+    },
+    {
+      "ordinal": 2,
+      "enclosingMethod": "removeOrderLine",
+      "ordinalInMethod": 0,
+      "mustDiscriminate": false,
+      "expectedPolarity": null,
+      "exemption": "remove-all-with-set-wide-disposal",
+      "note": "Documented as 'handles both active and pending orders'. It collects orderLinesToRemove with an equivalently-keyed filter, disposes every matched row in a forEach, and only then removes all rows with that orderId. Undiscriminated on purpose and internally consistent."
+    },
+    {
+      "ordinal": 3,
+      "enclosingMethod": "updateOrderLines",
+      "ordinalInMethod": 0,
+      "mustDiscriminate": true,
+      "expectedPolarity": "pending",
+      "exemption": null,
+      "note": "Pending branch: _findPendingOrderById missed, so a single PENDING row (olEntry) is disposed. The eviction must therefore remove pending rows only."
+    },
+    {
+      "ordinal": 4,
+      "enclosingMethod": "updateOrderLines",
+      "ordinalInMethod": 1,
+      "mustDiscriminate": true,
+      "expectedPolarity": "executed",
+      "exemption": null,
+      "note": "Executed branch: _findOpenPositionById missed, so a single EXECUTED row (olEntry) is disposed. The eviction must therefore remove executed rows only."
+    }
+  ]
+}

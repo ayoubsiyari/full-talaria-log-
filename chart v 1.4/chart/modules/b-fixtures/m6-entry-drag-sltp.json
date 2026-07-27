@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "ticketIds": ["TAL-01653", "TAL-01697", "TAL-01617"],
+    "syntheticAccountId": "qa-account-b-m6-entry-drag",
+    "syntheticOrderId": "qa-order-b-m6-open-001",
+    "tolerance": {
+      "price": 1e-9,
+      "pixel": 1e-6
+    },
+    "toleranceJustification": "The harness uses fixed decimal prices and an invertible linear yScale. Assertions still use tolerances instead of float equality to avoid coupling the test to binary decimal representation."
+  },
+  "chart": {
+    "height": 600,
+    "width": 900,
+    "minPrice": 90,
+    "maxPrice": 110
+  },
+  "draftOrder": {
+    "side": "BUY",
+    "entryPrice": 100,
+    "stopLoss": 98,
+    "takeProfit": 104,
+    "positionSizeMode": "risk-usd",
+    "enableSL": true,
+    "enableTP": true,
+    "riskAmountUsd": 100,
+    "pipSize": 0.25,
+    "pipValuePerLot": 12.5,
+    "expectedDistances": {
+      "entryToSL": 2,
+      "entryToTP": 4
+    }
+  },
+  "openExecutedOrder": {
+    "side": "BUY",
+    "entryPrice": 100,
+    "stopLoss": 98,
+    "takeProfit": 104,
+    "quantity": 2,
+    "expectedDistances": {
+      "entryToSL": 2,
+      "entryToTP": 4
+    }
+  },
+  "entryDragFrames": [
+    { "frame": 1, "entryPrice": 100.5 },
+    { "frame": 2, "entryPrice": 101.25 },
+    { "frame": 3, "entryPrice": 102 }
+  ],
+  "tpDragFrames": [
+    { "frame": 1, "takeProfit": 104.5 },
+    { "frame": 2, "takeProfit": 105.25 },
+    { "frame": 3, "takeProfit": 106 }
+  ],
+  "cells": [
+    { "id": "B-M6-01", "name": "ENTRY DRAG MOVES SL (draft, path 1)" },
+    { "id": "B-M6-02", "name": "ENTRY DRAG MOVES TP (draft, path 1)" },
+    { "id": "B-M6-03", "name": "ENTRY DRAG PRESERVES SL AND TP DISTANCE (draft)" },
+    { "id": "B-M6-04", "name": "ENTRY DRAG MOVES SL AND TP ON AN OPEN EXECUTED ORDER (path 2, native)" },
+    { "id": "B-M6-05", "name": "PER-FRAME RISK/REWARD" },
+    { "id": "B-M6-06", "name": "PER-FRAME QUANTITY" },
+    { "id": "B-M6-07", "name": "PER-FRAME PnL" },
+    { "id": "B-M6-08", "name": "PER-FRAME PLACE-BUTTON TEXT" },
+    { "id": "B-M6-09", "name": "NO WORK DEFERRED TO RELEASE THAT WAS NOT ALSO DONE PER FRAME" },
+    { "id": "B-M6-10", "name": "DRAG-FREEZE FLAG DOES NOT SUPPRESS PAINT" },
+    { "id": "B-M6-11", "name": "KILL-SWITCH OFF PATH" },
+    { "id": "B-M6-12", "name": "NO STORE WRITE PER FRAME" }
+  ]
+}
