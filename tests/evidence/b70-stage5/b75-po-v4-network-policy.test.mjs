@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { decideSessionStateWrite } from './b75-po-v4-network-policy.mjs';
+import {
+  auditRetainedMutationCount,
+  decideMutation,
+  decideSessionStateWrite,
+  validateAuthSafeAllowlist,
+} from './b75-po-v4-network-policy.mjs';
 
 test('prevents session-state writes by default', () => {
   assert.equal(decideSessionStateWrite({
@@ -38,3 +43,60 @@ for (const mutation of [
     }).disposition, 'prevented');
   });
 }
+
+test('blocks a hidden mutating endpoint and marks capture fatal', () => {
+  const result = decideMutation({
+    method: 'POST',
+    pathname: '/api/hidden/mutate',
+    expectedQaSessionId: '849',
+    ownerValidated: true,
+  });
+  assert.equal(result.disposition, 'prevented');
+  assert.equal(result.fatal, true);
+  assert.equal(result.reason, 'unknown-mutating-endpoint-or-method');
+});
+
+test('blocks wrong method on checkpoint route', () => {
+  const result = decideMutation({
+    method: 'PUT',
+    pathname: '/api/sessions/849/state',
+    expectedQaSessionId: '849',
+    ownerValidated: true,
+    allowWrites: true,
+    writeCap: 1,
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.fatal, true);
+});
+
+test('permits only the explicit auth-safe request', () => {
+  assert.equal(decideMutation({
+    method: 'POST',
+    pathname: '/api/auth/login',
+  }).disposition, 'allowed-auth-safe');
+  assert.throws(() => validateAuthSafeAllowlist([
+    { method: 'POST', pathname: '/api/auth/unknown' },
+  ]), /unknown mutation allowlist entry/);
+});
+
+test('rejects an authoritative count copied from flattened duplicate entries', () => {
+  const result = auditRetainedMutationCount({
+    flattenedEntries: 29,
+    deduplicatedObservations: 14,
+    authoritativeClaim: 29,
+  });
+  assert.equal(result.verdict, 'BLOCKED_OVERCLAIMED_COUNT');
+  assert.equal(result.authoritativeCount, null);
+});
+
+test('supports only 14 observations from the retained set without claiming completeness', () => {
+  const result = auditRetainedMutationCount({
+    flattenedEntries: 29,
+    deduplicatedObservations: 14,
+    authoritativeClaim: 14,
+    captureComplete: false,
+  });
+  assert.equal(result.verdict, 'SUPPORTED_RETAINED_SET_COUNT');
+  assert.equal(result.authoritativeCount, 14);
+  assert.equal(result.hiddenMutationsExcluded, false);
+});

@@ -3,30 +3,31 @@
   "classification": "diagnostic-harness-issued-unacknowledged-session-state-writes",
   "auditGeneratedAt": "2026-07-27T09:08:00Z",
   "externalWritesIssuedDuringAudit": 0,
-  "affectedRoute": {
+  "retainedObservedRoute": {
     "method": "PATCH",
-    "exactEndpoint": "/api/sessions/849/state",
-    "sanitizedEndpoint": "/api/sessions/[qa-owner]/state",
-    "observedSessionId": "849",
+    "endpointAsRetained": "/api/sessions/[owner]/state",
+    "harnessConfiguredSessionId": "849",
     "ownerScopeValidatedAtRunTime": true,
-    "qaClassificationProven": false
+    "qaClassificationProven": false,
+    "everyRequestBoundToConfiguredSessionProven": false,
+    "hiddenMutatingEndpointsExcluded": false
   },
   "runAccounting": {
-    "blockedAuthenticatedRun": {
-      "generatedAt": "2026-07-27T09:01:29.215Z",
-      "patchRequests": 0
-    },
-    "successfulAuthenticatedRuns": 3,
-    "perSuccessfulRun": {
-      "flattenedArtifactEntries": 29,
-      "uniqueObservedPatchRequests": 14,
+    "authoritativeRetainedSet": {
+      "flattenedEntries": 29,
+      "deduplicatedMutatingObservations": 14,
       "replayPayloadClassified": 5,
-      "payloadCategoryOpaque": 9
+      "payloadCategoryOpaque": 9,
+      "captureComplete": false
     },
-    "accountedPatchRequestsAcrossSuccessfulRuns": 42,
-    "replayPayloadClassifiedAcrossRuns": 15,
-    "payloadCategoryOpaqueAcrossRuns": 27,
-    "countingCaveat": "The top-level evidence.writes array flattened cumulative page snapshots. Its 29 entries are not 29 distinct network requests; exact duplicate records reduce to 14 requests per successful run."
+    "authoritativeIncidentRequestCount": null,
+    "threeRun42Estimate": {
+      "value": 42,
+      "authoritative": false,
+      "proven": false,
+      "reason": "Separate temporary artifacts are not a complete request ledger and may overlap or omit mutations. They cannot be multiplied into an authoritative incident count."
+    },
+    "countingCaveat": "The committed captured set proves 29 flattened entries and 14 exact-deduplicated mutating observations only. It does not prove 14 network requests, total incident requests, or capture completeness."
   },
   "knownReplayPayload": {
     "keys": [
@@ -48,11 +49,11 @@
     "cause": "Normal product replay persistence triggered by PO-equivalent play, pause, refresh, exit and re-entry actions."
   },
   "unknownPayloads": {
-    "requestCountAcrossRuns": 27,
+    "deduplicatedObservationsInRetainedSet": 9,
     "reason": "The original observer retained only replay subobjects. For requests without a replay subobject it stored replay:null and discarded the full payload.",
     "exactPayloadHashesAvailable": false,
     "payloadCategoriesAvailable": false,
-    "safeInference": "They targeted the same session-state PATCH endpoint and were emitted during page initialization/refresh or replay actions, but their fields cannot be reconstructed."
+    "safeInference": "The retained observer labeled them as PATCH observations on its redacted session-state route. Their fields, exact session binding and relationship to hidden mutations cannot be reconstructed."
   },
   "stateComparison": {
     "preRunServerSnapshotAvailable": false,
@@ -61,9 +62,10 @@
     "retainedRuntimeEvidence": "Replay checkpoint values and visible replay state only; not a complete server state snapshot."
   },
   "scopeConclusion": {
-    "otherSessionEndpointObserved": false,
+    "otherSessionEndpointObservedInRetainedRecords": false,
+    "otherSessionOrHiddenMutationExcluded": false,
     "customerOrNonQaRowExcluded": false,
-    "reason": "Only session 849 was addressed and ownership was validated, but retained evidence does not establish that session 849 is a designated disposable QA row."
+    "reason": "The harness was configured for owner session 849, but the retained endpoint was redacted and capture covered only matching PATCH observations. It cannot prove every mutation stayed on that row or that session 849 was disposable QA."
   },
   "rollback": {
     "attempted": false,
@@ -71,15 +73,20 @@
     "blocker": "No retained exact pre-run session-state snapshot or payload hashes exist. Current state was not fetched because the incident order forbids further authenticated writes and login itself uses POST. Any rollback value would be a guess."
   },
   "futureCapturePolicy": {
-    "default": "Observe and hash attempted session-state payloads, then return a synthetic success without sending the PATCH.",
-    "writeEnabledMode": "Requires B75_ALLOW_QA_CHECKPOINT_WRITES=true, exact matching B75_QA_SESSION_ID, owner validation and a positive hard B75_QA_CHECKPOINT_WRITE_CAP.",
+    "default": "Intercept, log, hash and prevent every same-origin POST, PUT, PATCH and DELETE except the exact auth-safe allowlist. Unknown mutations are prevented and fail the capture.",
+    "authSafeAllowlist": [
+      "POST /api/auth/login"
+    ],
+    "writeEnabledMode": "Only PATCH /api/sessions/{exact-owner-session}/state may be enabled, requiring B75_ALLOW_QA_CHECKPOINT_WRITES=true, matching B75_QA_SESSION_ID, owner validation and a positive hard B75_QA_CHECKPOINT_WRITE_CAP.",
     "evidenceFields": [
       "payloadSha256",
       "payloadBytes",
       "payloadCategories",
       "stateCategories",
       "scope",
-      "disposition"
+      "disposition",
+      "fatal",
+      "captureComplete"
     ]
   },
   "sanitization": {

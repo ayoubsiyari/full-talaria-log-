@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { decideMutation, MUTATING_METHODS } from './b75-po-v4-network-policy.mjs';
 import { summarizeReplayRestoreMatrix } from './b75-po-v4-replay-restore-oracle.mjs';
 
 const require = createRequire(new URL('../../../chart v 1.4/chart/multichart-prod/harness/package.json', import.meta.url));
@@ -15,6 +16,7 @@ const sessionId = String(process.env.MC_RESTORE_SESSION_ID || '849');
 const expectedBuild = String(process.env.MC_RESTORE_EXPECTED_BUILD || '20260726b75');
 const allowCheckpointWrites = process.env.B75_ALLOW_QA_CHECKPOINT_WRITES === 'true';
 const qaSessionId = String(process.env.B75_QA_SESSION_ID || '');
+const expectedScopeSessionId = qaSessionId || sessionId;
 const checkpointWriteCap = Math.max(0, Number(process.env.B75_QA_CHECKPOINT_WRITE_CAP || 0));
 if (allowCheckpointWrites && (
   !qaSessionId || qaSessionId !== sessionId
@@ -35,37 +37,68 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 let ownerScopeValidated = false;
 let allowedCheckpointWriteCount = 0;
-const interceptedSessionStateRequests = [];
+const interceptedMutations = [];
+const fatalUnknownMutations = [];
+const targetOrigin = new URL(origin).origin;
 await page.setRequestInterception(true);
 page.on('request', async (request) => {
   const method = request.method().toUpperCase();
-  let pathname = '';
-  try { pathname = new URL(request.url()).pathname; } catch (_) {}
-  const match = pathname.match(/^\/api\/sessions\/([^/]+)\/state$/);
-  if (method !== 'PATCH' || !match) {
+  let requestUrl = null;
+  try { requestUrl = new URL(request.url()); } catch (_) {}
+  const sameOrigin = requestUrl?.origin === targetOrigin;
+  if (!sameOrigin || !MUTATING_METHODS.includes(method)) {
     await request.continue().catch(() => {});
     return;
   }
-  const observedSessionId = decodeURIComponent(match[1]);
+  const pathname = requestUrl.pathname;
+  const match = pathname.match(/^\/api\/sessions\/([^/]+)\/state$/);
+  const observedSessionId = match ? decodeURIComponent(match[1]) : null;
   const bodyText = request.postData() || '';
   let parsed = null;
   try { parsed = JSON.parse(bodyText); } catch (_) {}
-  const exactScope = observedSessionId === qaSessionId;
-  const allowed = allowCheckpointWrites && ownerScopeValidated && exactScope
-    && allowedCheckpointWriteCount < checkpointWriteCap;
-  interceptedSessionStateRequests.push({
+  const decision = decideMutation({
     method,
-    endpoint: '/api/sessions/[qa-owner]/state',
-    observedScope: exactScope ? 'configured-qa-session' : 'unexpected-session',
+    pathname,
+    sameOrigin,
+    allowWrites: allowCheckpointWrites,
+    expectedQaSessionId: expectedScopeSessionId,
+    observedSessionId,
+    ownerValidated: ownerScopeValidated,
+    writeCap: checkpointWriteCap,
+    allowedWriteCount: allowedCheckpointWriteCount,
+  });
+  const record = {
+    method,
+    endpoint: match ? '/api/sessions/[target-owner]/state' : pathname,
+    endpointSha256: createHash('sha256').update(pathname).digest('hex'),
+    observedScope: match
+      ? (String(observedSessionId) === expectedScopeSessionId ? 'target-session' : 'unexpected-session')
+      : 'not-session-scoped',
     ownerValidated: ownerScopeValidated,
     payloadSha256: createHash('sha256').update(bodyText).digest('hex'),
     payloadBytes: Buffer.byteLength(bodyText),
     payloadCategories: parsed && typeof parsed === 'object' ? Object.keys(parsed).sort() : ['unparsed'],
     stateCategories: parsed?.state && typeof parsed.state === 'object'
       ? Object.keys(parsed.state).sort() : [],
-    disposition: allowed ? 'allowed-bounded-qa-write' : 'prevented',
-  });
-  if (allowed) {
+    disposition: decision.disposition,
+    fatal: decision.fatal,
+    reason: decision.reason || null,
+  };
+  interceptedMutations.push(record);
+  if (decision.fatal) fatalUnknownMutations.push(record);
+  if (decision.allowed) {
+    if (decision.disposition === 'allowed-bounded-qa-write') {
+      allowedCheckpointWriteCount += 1;
+    }
+    await request.continue().catch(() => {});
+    return;
+  }
+  if (decision.disposition === 'allowed-auth-safe') {
+    // Defensive: decideMutation currently reports auth-safe as allowed.
+    await request.continue().catch(() => {});
+    return;
+  }
+  if (decision.disposition === 'allowed-bounded-qa-write') {
     allowedCheckpointWriteCount += 1;
     await request.continue().catch(() => {});
     return;
@@ -83,7 +116,7 @@ const evidence = {
   generatedAt: new Date().toISOString(),
   expectedBuild,
   browserProfile: 'fresh-ephemeral',
-  sessionId: 'owner-session-849',
+  sessionId: 'target-owner-session',
   cells: [],
   writes: [],
   lifecycle: [],
@@ -160,7 +193,7 @@ await page.evaluateOnNewDocument(({ allowWrites, expectedQaSessionId, writeCap }
   };
 }, {
   allowWrites: allowCheckpointWrites,
-  expectedQaSessionId: qaSessionId,
+  expectedQaSessionId: expectedScopeSessionId,
   writeCap: checkpointWriteCap,
 });
 
@@ -376,7 +409,19 @@ try {
 
   evidence.matrix = summarizeReplayRestoreMatrix(evidence.cells);
   evidence.verdict = evidence.matrix.verdict;
-  evidence.writes = interceptedSessionStateRequests;
+  evidence.mutations = interceptedMutations;
+  evidence.captureComplete = {
+    sameOriginMutatingMethods: [...MUTATING_METHODS],
+    interceptionInstalledBeforeFirstNavigation: true,
+    requestRecords: interceptedMutations.length,
+    fatalUnknownMutations: fatalUnknownMutations.length,
+  };
+  evidence.writes = interceptedMutations.filter((record) =>
+    record.disposition === 'allowed-bounded-qa-write');
+  if (fatalUnknownMutations.length) {
+    evidence.verdict = 'BLOCKED_UNKNOWN_MUTATION';
+    evidence.reason = `${fatalUnknownMutations.length} unknown or scope-invalid mutation(s) prevented`;
+  }
   evidence.lifecycle = evidence.cells.flatMap((cell) => [
     ...(cell.before?.persistence?.lifecycle || []),
     ...(cell.after?.persistence?.lifecycle || []),
