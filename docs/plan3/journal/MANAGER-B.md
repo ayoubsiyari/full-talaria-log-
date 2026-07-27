@@ -228,3 +228,94 @@ Dispatched to keep working while B-A1 and B-A2 are in flight (§A11.1: never idl
 The teardown half is deliberately scoped to the order side only, because §A1 item 4 defines the ~230 MB teardown residual as Workstream-A panel-destroy hygiene, which is not my territory (see B-0008 item 3). I am inventorying my own contribution to it and nothing else.
 
 Write packets in flight: **0 of 3**. Outstanding `PO-REQ` count: **0**.
+
+---
+
+## B-0013 — SELF-CORRECTION · two defects in my own §A13 compliance
+
+§A13 re-issued to all managers 2026-07-28 00:08. Re-read in full against source. No change to my operating posture — B-0002/B-0003 already recorded it and I have authored nothing — but re-reading it against my own three dispatches surfaced two defects in my compliance, both mine, both recorded here rather than quietly fixed.
+
+**Defect 1 — brief form.** §A13.4 requires every brief to state *"task, tier and model with the reason for that tier, the exact file set the subagent may write, names already reserved for it, the acceptance criterion, and what it must report back."* B-A1/B-A2/B-A3 each stated the task, the writable file set (`NONE`, in the first two lines), the acceptance criterion as a mandated output format, and the report-back. **None of them stated the tier, the model, or the reason for the tier inside the brief itself** — I recorded that in B-0010/B-0012 instead. The brief is the artefact that gets checked, so putting the routing rationale only in my journal is not compliance.
+
+Not invalid under the §A13.4 invalidity test, which turns specifically on the writable file set, and all three declared `NONE`. Not re-dispatched: they are read-only, so no naming collision and no territory risk is possible, and re-running them would burn tokens to fix a form defect with zero substantive effect. **Every brief from B-0017 onward carries the routing block.** Template of record appended below.
+
+**Defect 2 — reservations incomplete.** §A13.3 requires reserving *"kill-switch names, global symbols, storage keys, message names, oracle and fixture names"* before dispatch. B-0009 reserved the first four and **omitted oracle and fixture names entirely**. That gap has teeth: the §B3 provenance floor makes a regression test part of every packet, so every write packet I dispatch will create oracle and fixture names, and two parallel briefs could have collided on them. Closed in B-0014 before any write packet is dispatched.
+
+### Brief template of record (Manager B)
+
+Every write and read brief I issue from now states, in this order: **task** · **tier + model + the §A13.2 row and escalation-trigger reason** · **exact writable file set, enumerated, or `NONE`** · **names reserved for this brief** (from B-0009/B-0014, quoted, with "invent no new names; if you need one, stop and report") · **acceptance criterion** · **what to report back** · **explicit prohibitions** (files it may not touch, and "do not weaken or remove a gate, guard or kill-switch to make a test pass").
+
+---
+
+## B-0014 — RESERVATIONS supplement · oracle and fixture names (closes B-0013 defect 2)
+
+Reserved before any write dispatch. Naming grammar: `b-<row>-<concern>-<kind>`.
+
+**Oracles / REDs:**
+- `b-m6-sltp-entry-drag-follow.red.mjs` — SL/TP track the entry live during entry drag (V6 defect 2).
+- `b-m6-preview-live-recalc.red.mjs` — RR / position size / PnL / place-button recompute per drag frame, not on release (V6 defect 5).
+- `b-m6-tp-coincident-stack.red.mjs` — two TPs at one price remain individually addressable (V6 defect 3).
+- `b-m6-line-edge-visibility.red.mjs` — SL/TP line and label fully within the plot at both edges (V6 defect 4).
+- `b-m6-line-drag-persist.red.mjs` — order lines survive move and placement (V6 defect 1).
+- `b-m15-owner-scoped-pins.red.mjs` — pins survive refresh, exit/re-entry and new session, per owner (V8).
+- `b-m10-trade-duration-clock.red.mjs` — trade duration (TAL-01896).
+- `b-order-teardown-release.red.mjs` — order-side retained-set release.
+
+**Negative-control cells** (§A5-1, paired kill-switch-OFF cells asserting RED): same basename with `.negctl.mjs`.
+
+**Fixtures:** `b-fixtures/m6-two-tp-coincident.json`, `b-fixtures/m6-entry-drag-sltp.json`, `b-fixtures/m6-edge-price-extremes.json`, `b-fixtures/m15-pin-lifecycle-matrix.json`, `b-fixtures/m10-duration-replay-vs-wallclock.json`.
+
+Fixtures carry **no** wall-clock timestamps, UUIDs, rAF ordering or float equality inside assertion payloads (§A5-6), and **no** real account ids (I16); QA account ids only.
+
+Naming caveat, flagged not decided: test-harness and CI *placement* is Manager C's charter. I reserve these names and will have my packets' REDs authored, but where the files physically land and how they enter CI is C's call. If C wants a different path or grammar, the names move and I re-record them here.
+
+---
+
+## B-0015 — VERDICT · my whole V6 queue is one file, so §A13.3 serialises it; write partition and packet plan
+
+surface=`source (branch manager-b/plan3-20260727 @ e096b1ff2, base main 51b6e0da1)` · coverage=`static; derived from the B-0005 call-site inventory and the B-0006 V6 evidence matrix. Not verified on a served build. Mechanism attribution for defect 1 is explicitly NOT covered and is out for triage.`
+
+**The structural fact:** all five V6 defects, and M24's ledger migration, live in `order-manager.js`. §A13.3 states *"two subagents may never hold the same file"* and *"same-file work is serialised, never merged optimistically."* Therefore **the three-packet cap never binds me on V6 — the file binds first, at one packet at a time.** Five defects plus a live ledger migration through a single 49,672-line file is a one-lane road, and that is a throughput fact the Director should price rather than discover at a train boundary. Escalated in B-0016.
+
+**Write partition inside my territory** (I am accountable for it per §A13.3). Three disjoint lanes, so my genuine parallelism ceiling is 3, and it is reached only when work exists in all three:
+
+| Lane | Files | Status |
+|---|---|---|
+| α | `order-manager.js` | **serialised, one packet at a time** — V6 ×5 and M24's migration all queue here |
+| β | `preferences-init.js`, `preferences-sync.js` | free — V8 engine half lands here, parallel to α |
+| γ | `order-service.js`, `order-event-bus.js`, `indicator-persist-rehydrate.js` | free |
+
+**V6 decomposition — grouped by mechanism, not by ticket,** because grouping is the only lever that shortens a serial queue without breaking the one-writer rule. Five defects become three packets and one blocked item:
+
+- **V6-P1 — deferred-until-release recompute** (defects 2 and 5; evidence cells B and G; TAL-01653, TAL-01697, TAL-01617). One mechanism: work is skipped during drag and run at `'end'`. The `isDraggingPreviewLine` freeze flag (25 sites) and the guarded block at `order-manager.js:23528–23604` are the same shape, and `updatePlaceButtonText()` is called per-frame at only one site (23409) against three at drag-end (23739–23746). **Tier 3 / top tier (`claude-opus-5-thinking-high`).** Reason, as a stated trigger and not a difficulty judgement: these two defects decide *the numbers a trade is placed on* — SL/TP prices and risk-derived position size — which is money-path under §B3 and D-030 per the board's own M6 note; and **no existing oracle asserts painted preview values**, so an undetected error is expensive and unverified, which is exactly §A13.2's escalation trigger. Lane α, first.
+- **V6-P2 — plot-edge visibility** (defect 4; TAL-01885, disposition `STALE_SURFACE_TRIAGE_SURVIVED_REENTER_ENGINEERING`, so this is engineering and not a retest). Clamp geometry is `Math.max(0, Math.min(chartHeight, event.y))` at 23025 and repeated at 23073/23088/23106, with label translate at 23188. **Tier 2 / mid tier (`gpt-5.5-medium-fast`).** Reason: fully speccable leaf-file change, and its RED is a deterministic geometry assertion, so the gate does the quality work — §A13.2 says stay cheap when that is true. Lane α, second.
+- **V6-P3 — coincident-TP addressability** (defect 3; TAL-01699; evidence cell C). **BLOCKED on a spec answer, see B-0016.** Mechanism is already located: a stacking mechanism exists but only for multi-*entry* legs sharing a price (`_multiEntryStackYOffsetPx` @ 25360, `ENTRY_STACK_OFFSET_PX`), while multi-TP badges fan only by index for *unset* targets at the entry price (`_drawMultiTPPreviewBadges` @ 23897). There is no coincident-*TP* equivalent. What the fix should *do* when two TPs occupy one price — offset, cycle on repeat click, or something else — is a product decision I may not make.
+- **V6-P4 — lines disappearing** (defect 1; cells A and F; TAL-01696, TAL-01698, TAL-01789). **Cannot be packeted until attribution is settled**, because the cure may sit in `chart.js`'s invalidation path (Manager A) rather than in mine — B-0005 seam 1. Root-cause triage dispatched as B-0017. Deliberately read-only, so it takes no lane and blocks nothing.
+
+Every packet gets a separate top-tier adversarial review subagent (`claude-opus-5-thinking-high`) that did not author it, reconciled by me (§A13.1). Reviewers are never downgraded regardless of the authoring tier.
+
+---
+
+## B-0016 — ESCALATION · one throughput ruling and one spec question
+
+**(a) `order-manager.js` is a single-lane road for V6 and M24 simultaneously.** Per B-0015 the file serialises five V6 defects and a live ledger migration. I have already compressed five defects into three packets by grouping on mechanism; beyond that I cannot parallelise without violating §A13.3, and I will not. Three options exist and all three are the Director's to pick, not mine: accept serial throughput on lane α; give M24's migration an explicit slot in my serial order so it is scheduled rather than colliding; or authorise a structural split of a 49,672-line file, which is architecture, top tier, and a large blast radius I would not recommend mid-flight while a ledger migration is live. **My default absent a ruling:** V6-P1 → V6-P2 → M24 migration slot → V6-P3/P4 as they unblock, with the V8 engine running in lane β in parallel throughout. I proceed on that default and will re-order on one line from you.
+
+**(b) V6 evidence cell C carries `poQuestion: PENDING` and I cannot invent the answer.** The question is what should happen when two take-profits occupy the same price: separate them visually by an offset, keep them coincident but cycle selection on repeated clicks, or refuse the duplicate at entry. This is a product decision.
+
+Filed as **`NEEDS-PO-CLARIFY`**, not as a `PO-REQ`, and the distinction is deliberate: §A12.2's `PO-REQ` template is verification-shaped — surface, URL, build ID, numbered steps, a stated prediction the PO confirms — and a spec question has no build to confirm and no prediction to test. `README.md` §Intake protocol item 3 already defines `NEEDS-PO-CLARIFY` as the channel for exactly this, and it explicitly *"never blocks other rows in the same lane"*, which is why V6-P1 and V6-P2 proceed ahead of it. If the Director wants spec questions carried as `PO-REQ` anyway, say so and I will re-file. **This is the reason my outstanding `PO-REQ` count is 0 and not 1.**
+
+---
+
+## B-0017 — DISPATCH · B-T1, root-cause triage of "order lines disappear while moving" (read-only, TOP tier)
+
+**Task:** attribute V6 defect 1 to a mechanism and name the owning file, distinguishing "what `updateOrderLines()` produces when invoked" (mine) from "when and how `chart.js` invokes it mid-gesture" (Manager A's, per B-0005 seam 1).
+
+**Tier / model:** **top** — `claude-opus-5-thinking-high`. §A13.2 row *"root-cause triage of any surprise or new regression"*. The escalation trigger is met on its own terms: a wrong attribution here sends the packet to the wrong manager's territory, and **no automatic verifier catches a mis-attribution** — it surfaces as a rejected packet or, worse, as an edit in someone else's territory. Cheap tier is correct where a gate converts a mistake into a rejection; there is no such gate for ownership attribution.
+
+**Writable file set: NONE.** Read-only. Takes no lane, so it blocks nothing and can run beside the three cheap audits.
+
+**Names reserved for it:** none — it writes nothing. It must invent no kill-switch, oracle or fixture names; if it believes one is needed it reports the need and I reserve it.
+
+**Acceptance criterion:** a mechanism stated as a causal chain with file:line at every step, an explicit verdict of `order-manager.js` / `chart.js` / `both`, and — required — the discriminating observation that would distinguish the two attributions on a live build, so the attribution is falsifiable rather than argued.
+
+Write packets in flight: **0 of 3**. Read-only subagents in flight: **4** (B-A1, B-A2, B-A3, B-T1). Outstanding `PO-REQ` count: **0**. Outstanding `NEEDS-PO-CLARIFY`: **1** (V6 cell C).
