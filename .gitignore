@@ -96,5 +96,20 @@ chart\ v\ 1.4/chart/analytics_backend/
 backups/
 *.sql.gz
 
+# Plan-3 governance artifacts, tracked despite the `docs/` rule above. The territory
+# manifest and the four append-only journals are gate inputs: a journal that git silently
+# refuses to stage is an unrecorded decision, and append-only enforcement over an
+# untracked file enforces nothing. Narrow negations only — the rest of docs/ stays local.
+!docs/
+docs/*
+!docs/plan3/
+docs/plan3/*
+!docs/plan3/TERRITORY.yml
+!docs/plan3/GATE-NAME-RESERVATIONS.md
+!docs/plan3/BOARD-VIEW.md
+!docs/plan3/PO-QUEUE.md
+!docs/plan3/journal/
+!docs/plan3/journal/*.md
+
 
 

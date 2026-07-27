@@ -1,0 +1,76 @@
+# A11.2 item 1 — ownership preflight and append-only journal check.
+#
+# Gates every packet: the authoring manager comes from the commit trailers, the touched
+# file list comes from git, and both are compared against docs/plan3/TERRITORY.yml.
+# There is no human in the loop and no reviewer override — an out-of-territory path or a
+# rewritten journal line fails the build.
+#
+# Manager B may not merge into integration until this workflow is live (A11.1).
+name: Territory preflight
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "manager-a/**"
+      - "manager-b/**"
+      - "manager-c/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: territory-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ownership:
+    name: ownership + journal append-only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The preflight reads commit trailers and both sides of the range, so the
+          # packet's full history must be present.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve packet range
+        id: range
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PR_BASE_SHA:-}" ]; then
+            base="$PR_BASE_SHA"
+          else
+            git fetch --no-tags origin main
+            base="$(git merge-base origin/main "$HEAD_SHA")"
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      # The gate's own cells run first. A preflight whose tests are RED must never be
+      # the thing deciding whether a packet is in territory.
+      - name: Gate self-test
+        run: npm run test:territory
+
+      - name: Ownership + journal preflight
+        run: |
+          node scripts/territory-preflight.mjs \
+            --base "${{ steps.range.outputs.base }}" \
+            --head "${{ steps.range.outputs.head }}" \
+            --out "territory-preflight-report.json"
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: territory-preflight-${{ github.run_id }}
+          path: territory-preflight-report.json
+          if-no-files-found: warn
