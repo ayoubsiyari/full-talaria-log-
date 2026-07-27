@@ -277,3 +277,164 @@ This composes with the two-rejection rule: a packet rejected twice is re-authore
 regardless of its original routing, which is what happened tonight to the Lane-5 degraded-audit packet
 before it reached my territory. I keep the rejection count per packet in this journal so the trigger
 cannot be lost between turns.
+
+---
+
+## 2026-07-28T00:40 · VERDICT · per-tick full resample CONFIRMED, and §A9''s named gate is degenerate
+
+Packet `mcdiag-resample-measurement`, commit `3e1fdc05e`, worktree `manager-a-mcdiag`. Counters only,
+mirrored byte-identically into `homepage/public/chart/`; `replay-system.js` untouched;
+`m20-q9-prefix-slice.test.mjs` 19/19 after the edits. Adversarial review is dispatched and **not yet
+returned**, so this verdict is provisional until reconciled.
+
+Measured on the real product tick entry point, 300 ticks, 3 repeats, counts identical across repeats:
+
+| cell | replayTicks | fullResamples | incrementalResamples |
+|---|---|---|---|
+| 1m fix ON / fix OFF | 300 / 300 | 300 / 300 | 0 / 0 |
+| 1H fix ON / fix OFF | 300 / 300 | 300 / 300 | 0 / 0 |
+| 1m or 1H, + one render frame | 300 | 600 | 0 |
+| control, cache drop neutralised | 300 | 0 | **300** |
+| control, neutralised + render frame | 300 | 600 | **0** |
+
+`_tryIncrementalResample` was **called zero times** in every product cell — never attempted, not
+merely failing. The controls prove the incremental counter can register, so the zeros are real absence
+rather than a dead instrument.
+
+`surface=` Node `vm` over the unmodified `chart.js`, `replay-system.js` and `chart-data-pipeline.js`,
+driving the real `ReplaySystem.prototype.updateChartData`.
+`coverage=` single chart, one panel, no indicators, no open trades, no browser run, fast mode not
+driven, render frames modelled at one per tick, `syncPanelCharts` stubbed. **This does not close the
+§A9 memory row and must not be cited as if it did.** Panel scaling is unmeasured; the product installs
+a prefix per panel, so do not assume the count is panel-independent.
+
+**Two corrections to the record.**
+
+1. **§A9.3 names `_mcDiag.resamples` as the gating instrument. That field cannot gate anything.** It is
+   not merely inverted as I reported at 00:20 — it is degenerate. Measured, it reads exactly 2.00 per
+   tick at 0, 1 and 2 real full resamples per tick, because `resampleData()` increments even when the
+   pipeline then serves the request incrementally, while `_resampleDataFull` reached via the
+   pipeline-internal caller is not counted at all. Three different ground truths, one identical
+   reading. The corrected instrument is three separate counters, now landed.
+2. **The M20-Q9 cache drop is sufficient but NOT necessary.** A second independent mechanism defeats
+   incrementality: the pipeline holds one cache slot, and the tick path writes it with
+   `chart.rawData` while the render path writes it with `chart.data`, so each evicts the other every
+   frame. Neutralising the cache drop and adding one render frame still gives 0 incremental hits and
+   2.0 full resamples per tick. **Making the playhead trim non-destructive therefore does not, on its
+   own, restore incrementality on a render-active product.** Named per §A4b.4 as
+   *single-slot resample cache contention between the tick path and the render path*; it needs its own
+   cross-linked row rather than an assertion inside the TAL-01918 row.
+
+---
+
+## 2026-07-28T00:44 · VERDICT · the unification splits, and TAL-01918 needs three changes not one
+
+Design report from the read-only trim-overlay investigation, revised after the measurement landed.
+Adversarial review of its de-scoping claims is dispatched and **not yet returned**; provisional.
+
+`surface=` static source analysis of `chart.js`, `replay-system.js`, `chart-data-pipeline.js`,
+`chart-indicators-full.js`, `compare-overlay.js`, `panel-cmd-bridge.js`, plus `order-manager.js`
+read-only as Manager B territory.
+`coverage=` source reasoning only; no execution, no browser, no multichart cell.
+
+- **Does the overlay fix TAL-01918?** Partially. It closes S1 (the `this.data[lastIdx]` write) and
+  neutralises the shared last-bucket object carried through `prevResampled.slice()`. It does **not**
+  close the ticket: S3 corrupts the resample *input* — the synthetic `animatedCandle` is pushed onto
+  the sliced raw array before any overlay is consulted, so an interpolated close is already inside a
+  finalising coarse bucket — and S4''s four in-place mark writers survive, one of which sits in
+  `panel-cmd-bridge.js`. Three changes, not one.
+- **Does the overlay restore incrementality?** No. Corroborates the measurement independently.
+- **The obvious second fix is the wrong one.** Giving the render path its own cache slot doubles
+  retention (a second full-length bucketed array retained for the life of the chart, and on 1m
+  display that is a second copy of the whole series) and removes no work. A source-keyed `WeakMap` is
+  worse, because the live keys are long-lived and multiply per panel. The correct fix is to delete the
+  render-path resample: `buildDisplaySeries` re-resamples `chart.data`, a series already produced by
+  resampling at the same timeframe, so an O(1) identity guard returns it unchanged. Zero added
+  retention, one of the two per-tick resamples gone, and the slot contention disappears because only
+  one source ever writes it. Safety was argued consumer-by-consumer; the load-bearing premise is
+  **bucketer idempotence**, which is a values-level claim, so it is an §A7 oracle item and must be
+  re-proven under the session calendar rather than assumed.
+- **Two changes do not reach O(1).** Two full-length array copies per tick remain —
+  `prevResampled.slice()` in the incremental branch, and the copy-on-write overlay itself. Object
+  churn drops to near zero, which is the real win, but frame time improves far less than "restored
+  incrementality" implies. Reaching O(1) needs in-place append plus a patch-shaped rather than
+  array-shaped overlay, and that depends on an unverified premise: that every active indicator family
+  routes through the bounded tail path rather than recomputing full series per tick.
+
+**Pricing.** (a) TAL-01918 correctness alone: 6 / 8–11 / 16 days. (b) (a) plus the render-path
+identity guard: 7.5 / 10–13 / 19 — a marginal ~1.5–2.5 days that deletes one of the two measured
+per-tick resamples, the best value-per-day in the set. (c) full set that actually restores incremental
+per-tick work: 13 / 16–21 / 30.
+
+**Decision:** (b) boards as one Tier-3 packet with two independent kill-switches, the guard enabled
+only after the immutability oracle is green, because splitting it would build the same oracle twice.
+(c) does not board — it is an architectural row and §A9.3 requires it be measured against C3a before
+commitment.
+
+---
+
+## 2026-07-28T00:48 · ANSWER · panel-side residency cap — the Director''s written question
+
+**No, and the framing should be re-scoped.** Three findings, in descending order of force.
+Adversarial review dispatched; provisional.
+
+1. **The panel side is already capped; the host side is not.** Embed panels are bounded at 2,000 raw
+   bars, while the host in backtest is reported to reach up to 100,000 via the high-limit bulk history
+   path, which explicitly excludes embed panels. A *panel-side* cap is therefore close to a no-op on
+   mixed-4, and the residency lever is host-side — where a documented global already exists, making it
+   a dial to turn and measure rather than a project to build. **Caveat, and it is material:** a second
+   analysis reports the same backtest replay path bounded at ~5,000 bars by the pipeline raw cap.
+   Those two claims cannot both be unqualifiedly true, and I have a top-tier verifier resolving the
+   contradiction before either number enters a dossier.
+2. **The two named modules are not usable components.** Both `visible-window-mirror.mjs` and
+   `reusable-buffer-pool.mjs` carry headers marking them REFERENCE / TEST-ONLY with explicit
+   instructions not to wire them into product runtime, and have zero product importers. The pool is
+   genuinely working code; the mirror is a render/transfer mirror that reads an already-resident array
+   of bar objects and writes a Float64 copy, so wiring it **adds** a visible-window copy per panel
+   rather than reducing residency. §A1''s "not greenfield, already exist in-tree" is true of the files
+   and not of the capability.
+3. **Bar residency is not where the gigabytes are.** Modelled at ~120 B per bar object plus a
+   same-length resampled copy, a host cap from 100k to ~5k saves on the order of 20–25 MB retained
+   against a 2.5–2.7 GB mixed-4 working set — under 1%. That arithmetic is under adversarial review
+   precisely because the conclusion rests on it.
+
+Correctness floor a cap must respect, which is why it cannot simply be sized to the viewport: generic
+indicator warm-up up to 5,000 bars; the weekly-map indicator needs ~36 weeks of 1h bars and cannot be
+served by a 1m residency cap at all, so it would need a coarse-TF side store; the replay playhead
+prefix from the session floor; and every bar referenced by a live drawing anchor, open-trade entry or
+anchored-volume-profile anchor. That last one is the dangerous case — anchored VP clamps its range
+silently and returns a *smaller total volume* when the anchor falls outside the resident window, which
+is §A4c''s capability-loss-without-failure class in a money-adjacent display path.
+
+**Cost if built anyway:** 7 / 11.5 / 20 engineering days, and it cannot run in parallel with the
+session-calendar and completed-bar-immutability packets because all three land in the same three
+files. It would also be built on a premise the immutability packet is about to change.
+
+**Recommendation:** do not build it. Instead re-scope the row from panel-side to host-side and treat
+it as a measurement. Confidence high, contingent on the 5,000-versus-100,000 reconciliation.
+
+---
+
+## 2026-07-28T00:52 · CORRECTION · a filed dossier claim is wrong and must be amended
+
+`PO-SWEEP-RESULTS-20260727.md` states, in the leading-hypothesis section, that *"per-tick cost scales
+with total history, not with the one new bar — so sustained replay burns CPU proportional to dataset
+size,"* and derives from it that 1m is the worst case by a factor reflecting the 59× output-bar ratio.
+
+Both derivations are contradicted by measurement and source:
+
+- Per-tick resample cost is **bounded**, not proportional to dataset size, if the pipeline raw cap
+  applies on the replay path — the pending verification above. Measured counts were identical at 3,000
+  and 4,751 bars: only the cost of each resample varies, not the number of them.
+- The 1m-versus-1H ratio is **~1.97×, not 59×**. `_resampleDataFull` allocates one prepared object per
+  *raw* bar and sorts them, and that cost is identical on both timeframes; only the output-bar count
+  differs. So a change that reduces only output bars leaves a floor on 1m and barely helps 1H.
+
+Consequence, and it is the important one: **this mechanism cannot be the dominant term in Rayan''s
+3.5 GB single-layout 1m report.** The per-tick resample is real, worth fixing, and not the memory
+story. The 1m single-layout memory term remains **unattributed**, which means C3a is still aimed at an
+unmeasured target — exactly the misdiagnosis §A9.3 was written to prevent. The freeze-triage worker is
+still running and is the current best hope of naming it.
+
+I am not editing the finding myself; it is not my document. Escalated to the Director as an amendment
+request with the measured numbers attached.

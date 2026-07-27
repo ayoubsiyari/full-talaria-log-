@@ -62,3 +62,23 @@ module's §A4c contract). The `shell-control-inventory` packet may read it but m
 its worktree contains a change to that file, the change is dropped during reconciliation rather than
 merged. Recorded because two of my in-flight packets were briefed to look at that file and only one
 may own it.
+
+---
+
+## Packet: `render-resample-identity-guard` (proposed, boards with completed-bucket immutability)
+
+| Kind | Reserved name |
+|---|---|
+| Kill-switch | `window.__TALARIA_DISABLE_RENDER_RESAMPLE_IDENTITY_GUARD_V1` |
+| Oracle | `chart v 1.4/chart/modules/render-resample-idempotence.test.mjs` |
+| Evidence dir | `tests/evidence/manager-a-render-resample-guard/` |
+
+Independently switchable from `__TALARIA_DISABLE_RENDER_TIME_PLAYHEAD_TRIM_V1` so the performance
+half can be disabled without reverting the correctness half.
+
+## Packet: `mcdiag-resample-measurement` — names as landed
+
+`_mcDiag.replayTicks`, `_mcDiag.fullResamples` (inside `_resampleDataFull`, so pipeline-internal
+callers are counted), `_mcDiag.incrementalResamples`. The pre-existing `_mcDiag.resamples` field is
+retained untouched and is now formally **not usable for any verdict** — see the journal entry of
+2026-07-28T00:40.
