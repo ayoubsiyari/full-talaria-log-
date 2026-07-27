@@ -185,6 +185,20 @@
 
         this._onWindowMessage = this._onWindowMessage.bind(this);
         global.addEventListener('message', this._onWindowMessage);
+        this._onMcRestoreEpochSignal = this._onMcRestoreEpochSignal.bind(this);
+        this._mcRestoreEpochEvents = [
+            'talaria-auth-changed',
+            'tradingSessionChanged',
+            'backtestingSessionChanged',
+        ];
+        if (mcRestoreV1Enabled()) {
+            for (const eventName of this._mcRestoreEpochEvents) {
+                global.addEventListener(eventName, this._onMcRestoreEpochSignal);
+            }
+        }
+        this._mcRestoreAuthReadyTimer = null;
+        this._mcRestoreAuthReadyAttempts = 0;
+        this._mcRestoreEpoch = null;
 
         /** Dedupe window for replay "at end" toasts coalesced from all panels (see replay-system _maybeNotifyReplayToast). */
         this._lastGlobalReplayToastAt = 0;
@@ -211,6 +225,13 @@
 
     MultichartManager.prototype.dispose = function () {
         global.removeEventListener('message', this._onWindowMessage);
+        for (const eventName of this._mcRestoreEpochEvents || []) {
+            global.removeEventListener(eventName, this._onMcRestoreEpochSignal);
+        }
+        if (this._mcRestoreAuthReadyTimer) {
+            clearTimeout(this._mcRestoreAuthReadyTimer);
+            this._mcRestoreAuthReadyTimer = null;
+        }
         if (global.__multichartDedupedReplayToast === this._boundDedupedReplayToast) {
             try { delete global.__multichartDedupedReplayToast; } catch (_) {
                 global.__multichartDedupedReplayToast = undefined;
@@ -731,10 +752,7 @@
                 self._initialSyncToHost(c);
             }
         }, 0);
-        if (mcRestoreV1Enabled()) {
-            const generation = this.beginMcRestoreGeneration();
-            this._armMcRestoreHostBarrier(generation);
-        }
+        if (mcRestoreV1Enabled()) this._startMcRestoreAuthReadyWatch();
 
         return entry;
     };
@@ -766,6 +784,76 @@
             self._mcRestoreHostBarrierTimer = setTimeout(poll, 50);
         };
         poll();
+    };
+
+    MultichartManager.prototype._readMcRestoreActiveEpoch = function () {
+        const ownerId = global.__talariaUserId == null
+            ? '' : String(global.__talariaUserId).trim();
+        let sessionId = '';
+        try {
+            const chart = global.chart;
+            const value = chart && typeof chart.getActiveTradingSessionId === 'function'
+                ? chart.getActiveTradingSessionId()
+                : chart && chart.activeTradingSessionId;
+            sessionId = value == null ? '' : String(value).trim();
+        } catch (_) {}
+        return ownerId && sessionId ? { ownerId, sessionId, key: ownerId + '|' + sessionId } : null;
+    };
+
+    MultichartManager.prototype._invalidateMcRestoreEpoch = function (reason) {
+        this._cancelAllMcRestoreAssignments(reason || 'restore-epoch-invalidated');
+        this._mcRestoreEpoch = null;
+        this._mcRestoreLayout = null;
+        this._mcRestoreCompletedGeneration = null;
+        this._mcRestoreGeneration = (this._mcRestoreGeneration || 0) + 1;
+        for (const c of this.charts.values()) {
+            c._mcRestoreGeneration = this._mcRestoreGeneration;
+            c._mcRestoreAssignment = null;
+            c._mcRestoreAppliedGeneration = null;
+        }
+    };
+
+    MultichartManager.prototype._refreshMcRestoreEpoch = function () {
+        if (!mcRestoreV1Enabled()) return false;
+        const epoch = this._readMcRestoreActiveEpoch();
+        if (!epoch) return false;
+        if (this._mcRestoreEpoch === epoch.key) return true;
+        this._invalidateMcRestoreEpoch('restore-epoch-changed');
+        const generation = this.beginMcRestoreGeneration();
+        const layoutSession = this._mcRestoreLayout && this._mcRestoreLayout.sessionId != null
+            ? String(this._mcRestoreLayout.sessionId).trim() : '';
+        if (!this._mcRestoreLayout || layoutSession !== epoch.sessionId) {
+            this._mcRestoreLayout = null;
+            return false;
+        }
+        this._mcRestoreEpoch = epoch.key;
+        this._armMcRestoreHostBarrier(generation);
+        return true;
+    };
+
+    MultichartManager.prototype._startMcRestoreAuthReadyWatch = function () {
+        if (!mcRestoreV1Enabled() || this._mcRestoreAuthReadyTimer) return;
+        const self = this;
+        this._mcRestoreAuthReadyAttempts = 0;
+        const poll = function () {
+            self._mcRestoreAuthReadyTimer = null;
+            if (self._refreshMcRestoreEpoch()) return;
+            self._mcRestoreAuthReadyAttempts += 1;
+            if (self._mcRestoreAuthReadyAttempts < 100) {
+                self._mcRestoreAuthReadyTimer = setTimeout(poll, 100);
+            }
+        };
+        poll();
+    };
+
+    MultichartManager.prototype._onMcRestoreEpochSignal = function (event) {
+        if (event && event.type === 'talaria-auth-changed'
+            && event.detail && event.detail.authenticated === false) {
+            this._invalidateMcRestoreEpoch('authentication-ended');
+            return;
+        }
+        this._refreshMcRestoreEpoch();
+        if (!this._mcRestoreEpoch) this._startMcRestoreAuthReadyWatch();
     };
 
     MultichartManager.prototype._mcRestoreAssignmentForPanel = function (panelId) {

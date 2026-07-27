@@ -28,6 +28,7 @@ const productIndexSource = fs.readFileSync(
 function makeRuntime({
   enabled, disabled = false, panels = [], persisted = true,
   ownerId = 'user-a', savedOwnerId = ownerId, sessionId = '827',
+  timerApi = { setTimeout, clearTimeout },
 } = {}) {
   const listeners = new Map();
   const logs = [];
@@ -36,6 +37,12 @@ function makeRuntime({
     __talariaUserId: ownerId,
     location: { origin: 'https://talaria.test' },
     MultichartGuards: {},
+    chart: {
+      activeTradingSessionId: sessionId,
+      getActiveTradingSessionId() { return this.activeTradingSessionId; },
+      data: [{}],
+      _sessionStateLoadedFor: sessionId,
+    },
     userStorage: {
       getScopedItem(key) {
         return persisted && key === 'chart_panel_state'
@@ -64,8 +71,8 @@ function makeRuntime({
       createElement() { return { style: {}, setAttribute() {} }; },
       head: { appendChild() {} },
     },
-    setTimeout,
-    clearTimeout,
+    setTimeout: timerApi.setTimeout,
+    clearTimeout: timerApi.clearTimeout,
     URLSearchParams,
     Map,
     Set,
@@ -207,6 +214,102 @@ test('cross-owner and malformed session identities fail closed', () => {
     assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
     manager.dispose();
   }
+});
+
+test('auth-before-manager and auth-after-manager converge once per owner/session epoch', () => {
+  const before = makeRuntime({
+    ownerId: 'user-a',
+    sessionId: '827',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  assert.equal(before.manager._refreshMcRestoreEpoch(), true);
+  const beforeGeneration = before.manager._mcRestoreGeneration;
+  assert.equal(before.manager._refreshMcRestoreEpoch(), true);
+  assert.equal(before.manager._mcRestoreGeneration, beforeGeneration);
+  before.manager.dispose();
+
+  const after = makeRuntime({
+    ownerId: null,
+    savedOwnerId: 'user-a',
+    sessionId: '827',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '677', 'XAUUSD')],
+  });
+  assert.equal(after.manager._refreshMcRestoreEpoch(), false);
+  after.root.__talariaUserId = 'user-a';
+  after.manager._onMcRestoreEpochSignal({
+    type: 'talaria-auth-changed',
+    detail: { authenticated: true, ownerId: 'user-a' },
+  });
+  assert.equal(after.manager._mcRestoreEpoch, 'user-a|827');
+  assert.equal(after.manager._mcRestoreAssignmentForPanel('B').fileId, '677');
+  const generation = after.manager._mcRestoreGeneration;
+  after.manager._onMcRestoreEpochSignal({
+    type: 'talaria-auth-changed',
+    detail: { authenticated: true, ownerId: 'user-a' },
+  });
+  assert.equal(after.manager._mcRestoreGeneration, generation);
+  after.manager.dispose();
+});
+
+test('session switch and logout immediately invalidate prior generation', () => {
+  const { root, manager } = makeRuntime({
+    ownerId: 'user-a',
+    sessionId: '827',
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  assert.equal(manager._refreshMcRestoreEpoch(), true);
+  const activeGeneration = manager._mcRestoreGeneration;
+  root.chart.activeTradingSessionId = '999';
+  manager._onMcRestoreEpochSignal({ type: 'tradingSessionChanged' });
+  assert.equal(manager._mcRestoreEpoch, null);
+  assert.equal(manager._mcRestoreLayout, null);
+  assert.ok(manager._mcRestoreGeneration > activeGeneration);
+
+  root.chart.activeTradingSessionId = '827';
+  manager._onMcRestoreEpochSignal({ type: 'talaria-auth-changed', detail: { authenticated: true } });
+  assert.equal(manager._mcRestoreEpoch, 'user-a|827');
+  manager._onMcRestoreEpochSignal({
+    type: 'talaria-auth-changed',
+    detail: { authenticated: false },
+  });
+  assert.equal(manager._mcRestoreEpoch, null);
+  assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
+  manager.dispose();
+});
+
+test('auth-ready listeners are unique and removed on teardown', () => {
+  const { manager, listeners } = makeRuntime();
+  for (const eventName of manager._mcRestoreEpochEvents) {
+    assert.equal(listeners.get(eventName)?.size, 1);
+  }
+  manager.dispose();
+  for (const eventName of manager._mcRestoreEpochEvents) {
+    assert.equal(listeners.get(eventName)?.size, 0);
+  }
+});
+
+test('delayed auth polling is bounded and timeout fails closed', () => {
+  const queue = [];
+  const timerApi = {
+    setTimeout(fn) { queue.push(fn); return fn; },
+    clearTimeout(fn) {
+      const index = queue.indexOf(fn);
+      if (index >= 0) queue.splice(index, 1);
+    },
+  };
+  const { manager } = makeRuntime({
+    ownerId: null,
+    savedOwnerId: 'user-a',
+    timerApi,
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  manager._startMcRestoreAuthReadyWatch();
+  while (queue.length) queue.shift()();
+  assert.equal(manager._mcRestoreAuthReadyAttempts, 100);
+  assert.equal(manager._mcRestoreEpoch, null);
+  assert.equal(manager._mcRestoreLayout, undefined);
+  assert.equal(queue.length, 0);
+  manager.dispose();
 });
 
 test('actual product boot explicitly enables restore unless killed', () => {

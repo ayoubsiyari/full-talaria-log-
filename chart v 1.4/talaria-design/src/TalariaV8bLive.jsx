@@ -35524,6 +35524,12 @@ const TalariaV8bLive = () => {
             {profileTab==="account" && <button type="button"
               onClick={async () => {
                 try {
+                  window.__talariaUserId = null;
+                  window.dispatchEvent(new CustomEvent("talaria-auth-changed", {
+                    detail: { authenticated: false },
+                  }));
+                } catch (_) {}
+                try {
                   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
                 } catch {
                   /* ignore */

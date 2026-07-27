@@ -1475,9 +1475,17 @@
                 if (data && data.user && data.user.id) {
                     window.__talariaUserId = data.user.id;
                     try { localStorage.setItem('_uid', String(data.user.id)); } catch(e) {}
+                    try { window.dispatchEvent(new CustomEvent('talaria-auth-changed', {
+                        detail: { authenticated: true, ownerId: String(data.user.id) }
+                    })); } catch(e) {}
                 }
             })
-            .catch(function() { redirectToLogin(); });
+            .catch(function() {
+                try { window.dispatchEvent(new CustomEvent('talaria-auth-changed', {
+                    detail: { authenticated: false }
+                })); } catch(e) {}
+                redirectToLogin();
+            });
     })();
     </script>
     <script>
