@@ -179,3 +179,101 @@ fix, not a claim of ownership — the documents remain the Director's. Escalated
 same breath, because the durable fix is either un-ignoring `docs/plan3/` or a Manager C tooling step
 that materialises governing documents into every worktree; a per-manager copy is a workaround and
 will drift.
+
+---
+
+## 2026-07-28T00:20 · ASSUMPTION · §A13 is not in the workspace copy either
+
+`docs/plan3/DIRECTOR-RULINGS-20260727.md` in the workspace has no `A13` match. The section exists
+only in the dispatch text I was given. This is the second recurrence tonight of the propagation defect
+recorded at 00:14, and it now applies to the section that governs how I dispatch. I operate from the
+dispatch text verbatim and will correct by new entry if the filed §A13 differs.
+
+Operative rules I extracted, so they are checkable against the real text later:
+
+1. I do not author. Decomposition, briefing, reservation, territory enforcement, review
+   reconciliation, provenance, packaging, escalation. Read-only inspection to write a competent brief
+   is permitted and is not authoring.
+2. Default tier is composer / grok. Escalate only when an undetected error would be expensive **and**
+   no automatic verifier catches it. Where a gate, oracle or tripwire converts a mistake into a
+   rejected packet, stay cheap.
+3. `gpt-5.5-medium-fast` or `claude-fable-5-thinking-medium` for implementing specced fixes and
+   authoring tests/harnesses. `claude-opus-5-thinking-high` for adversarial review, architecture,
+   root-cause triage of surprises, numeric correctness and tolerances, money-path and data-durability
+   code, and any edit to `chart.js` shared paths.
+4. There is no opus 4.7 and no substitute for it. `gpt-5.6-sol-low` is low reasoning effort — route on
+   model-plus-effort, not version number.
+5. Two rejections of a packet means re-authoring at top tier. No cheap-tier output enters the record
+   as a classification, verdict or dossier fact.
+6. Every packet gets a separate top-tier adversarial review subagent I did not author with, and I
+   reconcile its findings. I am never the only judge of my own dispatched work.
+7. Read-only subagents unlimited. Write subagents parallel only on disjoint file sets, never two on
+   one file, and the partition is my accountability. Same-file work serialises. Cap of three write
+   packets in flight.
+8. Reserve every kill-switch, global, storage key, message name, oracle and fixture name before
+   dispatch. A brief without an explicit writable file set is invalid.
+
+---
+
+## 2026-07-28T00:22 · CORRECTION · my five earlier dispatches predate §A13 and three were over-tiered
+
+Stated plainly rather than quietly re-routed. The five workers now in flight were briefed before
+§A13, at inherited top tier, and without an explicit writable file set in three of the five briefs.
+Against §A13 as given:
+
+- **Trim-overlay unification design** — correctly top tier (architecture + root-cause triage).
+- **Residency-cap costing** — correctly top tier (architecture).
+- **`_mcDiag.resamples` measurement** — defensible at top tier. It authors a harness, which §A13
+  routes to `gpt-5.5-medium-fast`, but its *output is a classification that gates the entire C3a
+  decision* and no verifier catches a wrong measurement, so the escalation trigger is met for the
+  verdict even though the harness itself is cheap work. Recorded as a deliberate call, not an oversight.
+- **Session-calendar RED** — over-tiered on the letter of §A13 (test authoring → `gpt-5.5-medium-fast`),
+  though it also carries DST/numeric-correctness content that §A13 routes to opus. Mixed brief; I
+  should have split the harness authoring from the boundary arithmetic.
+- **§A10 control inventory** — clearly over-tiered. Mechanical enumeration with a diff as its own
+  verifier; composer or grok was the correct route.
+
+Not cancelling and re-dispatching: the wasted spend is already committed and restarting costs more
+than it recovers. From here every brief states tier and the reason for that tier, and the writable
+file set is mandatory. The freeze-triage brief dispatched at 00:19 is the first written to §A13 form
+and carries `writable file set: NONE`.
+
+---
+
+## 2026-07-28T00:24 · DECISION · write-packet cap is full at three; partition is enforced by worktree, not by trust
+
+In flight: three write packets (`mcdiag-resample-measurement`, `session-calendar-red`,
+`shell-control-inventory`) and three read-only workers (trim-overlay design, residency-cap costing,
+freeze triage). That is exactly the §A13 cap, so **no further write packet is dispatched until one
+lands**. Read-only work continues uncapped, which is why the freeze triage went out read-only rather
+than as an implementation packet.
+
+The partition is physical, not conventional: every write packet has its own git worktree and its own
+branch, so two subagents cannot hold the same file open even if their briefs overlap. Overlap
+therefore surfaces at *merge* time, where I control the order, rather than as corruption.
+
+One real overlap exists and is now owned: `scripts/module-contracts.json`. The session-calendar packet
+must register its new module's §A4c contract there, and the control-inventory packet was briefed to
+read the servable-shell inventory that the same file references. Ownership is assigned to
+session-calendar; any change to that file in the control-inventory worktree is dropped in
+reconciliation. Recorded in `MANAGER-A-RESERVATIONS.md` rather than left to merge-time judgement.
+
+Names are now reserved up front in `MANAGER-A-RESERVATIONS.md`, including the session-calendar
+kill-switch `__TALARIA_DISABLE_SESSION_CALENDAR_V1`, the trim-overlay switch
+`__TALARIA_DISABLE_RENDER_TIME_PLAYHEAD_TRIM_V1`, the `SessionCalendar` global, both oracle
+filenames, the fixture prefix, and `_mcDiag.incrementalResamples`. Two of those were dispatched before
+the registry existed, so the workers chose their own names; reconciliation renames to the reserved
+name rather than the registry bending to whatever was authored.
+
+---
+
+## 2026-07-28T00:26 · DECISION · adversarial review is a standing step, not a per-packet choice
+
+Per §A13, each of the five write/design packets gets its own top-tier adversarial review subagent that
+did not author the work, and I reconcile rather than ratify. Reviews are dispatched on packet
+completion, not now, so the reviewer reads finished artefacts instead of a moving target.
+
+This composes with the two-rejection rule: a packet rejected twice is re-authored at top tier
+regardless of its original routing, which is what happened tonight to the Lane-5 degraded-audit packet
+before it reached my territory. I keep the rejection count per packet in this journal so the trigger
+cannot be lost between turns.
