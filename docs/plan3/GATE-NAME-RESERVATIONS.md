@@ -47,6 +47,27 @@ Negative-control cells reserved under these gates:
 | NC-SHELL-UNDECLARED | — | RESERVED — an unknown shell added under a public root must go RED |
 | NC-SYMBOL-ABSENT | — | RESERVED — with the module response blocked, the tripwire must go RED |
 
+### Item 2 dispatch reservations — PACKET-C-002, claimed 2026-07-28T00:30Z
+
+Reserved ahead of dispatch so three parallel subagents cannot collide on naming. File sets are
+disjoint by construction; `scripts/module-contracts.json` and `scripts/module-contract-preflight.mjs`
+are deliberately **not** in any brief's write set this wave, so the live V1 gate stays green.
+
+| Reserved for | Writable files | Exported / signature names |
+|---|---|---|
+| W1 discovery library | `scripts/lib/servable-shell-discovery.mjs`, `scripts/tests/servable-shell-discovery.test.mjs` | `discoverShells`, `shellFacts`, `normalizeLoaderOrder`, `DISCOVERY_SIGNATURE = TALARIA_SERVABLE_SHELL_DISCOVERY_V1` |
+| W2 inventory classification | `scripts/servable-shell-inventory.json` | schema id `talaria.servable-shell-inventory.v1` |
+| W3 inventory preflight | `scripts/shell-inventory-preflight.mjs`, `scripts/tests/shell-inventory-preflight.test.mjs` | `validateShellInventory`, signature `TALARIA_SHELL_PRESENCE_PREFLIGHT_V2` |
+
+Role id vocabulary, fixed by the manager so W2 and W3 cannot diverge: `v9-host-source`,
+`v9-host-built`, `v9-host-public`, `legacy-host-source`, `legacy-host-public`,
+`multichart-embed-source`, `multichart-embed-public`, `dist-legacy-fallback`, `admin-dist`,
+`pointer-stub`, `sandbox-multichart`, `browser-harness`, `frozen-evidence`,
+`public-test-fixture`, `non-chart-app`, `image-built-export`.
+
+Status vocabulary, fixed by the manager: `owned-stamped`, `image-verified`, `excluded`,
+`denied-route-pending`, `removal-pending`, `removed`.
+
 ## Queue item 3 — differential parity oracle (A7)
 
 | Name | Signature token | Status |
