@@ -11,14 +11,34 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
 const chartRoot = path.join(root, 'chart v 1.4', 'chart');
 const modulePath = path.join(chartRoot, 'modules', 'indicator-performance.js');
-const authoredAgainst = '852420adcfa71eefe3a20fb388da2a6963b018ca';
+const authoredAgainst = '967f96692fbccd448a3a31c7b2ff71718e18a71e';
 const mechanismRow = 'B75/M19-I(a)-INDICATOR-PERFORMANCE-LOADER';
 const maxStaleBuilds = 20;
 const entries = [
-  ['dist-v9', path.join(chartRoot, 'dist-v9', 'index.html'), '/chart/dist-v9/index.html'],
-  ['legacy', path.join(chartRoot, 'legacy-index.html'), '/chart/legacy-index.html'],
-  ['live', path.join(root, 'chart v 1.4', 'talaria-design', 'live', 'index.html'), '/chart/talaria-design/live/index.html'],
-  ['multichart-embed', path.join(chartRoot, 'multichart-prod', 'chart-embed.html'), '/chart/multichart-prod/chart-embed.html'],
+  {
+    name: 'maintained-source',
+    file: path.join(root, 'chart v 1.4', 'talaria-design', 'live', 'index.html'),
+    pathname: null,
+    serveRoot: null,
+  },
+  {
+    name: 'dist-v9-host',
+    file: path.join(chartRoot, 'dist-v9', 'index.html'),
+    pathname: '/chart/dist-v9/index.html',
+    serveRoot: chartRoot,
+  },
+  {
+    name: 'homepage-forwarded-host',
+    file: path.join(root, 'homepage', 'public', 'chart', 'dist-v9', 'index.html'),
+    pathname: '/chart/dist-v9/index.html',
+    serveRoot: path.join(root, 'homepage', 'public', 'chart'),
+  },
+  {
+    name: 'multichart-embed',
+    file: path.join(chartRoot, 'multichart-prod', 'chart-embed.html'),
+    pathname: '/chart/multichart-prod/chart-embed.html',
+    serveRoot: chartRoot,
+  },
 ];
 const requiredApis = [
   'packBarsRangeCompact',
@@ -43,6 +63,7 @@ function mutateHtml(html, mode) {
   const without = html.replace(/<script\b[^>]*src=["'][^"']*modules\/indicator-performance\.js[^"']*["'][^>]*><\/script>\s*/gi, '');
   if (mode === 'product') return html;
   if (mode === 'broken') return without;
+  if (mode === 'blocked') return html;
   if (mode === 'corrupt') return injectBeforeIndicators(without);
   if (mode === 'wrong-order') {
     const fixed = injectBeforeIndicators(without);
@@ -62,15 +83,12 @@ function isolateAuditedScripts(html) {
       ? tag : '');
 }
 
-function localFile(pathname) {
-  if (pathname === '/chart/talaria-design/live/index.html') {
-    return path.join(root, 'chart v 1.4', 'talaria-design', 'live', 'index.html');
-  }
+function localFile(entry, pathname) {
   const relative = pathname.startsWith('/chart/') ? pathname.slice(7) : '';
-  return path.join(chartRoot, relative || 'dist-v9/index.html');
+  return path.join(entry.serveRoot, relative || 'dist-v9/index.html');
 }
 
-async function startSurfaceServer(mode) {
+async function startSurfaceServer(entry, mode) {
   const server = http.createServer((request, response) => {
     const pathname = decodeURIComponent(new URL(request.url, 'http://gate.invalid').pathname);
     if (pathname === '/api/auth/me') {
@@ -78,8 +96,8 @@ async function startSurfaceServer(mode) {
       response.end('{"user":{"id":"b75-presence-gate"}}');
       return;
     }
-    const file = localFile(pathname);
-    if (!file.startsWith(path.dirname(chartRoot)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const file = localFile(entry, pathname);
+    if (!file.startsWith(entry.serveRoot) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       response.writeHead(404).end();
       return;
     }
@@ -95,6 +113,10 @@ async function startSurfaceServer(mode) {
       return;
     }
     response.setHeader('content-type', 'text/javascript; charset=utf-8');
+    if (pathname.endsWith('/indicator-performance.js') && mode === 'blocked') {
+      response.writeHead(503).end('bridge blocked by fault injection');
+      return;
+    }
     if (pathname.endsWith('/indicator-performance.js') && mode === 'corrupt') {
       response.end('window.IndicatorPerf = { packBarsRangeCompact: "corrupted" };');
       return;
@@ -112,10 +134,12 @@ async function startSurfaceServer(mode) {
   return server;
 }
 
-async function observeSurface(browser, entry, mode) {
-  const server = await startSurfaceServer(mode);
+async function observeSurface(browser, entry, mode, host = '127.0.0.1') {
+  const server = await startSurfaceServer(entry, mode);
   const port = server.address().port;
   const page = await browser.newPage();
+  await page.setCacheEnabled(false);
+  await page._client().send('Network.setBypassServiceWorker', { bypass: true });
   const requests = [];
   const responses = [];
   const errors = [];
@@ -129,7 +153,7 @@ async function observeSurface(browser, entry, mode) {
   });
   page.on('pageerror', (error) => errors.push(error.message));
   try {
-    await page.goto(`http://127.0.0.1:${port}${entry[2]}`, {
+    await page.goto(`http://${host}:${port}${entry.pathname}`, {
       waitUntil: 'domcontentloaded',
       timeout: 1_000,
     }).catch(() => null);
@@ -153,7 +177,9 @@ async function observeSurface(browser, entry, mode) {
         .every((row) => row.status === 200),
     };
     return {
-      entry: entry[0], pathname: entry[2], mode, requests, responses, errors, runtime, checks,
+      entry: entry.name, pathname: entry.pathname, mode, host,
+      coldCache: true, serviceWorkerBypassed: true,
+      requests, responses, errors, runtime, checks,
       pass: Object.values(checks).every(Boolean),
     };
   } finally {
@@ -164,35 +190,48 @@ async function observeSurface(browser, entry, mode) {
 }
 
 function staticSurface(entry) {
-  const html = fs.readFileSync(entry[1], 'utf8');
+  const html = fs.readFileSync(entry.file, 'utf8');
   const perf = html.indexOf('modules/indicator-performance.js');
   const indicators = html.indexOf('modules/chart-indicators-full.js');
+  const perfStamp = html.match(/indicator-performance\.js\?v=([^"'&\s]+)/)?.[1];
+  const indicatorStamp = html.match(/chart-indicators-full\.js\?v=([^"'&\s]+)/)?.[1];
+  const embedStamp = html.match(/window\.__TALARIA_CHART_BUILD_ID = p\.get\('v'\) \|\| '([^']+)'/)?.[1];
   return {
-    entry: entry[0],
-    path: path.relative(root, entry[1]),
+    entry: entry.name,
+    path: path.relative(root, entry.file),
     sourceSha256: digest(html),
     referenced: perf >= 0,
     correctOrder: perf >= 0 && indicators > perf,
+    buildStamp: perfStamp || embedStamp || null,
+    dependencyStampsUniform: embedStamp
+      ? Boolean(embedStamp)
+      : Boolean(perfStamp && perfStamp === indicatorStamp),
   };
 }
 
-async function run({ inverted = false } = {}) {
+async function run({ inverted = false, host = '127.0.0.1' } = {}) {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-extensions', '--disable-background-timer-throttling'],
   });
   try {
-    const target = entries[0];
-    const broken = await observeSurface(browser, target, 'broken');
+    const runtimeEntries = entries.filter((entry) => entry.pathname);
+    const target = runtimeEntries[0];
+    const broken = await observeSurface(browser, target, 'broken', host);
+    const blocked = await observeSurface(browser, target, 'blocked', host);
     // Broken removes any loader. Explicit-loader restores it. Corrupt serves a
     // malformed bridge through the real loader path; wrong-order moves it late.
-    const explicitLoader = await observeSurface(browser, target, 'fixed');
-    const corrupted = await observeSurface(browser, target, 'corrupt');
-    const wrongOrder = await observeSurface(browser, target, 'wrong-order');
+    const explicitLoader = await observeSurface(browser, target, 'fixed', host);
+    const corrupted = await observeSurface(browser, target, 'corrupt', host);
+    const wrongOrder = await observeSurface(browser, target, 'wrong-order', host);
     const product = [];
-    for (const entry of entries) product.push(await observeSurface(browser, entry, 'product'));
+    for (const entry of runtimeEntries) product.push(await observeSurface(browser, entry, 'product', host));
+    const staticSurfaces = entries.map(staticSurface);
+    const buildStamps = [...new Set(staticSurfaces.map((cell) => cell.buildStamp))];
     const expected = {
       brokenRed: broken.pass === false,
+      blockedBridgeAndMissingGlobalRed:
+        blocked.pass === false && blocked.runtime.moduleGlobalType === 'undefined',
       explicitLoaderGreen: explicitLoader.pass === true,
       corruptedRed: corrupted.pass === false,
       wrongOrderRed: wrongOrder.pass === false,
@@ -205,17 +244,25 @@ async function run({ inverted = false } = {}) {
         id: 'B75-INDICATOR-PERFORMANCE-PRODUCT-SURFACE-V1',
         mechanismRow,
         authoredAgainst,
-        authoredAgainstSubject: 'fix(chart): load indicator performance bridge before indicators',
-        lastProvenRedOn: 'current-worktree',
+        authoredAgainstSubject: 'chore(release): package 20260727b79 Tier-2 train',
+        lastProvenRedOn: '967f96692-b79',
         staleness: { maxBuilds: maxStaleBuilds, status: 'PROVEN-RED' },
         moduleSha256: digest(fs.readFileSync(modulePath)),
         deterministicAssertionPayload: true,
       },
-      host: { platform: process.platform, node: process.version, clock: 'performance-resource-order' },
-      staticSurfaces: entries.map(staticSurface),
+      host: {
+        platform: process.platform, node: process.version, hostname: host,
+        clock: 'performance-resource-order', coldCache: true, serviceWorkerBypassed: true,
+      },
+      excludedNonProductionSurface: 'homepage/public/chart/talaria-design/live/index.html',
+      staticSurfaces,
+      uniformBuildStamp: buildStamps.length === 1 ? buildStamps[0] : null,
       fourState: { expected, normalFourState, inverted, assertedFourState },
-      cells: { broken, explicitLoader, corrupted, wrongOrder, product },
-      productPass: product.every((cell) => cell.pass),
+      cells: { broken, blocked, explicitLoader, corrupted, wrongOrder, product },
+      productPass: buildStamps.length === 1
+        && staticSurfaces.every((cell) =>
+          cell.referenced && cell.correctOrder && cell.dependencyStampsUniform)
+        && product.every((cell) => cell.pass),
     };
   } finally {
     await browser.close();
@@ -230,7 +277,7 @@ fs.mkdirSync(evidenceDir, { recursive: true });
 const repeats = [];
 for (let i = 0; i < 3; i++) repeats.push(await run());
 const alternateStarted = process.hrtime.bigint();
-const alternate = await run();
+const alternate = await run({ host: 'localhost' });
 alternate.host.clock = 'process.hrtime.bigint';
 alternate.host.elapsedNs = String(process.hrtime.bigint() - alternateStarted);
 const inverted = await run({ inverted: true });
