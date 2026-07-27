@@ -434,6 +434,12 @@ function panelHasBarsForSync(chartRec, dataReadySet) {
 
 function loadParentBridge() {
     if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+    // Saved per-panel identity restore is part of normal product boot. Operators
+    // can still fail closed before boot with either explicit kill-switch form.
+    if (window.__TALARIA_ENABLE_MC_RESTORE_V1 === undefined) {
+        window.__TALARIA_ENABLE_MC_RESTORE_V1 =
+            window.__TALARIA_DISABLE_MC_RESTORE_V1 !== true;
+    }
     if (window.MultichartManager && window.MultichartGuards) return Promise.resolve();
     if (bridgeLoadPromise) return bridgeLoadPromise;
 

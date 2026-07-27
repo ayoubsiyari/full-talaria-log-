@@ -12,20 +12,30 @@ const panelBridgeSource = fs.readFileSync(
   'utf8',
 );
 const chartSource = fs.readFileSync(new URL('../chart.js', import.meta.url), 'utf8');
+const productGridSource = fs.readFileSync(
+  new URL('../../talaria-design/src/MultichartGrid.jsx', import.meta.url),
+  'utf8',
+);
 
-function makeRuntime({ enabled = true, panels = [] } = {}) {
+function makeRuntime({ enabled, disabled = false, panels = [], persisted = true } = {}) {
   const listeners = new Map();
   const logs = [];
   const root = {
-    __TALARIA_ENABLE_MC_RESTORE_V1: enabled,
+    __TALARIA_DISABLE_MC_RESTORE_V1: disabled,
     location: { origin: 'https://talaria.test' },
     MultichartGuards: {},
-    localStorage: {
+    userStorage: {
       getItem(key) {
-        return key === 'chart_panel_state'
+        return persisted && key === 'chart_panel_state'
           ? JSON.stringify({ layout: '3', sessionId: '827', panels })
           : null;
       },
+    },
+    localStorage: {
+      getItem() { throw new Error('unscoped localStorage fallback forbidden'); },
+    },
+    sessionStorage: {
+      getItem() { throw new Error('sessionStorage fallback forbidden'); },
     },
     addEventListener(type, fn) {
       if (!listeners.has(type)) listeners.set(type, new Set());
@@ -49,6 +59,7 @@ function makeRuntime({ enabled = true, panels = [] } = {}) {
     Math,
     console,
   };
+  if (enabled !== undefined) root.__TALARIA_ENABLE_MC_RESTORE_V1 = enabled;
   root.window = root;
   root.globalThis = root;
   vm.runInNewContext(managerSource, root);
@@ -101,11 +112,56 @@ function readyEvent(entry, source = entry.frame.contentWindow, sourceId = entry.
   };
 }
 
-test('MC_RESTORE default OFF installs no state or lifecycle listener', () => {
+test('MC_RESTORE explicit legacy kill switch installs no restore state', () => {
   const { manager, listeners } = makeRuntime({ enabled: false });
   assert.equal(manager._mcRestoreGeneration, undefined);
   assert.equal(listeners.size, 1, 'only the legacy manager message listener is installed');
   manager.dispose();
+});
+
+test('MC_RESTORE product default is ON and reads only user-scoped persisted identity', () => {
+  const { manager } = makeRuntime({
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  const generation = manager.beginMcRestoreGeneration();
+  assert.equal(generation, 1);
+  assert.deepEqual(
+    structuredClone(manager._mcRestoreAssignmentForPanel('B')),
+    {
+      panelId: 'B',
+      fileId: '22',
+      ticker: 'AUDUSD',
+      sessionId: '827',
+      timeframe: '1m',
+    },
+  );
+  manager.dispose();
+});
+
+test('MC_RESTORE dedicated kill switch overrides product default', () => {
+  const { manager } = makeRuntime({ disabled: true });
+  assert.equal(manager._mcRestoreGeneration, undefined);
+  assert.equal(manager.beginMcRestoreGeneration(), null);
+  manager.dispose();
+});
+
+test('missing user-scoped persistence fails closed without host storage fallback', () => {
+  const { manager } = makeRuntime({
+    persisted: false,
+    panels: [panel(0, '11', 'EURUSD'), panel(1, '22', 'AUDUSD')],
+  });
+  manager.beginMcRestoreGeneration();
+  assert.equal(manager._mcRestoreAssignmentForPanel('B'), null);
+  manager.dispose();
+});
+
+test('actual product boot explicitly enables restore unless killed', () => {
+  assert.match(productGridSource,
+    /if \(window\.__TALARIA_ENABLE_MC_RESTORE_V1 === undefined\)[\s\S]*window\.__TALARIA_DISABLE_MC_RESTORE_V1 !== true/);
+  assert.match(managerSource,
+    /global\.__TALARIA_DISABLE_MC_RESTORE_V1 !== true[\s\S]*global\.__TALARIA_ENABLE_MC_RESTORE_V1 !== false/);
+  assert.doesNotMatch(managerSource, /localStorage\.getItem\('chart_panel_state'\)/);
+  assert.doesNotMatch(managerSource, /sessionStorage\.getItem\('chart_panel_state'\)/);
 });
 
 test('delayed host completion assigns once after duplicate bridge-ready', async () => {
