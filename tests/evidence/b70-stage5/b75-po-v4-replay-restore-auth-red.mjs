@@ -4,7 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { decideMutation, MUTATING_METHODS } from './b75-po-v4-network-policy.mjs';
+import {
+  decideMutation,
+  diagnosticExitCode,
+  MUTATING_METHODS,
+} from './b75-po-v4-network-policy.mjs';
 import { summarizeReplayRestoreMatrix } from './b75-po-v4-replay-restore-oracle.mjs';
 
 const require = createRequire(new URL('../../../chart v 1.4/chart/multichart-prod/harness/package.json', import.meta.url));
@@ -411,6 +415,7 @@ try {
   evidence.verdict = evidence.matrix.verdict;
   evidence.mutations = interceptedMutations;
   evidence.captureComplete = {
+    complete: fatalUnknownMutations.length === 0,
     sameOriginMutatingMethods: [...MUTATING_METHODS],
     interceptionInstalledBeforeFirstNavigation: true,
     requestRecords: interceptedMutations.length,
@@ -441,5 +446,9 @@ try {
       kind: cell.kind, verdict: cell.oracle.verdict, secondsLost: cell.oracle.secondsLost,
     })) || [],
   }, null, 2)}\n`);
-  process.exitCode = evidence.verdict === 'BLOCKED' ? 2 : 0;
+  process.exitCode = diagnosticExitCode({
+    verdict: evidence.verdict,
+    captureComplete: evidence.captureComplete?.complete === true,
+    fatalMutationCount: evidence.captureComplete?.fatalUnknownMutations ?? 0,
+  });
 }

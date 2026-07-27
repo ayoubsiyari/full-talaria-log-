@@ -1,4 +1,5 @@
 export const MUTATING_METHODS = Object.freeze(['POST', 'PUT', 'PATCH', 'DELETE']);
+export const SUCCESS_VERDICTS = Object.freeze(['RED', 'GREEN']);
 export const AUTH_SAFE_ALLOWLIST = Object.freeze([
   Object.freeze({ method: 'POST', pathname: '/api/auth/login' }),
 ]);
@@ -89,4 +90,16 @@ export function auditRetainedMutationCount({
     captureComplete: captureComplete === true,
     hiddenMutationsExcluded: captureComplete === true,
   };
+}
+
+export function diagnosticExitCode({
+  verdict,
+  captureComplete = false,
+  fatalMutationCount = 0,
+} = {}) {
+  const safeVerdict = SUCCESS_VERDICTS.includes(String(verdict || ''));
+  const complete = captureComplete === true;
+  const fatalCount = Number(fatalMutationCount);
+  const mutationSafe = Number.isInteger(fatalCount) && fatalCount === 0;
+  return safeVerdict && complete && mutationSafe ? 0 : 2;
 }

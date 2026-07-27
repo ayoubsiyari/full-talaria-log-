@@ -87,7 +87,18 @@
       "disposition",
       "fatal",
       "captureComplete"
-    ]
+    ],
+    "processExitPolicy": {
+      "zeroExitVerdictAllowlist": [
+        "RED",
+        "GREEN"
+      ],
+      "additionalZeroExitRequirements": [
+        "captureComplete === true",
+        "fatalUnknownMutations === 0"
+      ],
+      "allOtherVerdictsExitNonzero": true
+    }
   },
   "sanitization": {
     "credentialsRetained": false,
