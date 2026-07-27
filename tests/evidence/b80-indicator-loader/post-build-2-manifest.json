@@ -6317,6 +6317,11 @@
       "bytes": 2298
     },
     {
+      "path": "homepage/public/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+      "sha256": "7e5c7789d6147a70ffc0e2f344dceb89a2c4b0a262865536f449e193b38c53e4",
+      "bytes": 2110
+    },
+    {
       "path": "homepage/public/chart/multichart-prod/harness/h-a8-vp-2-policy-authorization.mjs",
       "sha256": "8fee0093c88d117cdc876d9d7e4a754f4aa13f8024276d37510989069706c91b",
       "bytes": 4538

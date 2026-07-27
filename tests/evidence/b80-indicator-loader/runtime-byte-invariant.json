@@ -1,0 +1,140 @@
+{
+  "baseline": "501fe23fb35748f1c911becb054064a4f9eba8a4",
+  "checkedPaths": 19,
+  "allByteIdentical": true,
+  "paths": [
+    {
+      "path": "chart v 1.4/chart/chart.js",
+      "baselineSha256": "cb9ce93c06c7ad5a78f17e72579b03028cc54defc68b7d3b58d3b25472d25511",
+      "currentSha256": "cb9ce93c06c7ad5a78f17e72579b03028cc54defc68b7d3b58d3b25472d25511",
+      "bytes": 1946014,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/dist-v9/assets/talaria-v9-live.js",
+      "baselineSha256": "66a21524aad7d8f85ba386094fa76b16b2a87347821b4b4317d0cf958525a7c0",
+      "currentSha256": "66a21524aad7d8f85ba386094fa76b16b2a87347821b4b4317d0cf958525a7c0",
+      "bytes": 1716734,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/dist-v9/index.html",
+      "baselineSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+      "currentSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+      "bytes": 91770,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/dist-v9/sw.js",
+      "baselineSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "currentSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "bytes": 708,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/legacy-index.html",
+      "baselineSha256": "e38c5a8fbc67681a7d126176ab28277ee3f2b85516a6ff0ace41e85731a12d34",
+      "currentSha256": "e38c5a8fbc67681a7d126176ab28277ee3f2b85516a6ff0ace41e85731a12d34",
+      "bytes": 1419122,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+      "baselineSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+      "currentSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+      "bytes": 21557,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/multichart-prod/harness/serve.mjs",
+      "baselineSha256": "afbb4f644f21834f7fd1bc61fc4aba0f0a79927ab0eff7a09e43ca656c7c365b",
+      "currentSha256": "afbb4f644f21834f7fd1bc61fc4aba0f0a79927ab0eff7a09e43ca656c7c365b",
+      "bytes": 55107,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/chart/sw.js",
+      "baselineSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "currentSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "bytes": 708,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/talaria-design/live/index.html",
+      "baselineSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+      "currentSha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+      "bytes": 91716,
+      "byteIdentical": true
+    },
+    {
+      "path": "chart v 1.4/talaria-design/live/public/sw.js",
+      "baselineSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "currentSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "bytes": 708,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/chart.js",
+      "baselineSha256": "cb9ce93c06c7ad5a78f17e72579b03028cc54defc68b7d3b58d3b25472d25511",
+      "currentSha256": "cb9ce93c06c7ad5a78f17e72579b03028cc54defc68b7d3b58d3b25472d25511",
+      "bytes": 1946014,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/dist-v9/assets/talaria-v9-live.js",
+      "baselineSha256": "66a21524aad7d8f85ba386094fa76b16b2a87347821b4b4317d0cf958525a7c0",
+      "currentSha256": "66a21524aad7d8f85ba386094fa76b16b2a87347821b4b4317d0cf958525a7c0",
+      "bytes": 1716734,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/dist-v9/index.html",
+      "baselineSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+      "currentSha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+      "bytes": 91770,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/dist-v9/sw.js",
+      "baselineSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "currentSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "bytes": 708,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/legacy-index.html",
+      "baselineSha256": "e38c5a8fbc67681a7d126176ab28277ee3f2b85516a6ff0ace41e85731a12d34",
+      "currentSha256": "e38c5a8fbc67681a7d126176ab28277ee3f2b85516a6ff0ace41e85731a12d34",
+      "bytes": 1419122,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/chart-embed.html",
+      "baselineSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+      "currentSha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+      "bytes": 21557,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+      "baselineSha256": "7e5c7789d6147a70ffc0e2f344dceb89a2c4b0a262865536f449e193b38c53e4",
+      "currentSha256": "7e5c7789d6147a70ffc0e2f344dceb89a2c4b0a262865536f449e193b38c53e4",
+      "bytes": 2110,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/multichart-prod/harness/serve.mjs",
+      "baselineSha256": "afbb4f644f21834f7fd1bc61fc4aba0f0a79927ab0eff7a09e43ca656c7c365b",
+      "currentSha256": "afbb4f644f21834f7fd1bc61fc4aba0f0a79927ab0eff7a09e43ca656c7c365b",
+      "bytes": 55107,
+      "byteIdentical": true
+    },
+    {
+      "path": "homepage/public/chart/sw.js",
+      "baselineSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "currentSha256": "107989def8442b325ee7e864a3357a368d1aace9aed0cec23a6b10ecbaec1490",
+      "bytes": 708,
+      "byteIdentical": true
+    }
+  ]
+}

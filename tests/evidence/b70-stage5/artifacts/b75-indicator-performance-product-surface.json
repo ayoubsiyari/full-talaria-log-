@@ -2,6 +2,65 @@
   "verdict": "GREEN",
   "priorZeroMsGreen": "INVALID",
   "reason": "A timing result cannot prove a cure that is absent from the measured product shell.",
+  "buildPreflight": {
+    "verdict": "GREEN",
+    "candidate": "501fe23fb35748f1c911becb054064a4f9eba8a4",
+    "surfaces": [
+      {
+        "id": "maintained-source",
+        "path": "chart v 1.4/talaria-design/live/index.html",
+        "route": null,
+        "servable": false,
+        "disposition": "owned-and-stamped",
+        "sha256": "79b49adbc293e4cb2b2722776eed249c837a18b91961a1912258afa00e6b25cc",
+        "bytes": 91716
+      },
+      {
+        "id": "dist-v9-host",
+        "path": "chart v 1.4/chart/dist-v9/index.html",
+        "route": "/chart/dist-v9/index.html",
+        "servable": true,
+        "disposition": "owned-and-stamped",
+        "sha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+        "bytes": 91770
+      },
+      {
+        "id": "homepage-forwarded-host",
+        "path": "homepage/public/chart/dist-v9/index.html",
+        "route": "/chart/dist-v9/index.html",
+        "servable": true,
+        "disposition": "owned-and-stamped",
+        "sha256": "41207299daa4578c603a7d0e61f6f3ee8a523a39b8998762436e57684747ca29",
+        "bytes": 91770
+      },
+      {
+        "id": "multichart-embed",
+        "path": "chart v 1.4/chart/multichart-prod/chart-embed.html",
+        "route": "/chart/multichart-prod/chart-embed.html",
+        "servable": true,
+        "disposition": "owned-and-stamped",
+        "sha256": "48ee0e4c78c52519831e26ffa209c842d80fe86b1288fedb3fe881a8393cbb69",
+        "bytes": 21557
+      },
+      {
+        "id": "homepage-h-a7b-r2-test-mirror",
+        "path": "homepage/public/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+        "route": "/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+        "servable": true,
+        "disposition": "owned-manifest-listed",
+        "sha256": "7e5c7789d6147a70ffc0e2f344dceb89a2c4b0a262865536f449e193b38c53e4",
+        "bytes": 2110
+      }
+    ]
+  },
+  "buildPreflightNegativeControls": {
+    "verdict": "GREEN",
+    "cells": [
+      "missing-manifest-red",
+      "false-nonservable-red",
+      "digest-drift-red"
+    ]
+  },
   "repeats": [
     {
       "schemaVersion": 1,
@@ -87,11 +146,11 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:59648/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:52057/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:59648/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:52057/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -105,7 +164,7 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:59648/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:52057/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -125,16 +184,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:52579/chart/modules/indicator-performance.js?v=20260727b80",
-            "http://127.0.0.1:52579/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:58790/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:58790/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:52579/chart/modules/indicator-performance.js?v=20260727b80",
+              "url": "http://127.0.0.1:58790/chart/modules/indicator-performance.js?v=20260727b80",
               "status": 503
             },
             {
-              "url": "http://127.0.0.1:52579/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:58790/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -148,8 +207,8 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:52579/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:52579/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:58790/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:58790/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -169,16 +228,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:54931/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:54931/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:56145/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:56145/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:54931/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:56145/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:54931/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:56145/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -192,8 +251,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:54931/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:54931/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:56145/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:56145/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -213,16 +272,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:52619/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:52619/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:58722/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:58722/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:52619/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:58722/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:52619/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:58722/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -236,8 +295,8 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:52619/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:52619/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:58722/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:58722/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -257,16 +316,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:63288/chart/modules/chart-indicators-full.js?v=20260727b80",
-            "http://127.0.0.1:63288/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            "http://127.0.0.1:64804/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:64804/chart/modules/indicator-performance.js?v=b75-explicit-loader"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:63288/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:64804/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:63288/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:64804/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -280,8 +339,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:63288/chart/modules/chart-indicators-full.js?v=20260727b80",
-              "http://127.0.0.1:63288/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+              "http://127.0.0.1:64804/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:64804/chart/modules/indicator-performance.js?v=b75-explicit-loader"
             ]
           },
           "checks": {
@@ -302,16 +361,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:56275/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:56275/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:64539/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:64539/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:56275/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:64539/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:56275/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:64539/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -325,8 +384,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:56275/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:56275/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:64539/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:64539/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -346,16 +405,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:63289/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:63289/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:56014/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:56014/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:63289/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:56014/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:63289/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:56014/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -369,8 +428,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:63289/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:63289/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:56014/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:56014/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -390,16 +449,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:60591/chart/modules/indicator-performance.js",
-              "http://127.0.0.1:60591/chart/modules/chart-indicators-full.js"
+              "http://127.0.0.1:62082/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:62082/chart/modules/chart-indicators-full.js"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:60591/chart/modules/indicator-performance.js",
+                "url": "http://127.0.0.1:62082/chart/modules/indicator-performance.js",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:60591/chart/modules/chart-indicators-full.js",
+                "url": "http://127.0.0.1:62082/chart/modules/chart-indicators-full.js",
                 "status": 200
               }
             ],
@@ -413,8 +472,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:60591/chart/modules/indicator-performance.js",
-                "http://127.0.0.1:60591/chart/modules/chart-indicators-full.js"
+                "http://127.0.0.1:62082/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:62082/chart/modules/chart-indicators-full.js"
               ]
             },
             "checks": {
@@ -514,11 +573,11 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:55579/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:58606/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:55579/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:58606/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -532,7 +591,7 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:55579/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:58606/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -552,16 +611,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:57465/chart/modules/indicator-performance.js?v=20260727b80",
-            "http://127.0.0.1:57465/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:61310/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:61310/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:57465/chart/modules/indicator-performance.js?v=20260727b80",
+              "url": "http://127.0.0.1:61310/chart/modules/indicator-performance.js?v=20260727b80",
               "status": 503
             },
             {
-              "url": "http://127.0.0.1:57465/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:61310/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -575,8 +634,8 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:57465/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:57465/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:61310/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:61310/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -596,16 +655,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:49991/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:49991/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:53650/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:53650/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:49991/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:53650/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:49991/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:53650/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -619,8 +678,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:49991/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:49991/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:53650/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:53650/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -640,16 +699,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:49904/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:49904/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:50663/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:50663/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:49904/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:50663/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:49904/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:50663/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -663,8 +722,8 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:49904/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:49904/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:50663/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:50663/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -684,16 +743,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:64521/chart/modules/chart-indicators-full.js?v=20260727b80",
-            "http://127.0.0.1:64521/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            "http://127.0.0.1:62267/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:62267/chart/modules/indicator-performance.js?v=b75-explicit-loader"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:64521/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:62267/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:64521/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:62267/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -707,8 +766,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:64521/chart/modules/chart-indicators-full.js?v=20260727b80",
-              "http://127.0.0.1:64521/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+              "http://127.0.0.1:62267/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:62267/chart/modules/indicator-performance.js?v=b75-explicit-loader"
             ]
           },
           "checks": {
@@ -729,16 +788,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:55023/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:55023/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:65355/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:65355/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:55023/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:65355/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:55023/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:65355/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -752,8 +811,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:55023/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:55023/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:65355/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:65355/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -773,16 +832,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:50423/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:50423/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:62637/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:62637/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:50423/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:62637/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:50423/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:62637/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -796,8 +855,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:50423/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:50423/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:62637/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:62637/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -817,16 +876,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:55033/chart/modules/indicator-performance.js",
-              "http://127.0.0.1:55033/chart/modules/chart-indicators-full.js"
+              "http://127.0.0.1:58696/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:58696/chart/modules/chart-indicators-full.js"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:55033/chart/modules/indicator-performance.js",
+                "url": "http://127.0.0.1:58696/chart/modules/indicator-performance.js",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:55033/chart/modules/chart-indicators-full.js",
+                "url": "http://127.0.0.1:58696/chart/modules/chart-indicators-full.js",
                 "status": 200
               }
             ],
@@ -840,8 +899,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:55033/chart/modules/indicator-performance.js",
-                "http://127.0.0.1:55033/chart/modules/chart-indicators-full.js"
+                "http://127.0.0.1:58696/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:58696/chart/modules/chart-indicators-full.js"
               ]
             },
             "checks": {
@@ -941,52 +1000,9 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:63595/chart/modules/chart-indicators-full.js?v=20260727b80"
-          ],
-          "responses": [
-            {
-              "url": "http://127.0.0.1:63595/chart/modules/chart-indicators-full.js?v=20260727b80",
-              "status": 200
-            }
-          ],
-          "errors": [],
-          "runtime": {
-            "moduleGlobalType": "undefined",
-            "apis": {
-              "packBarsRangeCompact": "undefined",
-              "mergeIndicatorTailWindow": "undefined",
-              "estimateTailLookback": "undefined",
-              "hashIndicatorParams": "undefined"
-            },
-            "resources": [
-              "http://127.0.0.1:63595/chart/modules/chart-indicators-full.js?v=20260727b80"
-            ]
-          },
-          "checks": {
-            "referenced": false,
-            "executed": false,
-            "correctOrder": false,
-            "flagsAvailable": false,
-            "responsesOk": true
-          },
-          "pass": false
-        },
-        "blocked": {
-          "entry": "dist-v9-host",
-          "pathname": "/chart/dist-v9/index.html",
-          "mode": "blocked",
-          "host": "127.0.0.1",
-          "coldCache": true,
-          "serviceWorkerBypassed": true,
-          "requests": [
-            "http://127.0.0.1:57943/chart/modules/indicator-performance.js?v=20260727b80",
             "http://127.0.0.1:57943/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
-            {
-              "url": "http://127.0.0.1:57943/chart/modules/indicator-performance.js?v=20260727b80",
-              "status": 503
-            },
             {
               "url": "http://127.0.0.1:57943/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
@@ -1002,8 +1018,51 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:57943/chart/modules/indicator-performance.js?v=20260727b80",
               "http://127.0.0.1:57943/chart/modules/chart-indicators-full.js?v=20260727b80"
+            ]
+          },
+          "checks": {
+            "referenced": false,
+            "executed": false,
+            "correctOrder": false,
+            "flagsAvailable": false,
+            "responsesOk": true
+          },
+          "pass": false
+        },
+        "blocked": {
+          "entry": "dist-v9-host",
+          "pathname": "/chart/dist-v9/index.html",
+          "mode": "blocked",
+          "host": "127.0.0.1",
+          "coldCache": true,
+          "serviceWorkerBypassed": true,
+          "requests": [
+            "http://127.0.0.1:61772/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://127.0.0.1:61772/chart/modules/chart-indicators-full.js?v=20260727b80"
+          ],
+          "responses": [
+            {
+              "url": "http://127.0.0.1:61772/chart/modules/indicator-performance.js?v=20260727b80",
+              "status": 503
+            },
+            {
+              "url": "http://127.0.0.1:61772/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "status": 200
+            }
+          ],
+          "errors": [],
+          "runtime": {
+            "moduleGlobalType": "undefined",
+            "apis": {
+              "packBarsRangeCompact": "undefined",
+              "mergeIndicatorTailWindow": "undefined",
+              "estimateTailLookback": "undefined",
+              "hashIndicatorParams": "undefined"
+            },
+            "resources": [
+              "http://127.0.0.1:61772/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:61772/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -1023,16 +1082,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:59323/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:59323/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:51056/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:51056/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:59323/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:51056/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:59323/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:51056/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -1046,8 +1105,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:59323/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:59323/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:51056/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:51056/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -1067,16 +1126,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:54284/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://127.0.0.1:54284/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://127.0.0.1:59508/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://127.0.0.1:59508/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:54284/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:59508/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:54284/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:59508/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -1090,8 +1149,8 @@
               "hashIndicatorParams": "undefined"
             },
             "resources": [
-              "http://127.0.0.1:54284/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-              "http://127.0.0.1:54284/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:59508/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "http://127.0.0.1:59508/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -1111,16 +1170,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://127.0.0.1:53014/chart/modules/chart-indicators-full.js?v=20260727b80",
-            "http://127.0.0.1:53014/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            "http://127.0.0.1:64569/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "http://127.0.0.1:64569/chart/modules/indicator-performance.js?v=b75-explicit-loader"
           ],
           "responses": [
             {
-              "url": "http://127.0.0.1:53014/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+              "url": "http://127.0.0.1:64569/chart/modules/indicator-performance.js?v=b75-explicit-loader",
               "status": 200
             },
             {
-              "url": "http://127.0.0.1:53014/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://127.0.0.1:64569/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -1134,8 +1193,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://127.0.0.1:53014/chart/modules/chart-indicators-full.js?v=20260727b80",
-              "http://127.0.0.1:53014/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+              "http://127.0.0.1:64569/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "http://127.0.0.1:64569/chart/modules/indicator-performance.js?v=b75-explicit-loader"
             ]
           },
           "checks": {
@@ -1156,16 +1215,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:60632/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:60632/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:56380/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:56380/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:60632/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:56380/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:60632/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:56380/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -1179,8 +1238,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:60632/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:60632/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:56380/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:56380/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -1200,16 +1259,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:62228/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://127.0.0.1:62228/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://127.0.0.1:59832/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://127.0.0.1:59832/chart/modules/chart-indicators-full.js?v=20260727b80"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:62228/chart/modules/indicator-performance.js?v=20260727b80",
+                "url": "http://127.0.0.1:59832/chart/modules/indicator-performance.js?v=20260727b80",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:62228/chart/modules/chart-indicators-full.js?v=20260727b80",
+                "url": "http://127.0.0.1:59832/chart/modules/chart-indicators-full.js?v=20260727b80",
                 "status": 200
               }
             ],
@@ -1223,8 +1282,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:62228/chart/modules/indicator-performance.js?v=20260727b80",
-                "http://127.0.0.1:62228/chart/modules/chart-indicators-full.js?v=20260727b80"
+                "http://127.0.0.1:59832/chart/modules/indicator-performance.js?v=20260727b80",
+                "http://127.0.0.1:59832/chart/modules/chart-indicators-full.js?v=20260727b80"
               ]
             },
             "checks": {
@@ -1244,16 +1303,16 @@
             "coldCache": true,
             "serviceWorkerBypassed": true,
             "requests": [
-              "http://127.0.0.1:63290/chart/modules/indicator-performance.js",
-              "http://127.0.0.1:63290/chart/modules/chart-indicators-full.js"
+              "http://127.0.0.1:51710/chart/modules/indicator-performance.js",
+              "http://127.0.0.1:51710/chart/modules/chart-indicators-full.js"
             ],
             "responses": [
               {
-                "url": "http://127.0.0.1:63290/chart/modules/indicator-performance.js",
+                "url": "http://127.0.0.1:51710/chart/modules/indicator-performance.js",
                 "status": 200
               },
               {
-                "url": "http://127.0.0.1:63290/chart/modules/chart-indicators-full.js",
+                "url": "http://127.0.0.1:51710/chart/modules/chart-indicators-full.js",
                 "status": 200
               }
             ],
@@ -1267,8 +1326,8 @@
                 "hashIndicatorParams": "function"
               },
               "resources": [
-                "http://127.0.0.1:63290/chart/modules/indicator-performance.js",
-                "http://127.0.0.1:63290/chart/modules/chart-indicators-full.js"
+                "http://127.0.0.1:51710/chart/modules/indicator-performance.js",
+                "http://127.0.0.1:51710/chart/modules/chart-indicators-full.js"
               ]
             },
             "checks": {
@@ -1307,7 +1366,7 @@
       "clock": "process.hrtime.bigint",
       "coldCache": true,
       "serviceWorkerBypassed": true,
-      "elapsedNs": "4836360900"
+      "elapsedNs": "5151502500"
     },
     "excludedNonProductionSurface": "homepage/public/chart/talaria-design/live/index.html",
     "staticSurfaces": [
@@ -1370,11 +1429,11 @@
         "coldCache": true,
         "serviceWorkerBypassed": true,
         "requests": [
-          "http://localhost:59005/chart/modules/chart-indicators-full.js?v=20260727b80"
+          "http://localhost:62616/chart/modules/chart-indicators-full.js?v=20260727b80"
         ],
         "responses": [
           {
-            "url": "http://localhost:59005/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "url": "http://localhost:62616/chart/modules/chart-indicators-full.js?v=20260727b80",
             "status": 200
           }
         ],
@@ -1388,7 +1447,7 @@
             "hashIndicatorParams": "undefined"
           },
           "resources": [
-            "http://localhost:59005/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:62616/chart/modules/chart-indicators-full.js?v=20260727b80"
           ]
         },
         "checks": {
@@ -1408,16 +1467,16 @@
         "coldCache": true,
         "serviceWorkerBypassed": true,
         "requests": [
-          "http://localhost:64833/chart/modules/indicator-performance.js?v=20260727b80",
-          "http://localhost:64833/chart/modules/chart-indicators-full.js?v=20260727b80"
+          "http://localhost:51296/chart/modules/indicator-performance.js?v=20260727b80",
+          "http://localhost:51296/chart/modules/chart-indicators-full.js?v=20260727b80"
         ],
         "responses": [
           {
-            "url": "http://localhost:64833/chart/modules/indicator-performance.js?v=20260727b80",
+            "url": "http://localhost:51296/chart/modules/indicator-performance.js?v=20260727b80",
             "status": 503
           },
           {
-            "url": "http://localhost:64833/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "url": "http://localhost:51296/chart/modules/chart-indicators-full.js?v=20260727b80",
             "status": 200
           }
         ],
@@ -1431,8 +1490,8 @@
             "hashIndicatorParams": "undefined"
           },
           "resources": [
-            "http://localhost:64833/chart/modules/indicator-performance.js?v=20260727b80",
-            "http://localhost:64833/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:51296/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:51296/chart/modules/chart-indicators-full.js?v=20260727b80"
           ]
         },
         "checks": {
@@ -1452,16 +1511,16 @@
         "coldCache": true,
         "serviceWorkerBypassed": true,
         "requests": [
-          "http://localhost:50907/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-          "http://localhost:50907/chart/modules/chart-indicators-full.js?v=20260727b80"
+          "http://localhost:59555/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+          "http://localhost:59555/chart/modules/chart-indicators-full.js?v=20260727b80"
         ],
         "responses": [
           {
-            "url": "http://localhost:50907/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "url": "http://localhost:59555/chart/modules/indicator-performance.js?v=b75-explicit-loader",
             "status": 200
           },
           {
-            "url": "http://localhost:50907/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "url": "http://localhost:59555/chart/modules/chart-indicators-full.js?v=20260727b80",
             "status": 200
           }
         ],
@@ -1475,8 +1534,8 @@
             "hashIndicatorParams": "function"
           },
           "resources": [
-            "http://localhost:50907/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://localhost:50907/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:59555/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:59555/chart/modules/chart-indicators-full.js?v=20260727b80"
           ]
         },
         "checks": {
@@ -1496,16 +1555,16 @@
         "coldCache": true,
         "serviceWorkerBypassed": true,
         "requests": [
-          "http://localhost:54287/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-          "http://localhost:54287/chart/modules/chart-indicators-full.js?v=20260727b80"
+          "http://localhost:56133/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+          "http://localhost:56133/chart/modules/chart-indicators-full.js?v=20260727b80"
         ],
         "responses": [
           {
-            "url": "http://localhost:54287/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "url": "http://localhost:56133/chart/modules/indicator-performance.js?v=b75-explicit-loader",
             "status": 200
           },
           {
-            "url": "http://localhost:54287/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "url": "http://localhost:56133/chart/modules/chart-indicators-full.js?v=20260727b80",
             "status": 200
           }
         ],
@@ -1519,8 +1578,8 @@
             "hashIndicatorParams": "undefined"
           },
           "resources": [
-            "http://localhost:54287/chart/modules/indicator-performance.js?v=b75-explicit-loader",
-            "http://localhost:54287/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:56133/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:56133/chart/modules/chart-indicators-full.js?v=20260727b80"
           ]
         },
         "checks": {
@@ -1540,16 +1599,16 @@
         "coldCache": true,
         "serviceWorkerBypassed": true,
         "requests": [
-          "http://localhost:64611/chart/modules/chart-indicators-full.js?v=20260727b80",
-          "http://localhost:64611/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+          "http://localhost:61810/chart/modules/chart-indicators-full.js?v=20260727b80",
+          "http://localhost:61810/chart/modules/indicator-performance.js?v=b75-explicit-loader"
         ],
         "responses": [
           {
-            "url": "http://localhost:64611/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "url": "http://localhost:61810/chart/modules/indicator-performance.js?v=b75-explicit-loader",
             "status": 200
           },
           {
-            "url": "http://localhost:64611/chart/modules/chart-indicators-full.js?v=20260727b80",
+            "url": "http://localhost:61810/chart/modules/chart-indicators-full.js?v=20260727b80",
             "status": 200
           }
         ],
@@ -1563,8 +1622,8 @@
             "hashIndicatorParams": "function"
           },
           "resources": [
-            "http://localhost:64611/chart/modules/chart-indicators-full.js?v=20260727b80",
-            "http://localhost:64611/chart/modules/indicator-performance.js?v=b75-explicit-loader"
+            "http://localhost:61810/chart/modules/indicator-performance.js?v=b75-explicit-loader",
+            "http://localhost:61810/chart/modules/chart-indicators-full.js?v=20260727b80"
           ]
         },
         "checks": {
@@ -1585,16 +1644,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://localhost:57316/chart/modules/indicator-performance.js?v=20260727b80",
-            "http://localhost:57316/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:61207/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:61207/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://localhost:57316/chart/modules/indicator-performance.js?v=20260727b80",
+              "url": "http://localhost:61207/chart/modules/indicator-performance.js?v=20260727b80",
               "status": 200
             },
             {
-              "url": "http://localhost:57316/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://localhost:61207/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -1608,8 +1667,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://localhost:57316/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://localhost:57316/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://localhost:61207/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://localhost:61207/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -1629,16 +1688,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://localhost:56792/chart/modules/indicator-performance.js?v=20260727b80",
-            "http://localhost:56792/chart/modules/chart-indicators-full.js?v=20260727b80"
+            "http://localhost:64043/chart/modules/indicator-performance.js?v=20260727b80",
+            "http://localhost:64043/chart/modules/chart-indicators-full.js?v=20260727b80"
           ],
           "responses": [
             {
-              "url": "http://localhost:56792/chart/modules/indicator-performance.js?v=20260727b80",
+              "url": "http://localhost:64043/chart/modules/indicator-performance.js?v=20260727b80",
               "status": 200
             },
             {
-              "url": "http://localhost:56792/chart/modules/chart-indicators-full.js?v=20260727b80",
+              "url": "http://localhost:64043/chart/modules/chart-indicators-full.js?v=20260727b80",
               "status": 200
             }
           ],
@@ -1652,8 +1711,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://localhost:56792/chart/modules/indicator-performance.js?v=20260727b80",
-              "http://localhost:56792/chart/modules/chart-indicators-full.js?v=20260727b80"
+              "http://localhost:64043/chart/modules/indicator-performance.js?v=20260727b80",
+              "http://localhost:64043/chart/modules/chart-indicators-full.js?v=20260727b80"
             ]
           },
           "checks": {
@@ -1673,16 +1732,16 @@
           "coldCache": true,
           "serviceWorkerBypassed": true,
           "requests": [
-            "http://localhost:51519/chart/modules/indicator-performance.js",
-            "http://localhost:51519/chart/modules/chart-indicators-full.js"
+            "http://localhost:65418/chart/modules/indicator-performance.js",
+            "http://localhost:65418/chart/modules/chart-indicators-full.js"
           ],
           "responses": [
             {
-              "url": "http://localhost:51519/chart/modules/indicator-performance.js",
+              "url": "http://localhost:65418/chart/modules/indicator-performance.js",
               "status": 200
             },
             {
-              "url": "http://localhost:51519/chart/modules/chart-indicators-full.js",
+              "url": "http://localhost:65418/chart/modules/chart-indicators-full.js",
               "status": 200
             }
           ],
@@ -1696,8 +1755,8 @@
               "hashIndicatorParams": "function"
             },
             "resources": [
-              "http://localhost:51519/chart/modules/indicator-performance.js",
-              "http://localhost:51519/chart/modules/chart-indicators-full.js"
+              "http://localhost:65418/chart/modules/indicator-performance.js",
+              "http://localhost:65418/chart/modules/chart-indicators-full.js"
             ]
           },
           "checks": {

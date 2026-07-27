@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "candidate": "501fe23fb35748f1c911becb054064a4f9eba8a4",
+  "server": {
+    "implementation": "Next.js development server",
+    "command": "npm run dev -- --hostname 127.0.0.1 --port 43180",
+    "publicRoot": "homepage/public",
+    "reviewSurface": "rendered homepage public route"
+  },
+  "positive": {
+    "path": "homepage/public/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+    "sourcePath": "chart v 1.4/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+    "url": "http://127.0.0.1:43180/chart/multichart-prod/harness/h-a7b-r2-setup-contract.test.mjs",
+    "status": 200,
+    "contentType": "application/javascript; charset=UTF-8",
+    "bytes": 2110,
+    "sha256": "7e5c7789d6147a70ffc0e2f344dceb89a2c4b0a262865536f449e193b38c53e4",
+    "sourceMirrorByteIdentical": true
+  },
+  "negativeControl": {
+    "url": "http://127.0.0.1:43180/chart/multichart-prod/harness/not-present.test.mjs",
+    "status": 404,
+    "contentType": "text/html; charset=utf-8"
+  },
+  "verdict": "SERVABLE",
+  "boardDisposition": "owned-manifest-listed"
+}

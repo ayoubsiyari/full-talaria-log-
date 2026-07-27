@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -6,6 +6,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from '../../../chart v 1.4/chart/multichart-prod/harness/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js';
+import { runServableInventoryNegativeControls, validateServableInventory } from '../b80-indicator-loader/servable-inventory-preflight.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -281,6 +282,8 @@ const alternate = await run({ host: 'localhost' });
 alternate.host.clock = 'process.hrtime.bigint';
 alternate.host.elapsedNs = String(process.hrtime.bigint() - alternateStarted);
 const inverted = await run({ inverted: true });
+const buildPreflight = validateServableInventory();
+const buildPreflightNegativeControls = runServableInventoryNegativeControls();
 
 if (process.env.B75_GATE_DEBUG === '1') {
   process.stderr.write(`${JSON.stringify({
@@ -299,6 +302,8 @@ const evidence = {
   verdict: repeats.every((item) => item.productPass) && alternate.productPass ? 'GREEN' : 'RED',
   priorZeroMsGreen: 'INVALID',
   reason: 'A timing result cannot prove a cure that is absent from the measured product shell.',
+  buildPreflight,
+  buildPreflightNegativeControls,
   repeats,
   alternate,
   invertedAssertion: inverted.fourState,
