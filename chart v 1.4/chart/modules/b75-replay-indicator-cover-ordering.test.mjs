@@ -1,0 +1,231 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
+import vm from 'node:vm';
+
+const bridgeSource = fs.readFileSync(
+  new URL('../multichart-prod/panel-cmd-bridge.js', import.meta.url),
+  'utf8',
+);
+const indicatorSource = fs.readFileSync(
+  new URL('chart-indicators-full.js', import.meta.url),
+  'utf8',
+);
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function makePanelRuntime({ indicatorTypes = ['sma', 'ema', 'wma'], panelId = 'B' } = {}) {
+  const cover = deferred();
+  const applied = [];
+  const seeks = [];
+  const indicatorPasses = [];
+  const listeners = new Map();
+  const parentChart = {
+    currentFileId: 'host-file',
+    currentSymbol: 'EURUSD',
+    currentTimeframe: '1m',
+    replaySystem: {
+      replayTimestamp: 1_700_000_540_000,
+      isPlaying: true,
+      isActive: true,
+    },
+    data: [{ t: 1_700_000_540_000, c: 1.1 }],
+  };
+  const replaySystem = {
+    isActive: true,
+    isPlaying: false,
+    replayTimestamp: 1_700_000_000_000,
+    currentIndex: 10,
+    fullRawData: Array.from({ length: 20 }, (_, i) => ({
+      t: 1_700_000_000_000 + i * 60_000,
+      c: 1 + i / 100,
+    })),
+    autoScrollEnabled: true,
+    userHasPanned: false,
+    applyMultichartMirrorFrame(frame) {
+      applied.push({ ...frame });
+      this.replayTimestamp = frame.timestamp;
+      chart.scheduleReplayIndicatorRecalc?.(true);
+      return true;
+    },
+    goToReplayTimestamp(timestamp) {
+      seeks.push(timestamp);
+      this.replayTimestamp = timestamp;
+      chart.scheduleReplayIndicatorRecalc?.(chart._multichartPassivePlayActive === true);
+    },
+    setSpeed() {},
+    setPlaybackMode() {},
+  };
+  const chart = {
+    currentFileId: 'panel-file',
+    currentSymbol: 'GBPUSD',
+    currentTimeframe: '1m',
+    rawData: replaySystem.fullRawData,
+    data: replaySystem.fullRawData.slice(0, 11),
+    replaySystem,
+    indicators: {
+      active: indicatorTypes.map((type, i) => ({ id: `${type}-${i}`, type })),
+      data: {},
+    },
+    ensureReplayDataCoversTimestamp() {
+      return cover.promise;
+    },
+    scheduleReplayIndicatorRecalc(isPlaying) {
+      if (!this.indicators.active.length) return;
+      if (this._mcReplayOwnershipCommitPending === true) {
+        this._mcReplayIndicatorRecalcDeferred = true;
+        return;
+      }
+      indicatorPasses.push({
+        isPlaying,
+        coveragePending: this._mcReplayOwnershipCommitPending === true,
+        timestamp: replaySystem.replayTimestamp,
+      });
+    },
+    constrainOffset() {},
+    render() {},
+  };
+  const root = {
+    chart,
+    parent: {
+      chart: parentChart,
+      postMessage() {},
+      document: { querySelector() { return null; } },
+    },
+    location: {
+      search: `?multichart=1&panelId=${panelId}`,
+      origin: 'https://talaria.test',
+    },
+    document: {
+      readyState: 'complete',
+      addEventListener() {},
+      removeEventListener() {},
+      getElementById() { return null; },
+      querySelector() { return null; },
+    },
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(fn);
+    },
+    removeEventListener() {},
+    requestAnimationFrame(fn) { fn(); return 1; },
+    cancelAnimationFrame() {},
+    setTimeout,
+    clearTimeout,
+    setInterval() { return 1; },
+    clearInterval() {},
+    performance: { now: () => 1_000 },
+    URLSearchParams,
+    Promise,
+    Map,
+    Set,
+    Math,
+    Date,
+    console,
+  };
+  root.window = root;
+  root.globalThis = root;
+  vm.runInNewContext(bridgeSource, root);
+  return { root, chart, replaySystem, cover, applied, seeks, indicatorPasses };
+}
+
+async function settle() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+test('Play commits independent coverage before SMA/EMA/WMA recalc or frame paint', async () => {
+  const panel = makePanelRuntime();
+  const bridge = panel.root.MultichartCmdBridge;
+
+  await bridge.applyCommand('replayPlay', { speed: 60, mode: 'candle' });
+  await bridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    currentIndex: 20,
+    isPlaying: true,
+  });
+
+  assert.equal(panel.chart._mcReplayOwnershipCommitPending, true);
+  assert.equal(panel.applied.length, 0, 'frame paint must wait for coverage ownership');
+  assert.equal(panel.indicatorPasses.length, 0, 'indicator pass must not race coverage ownership');
+
+  panel.cover.resolve(true);
+  await settle();
+
+  assert.equal(panel.chart._mcReplayOwnershipCommitPending, false);
+  assert.ok(panel.seeks.length >= 1, 'covered panel must commit a seek');
+  assert.equal(panel.seeks.at(-1), 1_700_000_600_000);
+  assert.ok(panel.indicatorPasses.length >= 1);
+  assert.ok(panel.indicatorPasses.every((pass) => pass.coveragePending === false));
+});
+
+test('no-indicator control keeps the same coverage/frame ordering across panels', async () => {
+  const panels = ['B', 'C', 'D'].map((panelId) => makePanelRuntime({
+    indicatorTypes: [],
+    panelId,
+  }));
+
+  for (const panel of panels) {
+    await panel.root.MultichartCmdBridge.applyCommand('replayPlay', { speed: 60 });
+    await panel.root.MultichartCmdBridge.applyCommand('replayFrame', {
+      timestamp: 1_700_000_600_000,
+      currentIndex: 20,
+      isPlaying: true,
+    });
+    assert.equal(panel.applied.length, 0);
+    panel.cover.resolve(true);
+  }
+  await settle();
+
+  for (const panel of panels) {
+    assert.equal(panel.seeks.at(-1), 1_700_000_600_000);
+    assert.equal(panel.indicatorPasses.length, 0);
+  }
+});
+
+test('Pause tears down a pending cover; second Play commits only the latest frame', async () => {
+  const panel = makePanelRuntime();
+  const bridge = panel.root.MultichartCmdBridge;
+
+  await bridge.applyCommand('replayPlay', { speed: 60 });
+  await bridge.applyCommand('replayFrame', {
+    timestamp: 1_700_000_600_000,
+    isPlaying: true,
+  });
+  await bridge.applyCommand('replayPause', {});
+  panel.cover.resolve(true);
+  await settle();
+
+  assert.equal(panel.chart._mcReplayOwnershipCommitPending, false);
+  assert.equal(panel.seeks.includes(1_700_000_600_000), false,
+    'a covered result from the paused generation must not revive Play');
+
+  await bridge.applyCommand('replayPlay', { speed: 60 });
+  await bridge.applyCommand('replayFrame', {
+    timestamp: 1_700_001_140_000,
+    isPlaying: true,
+  });
+  await settle();
+
+  assert.equal(panel.seeks.at(-1), 1_700_001_140_000);
+  assert.ok(panel.indicatorPasses.every((pass) => pass.coveragePending === false));
+});
+
+test('ordering guard preserves frame-coherent ON/OFF legacy discrimination', () => {
+  const guard = indicatorSource.indexOf('this._mcReplayOwnershipCommitPending === true');
+  const coherentBranch = indicatorSource.indexOf('if (_m19ifFrameCoherentEnabled())', guard);
+  assert.ok(guard >= 0 && coherentBranch > guard,
+    'ownership guard must run before either frame-coherent branch');
+  assert.match(indicatorSource, /__TALARIA_DISABLE_M19I_FRAME_COHERENT_V1/);
+  assert.match(bridgeSource, /_mcPlayEagerCoverGeneration/);
+  assert.match(bridgeSource, /_mcReplayFrameAfterOwnershipCommit/);
+});
