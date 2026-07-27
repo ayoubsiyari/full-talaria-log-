@@ -1,0 +1,2146 @@
+{
+  "evidenceClass": "authenticated-session-849-owner-scoped-b75-po-v4-read-only-diagnostic",
+  "generatedAt": "2026-07-27T09:04:24.358Z",
+  "expectedBuild": "20260726b75",
+  "browserProfile": "fresh-ephemeral",
+  "sessionId": "owner-session-849",
+  "cells": [
+    {
+      "kind": "candle-mode-control",
+      "before": {
+        "label": "candle-paused-before-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "candle",
+        "playPauseState": "paused",
+        "loopKind": null,
+        "currentIndex": 1240,
+        "committedCandleIndex": 1240,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": null,
+        "displayedLastCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 1748.5,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 1853.5,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 4171.20000000298,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "candle",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 1104.7000000029802,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      },
+      "after": {
+        "label": "candle-after-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "candle",
+        "playPauseState": "paused",
+        "loopKind": null,
+        "currentIndex": 1240,
+        "committedCandleIndex": 1240,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": null,
+        "displayedLastCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 554.4000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 679.9000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 156.1000000089407,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "paused-tick-refresh",
+      "before": {
+        "label": "tick-paused-before-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 150000,
+        "tickProgress": 3,
+        "rawTickTimestamp": 1549879350000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549882800000,
+          "open": 1.13041,
+          "high": 1.13064,
+          "low": 1.13041,
+          "close": 1.13064
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 554.4000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 679.9000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 4256.5,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 156.1000000089407,
+              "visibilityState": "visible"
+            }
+          ]
+        },
+        "livePlayPauseState": "playing"
+      },
+      "after": {
+        "label": "tick-paused-after-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": null,
+        "currentIndex": 1240,
+        "committedCandleIndex": 1240,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": null,
+        "displayedLastCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 443.8999999910593,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 557.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 134.3999999910593,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "tick-exit-reentry",
+      "before": {
+        "label": "tick-paused-before-exit",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 150000,
+        "tickProgress": 3,
+        "rawTickTimestamp": 1549879350000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549882800000,
+          "open": 1.13041,
+          "high": 1.13064,
+          "low": 1.13041,
+          "close": 1.13064
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 443.8999999910593,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 557.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 3933.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 134.3999999910593,
+              "visibilityState": "visible"
+            }
+          ]
+        },
+        "livePlayPauseState": "playing"
+      },
+      "after": {
+        "label": "tick-after-exit-reentry",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13035,
+          "low": 1.1302,
+          "close": 1.1303
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 443.8999999910593,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 557.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 3933.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 134.3999999910593,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "playing-refresh",
+      "before": {
+        "label": "playing-before-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "playing",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 200000,
+        "tickProgress": 4,
+        "rawTickTimestamp": 1549879400000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549882800000,
+          "open": 1.13041,
+          "high": 1.13064,
+          "low": 1.13041,
+          "close": 1.1304500000000002
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 443.8999999910593,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 557.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 3933.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            },
+            {
+              "at": 4041.0999999940395,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 4133.699999988079,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 134.3999999910593,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      },
+      "after": {
+        "label": "playing-after-refresh",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": null,
+        "currentIndex": 1240,
+        "committedCandleIndex": 1240,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": null,
+        "displayedLastCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "hover": {
+          "timestamp": null,
+          "label": null,
+          "sourceDataIndex": null
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 406,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 529.1000000089407,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 109.90000000596046,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "forming-candle-hover",
+      "before": {
+        "label": "forming-hover",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549882800000,
+          "open": 1.13041,
+          "high": 1.13064,
+          "low": 1.13041,
+          "close": 1.13064
+        },
+        "hover": {
+          "timestamp": 1549879200000,
+          "label": "Mon 11 Feb '19  05:00",
+          "sourceDataIndex": 1241
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 406,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 529.1000000089407,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 3919.9000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 109.90000000596046,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      },
+      "after": {
+        "label": "forming-hover",
+        "buildId": "20260726b75",
+        "replayMode": "tick",
+        "playPauseState": "paused",
+        "loopKind": "tick",
+        "currentIndex": 1240,
+        "committedCandleIndex": 1239,
+        "replayTimestamp": 1549879200000,
+        "tickElapsedMs": 0,
+        "tickProgress": 0,
+        "rawTickTimestamp": 1549879200000,
+        "rawCandle": {
+          "timestamp": 1549879200000,
+          "open": 1.13026,
+          "high": 1.13058,
+          "low": 1.12967,
+          "close": 1.13041
+        },
+        "formingCandle": {
+          "timestamp": 1549882800000
+        },
+        "displayedLastCandle": {
+          "timestamp": 1549882800000,
+          "open": 1.13041,
+          "high": 1.13064,
+          "low": 1.13041,
+          "close": 1.13064
+        },
+        "hover": {
+          "timestamp": 1549879200000,
+          "label": "Mon 11 Feb '19  05:00",
+          "sourceDataIndex": 1241
+        },
+        "persistence": {
+          "localStorageKeys": [
+            "u[id]_active_trading_session_id",
+            "u[id]_backtestingSession"
+          ],
+          "writes": [
+            {
+              "at": 406,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 529.1000000089407,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": null
+            },
+            {
+              "at": 3919.9000000059605,
+              "method": "PATCH",
+              "path": "/api/sessions/[owner]/state",
+              "replay": {
+                "keys": [
+                  "currentIndex",
+                  "dashboard",
+                  "isActive",
+                  "playbackMode",
+                  "replayTimestamp",
+                  "speed",
+                  "tickElapsedMs",
+                  "timeframe"
+                ],
+                "replayTimestamp": 1549879200000,
+                "currentIndex": 1240,
+                "tickElapsedMs": 0,
+                "playbackMode": "tick",
+                "isPlaying": null,
+                "hasAnimatingCandle": false,
+                "hasTickProgress": false,
+                "hasTickPath": false
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "type": "pageshow",
+              "at": 109.90000000596046,
+              "visibilityState": "visible"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "writes": [
+    {
+      "at": 1748.5,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 1853.5,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 4171.20000000298,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "candle",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 554.4000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 679.9000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 554.4000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 679.9000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 4256.5,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 443.8999999910593,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 557.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 443.8999999910593,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 557.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 3933.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 443.8999999910593,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 557.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 3933.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 443.8999999910593,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 557.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 3933.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 4041.0999999940395,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 4133.699999988079,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 406,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 529.1000000089407,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 406,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 529.1000000089407,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 3919.9000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    },
+    {
+      "at": 406,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 529.1000000089407,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": null
+    },
+    {
+      "at": 3919.9000000059605,
+      "method": "PATCH",
+      "path": "/api/sessions/[owner]/state",
+      "replay": {
+        "keys": [
+          "currentIndex",
+          "dashboard",
+          "isActive",
+          "playbackMode",
+          "replayTimestamp",
+          "speed",
+          "tickElapsedMs",
+          "timeframe"
+        ],
+        "replayTimestamp": 1549879200000,
+        "currentIndex": 1240,
+        "tickElapsedMs": 0,
+        "playbackMode": "tick",
+        "isPlaying": null,
+        "hasAnimatingCandle": false,
+        "hasTickProgress": false,
+        "hasTickPath": false
+      }
+    }
+  ],
+  "lifecycle": [
+    {
+      "type": "pageshow",
+      "at": 1104.7000000029802,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 156.1000000089407,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 156.1000000089407,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 134.3999999910593,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 134.3999999910593,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 134.3999999910593,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 134.3999999910593,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 109.90000000596046,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 109.90000000596046,
+      "visibilityState": "visible"
+    },
+    {
+      "type": "pageshow",
+      "at": 109.90000000596046,
+      "visibilityState": "visible"
+    }
+  ],
+  "pageErrors": [],
+  "preflight": {
+    "loginStatus": 200,
+    "identityStatus": 200,
+    "sessionsStatus": 200,
+    "authenticated": true,
+    "ownerSessionDiscovered": true,
+    "sessionId": "owner-session-849",
+    "cookieMetadata": [
+      {
+        "name": "[auth-cookie]",
+        "domain": "31.97.192.82",
+        "path": "/",
+        "secure": false,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      },
+      {
+        "name": "[auth-cookie]",
+        "domain": "31.97.192.82",
+        "path": "/",
+        "secure": false,
+        "httpOnly": true,
+        "sameSite": "Lax"
+      }
+    ]
+  },
+  "matrix": {
+    "verdict": "RED",
+    "mechanisms": {
+      "checkpointCadence": true,
+      "formingTickStateOmitted": true,
+      "displayTimestampOffByOne": true
+    },
+    "mapping": {
+      "MC_RESTORE": [
+        "candle-mode-control",
+        "paused-tick-refresh",
+        "playing-refresh"
+      ],
+      "M8": [
+        "paused-tick-refresh",
+        "tick-exit-reentry",
+        "playing-refresh"
+      ],
+      "M25": [
+        "forming-candle-hover"
+      ]
+    },
+    "cells": [
+      {
+        "kind": "candle-mode-control",
+        "before": {
+          "label": "candle-paused-before-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "candle",
+          "playPauseState": "paused",
+          "loopKind": null,
+          "currentIndex": 1240,
+          "committedCandleIndex": 1240,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": null,
+          "displayedLastCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 1748.5,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 1853.5,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 4171.20000000298,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "candle",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 1104.7000000029802,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "after": {
+          "label": "candle-after-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "candle",
+          "playPauseState": "paused",
+          "loopKind": null,
+          "currentIndex": 1240,
+          "committedCandleIndex": 1240,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": null,
+          "displayedLastCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 554.4000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 679.9000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 156.1000000089407,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "oracle": {
+          "verdict": "GREEN_EXACT_CANDLE_CONTROL",
+          "secondsLost": 0
+        }
+      },
+      {
+        "kind": "paused-tick-refresh",
+        "before": {
+          "label": "tick-paused-before-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 150000,
+          "tickProgress": 3,
+          "rawTickTimestamp": 1549879350000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549882800000,
+            "open": 1.13041,
+            "high": 1.13064,
+            "low": 1.13041,
+            "close": 1.13064
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 554.4000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 679.9000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 4256.5,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 156.1000000089407,
+                "visibilityState": "visible"
+              }
+            ]
+          },
+          "livePlayPauseState": "playing"
+        },
+        "after": {
+          "label": "tick-paused-after-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": null,
+          "currentIndex": 1240,
+          "committedCandleIndex": 1240,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": null,
+          "displayedLastCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 443.8999999910593,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 557.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 134.3999999910593,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "oracle": {
+          "verdict": "RED_FORMING_TICK_STATE_OMITTED",
+          "exact": {
+            "rawTick": false,
+            "substep": false,
+            "formingCandle": false,
+            "committedIndex": false
+          },
+          "secondsLost": 150
+        }
+      },
+      {
+        "kind": "tick-exit-reentry",
+        "before": {
+          "label": "tick-paused-before-exit",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 150000,
+          "tickProgress": 3,
+          "rawTickTimestamp": 1549879350000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549882800000,
+            "open": 1.13041,
+            "high": 1.13064,
+            "low": 1.13041,
+            "close": 1.13064
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 443.8999999910593,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 557.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 3933.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 134.3999999910593,
+                "visibilityState": "visible"
+              }
+            ]
+          },
+          "livePlayPauseState": "playing"
+        },
+        "after": {
+          "label": "tick-after-exit-reentry",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13035,
+            "low": 1.1302,
+            "close": 1.1303
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 443.8999999910593,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 557.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 3933.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 134.3999999910593,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "oracle": {
+          "verdict": "RED_FORMING_TICK_STATE_OMITTED",
+          "exact": {
+            "rawTick": false,
+            "substep": false,
+            "formingCandle": true,
+            "committedIndex": true
+          },
+          "secondsLost": 150
+        }
+      },
+      {
+        "kind": "playing-refresh",
+        "before": {
+          "label": "playing-before-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "playing",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 200000,
+          "tickProgress": 4,
+          "rawTickTimestamp": 1549879400000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549882800000,
+            "open": 1.13041,
+            "high": 1.13064,
+            "low": 1.13041,
+            "close": 1.1304500000000002
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 443.8999999910593,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 557.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 3933.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              },
+              {
+                "at": 4041.0999999940395,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 4133.699999988079,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 134.3999999910593,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "after": {
+          "label": "playing-after-refresh",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": null,
+          "currentIndex": 1240,
+          "committedCandleIndex": 1240,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": null,
+          "displayedLastCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "hover": {
+            "timestamp": null,
+            "label": null,
+            "sourceDataIndex": null
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 406,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 529.1000000089407,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 109.90000000596046,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "oracle": {
+          "verdict": "RED_PLAYING_CHECKPOINT_STALE",
+          "secondsLost": 200
+        }
+      },
+      {
+        "kind": "forming-candle-hover",
+        "before": {
+          "label": "forming-hover",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549882800000,
+            "open": 1.13041,
+            "high": 1.13064,
+            "low": 1.13041,
+            "close": 1.13064
+          },
+          "hover": {
+            "timestamp": 1549879200000,
+            "label": "Mon 11 Feb '19  05:00",
+            "sourceDataIndex": 1241
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 406,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 529.1000000089407,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 3919.9000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 109.90000000596046,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "after": {
+          "label": "forming-hover",
+          "buildId": "20260726b75",
+          "replayMode": "tick",
+          "playPauseState": "paused",
+          "loopKind": "tick",
+          "currentIndex": 1240,
+          "committedCandleIndex": 1239,
+          "replayTimestamp": 1549879200000,
+          "tickElapsedMs": 0,
+          "tickProgress": 0,
+          "rawTickTimestamp": 1549879200000,
+          "rawCandle": {
+            "timestamp": 1549879200000,
+            "open": 1.13026,
+            "high": 1.13058,
+            "low": 1.12967,
+            "close": 1.13041
+          },
+          "formingCandle": {
+            "timestamp": 1549882800000
+          },
+          "displayedLastCandle": {
+            "timestamp": 1549882800000,
+            "open": 1.13041,
+            "high": 1.13064,
+            "low": 1.13041,
+            "close": 1.13064
+          },
+          "hover": {
+            "timestamp": 1549879200000,
+            "label": "Mon 11 Feb '19  05:00",
+            "sourceDataIndex": 1241
+          },
+          "persistence": {
+            "localStorageKeys": [
+              "u[id]_active_trading_session_id",
+              "u[id]_backtestingSession"
+            ],
+            "writes": [
+              {
+                "at": 406,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 529.1000000089407,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": null
+              },
+              {
+                "at": 3919.9000000059605,
+                "method": "PATCH",
+                "path": "/api/sessions/[owner]/state",
+                "replay": {
+                  "keys": [
+                    "currentIndex",
+                    "dashboard",
+                    "isActive",
+                    "playbackMode",
+                    "replayTimestamp",
+                    "speed",
+                    "tickElapsedMs",
+                    "timeframe"
+                  ],
+                  "replayTimestamp": 1549879200000,
+                  "currentIndex": 1240,
+                  "tickElapsedMs": 0,
+                  "playbackMode": "tick",
+                  "isPlaying": null,
+                  "hasAnimatingCandle": false,
+                  "hasTickProgress": false,
+                  "hasTickPath": false
+                }
+              }
+            ],
+            "lifecycle": [
+              {
+                "type": "pageshow",
+                "at": 109.90000000596046,
+                "visibilityState": "visible"
+              }
+            ]
+          }
+        },
+        "oracle": {
+          "verdict": "RED_DISPLAY_TIMESTAMP_OFF_BY_ONE",
+          "expectedTimestamp": 1549882800000,
+          "actualTimestamp": 1549879200000,
+          "secondsLost": 3600
+        }
+      }
+    ]
+  },
+  "verdict": "RED"
+}
