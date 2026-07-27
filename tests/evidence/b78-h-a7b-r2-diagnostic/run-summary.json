@@ -1,0 +1,78 @@
+{
+  "schema": "h-a7b-r2-tier2-diagnostic/v1",
+  "runtime": {
+    "node": "24.15.0",
+    "puppeteer": "24.43.1",
+    "chrome": "148.0.7778.97",
+    "port": 18971,
+    "surface": "built-dist-v9"
+  },
+  "runs": [
+    {
+      "source": "6880a603004b1c1957c3a398f3583eb20b590ca3",
+      "build": "20260726b75",
+      "mode": "3x isolate-session",
+      "verdicts": ["PASS", "PASS", "PASS"]
+    },
+    {
+      "source": "6bd26ad93f3abe506f16737b787c4b1d17aa2b88",
+      "build": "20260727b77",
+      "mode": "3x isolate-session",
+      "verdicts": ["PASS", "PASS", "PASS"]
+    },
+    {
+      "source": "6fe50178a946a750825bb8bfb1e71c3488625193",
+      "build": "20260727b78",
+      "mode": "3x isolate-session",
+      "verdicts": ["PASS", "FAIL", "PASS"],
+      "failures": [
+        {
+          "phase": "input",
+          "firstDivergentValue": "fileIds.B",
+          "expected": "27",
+          "actual": "25",
+          "bars": 2011,
+          "subsequentGeometry": {
+            "marginR": 61,
+            "marginB": 30,
+            "axisW": 61,
+            "chPlot": 829,
+            "crush": false,
+            "floorOk": true
+          }
+        },
+        {
+          "phase": "actuation",
+          "failurePoint": "placeTool",
+          "message": "need 1 points for anchored-volume-profile",
+          "firstGeometryFrame": null
+        }
+      ]
+    },
+    {
+      "source": "6fe50178a946a750825bb8bfb1e71c3488625193",
+      "build": "20260727b78",
+      "mode": "10x shared-browser",
+      "verdicts": ["PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS"]
+    },
+    {
+      "source": "6fe50178a946a750825bb8bfb1e71c3488625193",
+      "build": "20260727b78",
+      "mode": "3x axis-margin-floor-off",
+      "verdicts": ["FAIL", "FAIL", "FAIL"],
+      "classification": "FAIL-REAL-BUG",
+      "mechanismProbeAfter": [5, 5, 5]
+    }
+  ],
+  "stableGeometry": {
+    "marginR": 61,
+    "marginB": 30,
+    "axisW": 61,
+    "chPlot": 829,
+    "crush": false,
+    "floorOk": true,
+    "mechanismProbeAfter": 60
+  },
+  "classification": "baseline-retained-harness-setup-susceptibility",
+  "candidateRegression": false
+}
