@@ -25,7 +25,28 @@ function stripHtmlComments(source) {
 }
 
 function stripInertHtmlBlocks(source) {
-  return source.replace(/<(noscript|template)\b[\s\S]*?<\/\1>/gi, '');
+  const ranges = [];
+  const stack = [];
+  const tagPattern = /<\/?(noscript|template)\b[^>]*>/gi;
+  for (const match of source.matchAll(tagPattern)) {
+    const [tag, tagName] = match;
+    const normalized = tagName.toLowerCase();
+    if (!tag.startsWith('</')) {
+      stack.push({ tagName: normalized, index: match.index });
+      continue;
+    }
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      if (stack[i].tagName !== normalized) continue;
+      const open = stack[i];
+      stack.length = i;
+      if (stack.length === 0) ranges.push([open.index, match.index + tag.length]);
+      break;
+    }
+  }
+  for (const open of stack) ranges.push([open.index, source.length]);
+  return ranges
+    .sort((a, b) => b[0] - a[0])
+    .reduce((out, [from, to]) => maskRange(out, from, to), source);
 }
 
 function stripJsComments(source) {
@@ -73,7 +94,12 @@ function readAttribute(attrs, name) {
   return match ? (match[1] ?? match[2] ?? match[3] ?? '') : '';
 }
 
+function hasAttribute(attrs, name) {
+  return new RegExp(`\\b${name}(?:\\s*=|\\s|$)`, 'i').test(attrs);
+}
+
 function isExecutableScript(attrs) {
+  if (hasAttribute(attrs, 'nomodule')) return false;
   return EXECUTABLE_SCRIPT_TYPES.has(readAttribute(attrs, 'type').trim().toLowerCase());
 }
 
@@ -126,13 +152,103 @@ function maskNonExecutingFunctionBodies(source) {
   return out;
 }
 
+function endOfStatementAt(source, startAt) {
+  let quote = null;
+  let escaped = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  for (let i = startAt; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') parenDepth += 1;
+    if (ch === ')') parenDepth = Math.max(0, parenDepth - 1);
+    if (ch === '[') bracketDepth += 1;
+    if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+    if ((ch === ';' || ch === '\n') && parenDepth === 0 && bracketDepth === 0) return i + 1;
+  }
+  return source.length;
+}
+
+function maskNonExecutingArrowBodies(source) {
+  let out = source;
+  const ranges = [];
+  for (const match of out.matchAll(/=>/g)) {
+    let bodyAt = match.index + match[0].length;
+    while (/\s/.test(out[bodyAt] || '')) bodyAt += 1;
+    if (out[bodyAt] === '{') {
+      const closeAt = matchingBraceAt(out, bodyAt);
+      if (closeAt < 0) continue;
+      const after = out.slice(closeAt + 1);
+      const invokedImmediately = /^\s*\)\s*\(\s*\)\s*;?/.test(after);
+      if (!invokedImmediately) ranges.push([bodyAt, closeAt + 1]);
+      continue;
+    }
+    const endAt = endOfStatementAt(out, bodyAt);
+    ranges.push([bodyAt, endAt]);
+  }
+  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
+  return out;
+}
+
+function endOfConditionAt(source, openAt) {
+  let quote = null;
+  let escaped = false;
+  let depth = 0;
+  for (let i = openAt; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 function maskDeadControlBlocks(source) {
   let out = source;
   const ranges = [];
-  for (const match of out.matchAll(/\b(?:if\s*\(\s*0\s*\)|while\s*\(\s*false\s*\))\s*\{/g)) {
-    const openAt = out.indexOf('{', match.index);
-    const closeAt = matchingBraceAt(out, openAt);
-    if (closeAt >= 0) ranges.push([match.index, closeAt + 1]);
+  for (const match of out.matchAll(/\b(?:if|while)\s*\(/g)) {
+    const conditionOpenAt = out.indexOf('(', match.index);
+    const conditionCloseAt = endOfConditionAt(out, conditionOpenAt);
+    if (conditionCloseAt < 0) continue;
+    const condition = out.slice(conditionOpenAt + 1, conditionCloseAt).replace(/\s+/g, '');
+    if (!['0', 'false', '!1'].includes(condition)) continue;
+    let bodyAt = conditionCloseAt + 1;
+    while (/\s/.test(out[bodyAt] || '')) bodyAt += 1;
+    if (out[bodyAt] === '{') {
+      const closeAt = matchingBraceAt(out, bodyAt);
+      if (closeAt >= 0) ranges.push([match.index, closeAt + 1]);
+      continue;
+    }
+    ranges.push([match.index, endOfStatementAt(out, bodyAt)]);
   }
   for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
   return out;
@@ -151,7 +267,9 @@ function maskAfterReturnOrThrow(source) {
 }
 
 function executableJs(source) {
-  return maskAfterReturnOrThrow(maskDeadControlBlocks(maskNonExecutingFunctionBodies(stripJsComments(source))));
+  return maskAfterReturnOrThrow(
+    maskDeadControlBlocks(maskNonExecutingArrowBodies(maskNonExecutingFunctionBodies(stripJsComments(source)))),
+  );
 }
 
 function scriptPaths(html) {
