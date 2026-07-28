@@ -1551,3 +1551,39 @@ Two caveats recorded in the spec rather than buried. The staleness mechanism is 
 Coverage: **(S)** for ownership, which rests on a direct census. **(P)** for the mechanism.
 
 Reserved as reviewer for A's packet.
+
+---
+
+## B-0087 — I attacked my own gate's static ban and 5 of 7 regressions walk through it
+
+The pair correction is verified. I checked `3/31` myself rather than accept the report: all five markers collide under the old broad selector (`multi-tp-avg-3` inside `multi-tp-avg-31`, and so on) and **no narrow token selector leaks to the sibling**. The control confirms the rejected pair — `"pending-tp-13".includes("pending-tp-3")` is `false`. Gate runs green here, 9 passed / 0 failed, exit 0, ~72s. Mutation ledger now **31 designed / 1 survived**, split browser oracle 10, static ban 9, parse health 11, survivor being the pure stub alone.
+
+Then I read B-W10's honesty note — *"for an actual source regression the static ban will catch it before the browser matters"* — and treated it as the claim to attack, since it means **the ban, not the browser, is the real barrier**. VER-02 says a gate that pattern-matches text is provisional until attacked outside its acceptance suite.
+
+`b-v6-selector-collision.red.mjs:294`:
+
+```js
+const orderIdInterpolation = /\$\{\s*(?:oid|orderId|id|poId|primaryLegId|entry\.pendingOrder\.id|order\.id)\b[^}]*\}/;
+```
+
+I replicated the predicate exactly and ran candidate regressions through it. **5 of 7 evade:**
+
+```
+CAUGHT  the original bug, verbatim   `[class*="pending-tp-${orderId}"]`
+CAUGHT  same, oid                    `[class*="multi-tp-avg-${oid}"]`
+EVADED  string concatenation         '[class*="pending-tp-' + oid + '"]'
+EVADED  unlisted var name            `[class*="pending-tp-${ordId}"]`
+EVADED  unlisted path                `[class*="pending-tp-${ol.orderId}"]`
+EVADED  unlisted path                `[class*="pending-tp-${row.id}"]`
+EVADED  String(oid)                  `[class*="pending-tp-${String(oid)}"]`
+```
+
+**The ban catches exactly the two spellings that already existed in history, and nothing else.** It is not a rule about the defect; it is a list of the two examples I showed it. That is the same shape as every other vacuity I have hit today — an artefact that appears to encode a property but has actually memorised the instances.
+
+The sharpest one: `${ol.orderId}` evades, and **`ol` is the variable name this very file uses in its own eviction filter predicates** (`(ol) => !(ol.orderId === orderId ...)`, the sites I fixed for the eviction invariant). The single most idiomatic spelling a future author here would reach for walks straight through.
+
+**Fix dispatched:** stop matching identifiers, match the shape. Ban **any** `[class*=` in a `selectAll` argument in `order-manager.js`, unconditionally, plus the concatenation form. There is no legitimate use of a substring class selector in these removal paths. That predicate is genuinely closed — nothing to enumerate, therefore nothing to escape. Asked B-W10 to first report any legitimate `[class*=` in the file; if some exist the ban becomes an allowlist of **exact literals**, which is closed in a way an allowlist of identifiers is not. All seven forms become permanent mutants, because the mutants are the memory and that is what stops the hole reopening silently.
+
+**General lesson, and it is the one I keep relearning:** an enumeration over an open set can only ever be a list of the cases someone thought of. The distinction that matters is not "does the check pass" but **"is the universe the check quantifies over closed"**. Identifier names are not closed. Selector shapes are.
+
+Temp probes deleted; tree clean apart from the in-flight agents' own edits.
