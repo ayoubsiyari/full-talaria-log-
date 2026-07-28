@@ -34,6 +34,7 @@
  * match exactly once or the harness throws — so this doubles as a machine-checked
  * wiring instruction that cannot silently rot.
  */
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -1259,6 +1260,15 @@ export function seriesSha256(series) {
 }
 
 /* ── evidence ────────────────────────────────────────────────────────────── */
+
+/** Commit the evidence is being generated against. Best-effort by design. */
+export function readBuildSha() {
+    try {
+        return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT }).toString().trim();
+    } catch {
+        return 'unknown';
+    }
+}
 
 export function writeEvidence(name, body) {
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });

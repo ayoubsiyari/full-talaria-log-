@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 
-import { REPO_ROOT, writeEvidence } from './m22-session-calendar-harness.mjs';
+import { REPO_ROOT, readBuildSha, writeEvidence } from './m22-session-calendar-harness.mjs';
 
 const ORACLE = 'chart v 1.4/chart/modules/m22-session-calendar-bucketing.red.test.mjs';
 
@@ -120,6 +120,9 @@ const summary = {
     row: 'Session-calendar bucketing (canary blocker)',
     tier: 3,
     ruling: '§A5 test-integrity policy',
+    // The per-state files carry this; the summary did not, which made the
+    // top-level proof artifact the one thing that could not be tied to a tree.
+    buildSha: readBuildSha(),
     fourStateProof: byState,
     fourStateProofHolds: Object.values(byState).every((s) => s.allAsExpected),
     repeatPolicy: '3x on the authoring clock per state, plus 7 alternate timezones per state',
