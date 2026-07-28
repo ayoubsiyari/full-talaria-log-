@@ -4,6 +4,19 @@
 # ownership preflight (scripts/territory-preflight.mjs) rejects any packet whose
 # authoring manager is not Director and whose touched-file list includes it.
 #
+# WHAT THIS ENFORCES, AND WHAT IT DOES NOT (Director ruling A16.2). The `Manager:`
+# commit trailer is SELF-DECLARED. The gate reads it; it does not authenticate it.
+# A commit claiming `Manager: Director` is therefore not proof of Director
+# authorship, and this file's governance is not cryptographically enforced.
+# Two real controls exist and are the ones to rely on:
+#   1. The manifest governing a packet is read from the packet's BASE commit, never
+#      its head, so a packet cannot widen its own territory in the same diff.
+#   2. Director commits land only on a `director/` branch (A14.4); `--manager` is a
+#      branch cross-check, not an identity proof.
+# Deliberate trailer forgery is out of band and is a trust boundary, not a CI
+# control. Stated plainly rather than implied away, per VER-01: a gate must not
+# claim a guarantee it cannot enforce.
+#
 # AUTHORITY: DIRECTOR-RULINGS-20260727.md Part A section A11 (three managers,
 # continuously parallel) and A11.2 (Manager C queue item 1).
 #
@@ -130,6 +143,10 @@ managers:
         reason: generated product mirrors of the above
       - pattern: homepage/out/chart/**
         provenance: inferred
+      - pattern: docs/plan3/journal/MANAGER-A.md
+        provenance: ruling
+        authority: A16.1 - each manager holds a positive grant to its own journal; the
+          journals block alone conferred no write right, so A and B were unowned
     denied_paths:
       - pattern: docs/plan3/journal/MANAGER-B.md
         reason: another manager's journal
@@ -166,6 +183,9 @@ managers:
         reason: A4 preference persistence contract (V8/M15)
       - pattern: chart v 1.4/chart/modules/preferences-init.js
         provenance: inferred
+      - pattern: docs/plan3/journal/MANAGER-B.md
+        provenance: ruling
+        authority: A16.1
     denied_paths:
       - pattern: chart v 1.4/chart/chart.js
         reason: A11.3 - V6 order-line paint and drag preview must not be authored in chart.js by B until the ownership audit reports

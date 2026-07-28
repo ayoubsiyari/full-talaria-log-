@@ -359,6 +359,46 @@ B held PO-REQ at zero rather than emit non-compliant requests — correct discip
 
 **Note the convergence:** once §A15.3's browser runner exists, both of B's blocked observations — V6-P1's ignition log line and the V8 pin lifecycle — become **agent-executable, and require no PO at all.** The instrument that unblocks RED-first also removes the PO from the loop. This raises C's runner above its queue position.
 
+## A16. Train-3 rulings (2026-07-28 08:35)
+
+### A16.0 The Director's leading hypothesis is falsified — recorded, not quietly dropped
+
+On 2026-07-27 I promoted "the indicator lag is a data effect caused by stale completed-bar closes" to leading hypothesis for the lag family, on the strength of the D2/D3 monotonic scaling. **Manager A falsified it overnight.** TAL-01918 is a **presentation defect** — a wrong-window/unmarked-forming-candle problem — not a value mutation; the row is renamed accordingly, and the separate lag probe (P4) was withdrawn at 04:07 after being rewired through `getDisplaySeries`.
+
+**The lag family is therefore still open with no leading hypothesis, and that is the honest state.** Recorded here because a Director hypothesis that quietly evaporates is how a corpus rots — the same failure as an unstamped closure. A's retraction of its own attribution and identity claims at 04:30 is the standard.
+
+### A16.1 Journal grants — TERR-F4 closed
+
+The `journals:` block conferred append-only *rules* but no *write right*, so Managers A and B held no positive grant to their own journals while C did. **Granted in `TERRITORY.yml`.** C was correct to block rather than infer this, and correct not to author it.
+
+**Standing rule: a rule that constrains how a path may be written is not a grant that it may be written.** Every path a manager must write needs an affirmative owner entry. Absence is RED by fail-closed default, which is working as designed.
+
+### A16.2 The gate must not overclaim — TERR-F3 closed
+
+C's ACCEPT-WITH-FIXES correctly identified that the manifest header claimed Director-only governance while the `Manager:` trailer is self-declared and spoofable. **C's honest header rewrite is ratified**, and the manifest now states plainly what it enforces and what it does not.
+
+This is **VER-01 turned on our own instruments**: a gate that documents a guarantee it cannot enforce is making a presence claim dressed as a soundness claim. The two controls that are real — base-commit manifest governance, and Director commits confined to a `director/` branch — are named; deliberate trailer forgery is declared a trust boundary rather than implied away. **Standing rule: gate documentation is held to the same evidentiary standard as gate output.**
+
+### A16.3 Daily-bar provenance is a code question, not a PO question
+
+A must not idle on this. **Whether our daily bars are native provider bars or locally resampled from 1m is answerable by reading the fetch path — dispatch it cheap tier and answer it in the tree.** Only the *convention* is a PO decision, and it is pre-answered so the fix can proceed either way:
+
+- **FX:** daily close 17:00 New York, weekly open Sunday 17:00 New York. This is the convention Rayan and every FX-replay user will measure us against, and it is why a Thursday-anchored weekly bar reads as broken.
+- **Crypto:** 00:00 UTC daily; current epoch flooring is already correct for this class.
+- **Futures:** per-exchange session (CME 17:00 New York), not a global constant.
+
+**Weekly boards now.** Daily boards as soon as the provenance audit reports; if the bars are native, we match the provider's stamping and disclose it, and if they are derived, we bucket to the class calendar above. DST is handled by the calendar, never by a fixed millisecond offset — that is the defect being removed.
+
+### A16.4 Rejection attribution — a manager's own defect does not escalate its author
+
+A asked whether a rejection caused by the manager's own false finding or defective brief counts toward §A13.2's two-rejection author escalation. **It does not.** The escalation exists to detect *insufficient author tier*; when the cause was a bad brief, the author tier was never the problem, and escalating it routes on the wrong signal — the same measure-the-wrong-thing error this sprint keeps producing.
+
+**But it is not a free pass.** Rejections are attributed to cause and counted in separate columns: `author-defect`, `brief-defect`, `manager-finding-defect`. Only `author-defect` counts toward escalation. **Three manager-caused rejections in one train triggers a top-tier review of the manager's next brief before dispatch** — the manager's own decomposition becomes the thing under review, which is the correct instrument for that failure mode. Report all three columns in the digest per §A13.3b.
+
+### A16.5 The ungated-file rule that A discovered by applying it to itself
+
+A held two accepted product fixes out of TEST-1 because `drawing-tools-manager.js` has no automated gate at all, refusing to call the chain automated-GREEN on the strength of thorough reviews. **That judgement is ratified and generalised: review confidence is not gate coverage, and a file with no gate cannot be part of an automated-GREEN chain regardless of how well its diff was reviewed.** Closing that gate gap is the highest-priority item standing between merged work and a deploy.
+
 ## A5. Test-integrity policy (anti-lying-gate)
 
 Mandatory for **money-path (D-030), data-integrity, and headline-mechanism** gates; recommended elsewhere.
