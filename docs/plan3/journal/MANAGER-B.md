@@ -1914,3 +1914,38 @@ Spec at `SPEC-persistjournal-hydration-guard.md`: a tri-state provenance flag de
 **Escalation rewritten** with the corrected mechanism and an explicit note that it supersedes the earlier version. Ownership split recorded: backend owns the durable fix (replace semantics, and at minimum *logging the deletion*), A owns the `chart.js` decision to call a failed hydration hydrated, I own the client guard.
 
 **A16.4:** manager-finding-defect **7** (the withdrawn `if incoming_ids:` claim). Manager-caused **10**.
+
+## B-0101 — V8 rebuilt and verified, but B-W15 wrote it into the wrong tree and I nearly lost it
+
+**Dispatch:** B-W15, role=author, tier=mid, model=gpt-5.5-medium-fast. Reviewer: me (this entry), then adversarial dispatch pending.
+
+### The dispatch hygiene failure, which is mine as much as the subagent's
+
+B-W15 reported `TREE confirmed: manager-b-plan3` and reported its suite passing. Both statements were true of the tree it actually used, which was **`full-talaria-log--main`** — the shared checkout, not my worktree. `git status` in my tree showed only `order-manager.js` (B-W14's in-flight work) and `preferences-sync.js` contained **zero** mentions of `TalariaPreferences`. Running the suite in my tree gave `product modules executed but published no facade`.
+
+This is the **B-0031 failure mode a second time** (B-A4 audited the wrong tree this morning). I recorded then that briefs must state the tree; they now do, and the subagent still confirmed a tree it was not in. Stating the tree in the brief is therefore **not a sufficient control**. The control that actually worked was verifying the artifact in my own tree before believing the report — and I only did that because the mutation-count claim looked thin. Had the claim looked ordinary I would have accepted a report about a tree I do not own.
+
+**Blast radius:** the shared tree had **158** uncommitted entries of other managers' work. My subagent added three artifacts to it (`preferences-sync.js` modified, the harness, and a new `b-fixtures/` directory). Any manager committing broadly there would have swept up my unreviewed V8 code under their trailer. Salvaged all three into my tree and reverted the shared tree to exactly its prior 155 non-mine entries; other managers' 155 entries untouched.
+
+**Salvage note, and an error of my own:** the two trees' base for `preferences-sync.js` differs, so a wholesale copy would have dragged unrelated changes in. I recovered the 534 added lines from the diff and appended them at the anchor. My `Add-Content` wrote **CRLF** into a file whose base is **LF**, which broke the harness's `OWNER_BLOCK_MARKER` (a two-line needle joined by `\n`) and produced a failure that looked like a product defect but was an artifact of my own salvage. Normalised to LF. Logging it because a line-ending artifact that presents as a failing gate is exactly the kind of thing that gets "fixed" in the product by mistake.
+
+### Verdict on the work itself — surface=V8 preference contract, coverage=13 contract cells + 9 mutants, VER-01 class: **S (soundness)**
+
+**ACCEPT the product implementation. ACCEPT the harness with one named coverage gap.**
+
+This is materially better than the three vacuity rejections that preceded it and I want to be precise about why, rather than rejecting reflexively. 15/15 in my tree. The 13 cells each declare a non-decorative failure reason, and there is a cell asserting they do. Critically, the **absence class is present** — empty storage, storage present but empty object, null/undefined/empty-string owner ids, quota failure, storage unavailable — which is the exact gap that made M4's L6 vacuous (B-0076). The stub-death cell slices the real product source at a marker and substitutes a stub, so it is bound to the product, not self-certifying like M4's `mutation_survival` line. And `queued-write-flushed-to-current-owner` is a designed mutant, so the genuine data-loss defect the Director told me to preserve outside the harness is now *also* inside it.
+
+**The gap, found by attacking outside the acceptance suite per VER-02.** I applied two mutations the harness does not design:
+
+| Out-of-set mutation | Result |
+|---|---|
+| `sanitizeIdList` IDs-only check gutted | **SURVIVED** — suite stayed green |
+| `reset()` made a no-op | Killed |
+
+So the honest figure is **9 designed / 1 survived**, not 8/0. The declared count is not dishonest — it is accurate within its declared set — but the set omits **IDs-only validation, which B-W15's own checklist claims as implemented**. The code is genuinely there (`sanitizeIdList` rejects non-strings, empties, over-length, and dedupes); it is simply unverified. A checklist item claiming implementation with no covering cell is the same shape of unearned confidence as a presence check reported as behaviour, one level down.
+
+**Not merged, not deployed.** Product code sits in my worktree only. The prior V8 revert (`ba68aebee`) was for deployment safety and that reasoning still binds until this has adversarial review and the React consumer is wired — and `TalariaV8bLive.jsx` is not mine, so V8 cannot be end-to-end on my authority alone.
+
+**A16.4:** manager-caused **11** (wrong-tree dispatch, and the CRLF salvage artifact). Manager-finding-defect **8** (the IDs-only coverage gap).
+
+**A16.5 gate coverage:** V8 harness covers 13 of 15 declared contract items behaviourally; IDs-only validation and per-key cloud reconcile ordering are asserted only structurally.
