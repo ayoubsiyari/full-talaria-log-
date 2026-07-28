@@ -186,3 +186,33 @@ I-7 granted `journal-backend/`. **The served deletion path is not there.** B''s 
 **DEPLOY-01 gets sharper, not softer.** We now have two live surfaces at different builds, and **we cannot name the commit on either.** B bounded production to "any build cut since 3 July." That ambiguity is now load-bearing for a safety decision.
 
 **The M1 surface question is upgraded.** §10 asks whether `chart/index.html` and `chart/dist-v9/index.html` are module-equivalent. **We now know a third surface exists — production — and no measurement has ever been taken on it.** Every performance number this project holds was taken on test. **We do not know that production performs as test does**, and the canary ships to production.
+
+---
+
+## 12. PO ruling D-5 (14:34) — single working surface, one push at the end
+
+**All work lands on test. Nothing goes to production until everything is fixed, then one push.**
+
+### 12.1 I withdraw §11.1. Its entire justification is gone.
+
+Four minutes ago I re-opened backend replace semantics on one ground: **a backend guard reaches exposed production users without a client deploy.** Under D-5 **nothing** reaches production before the final push — backend included. **So the backend guard has no advantage over the client guard for the exposed cohort, and the argument I built for widening scope collapses.**
+
+**Replace semantics return to OUT OF SCOPE**, back where I-7 put them this morning. My reversal was correct on the facts I had at 14:30 and wrong on the facts I had at 14:34. **B is not to be sent down this path**, and if the earlier note reached it, this supersedes it.
+
+### 12.2 The consequence, stated without hedging
+
+**No code change of any kind will reach the exposed production users before the final push. For the whole of the remaining window — roughly 43 hours — the tester notice is the sole mitigation in existence.**
+
+That is not a rhetorical framing to force the notice out. It is now simply the arithmetic: active users, a defect live since 3 July, no deploy until Thursday, and a deletion that leaves no log. **The `STOP — do not place, close, or reload` sentence is the only thing standing between a slow server response and a destroyed journal.**
+
+### 12.3 What D-5 buys, and it is real
+
+**The deploy model gets much simpler and the 48-hour window gets safer.** One target, one push, no deploy trains, no TEST-2 juggling, no partial states to reason about. **Manager time stops being spent on release choreography.** For a compressed schedule this is the right call and it removes a category of risk we have been carrying all week.
+
+### 12.4 Two risks it creates, which must be named now rather than at hour 46
+
+**1. All release risk concentrates into one irreversible event.** There is no incremental validation on production — we go from a build nobody has run there to everything at once. **Combined with DEPLOY-01 (we cannot name the commit on either surface), the go/no-go becomes a single all-or-nothing gate with imperfect knowledge of what is being gated.** The kill-switch requirement is therefore not a formality on this push; it is the only reverse gear.
+
+**2. We will push to a surface we have never measured.** Every performance number this project owns — the 13.0% idle floor, the 4.5-point noise band, the 1.3–3.4 point ablation bound, the 19,807 detached nodes — was taken on `31.97.192.82:3000`. **Production has never been profiled once.**
+
+**This upgrades the M1 surface question from a gate detail to a release precondition.** §10 asks whether two *test* shells are module-equivalent. The real question is now three-way, and the third surface is the one that matters. **Ruling: before the final push, one measurement on production — idle CPU and detached-document count — establishing that it behaves like the surface all our conclusions were drawn on.** Cheap, and without it every performance claim in `M7` is asserted about a machine we never looked at.
