@@ -1208,6 +1208,9 @@ class Chart {
         this._mcFinerPanelOwnerFetchSeq = 0;
         this._mcFinerPanelHostCommitListenerInstalled = false;
         this._mcFinerPanelHostCommitHandler = null;
+        /** Host window the commit listener was registered on (removal target). */
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
         this._installFinerPanelSelfOwnerHostCommitListener();
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
@@ -4247,8 +4250,48 @@ class Chart {
                 self._applyFinerPanelHostCommit(detail);
             };
             parentWin.addEventListener('talariaMcHostDataCommit', this._mcFinerPanelHostCommitHandler);
+            // Remove from the window we actually registered on. `window.parent`
+            // is deliberately not re-read at teardown: a removal aimed at the
+            // wrong window would silently succeed and look like a fix.
+            this._mcFinerPanelHostCommitTarget = parentWin;
             this._mcFinerPanelHostCommitListenerInstalled = true;
+            // The host window outlives this panel, so nothing on the host side
+            // can drop this registration — the panel has to unregister itself.
+            // Removing a panel iframe unloads this document, which fires
+            // pagehide here while parentWin is still reachable. A persisted
+            // pagehide is bfcache: the panel is coming back and must keep
+            // receiving commits, so leave the registration in place.
+            this._mcFinerPanelHostCommitUnloadHandler = function finerPanelHostCommitUnload(ev) {
+                if (ev && ev.persisted === true) return;
+                self._removeFinerPanelSelfOwnerHostCommitListener();
+            };
+            window.addEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
         } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Panel teardown only. Never called while the panel is alive, so live
+     * cross-panel host data commits keep flowing until the document unloads.
+     */
+    _removeFinerPanelSelfOwnerHostCommitListener() {
+        if (!this._mcFinerPanelHostCommitListenerInstalled) return;
+        this._mcFinerPanelHostCommitListenerInstalled = false;
+        try {
+            if (this._mcFinerPanelHostCommitTarget && this._mcFinerPanelHostCommitHandler) {
+                this._mcFinerPanelHostCommitTarget.removeEventListener(
+                    'talariaMcHostDataCommit',
+                    this._mcFinerPanelHostCommitHandler,
+                );
+            }
+        } catch (_e) { /* host realm already torn down */ }
+        try {
+            if (typeof window !== 'undefined' && this._mcFinerPanelHostCommitUnloadHandler) {
+                window.removeEventListener('pagehide', this._mcFinerPanelHostCommitUnloadHandler);
+            }
+        } catch (_e) { /* ignore */ }
+        this._mcFinerPanelHostCommitTarget = null;
+        this._mcFinerPanelHostCommitHandler = null;
+        this._mcFinerPanelHostCommitUnloadHandler = null;
     }
 
     _applyFinerPanelHostCommit(detail = {}) {
