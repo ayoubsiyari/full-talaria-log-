@@ -11,9 +11,21 @@ const SURFACE_CONTRACT_CLASS_ALLOWLIST = Object.freeze({
   panel: ['correctness'],
   harness: [],
 });
+const EXECUTABLE_SCRIPT_TYPES = new Set([
+  '',
+  'application/ecmascript',
+  'application/javascript',
+  'module',
+  'text/ecmascript',
+  'text/javascript',
+]);
 
 function stripHtmlComments(source) {
   return source.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function stripInertHtmlBlocks(source) {
+  return source.replace(/<(noscript|template)\b[\s\S]*?<\/\1>/gi, '');
 }
 
 function stripJsComments(source) {
@@ -56,26 +68,143 @@ function stripJsComments(source) {
   return out;
 }
 
+function readAttribute(attrs, name) {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  return match ? (match[1] ?? match[2] ?? match[3] ?? '') : '';
+}
+
+function isExecutableScript(attrs) {
+  return EXECUTABLE_SCRIPT_TYPES.has(readAttribute(attrs, 'type').trim().toLowerCase());
+}
+
+function matchingBraceAt(source, openAt) {
+  let quote = null;
+  let escaped = false;
+  let depth = 0;
+  for (let i = openAt; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function maskRange(source, from, to) {
+  return source.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + source.slice(to);
+}
+
+function maskNonExecutingFunctionBodies(source) {
+  let out = source;
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    if (!/\bfunction\b/.test(out.slice(i, i + 8))) continue;
+    const before = out.slice(0, i).trimEnd();
+    const openAt = out.indexOf('{', i + 8);
+    if (openAt < 0) continue;
+    const closeAt = matchingBraceAt(out, openAt);
+    if (closeAt < 0) continue;
+    const after = out.slice(closeAt + 1);
+    const invokedImmediately = before.endsWith('(') && /^\s*\)\s*\(\s*\)\s*;?/.test(after);
+    if (!invokedImmediately) out = maskRange(out, i, closeAt + 1);
+  }
+  return out;
+}
+
+function maskDeadControlBlocks(source) {
+  let out = source;
+  const ranges = [];
+  for (const match of out.matchAll(/\b(?:if\s*\(\s*0\s*\)|while\s*\(\s*false\s*\))\s*\{/g)) {
+    const openAt = out.indexOf('{', match.index);
+    const closeAt = matchingBraceAt(out, openAt);
+    if (closeAt >= 0) ranges.push([match.index, closeAt + 1]);
+  }
+  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
+  return out;
+}
+
+function maskAfterReturnOrThrow(source) {
+  let out = source;
+  const ranges = [];
+  for (const match of out.matchAll(/\b(?:return|throw)\b/g)) {
+    let end = out.indexOf('}', match.index);
+    if (end < 0) end = out.length;
+    ranges.push([match.index, end]);
+  }
+  for (const [from, to] of ranges.reverse()) out = maskRange(out, from, to);
+  return out;
+}
+
+function executableJs(source) {
+  return maskAfterReturnOrThrow(maskDeadControlBlocks(maskNonExecutingFunctionBodies(stripJsComments(source))));
+}
+
 function scriptPaths(html) {
   const values = [];
-  const uncommented = stripHtmlComments(html);
+  const uncommented = stripInertHtmlBlocks(stripHtmlComments(html));
   for (const script of uncommented.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (!isExecutableScript(script[1])) continue;
     const src = script[1].match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
     if (src) {
       values.push(src.split('?')[0]);
       continue;
     }
-    const activeJs = stripJsComments(script[2]);
+    const activeJs = executableJs(script[2]);
     for (const match of activeJs.matchAll(/(?:inject|__loadHostOnlyScript)\(\s*["']([^"']+\.js)["']\s*\)/g)) {
       values.push(match[1].split('?')[0]);
     }
     for (const block of activeJs.matchAll(/(?:var|const|let)\s+paths\s*=\s*\[([\s\S]*?)\]/g)) {
       const afterArray = activeJs.slice(block.index + block[0].length);
-      if (!/\bpaths\s*\[\s*i\s*\]/.test(afterArray) || !/document\.write\s*\(/.test(afterArray)) continue;
+      if (!/document\.write\s*\([^)]*\bpaths\s*\[\s*i\s*\]/.test(afterArray)) continue;
       for (const match of block[1].matchAll(/["']([^"']+\.js)["']/g)) values.push(match[1]);
     }
   }
   return values;
+}
+
+function inferSurfaceFromEvidence(surface, scripts) {
+  const normalizedPath = String(surface.path || '').replaceAll('\\', '/');
+  if (/\/chart-embed\.html$/.test(normalizedPath) || /\/multichart\/chart-host\.html$/.test(normalizedPath)) {
+    return 'panel';
+  }
+  if (/\/dist-v9\/index\.html$/.test(normalizedPath) || /\/talaria-design\/live\/index\.html$/.test(normalizedPath)) {
+    return 'host';
+  }
+  if (
+    scripts.includes('/chart/chart.js') &&
+    scripts.some((script) => script.startsWith('/chart/multichart-prod/'))
+  ) {
+    return 'panel';
+  }
+  return null;
+}
+
+function requiredContractsForSurface(manifest, surfaceName) {
+  const contracts = manifest.modules.filter((item) => item.requiredSurfaces.includes(surfaceName));
+  const requiredClasses = SURFACE_CONTRACT_CLASS_ALLOWLIST[surfaceName] || [];
+  return {
+    contracts,
+    requiredContracts: contracts.filter((item) => requiredClasses.includes(item.class)),
+  };
+}
+
+function assertBooleanIfPresent(object, key, label) {
+  if (Object.hasOwn(object, key)) assert.equal(typeof object[key], 'boolean', `${label}: ${key} must be boolean`);
 }
 
 function assertBoundedIdentifier(value, label, { allowLeadingDigit = false } = {}) {
@@ -128,6 +257,7 @@ export function validateModuleContracts({
       `${surface.id}: invalid surface ${surface.surface}`,
     );
     assert.ok(['owned-stamped', 'excluded', 'removed', 'removal-pending'].includes(surface.status), `${surface.id}: invalid status`);
+    assertBooleanIfPresent(surface, 'servable', surface.id);
     if (surface.status === 'removal-pending') {
       assert.fail(`${surface.id}: deploy blocked until accidental public surface is removed`);
     }
@@ -143,9 +273,12 @@ export function validateModuleContracts({
     assert.ok(fs.existsSync(absolute), `${surface.id}: owned surface missing`);
     const html = readFile(absolute);
     const scripts = scriptPaths(html);
-    const contracts = manifest.modules.filter((item) => item.requiredSurfaces.includes(surface.surface));
-    const requiredClasses = SURFACE_CONTRACT_CLASS_ALLOWLIST[surface.surface];
-    const requiredContracts = contracts.filter((item) => requiredClasses.includes(item.class));
+    const evidenceSurface = inferSurfaceFromEvidence(surface, scripts);
+    if (evidenceSurface && evidenceSurface !== surface.surface) {
+      failures.push(`${surface.id}: declared surface ${surface.surface} conflicts with ${evidenceSurface} evidence`);
+    }
+    const effectiveSurface = evidenceSurface || surface.surface;
+    const { contracts, requiredContracts } = requiredContractsForSurface(manifest, effectiveSurface);
     if (surface.servable === true && requiredContracts.length === 0) {
       failures.push(`${surface.id}: owned-stamped servable surface ${surface.surface} has no correctness contracts`);
     }

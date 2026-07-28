@@ -90,12 +90,44 @@ test('surface vocabulary is closed and servable shells cannot relabel out of cor
   relabelled.inventory.find((entry) => entry.id === 'chart-host').surface = 'harness';
   assert.throws(
     () => validateModuleContracts({ manifest: relabelled, root }),
-    /chart-host: owned-stamped servable surface harness has no correctness contracts/,
+    /chart-host: declared surface harness conflicts with host evidence/,
   );
 
   const invalid = manifestWithoutMultichartPanelShells();
   invalid.inventory.find((entry) => entry.id === 'chart-host').surface = 'free-text';
   assert.throws(() => validateModuleContracts({ manifest: invalid, root }), /chart-host: invalid surface free-text/);
+});
+
+test('path and engine-load evidence cannot be relabelled away from contracts', () => {
+  for (const servable of [false, undefined]) {
+    const relabelled = manifestWithoutMultichartPanelShells();
+    const row = relabelled.inventory.find((entry) => entry.id === 'chart-host');
+    row.surface = 'harness';
+    if (servable === undefined) {
+      delete row.servable;
+    } else {
+      row.servable = servable;
+    }
+    assert.throws(
+      () => validateModuleContracts({ manifest: relabelled, root }),
+      /chart-host: declared surface harness conflicts with host evidence/,
+    );
+  }
+
+  const stringServable = manifestWithoutMultichartPanelShells();
+  const host = stringServable.inventory.find((entry) => entry.id === 'chart-host');
+  host.surface = 'harness';
+  host.servable = 'true';
+  assert.throws(() => validateModuleContracts({ manifest: stringServable, root }), /chart-host: servable must be boolean/);
+
+  const sneakyPanel = manifestWithoutMultichartPanelShells();
+  const panel = sneakyPanel.inventory.find((entry) => entry.id === 'chart-panel');
+  panel.surface = 'harness';
+  panel.servable = false;
+  assert.throws(
+    () => validateModuleContracts({ manifest: sneakyPanel, root }),
+    /chart-panel: declared surface harness conflicts with panel evidence/,
+  );
 });
 
 test('commented script tags and dead paths arrays do not satisfy module presence', () => {
@@ -113,6 +145,101 @@ test('commented script tags and dead paths arrays do not satisfy module presence
         ];
         // __loadHostOnlyScript("/chart/modules/module-presence-runtime.js")
         /* inject("/chart/modules/indicator-performance.js") */
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('inert script containers and non-executable script types do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <noscript><script src="/chart/modules/module-presence-runtime.js?v=20260727b80"></script></noscript>
+      <template><script src="/chart/modules/indicator-performance.js?v=20260727b80"></script></template>
+      <script type="text/template">inject("/chart/modules/module-presence-runtime.js");</script>
+      <script type="application/json">{"src":"/chart/modules/indicator-performance.js"}</script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('never-executed loader calls do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>
+        function neverCalled() {
+          inject("/chart/modules/module-presence-runtime.js");
+        }
+        (function () {
+          return;
+          __loadHostOnlyScript("/chart/modules/indicator-performance.js");
+        })();
+      </script>
+      <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
+    </head>
+    <body></body>
+    </html>
+  `;
+  assert.throws(
+    () => validateModuleContracts({
+      manifest: manifestWithOnlySurface(surface),
+      root,
+      readFile: mutateSurface(surface.id, () => decoyHtml),
+    }),
+    /ModulePresenceRuntime required script count 0.*IndicatorPerf required script count 0/,
+  );
+});
+
+test('paths arrays consumed only by unreachable loops do not satisfy module presence', () => {
+  const surface = structuredClone(manifest.inventory.find((entry) => entry.id === 'chart-host'));
+  const decoyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <script src="/chart/chart.js?v=20260727b80"></script>
+      <script>
+        (function () {
+          var paths = [
+            "/chart/modules/module-presence-runtime.js",
+            "/chart/modules/indicator-performance.js"
+          ];
+          if (0) {
+            for (var i = 0; i < paths.length; i++) {
+              document.write('<script defer src="' + paths[i] + '"><\\/script>');
+            }
+          }
+          while (false) {
+            document.write('<script defer src="' + paths[0] + '"><\\/script>');
+          }
+        })();
       </script>
       <script src="/chart/modules/chart-indicators-full.js?v=20260727b80"></script>
     </head>
