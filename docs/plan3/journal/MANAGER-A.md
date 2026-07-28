@@ -2032,3 +2032,51 @@ Taking the reviewer's decomposition rather than my own, and recording that it is
 **Held:** the six a10 files, pending the input-branch question above.
 
 **Not dispatched:** the remaining ~455 untracked A-territory files. That is triage, not rescue, and per Q2 it is not mine to settle.
+
+---
+
+## 2026-07-28 09:52 — CORRECTION: the `pending-be` gap I opened is false, and it is my fifth negative-from-an-unexhausted-search today
+
+surface=`chart v 1.4/chart/modules/order-manager.js` at `ff6e9df18`
+coverage=all call paths of `cancelPendingOrder` traced to their disposal calls, plus the producer chain for BE lines
+
+I journaled that `pending-be-*` elements are never removed on cancel and the reaper cannot collect them. **The first half is wrong.** `cancelPendingOrder` calls `removePendingSLTPLines` on every path — `:39213` non-split, `:39199-39200` split with no siblings remaining, `:39246-39248` split with siblings remaining — plus a direct `.pending-be-${primaryLegId}` sweep at `:39264`. And BE lines are genuinely in that registry: `createLine(beTriggerPrice, 'BE')` at `:38379` produces the classes at `:38238`/`:38247`/`:38252`, the item is pushed to `entries` at `:38383`, and `entries` reaches `this.pendingTargetLines` at `:38389`. `removePendingSLTPLines` at `:39088-39106` then detaches every one of them. The ordinary cancel path works.
+
+What survives is narrower and still worth having: the reaper at `:45216` scans `.order-line, .pending-order-line` only, and `_reconcileOrphanLabelAccents` at `:45169` scans `[class*="label-accent"]`, so **neither can collect a BE node orphaned by a lost `pendingTargetLines` record**. The same hole exists for `.pending-sl-${orderId}` — `removePendingOrderLine`'s sweeps at `:39139-39148` cover pending-entry and pending-TP classes only. So the gap is real, is not BE-specific, and only bites when the retained selection is lost. The OPEN row is amended to that.
+
+**This is the fifth time today I have asserted a negative from a search I had not exhausted** — the paginated selector grep, the session-calendar brief premise, the dead-code addendum against B, the four premises in the evidence-rescue brief, and now this. Every one had the same shape: I looked, did not find, and wrote "never." The remedy is not more care, because I have been careful each time and it has not worked.
+
+**Rule, effective now: I do not put a negative claim in the record without stating the search that produced it and why that search was exhaustive.** "Not found by grep for X" is a permitted claim. "Never happens" requires tracing every call path to a terminal, and if I have not done that, the claim is downgraded to the thing I actually verified. This applies to my own briefs as hard as to author output, since three of the five were briefs.
+
+## 2026-07-28 09:53 — VERDICT: the gate-evidence packet is BLOCKED, and its premise was wrong — C's fixture is already correct
+
+surface=`docs/plan3/evidence/` packet `3e989cf8c`; product blobs `a8761396` (drawing-tools) and `ff6e9df18` (order-manager)
+coverage=independent re-derivation of the site list, hermetic gate re-run, structural JSON comparison against C's untracked fixture
+
+The enumeration itself is sound and the reviewer derived it independently rather than checking mine: exactly two `orderLines` writers in `drawing-tools-manager.js`, at `:12086` and `:12135`, both predicates verbatim including the chart-scope spelling, no `splice`/`pop`/`shift`/computed-write/alias anywhere — the token appears on only seven lines in an 812 KB file. The JSON invents no keys against C's strict schema. Territory, trailers and `git diff == git diff -w` are clean. Product blobs match the current critical-path tip, so nothing is stale.
+
+**But the packet's reason for existing is false.** A's JSON is structurally byte-identical to C's existing untracked fixture — every meta key *and value*, every site's identity and disposal object, including ordinals 6 and 7. Strip the `note` fields and the two serialise equal. Running C's own fixture against the same sources produces the identical `1 passed, 5 failed`. **There is nothing in any gate-read field for C to correct**, and C's notes already carry the correct diagnosis at `:126` and `:137`.
+
+I dispatched a packet to repair a model that was not broken. The premise I built it on — that C's fixture models A's file as it was before tonight's merges — is true as history and irrelevant as consequence: the merges changed eviction *predicate text*, and the fixture schema has no field for predicate text, which is exactly why it survived unchanged. I checked the timestamps and inferred staleness from them instead of diffing the thing itself.
+
+Worse, shipping it would have cost C something. My notes on ordinals 0–5 are boilerplate that discards five accurate descriptions of B's sites, and a subagent handed a drop-in fixture splices it wholesale. A document titled "Delta Against C's Model" that contains no delta actively invites edits to fields that are already right.
+
+**Disposition: the JSON is withdrawn entirely.** A structurally identical file with worse notes is pure downside. What has value is a short note telling C not to change the fixture, classifying the five failures, and carrying the two product findings below.
+
+## 2026-07-28 09:54 — OPEN: two real defects in `drawing-tools-manager.js` that the gate failures were masking
+
+Both are mine, both are in my territory, and I had classified both as modelling limitations.
+
+**Ordinal 6 evicts a registry row without disposing its DOM.** `positionsToRemove` is collected from `orderManager.openPositions` at `:12076`, but the eviction at `:12086` is over `orderManager.orderLines`. Inside the `forEach` the only disposal is `ch.svg.selectAll('.entry-marker-' + order.id).remove()` at `:12082` — no `removeOrderLine`, no `_disposeOrderLineElements`. So the row is dropped while its line, label, price box, close button and connector stay attached. That is the zombie in `meta.hazard`, inverted. Gate cell B-OREI-06 is a **true positive**, not an inexpressible site. Mitigation so nobody over-reacts: `_reconcileOrderLineDomForChart` at `order-manager.js:45216` removes nodes with no matching registry row, so the orphan is collectable on a later pass. On-screen consequence in between is unverified.
+
+**Ordinal 7 removes more than it disposes.** The collect-filter at `:12107-12114` accepts a row on parsed `priceText` content alone, so `linesToRemove` can include rows for unrelated orders. Then `:12135` removes *every* pending row on `ch` whose id is in `removedIds` — so a duplicate pending row sharing an id that was never collected is evicted without ever being disposed. Removal ⊃ disposal is precisely the property the gate exists to prove. The reviewer found this; I did not. Reachability at runtime is unverified and the gate's G4 disclaims it.
+
+**Amended wording on a third, because mine could seed a wrong model.** I wrote that `deleteDrawing` "de-registers a position it never closes." The price-coincidence association at `:12077` is real, but what is de-registered is the position's **order-line row**, not the position — `openPositions` is never mutated in this file. As written C could model an `openPositions` mutation that does not exist, which is the §A16.2 failure this packet was supposed to prevent.
+
+## 2026-07-28 09:55 — Two hand-offs corrected, and a residue that will mislead a grep
+
+**The ordinal 7 ask to C was wrong.** I said extend the host to accept call expressions. The reviewer showed that would not make it green: even with `.includes()` and block bodies parsed, the collect-filter reads `l.priceText` and the free identifiers `orderManager` and `entryPrice`, while the gate's row model exposes only `orderId`/`isPending`/`chart` and its base environment binds only `this`/`orderId`/`ch`. The correct ask is **a new disposal kind for an id-set derived from an unmodelled collection, or an explicit scope exclusion.** My instinct not to reshape product code to suit the parser was right; my proposed remedy was still wrong.
+
+**Ordinals 4/5 confirmed an ancestry artifact, decisively.** The tree's `order-manager.js` blob is `ff6e9df18446595fd3148ca36efe358259ba6af6`, which is exactly the pre-image named in B's fix diff `index ff6e9df18..b0f49ba11`. `9133fd9e0` is not an ancestor of either branch. The gate is correctly reporting a pre-fix file; C should ignore it and the real fix is landing B's commit.
+
+**Residue that will mislead C.** The deleted broad sweep still exists in three places — `drawing-tools-manager.js.bak:3476,3495`, the identical `homepage/public` copy, and transcribed in this journal at `:1639`. A C subagent grepping for the sweep finds it and may conclude it is live. Saying "deleted, not relocated" without naming the residue is not enough. Separately: `homepage/public/chart/modules/drawing-tools-manager.js` is the same blob `a8761396` as the `chart v 1.4` copy, so there is no mirror drift on this file — one of the three divergences I logged does not apply here.
