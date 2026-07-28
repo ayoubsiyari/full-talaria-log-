@@ -1,5 +1,5 @@
 export const B_W15_MUTATION_TARGET = {
-  designed: 8,
+  designed: 9,
   requiredStubMustDie: true,
 };
 
@@ -12,4 +12,5 @@ export const B_W15_MANDATORY_MUTANTS = [
   'unknown-keys-dropped-on-migration',
   'schema-stamped-on-read',
   'kill-switch-still-writes',
+  'ids-only-validation-bypassed',
 ];

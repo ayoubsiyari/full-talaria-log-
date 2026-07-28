@@ -4,7 +4,7 @@
  *   node --test --test-concurrency=1 \
  *     "chart v 1.4/chart/modules/b-m15-owner-scoped-pins.red.mjs"
  *
- * Mutation binding: 8 designed / 0 survived is the only green verdict.
+ * Mutation binding: 9 designed / 0 survived is the only green verdict.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -189,6 +189,12 @@ const MUTANTS = {
     'function isDisabled() {\n        return false;\n    }',
     'kill switch ignored',
   ),
+  'ids-only-validation-bypassed': (src) => replaceOrThrow(
+    src,
+    'if (typeof id !== \'string\') continue;\n            id = id.trim();',
+    'if (false) continue;\n            id = id.trim();',
+    'ids only validation bypassed',
+  ),
 };
 
 function runCell(cell, source = PRODUCT_SRC) {
@@ -288,6 +294,29 @@ const CELLS = [
     },
   },
   {
+    name: 'pin lists accept only valid string ids',
+    productChange: 'Accepting non-string, blank, oversized, or duplicate pin ids would persist invalid UI ids and leak coerced values through getPins.',
+    fn(source) {
+      const { api } = loadPreferences(source, { userId: 'acct-a' });
+      const longId = 'x'.repeat(81);
+      assert.equal(api.setPin('timeframes', [
+        '1m',
+        { id: 'object' },
+        42,
+        true,
+        null,
+        ['nested'],
+        '',
+        '   ',
+        longId,
+        '5m',
+        ' 5m ',
+        '1m',
+      ]), true);
+      assert.deepEqual(plain(api.getPins().timeframes), ['1m', '5m']);
+    },
+  },
+  {
     name: 'unknown position keys survive lazy migration',
     productChange: 'A migration that rewrites only known position fields would drop newer-client metadata.',
     fn(source) {
@@ -371,7 +400,7 @@ for (const cell of CELLS) {
   });
 }
 
-test('B-W15 mutation binding: 8 designed / 0 survived; stub dies', () => {
+test('B-W15 mutation binding: 9 designed / 0 survived; stub dies', () => {
   assert.deepEqual(B_W15_MANDATORY_MUTANTS, Object.keys(MUTANTS));
   assert.equal(B_W15_MUTATION_TARGET.designed, B_W15_MANDATORY_MUTANTS.length);
 
