@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
+  DISPOSABLE_SESSION_NAME_PREFIX,
   VERIFY_CHECK_IDS,
   WRITE_CHECK_IDS,
+  assertWriteProbeSafety,
   createHttpAdapter,
+  createHttpWriteAdapter,
   createFixtureAdapter,
   makeTrade,
   parseArgs,
@@ -468,4 +476,511 @@ test('q4: verify-only mode is never quarantined', async () => {
   await withQuarantineEnv(undefined, () => assert.doesNotReject(
     () => runChecks(adapter, { ...BASE_OPTS, expectDigest: undefined }),
   ));
+});
+
+// ---------------------------------------------------------------------------
+// B-W19 — asymmetric disposability guard (change A) and SAFE-01 repositioning
+// (change B).
+//
+// These cells drive the real CLI as a subprocess against a local fixture ledger,
+// because the properties under test are about ordering: which request the
+// write-probe makes first, and whether a write adapter can exist before the server
+// has answered. An in-process call to runChecks cannot observe either, and asserting
+// only that an error was thrown would not prove that no POST was issued.
+// ---------------------------------------------------------------------------
+
+const HARNESS_PATH = fileURLToPath(new URL('./m4-ledger-invariants.mjs', import.meta.url));
+const REAL_SID = '7';
+const DISPOSABLE_SID = '8';
+const REAL_NAME = 'Live Account 2026';
+const DISPOSABLE_NAME = `${DISPOSABLE_SESSION_NAME_PREFIX}b-m4-probe`;
+const DEFAULT_NAMES = { [REAL_SID]: REAL_NAME, [DISPOSABLE_SID]: DISPOSABLE_NAME };
+
+function seedTrade(id) {
+  return { tradeId: id, id, client_trade_id: id, symbol: 'EURUSD', direction: 'BUY', status: 'closed', pnl: 1 };
+}
+
+// Mirrors the row shape of GET /api/sessions/{id}/journal-trades in api_server.py.
+function ledgerRow(trade) {
+  return {
+    journal_trade_id: null,
+    session_id: null,
+    client_trade_id: trade.tradeId ?? trade.id ?? trade.client_trade_id ?? null,
+    user_trade_id: null,
+    payload: { ...trade },
+    updated_at: null,
+  };
+}
+
+function ledgerFixture({ names = DEFAULT_NAMES, sessionRecord = null } = {}) {
+  const transcript = [];
+  const ledgers = new Map([
+    [REAL_SID, [ledgerRow(seedTrade('real-1'))]],
+    [DISPOSABLE_SID, [ledgerRow(seedTrade('real-1'))]],
+  ]);
+  const rowsFor = (sid) => {
+    if (!ledgers.has(sid)) ledgers.set(sid, []);
+    return ledgers.get(sid);
+  };
+  const handler = (req, res) => {
+    transcript.push(`${req.method} ${req.url}`);
+    const send = (statusCode, body, contentType = 'application/json') => {
+      res.writeHead(statusCode, { 'content-type': contentType });
+      res.end(typeof body === 'string' ? body : JSON.stringify(body));
+    };
+    const url = String(req.url).split('?')[0];
+    if (url === '/api/build-info') {
+      send(200, { buildId: 'build-1' });
+      return;
+    }
+    const match = url.match(/^\/api\/sessions\/([^/]+)(\/[^/]*)?$/);
+    if (!match) {
+      send(404, { detail: 'Not found' });
+      return;
+    }
+    const sid = decodeURIComponent(match[1]);
+    const tail = match[2] ?? '';
+    if (tail === '') {
+      const custom = sessionRecord ? sessionRecord(sid) : null;
+      if (custom) {
+        send(custom.status, custom.body, custom.contentType ?? 'application/json');
+        return;
+      }
+      if (!(sid in names)) {
+        send(404, { detail: 'Session not found' });
+        return;
+      }
+      send(200, { session: { id: /^\d+$/.test(sid) ? Number(sid) : sid, name: names[sid], session_type: 'personal', config: {} } });
+      return;
+    }
+    if (tail === '/journal-trades' && req.method === 'POST') {
+      let raw = '';
+      req.on('data', (chunk) => { raw += chunk; });
+      req.on('end', () => {
+        let trade = {};
+        try { trade = JSON.parse(raw || '{}').trade ?? {}; } catch { trade = {}; }
+        const rows = rowsFor(sid);
+        const row = ledgerRow(trade);
+        const idx = rows.findIndex((existing) => existing.client_trade_id === row.client_trade_id);
+        if (idx >= 0) rows[idx] = row;
+        else rows.push(row);
+        send(200, { trade });
+      });
+      return;
+    }
+    if (tail === '/journal-trades') {
+      send(200, { session_id: sid, trades: JSON.parse(JSON.stringify(rowsFor(sid))), count: rowsFor(sid).length });
+      return;
+    }
+    if (tail === '/state') {
+      send(200, { state: { journal: JSON.parse(JSON.stringify(rowsFor(sid))), journal_storage: 'state' } });
+      return;
+    }
+    send(404, { detail: 'Not found' });
+  };
+  return {
+    handler,
+    transcript,
+    posts: () => transcript.filter((line) => line.startsWith('POST ')),
+    rowIds: (sid) => (ledgers.get(sid) ?? []).map((row) => row.client_trade_id).sort(),
+  };
+}
+
+function runCli(harnessPath, args) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [harnessPath, ...args], {
+      env: { ...process.env, M4_WRITE_PROBE_QUARANTINE_LIFTED: '1' },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+async function writeProbeRun({
+  harness = HARNESS_PATH,
+  names = DEFAULT_NAMES,
+  sessionRecord = null,
+  sessionIdFlag = REAL_SID,
+  disposableFlag = DISPOSABLE_SID,
+  baseUrlOverride = null,
+  mode = '--write-probe',
+} = {}) {
+  const fixture = ledgerFixture({ names, sessionRecord });
+  return withServer(fixture.handler, async (baseUrl) => {
+    const args = [
+      mode,
+      `--base-url=${baseUrlOverride ?? baseUrl}`,
+      '--account-id=qa-b-m4',
+      '--qa-account-id=qa-b-m4',
+      `--session-id=${sessionIdFlag}`,
+      `--disposable-session-id=${disposableFlag}`,
+      '--n=3',
+      `--run-id=${HEX_RUN_ID}`,
+      '--expect-digest=build-1',
+      '--expect-foreign-id=real-1',
+    ];
+    const cli = await runCli(harness, args);
+    return {
+      ...cli,
+      transcript: [...fixture.transcript],
+      posts: fixture.posts(),
+      rowIds: (sid) => fixture.rowIds(sid),
+    };
+  });
+}
+
+// The acceptance contract these cells hold the harness to, kept deliberately narrow
+// so an independent reimplementation of the guard can satisfy it (VER-04):
+//   1. a write-probe safety refusal prints `REFUSED — Refusing write checks: …` on
+//      stderr and exits 2 — this is what makes it distinguishable from a transport
+//      error, which cell 6 requires;
+//   2. a marker-related refusal names the reserved prefix;
+//   3. the module exports assertWriteProbeSafety, createHttpWriteAdapter and
+//      DISPOSABLE_SESSION_NAME_PREFIX, and assertWriteProbeSafety resolves to an
+//      opaque confirmation that createHttpWriteAdapter accepts as
+//      opts.disposabilityConfirmation.
+// Nothing below asserts a message beyond those.
+
+// Every refusing cell asserts this, so cell 7 (zero-write proof) is not a separate
+// test but a standing property of all of them.
+function assertRefusedWithoutWriting(run, context) {
+  assert.deepEqual(run.posts, [], `${context}: expected zero POSTs, saw ${JSON.stringify(run.posts)}`);
+  assert.equal(run.code, 2, `${context}: expected the safety refusal exit code 2. stdout=${run.stdout} stderr=${run.stderr}`);
+  assert.match(run.stderr, /REFUSED — Refusing write checks:/, `${context}: refusal must be the safety refusal`);
+  assert.deepEqual(run.rowIds(REAL_SID), ['real-1'], `${context}: the real ledger must be untouched`);
+  assert.deepEqual(run.rowIds(DISPOSABLE_SID), ['real-1'], `${context}: the disposable ledger must be untouched`);
+}
+
+test('B-W19 cell 1: transposed --session-id/--disposable-session-id refuses and issues zero POSTs', async () => {
+  const run = await writeProbeRun({ sessionIdFlag: DISPOSABLE_SID, disposableFlag: REAL_SID });
+  assertRefusedWithoutWriting(run, 'transposition');
+  assert.match(run.stderr, new RegExp(DISPOSABLE_SESSION_NAME_PREFIX), 'the refusal must be about the missing marker');
+});
+
+test('B-W19 cell 2: correctly ordered flags proceed and writes land in the disposable session', async () => {
+  const run = await writeProbeRun();
+  assert.equal(run.code, 0, `stdout=${run.stdout} stderr=${run.stderr}`);
+  assert.match(run.stdout, /L1 PASS/);
+  assert.match(run.stdout, /L4 PASS/);
+  assert.equal(run.posts.length, 4, JSON.stringify(run.posts));
+  assert.deepEqual([...new Set(run.posts)], [`POST /api/sessions/${DISPOSABLE_SID}/journal-trades`]);
+  assert.deepEqual(run.rowIds(DISPOSABLE_SID), [
+    `m4-${HEX_RUN_ID}-01`,
+    `m4-${HEX_RUN_ID}-02`,
+    `m4-${HEX_RUN_ID}-03`,
+    'real-1',
+  ]);
+  assert.deepEqual(run.rowIds(REAL_SID), ['real-1'], 'the protected ledger must not have been written to');
+});
+
+test('B-W19 cell 6b: the disposability lookup is the first network operation the write-probe makes', async () => {
+  const sessionLookup = new RegExp(`^GET /api/sessions/(${REAL_SID}|${DISPOSABLE_SID})$`);
+  const happy = await writeProbeRun();
+  assert.deepEqual(
+    [happy.transcript[0], happy.transcript[1]].sort(),
+    [`GET /api/sessions/${REAL_SID}`, `GET /api/sessions/${DISPOSABLE_SID}`],
+    `the two session-name lookups must come first: ${JSON.stringify(happy.transcript.slice(0, 4))}`,
+  );
+  assert.ok(
+    happy.transcript.indexOf('GET /api/build-info') > 1,
+    `the digest probe must not precede the safety gate: ${JSON.stringify(happy.transcript.slice(0, 4))}`,
+  );
+
+  // On refusal the only thing ever contacted is the session-name lookup itself.
+  const refused = await writeProbeRun({ names: { [REAL_SID]: REAL_NAME, [DISPOSABLE_SID]: 'Scratch session' } });
+  assert.deepEqual(refused.posts, []);
+  assert.ok(refused.transcript.length >= 1);
+  assert.ok(
+    refused.transcript.every((line) => sessionLookup.test(line)),
+    `no journal, state or digest surface may be contacted before the gate passes: ${JSON.stringify(refused.transcript)}`,
+  );
+});
+
+test('B-W19 cell 3: an unmarked disposable session refuses', async () => {
+  const run = await writeProbeRun({ names: { [REAL_SID]: REAL_NAME, [DISPOSABLE_SID]: 'QA scratch session' } });
+  assertRefusedWithoutWriting(run, 'marker absent');
+  assert.match(run.stderr, new RegExp(DISPOSABLE_SESSION_NAME_PREFIX));
+});
+
+test('B-W19 cell 3b: a marker embedded in the name is not a prefix and refuses', async () => {
+  const run = await writeProbeRun({
+    names: { [REAL_SID]: REAL_NAME, [DISPOSABLE_SID]: `Archived from ${DISPOSABLE_NAME} (LIVE MONEY)` },
+  });
+  assertRefusedWithoutWriting(run, 'embedded marker');
+});
+
+test('B-W19 cell 4: a marker on the session named by --session-id also refuses', async () => {
+  const run = await writeProbeRun({
+    names: { [REAL_SID]: `${DISPOSABLE_SESSION_NAME_PREFIX}operator-marked-both`, [DISPOSABLE_SID]: DISPOSABLE_NAME },
+  });
+  assertRefusedWithoutWriting(run, 'both marked');
+  assert.match(run.stderr, new RegExp(DISPOSABLE_SESSION_NAME_PREFIX));
+});
+
+test('B-W19 cell 5: every disposability lookup failure refuses independently', async () => {
+  const cases = [
+    ['session does not exist', { status: 404, body: { detail: 'Session not found' } }],
+    ['server error', { status: 500, body: { detail: 'boom' } }],
+    ['malformed body', { status: 200, body: '{"session": ' }],
+    ['non-JSON body', { status: 200, body: '<html>login</html>', contentType: 'text/html' }],
+    ['missing name field', { status: 200, body: { session: { id: 8, session_type: 'personal' } } }],
+    ['null name', { status: 200, body: { session: { id: 8, name: null } } }],
+    ['unexpected shape', { status: 200, body: { ok: true } }],
+    ['answers for a different session', { status: 200, body: { session: { id: 9, name: DISPOSABLE_NAME } } }],
+  ];
+  for (const [label, response] of cases) {
+    const run = await writeProbeRun({
+      sessionRecord: (sid) => (sid === DISPOSABLE_SID ? response : null),
+    });
+    assertRefusedWithoutWriting(run, `lookup failure: ${label}`);
+  }
+});
+
+test('B-W19 cell 5b: a lookup failure on --session-id refuses too, rather than assuming it is not the target', async () => {
+  const run = await writeProbeRun({
+    sessionRecord: (sid) => (sid === REAL_SID ? { status: 500, body: { detail: 'boom' } } : null),
+  });
+  assertRefusedWithoutWriting(run, 'protected-session lookup failure');
+});
+
+test('B-W19 cell 6: an unreachable host yields the safety refusal, not a transport error', async () => {
+  const run = await writeProbeRun({ baseUrlOverride: 'http://127.0.0.1:1' });
+  assert.deepEqual(run.posts, []);
+  assert.equal(run.code, 2, `stdout=${run.stdout} stderr=${run.stderr}`);
+  assert.match(run.stderr, /REFUSED — Refusing write checks:/);
+  assert.doesNotMatch(run.stdout, /harness startup failure/);
+  assert.doesNotMatch(run.stdout, /Unable to discover deployed build digest/);
+});
+
+test('B-W19 cell 8: verify-only is unaffected by the new guard', async () => {
+  const run = await writeProbeRun({ mode: '--verify-only' });
+  assert.equal(run.code, 0, `stdout=${run.stdout} stderr=${run.stderr}`);
+  assert.equal(run.stderr, '');
+  assert.match(run.stdout, /summary pass=5 nonpass=0/);
+  assert.deepEqual(run.posts, []);
+  assert.equal(run.transcript[0], 'GET /api/build-info', JSON.stringify(run.transcript.slice(0, 3)));
+});
+
+// --- library callers: the adapter itself refuses to exist unconfirmed -------
+
+const LIB_OPTS = {
+  mode: 'write-probe',
+  baseUrl: 'http://127.0.0.1:1',
+  accountId: 'qa-b-m4',
+  qaAccountId: 'qa-b-m4',
+  sessionId: REAL_SID,
+  disposableSessionId: DISPOSABLE_SID,
+  runId: HEX_RUN_ID,
+  expectForeignId: 'real-1',
+};
+
+test('B-W19: no HTTP write adapter can be constructed without a server confirmation', () => {
+  assert.throws(() => createHttpAdapter({ ...LIB_OPTS }), /Refusing write checks:/);
+  assert.throws(() => createHttpWriteAdapter({ ...LIB_OPTS }), /Refusing write checks:/);
+});
+
+test('B-W19: a hand-rolled confirmation object is not accepted', () => {
+  const forged = {
+    baseUrl: 'http://127.0.0.1:1',
+    sessionId: DISPOSABLE_SID,
+    protectedSessionId: REAL_SID,
+    disposableSessionName: DISPOSABLE_NAME,
+  };
+  assert.throws(
+    () => createHttpWriteAdapter({ ...LIB_OPTS, disposabilityConfirmation: forged }),
+    /Refusing write checks:/,
+  );
+});
+
+test('B-W19: a genuine confirmation does not transfer to a different write target', async () => {
+  const fixture = ledgerFixture();
+  await withServer(fixture.handler, async (baseUrl) => {
+    const opts = { ...LIB_OPTS, baseUrl };
+    const confirmation = await assertWriteProbeSafety(opts);
+    assert.ok(confirmation, 'a successful confirmation must yield something the adapter can be built with');
+    assert.doesNotThrow(() => createHttpWriteAdapter({ ...opts, disposabilityConfirmation: confirmation }));
+    assert.throws(
+      () => createHttpWriteAdapter({ ...opts, disposableSessionId: REAL_SID, disposabilityConfirmation: confirmation }),
+      /Refusing write checks:/,
+      'a confirmation for session 8 must not authorise writes to session 7',
+    );
+    assert.throws(
+      () => createHttpWriteAdapter({ ...opts, sessionId: 'someone-else', disposabilityConfirmation: confirmation }),
+      /Refusing write checks:/,
+      'a confirmation must not survive --session-id changing underneath it',
+    );
+    assert.deepEqual(fixture.posts(), []);
+  });
+});
+
+test('B-W19: the late runChecks assert still catches an adapter whose confirmation was stripped', async () => {
+  const fixture = ledgerFixture();
+  await withServer(fixture.handler, async (baseUrl) => {
+    const opts = { ...LIB_OPTS, baseUrl };
+    const confirmation = await assertWriteProbeSafety(opts);
+    const adapter = createHttpWriteAdapter({ ...opts, disposabilityConfirmation: confirmation });
+    delete adapter.disposabilityConfirmation;
+    await assert.rejects(() => runChecks(adapter, opts), /Refusing write checks:/);
+    assert.deepEqual(fixture.posts(), []);
+  });
+});
+
+// --- mutation matrix for the new guard -------------------------------------
+
+function replaceOnce(src, from, to) {
+  const idx = src.indexOf(from);
+  assert.notEqual(idx, -1, `mutation anchor not found: ${from}`);
+  assert.equal(src.indexOf(from, idx + from.length), -1, `mutation anchor is not unique: ${from}`);
+  return src.slice(0, idx) + to + src.slice(idx + from.length);
+}
+
+function replaceBetween(src, startAnchor, endAnchor, to) {
+  const start = src.indexOf(startAnchor);
+  assert.notEqual(start, -1, `mutation start anchor not found: ${startAnchor}`);
+  const end = src.indexOf(endAnchor, start);
+  assert.notEqual(end, -1, `mutation end anchor not found: ${endAnchor}`);
+  return src.slice(0, start) + to + src.slice(end);
+}
+
+// Each killer returns true when the acceptance property still holds. A mutant is
+// killed when its designated killer returns false or throws.
+const KILLERS = {
+  async transposition(harness) {
+    const run = await writeProbeRun({ harness, sessionIdFlag: DISPOSABLE_SID, disposableFlag: REAL_SID });
+    return run.posts.length === 0 && run.code === 2 && /Refusing write checks:/.test(run.stderr);
+  },
+  async happyPath(harness) {
+    const run = await writeProbeRun({ harness });
+    return run.code === 0 && run.posts.length === 4;
+  },
+  async unreachableHost(harness) {
+    const run = await writeProbeRun({ harness, baseUrlOverride: 'http://127.0.0.1:1' });
+    return run.code === 2 && /Refusing write checks:/.test(run.stderr) && !/harness startup failure/.test(run.stdout);
+  },
+  async lookupFails(harness) {
+    const run = await writeProbeRun({
+      harness,
+      sessionRecord: (sid) => (sid === DISPOSABLE_SID ? { status: 404, body: { detail: 'Session not found' } } : null),
+    });
+    return run.posts.length === 0 && run.code === 2 && /Refusing write checks:/.test(run.stderr);
+  },
+  async embeddedMarker(harness) {
+    const run = await writeProbeRun({
+      harness,
+      names: { [REAL_SID]: REAL_NAME, [DISPOSABLE_SID]: `Archived from ${DISPOSABLE_NAME} (LIVE MONEY)` },
+    });
+    return run.posts.length === 0 && run.code === 2 && /Refusing write checks:/.test(run.stderr);
+  },
+  async adapterDemandsConfirmation(harness) {
+    const mod = await import(pathToFileURL(harness).href);
+    try {
+      mod.createHttpWriteAdapter({ ...LIB_OPTS });
+      return false;
+    } catch (error) {
+      return /Refusing write checks:/.test(String(error?.message));
+    }
+  },
+};
+
+const GUARD_MUTANTS = [
+  {
+    id: 'G1',
+    label: 'marker check inverted',
+    killer: 'happyPath',
+    mutate: (src) => replaceOnce(src, 'if (!isDisposableSessionName(targetName)) {', 'if (isDisposableSessionName(targetName)) {'),
+  },
+  {
+    id: 'G2',
+    label: 'marker comparison made symmetric again (server signal deleted)',
+    killer: 'transposition',
+    mutate: (src) => replaceBetween(
+      src,
+      '  let targetName;\n',
+      '  const confirmation = Object.freeze({',
+      "  const targetName = 'QA-DISPOSABLE-assumed-without-asking-the-server';\n\n",
+    ),
+  },
+  {
+    id: 'G3',
+    label: 'guard moved back after adapter construction and after the digest probe',
+    killer: 'unreachableHost',
+    mutate: (src) => replaceOnce(
+      src,
+      '      opts.disposabilityConfirmation = await assertWriteProbeSafety(opts);',
+      '      opts.disposabilityConfirmation = null;',
+    ),
+  },
+  {
+    id: 'G4',
+    label: 'guard passes when the lookup errors',
+    killer: 'lookupFails',
+    mutate: (src) => replaceOnce(
+      src,
+      '    targetName = await fetchServerSessionName(opts, target);',
+      "    targetName = await fetchServerSessionName(opts, target).catch(() => 'QA-DISPOSABLE-assumed');",
+    ),
+  },
+  {
+    id: 'G5',
+    label: 'prefix matched with includes instead of a prefix test',
+    killer: 'embeddedMarker',
+    mutate: (src) => replaceOnce(
+      src,
+      "name.startsWith(DISPOSABLE_SESSION_NAME_PREFIX)",
+      "name.includes(DISPOSABLE_SESSION_NAME_PREFIX)",
+    ),
+  },
+  {
+    id: 'G6',
+    label: 'disposability confirmed against opts.sessionId instead of the write target',
+    killer: 'transposition',
+    mutate: (src) => replaceOnce(
+      replaceOnce(
+        src,
+        '    protectedName = await fetchServerSessionName(opts, opts.sessionId);',
+        '    protectedName = await fetchServerSessionName(opts, target);',
+      ),
+      '    targetName = await fetchServerSessionName(opts, target);',
+      '    targetName = await fetchServerSessionName(opts, opts.sessionId);',
+    ),
+  },
+  {
+    id: 'G7',
+    label: 'write adapter no longer demands the confirmation',
+    killer: 'adapterDemandsConfirmation',
+    mutate: (src) => replaceOnce(src, '  assertConfirmationCovers(opts?.disposabilityConfirmation, {', '  void ({'),
+  },
+];
+
+test('B-W19 mutation matrix: 7 designed and 0 survived', async () => {
+  const pristine = fs.readFileSync(HARNESS_PATH);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'm4-bw19-mutants-'));
+  const survived = [];
+  try {
+    // Sanity: the unmutated harness satisfies every killer, so a killer that always
+    // reports "dead" cannot be mistaken for a real kill.
+    for (const [name, killer] of Object.entries(KILLERS)) {
+      assert.equal(await killer(HARNESS_PATH), true, `killer ${name} does not hold on the unmutated harness`);
+    }
+    for (const mutant of GUARD_MUTANTS) {
+      const mutantPath = path.join(dir, `${mutant.id}-m4-ledger-invariants.mjs`);
+      const mutated = mutant.mutate(pristine.toString('utf8'));
+      assert.notEqual(mutated, pristine.toString('utf8'), `${mutant.id} did not change the source`);
+      fs.writeFileSync(mutantPath, Buffer.from(mutated, 'utf8'));
+      let held;
+      try {
+        held = await KILLERS[mutant.killer](mutantPath);
+      } catch {
+        held = false;
+      }
+      if (held) survived.push(`${mutant.id} ${mutant.label}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(GUARD_MUTANTS.length, 7);
+  assert.deepEqual(survived, []);
 });

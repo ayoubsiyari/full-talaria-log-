@@ -273,7 +273,167 @@ function assertWriteProbeQuarantine(opts) {
   );
 }
 
-function assertQaWriteSafety(opts) {
+function refuseWrite(message) {
+  return new Error(`Refusing write checks: ${message}`);
+}
+
+/**
+ * B-W19 change A: establish disposability from the server, not from flag order.
+ *
+ * Every guard below this comment used to compare two operator-supplied values, so
+ * transposing --session-id and --disposable-session-id satisfied all of them and
+ * aimed every POST at the real ledger. The one signal an operator cannot transpose
+ * by reordering arguments is one that lives on the session record itself: its
+ * server-side name. A session is disposable only when the server says its name
+ * carries the reserved prefix, and the session named by --session-id must not.
+ *
+ * Surface: GET /api/sessions/{id} -> { session: { id, name, ... } }. It is a pure
+ * SELECT, unlike /state, which creates and commits a state row when it is read.
+ *
+ * Every failure mode refuses. No path treats "could not tell" as disposable.
+ */
+const DISPOSABLE_SESSION_NAME_PREFIX = 'QA-DISPOSABLE-';
+
+// Confirmations are branded by object identity: only one this module minted after a
+// successful server lookup is accepted, so a caller cannot hand-roll one.
+const ISSUED_DISPOSABILITY_CONFIRMATIONS = new WeakSet();
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl ?? '').replace(/\/+$/, '');
+}
+
+/**
+ * The single source of truth for where POSTs land. createHttpWriteAdapter and the
+ * disposability confirmation both read the write target through here, so the value
+ * that was confirmed and the value that is written to cannot drift apart.
+ */
+function writeTargetSessionId(opts) {
+  return opts?.disposableSessionId;
+}
+
+function isDisposableSessionName(name) {
+  return typeof name === 'string' && name.startsWith(DISPOSABLE_SESSION_NAME_PREFIX);
+}
+
+async function fetchServerSessionName(opts, sessionId) {
+  const url = `${normalizeBaseUrl(opts.baseUrl)}/api/sessions/${encodeURIComponent(String(sessionId))}`;
+  const body = await requestJson(url, { headers: authHeaders(opts), cache: 'no-store' });
+  const session = body?.session;
+  if (!session || typeof session !== 'object' || Array.isArray(session)) {
+    throw new Error(`wrong JSON shape from ${url}: expected .session object, got ${JSON.stringify(body).slice(0, 240)}`);
+  }
+  if (session.id == null || String(session.id) !== String(sessionId)) {
+    throw new Error(`${url} answered for session ${JSON.stringify(session.id)}, not the requested ${JSON.stringify(String(sessionId))}`);
+  }
+  if (typeof session.name !== 'string' || !session.name.trim()) {
+    throw new Error(`${url} returned no usable session name (got ${JSON.stringify(session.name)})`);
+  }
+  return session.name;
+}
+
+function assertConfirmationCovers(confirmation, expected) {
+  if (!confirmation || typeof confirmation !== 'object'
+    || !ISSUED_DISPOSABILITY_CONFIRMATIONS.has(confirmation)) {
+    throw refuseWrite(
+      'the write target has no server-confirmed disposability. Await '
+      + 'assertWriteProbeSafety(opts) first: no HTTP write adapter may exist until the '
+      + `server has confirmed the target session's own name carries the reserved `
+      + `${DISPOSABLE_SESSION_NAME_PREFIX} prefix.`,
+    );
+  }
+  if (confirmation.sessionId !== expected.sessionId) {
+    throw refuseWrite(`disposability was confirmed for session ${confirmation.sessionId} but the write target is ${expected.sessionId}.`);
+  }
+  if (confirmation.protectedSessionId !== expected.protectedSessionId) {
+    throw refuseWrite(`disposability was confirmed while --session-id was ${confirmation.protectedSessionId} but it is now ${expected.protectedSessionId}.`);
+  }
+  if (confirmation.baseUrl !== expected.baseUrl) {
+    throw refuseWrite(`disposability was confirmed against ${confirmation.baseUrl} but the write target is on ${expected.baseUrl}.`);
+  }
+}
+
+/**
+ * Defence in depth for the late call from runChecks: an adapter this module built
+ * for HTTP writes must still be carrying the confirmation it was constructed with,
+ * bound to the same target and the same protected session. Caller-supplied fixture
+ * adapters have no HTTP write target, so there is nothing for this to bind to; the
+ * enforcement point for anything that can reach a real ledger is
+ * createHttpWriteAdapter, which cannot be constructed without a confirmation.
+ */
+function assertAdapterWriteTargetConfirmed(opts, adapter) {
+  const target = adapter?.httpWriteTarget;
+  if (!target) return;
+  assertConfirmationCovers(adapter.disposabilityConfirmation, {
+    baseUrl: target.baseUrl,
+    sessionId: target.sessionId,
+    protectedSessionId: String(opts.sessionId),
+  });
+}
+
+/**
+ * B-W19 change B (SAFE-01): the entire write-probe safety gate in one place,
+ * callable before an adapter exists and before any other network contact. The
+ * disposability lookup is itself a read, so it is deliberately the first request
+ * the write-probe issues, and it must succeed before a write adapter can be built.
+ * Returns the confirmation that createHttpWriteAdapter will demand.
+ */
+export async function assertWriteProbeSafety(opts) {
+  if (opts?.mode !== 'write-probe') return null;
+  assertQaWriteSafety(opts);
+  const base = normalizeBaseUrl(opts.baseUrl);
+  if (!base) {
+    throw refuseWrite('--base-url is required before the server can confirm which session is disposable.');
+  }
+  const target = writeTargetSessionId(opts);
+  if (target == null || !String(target).trim()) {
+    throw refuseWrite('--disposable-session-id is required.');
+  }
+
+  let targetName;
+  try {
+    targetName = await fetchServerSessionName(opts, target);
+  } catch (error) {
+    throw refuseWrite(
+      `the server could not confirm that session ${String(target)} is disposable, so it is treated as NOT disposable: `
+      + `${error?.message ?? String(error)}`,
+    );
+  }
+  if (!isDisposableSessionName(targetName)) {
+    throw refuseWrite(
+      `the server's name for --disposable-session-id ${String(target)} is ${JSON.stringify(targetName)}, which does not `
+      + `start with the reserved ${DISPOSABLE_SESSION_NAME_PREFIX} prefix. Only a session the server itself marks as `
+      + 'disposable may receive harness writes.',
+    );
+  }
+
+  let protectedName;
+  try {
+    protectedName = await fetchServerSessionName(opts, opts.sessionId);
+  } catch (error) {
+    throw refuseWrite(
+      `the server could not confirm the status of --session-id ${String(opts.sessionId)}, so the harness cannot rule out `
+      + `that it is the same ledger it is about to write to: ${error?.message ?? String(error)}`,
+    );
+  }
+  if (isDisposableSessionName(protectedName)) {
+    throw refuseWrite(
+      `both --session-id ${String(opts.sessionId)} and --disposable-session-id ${String(target)} are named with the `
+      + `reserved ${DISPOSABLE_SESSION_NAME_PREFIX} prefix. The operator has lost track of which ledger is real, so the `
+      + 'harness refuses rather than guess.',
+    );
+  }
+
+  const confirmation = Object.freeze({
+    baseUrl: base,
+    sessionId: String(target),
+    protectedSessionId: String(opts.sessionId),
+    disposableSessionName: targetName,
+  });
+  ISSUED_DISPOSABILITY_CONFIRMATIONS.add(confirmation);
+  return confirmation;
+}
+
+function assertQaWriteSafety(opts, adapter = null) {
   if (opts.mode !== 'write-probe') return;
   assertWriteProbeQuarantine(opts);
   if (!opts.qaAccountId || !String(opts.qaAccountId).trim()) {
@@ -294,6 +454,7 @@ function assertQaWriteSafety(opts) {
   if (!opts.sessionId || !String(opts.sessionId).trim()) {
     throw new Error('Refusing write checks: --session-id is required so writes stay inside one QA session.');
   }
+  assertAdapterWriteTargetConfirmed(opts, adapter);
 }
 
 function makeTrade(runId, index, override = {}) {
@@ -518,7 +679,7 @@ async function checkL8(adapter, opts) {
 
 export async function runChecks(adapter, options = {}) {
   const opts = { n: DEFAULT_N, runId: randomUUID().slice(0, 8), mode: 'verify-only', ...options };
-  assertQaWriteSafety(opts);
+  assertQaWriteSafety(opts, adapter);
   const checkIds = opts.mode === 'write-probe' ? WRITE_CHECK_IDS : VERIFY_CHECK_IDS;
   let initialBackendRows = null;
   try {
@@ -700,14 +861,27 @@ function createHttpReadAdapter(opts) {
 }
 
 function createHttpWriteAdapter(opts) {
-  const disposableOpts = { ...opts, sessionId: opts.disposableSessionId };
+  // SAFE-01: the adapter is the thing that can reach the real ledger, so it refuses
+  // to exist until the server has confirmed this exact target is disposable. Both
+  // the confirmed value and the POST URL come from the one frozen target below.
+  const httpWriteTarget = Object.freeze({
+    baseUrl: normalizeBaseUrl(opts.baseUrl),
+    sessionId: String(writeTargetSessionId(opts)),
+  });
+  assertConfirmationCovers(opts?.disposabilityConfirmation, {
+    baseUrl: httpWriteTarget.baseUrl,
+    sessionId: httpWriteTarget.sessionId,
+    protectedSessionId: String(opts.sessionId),
+  });
+  const disposableOpts = { ...opts, sessionId: httpWriteTarget.sessionId };
   const adapter = createHttpReadAdapter(disposableOpts);
   adapter.writesIssued = 0;
+  adapter.httpWriteTarget = httpWriteTarget;
+  adapter.disposabilityConfirmation = opts.disposabilityConfirmation;
   adapter.registerTrade = async (trade) => {
     adapter.writesIssued += 1;
-    const base = String(opts.baseUrl).replace(/\/+$/, '');
-    const sid = encodeURIComponent(String(opts.disposableSessionId));
-    return requestJson(`${base}/api/sessions/${sid}/journal-trades`, {
+    const sid = encodeURIComponent(httpWriteTarget.sessionId);
+    return requestJson(`${httpWriteTarget.baseUrl}/api/sessions/${sid}/journal-trades`, {
       method: 'POST',
       headers: authHeaders(opts),
       body: JSON.stringify({ trade }),
@@ -814,6 +988,20 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  // SAFE-01: the full write-probe safety gate runs here — after purely local
+  // validation, but before the digest probe, before adapter construction, and before
+  // any other network contact. The disposability lookup is the first request the
+  // write-probe makes, so an unreachable host produces a safety refusal rather than a
+  // transport error that would have preempted every assert.
+  if (opts.mode === 'write-probe') {
+    try {
+      opts.disposabilityConfirmation = await assertWriteProbeSafety(opts);
+    } catch (err) {
+      console.error(`\nREFUSED — ${err.message}\n`);
+      process.exitCode = 2;
+      return;
+    }
+  }
   if (opts.expectDigest) {
     const provenance = await fetchDeployedDigest(opts);
     opts.deployedDigest = provenance.digest;
@@ -850,4 +1038,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   });
 }
 
-export { CANONICAL_ID_RE, CHECK_IDS, HARNESS_TRADE_ID_RE, VERIFY_CHECK_IDS, WRITE_CHECK_IDS, createHttpReadAdapter, createHttpWriteAdapter, makeTrade, parseArgs, requestJson, tradeId, validateOptions };
+export { CANONICAL_ID_RE, CHECK_IDS, DISPOSABLE_SESSION_NAME_PREFIX, HARNESS_TRADE_ID_RE, VERIFY_CHECK_IDS, WRITE_CHECK_IDS, createHttpReadAdapter, createHttpWriteAdapter, makeTrade, parseArgs, requestJson, tradeId, validateOptions };

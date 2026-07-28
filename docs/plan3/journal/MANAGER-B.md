@@ -2712,3 +2712,38 @@ Fixed properly rather than by remembering not to do it: `record-build` now **req
 Nothing fails the **image build** when a module's content changes and its `?v=` does not. `record-build` catches it after the fact and only for this train. The general gate is C's C-NEXT, and it should stay there — my floor is a train-local backstop, not the class fix.
 
 Seal superseded to `b6d94c767` and retained with its reason; new seal at `c0a92d274` over nine files, all CRLF 0.
+
+---
+
+## B-0120 — B-W19 ACCEPTED. The transposition can no longer reach the real ledger, and I proved it with my own fixture rather than reading the report.
+
+**Verified in my own worktree per TREE-02, with a fixture I wrote, driving the real CLI as a subprocess and counting POSTs at the server rather than trusting the harness's own counter.**
+
+| Case | Result |
+|---|---|
+| Flags transposed (`--session-id`=disposable, `--disposable-session-id`=real) | exit 2, **0 POSTs**, safety refusal, and only **one** request made before refusing |
+| Correct order | guard does **not** refuse; request order is disposable lookup, protected lookup, *then* `/api/build-info` |
+| Unreachable host | exit 2, **safety** refusal — no `harness startup failure`, no checks ran |
+| Marker on both sessions | refuses, 0 POSTs |
+
+**The second row is the SAFE-01 proof and it is the one I most wanted to see from outside the packet's own harness:** the two disposability lookups happen *before* the digest probe, so the safety gate is genuinely first, not merely earlier. The third row is the same property under failure — today that path produced a transport error that preempted every assert.
+
+Suite 26/26 → **41/41**, mutation **7 designed / 0 survived**, VER-04 both halves, scope exactly the two permitted files, `api_server.py` diff empty. CRLF 0 on both files; the packet disclosed that the test file carried **one pre-existing CRLF at HEAD** (byte 21092) which its edit removed — I confirmed that against `git show`, and the disclosure was accurate.
+
+### One claim in the report I could not confirm, and am not repeating
+
+The packet stated in passing that `GET /api/sessions/{id}/state` "creates and commits a state row when it is read." **It does not.** I scanned the whole handler (`:24687-24739`): zero `commit`, `db.add`, `flush` or `refresh` lines. Nothing in the packet depends on this — it used `GET /api/sessions/{id}`, which is correct and which the harness already calls on every verify-only run — but the remark would have propagated as a belief that verify-only mode is not read-only, and it is not true. **Recorded because an unverified premise repeated in a report is exactly what cost us three decisions today, and a subagent's aside is not exempt.**
+
+### Two real limits the packet reported honestly, and I am forwarding rather than burying
+
+1. **The marker is operator-mutable, just not operator-transposable.** Confirmed: `PATCH /api/sessions/{session_id}` accepts `name` (`TradingSessionUpdateIn`, `:11595`; route `:25367`). So someone can rename a live session to `QA-DISPOSABLE-…` and defeat the guard deliberately. **The approved property was that a flag swap cannot reach the real ledger, and that property holds.** Defending against an operator who renames their own production session is a different threat and I am not treating it as in scope without a ruling.
+
+2. **No live-host confirmation exists.** There is no recorded production harness run anywhere in the tree, so reachability of the marker endpoint rests on source, auth parity with endpoints the harness already reads, nginx parity, and a local fixture. **This is the same gap as my edge-verification gap on the D-2 train** — twice today I have reached the boundary where the artifact is right and nobody can show what the running system returns. Before any real write-probe, a verify-only run should confirm the `GET /api/sessions/{id}` in the L2 transcript returns 200 with a name.
+
+### Third consecutive packet where my predicted mutant killer was wrong
+
+I expected G1 (marker check inverted) to die on the transposition cell. It does not: with the check inverted, a transposed run still refuses, via the "both marked" branch, **for the wrong reason.** The happy path is the real killer. B-W18's mutant 5 and B-W17's mutant 12 had the same shape. **I should stop stating predicted killers as though they were findings** — they are hypotheses, and the packet is right to verify each empirically instead of reasoning about it.
+
+VER-04 half (b) also earned its keep again: making an independent implementation pass forced the removal of acceptance assertions pinned to exact refusal wording and to my own confirmation-object fields. **An acceptance that only one implementation can satisfy is a description, not a specification.**
+
+The quarantine stays as defence in depth. HARNESS-01 now has an enforcement mechanism rather than a document.
