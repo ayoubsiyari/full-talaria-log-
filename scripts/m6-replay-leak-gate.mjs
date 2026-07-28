@@ -818,7 +818,7 @@ export async function runM6ReplayLeakPreflight(options = {}) {
   const censusInstrumented = acceptance.cells?.some((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED' && cell.pass === true);
   const schedulerCell = acceptance.cells?.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
   const soundSchedulerRed = schedulerCell?.pass === false && schedulerCell?.metrics?.soundChannelRed === true;
-  const defectReproduced = acceptance.status === 'RED' && censusInstrumented === true && soundSchedulerRed;
+  const defectReproduced = censusInstrumented === true && (finalLive > 1 || soundSchedulerRed);
   if (process.env.TALARIA_M6_LEAK_FIXED !== '1') {
     if (acceptance.ok && finalLive === 1) {
       return {

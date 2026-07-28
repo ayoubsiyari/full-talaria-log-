@@ -17,6 +17,7 @@ const M6_SOUND_DEFECT_CHANNELS = [
   'broadcastChannels',
   'workers',
 ];
+const M6_CALLBACK_OBSERVATION_MARGIN = 2;
 
 function isObject(value) {
   return value !== null && (typeof value === 'object' || typeof value === 'function');
@@ -115,6 +116,32 @@ function censusState(win) {
   }
 }
 
+function addCensusError(state, message) {
+  if (!state || !Array.isArray(state.errors) || !message) return;
+  if (!state.errors.includes(message)) state.errors.push(message);
+}
+
+function verifyCensusWrapperIdentity(win, state) {
+  if (!isObject(win) || !state || !state.wrappers) return;
+  for (const key of [
+    'setTimeout',
+    'clearTimeout',
+    'setInterval',
+    'clearInterval',
+    'requestAnimationFrame',
+    'cancelAnimationFrame',
+  ]) {
+    if (!state.wrappers[key]) continue;
+    try {
+      if (win[key] !== state.wrappers[key]) {
+        addCensusError(state, `wrapper-displaced:${key}`);
+      }
+    } catch (error) {
+      addCensusError(state, `wrapper-check:${key}:${String(error && error.message || error)}`);
+    }
+  }
+}
+
 export function installM6SchedulingCensus(win, label = 'window') {
   if (!isObject(win)) return null;
   try {
@@ -141,6 +168,7 @@ export function installM6SchedulingCensus(win, label = 'window') {
     timerCallbacks: 0,
     intervalCallbacks: 0,
     rafCallbacks: 0,
+    wrappers: {},
     errors: [],
   };
 
@@ -148,7 +176,7 @@ export function installM6SchedulingCensus(win, label = 'window') {
     const originalSetTimeout = win.setTimeout && win.setTimeout.bind(win);
     const originalClearTimeout = win.clearTimeout && win.clearTimeout.bind(win);
     if (originalSetTimeout && originalClearTimeout) {
-      win.setTimeout = function m6SetTimeout(fn, delay, ...args) {
+      state.wrappers.setTimeout = function m6SetTimeout(fn, delay, ...args) {
         let handle;
         const wrapped = typeof fn === 'function'
           ? function m6TimeoutCallback(...callbackArgs) {
@@ -161,10 +189,12 @@ export function installM6SchedulingCensus(win, label = 'window') {
         state.timeouts.add(handle);
         return handle;
       };
-      win.clearTimeout = function m6ClearTimeout(handle) {
+      state.wrappers.clearTimeout = function m6ClearTimeout(handle) {
         state.timeouts.delete(handle);
         return originalClearTimeout(handle);
       };
+      win.setTimeout = state.wrappers.setTimeout;
+      win.clearTimeout = state.wrappers.clearTimeout;
     }
   } catch (error) {
     state.errors.push('timer-wrap:' + String(error && error.message || error));
@@ -174,7 +204,7 @@ export function installM6SchedulingCensus(win, label = 'window') {
     const originalSetInterval = win.setInterval && win.setInterval.bind(win);
     const originalClearInterval = win.clearInterval && win.clearInterval.bind(win);
     if (originalSetInterval && originalClearInterval) {
-      win.setInterval = function m6SetInterval(fn, delay, ...args) {
+      state.wrappers.setInterval = function m6SetInterval(fn, delay, ...args) {
         const wrapped = typeof fn === 'function'
           ? function m6IntervalCallback(...callbackArgs) {
             state.intervalCallbacks += 1;
@@ -185,10 +215,12 @@ export function installM6SchedulingCensus(win, label = 'window') {
         state.intervals.add(handle);
         return handle;
       };
-      win.clearInterval = function m6ClearInterval(handle) {
+      state.wrappers.clearInterval = function m6ClearInterval(handle) {
         state.intervals.delete(handle);
         return originalClearInterval(handle);
       };
+      win.setInterval = state.wrappers.setInterval;
+      win.clearInterval = state.wrappers.clearInterval;
     }
   } catch (error) {
     state.errors.push('interval-wrap:' + String(error && error.message || error));
@@ -198,7 +230,7 @@ export function installM6SchedulingCensus(win, label = 'window') {
     const originalRaf = win.requestAnimationFrame && win.requestAnimationFrame.bind(win);
     const originalCancelRaf = win.cancelAnimationFrame && win.cancelAnimationFrame.bind(win);
     if (originalRaf && originalCancelRaf) {
-      win.requestAnimationFrame = function m6RequestAnimationFrame(fn) {
+      state.wrappers.requestAnimationFrame = function m6RequestAnimationFrame(fn) {
         let handle;
         handle = originalRaf(function m6RafCallback(ts) {
           state.rafs.delete(handle);
@@ -208,10 +240,12 @@ export function installM6SchedulingCensus(win, label = 'window') {
         state.rafs.add(handle);
         return handle;
       };
-      win.cancelAnimationFrame = function m6CancelAnimationFrame(handle) {
+      state.wrappers.cancelAnimationFrame = function m6CancelAnimationFrame(handle) {
         state.rafs.delete(handle);
         return originalCancelRaf(handle);
       };
+      win.requestAnimationFrame = state.wrappers.requestAnimationFrame;
+      win.cancelAnimationFrame = state.wrappers.cancelAnimationFrame;
     }
   } catch (error) {
     state.errors.push('raf-wrap:' + String(error && error.message || error));
@@ -401,12 +435,14 @@ export function installM6SchedulingCensus(win, label = 'window') {
 
 export function summarizeM6SchedulingCensus(win, label = 'window') {
   const state = censusState(win) || installM6SchedulingCensus(win, label);
+  verifyCensusWrapperIdentity(win, state);
   const chart = (() => {
     try { return win && win.chart ? win.chart : null; } catch (_) { return null; }
   })();
   return {
     label: state ? state.label : label,
     installed: !!state,
+    installedAt: state ? state.installedAt : null,
     pendingTimeouts: state ? state.timeouts.size : 0,
     pendingIntervals: state ? state.intervals.size : 0,
     pendingRafs: state ? state.rafs.size : 0,
@@ -458,11 +494,15 @@ export function aggregateM6SchedulingCensus(rows = []) {
     windowCount: windows.length,
     errorCount: 0,
     errors: [],
+    installedAtByLabel: {},
   };
   for (const row of windows) {
     if (row && row.installed) totals.installedWindows += 1;
+    if (row && row.label && row.installedAt != null) {
+      totals.installedAtByLabel[row.label] = row.installedAt;
+    }
     for (const key of Object.keys(totals)) {
-      if (key === 'installedWindows' || key === 'windowCount' || key === 'errors') continue;
+      if (key === 'installedWindows' || key === 'windowCount' || key === 'errors' || key === 'installedAtByLabel') continue;
       totals[key] += Number(row && row[key]) || 0;
     }
     const errors = Array.isArray(row && row.errors) ? row.errors.filter(Boolean) : [];
@@ -486,6 +526,56 @@ function schedulerCensusInstrumented(totals) {
     && Number(totals.windowCount) >= 1
     && (!Array.isArray(totals.errors) || totals.errors.length === 0)
     && Number(totals.errorCount || 0) === 0;
+}
+
+function schedulingRows(snapshot) {
+  return Array.isArray(snapshot?.schedulingCensus?.rows) ? snapshot.schedulingCensus.rows : [];
+}
+
+function schedulerEpochContinuity(baselineRows, finalRows) {
+  const errors = [];
+  const checked = [];
+  const finalByLabel = new Map();
+  for (const row of finalRows) {
+    if (!row || !row.label || row.installedAt == null) continue;
+    finalByLabel.set(row.label, row);
+  }
+  for (const baselineRow of baselineRows) {
+    if (!baselineRow || !baselineRow.label || baselineRow.installed !== true) continue;
+    const finalRow = finalByLabel.get(baselineRow.label);
+    if (!finalRow || finalRow.installed !== true) {
+      errors.push(`epoch-missing:${baselineRow.label}`);
+      continue;
+    }
+    checked.push({
+      label: baselineRow.label,
+      baselineInstalledAt: baselineRow.installedAt,
+      finalInstalledAt: finalRow.installedAt,
+    });
+    if (baselineRow.installedAt !== finalRow.installedAt) {
+      errors.push(`epoch-reset:${baselineRow.label}:${baselineRow.installedAt}->${finalRow.installedAt}`);
+    }
+  }
+  if (checked.length === 0) errors.push('epoch-unobserved');
+  return {
+    pass: errors.length === 0,
+    checked,
+    errors,
+  };
+}
+
+function schedulerCallbackObservation(baselineScheduler, finalScheduler) {
+  const timerCallbackDelta = (Number(finalScheduler?.timerCallbacks) || 0)
+    - (Number(baselineScheduler?.timerCallbacks) || 0);
+  const rafCallbackDelta = (Number(finalScheduler?.rafCallbacks) || 0)
+    - (Number(baselineScheduler?.rafCallbacks) || 0);
+  return {
+    timerCallbackDelta,
+    rafCallbackDelta,
+    margin: M6_CALLBACK_OBSERVATION_MARGIN,
+    pass: timerCallbackDelta >= M6_CALLBACK_OBSERVATION_MARGIN
+      || rafCallbackDelta >= M6_CALLBACK_OBSERVATION_MARGIN,
+  };
 }
 
 function schedulerChannelDeltas(baselineScheduler, finalScheduler) {
@@ -518,9 +608,15 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
   const workloadArmed = !workload || workload.armed === true;
   const baselineScheduler = baseline?.schedulingCensus?.totals || null;
   const finalScheduler = final?.schedulingCensus?.totals || null;
+  const baselineRows = schedulingRows(baseline);
+  const finalRows = schedulingRows(final);
   const baselineInstrumented = schedulerCensusInstrumented(baselineScheduler);
   const finalInstrumented = schedulerCensusInstrumented(finalScheduler);
-  const schedulerInstrumented = baselineInstrumented && finalInstrumented;
+  const schedulerEpochs = schedulerEpochContinuity(baselineRows, finalRows);
+  const schedulerCallbacks = schedulerCallbackObservation(baselineScheduler, finalScheduler);
+  const schedulerInstrumented = baselineInstrumented && finalInstrumented
+    && schedulerEpochs.pass
+    && schedulerCallbacks.pass;
   const schedulerDeltas = schedulerDeltaEvaluation(baselineScheduler, finalScheduler);
   const cells = [
     {
@@ -551,7 +647,7 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
       name: 'M6-SCHEDULER-CENSUS-INSTRUMENTED',
       blocking: true,
       pass: schedulerInstrumented,
-      detail: `baselineInstalled=${baselineScheduler?.installedWindows}/${baselineScheduler?.windowCount}; finalInstalled=${finalScheduler?.installedWindows}/${finalScheduler?.windowCount}; baselineErrors=${(baselineScheduler?.errors || []).join(',') || 'none'}; finalErrors=${(finalScheduler?.errors || []).join(',') || 'none'}`,
+      detail: `baselineInstalled=${baselineScheduler?.installedWindows}/${baselineScheduler?.windowCount}; finalInstalled=${finalScheduler?.installedWindows}/${finalScheduler?.windowCount}; callbackDeltas=timer:${schedulerCallbacks.timerCallbackDelta},raf:${schedulerCallbacks.rafCallbackDelta},margin:${schedulerCallbacks.margin}; epochErrors=${schedulerEpochs.errors.join(',') || 'none'}; baselineErrors=${(baselineScheduler?.errors || []).join(',') || 'none'}; finalErrors=${(finalScheduler?.errors || []).join(',') || 'none'}`,
       metrics: {
         baselineInstalledWindows: Number(baselineScheduler?.installedWindows) || 0,
         baselineWindowCount: Number(baselineScheduler?.windowCount) || 0,
@@ -559,6 +655,8 @@ export function assertM6ReplayLeakCounts({ baseline, final, mutant = false, work
         finalWindowCount: Number(finalScheduler?.windowCount) || 0,
         baselineErrorCount: Number(baselineScheduler?.errorCount) || 0,
         finalErrorCount: Number(finalScheduler?.errorCount) || 0,
+        callbackObservation: schedulerCallbacks,
+        epochContinuity: schedulerEpochs,
       },
     },
     {

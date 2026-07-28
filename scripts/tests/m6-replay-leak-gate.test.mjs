@@ -46,6 +46,7 @@ function schedulerTotals(overrides = {}) {
     timerCallbacks: 0,
     intervalCallbacks: 0,
     rafCallbacks: 0,
+    installedAt: 10,
     installedWindows: 1,
     windowCount: 1,
     errorCount: 0,
@@ -56,13 +57,33 @@ function schedulerTotals(overrides = {}) {
 }
 
 function withScheduler(snapshot, totals = schedulerTotals()) {
+  const row = {
+    label: 'A-harness',
+    installed: Number(totals.installedWindows) > 0,
+    installedAt: totals.installedAt,
+    pendingTimeouts: totals.pendingTimeouts,
+    pendingIntervals: totals.pendingIntervals,
+    pendingRafs: totals.pendingRafs,
+    eventListeners: totals.eventListeners,
+    messageChannels: totals.messageChannels,
+    broadcastChannels: totals.broadcastChannels,
+    workers: totals.workers,
+    timerCallbacks: totals.timerCallbacks,
+    intervalCallbacks: totals.intervalCallbacks,
+    rafCallbacks: totals.rafCallbacks,
+    errors: totals.errors,
+  };
   return {
     ...snapshot,
     schedulingCensus: {
-      rows: [],
+      rows: [row],
       totals,
     },
   };
+}
+
+function observedTotals(overrides = {}) {
+  return schedulerTotals({ timerCallbacks: 5, ...overrides });
 }
 
 test('unit: probe counts live Q6 replay systems and ignores destroyed', () => {
@@ -85,10 +106,13 @@ test('unit: detached iframe counter is based on tracked frame handles', () => {
 
 test('unit: acceptance and mutant cells encode director-required verdicts', () => {
   const baseline = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
-  const greenFinal = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const greenFinal = withScheduler(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    observedTotals(),
+  );
   const redFinal = withScheduler(
     { liveReplaySystems: 6, connectedIframes: 0, detachedTrackedIframes: 5 },
-    schedulerTotals({ pendingIntervals: 3, totalResidue: 3 }),
+    observedTotals({ pendingIntervals: 3, totalResidue: 3 }),
   );
   const workload = { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 };
 
@@ -139,7 +163,30 @@ test('unit: scheduler census wraps observable scheduling residue', () => {
   assert.equal(summary.pendingRafs, 0);
   assert.equal(summary.eventListeners, 1);
   assert.equal(aggregateM6SchedulingCensus([summary]).totalResidue, 2);
+  assert.equal(summary.installedAt, 10);
   win.clearInterval(interval);
+});
+
+test('unit: scheduler census reports wrapper displacement at snapshot time', () => {
+  const originalSetInterval = () => 2;
+  const win = {
+    performance: { now: () => 10 },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    setInterval: originalSetInterval,
+    clearInterval() {},
+    requestAnimationFrame() { return 3; },
+    cancelAnimationFrame() {},
+    EventTarget: function EventTarget() {},
+  };
+  win.EventTarget.prototype.addEventListener = function addEventListener() {};
+  win.EventTarget.prototype.removeEventListener = function removeEventListener() {};
+
+  installM6SchedulingCensus(win, 'fixture');
+  win.setInterval = originalSetInterval;
+  const summary = summarizeM6SchedulingCensus(win, 'fixture');
+
+  assert.match(summary.errors.join(','), /wrapper-displaced:setInterval/);
 });
 
 test('unit: scheduler census listeners are identity keyed', () => {
@@ -186,7 +233,7 @@ test('fault-injection: orphan scheduler residue blocks acceptance even when Q6 l
   const baseline = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
   const final = withScheduler(
     { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
-    schedulerTotals({ pendingIntervals: 4, totalResidue: 4 }),
+    observedTotals({ pendingIntervals: 4, totalResidue: 4 }),
   );
   const cells = assertM6ReplayLeakCounts({
     baseline,
@@ -203,7 +250,10 @@ test('fault-injection: blind scheduler census fails closed separately', () => {
     { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
     schedulerTotals({ installedWindows: 0, windowCount: 1 }),
   );
-  const final = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const final = withScheduler(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    observedTotals(),
+  );
   const cells = assertM6ReplayLeakCounts({
     baseline,
     final,
@@ -212,6 +262,37 @@ test('fault-injection: blind scheduler census fails closed separately', () => {
 
   assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED').pass, false);
   assert.equal(cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE').pass, false);
+});
+
+test('fault-injection: all-zero scheduler census does not prove instrumentation', () => {
+  const baseline = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const final = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const cells = assertM6ReplayLeakCounts({
+    baseline,
+    final,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+  });
+
+  const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
+  assert.equal(instrumented.pass, false);
+  assert.equal(instrumented.metrics.callbackObservation.pass, false);
+});
+
+test('fault-injection: scheduler census reset between baseline and final fails epoch continuity', () => {
+  const baseline = withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 });
+  const final = withScheduler(
+    { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+    observedTotals({ installedAt: 20 }),
+  );
+  const cells = assertM6ReplayLeakCounts({
+    baseline,
+    final,
+    workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+  });
+
+  const instrumented = cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
+  assert.equal(instrumented.pass, false);
+  assert.match(instrumented.detail, /epoch-reset:A-harness/);
 });
 
 test('fault-injection: listener-only drift is not a reproduced PO defect', async () => {
@@ -225,7 +306,7 @@ test('fault-injection: listener-only drift is not a reproduced PO defect', async
         baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
         final: withScheduler(
           { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
-          schedulerTotals({ eventListeners: 1, totalResidue: 1 }),
+          observedTotals({ eventListeners: 1, totalResidue: 1 }),
         ),
       },
       timedOut: false,
@@ -278,7 +359,10 @@ test('fault-injection: injected browser report validates acceptance path', async
         cycles: 5,
         workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
         baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
-        final: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          observedTotals(),
+        ),
       },
       timedOut: false,
       stderrTail: '',
@@ -299,7 +383,10 @@ test('fault-injection: preflight UNPROVEN when PO workload stays live=1', async 
         cycles: 5,
         workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
         baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
-        final: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+          observedTotals(),
+        ),
       },
       timedOut: false,
       stderrTail: '',
@@ -320,7 +407,7 @@ test('fault-injection: preflight treats scheduler census RED as reproduced PO de
         baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
         final: withScheduler(
           { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
-          schedulerTotals({ pendingIntervals: 4, totalResidue: 4 }),
+          observedTotals({ pendingIntervals: 4, totalResidue: 4 }),
         ),
       },
       timedOut: false,
@@ -331,6 +418,63 @@ test('fault-injection: preflight treats scheduler census RED as reproduced PO de
   assert.equal(preflight.ok, false);
   assert.equal(preflight.status, 'RED');
   assert.match(preflight.error, /soundSchedulerRed=true/);
+});
+
+test('fault-injection: preflight treats live replay growth as reproduced PO defect with instrumented census', async () => {
+  const preflight = await runM6ReplayLeakPreflight({
+    findBrowser: () => '/fixture/chrome',
+    runBrowser: async () => ({
+      report: {
+        ok: true,
+        cycles: 5,
+        workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+        baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+        final: withScheduler(
+          { liveReplaySystems: 6, connectedIframes: 0, detachedTrackedIframes: 5 },
+          observedTotals(),
+        ),
+      },
+      timedOut: false,
+      stderrTail: '',
+    }),
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.status, 'RED');
+  assert.match(preflight.error, /final live=6/);
+});
+
+test('fault-injection: FIXED mode does not mint GREEN on all-zero scheduler census', async () => {
+  const prev = process.env.TALARIA_M6_LEAK_FIXED;
+  process.env.TALARIA_M6_LEAK_FIXED = '1';
+  try {
+    let calls = 0;
+    const preflight = await runM6ReplayLeakPreflight({
+      findBrowser: () => '/fixture/chrome',
+      runBrowser: async () => {
+        calls += 1;
+        return {
+          report: {
+            ok: true,
+            cycles: 5,
+            workload: { armed: true, panels: 4, indicatorsOk: true, order: { ok: true }, stillPlaying: 4 },
+            baseline: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+            final: withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+          },
+          timedOut: false,
+          stderrTail: '',
+        };
+      },
+    });
+
+    assert.equal(preflight.ok, false);
+    assert.equal(preflight.status, 'RED');
+    assert.equal(calls, 1);
+    assert.match(preflight.acceptance.error, /M6-SCHEDULER-CENSUS-INSTRUMENTED/);
+  } finally {
+    if (prev === undefined) delete process.env.TALARIA_M6_LEAK_FIXED;
+    else process.env.TALARIA_M6_LEAK_FIXED = prev;
+  }
 });
 
 test('fault-injection: preflight requires mutant to go red once FIXED=1', async () => {
@@ -354,14 +498,17 @@ test('fault-injection: preflight requires mutant to go red once FIXED=1', async 
             final: mutant
               ? withScheduler(
                 { liveReplaySystems: 6, connectedIframes: 0, detachedTrackedIframes: 5 },
-                schedulerTotals({ pendingIntervals: 3, totalResidue: 3 }),
+                observedTotals({ pendingIntervals: 3, totalResidue: 3 }),
               )
               : schedulerOrphan
                 ? withScheduler(
                   { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
-                  schedulerTotals({ pendingIntervals: 1, totalResidue: 1 }),
+                  observedTotals({ pendingIntervals: 1, totalResidue: 1 }),
                 )
-                : withScheduler({ liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 }),
+                : withScheduler(
+                  { liveReplaySystems: 1, connectedIframes: 0, detachedTrackedIframes: 0 },
+                  observedTotals(),
+                ),
           },
           timedOut: false,
           stderrTail: '',

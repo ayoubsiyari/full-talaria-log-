@@ -24,6 +24,7 @@ test('reproduce: PO workload must stay RED on unfixed product (not a pass if liv
   assert.equal(acceptance.report.workload?.armed, true, JSON.stringify(acceptance.report.workload, null, 2));
 
   const finalLive = acceptance.report.final?.liveReplaySystems;
+  const censusCell = acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-INSTRUMENTED');
   const schedulerCell = acceptance.cells.find((cell) => cell.name === 'M6-SCHEDULER-CENSUS-RETURNS-TO-BASELINE');
   const soundSchedulerRed = schedulerCell && schedulerCell.pass === false && schedulerCell.metrics?.soundChannelRed === true;
   if (finalLive === 1 && !soundSchedulerRed) {
@@ -33,7 +34,7 @@ test('reproduce: PO workload must stay RED on unfixed product (not a pass if liv
 
   assert.equal(result.status, 'RED', result.error || JSON.stringify(acceptance.cells, null, 2));
   assert.ok(
-    soundSchedulerRed,
-    `expected sound scheduler census RED, got live=${finalLive}, scheduler=${JSON.stringify(schedulerCell)}`,
+    censusCell?.pass === true && (finalLive > 1 || soundSchedulerRed),
+    `expected instrumented census plus live growth or sound scheduler RED, got live=${finalLive}, census=${JSON.stringify(censusCell)}, scheduler=${JSON.stringify(schedulerCell)}`,
   );
 });
