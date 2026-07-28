@@ -3460,3 +3460,58 @@ Two unmatched variables in that packet apply directly to the idle work, and one 
 **The documented re-run command does not reproduce the evidence.** `--play-ms 900000` landed on `warmupMs`; the evidence shows `playMs: 120000`. What ran was a 15-minute warmup and a 120-second window, by which point Panel A had already consumed 401→1826 of 2000 bars, so the measurement covers the final 9% of the dataset — and A exhausted it entirely at ~110 s, idling for the last two samples. **A reproduction command that does not reproduce is a provenance defect**, and it is the second artefact-integrity failure this train.
 
 Also correcting a claim I made at 15:14: **"nothing runs off the main thread" is wrong.** 53% of process CPU is off the renderer main thread by design — compositing, raster, GPU, networking. The defensible statement is narrower: **no application JavaScript runs on a dedicated worker; all product JS is on the renderer main thread.** The worker check itself is sound by two independent methods, but it does not cover `SharedWorker`, service workers or worklets, and I stated a conclusion broader than the measurement.
+
+---
+
+## 2026-07-28 15:58 — Leak packet BLOCKED on shape, fix survives all six attacks, and three things I told the Director are wrong
+
+Review of `9ad391084` returned **BLOCK — on shape only**. Every one of the six attack points I aimed at the fix came back in the author's favour, tested with instrumentation rather than argument. I could not have asked for a cleaner separation: the change is right, the packaging is not.
+
+**B1, the blocker:** `homepage/public/chart/chart.js` is a generated copy of the canonical file, enforced byte-identical, and **it is what the homepage deployment actually serves**. As committed, the deployed engine still leaks. Failure set verified exhaustively — all 153 tracked `*.test.mjs` run at base and at HEAD in pinned trees — and it is exactly the two parity cells, nothing else moved.
+
+### Correction 1 — my mirror escalation rested on a false premise
+
+At 14:38 I escalated that the mirror is "diverging from two directions at once" and that byte-parity makes every `chart.js` edit structurally a two-territory change, colliding with the no-commit-spans-two-territories rule. I asked the Director to choose between three options.
+
+**The first option is simply the fact.** The mirror **is generated** — `chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs` does a plain `copyFileSync` of canonical onto mirror. For a copied file, byte-parity *is* the generation check, so **the gate is correct and my framing of it as possibly-wrong was not.**
+
+And **Manager C is not breaking parity.** C changes both files symmetrically, −32 lines each. My "diverging from two directions" claim was wrong; I inferred divergence from seeing the mirror in C's dirty list without checking whether the canonical moved with it.
+
+**So the escalation largely dissolves and I am withdrawing it as posed.** What survives is much narrower and purely operational: the generator clobbers whatever it copies onto, so it must not be run in the main checkout while C has uncommitted mirror edits. Run inside the packet's own worktree it is safe, which is how I have briefed the remediation. That is a sequencing note, not a governance question, and I should not have sent the Director a ruling request for something a five-minute read of the sync script answered.
+
+### Correction 2 — my dispatch brief contained a false finding
+
+I told the reviewer that `multichart-manager.js:442` was an **unexercised teardown path** and asked it to settle the assumption. **It is not a teardown path at all.** It is the error fallback inside `addChart`, assigning the initial `src` of a freshly created, not-yet-inserted iframe when the src builder throws. No panel document has loaded, no `Chart` exists, no listener was ever installed. All three `.src =` sites in both managers are on a fresh `createElement('iframe')`.
+
+Logged as **manager-finding-defect** per §A16.4. The reviewer tested the shape anyway and it is covered — `pagehide` fires synchronously with `persisted=false` on `frame.remove()`, ancestor removal, `innerHTML=''` **and** `src='about:blank'` on a loaded panel, host listeners 1 → 0 in all four.
+
+### Correction 3 — "the leak is a one-off, not a class" is wrong
+
+At 14:39 I recorded the sibling audit as a negative I had expected to be positive, and concluded a single fix was the right disposition rather than a sweep.
+
+**There is a second one.** The drag-end guard at `chart.js:27148–27154` is *paired* — which is what my audit asked about and correctly found — but it is **not teardown-safe**: a panel destroyed mid-drag strands three to four `window.parent` listeners, because pairing only fires on drag end and teardown does not wait for one. **My audit asked the wrong question.** Pairing and teardown-safety are different properties and I conflated them, which is the same category error as reachability-versus-textual-presence that cost a round earlier this week. No concrete trigger found, low severity, logged as an open row — but the disposition "one-off, not a class" is withdrawn.
+
+## 2026-07-28 15:59 — A correction in the author's favour, and it changes what I can ask for in future
+
+The author wrote — and I repeated to the Director — that in-browser retention **could not be proven**, because no browser API exposes a listener census outside DevTools. **That is false, and the reviewer proved it by doing it.** CDP's `DOMDebugger.getEventListeners` gives an exact census of a window's listeners, and `page.metrics()` gives detached-document counts.
+
+Over eight boot/teardown cycles with forced GC:
+
+| | detached documents retained | stranded host listeners |
+|---|---|---|
+| leaky | 8 | 8 |
+| fixed | **0** | **0** |
+
+Ten cycles gave 10 versus 0. So the leak is exactly one retained panel document per teardown and the fix takes it to zero — **measured, not argued from structure.** The reviewer explicitly warned off its own heap figure as an artefact of a synthetic payload, which is the right instinct and the opposite of what happened with the render histogram.
+
+**The standing consequence: "no API exposes this" is not an acceptable limit on a browser packet from now on.** CDP exposes far more than the page-visible API surface, and I accepted an unprovable-in-principle claim that was merely unattempted.
+
+Finding (a) is **confirmed with a positive control** — the orphaned handler ran 0 times post-teardown, while a live panel handler fired once and a host-registered listener fired four times across the same commits. A zero from a silent instrument proves nothing; this zero is real. **The leak contributes nothing to the CPU deficit and must not displace idle-CPU work.**
+
+## 2026-07-28 16:00 — The gap worth fixing, and the remediation
+
+Mutation testing killed five of six mutants but **one survived: swapping `'pagehide'` for `'unload'` passes all 11 cells.** That matters more than a generic coverage gap, because `unload` is **precisely the design the author considered and rejected** — it makes the document bfcache-ineligible, a silent behaviour regression. So the gate currently goes green over the one alternative the packet's own reasoning rules out. **A gate that does not pin the decision the packet rests on is not gating the packet.**
+
+Remediation dispatched cheap: regenerate the mirror via the generator rather than by hand, inside the packet worktree so C's edits are untouched, and add a cell that kills the `unload` mutant. The product fix is explicitly out of the writable set.
+
+Two open rows I am not acting on now: all browser evidence is Chromium 148 only, and a deterministic host-driven removal could join `_b70ShadowDisposeIndicatorGeneration()` three lines above `c.frame.remove()`, dropping the sole dependency on browser unload behaviour. That is hardening, not a defect, and it is worth noting the host already has a de facto panel-dispose hook at exactly the right place despite `Chart` having no `destroy()`.
