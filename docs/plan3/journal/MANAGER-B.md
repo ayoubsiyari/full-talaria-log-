@@ -3283,3 +3283,80 @@ in `nginx.local.conf`).
 
 **Unblocks A:** `:3000` serves b82 + journal marker + deroute; switch sweep can
 run against this build. Not holding for A.
+
+---
+
+## B-0146 — FINDING-PRODUCTION-BUILD-BLOCKED. DEPLOY-01 extended. Checkpoint path.
+
+Director `FINDING-PRODUCTION-BUILD-BLOCKED-20260728-2320.md`. Hot-patch credited;
+preflight/soak are now the top priority. DEPLOY-01 now requires the build can be
+built.
+
+### Commit (tonight's deploy record)
+
+`771b8885b` — journal B-0145 + `homepage/nginx.local.conf` legacy-index 302 +
+`.scratch-*.tar` gitignore. `.scratch-b82-deploy.tar` **removed** (was untracked;
+now ignored). Credential never in tree.
+
+### CHECKPOINT_BUILD=1 capture (actual failure — not inherited)
+
+```
+CHECKPOINT_BUILD=1 CHART_BUILD_ID=20260728b82 SOURCE_COMMIT_SHA=771b8885bcf0011cc45c336c51eaf997fb6ba11c
+docker compose build trading-chart
+```
+
+Inputs assert OK. **First failure is soak** (preflight never reached this run):
+
+```
+"verdict": "M19-FAIL",
+"detail": "A/B/C green but D/E failing: fixDAllPass=true; fixEAllPass=false; d={\"integrated\":true,\"kill\":false,\"d_markerFullScan\":false,\"journalRowsVisited\":50,\"journalRowsVisitedMeasured\":50,\"visitsOnMax\":80,\"pass\":true}; e={\"integrated\":true,\"kill\":false,\"e_hotpathConsole\":true,\"consoleCalls\":50,\"pass\":false}",
+"fixAAllPass": true,
+"fixBAllPass": true,
+"fixCAllPass": true,
+"fixDAllPass": true,
+"fixEAllPass": false
+```
+
+Per-run FixE (canonical ×3): `integrated=true`, `kill=false`,
+`e_hotpathConsole=true`, `consoleCalls=50`, `pass=false`.
+
+Log: `docs/plan3/evidence/B-M4/release/checkpoint-b82-build-1.log`.
+
+### COPY hypothesis — confirmed; applied
+
+`homepage/Dockerfile` and `Dockerfile.local` had no `COPY` for
+`scripts/module-contract-preflight.mjs`. `talaria-design` preflight resolves
+`../../scripts` → `/scripts/…` (same pattern as line-27 forwarding contracts).
+Preflight has **no** `scripts/lib` imports; it needs sibling
+`module-contracts.json` (defaultManifest beside the script).
+
+Applied to both Dockerfiles:
+```
+COPY ["scripts/module-contract-preflight.mjs", "/scripts/module-contract-preflight.mjs"]
+COPY ["scripts/module-contracts.json", "/scripts/module-contracts.json"]
+```
+`checkpoint-docker-context.test.mjs` now requires both precede `build:live:chart`.
+Tests pass. **Not claiming preflight GREEN in-image** — soak still blocks that
+stage; path layout under `repoRoot=/` may still need a follow-up once soak clears.
+
+### soak FixE — reported before any fix; escalating
+
+Diag of measured-phase console sink prefixes (all three canonical runs identical):
+
+```json
+{ "📔 durable journal write suppressed: this sessio": 50 }
+```
+
+Source: `order-manager.js` ~7212 — **`console.warn`** from the B-W16 hydration
+guard (intentional safety: refuse durable write when journal never hydrated).
+
+FixE product contract (`order-manager.js` ~106–123): guard hot-path
+**`console.log`**; **warn/error untouched**. Soak `installConsoleSink` counts
+`warn`/`error` toward `e_hotpathConsole`. So the gate is red on a safety warn
+the product was told to keep, while `__TALARIA_M19_HOTPATH_LOG` is integrated and
+kill is OFF.
+
+**Not a release-lane workaround candidate** (will not skip soak / silence the
+guard). This is an instrument-vs-contract clash on the soak (historically L2) +
+a B-owned warn site that is behaving as designed. **Escalating to Director for
+reassignment** rather than editing either side inside the shipping path.
