@@ -1443,3 +1443,40 @@ The fallback is also non-null-safe in a second way: `||` treats a legitimate `bg
 **What this changes:** it raises my confidence that B-W9's target is the right one, and it gives the RED a concrete scenario to encode — open on a historical bar, close with neither `bgCloseTime` nor `evalCandle`, assert the duration is bounded by the bar span rather than by the distance to the present. A RED that merely asserts "duration is not `Date.now()`-shaped" would be weaker and easier to satisfy vacuously.
 
 VERDICT surface=`order-manager.js` openTime funnel + closeTime fallback, coverage=**S** (soundness — I read the helper and every assignment site, rather than confirming the helper exists).
+
+---
+
+## B-0082 — M4 harness: the silent pass is genuinely gone. I verified it rather than accept the count.
+
+B-W8 reports 19 designed / 0 survived with 4 absence-class. I ran the failure mode that produced the original defect instead of re-running its suite, since re-running an author's tests is not scrutiny.
+
+- Dead server, valid args: six loud `FAIL`s naming the transport error, `summary pass=0 nonpass=6`, exit 1. The harness that once printed nothing and exited 0 is fixed.
+- Line 441 treats **any** non-`PASS`, `SKIP-LOUD` included, as exit 1, so a run that skips everything cannot read green. That was my main worry about introducing a skip state and it is handled.
+
+**A new defect I found while doing it.** In PowerShell, `--base-url="http://..."` was **not** parsed and produced six *"missing required arguments"* FAILs; the space-separated form worked. The PO and Rayan use PowerShell. At a glance those six FAILs are indistinguishable from a genuine ledger failure, so a syntax preference can be read as "the ledger is broken" — the mirror image of the silent pass, and just as damaging at hour 40. Folded into the review as a runbook question.
+
+Verdict withheld pending B-R5. Two harnesses were destroyed by review today and this one has already been rejected twice; my own confidence is not evidence.
+
+---
+
+## B-0083 — M10 fix has scope-crept into a cross-boundary schema change. Reverting the journal half.
+
+I briefed a clock fix. B-W9 returned **88 insertions / 32 deletions**, and the clock resolver is the smaller part. The rest rewrites the journal-entry construction path so that fields which previously always carried values can now be `null`: `exitDate`, `hourOfExit`, `holdingTimeHours`, `holdingTimeDays`, `exitTime`, `closeTime`.
+
+I traced the consumers instead of assuming they were local. They are not:
+
+- `chart v 1.4/chart/session_journal_store.py` — **persisted**
+- `chart v 1.4/chart/api_server.py`
+- `journal-backend/csv_journal.py`
+- `homepage/src/app/dashboard/analytics/backend/analytics_core/session_seed_trades.py`
+- `homepage/src/app/dashboard/sessionJournalUtils.ts`, `v16LiveJournalManualTrade.ts`
+
+So this is a **persisted, cross-boundary data contract** spanning JS, Python and TypeScript. Under §B3 that is Tier 3 — data integrity — not the Tier 2 clock fix I dispatched. And it would land in precisely the window where ship gate M4 must prove the ledger loses and duplicates nothing. Changing what the ledger writes while trying to prove the ledger is sound is the wrong order of operations regardless of whether the change is correct.
+
+The author's intent is defensible — unknown close time should stay unknown rather than be invented. But `null` is not obviously the safe encoding: in JS arithmetic `null` coerces to `0`, so a `null` holding time can surface as **a plausible zero-hour trade** rather than an obvious gap. A wrong value that looks reasonable is worse than the original bug, which at least announced itself as years long.
+
+**Decision: keep the `closeTime` resolver, revert the journal-shape half.** That fixes the PO's defect with the smallest footprint and leaves the schema question to be argued on its own merits, with A and the backend owners, outside a ship-gate window.
+
+**I am not executing the revert yet, deliberately.** B-R4 is reviewing this working tree right now. Editing under a running reviewer is exactly the read-time coupling defect I hit at B-0027, and it would invalidate its findings. The revert waits for the review to land. Recording the decision now so it is on the record ahead of the result rather than shaped by it.
+
+One honest caveat from the author worth keeping: it did **not** prove `evalCandle` genuinely becomes absent after a rollback. The fix is defensive for that condition. So it is possible this is a correct fix that still leaves the PO's bug live, and B-R4 is tasked with settling it.
