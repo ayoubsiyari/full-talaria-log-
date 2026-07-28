@@ -510,7 +510,7 @@ Cells:
 
 | Name | Signature token | Implementation | Status |
 |---|---|---|---|
-| PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE — browser-hosted PO protocol benchmark; observables are main-thread callback and longtask work, not process CPU% |
+| PO-CPU-AB-BENCHMARK-V1 | `TALARIA_PO_CPU_AB_BENCHMARK_V1` | `scripts/po-cpu-ab-benchmark-gate.mjs`, `scripts/lib/po-cpu-ab-benchmark.mjs`, `scripts/tests/po-cpu-ab-benchmark.test.mjs` | LIVE instrument — measures honestly; RED on unfixed product (FIX1/FIX2 not built) is expected GATE-01. GREEN is the precondition for claiming CPU work succeeded, not for shipping the instrument. P6 margin pinned at `PO_CPU_AB_P6_REPLAY_WORK_RATIO_MARGIN=0.03` (Director 2026-07-28: do not lower to soft-pass). Observables are main-thread callback/longtask work, not process CPU% |
 
 Cells:
 
@@ -519,8 +519,8 @@ Cells:
 | P1-IDLE-SINGLE-CHART-OBSERVED | single-chart idle workRatio is finite and below absolute `PO_CPU_AB_P1_IDLE_WORK_RATIO_MAX` | LIVE |
 | P2-IDLE-STABLE-NO-UNBOUNDED-WORK | idle soak workRatio is below both P1-relative and absolute `PO_CPU_AB_P2_IDLE_WORK_RATIO_MAX`; high P1 cannot absorb high P2 | LIVE |
 | P2-IDLE-MEMORY-NOT-GROWING | exposed heap delta during P2 stays bounded | LIVE |
-| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | W62 four-panel replay phase remains armed and observed | LIVE |
-| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead index/timestamp advances, and P6 work exceeds P1 by the pinned margin | LIVE (W58d hardening) |
+| P4-FOUR-PANEL-REPLAY-RUNNING-OBSERVED | four panels armed, playing, and advancing by forward timestamp on a live harness (grades FIX1/FIX2) | LIVE — priority: must drive 4/4 (W62f); topology closed in W62d |
+| P6-REPLAY-10X-OR-NEAREST-OBSERVED | real replay activation succeeds, `isPlaying` is observed, nearest speed is known, playhead advances, and P6 work exceeds P1 by the pinned 0.03 margin | LIVE instrument — RED expected until FIX1/FIX2; do not recalibrate margin to mint GREEN |
 | P7-PAUSE-STATE-NOT-PLAYING | product pause path leaves replay not playing | LIVE |
 | P7-WORK-RETURNS-TO-P1-FLOOR | post-pause workRatio is below both P1-relative and absolute `PO_CPU_AB_P7_IDLE_WORK_RATIO_MAX` | LIVE |
 | NC-P7-REPLAY-PAUSE-TEARDOWN-MUST-RED | served `replay-system.js` pause teardown reversal marks itself applied and makes the P7 state cell RED | LIVE |
