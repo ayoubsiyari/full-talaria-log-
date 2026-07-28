@@ -2603,3 +2603,51 @@ Yesterday I recorded a verdict that the merged harnesses were re-run post-merge 
 I have dispatched a clean-worktree re-run to settle it, briefed so that a finding against me is the expected useful outcome. Three ways it can land: the test is itself untracked, in which case there is no tracked-imports-untracked problem and my green was fine; the import is guarded and degrades cleanly, same result; or a tracked gate genuinely depends on untracked files, in which case **my post-merge verdict was contaminated and must be withdrawn**, along with any claim of automated-GREEN that rested on it.
 
 I am not waiting for that answer to say the obvious: **the ~455 untracked files in A's territory are no longer a housekeeping row.** I have been carrying them as triage I judged above my tier and did not dispatch. If they can silently supply the inputs a gate needs, they are a correctness hazard on the deploy path, and their triage is now ahead of packaging rather than behind it.
+
+---
+
+## 2026-07-28 11:12 — Count-forward hypothesis REFUTED against its stated criterion
+
+surface=`manager-a/critical-path` @ `6f616779c`
+coverage=nineteen bucketing sites classified across `chart v 1.4/chart/**`, the `homepage/public/chart/**` mirrors, workers, indicators, the multichart bridge, and Python server-side resampling; searches written to files and read whole to avoid the pagination failure that cost us a packet this week
+
+**Every product path that assigns a bar to a bucket floors, or uses absolute calendar alignment.** No product path builds bars by counting forward from a reference. The single count-forward in the tree is a **test** helper at `m10-trade-marker-projection.test.mjs:140-141` (`const bucketEnd = start + tfMs`), which is not product.
+
+The disguises I specifically asked to be hunted were found and correctly classified as *not* the defect: `applyRenderBudget`'s `Math.floor(b * step)` is index-arithmetic render LOD that preserves each bar's original `t` and never assigns a timeframe bucket; `_advanceCoarseLegacyCandleBucket`'s `currentTimestamp + tfMs` steps the playhead without writing OHLC; and `calculateNextIndex` adds `tfMs` to a value that was already floored, so it lands on the floor grid rather than drifting off it.
+
+So the PO's mechanism does not apply. **This eliminates the mechanism without touching the substance of the PO's point** — `parseTimeframe` still returns a flat `24*60*60*1000` for `'d'` and `7*24*…` for `'w'`, and that assumed 24-hour day against a session that is not 24 hours remains exactly the defect. The PO was right about the cause and wrong about the route.
+
+Per §A16.3c's stated logic, one of the two refutations is now in. If the timezone audit also refutes, the mechanism is in **labelling rather than bucketing** and the next probe is the display timezone.
+
+## 2026-07-28 11:13 — ESCALATION: "weekly boards now" collides with territory, and this time I have the citation
+
+§A16.3b instructs weekly to board now. The audit shows **weekly bars are built server-side in Python**:
+
+- `chart v 1.4/chart/api_server.py:8843` — `_resample_candles`, `bucket = (c['t'] // tf_ms) * tf_ms`, and the audit states weekly binaries are built here with `604800000`.
+- `chart v 1.4/chart/questdb_store.py:536,684,872,886` — `SAMPLE BY … ALIGN TO CALENDAR` producing `ohlcv_1d` and `ohlcv_1w`.
+
+Neither file is in Manager A's territory. This is the DIRECTOR-Q I raised earlier as an inference; **it is now a citation.** Weekly boundaries are decided in Python before the client sees them, and a client-side session calendar cannot recover a boundary the server already collapsed. I cannot board weekly on A's work alone, and I am not going to author into another manager's files to make a deadline.
+
+Daily is a different and better-shaped question: the audit marks vendor FirstRate `1day` provenance **OPEN** — those bars may arrive already session-aligned, in which case §A16.3's "if native, match the provider's stamping and disclose it" branch applies and no bucketing change is needed at all. That is precisely what the gating timezone audit is establishing, so I am holding rather than guessing.
+
+## 2026-07-28 11:14 — The XAUUSD/GC trap is real, and it is not where the ruling predicted
+
+The Director warned that one careless mapping would treat spot and futures gold alike. **The primary classifier is fine** — `MarketCalculationEngine` puts `XAUUSD` in `forex` and `GC` in `futures`, at `market-calculations.js:27` and `:115`. That specific fear is unfounded.
+
+The defect sits one layer down and points the other way. `bucketStart()` does not use the registry-backed path the contract intends; it calls `resolveInstrumentClass()`, and the helper's own `CME_ROOTS` lists only index roots — ES, NQ, YM, RTY and micros — **not GC**. So `resolveInstrumentClass('GC')` returns `unknown` and falls through to epoch bucketing. **GC is a canary instrument.** The failure is not that GC gets the FX calendar; it is that GC gets no calendar at all, silently, even after the helper is wired. That is worse than the predicted trap because it survives the wiring packet and looks like success.
+
+There is a second inconsistency in the same area: the intended path `classFromRegistry()` would map GC correctly to `cme-index-futures`, so the helper contains two classification routes that disagree, and the one `bucketStart` actually calls is the wrong one. Any wiring packet has to resolve that before it does anything else.
+
+## 2026-07-28 11:15 — Helper status: extend, not replace — with two gaps against the ruling
+
+`session-calendar.js` is committed and tracked on `manager-a/critical-path` and `manager-a/session-calendar-red` (blob `90b1573…`, SHA-256 `d6a35384…`), and **absent from `manager-c/verification-infra` and `main`**. Per TREE-01 that matters: C's branch is the checked-out tree, so anyone auditing there will correctly report the helper as non-existent, and they will not be wrong.
+
+It is not a stub. DST is resolved through `Intl.DateTimeFormat` with IANA zones — `formatterFor`/`zoneParts` at `:150-178`, FX anchored to `America/New_York` at `17*60` minutes — which is exactly what §A16.3 requires and explicitly **not** a fixed millisecond offset. FX and crypto are implemented; the class registry and kill-switch exist. So the answer to extend-or-replace is **extend**, and the gap is implementation plus wiring rather than absent structure.
+
+Two gaps measured against the PO's table:
+
+**Futures are declared, not implemented.** `cme-index-futures` carries `zone: 'America/Chicago'` and `dailyOpenMinute: null` with `status: 'declared'`, so `bucketStart` epoch-falls-back by design. There is no 18:00 ET boundary and **no maintenance gap anywhere in the code** — `'cme-daily-maintenance-break'` appears only as a name in a `requires` array. §A16.3's third consequence says no bar may be synthesised for 17:00–18:00 ET; nothing today prevents that. And `MARKET_TYPE_TO_CLASS.futures` maps every future to one class, lumping CL, GC, ZB, grains and 6E with the index contracts.
+
+**The unknown-symbol fallback is silent, and the ruling requires it to be loud.** `detectMarketType()` returns `'forex'` with no log for anything it cannot classify (`market-calculations.js:923-959`), and `getSpecs()` returns a `_genericFallback` without announcing it. §A16.3b requires unknown symbols to fall back to FX **while logging loudly per §A4c**. The contract names an intended `'SessionCalendar.unresolved-instrument'` announcement, but no product caller exists to make it. As written today the product would take an unrecognised futures symbol, silently call it forex, and bucket it on a calendar that is wrong by an hour — which is the silent-degradation class §A4c exists to prevent.
+
+**Still gated.** No mechanism proposed and nothing authored until the timezone audit reports, per the Director's instruction. What these two audits have bought is that the mechanism space is now much smaller: not count-forward, not the classifier, and — for weekly — not client-side at all.
