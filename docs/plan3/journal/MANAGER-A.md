@@ -1912,3 +1912,52 @@ The merged `pending-selector` packet deleted `[class*="pending-${orderId}"]` at 
 The distinction that matters: those were **live selectors proven equivalent to a survivor**, whereas `:38411` and `:39147` are **selectors proven to match nothing**. Different evidence standard, different risk. The hold is on the second class, and correctly so.
 
 One thing that falls out of re-reading it. Neither the deleted sweep nor the surviving `.pending-${id}` ever matched `pending-tp-*`, `pending-sl-*` or `pending-be-*` tokens, because none of those contain `pending-${id}` as a substring or as a whole token. So the cancel path in my file never cleaned that family up — the same gap I opened at 06:15 for `pending-be-*`, now known to extend to the pending TP and SL badges as well. Widening that row rather than opening a second one.
+
+---
+
+## 2026-07-28 09:26 — CORRECTION: four dispatches I reported as landed never reached the tree
+
+surface=`manager-a/critical-path` at `207ec960d`; main checkout on `manager-c/verification-infra`
+coverage=exhaustive harness sweep at the merged tip, 5 runnable paths and 5 support modules, 6 invocations
+
+The post-merge sweep I ordered found something I did not order it to look for. Four dispatches whose findings I journaled as verdicts and metrics have **no harness on `critical-path` at all**:
+
+- `m21-b-mcdiag-tabulation-*` — JSON artifacts untracked in the main checkout, no `.mjs` at tip
+- `m21-b-legacy-deroute-*` — not at tip
+- `m21-b-a10-residue-*` — JSON and MD untracked in the main checkout, no harness at tip
+- `m21-a-indicator-lag-data-effect.mjs` — on its own branch at `71e44bf49`, never merged
+
+The indicator-lag one is fine: that packet was blocked twice and its P4 withdrawn, so it should not be merged and being branch-resident is correct. The other three are not fine. Nine files sit **untracked inside Manager C's working checkout**, under `chart v 1.4/chart/multichart-prod/harness/`, which is my owned path. They are on nobody's branch. A `git clean` in that checkout destroys them.
+
+I cited those artifacts in the record. The `_mcDiag` tabulation METRIC at 06:00, the §A10 residue closure, the legacy de-route evidence — all rest on files that exist in exactly one untracked copy in another manager's tree. That is the provenance failure this sprint keeps ruling against, and I produced it myself by dispatching cheap read-only work without requiring an isolated worktree and a branch. Read-only briefs are uncapped and I treated them as consequence-free; they are not, because they still emit.
+
+**Standing correction to my own dispatch practice: every brief gets a worktree and a branch, including read-only ones, if it writes a single byte.** The distinction that matters is not read-versus-write against the product, it is emits-versus-does-not-emit.
+
+Drafted a rescue packet and sent it to pre-dispatch review per §A16.4 rather than firing it — including the question of whether rescue is even the right remedy, since regenerating from a versioned generator would beat committing nine orphan blobs, and since artifacts produced inside C's dirty tree may have been measured against the wrong tree state entirely. If that last one holds, the metrics need regenerating rather than preserving, and I would rather learn that from a reviewer than from the record.
+
+## 2026-07-28 09:27 — OPEN: committed session-calendar evidence is stale against the tip
+
+`tests/evidence/session-calendar-red/m22-session-calendar-fourstate.json` carries `buildSha: 1c6292073`, its authoring commit. The tip is `207ec960d`. The blob was never regenerated at merge, so the committed evidence and a fresh run at the same commit do not agree.
+
+The oracle behaviour is stable — the `broken` state still fails 90 assertions, the four-state proof still holds, and internal determinism holds across three repeats per state — so this is a provenance defect rather than a correctness one. But it means the committed artifact cannot be used as an authority for the tip, which is the only thing a committed artifact is for.
+
+Two other determinism results, recorded as clean so nobody re-runs them: TAL-01918's evidence is byte-identical across runs **and** matches the committed blob, with its pinned `chart.js` SHA matching the live file at tip; and the m20-q9 counter fields match committed, with the only byte drift in an advisory `ms/tick` wall-clock field that the harness documents as advisory.
+
+## 2026-07-28 09:28 — VERDICT: harness chain intact post-merge; no drawing-tools staleness
+
+surface=`manager-a/critical-path` at `207ec960d`
+coverage=6 invocations across 5 runnable harness paths, each run at least twice
+
+Both canary-blocker REDs still fail in the way they are supposed to fail. TAL-01918 exits 1 with 26 of 28 passing and the two limbs failing. The session-calendar RED exits 1 in `broken` with 90 of 386 assertions failing, and exits 0 in `fixed` with 388 of 388 green. The four-state driver exits 0 with all 40 cells OK. The Q9 prefix-slice scaffold is green at 19 of 19. No import errors, no path assumptions that broke at merge, no load failures.
+
+The specific risk I asked about is clear: **no Manager A harness at tip references, hashes or line-enumerates `drawing-tools-manager.js` or `deleteDrawing`.** Tonight's eviction edits stale nothing. That is a relief and also the problem — it is the same fact as §A16.5's, seen from the harness side rather than the gate side. The file is not merely ungated, it is untouched by any instrument I own.
+
+## 2026-07-28 09:29 — The gate evidence ran, and C's host cannot express one of my two sites
+
+The evidence packet for C is authored and under adversarial review. Its headline is that C's gate, run against the emitted fixture, reports **1 passed, 5 failed** — and the failures matter more than the pass.
+
+Two of my sites are confirmed and their predicates captured verbatim: ordinal 6 at `:12086` evicting executed rows, ordinal 7 at `:12135` evicting pending ones, both now carrying `(l.chart || orderManager.chart) === ch`. C's host does accept the manager-qualified `orderManager.orderLines` spelling, which was the compatibility question.
+
+But **ordinal 7 is not discoverable by C's parser**, because `removedIds.includes(l.orderId)` is a call expression and the host models comparisons. I want to be explicit about the direction of the fix: that is an expressiveness limit in the gate, and the remedy is a hand-off asking C to extend the host — **not** reshaping a product predicate so a parser can read it. Bending product code to suit an instrument is how you get a gate that passes because the code was written to the gate's shape rather than to the requirement.
+
+The `order-manager.js` ordinals 4/5 drift the run also surfaced is, I believe, an ancestry artifact rather than a regression: a prior review established that B's fix `9133fd9e0` is not in this branch's ancestry and the tree carries B's pre-fix blob, so a gate seeing no `isPending` discriminator there is reporting the file it was given. Flagged to the reviewer to confirm rather than asserted, because that is exactly the shape of claim I have got wrong three times today.
