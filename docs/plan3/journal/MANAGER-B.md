@@ -2404,3 +2404,46 @@ I restored both files. **Recording it as a candidate row alongside DEPLOY-01**, 
 **B-2 is done and green.** It is the half that stops the data loss and it is ready for the D-2 hotfix train.
 
 **PO-REQ outstanding: 1** — unchanged from B-0110. The train's other half (I-2 delete logging, I-7 sweep parse-guard) cannot start until the I-7 scope question is answered, because the code is in `chart v 1.4/chart/api_server.py`, not the granted `journal-backend/`.
+
+---
+
+## B-0112 — I-7.1 received, B-W16 committed, backend half dispatched as B-W17. Heartbeat discipline adopted.
+
+**In:** ruling **I-7.1** (incident §8), B-2 ratified (§9), **EVID-01** opened on the self-rewriting evidence finding (§10). PO-REQ count: **0 outstanding.**
+
+### 1. Committed — `2521a7484`, tree clean
+
+`B-2: tri-state hydration guard on the durable journal write (9/0, VER-04 both halves)` — 5 files, 961 insertions, 1 deletion. `order-manager.js`, both `b-w16-*` files, the brief, and this journal. Trailers per convention (`Manager: B`, `Row: B-2`, `Packet: B-W16`, `Tier: 2`).
+
+Two things I had to handle rather than assume. `docs/` is gitignored in this tree while `docs/plan3/journal/` and `docs/plan3/evidence/` are tracked, so the brief needed `git add -f` to match how existing evidence is carried. And the commit body contains a quoted phrase; passing it through PowerShell `-m` split the message into pathspecs and failed. Written to a file and committed with `-F`. Recording both because the next person to commit from this tree hits them in the same order.
+
+### 2. On the two "stopped" readings
+
+The Director read my commit log as stopped twice today and dispatched on it. **The signal was real even though the conclusion was wrong** — I had 700+ lines uncommitted both times, which is indistinguishable from having done nothing if the commit log is the only instrument. That is my failure to emit, not the Director's failure to look.
+
+**Adopted: commit or heartbeat every 30 minutes**, whichever comes first. A heartbeat costs one line and removes a false signal that has already caused two mis-dispatches. It is also the mitigation for the EVID-01 failure mode I found this morning — work that exists only in a dirty tree is work whose provenance nothing records.
+
+### 3. B-W17 dispatched — the backend half
+
+Brief: `docs/plan3/evidence/B-M4/BRIEF-B-W17-sweep-parse-guard-and-delete-logging.md`. Scope is `_sync_trading_session_journal_trades` at `api_server.py:12337-12455` and nothing else, per I-7.1.
+
+**The parse guard collapsed to one counter and one branch**, which is smaller than I expected when I wrote B-0110. Count incoming entries whose id does not resolve; if the count is non-zero, **skip the sweep entirely**.
+
+That single rule covers both defects at once:
+
+- **The alias trap** — rows keyed `trade_id` are canonical per `journal_trade_client_id` but invisible to the sweep's two-key parse, so today they are deleted while present in the payload.
+- **The delete-all degradation** — if a full payload resolves to nothing, every entry failed, so the counter is non-zero and the sweep is skipped. No separate emptiness test is needed; the `len(journal) > 0 and not incoming_ids` discriminator I described in B-0110 is **subsumed**.
+
+And the legitimate clear survives untouched: `journal == []` has zero parse failures, so the sweep proceeds and correctly deletes everything.
+
+**Why refusing the whole sweep rather than exempting the offending row:** an entry whose id will not parse cannot be matched to a stored row *by construction* — that is what failing to parse means — so there is no row to exempt. Skipping is the only sound implementation, not the cautious one. Retaining rows is recoverable; deleting on this path is not.
+
+**Explicitly forbidden in the brief: widening the inline parse to the four-key resolver.** Making the two resolvers agree changes which rows count as present, on a delete path, and that is replace-semantics work the Director ruled out of this train. The packet reports the divergence; it does not repair it.
+
+**The logging carries the resolver name**, per I-2's third field. That is the detail that earns its place: naming `inline(tradeId|id)` in the log is what makes the resolver divergence **visible in production** rather than something only a source audit can find. I also required that a logging failure cannot abort or roll back the transaction — a logging bug becoming a new data-loss path would be this packet causing the exact class of defect it exists to fix.
+
+Eleven mutants, including the over-blocking one (guard applied to the legitimate clear → must die on cell 3). VER-04 both halves required.
+
+### 4. EVID-01 and DEPLOY-01 are one class
+
+The Director's framing is the right one and worth keeping in my own words for the closing report: **we do not durably record the identity of the thing we tested or shipped.** DEPLOY-01 is that gap at the deploy boundary, EVID-01 at the verification boundary. Both surfaced today from the same investigation, and both were only visible because someone asked "what exactly is this artifact pinned to?" — a question neither system was built to answer.
